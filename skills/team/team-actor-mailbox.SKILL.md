@@ -76,6 +76,8 @@ Recommended fields:
 1. Pull inbox for current actor scope:
    `"$AGENTHUB_ACTOR_CLI" actor inbox --limit 50`
    - `actor inbox` now includes `pending_count`; treat it as the live unread snapshot.
+   - `actor inbox` is read-only by default. Add `--auto-ack` only when you intentionally want a
+     bulk sweep to consume the returned pending messages.
 2. Parse message payload and validate required fields before acting.
 3. Acknowledge each consumed message exactly once:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`

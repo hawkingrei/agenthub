@@ -1,6 +1,6 @@
 use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest, ActorInboxResponse,
     ActorMailboxService, ActorMessageStatus, ActorServiceError, actor_inbox_with_auto_ack,
     build_default_actor_channel_idempotency_key, build_default_actor_message_idempotency_key,
     parse_actor_transport,
@@ -68,6 +68,7 @@ enum ActorCommand {
         limit: i64,
         after_id: Option<i64>,
         include_delivered: bool,
+        auto_ack: bool,
     },
     Ack {
         run_id: String,
@@ -131,7 +132,7 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Human-oriented task and trigger confirmations (`team-task-create`, `team-task-update`, `time-trigger-set`, `time-trigger-cancel`) default to TOON on stdout.\n  Machine-oriented confirmations (`ack`, `send`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered] [--auto-ack]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Human-oriented task and trigger confirmations (`team-task-create`, `team-task-update`, `time-trigger-set`, `time-trigger-cancel`) default to TOON on stdout.\n  Machine-oriented confirmations (`ack`, `send`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nMailbox note:\n  `actor inbox` is read-only by default. Use `actor ack` to mark consumed messages delivered, or pass `--auto-ack` explicitly when you want inbox reads to consume pending messages.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
@@ -353,6 +354,18 @@ async fn init_team_manager() -> anyhow::Result<(TeamManager, agenthub_config::Ap
 
 fn init_actor_mailbox_service(manager: &TeamManager) -> Arc<dyn ActorMailboxService> {
     Arc::new(manager.actor_mailbox_service())
+}
+
+async fn load_actor_inbox<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    request: ActorInboxRequest,
+    auto_ack: bool,
+) -> Result<ActorInboxResponse, ActorServiceError> {
+    if auto_ack {
+        actor_inbox_with_auto_ack(service, request).await
+    } else {
+        service.actor_inbox(request).await
+    }
 }
 
 fn map_actor_service_error(operation: &str, err: ActorServiceError) -> anyhow::Error {
@@ -843,6 +856,7 @@ fn parse_actor_command(
             let mut limit = 100_i64;
             let mut after_id = None;
             let mut include_delivered = false;
+            let mut auto_ack = false;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -882,6 +896,9 @@ fn parse_actor_command(
                     "--include-delivered" => {
                         include_delivered = true;
                     }
+                    "--auto-ack" => {
+                        auto_ack = true;
+                    }
                     other => {
                         return Err(anyhow::anyhow!("unknown flag for inbox: {}", other));
                     }
@@ -894,6 +911,7 @@ fn parse_actor_command(
                 limit: limit.max(1),
                 after_id,
                 include_delivered,
+                auto_ack,
             })
         }
         "ack" => {
@@ -1451,6 +1469,7 @@ async fn run_actor_command(
             limit,
             after_id,
             include_delivered,
+            auto_ack,
         } => {
             let (manager, _) = init_team_manager().await?;
             let service = init_actor_mailbox_service(&manager);
@@ -1463,7 +1482,7 @@ async fn run_actor_command(
             } else {
                 Some(vec![ActorMessageStatus::Pending])
             };
-            let inbox = actor_inbox_with_auto_ack(
+            let inbox = load_actor_inbox(
                 service.as_ref(),
                 ActorInboxRequest {
                     run_id,
@@ -1472,6 +1491,7 @@ async fn run_actor_command(
                     limit: Some(limit),
                     states,
                 },
+                auto_ack,
             )
             .await
             .map_err(|err| map_actor_service_error("actor inbox", err))?;
@@ -1717,9 +1737,11 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 mod tests {
     use super::*;
     use crate::api::team_tests::build_test_state;
-    use agenthub_team_actor::ActorInboxResponse;
+    use agenthub_team_actor::{
+        ActorAckRequest, ActorAckResponse, ActorInboxResponse, ActorSendRequest, ActorSendResponse,
+    };
     use serde::Serialize;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
     use tokio::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -1732,6 +1754,86 @@ mod tests {
             unsafe { std::env::set_var(key, value) }
         } else {
             unsafe { std::env::remove_var(key) }
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockMailboxService {
+        inbox: Vec<agenthub_team_actor::ActorMessageRecord>,
+        acked_ids: Arc<StdMutex<Vec<i64>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ActorMailboxService for MockMailboxService {
+        async fn actor_send(
+            &self,
+            _request: ActorSendRequest,
+        ) -> Result<ActorSendResponse, ActorServiceError> {
+            unreachable!("send is not used in this test")
+        }
+
+        async fn actor_inbox(
+            &self,
+            _request: ActorInboxRequest,
+        ) -> Result<ActorInboxResponse, ActorServiceError> {
+            Ok(ActorInboxResponse {
+                messages: self.inbox.clone(),
+                next_cursor: self.inbox.last().map(|item| item.message_id),
+                pending_count: self
+                    .inbox
+                    .iter()
+                    .filter(|message| message.status == ActorMessageStatus::Pending)
+                    .count() as i64,
+            })
+        }
+
+        async fn actor_ack(
+            &self,
+            request: ActorAckRequest,
+        ) -> Result<ActorAckResponse, ActorServiceError> {
+            self.acked_ids
+                .lock()
+                .expect("acquire acked_ids mutex")
+                .push(request.message_id);
+            let message = self
+                .inbox
+                .iter()
+                .find(|item| item.message_id == request.message_id)
+                .expect("find acked message")
+                .clone();
+            Ok(ActorAckResponse {
+                message_id: message.message_id,
+                state: ActorMessageStatus::Delivered,
+                acked_at: 100,
+                message: agenthub_team_actor::ActorMessageRecord {
+                    status: ActorMessageStatus::Delivered,
+                    delivered_at: Some(100),
+                    ..message
+                },
+            })
+        }
+    }
+
+    fn mock_inbox_message(
+        message_id: i64,
+        status: ActorMessageStatus,
+    ) -> agenthub_team_actor::ActorMessageRecord {
+        agenthub_team_actor::ActorMessageRecord {
+            message_id,
+            run_id: "run-1".to_string(),
+            from_actor_id: "leader".to_string(),
+            from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+            from_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+            to_actor_id: "worker".to_string(),
+            to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+            to_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
+            channel: "default".to_string(),
+            transport: agenthub_team_actor::ActorMessageTransport::Local,
+            route: None,
+            payload: serde_json::json!({"type":"chat_message","text":"hello"}),
+            status,
+            created_at: 1,
+            delivered_at: None,
         }
     }
 
@@ -1775,11 +1877,13 @@ mod tests {
                 run_id,
                 actor_id,
                 limit,
+                auto_ack,
                 ..
             } => {
                 assert_eq!(run_id, "run-x");
                 assert_eq!(actor_id, "planner");
                 assert_eq!(limit, 5);
+                assert!(!auto_ack);
             }
             _ => panic!("expected inbox command"),
         }
@@ -1825,6 +1929,26 @@ mod tests {
             ActorCommand::Inbox { ref run_id, ref actor_id, .. }
                 if run_id == "run-y" && actor_id == "planner"
         ));
+    }
+
+    #[test]
+    fn parse_inbox_accepts_auto_ack_flag() {
+        let _guard = env_lock().blocking_lock();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-auto-ack");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec!["inbox".to_string(), "--auto-ack".to_string()];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox { auto_ack, .. } => assert!(auto_ack),
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -2441,6 +2565,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn load_actor_inbox_keeps_pending_messages_read_only_by_default() {
+        let service = MockMailboxService {
+            inbox: vec![mock_inbox_message(1, ActorMessageStatus::Pending)],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+        };
+        let response = load_actor_inbox(
+            &service,
+            ActorInboxRequest {
+                run_id: "run-1".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            },
+            false,
+        )
+        .await
+        .expect("load inbox without auto-ack");
+        assert_eq!(response.pending_count, 1);
+        assert_eq!(response.messages.len(), 1);
+        assert_eq!(response.messages[0].status, ActorMessageStatus::Pending);
+        assert!(
+            service
+                .acked_ids
+                .lock()
+                .expect("acquire acked ids")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn load_actor_inbox_auto_ack_consumes_pending_messages() {
+        let service = MockMailboxService {
+            inbox: vec![mock_inbox_message(7, ActorMessageStatus::Pending)],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+        };
+        let response = load_actor_inbox(
+            &service,
+            ActorInboxRequest {
+                run_id: "run-1".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            },
+            true,
+        )
+        .await
+        .expect("load inbox with auto-ack");
+        assert_eq!(response.pending_count, 0);
+        assert_eq!(response.messages.len(), 1);
+        assert_eq!(response.messages[0].status, ActorMessageStatus::Delivered);
+        assert_eq!(
+            *service.acked_ids.lock().expect("acquire acked ids"),
+            vec![7]
+        );
+    }
+
+    #[tokio::test]
     async fn init_actor_mailbox_hint_client_from_config_skips_missing_remote_token() {
         let _guard = env_lock().lock().await;
         let prev_target =
@@ -2855,6 +3038,7 @@ mod tests {
                     limit: 20,
                     after_id: None,
                     include_delivered: false,
+                    auto_ack: false,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),

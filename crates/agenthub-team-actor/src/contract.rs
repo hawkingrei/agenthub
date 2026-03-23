@@ -114,7 +114,9 @@ pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService + ?Sized>(
 ) -> Result<ActorInboxResponse, ActorServiceError> {
     let run_id = request.run_id.clone();
     let response = service.actor_inbox(request).await?;
+    let pending_count = response.pending_count;
     let mut messages = Vec::with_capacity(response.messages.len());
+    let mut acked_pending = 0_i64;
     for message in response.messages {
         if message.status != ActorMessageStatus::Pending {
             messages.push(message);
@@ -130,7 +132,10 @@ pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService + ?Sized>(
             })
             .await;
         match acked {
-            Ok(acked) => messages.push(acked.message),
+            Ok(acked) => {
+                acked_pending += 1;
+                messages.push(acked.message);
+            }
             Err(err) if err.code == ActorServiceErrorCode::NotFound => messages.push(message),
             Err(err) => return Err(err),
         }
@@ -138,7 +143,7 @@ pub async fn actor_inbox_with_auto_ack<S: ActorMailboxService + ?Sized>(
     Ok(ActorInboxResponse {
         messages,
         next_cursor: response.next_cursor,
-        pending_count: response.pending_count,
+        pending_count: pending_count.saturating_sub(acked_pending),
     })
 }
 
@@ -263,6 +268,7 @@ mod tests {
         assert_eq!(response.messages.len(), 2);
         assert_eq!(response.messages[0].status, ActorMessageStatus::Delivered);
         assert_eq!(response.messages[1].status, ActorMessageStatus::Delivered);
+        assert_eq!(response.pending_count, 0);
         assert_eq!(
             *service
                 .acked_ids
@@ -293,5 +299,6 @@ mod tests {
         .expect("auto ack inbox");
         assert_eq!(response.messages.len(), 1);
         assert_eq!(response.messages[0].status, ActorMessageStatus::Pending);
+        assert_eq!(response.pending_count, 1);
     }
 }
