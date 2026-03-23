@@ -18,6 +18,18 @@ AgentHub is designed as one main control-plane service:
 
 That baseline is enough for local and many shared internal deployments.
 
+## Control Plane Versus Execution Plane
+
+AgentHub keeps these concerns separate:
+
+- the **control plane** owns API handling, auth, session state, Team state, and
+  operator-visible history
+- the **execution plane** is where agent processes actually run, either on the
+  main machine or on remote Agent Nodes
+
+This separation is what lets AgentHub keep one operational model across local
+and distributed execution.
+
 ## Main Runtime Components
 
 ### Control plane
@@ -66,6 +78,10 @@ When one machine is not enough, AgentHub can add remote Agent Nodes:
 
 This lets operators keep one main UI and API surface while execution happens
 elsewhere.
+
+The important architectural point is that remote execution does not introduce a
+second human-facing control surface. The actor and mailbox contract stays
+consistent whether execution is local or remote.
 
 ## Persistence And Reliability
 
