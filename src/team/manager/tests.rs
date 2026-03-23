@@ -3759,6 +3759,63 @@ async fn cancel_active_runs_on_startup_requires_manual_restart() {
 }
 
 #[tokio::test]
+async fn cancel_active_runs_on_startup_reopens_linked_tasks() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "startup-linked-task-team".to_string(),
+            description: Some("team to verify startup cancel reopens linked tasks".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Restart-safe linked task",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("startup-linked-task"),
+        )
+        .await
+        .expect("create task");
+    assert_eq!(task.status, TeamTaskStatus::Open);
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({"task_id": task.id, "payload":"linked"}),
+        )
+        .await
+        .expect("create linked run");
+    assert_eq!(run.status, TeamRunStatus::Submitted);
+
+    let in_progress_task = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(in_progress_task.status, TeamTaskStatus::InProgress);
+
+    let canceled_count = manager
+        .cancel_active_runs_on_startup()
+        .await
+        .expect("cancel active runs on startup");
+    assert_eq!(canceled_count, 1);
+
+    let run_after = manager.get_run(&run.id).await.expect("reload canceled run");
+    assert_eq!(run_after.status, TeamRunStatus::Canceled);
+
+    let reopened_task = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload reopened task");
+    assert_eq!(reopened_task.status, TeamTaskStatus::Open);
+    assert_eq!(reopened_task.assigned_member_id, None);
+}
+
+#[tokio::test]
 async fn resume_run_handles_active_terminal_and_completed_statuses() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);

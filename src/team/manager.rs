@@ -1164,7 +1164,7 @@ impl TeamManager {
         })
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn list_active_runs(&self, limit: i64) -> anyhow::Result<Vec<TeamRunRecord>> {
         let rows = sqlx::query(
             r#"

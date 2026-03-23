@@ -26,6 +26,7 @@ The updated direction is task-first:
 - removed `TeamOrchestratorWorker` autostart from `AppState::init`
 - removed the backend orchestrator module from the compiled Team module tree
 - dropped the router test that existed only to validate the removed worker path
+- kept `list_active_runs` as a test-only helper instead of shipping an unused production API
 
 ### Task model
 
@@ -55,6 +56,8 @@ These now describe:
 ## Validation
 
 - `cargo test -p agenthub-db init_db_adds_assigned_member_id_to_existing_team_tasks_table -- --nocapture`
+- `cargo test -p agenthub list_active_runs_returns_non_terminal_runs_only -- --nocapture`
+- `cargo test -p agenthub cancel_active_runs_on_startup_reopens_linked_tasks -- --nocapture`
 - `cargo test -p agenthub team_task_api_creates_lists_and_redacts_context -- --nocapture`
 - `cargo test -p agenthub team_task_messages_api_forwards_team_chat_to_active_run_mailbox -- --nocapture`
 - `cargo test -p agenthub teams_router_http_contract -- --nocapture`
