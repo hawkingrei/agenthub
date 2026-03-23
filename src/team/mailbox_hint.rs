@@ -297,14 +297,12 @@ pub(crate) fn build_actor_mailbox_immediate_hint_prompt(
         ActorMailboxImmediateHintReason::DirectAgentMessage => "Direct mailbox message pending",
         ActorMailboxImmediateHintReason::LeaderChannelMention => "Leader mentioned you in channel",
     };
-    format!(
-        "{headline} for run '{run_id}'. Use $AGENTHUB_ACTOR_CLI actor inbox --run-id \"{run_id}\"."
-    )
+    format!("{headline} for run '{run_id}'. Use agenthub actor inbox --run-id \"{run_id}\".")
 }
 
 pub(crate) fn build_actor_mailbox_unread_summary_prompt(run_id: &str, unread_count: i64) -> String {
     format!(
-        "Mailbox unread summary for run '{run_id}': {unread_count} unread. Use $AGENTHUB_ACTOR_CLI actor inbox --run-id \"{run_id}\"."
+        "Mailbox unread summary for run '{run_id}': {unread_count} unread. Use agenthub actor inbox --run-id \"{run_id}\"."
     )
 }
 
@@ -444,7 +442,7 @@ mod tests {
         );
         assert!(prompt.contains("Direct mailbox message pending"));
         assert!(prompt.contains("run-42"));
-        assert!(prompt.contains("$AGENTHUB_ACTOR_CLI actor inbox"));
+        assert!(prompt.contains("agenthub actor inbox"));
     }
 
     #[test]

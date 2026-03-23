@@ -25,6 +25,8 @@ use super::proto::agenthub::internal::v1::{
     ListActorInboxRequest as GrpcListActorInboxRequest,
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListAgentEventsResponse as GrpcListAgentEventsResponse,
+    RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
+    RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
     SendActorMessageRequest as GrpcSendActorMessageRequest,
     SendAgentInputRequest as GrpcSendAgentInputRequest,
     StartManagedAgentRequest as GrpcStartManagedAgentRequest,
@@ -56,6 +58,14 @@ pub struct InternalGrpcPeerClientConfig {
 pub struct InternalGrpcMailboxClient {
     channel: Channel,
     access_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InternalPermissionReviewResponse {
+    pub status: String,
+    pub permission_id: String,
+    pub request_status: String,
+    pub reviewed_by_actor_id: String,
 }
 
 impl InternalGrpcMailboxClient {
@@ -105,42 +115,48 @@ impl InternalGrpcMailboxClient {
 
     pub async fn connect(config: InternalGrpcMailboxClientConfig) -> anyhow::Result<Self> {
         install_rustls_crypto_provider();
-        let mut endpoint = Endpoint::from_shared(config.target.trim().to_string())?;
-        let mut tls = ClientTlsConfig::new();
-        if let Some(server_name) = config
-            .tls_server_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+        let target = config.target.trim().to_string();
+        let mut endpoint = Endpoint::from_shared(target.clone())?;
+        if target
+            .get(..8)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
         {
-            tls = tls.domain_name(server_name.to_string());
-        }
-        if let Some(ca_cert_path) = config
-            .ca_cert_path
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let pem = std::fs::read(ca_cert_path)?;
-            tls = tls.ca_certificate(Certificate::from_pem(pem));
-        }
-        if let (Some(client_cert_path), Some(client_key_path)) = (
-            config
-                .client_cert_path
+            let mut tls = ClientTlsConfig::new();
+            if let Some(server_name) = config
+                .tls_server_name
                 .as_deref()
                 .map(str::trim)
-                .filter(|value| !value.is_empty()),
-            config
-                .client_key_path
+                .filter(|value| !value.is_empty())
+            {
+                tls = tls.domain_name(server_name.to_string());
+            }
+            if let Some(ca_cert_path) = config
+                .ca_cert_path
                 .as_deref()
                 .map(str::trim)
-                .filter(|value| !value.is_empty()),
-        ) {
-            let cert_pem = std::fs::read(client_cert_path)?;
-            let key_pem = std::fs::read(client_key_path)?;
-            tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+                .filter(|value| !value.is_empty())
+            {
+                let pem = std::fs::read(ca_cert_path)?;
+                tls = tls.ca_certificate(Certificate::from_pem(pem));
+            }
+            if let (Some(client_cert_path), Some(client_key_path)) = (
+                config
+                    .client_cert_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty()),
+                config
+                    .client_key_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty()),
+            ) {
+                let cert_pem = std::fs::read(client_cert_path)?;
+                let key_pem = std::fs::read(client_key_path)?;
+                tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+            }
+            endpoint = endpoint.tls_config(tls)?;
         }
-        endpoint = endpoint.tls_config(tls)?;
         let channel = endpoint.connect().await?;
         Ok(Self {
             channel,
@@ -264,6 +280,36 @@ impl InternalGrpcMailboxClient {
             .await
             .map_err(map_grpc_status_anyhow)?;
         Ok(())
+    }
+
+    pub async fn respond_permission_review(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        permission_id: &str,
+        option_id: Option<&str>,
+        outcome: Option<&str>,
+    ) -> anyhow::Result<InternalPermissionReviewResponse> {
+        let mut client = self.client();
+        let response: GrpcRespondPermissionReviewResponse = client
+            .respond_permission_review(self.control_request(
+                GrpcRespondPermissionReviewRequest {
+                    team_id: team_id.trim().to_string(),
+                    actor_id: actor_id.trim().to_string(),
+                    permission_id: permission_id.trim().to_string(),
+                    option_id: option_id.unwrap_or_default().trim().to_string(),
+                    outcome: outcome.unwrap_or_default().trim().to_string(),
+                },
+            )?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        Ok(InternalPermissionReviewResponse {
+            status: response.status,
+            permission_id: response.permission_id,
+            request_status: response.request_status,
+            reviewed_by_actor_id: response.reviewed_by_actor_id,
+        })
     }
 
     pub async fn list_agent_events(
@@ -609,10 +655,15 @@ mod tests {
     use tonic::transport::{Certificate, Identity, ServerTlsConfig};
     use uuid::Uuid;
 
-    use super::{InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig};
+    use super::{
+        InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, map_grpc_status,
+        normalize_existing_path, parse_message, parse_output_stream, parse_status, parse_transport,
+        tls_path_if_exists,
+    };
     use crate::api::team_tests::build_test_state;
     use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use crate::internal::p2p::NodeTransportMetadata;
+    use crate::internal::proto::agenthub::internal::v1::ActorMessage as GrpcActorMessage;
     use crate::internal::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer;
     use crate::internal::service::TeamInternalControlService;
     use crate::internal::tls::{
@@ -661,12 +712,146 @@ mod tests {
         )
     }
 
+    fn grpc_message(
+        route_json: &str,
+        payload_json: &str,
+        transport: &str,
+        status: &str,
+        from_peer_id: &str,
+        to_peer_id: &str,
+    ) -> GrpcActorMessage {
+        GrpcActorMessage {
+            message_id: 41,
+            run_id: "run-1".to_string(),
+            from_actor_id: "planner".to_string(),
+            to_actor_id: "reviewer".to_string(),
+            channel: "coordination".to_string(),
+            transport: transport.to_string(),
+            route_json: route_json.to_string(),
+            payload_json: payload_json.to_string(),
+            status: status.to_string(),
+            created_at: 111,
+            delivered_at: 222,
+            idempotency_key: "idem-1".to_string(),
+            from_peer_id: from_peer_id.to_string(),
+            to_peer_id: to_peer_id.to_string(),
+        }
+    }
+
     fn test_cert_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "agenthub-internal-client-{}-{}",
             name,
             Uuid::new_v4()
         ))
+    }
+
+    #[test]
+    fn helper_parsers_cover_known_and_default_values() {
+        assert_eq!(parse_transport("remote"), ActorMessageTransport::Remote);
+        assert_eq!(parse_transport("other"), ActorMessageTransport::Local);
+        assert_eq!(
+            parse_output_stream("stderr"),
+            crate::agent::OutputStream::Stderr
+        );
+        assert_eq!(
+            parse_output_stream("system"),
+            crate::agent::OutputStream::System
+        );
+        assert_eq!(parse_output_stream("acp"), crate::agent::OutputStream::Acp);
+        assert_eq!(
+            parse_output_stream("other"),
+            crate::agent::OutputStream::Stdout
+        );
+        assert_eq!(parse_status("delivered"), ActorMessageStatus::Delivered);
+        assert_eq!(parse_status("dead_letter"), ActorMessageStatus::DeadLetter);
+        assert_eq!(parse_status("other"), ActorMessageStatus::Pending);
+    }
+
+    #[test]
+    fn parse_message_defaults_blank_peer_ids_to_main() {
+        let message = parse_message(grpc_message(
+            r#"{"kind":"grpc"}"#,
+            r#"{"type":"chat_message","text":"hello"}"#,
+            "remote",
+            "delivered",
+            "",
+            "",
+        ))
+        .expect("parse grpc message");
+        assert_eq!(message.from_peer_id, ACTOR_MAIN_PEER_ID);
+        assert_eq!(message.to_peer_id, ACTOR_MAIN_PEER_ID);
+        assert_eq!(message.transport, ActorMessageTransport::Remote);
+        assert_eq!(message.status, ActorMessageStatus::Delivered);
+        assert_eq!(message.route, Some(json!({"kind":"grpc"})));
+        assert_eq!(message.payload["text"], "hello");
+    }
+
+    #[test]
+    fn parse_message_rejects_invalid_route_or_payload_json() {
+        let route_err = parse_message(grpc_message(
+            "{",
+            r#"{"type":"chat_message"}"#,
+            "local",
+            "pending",
+            "main",
+            "main",
+        ))
+        .expect_err("invalid route json should fail");
+        assert!(route_err.message.contains("decode route_json"));
+
+        let payload_err = parse_message(grpc_message("", "{", "local", "pending", "main", "main"))
+            .expect_err("invalid payload json should fail");
+        assert!(payload_err.message.contains("decode payload_json"));
+    }
+
+    #[test]
+    fn map_grpc_status_maps_common_codes() {
+        let invalid = map_grpc_status(tonic::Status::invalid_argument("bad input"));
+        assert_eq!(
+            invalid.code,
+            agenthub_team_actor::ActorServiceErrorCode::BadRequest
+        );
+
+        let denied = map_grpc_status(tonic::Status::permission_denied("denied"));
+        assert_eq!(
+            denied.code,
+            agenthub_team_actor::ActorServiceErrorCode::Forbidden
+        );
+
+        let failed = map_grpc_status(tonic::Status::failed_precondition("gone"));
+        assert_eq!(
+            failed.code,
+            agenthub_team_actor::ActorServiceErrorCode::Gone
+        );
+    }
+
+    #[test]
+    fn path_helpers_validate_existing_and_missing_paths() {
+        assert_eq!(
+            normalize_existing_path(Some("   "), "ca_cert").expect("empty path is ignored"),
+            None
+        );
+
+        let existing = test_cert_dir("path-helper");
+        std::fs::create_dir_all(&existing).expect("create helper dir");
+        let existing_file = existing.join("ca-cert.pem");
+        std::fs::write(&existing_file, b"pem").expect("write cert");
+
+        assert_eq!(
+            normalize_existing_path(existing_file.to_str(), "ca_cert").expect("existing path"),
+            Some(existing_file.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            tls_path_if_exists(&existing_file),
+            Some(existing_file.to_string_lossy().to_string())
+        );
+
+        let missing = existing.join("missing.pem");
+        assert!(tls_path_if_exists(&missing).is_none());
+        let err = normalize_existing_path(missing.to_str(), "ca_cert")
+            .expect_err("missing path should fail");
+        assert!(err.to_string().contains("ca_cert does not exist"));
     }
 
     struct StartedInternalGrpcServer {

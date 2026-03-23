@@ -5032,6 +5032,6 @@ fn mailbox_type_hint_helpers_build_prompt_contains_context() {
         super::build_actor_mailbox_immediate_hint_prompt_for_test("run-42", "direct_agent_message");
     assert!(prompt.contains("run-42"));
     assert!(prompt.contains("Direct mailbox message pending"));
-    assert!(prompt.contains("AGENTHUB_ACTOR_CLI"));
+    assert!(prompt.contains("agenthub actor inbox"));
     assert!(prompt.contains("actor inbox"));
 }

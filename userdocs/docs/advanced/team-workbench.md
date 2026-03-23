@@ -83,6 +83,30 @@ expectations.
 - Keep event logs for audit and run replay.
 - Use idempotency keys for repeated message send operations when needed.
 
+## Codex Rule For Actor CLI
+
+If you run Team actors through a local Codex environment, allow the canonical
+actor CLI prefix so mailbox coordination does not pause on repeated approval
+prompts.
+
+Append this rule to your local Codex rules file:
+
+```text
+prefix_rule(pattern=["agenthub", "actor"], decision="allow")
+```
+
+Recommended location:
+
+- `~/.codex/rules/default.rules`
+
+After that, the canonical Team mailbox flow stays short and predictable:
+
+```bash
+agenthub actor inbox
+agenthub actor ack --message-id <id>
+agenthub actor send --to-actor-id <actor_id> --text "<markdown>"
+```
+
 ## Related Pages
 
 - [OpenAPI and Automation](./openapi-and-automation.md)

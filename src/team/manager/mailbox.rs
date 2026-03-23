@@ -35,6 +35,7 @@ const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
+const SQLITE_READONLY_BASE_CODE: i32 = 8;
 
 #[derive(Debug, Clone)]
 struct CanonicalChatReply {
@@ -1776,6 +1777,21 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
     )
 }
 
+fn is_readonly_database_error(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        if let Some(SqlxError::Database(db_err)) = cause.downcast_ref::<SqlxError>()
+            && let Some(code) = db_err.code().and_then(|raw| raw.parse::<i32>().ok())
+            && (code & 0xff) == SQLITE_READONLY_BASE_CODE
+        {
+            return true;
+        }
+
+        cause
+            .to_string()
+            .contains("attempt to write a readonly database")
+    })
+}
+
 fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
     if TeamManager::is_actor_message_idempotency_conflict(&err) {
         return ActorServiceError::new(
@@ -1785,6 +1801,12 @@ fn map_actor_service_error(err: anyhow::Error) -> ActorServiceError {
     }
     if is_row_not_found(&err) {
         return ActorServiceError::new(ActorServiceErrorCode::NotFound, "message not found");
+    }
+    if is_readonly_database_error(&err) {
+        return ActorServiceError::new(
+            ActorServiceErrorCode::Internal,
+            "mailbox write failed: attempt to write a readonly database",
+        );
     }
     ActorServiceError::new(
         ActorServiceErrorCode::Internal,
@@ -1901,6 +1923,18 @@ mod tests {
             Some(&json!(["reviewer", "worker-b"]))
         );
         assert_eq!(channel_payload_correlation_id(&payload), Some("corr-1"));
+    }
+
+    #[test]
+    fn map_actor_service_error_surfaces_readonly_database_failures() {
+        let mapped =
+            map_actor_service_error(anyhow::anyhow!("attempt to write a readonly database"));
+
+        assert_eq!(mapped.code, ActorServiceErrorCode::Internal);
+        assert_eq!(
+            mapped.message,
+            "mailbox write failed: attempt to write a readonly database"
+        );
     }
 
     #[test]

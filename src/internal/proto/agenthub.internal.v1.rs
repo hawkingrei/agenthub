@@ -70,6 +70,30 @@ pub struct AckActorMessageResponse {
     pub message: ::core::option::Option<ActorMessage>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RespondPermissionReviewRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub permission_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub option_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub outcome: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RespondPermissionReviewResponse {
+    #[prost(string, tag = "1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub permission_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub request_status: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub reviewed_by_actor_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ActorMessage {
     #[prost(int64, tag = "1")]
     pub message_id: i64,
@@ -456,6 +480,35 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn respond_permission_review(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RespondPermissionReviewRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RespondPermissionReviewResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/RespondPermissionReview",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "RespondPermissionReview",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn transition_step(
             &mut self,
             request: impl tonic::IntoRequest<super::TransitionStepRequest>,
@@ -753,6 +806,13 @@ pub mod team_internal_control_server {
             tonic::Response<super::AckActorMessageResponse>,
             tonic::Status,
         >;
+        async fn respond_permission_review(
+            &self,
+            request: tonic::Request<super::RespondPermissionReviewRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RespondPermissionReviewResponse>,
+            tonic::Status,
+        >;
         async fn transition_step(
             &self,
             request: tonic::Request<super::TransitionStepRequest>,
@@ -1025,6 +1085,59 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = AckActorMessageSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/RespondPermissionReview" => {
+                    #[allow(non_camel_case_types)]
+                    struct RespondPermissionReviewSvc<T: TeamInternalControl>(
+                        pub Arc<T>,
+                    );
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::RespondPermissionReviewRequest>
+                    for RespondPermissionReviewSvc<T> {
+                        type Response = super::RespondPermissionReviewResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<
+                                super::RespondPermissionReviewRequest,
+                            >,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::respond_permission_review(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RespondPermissionReviewSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

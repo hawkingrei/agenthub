@@ -8,6 +8,7 @@ use serde_json::Value;
 use sqlx::Row;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
+use crate::acp::AcpPermissionRespondResult;
 use crate::state::AppState;
 use crate::team::{TeamStepRecord, TeamStepStatus};
 use crate::{acp::AcpActorSkillContext, agent::AgentConfig};
@@ -21,10 +22,10 @@ use super::proto::agenthub::internal::v1::{
     EnsureAgentRecordResponse, GetAgentRecordRequest, GetAgentRecordResponse,
     IssueNodeCredentialRequest, IssueNodeCredentialResponse, ListActorInboxRequest,
     ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
-    SendActorMessageRequest, SendActorMessageResponse, SendAgentInputRequest,
-    SendAgentInputResponse, StartManagedAgentRequest, StartManagedAgentResponse,
-    StopManagedAgentRequest, StopManagedAgentResponse, TransitionStepRequest,
-    TransitionStepResponse,
+    RespondPermissionReviewRequest, RespondPermissionReviewResponse, SendActorMessageRequest,
+    SendActorMessageResponse, SendAgentInputRequest, SendAgentInputResponse,
+    StartManagedAgentRequest, StartManagedAgentResponse, StopManagedAgentRequest,
+    StopManagedAgentResponse, TransitionStepRequest, TransitionStepResponse,
 };
 use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 
@@ -369,6 +370,144 @@ impl TeamInternalControl for TeamInternalControlService {
                 from_peer_id,
                 to_peer_id,
             }),
+        }))
+    }
+
+    async fn respond_permission_review(
+        &self,
+        request: Request<RespondPermissionReviewRequest>,
+    ) -> Result<Response<RespondPermissionReviewResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::PermissionReview)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+
+        let permission_id = required_field(&payload.permission_id, "permission_id")?;
+        let Some(record) = self
+            .state
+            .acp_permissions
+            .get(permission_id)
+            .await
+            .map_err(map_manager_error)?
+        else {
+            return Err(Status::not_found("permission request not found"));
+        };
+        if record.team_id.as_deref() != Some(team_id) {
+            return Err(Status::permission_denied(
+                "permission request does not belong to this team",
+            ));
+        }
+        if !self
+            .state
+            .teams
+            .team_has_member(team_id, actor_id)
+            .await
+            .map_err(map_manager_error)?
+        {
+            return Err(Status::permission_denied(
+                "current actor is not a member of this team",
+            ));
+        }
+        if record.requester_actor_id.as_deref() == Some(actor_id) {
+            return Err(Status::permission_denied(
+                "requester cannot review its own permission request",
+            ));
+        }
+        let team = self
+            .state
+            .teams
+            .get_team(team_id)
+            .await
+            .map_err(map_manager_error)?;
+        let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
+        let worker_originated_request = record
+            .requester_role
+            .as_deref()
+            .is_some_and(|role| role.eq_ignore_ascii_case("worker"));
+        let active_reviewer =
+            record
+                .review_target_actor_id
+                .as_deref()
+                .or(if worker_originated_request {
+                    Some(leader_member_id.as_str())
+                } else {
+                    None
+                });
+        if active_reviewer != Some(actor_id) {
+            return Err(Status::permission_denied(if worker_originated_request {
+                "leader is the only reviewer for worker-originated permission requests"
+            } else {
+                "current actor is not the active reviewer for this permission request"
+            }));
+        }
+        if record.status != "pending" {
+            return Ok(Response::new(RespondPermissionReviewResponse {
+                status: "already_resolved".to_string(),
+                permission_id: permission_id.to_string(),
+                request_status: record.status,
+                reviewed_by_actor_id: record
+                    .reviewed_by_actor_id
+                    .unwrap_or_else(|| actor_id.to_string()),
+            }));
+        }
+
+        let option_id = optional_trimmed(payload.option_id.as_str()).map(str::to_string);
+        let requested_outcome = optional_trimmed(payload.outcome.as_str());
+        if option_id.is_some() && requested_outcome.is_some() {
+            return Err(Status::invalid_argument(
+                "option_id and outcome cannot be set together",
+            ));
+        }
+        let outcome = if let Some(selected_option_id) = option_id.as_ref() {
+            agent_client_protocol::RequestPermissionOutcome::Selected(
+                agent_client_protocol::SelectedPermissionOutcome::new(selected_option_id.clone()),
+            )
+        } else {
+            match requested_outcome {
+                Some("cancelled") | None => {
+                    agent_client_protocol::RequestPermissionOutcome::Cancelled
+                }
+                Some(other) => {
+                    return Err(Status::invalid_argument(format!(
+                        "unsupported outcome '{other}', expected 'cancelled'"
+                    )));
+                }
+            }
+        };
+
+        let respond_result = self
+            .state
+            .acp_permissions
+            .respond(
+                permission_id,
+                outcome,
+                option_id,
+                Some(actor_id.to_string()),
+            )
+            .await
+            .map_err(map_manager_error)?;
+        let status = match respond_result {
+            AcpPermissionRespondResult::Applied => "ok",
+            AcpPermissionRespondResult::AlreadyResolved => "already_resolved",
+        };
+        let request_status = self
+            .state
+            .acp_permissions
+            .get(permission_id)
+            .await
+            .map_err(map_manager_error)?
+            .map(|current| current.status)
+            .unwrap_or_else(|| "resolved".to_string());
+        Ok(Response::new(RespondPermissionReviewResponse {
+            status: status.to_string(),
+            permission_id: permission_id.to_string(),
+            request_status,
+            reviewed_by_actor_id: actor_id.to_string(),
         }))
     }
 
@@ -854,6 +993,49 @@ fn map_actor_service_status(err: ActorServiceError) -> Status {
     }
 }
 
+fn resolve_team_leader_member_id(spec: &Value) -> Result<String, Status> {
+    if let Some(leader_member_id) = spec
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(leader_member_id.to_string());
+    }
+
+    if let Some(members) = spec.get("members").and_then(Value::as_array) {
+        for member in members {
+            let role = member
+                .get("role")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if let Some("leader") = role
+                && let Some(member_id) = member
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            {
+                return Ok(member_id.to_string());
+            }
+        }
+    }
+
+    if let Some(entrypoint) = spec
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(entrypoint.to_string());
+    }
+
+    Err(Status::failed_precondition(
+        "team spec does not define a leader (leader_member_id, members[].role == 'leader', or entrypoint)",
+    ))
+}
+
 fn normalize_permission(raw: &str) -> Option<String> {
     let value = raw.trim();
     if value.is_empty() {
@@ -869,6 +1051,7 @@ fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::PermissionReview.as_str().to_string(),
             InternalAction::StepTransition.as_str().to_string(),
             InternalAction::NodeIssue.as_str().to_string(),
         ],
@@ -876,11 +1059,13 @@ fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::PermissionReview.as_str().to_string(),
         ],
         InternalRole::Orchestrator => vec![
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::PermissionReview.as_str().to_string(),
             InternalAction::StepTransition.as_str().to_string(),
             InternalAction::NodeIssue.as_str().to_string(),
         ],
@@ -925,7 +1110,7 @@ mod tests {
     use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
     use super::super::proto::agenthub::internal::v1::{
         AckActorMessageRequest, IssueNodeCredentialRequest, ListActorInboxRequest,
-        SendActorMessageRequest,
+        RespondPermissionReviewRequest, SendActorMessageRequest,
     };
     use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::api::team_tests::build_test_state;
@@ -952,6 +1137,7 @@ mod tests {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::PermissionReview.as_str().to_string(),
         ];
         let (token, _expires_at) = authz
             .issue_access_token(role, actor_id, run_id, permissions, 600)
@@ -976,7 +1162,11 @@ mod tests {
                 description: Some("internal grpc mailbox test team".to_string()),
                 spec: json!({
                     "entrypoint":"planner",
-                    "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+                    "leader_member_id":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
                 }),
             })
             .await
@@ -1124,6 +1314,374 @@ mod tests {
         .into_inner();
         assert_eq!(inbox_with_delivered.messages.len(), 1);
         assert_eq!(inbox_with_delivered.messages[0].status, "delivered");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_updates_pending_request() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("worker-agent")
+        .bind("worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("worker-session")
+        .bind("worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-internal-1")
+        .bind("worker-agent")
+        .bind("worker-session")
+        .bind("acp-session-1")
+        .bind(&run.team_id)
+        .bind("reviewer")
+        .bind("worker")
+        .bind("tool-call-1")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let response = TeamInternalControl::respond_permission_review(
+            &service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    permission_id: "perm-internal-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("respond permission review")
+        .into_inner();
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.permission_id, "perm-internal-1");
+        assert_eq!(response.request_status, "responded");
+        assert_eq!(response.reviewed_by_actor_id, "planner");
+
+        let row = sqlx::query(
+            "SELECT status, selected_option_id, reviewed_by_actor_id FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind("perm-internal-1")
+        .fetch_one(&state.db)
+        .await
+        .expect("load permission request");
+        assert_eq!(row.get::<String, _>("status"), "responded");
+        assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
+        assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_accepts_legacy_team_leader_fallback() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("internal-grpc-legacy-leader-{}", Uuid::new_v4()),
+                description: Some("legacy team leader fallback".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create legacy team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-internal-grpc-legacy-mailbox"),
+                json!({"prompt":"validate legacy leader fallback"}),
+            )
+            .await
+            .expect("create test run");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("legacy-worker-agent")
+        .bind("legacy-worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("legacy-worker-session")
+        .bind("legacy-worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-legacy-leader-1")
+        .bind("legacy-worker-agent")
+        .bind("legacy-worker-session")
+        .bind("acp-session-legacy-1")
+        .bind(&run.team_id)
+        .bind("reviewer")
+        .bind("worker")
+        .bind("tool-call-legacy-1")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let response = TeamInternalControl::respond_permission_review(
+            &service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    permission_id: "perm-legacy-leader-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("respond permission review")
+        .into_inner();
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.request_status, "responded");
+        assert_eq!(response.reviewed_by_actor_id, "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fields() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("conflict-worker-agent")
+        .bind("conflict-worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("conflict-worker-session")
+        .bind("conflict-worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-conflict-review-1")
+        .bind("conflict-worker-agent")
+        .bind("conflict-worker-session")
+        .bind("acp-session-conflict-1")
+        .bind(&run.team_id)
+        .bind("reviewer")
+        .bind("worker")
+        .bind("tool-call-conflict-1")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let err = TeamInternalControl::respond_permission_review(
+            &service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    permission_id: "perm-conflict-review-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: "cancelled".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("conflicting response fields should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message()
+                .contains("option_id and outcome cannot be set together"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
@@ -1415,6 +1973,24 @@ mod tests {
         .expect_err("message_id <= 0 should fail");
         assert_eq!(err.code(), Code::InvalidArgument);
         assert_eq!(err.message(), "message_id must be positive");
+    }
+
+    #[test]
+    fn resolve_team_leader_member_id_supports_legacy_fallbacks() {
+        assert_eq!(
+            super::resolve_team_leader_member_id(&json!({
+                "members":[{"member_id":"planner","role":"leader"}]
+            }))
+            .expect("resolve from role"),
+            "planner"
+        );
+        assert_eq!(
+            super::resolve_team_leader_member_id(&json!({
+                "entrypoint":"planner"
+            }))
+            .expect("resolve from entrypoint"),
+            "planner"
+        );
     }
 
     #[test]

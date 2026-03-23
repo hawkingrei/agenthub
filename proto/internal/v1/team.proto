@@ -10,6 +10,7 @@ service TeamInternalControl {
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
+  rpc RespondPermissionReview(RespondPermissionReviewRequest) returns (RespondPermissionReviewResponse);
   rpc TransitionStep(TransitionStepRequest) returns (TransitionStepResponse);
   rpc IssueNodeCredential(IssueNodeCredentialRequest) returns (IssueNodeCredentialResponse);
   rpc EnsureAgentRecord(EnsureAgentRecordRequest) returns (EnsureAgentRecordResponse);
@@ -63,6 +64,21 @@ message AckActorMessageRequest {
 
 message AckActorMessageResponse {
   ActorMessage message = 1;
+}
+
+message RespondPermissionReviewRequest {
+  string team_id = 1;
+  string actor_id = 2;
+  string permission_id = 3;
+  string option_id = 4;
+  string outcome = 5;
+}
+
+message RespondPermissionReviewResponse {
+  string status = 1;
+  string permission_id = 2;
+  string request_status = 3;
+  string reviewed_by_actor_id = 4;
 }
 
 message ActorMessage {

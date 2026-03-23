@@ -198,7 +198,7 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 ## Coordination Contract
 
 1. Pull inbox before each coordination round:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --limit 50`
+   `agenthub actor inbox --limit 50`
 2. Acknowledge each consumed message once:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Delegate with deterministic payload JSON:
