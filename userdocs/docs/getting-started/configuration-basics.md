@@ -4,38 +4,52 @@ sidebar_position: 2
 
 # Configuration Basics
 
-This page lists the minimum settings needed for daily user operation.
+This page lists the minimum settings needed for normal day-to-day AgentHub
+usage.
 
 ## Config File
 
-AgentHub reads configuration from `config.toml`.
+AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 
-Start from a minimal baseline:
+Start from a minimal single-node baseline:
 
 ```toml
-listen_addr = "0.0.0.0:8080"
+[server]
+listen = "127.0.0.1:8080"
 
 safe_paths = [
-  "/home/you",
-  "/home/you/projects"
+  "/home/you/projects",
+  "/home/you/sandboxes",
 ]
 
 [worktree]
 default_root = "/home/you/.agenthub/worktrees"
+
+[history]
+event_retention_days = 5
+vacuum_on_cleanup = false
 ```
 
-## Required Fields for Users
+## Required Fields For Daily Use
 
-- `listen_addr`: where UI/API are served
+- `server.listen`: where the UI and API are served
 - `safe_paths`: allowed workdir roots for agent runs
 - `worktree.default_root`: default base for `create_worktree` mode
 
-If these are missing or incorrect, users will usually see login/start/path
-errors.
+If these are missing or incorrect, users usually see login, start, or path
+validation errors.
 
-## Optional Distributed Node Settings
+## Notes About `safe_paths`
 
-If you plan to use remote Agent Nodes, add an internal gRPC block as well:
+- Keep `safe_paths` as short and explicit as possible.
+- Prefer repository roots over broad paths such as `/` or your full home
+  directory.
+- AgentHub always keeps the default worktree root reachable so
+  `create_worktree` mode can derive safe execution paths cleanly.
+
+## Optional Remote-Node Settings
+
+If you plan to use remote Agent Nodes, add an `internal_grpc` block as well:
 
 ```toml
 [internal_grpc]
@@ -49,23 +63,16 @@ cert_dir = "~/.agenthub/internal-grpc"
 [internal_grpc.auth]
 issuer = "agenthub"
 audience = "agenthub-internal"
-# optional: persisted to auth_secret.txt when omitted
 shared_secret = "replace-me"
 ```
 
-This is optional for single-node deployments. It becomes required when you want
-the main control plane to register and control remote-target agents.
-
-## Safe Paths Guidance
-
-- Keep `safe_paths` as short as possible
-- Prefer explicit project roots over broad system paths
-- Avoid adding `/` or home root as a blanket allow rule
+This is optional for single-node deployments. It becomes required once the main
+control plane must register and control remote-target agents.
 
 ## First Validation After Config Update
 
-1. Restart AgentHub server
-2. Login in browser
-3. Create one test agent in `create_worktree` mode
-4. Confirm generated path is under `worktree.default_root`
-5. Confirm a path outside `safe_paths` is rejected
+1. Restart AgentHub.
+2. Log in through the browser.
+3. Create one test agent in `create_worktree` mode.
+4. Confirm the generated path is under `worktree.default_root`.
+5. Confirm a path outside `safe_paths` is rejected.

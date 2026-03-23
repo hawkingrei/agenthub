@@ -2,9 +2,9 @@
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'AgentHub User Docs',
-  tagline: 'Run and manage agents from a user perspective',
-  url: 'https://agenthub.local',
+  title: 'AgentHub Docs',
+  tagline: 'Operate agents, teams, and nodes from one control plane',
+  url: 'https://doc.agenthub.hawkingrei.com',
   baseUrl: '/',
   onBrokenLinks: 'throw',
   markdown: {

@@ -2,10 +2,11 @@
 
 AgentHub is a single-binary control plane for long-lived AI agents.
 It combines a Rust backend, an embedded React web UI, ACP-based structured
-output rendering, SQLite-backed persistence, multi-agent team orchestration,
+output rendering, SQLite-backed persistence, multi-agent Team orchestration,
 and optional remote execution nodes.
 
-Quick links: [Why AgentHub](#why-agenthub) · [Quick Start](#quick-start) ·
+Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
+[Why AgentHub](#why-agenthub) · [Quick Start](#quick-start) ·
 [Remote Agent Nodes](#remote-agent-nodes-optional) ·
 [Architecture At A Glance](#architecture-at-a-glance) ·
 [Documentation Map](#documentation-map) · [Development](#development)
@@ -43,7 +44,7 @@ for the operational side of agent workflows:
 ### Start Locally
 
 ```bash
-# 1) Build the web UI
+# 1) Install web dependencies and build the UI
 npm --prefix web ci
 npm --prefix web run build
 
@@ -133,23 +134,25 @@ current contract and rollout model.
 
 ## Documentation Map
 
-- User documentation site: [userdocs/](userdocs/)
+- Published user docs: [doc.agenthub.hawkingrei.com](https://doc.agenthub.hawkingrei.com/)
+  - Start with Product Overview, Feature Overview, and Architecture Overview
+- Local user docs source: [userdocs/](userdocs/)
+- Internal docs guide: [docs/README.md](docs/README.md)
 - Project charter and engineering constraints: [AGENTS.md](AGENTS.md)
 - Agent and Team architecture: [docs/features/agents-teams.md](docs/features/agents-teams.md)
 - Actor runtime and mailbox model: [docs/features/actor-foundation.md](docs/features/actor-foundation.md)
+- ACP runtime contract: [docs/features/acp-runtime.md](docs/features/acp-runtime.md)
 - Remote execution nodes: [docs/features/agent-nodes.md](docs/features/agent-nodes.md)
 - Distributed node architecture: [docs/features/distributed-node-architecture.md](docs/features/distributed-node-architecture.md)
-- Internal engineering notes: [docs/features/](docs/features/)
 - Active follow-up backlog: [docs/todo.md](docs/todo.md)
 - API payload naming rules: [docs/api_naming.md](docs/api_naming.md)
 
 For user-facing documentation preview/build:
 
 ```bash
-cd userdocs
-npm ci
-npm run start
-npm run build
+npm --prefix userdocs ci
+npm --prefix userdocs run start
+npm --prefix userdocs run build
 ```
 
 ## Repository Layout
@@ -205,6 +208,9 @@ make proto-check
 # Web checks
 npm --prefix web run lint
 npm --prefix web run test:coverage
+
+# User docs
+npm --prefix userdocs run build
 
 # Optional: E2E smoke
 npm --prefix web run e2e -- tests/e2e/app.e2e.ts --project=chromium
