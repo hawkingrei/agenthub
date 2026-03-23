@@ -115,42 +115,48 @@ impl InternalGrpcMailboxClient {
 
     pub async fn connect(config: InternalGrpcMailboxClientConfig) -> anyhow::Result<Self> {
         install_rustls_crypto_provider();
-        let mut endpoint = Endpoint::from_shared(config.target.trim().to_string())?;
-        let mut tls = ClientTlsConfig::new();
-        if let Some(server_name) = config
-            .tls_server_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+        let target = config.target.trim().to_string();
+        let mut endpoint = Endpoint::from_shared(target.clone())?;
+        if target
+            .get(..8)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
         {
-            tls = tls.domain_name(server_name.to_string());
-        }
-        if let Some(ca_cert_path) = config
-            .ca_cert_path
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let pem = std::fs::read(ca_cert_path)?;
-            tls = tls.ca_certificate(Certificate::from_pem(pem));
-        }
-        if let (Some(client_cert_path), Some(client_key_path)) = (
-            config
-                .client_cert_path
+            let mut tls = ClientTlsConfig::new();
+            if let Some(server_name) = config
+                .tls_server_name
                 .as_deref()
                 .map(str::trim)
-                .filter(|value| !value.is_empty()),
-            config
-                .client_key_path
+                .filter(|value| !value.is_empty())
+            {
+                tls = tls.domain_name(server_name.to_string());
+            }
+            if let Some(ca_cert_path) = config
+                .ca_cert_path
                 .as_deref()
                 .map(str::trim)
-                .filter(|value| !value.is_empty()),
-        ) {
-            let cert_pem = std::fs::read(client_cert_path)?;
-            let key_pem = std::fs::read(client_key_path)?;
-            tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+                .filter(|value| !value.is_empty())
+            {
+                let pem = std::fs::read(ca_cert_path)?;
+                tls = tls.ca_certificate(Certificate::from_pem(pem));
+            }
+            if let (Some(client_cert_path), Some(client_key_path)) = (
+                config
+                    .client_cert_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty()),
+                config
+                    .client_key_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty()),
+            ) {
+                let cert_pem = std::fs::read(client_cert_path)?;
+                let key_pem = std::fs::read(client_key_path)?;
+                tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+            }
+            endpoint = endpoint.tls_config(tls)?;
         }
-        endpoint = endpoint.tls_config(tls)?;
         let channel = endpoint.connect().await?;
         Ok(Self {
             channel,

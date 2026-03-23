@@ -4,9 +4,25 @@ use crate::internal::client::{
 };
 use crate::internal::tls::InternalGrpcSecurityMode;
 
-fn actor_runtime_loopback_target(listen_addr: &str) -> Option<String> {
+#[cfg(test)]
+fn internal_grpc_target_uses_tls(target: &str) -> bool {
+    target
+        .trim()
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
+}
+
+fn actor_runtime_loopback_target(
+    listen_addr: &str,
+    security_mode: InternalGrpcSecurityMode,
+) -> Option<String> {
     let parsed = listen_addr.trim().parse::<std::net::SocketAddr>().ok()?;
-    Some(format!("https://127.0.0.1:{}", parsed.port()))
+    let scheme = if security_mode == InternalGrpcSecurityMode::Disabled {
+        "http"
+    } else {
+        "https"
+    };
+    Some(format!("{scheme}://127.0.0.1:{}", parsed.port()))
 }
 
 type OptionalRemoteMailboxClient = anyhow::Result<Option<InternalGrpcMailboxClient>>;
@@ -109,10 +125,10 @@ pub(crate) async fn connect_runtime_internal_mailbox_service(
     if !config.internal_grpc_enabled() {
         return Ok(None);
     }
-    let target = actor_runtime_loopback_target(&config.internal_grpc_listen_addr())
+    let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
+    let target = actor_runtime_loopback_target(&config.internal_grpc_listen_addr(), security_mode)
         .ok_or_else(|| anyhow::anyhow!("invalid internal gRPC listen address"))?;
     let cert_dir = config.internal_grpc_cert_dir();
-    let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
     let authz = InternalAuthz::new(InternalAuthzConfig {
         shared_secret: config
             .internal_grpc_auth_shared_secret()
@@ -148,4 +164,32 @@ pub(crate) async fn connect_runtime_internal_mailbox_service(
     })
     .await?;
     Ok(Some(client))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        InternalGrpcSecurityMode, actor_runtime_loopback_target, internal_grpc_target_uses_tls,
+    };
+
+    #[test]
+    fn actor_runtime_loopback_target_uses_http_when_tls_is_disabled() {
+        let target =
+            actor_runtime_loopback_target("0.0.0.0:50051", InternalGrpcSecurityMode::Disabled)
+                .expect("loopback target");
+        assert_eq!(target, "http://127.0.0.1:50051");
+    }
+
+    #[test]
+    fn actor_runtime_loopback_target_uses_https_when_tls_is_enabled() {
+        let target = actor_runtime_loopback_target("0.0.0.0:50051", InternalGrpcSecurityMode::Tls)
+            .expect("loopback target");
+        assert_eq!(target, "https://127.0.0.1:50051");
+    }
+
+    #[test]
+    fn internal_grpc_target_uses_tls_tracks_scheme() {
+        assert!(internal_grpc_target_uses_tls("https://127.0.0.1:50051"));
+        assert!(!internal_grpc_target_uses_tls("http://127.0.0.1:50051"));
+    }
 }
