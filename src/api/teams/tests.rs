@@ -53,6 +53,16 @@ use super::{
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
 
+pub(crate) async fn wait_for_running_agent_session(state: &AppState, agent_id: &str) -> String {
+    for _ in 0..50 {
+        if let Some(session_id) = state.agents.running_session_id_for_agent(agent_id).await {
+            return session_id;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("agent {agent_id} did not start a running session in time");
+}
+
 fn build_team_member_actor_context(
     team_id: &str,
     member: &TeamMemberSpec,

@@ -346,6 +346,8 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("create team");
 
+    let _reviewer_session = wait_for_running_agent_session(&state, "reviewer").await;
+
     let Json(run) = create_team_run(
         State(state.clone()),
         headers.clone(),

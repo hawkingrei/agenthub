@@ -33,6 +33,9 @@
 - Expanded the historical banner in `team-mcp-enforcement.md` to state that the
   remainder of the document describes the deprecated MCP-based approach and
   that CLI-first canonical docs take precedence.
+- Stabilized the Team mailbox hint regression test by waiting for the reviewer
+  runtime session before asserting immediate hint delivery, so the test no
+  longer depends on startup timing under full-suite coverage runs.
 
 ## Validation
 
