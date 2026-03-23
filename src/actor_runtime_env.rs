@@ -168,9 +168,18 @@ pub(crate) async fn connect_runtime_internal_mailbox_service(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+
     use super::{
         InternalGrpcSecurityMode, actor_runtime_loopback_target, internal_grpc_target_uses_tls,
+        maybe_runtime_tls_paths,
     };
+    use uuid::Uuid;
+
+    fn write_tls_file(dir: &Path, name: &str) {
+        fs::write(dir.join(name), b"test").expect("write tls file");
+    }
 
     #[test]
     fn actor_runtime_loopback_target_uses_http_when_tls_is_disabled() {
@@ -191,5 +200,61 @@ mod tests {
     fn internal_grpc_target_uses_tls_tracks_scheme() {
         assert!(internal_grpc_target_uses_tls("https://127.0.0.1:50051"));
         assert!(!internal_grpc_target_uses_tls("http://127.0.0.1:50051"));
+    }
+
+    #[test]
+    fn actor_runtime_loopback_target_rejects_invalid_addresses() {
+        assert!(
+            actor_runtime_loopback_target("not-a-socket", InternalGrpcSecurityMode::Disabled)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn maybe_runtime_tls_paths_only_returns_ca_for_non_mtls_modes() {
+        let dir =
+            std::env::temp_dir().join(format!("agenthub-runtime-tls-non-mtls-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create tls dir");
+        write_tls_file(&dir, "ca-cert.pem");
+        write_tls_file(&dir, "client-cert.pem");
+        write_tls_file(&dir, "client-key.pem");
+
+        let (ca_cert, client_cert, client_key) = maybe_runtime_tls_paths(
+            dir.to_string_lossy().as_ref(),
+            InternalGrpcSecurityMode::Tls,
+        );
+        assert_eq!(
+            ca_cert.as_deref(),
+            Some(dir.join("ca-cert.pem").to_string_lossy().as_ref())
+        );
+        assert!(client_cert.is_none());
+        assert!(client_key.is_none());
+    }
+
+    #[test]
+    fn maybe_runtime_tls_paths_returns_mtls_material_when_present() {
+        let dir =
+            std::env::temp_dir().join(format!("agenthub-runtime-tls-mtls-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create tls dir");
+        write_tls_file(&dir, "ca-cert.pem");
+        write_tls_file(&dir, "client-cert.pem");
+        write_tls_file(&dir, "client-key.pem");
+
+        let (ca_cert, client_cert, client_key) = maybe_runtime_tls_paths(
+            dir.to_string_lossy().as_ref(),
+            InternalGrpcSecurityMode::Mtls,
+        );
+        assert_eq!(
+            ca_cert.as_deref(),
+            Some(dir.join("ca-cert.pem").to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            client_cert.as_deref(),
+            Some(dir.join("client-cert.pem").to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            client_key.as_deref(),
+            Some(dir.join("client-key.pem").to_string_lossy().as_ref())
+        );
     }
 }
