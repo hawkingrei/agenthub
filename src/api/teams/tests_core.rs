@@ -3926,6 +3926,7 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
+    assert_eq!(created.task.assigned_member_id, None);
     assert_eq!(created.task.context["token"], json!("[redacted]"));
     assert_eq!(
         created.task.context["nested"]["secret"],
@@ -3933,17 +3934,8 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     );
     assert_eq!(created.conversation.mode, "group_chat");
     assert_eq!(created.conversation.task_id, created.task.id);
-    assert_eq!(created.task.status, crate::team::TeamTaskStatus::InProgress);
-    let created_run = created.latest_run.expect("expected auto-created run");
-    assert_eq!(created_run.team_id, team.id);
-    assert_eq!(
-        created_run.input["task_id"],
-        Value::from(created.task.id.clone())
-    );
-    assert_eq!(
-        created_run.input["conversation_id"],
-        Value::from(created.conversation.id.clone())
-    );
+    assert_eq!(created.task.status, crate::team::TeamTaskStatus::Open);
+    assert!(created.latest_run.is_none());
 
     let Json(listed) = list_team_tasks(
         State(state.clone()),
@@ -3955,6 +3947,7 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.task.id);
+    assert_eq!(listed[0].assigned_member_id, None);
 
     let Json(found) = get_team_task(
         State(state),
@@ -3965,10 +3958,8 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     .expect("get task");
     assert_eq!(found.task.id, created.task.id);
     assert_eq!(found.conversation.id, created.conversation.id);
-    assert_eq!(
-        found.latest_run.expect("expected latest run").id,
-        created_run.id
-    );
+    assert_eq!(found.task.assigned_member_id, None);
+    assert!(found.latest_run.is_none());
 }
 
 #[tokio::test]
@@ -4602,11 +4593,20 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     )
     .await
     .expect("create task");
+    assert!(task_created.latest_run.is_none());
 
-    let run = task_created
-        .latest_run
-        .clone()
-        .expect("task create should auto-create a linked run");
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(task_created.task.id.as_str()),
+            json!({
+                "task_id": task_created.task.id.clone(),
+                "conversation_id": task_created.conversation.id.clone(),
+            }),
+        )
+        .await
+        .expect("create explicit task run");
 
     let Json(directed_message) = send_team_task_message(
         State(state.clone()),

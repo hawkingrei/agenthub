@@ -226,6 +226,7 @@ export type TeamTaskRecord = {
   title: string;
   status: TeamTaskStatus;
   created_by_actor_id: string;
+  assigned_member_id?: string | null;
   context: unknown;
   created_at: number;
   updated_at: number;

@@ -457,9 +457,9 @@ impl TeamManager {
         sqlx::query(
             r#"
             INSERT INTO team_tasks (
-                id, team_id, title, status, created_by_actor_id, context_json, created_at, updated_at
+                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)
             "#,
         )
         .bind(&task_id)
@@ -510,6 +510,7 @@ impl TeamManager {
                 title,
                 status,
                 created_by_actor_id,
+                assigned_member_id,
                 context_json,
                 created_at,
                 updated_at
@@ -539,6 +540,7 @@ impl TeamManager {
                 title,
                 status,
                 created_by_actor_id,
+                assigned_member_id,
                 context_json,
                 created_at,
                 updated_at
@@ -1162,6 +1164,7 @@ impl TeamManager {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn list_active_runs(&self, limit: i64) -> anyhow::Result<Vec<TeamRunRecord>> {
         let rows = sqlx::query(
             r#"
@@ -1297,6 +1300,7 @@ impl TeamManager {
         Ok(runs)
     }
 
+    #[allow(dead_code)]
     pub async fn get_agent_session_status(
         &self,
         session_id: &str,
@@ -1336,6 +1340,7 @@ impl TeamManager {
         Ok(row.map(|row| (row.get("id"), row.get("status"))))
     }
 
+    #[allow(dead_code)]
     pub async fn get_member_continuity_state(
         &self,
         team_id: &str,
@@ -3922,11 +3927,12 @@ impl TeamManager {
                 title,
                 status,
                 created_by_actor_id,
+                assigned_member_id,
                 context_json,
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, 'all', 'open', ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, 'all', 'open', ?3, NULL, ?4, ?5, ?6)
             "#,
         )
         .bind(&task_id)
@@ -4076,6 +4082,7 @@ fn build_team_runtime_summary(runtime: &TeamRuntimeRecord) -> TeamRuntimeSummary
     }
 }
 
+#[allow(dead_code)]
 fn filter_visible_team_runs(runs: Vec<TeamRunRecord>) -> Vec<TeamRunRecord> {
     runs.into_iter()
         .filter(|run| !is_shared_thread_mailbox_run_input(&run.input))
@@ -4086,6 +4093,7 @@ fn shared_thread_mailbox_run_id(team_id: &str, task_id: &str) -> String {
     format!("shared-thread-mailbox:{team_id}:{task_id}")
 }
 
+#[allow(dead_code)]
 fn is_shared_thread_mailbox_run_input(input: &Value) -> bool {
     input
         .as_object()

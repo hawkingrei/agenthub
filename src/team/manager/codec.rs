@@ -53,6 +53,7 @@ pub(super) fn parse_team_task_row(row: &sqlx::sqlite::SqliteRow) -> anyhow::Resu
         title: row.get("title"),
         status: team_task_status_from_str(&status_raw),
         created_by_actor_id: row.get("created_by_actor_id"),
+        assigned_member_id: row.try_get("assigned_member_id")?,
         context,
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
@@ -143,6 +144,7 @@ pub(super) fn parse_team_actor_message_row(
     })
 }
 
+#[allow(dead_code)]
 pub(super) fn parse_team_member_continuity_state_row(
     row: &sqlx::sqlite::SqliteRow,
 ) -> anyhow::Result<TeamMemberContinuityStateRecord> {

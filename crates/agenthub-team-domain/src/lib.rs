@@ -94,6 +94,7 @@ pub struct TeamTaskRecord {
     pub title: String,
     pub status: TeamTaskStatus,
     pub created_by_actor_id: String,
+    pub assigned_member_id: Option<String>,
     pub context: Value,
     pub created_at: i64,
     pub updated_at: i64,

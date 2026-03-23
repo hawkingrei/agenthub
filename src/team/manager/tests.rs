@@ -124,6 +124,7 @@ async fn setup_test_db() -> SqlitePool {
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
+            assigned_member_id TEXT,
             context_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
@@ -527,6 +528,7 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
         .expect("create task");
     assert_eq!(task.team_id, team.id);
     assert_eq!(task.status, TeamTaskStatus::Open);
+    assert_eq!(task.assigned_member_id, None);
     assert_eq!(conversation.task_id, task.id);
     assert_eq!(task.context["token"], json!("[redacted]"));
     assert_eq!(task.context["nested"]["api_key"], json!("[redacted]"));
@@ -649,6 +651,7 @@ async fn task_status_updates_are_persisted() {
         .await
         .expect("reload updated task");
     assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+    assert_eq!(reloaded.assigned_member_id, None);
 }
 
 #[tokio::test]

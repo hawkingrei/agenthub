@@ -496,6 +496,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
+            assigned_member_id TEXT,
             context_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
@@ -673,6 +674,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await?;
 
     migrate_legacy_team_task_schema(&pool).await?;
+    migrate_team_tasks_add_assigned_member_id(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
@@ -1679,6 +1681,27 @@ async fn migrate_legacy_team_task_schema(pool: &SqlitePool) -> anyhow::Result<()
     Ok(())
 }
 
+async fn migrate_team_tasks_add_assigned_member_id(pool: &SqlitePool) -> anyhow::Result<()> {
+    let has_column = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT name
+        FROM pragma_table_info('team_tasks')
+        WHERE name = 'assigned_member_id'
+        "#,
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    if has_column {
+        return Ok(());
+    }
+
+    sqlx::query("ALTER TABLE team_tasks ADD COLUMN assigned_member_id TEXT")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()> {
     let rows = sqlx::query("SELECT id, path, created_at FROM safe_paths ORDER BY id ASC")
         .fetch_all(pool)
@@ -2353,6 +2376,53 @@ mod tests {
             migrated_message_row.get::<String, _>("payload_json"),
             r#"{"text":"hello"}"#
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_assigned_member_id_to_existing_team_tasks_table() {
+        let dir = unique_temp_dir("db-migrate-team-task-assignee");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_tasks (
+                id TEXT PRIMARY KEY,
+                team_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_tasks");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with team task assignee migration");
+
+        let assigned_member_id_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_tasks')
+            WHERE name = 'assigned_member_id'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read assigned_member_id column");
+        assert_eq!(assigned_member_id_column, "assigned_member_id");
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

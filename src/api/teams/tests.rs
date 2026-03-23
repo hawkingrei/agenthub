@@ -445,6 +445,7 @@ async fn init_test_schema(db: &SqlitePool) {
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
+            assigned_member_id TEXT,
             context_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,

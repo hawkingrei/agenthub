@@ -50,9 +50,10 @@ Operational collaboration follows six phases:
 - `member`: stable role identity in Team spec (`leader` or `worker`).
 - `agent`: runtime process bound to one member.
 - `actor`: message identity used by mailbox protocol.
-- `run`: execution partition boundary.
-- `step`: run-local unit of execution.
-- `task`: leader-defined internal work item composed into run/step operations.
+- `task`: leader-defined internal work item and the primary ownership unit.
+- `run`: optional execution partition / timeline boundary linked to a task attempt.
+- `step`: legacy run-local execution artifact kept for debug and compatibility, not the main
+  ownership surface.
 - `conversation`: human-facing interaction stream.
 - `correlation_id`: chain identity linking one intent across conversation/mailbox/run events.
 
@@ -66,7 +67,8 @@ Identity conventions:
 
 - `actor_id` is canonical mailbox identity.
 - `agent_id` is compatibility alias for tool/client ergonomics.
-- `run_id` remains required for deterministic partitioning and replay.
+- `run_id` remains the execution-scoped partition key when a run exists, but Team collaboration
+  should not require a run to keep task ownership coherent.
 - `conversation_id` is required for human-facing chat scope.
 
 ### 3) Team Lifecycle And Start Semantics
@@ -137,6 +139,8 @@ Context-size rule:
 - Leader is default human-facing speaker.
 - Worker-to-human direct output is exception path and must include rationale.
 - Human requests are collected as planning input, not direct task records.
+- Team backend no longer depends on a background step-orchestrator worker to advance routine task
+  ownership.
 - Delegation payloads should be explicit and testable:
   - objective/task
   - acceptance criteria

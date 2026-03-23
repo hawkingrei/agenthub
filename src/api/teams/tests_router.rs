@@ -173,15 +173,13 @@ async fn teams_router_http_contract() {
         .as_str()
         .expect("task id")
         .to_string();
-    let auto_run_id = created_task["latest_run"]["id"]
-        .as_str()
-        .expect("auto-created run id")
-        .to_string();
     assert_eq!(
         created_task["task"]["context"]["token"],
         Value::from("[redacted]")
     );
-    assert_eq!(created_task["task"]["status"], Value::from("in_progress"));
+    assert_eq!(created_task["task"]["status"], Value::from("open"));
+    assert_eq!(created_task["task"]["assigned_member_id"], Value::Null);
+    assert_eq!(created_task["latest_run"], Value::Null);
     assert!(
         created_task["task"]["created_by_actor_id"]
             .as_str()
@@ -432,13 +430,13 @@ async fn teams_router_http_contract() {
     assert_eq!(list_runs_resp.status(), StatusCode::OK);
     let listed_runs = decode_json_body(list_runs_resp).await;
     let listed_runs = listed_runs.as_array().expect("runs array");
-    assert_eq!(listed_runs.len(), 2);
+    assert_eq!(listed_runs.len(), 1);
     let mut listed_run_ids = listed_runs
         .iter()
         .map(|run| run["id"].as_str().expect("run id").to_string())
         .collect::<Vec<_>>();
     listed_run_ids.sort();
-    let mut expected_run_ids = vec![auto_run_id, run_id.clone()];
+    let mut expected_run_ids = vec![run_id.clone()];
     expected_run_ids.sort();
     assert_eq!(listed_run_ids, expected_run_ids);
 
@@ -1534,189 +1532,4 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
     assert_eq!(original_completed["status"], "completed");
 
     let _ = std::fs::remove_dir_all(&base);
-}
-
-#[tokio::test]
-async fn teams_router_orchestrator_marks_input_required_when_team_runtime_is_stopped() {
-    let state = build_test_state().await;
-    let token = create_auth_token(&state).await;
-    let app = super::router(state.clone());
-
-    let workdir = std::env::temp_dir().join(format!("agenthub-team-exec-{}", Uuid::new_v4()));
-    std::fs::create_dir_all(&workdir).expect("create workdir");
-    let workdir_str = workdir.to_string_lossy().to_string();
-
-    sqlx::query(
-        r#"
-        INSERT INTO safe_paths (path, created_at)
-        VALUES (?1, ?2)
-        "#,
-    )
-    .bind(&workdir_str)
-    .bind(chrono::Utc::now().timestamp())
-    .execute(&state.db)
-    .await
-    .expect("insert safe path");
-
-    let member_agent = state
-        .agents
-        .create_agent(crate::agent::AgentConfig {
-            name: "router-orchestrator-member".to_string(),
-            workdir: workdir_str.clone(),
-            command: "/usr/bin/env".to_string(),
-            args: vec![],
-            target_node_id: None,
-            worktree_mode: crate::agent::WorktreeMode::UseExisting,
-            worktree_repo: None,
-            worktree_ref: None,
-            code_mode: false,
-            agent_loop_enabled: false,
-            agent_loop_idle_seconds: None,
-            agent_loop_prompt: None,
-        })
-        .await
-        .expect("create member agent");
-
-    let create_team_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            "/",
-            Some(&token),
-            Some(json!({
-                "name": "router-orchestrator-real-executor-team",
-                "description": "router orchestrator convergence with real executor",
-                "spec": {
-                    "entrypoint":"step_run",
-                    "members":[{"member_id":member_agent.id,"role":"leader"}],
-                    "steps":[{"step_key":"step_run","member_id":member_agent.id,"depends_on":[]}]
-                }
-            })),
-        ))
-        .await
-        .expect("create team");
-    assert_eq!(create_team_resp.status(), StatusCode::OK);
-    let team = decode_json_body(create_team_resp).await;
-    let team_id = team["id"].as_str().expect("team id").to_string();
-
-    let stop_team_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/stop"),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("stop team runtime");
-    assert_eq!(stop_team_resp.status(), StatusCode::OK);
-
-    let create_run_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/runs"),
-            Some(&token),
-            Some(json!({
-                "context_id": "ctx-router-orchestrator-real-executor",
-                "input": {"prompt":"execute member agent"}
-            })),
-        ))
-        .await
-        .expect("create run");
-    assert_eq!(create_run_resp.status(), StatusCode::OK);
-    let run = decode_json_body(create_run_resp).await;
-    let run_id = run["id"].as_str().expect("run id").to_string();
-    assert_eq!(run["status"], "submitted");
-
-    let worker =
-        crate::team::TeamOrchestratorWorker::new(state.teams.clone(), state.agents.clone());
-    let first_summary = worker.dispatch_once(64).await.expect("first dispatch");
-    assert_eq!(first_summary.dispatched, 0);
-    assert_eq!(first_summary.failed, 1);
-
-    let mut converged_input_required = false;
-    let mut last_run_status = String::new();
-    for _ in 0..200 {
-        let _ = worker.dispatch_once(64).await.expect("tick dispatch");
-        let run_resp = app
-            .clone()
-            .oneshot(build_json_request(
-                Method::GET,
-                &format!("/runs/{run_id}"),
-                Some(&token),
-                None,
-            ))
-            .await
-            .expect("get run");
-        assert_eq!(run_resp.status(), StatusCode::OK);
-        let run_payload = decode_json_body(run_resp).await;
-        last_run_status = run_payload["status"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
-        if last_run_status == "input_required" {
-            converged_input_required = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    if !converged_input_required {
-        let db_steps = state
-            .teams
-            .list_steps(&run_id)
-            .await
-            .expect("list db steps");
-        let db_step = db_steps.first().expect("first db step");
-        panic!(
-            "run did not converge to input_required in time: run_status={}, step_status={:?}, remote_task_id={:?}",
-            last_run_status, db_step.status, db_step.runtime_handle_id
-        );
-    }
-
-    let steps_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{run_id}/steps"),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("list steps");
-    assert_eq!(steps_resp.status(), StatusCode::OK);
-    let steps_payload = decode_json_body(steps_resp).await;
-    let steps = steps_payload.as_array().expect("steps array");
-    assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["status"], "input_required");
-    assert_eq!(steps[0]["remote_task_id"], Value::Null);
-    assert!(
-        steps[0]["error_text"]
-            .as_str()
-            .is_some_and(|message| message.contains("start team"))
-    );
-
-    let events_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::GET,
-            &format!("/runs/{run_id}/events?limit=100"),
-            Some(&token),
-            None,
-        ))
-        .await
-        .expect("list events");
-    assert_eq!(events_resp.status(), StatusCode::OK);
-    let events_payload = decode_json_body(events_resp).await;
-    let events = events_payload.as_array().expect("events array");
-    let event_types = events
-        .iter()
-        .filter_map(|event| event["event_type"].as_str())
-        .collect::<Vec<_>>();
-    assert!(event_types.contains(&"run_submitted"));
-    assert!(event_types.contains(&"step_submitted"));
-    assert!(event_types.contains(&"run_input_required"));
-    assert!(event_types.contains(&"step_input_required"));
-
-    let _ = std::fs::remove_dir_all(&workdir);
 }
