@@ -1890,8 +1890,20 @@ async fn run_actor_command(
     Ok(())
 }
 
+fn maybe_reject_legacy_actor_mcp_args(args: &[String]) -> Option<anyhow::Result<()>> {
+    if args.first().map(String::as_str) == Some("actor-mcp") {
+        return Some(Err(anyhow::anyhow!(
+            "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
+        )));
+    }
+    None
+}
+
 pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if let Some(result) = maybe_reject_legacy_actor_mcp_args(&args) {
+        return Some(result);
+    }
     if args.first().map(String::as_str) != Some("actor") {
         return None;
     }
@@ -2786,6 +2798,18 @@ mod tests {
         assert_eq!(
             *service.acked_ids.lock().expect("acquire acked ids"),
             vec![7]
+        );
+    }
+
+    #[test]
+    fn legacy_actor_mcp_entrypoint_is_rejected() {
+        let args = vec!["actor-mcp".to_string()];
+        let err = maybe_reject_legacy_actor_mcp_args(&args)
+            .expect("legacy actor-mcp should be rejected")
+            .expect_err("legacy actor-mcp should return an error");
+        assert_eq!(
+            err.to_string(),
+            "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
         );
     }
 

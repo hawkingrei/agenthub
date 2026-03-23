@@ -119,7 +119,7 @@ MCP enforcement baseline:
 - Team startup should fail-fast if the actor CLI coordination capability is missing or the runtime actor env is incomplete.
 - Team mode denies ad-hoc mailbox bypass for collaboration traffic.
 - Role defaults should keep skill set minimal; optional skills load by explicit profile.
-- See `docs/features/team-mcp-enforcement.md` for fail-fast and loop contract details.
+- See `docs/features/actor-foundation.md` for CLI-first coordination and mailbox contract details.
 
 ### 6) Team AGENTS Injection Matrix
 

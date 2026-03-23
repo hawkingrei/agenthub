@@ -652,7 +652,7 @@ async fn seed_default_team_member_agents(state: &AppState) {
     std::fs::create_dir_all(&workdir).expect("create team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
     let actor_cli = resolve_test_agenthub_binary_path();
-    let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
+    let actor_args = serde_json::to_string(&vec!["actor"]).expect("serialize actor args");
     let now = Utc::now().timestamp();
     for safe_path in [&workdir, "/tmp"] {
         sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
@@ -749,7 +749,7 @@ pub(crate) async fn insert_legacy_team_member_agent(state: &AppState, agent_id: 
     std::fs::create_dir_all(&workdir).expect("create legacy team member workdir");
     let workdir = workdir.to_string_lossy().to_string();
     let actor_cli = resolve_test_agenthub_binary_path();
-    let actor_args = serde_json::to_string(&vec!["actor-mcp"]).expect("serialize actor-mcp args");
+    let actor_args = serde_json::to_string(&vec!["actor"]).expect("serialize actor args");
     let now = Utc::now().timestamp();
     sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
         .bind(&workdir)
