@@ -7,7 +7,7 @@
 - removed the last `ack` / `send` / `permission-review-respond` branch-local JSON preference overrides so the command mapping is enforced from one place
 - kept read-heavy commands and human-oriented task/trigger confirmations on default TOON output
 - kept `ack`, `send`, and `permission-review-respond` on default JSON output
-- added focused regression tests to lock the conservative output split and `--json` override behavior
+- added table-driven regression tests to lock the full conservative output split and `--json` override behavior
 
 ## Why
 

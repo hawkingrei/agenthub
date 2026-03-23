@@ -2750,25 +2750,136 @@ mod tests {
     }
 
     #[test]
-    fn team_members_defaults_to_toon_output_preference() {
-        let preference = actor_output_preference_for_command(&ActorCommand::TeamMembers {
-            team_id: Some("team-1".to_string()),
-            run_id: Some("run-1".to_string()),
-        });
-        assert_eq!(preference, ActorOutputPreference::ToonPreferred);
+    fn actor_output_preference_contract_covers_all_command_variants() {
+        let cases = vec![
+            (ActorCommand::Help, ActorOutputPreference::ToonPreferred),
+            (
+                ActorCommand::TeamMembers {
+                    team_id: Some("team-1".to_string()),
+                    run_id: Some("run-1".to_string()),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTasks {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    status: Some(TeamTaskStatus::Open),
+                    limit: 10,
+                    include_shared_thread: true,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTaskCreate {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    title: "Create task".to_string(),
+                    status: TeamTaskStatus::Open,
+                    topic: None,
+                    context: Value::Object(Default::default()),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTaskUpdate {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    task_id: "task-1".to_string(),
+                    status: TeamTaskStatus::InProgress,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::Inbox {
+                    run_id: "run-1".to_string(),
+                    actor_id: "worker".to_string(),
+                    limit: 20,
+                    after_id: None,
+                    include_delivered: false,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::Ack {
+                    run_id: "run-1".to_string(),
+                    actor_id: "worker".to_string(),
+                    message_id: 42,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::Send {
+                    run_id: "run-1".to_string(),
+                    from_actor_id: "leader".to_string(),
+                    to_actor_id: Some("worker".to_string()),
+                    channel_id: None,
+                    channel: "default".to_string(),
+                    transport: TeamActorMessageTransport::Local,
+                    route: None,
+                    payload: Box::new(Value::String("hello".to_string())),
+                    payload_source: ActorSendPayloadSource::Text,
+                    idempotency_key: None,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerSet {
+                    actor_id: "leader".to_string(),
+                    delay_seconds: 60,
+                    message: "follow up".to_string(),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerList {
+                    actor_id: "leader".to_string(),
+                    limit: 5,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerCancel {
+                    actor_id: "leader".to_string(),
+                    trigger_id: "trigger-1".to_string(),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::PermissionReviewRespond {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    permission_id: "perm-1".to_string(),
+                    option_id: Some("allow".to_string()),
+                    outcome: None,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+        ];
 
-        let output = encode_actor_output(
+        for (command, expected) in cases {
+            assert_eq!(
+                actor_output_preference_for_command(&command),
+                expected,
+                "unexpected output preference for command variant: {command:?}"
+            );
+        }
+
+        let toon_output = encode_actor_output(
             &OutputFixture {
                 name: "alpha",
                 count: 2,
             },
             ActorOutputMode::Default,
-            preference,
+            actor_output_preference_for_command(&ActorCommand::TeamMembers {
+                team_id: Some("team-1".to_string()),
+                run_id: Some("run-1".to_string()),
+            }),
         )
-        .expect("encode team-members output");
-        assert!(output.contains("name: alpha"));
-        assert!(output.contains("count: 2"));
-        assert!(!output.starts_with('{'));
+        .expect("encode default team-members output");
+        assert!(toon_output.contains("name: alpha"));
+        assert!(toon_output.contains("count: 2"));
+        assert!(!toon_output.starts_with('{'));
     }
 
     #[test]
@@ -2786,61 +2897,5 @@ mod tests {
         )
         .expect("encode forced json team-members output");
         assert_eq!(output, r#"{"name":"alpha","count":2}"#);
-    }
-
-    #[test]
-    fn task_and_trigger_confirmations_default_to_toon() {
-        let task_create_preference =
-            actor_output_preference_for_command(&ActorCommand::TeamTaskCreate {
-                team_id: "team-1".to_string(),
-                actor_id: "leader".to_string(),
-                title: "Create task".to_string(),
-                status: TeamTaskStatus::Open,
-                topic: None,
-                context: Value::Object(Default::default()),
-            });
-        let time_trigger_preference =
-            actor_output_preference_for_command(&ActorCommand::TimeTriggerSet {
-                actor_id: "leader".to_string(),
-                delay_seconds: 60,
-                message: "follow up".to_string(),
-            });
-        assert_eq!(task_create_preference, ActorOutputPreference::ToonPreferred);
-        assert_eq!(
-            time_trigger_preference,
-            ActorOutputPreference::ToonPreferred
-        );
-    }
-
-    #[test]
-    fn send_ack_and_permission_review_stay_json_preferred() {
-        let send_preference = actor_output_preference_for_command(&ActorCommand::Send {
-            run_id: "run-1".to_string(),
-            from_actor_id: "leader".to_string(),
-            to_actor_id: Some("worker".to_string()),
-            channel_id: None,
-            channel: "default".to_string(),
-            transport: TeamActorMessageTransport::Local,
-            route: None,
-            payload: Box::new(Value::String("hello".to_string())),
-            payload_source: ActorSendPayloadSource::Text,
-            idempotency_key: None,
-        });
-        let ack_preference = actor_output_preference_for_command(&ActorCommand::Ack {
-            run_id: "run-1".to_string(),
-            actor_id: "worker".to_string(),
-            message_id: 42,
-        });
-        let permission_preference =
-            actor_output_preference_for_command(&ActorCommand::PermissionReviewRespond {
-                team_id: "team-1".to_string(),
-                actor_id: "leader".to_string(),
-                permission_id: "perm-1".to_string(),
-                option_id: Some("allow".to_string()),
-                outcome: None,
-            });
-        assert_eq!(send_preference, ActorOutputPreference::JsonPreferred);
-        assert_eq!(ack_preference, ActorOutputPreference::JsonPreferred);
-        assert_eq!(permission_preference, ActorOutputPreference::JsonPreferred);
     }
 }
