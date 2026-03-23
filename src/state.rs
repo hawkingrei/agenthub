@@ -15,8 +15,8 @@ use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensur
 use crate::push::PushService;
 use crate::team::{
     TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager,
-    TeamOrchestratorWorker, TeamOrchestratorWorkerSettings, TeamPermissionReviewDispatcher,
-    TeamPermissionReviewDispatcherSettings, TeamRemoteRelayWorkerSettings,
+    TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
+    TeamRemoteRelayWorkerSettings,
 };
 
 #[derive(Clone)]
@@ -51,8 +51,6 @@ impl AppState {
 
         Self::run_startup_cleanup(&agents, &teams).await?;
 
-        let _orchestrator_handle = TeamOrchestratorWorker::new(teams.clone(), agents.clone())
-            .spawn(TeamOrchestratorWorkerSettings::default());
         let _mailbox_hint_handle = TeamMailboxUnreadHintWorker::new(teams.clone(), agents.clone())
             .spawn(TeamMailboxUnreadHintWorkerSettings::default());
         let trigger_manager = Arc::new(AgentTimeTriggerManager::new(db.clone()));

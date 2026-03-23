@@ -62,7 +62,7 @@ Leader may:
 
 - use `"$AGENTHUB_ACTOR_CLI" actor team-task-create` to create canonical Team tasks
 - use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` to verify the task is actually present in Kanban after creation
-- assign or reassign owners
+- leave `assigned_member_id` empty until ownership is set explicitly; do not guess an owner
 - use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `open -> in_progress`
 - use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_progress -> in_review`
 - use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_review -> completed`

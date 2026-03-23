@@ -29,18 +29,22 @@ terminology and operating expectations drift.
 - Human may provide goals, questions, constraints, feedback, approvals, corrections, or free-form
   discussion; human messages do not automatically become Team `task` records.
 
-2. Orchestration layer
+2. Task ownership layer
 - Leader/System interprets shared conversation input and turns agreed execution work into internal
   `task` records.
-- A `task` is the agent-facing work object and should be executable without additional human clicks.
+- A `task` is the primary agent-facing work object.
+- `task.assigned_member_id` is the canonical owner slot, but it stays empty until ownership is set
+  explicitly; the system must not guess an assignee.
 - Canonical task creation and lifecycle management belong to leader planning, not direct human task
   authoring.
 
-3. Execution layer
-- Creating/accepting a `task` should automatically create a `run`.
-- A `run` is the execution record for one task attempt, including status, logs, artifacts, and
-  final summary.
-- Members execute steps, exchange mailbox messages, and return evidence through the run.
+3. Execution telemetry layer
+- `run` and `step` are execution/debug artifacts, not the primary collaboration unit.
+- Backend no longer runs a Team step-orchestrator worker in the default runtime path.
+- Creating a `task` no longer implies backend dispatch; runs are created only by explicit execution
+  flows.
+- Task progress should be advanced through canonical task state plus mailbox evidence rather than
+  implicit backend step scheduling.
 
 ### 2) Role Model
 
@@ -72,7 +76,8 @@ terminology and operating expectations drift.
   - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
   - `Kanban` is the primary task lane.
-  - `Runs` is the execution-history lane for run browsing, `Start Team`, and active-run selection.
+  - `Runs` is the execution-history/debug lane for explicit run browsing, `Start Team`, and
+    active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
 - Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
 
@@ -187,6 +192,8 @@ Constraint:
 - `Kanban` is task-first and should show task state plus linked run history/summary.
 - Leader owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
+- `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
+  leader assigns a member explicitly.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
@@ -211,7 +218,7 @@ Constraint:
 ## Operational Notes
 
 - Keep Team UX conversation-first; keep run/step internals in debug-oriented surfaces.
-- Keep task handling automatic: `task -> run` should happen without human clicks in the normal flow.
+- Keep task handling task-first: task state should remain meaningful even when no run exists yet.
 - Keep run browsing and start/select operations in the `Runs` tab.
 - Keep a shared active-run context header for run-scoped tabs to avoid duplicated controls.
 - Team startup may require explicit operator action to bring runtimes online, but once the team is

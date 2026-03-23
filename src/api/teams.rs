@@ -614,7 +614,7 @@ async fn create_team_task(
     Json(payload): Json<CreateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    let team = load_team_for_user(&state, &team_id, &user).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(ApiError::bad_request("title is required"));
@@ -623,12 +623,6 @@ async fn create_team_task(
         normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
     let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
     let raw_context = payload.context.unwrap_or_else(|| serde_json::json!({}));
-    let should_auto_dispatch = should_auto_dispatch_task(&conversation_mode, &raw_context);
-    let can_auto_dispatch = if should_auto_dispatch {
-        can_auto_dispatch_task(&team.spec)?
-    } else {
-        false
-    };
     let (task, conversation) = state
         .teams
         .create_task(
@@ -641,36 +635,10 @@ async fn create_team_task(
         )
         .await
         .map_err(map_team_internal_error)?;
-    let latest_run = if can_auto_dispatch {
-        let preview =
-            compile_task_run_preview_response(&team.spec, &task, &conversation, &[], None)?;
-        Some(
-            state
-                .teams
-                .create_run(
-                    &team.id,
-                    Some(preview.run_payload.context_id.as_str()),
-                    preview.run_payload.input,
-                )
-                .await
-                .map_err(map_team_internal_error)?,
-        )
-    } else {
-        None
-    };
-    let task = if latest_run.is_some() {
-        state
-            .teams
-            .get_task(&task.id)
-            .await
-            .map_err(map_team_internal_error)?
-    } else {
-        task
-    };
     Ok(Json(TeamTaskDetailResponse {
         task,
         conversation,
-        latest_run,
+        latest_run: None,
     }))
 }
 
@@ -2701,26 +2669,6 @@ fn has_configured_team_members(spec: &Value) -> Result<bool, ApiError> {
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     Ok(!parse_member_specs(spec_obj.get("members"))?.is_empty())
-}
-
-fn should_auto_dispatch_task(conversation_mode: &str, context: &Value) -> bool {
-    if conversation_mode == "group_chat" {
-        let bootstrap_kind = context
-            .as_object()
-            .and_then(|obj| obj.get("bootstrap_kind"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or_default();
-        if bootstrap_kind.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND) {
-            return false;
-        }
-    }
-    true
-}
-
-fn can_auto_dispatch_task(spec: &Value) -> Result<bool, ApiError> {
-    validate_team_spec(spec)?;
-    has_configured_team_members(spec)
 }
 
 fn ensure_team_execution_ready(spec: &Value) -> Result<(), ApiError> {

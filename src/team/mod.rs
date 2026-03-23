@@ -1,6 +1,5 @@
 mod mailbox_hint;
 mod manager;
-mod orchestrator;
 mod permission_review;
 mod runtime;
 
@@ -25,7 +24,6 @@ pub use manager::{
     SendActorMessageInput, TeamConversationStreamEvent, TeamManager, TeamMemoryFlushRequest,
     TeamRemoteRelayWorkerSettings, TeamRuntimeRecord, TeamRuntimeStatus,
 };
-pub use orchestrator::{TeamOrchestratorWorker, TeamOrchestratorWorkerSettings};
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
 };

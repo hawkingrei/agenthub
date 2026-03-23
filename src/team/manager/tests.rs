@@ -124,6 +124,7 @@ async fn setup_test_db() -> SqlitePool {
             title TEXT NOT NULL,
             status TEXT NOT NULL,
             created_by_actor_id TEXT NOT NULL,
+            assigned_member_id TEXT,
             context_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
@@ -527,6 +528,7 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
         .expect("create task");
     assert_eq!(task.team_id, team.id);
     assert_eq!(task.status, TeamTaskStatus::Open);
+    assert_eq!(task.assigned_member_id, None);
     assert_eq!(conversation.task_id, task.id);
     assert_eq!(task.context["token"], json!("[redacted]"));
     assert_eq!(task.context["nested"]["api_key"], json!("[redacted]"));
@@ -649,6 +651,7 @@ async fn task_status_updates_are_persisted() {
         .await
         .expect("reload updated task");
     assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+    assert_eq!(reloaded.assigned_member_id, None);
 }
 
 #[tokio::test]
@@ -3753,6 +3756,63 @@ async fn cancel_active_runs_on_startup_requires_manual_restart() {
         .filter(|event| event.event_type == "run_startup_canceled")
         .collect::<Vec<_>>();
     assert_eq!(startup_events.len(), 1);
+}
+
+#[tokio::test]
+async fn cancel_active_runs_on_startup_reopens_linked_tasks() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "startup-linked-task-team".to_string(),
+            description: Some("team to verify startup cancel reopens linked tasks".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Restart-safe linked task",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("startup-linked-task"),
+        )
+        .await
+        .expect("create task");
+    assert_eq!(task.status, TeamTaskStatus::Open);
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(task.id.as_str()),
+            json!({"task_id": task.id, "payload":"linked"}),
+        )
+        .await
+        .expect("create linked run");
+    assert_eq!(run.status, TeamRunStatus::Submitted);
+
+    let in_progress_task = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(in_progress_task.status, TeamTaskStatus::InProgress);
+
+    let canceled_count = manager
+        .cancel_active_runs_on_startup()
+        .await
+        .expect("cancel active runs on startup");
+    assert_eq!(canceled_count, 1);
+
+    let run_after = manager.get_run(&run.id).await.expect("reload canceled run");
+    assert_eq!(run_after.status, TeamRunStatus::Canceled);
+
+    let reopened_task = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload reopened task");
+    assert_eq!(reopened_task.status, TeamTaskStatus::Open);
+    assert_eq!(reopened_task.assigned_member_id, None);
 }
 
 #[tokio::test]
