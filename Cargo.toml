@@ -36,7 +36,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "signal", "sync", "time", "io-util", "io-std"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 toon-format = { version = "0.4.4", default-features = false }
-tower-http = { version = "0.5", features = ["fs", "trace", "cors", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "cors", "compression-gzip"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
