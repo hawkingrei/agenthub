@@ -25,7 +25,7 @@ jobs:
         run: cargo test --locked --test distributed_p2p_pipeline -- --nocapture
       - name: Upload p2p node logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distributed-p2p-node-logs
           path: target/p2p-pipeline-logs
