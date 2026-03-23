@@ -131,7 +131,7 @@ enum ActorCommand {
 
 fn actor_usage() -> String {
     format!(
-        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Confirmation results (`team-task-create`, `team-task-update`, `ack`, `send`, `time-trigger-set`, `time-trigger-cancel`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        "Usage:\n  agenthub actor [--json] team-members [--team-id <team_id>] [--run-id <run_id>]\n  agenthub actor [--json] team-tasks [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--status <all|open|in_progress|in_review|completed|canceled>] [--include-shared-thread]\n  agenthub actor [--json] team-task-create --title <title> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--status <open|in_progress|in_review|completed|canceled>] [--topic <topic>] [--context-json <json>]\n  agenthub actor [--json] team-task-update --task-id <task_id> --status <open|in_progress|in_review|completed|canceled> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] inbox [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>] [--after-id <id>] [--include-delivered]\n  agenthub actor [--json] ack --message-id <id> [--run-id <run_id>] [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] send (--to-actor-id <actor_id> | --to-agent-id <agent_id> | --channel-id <channel_id>) (--text <markdown> | --payload-json <json>) [--run-id <run_id>] [--from-actor-id <actor_id> | --from-agent-id <agent_id>] [--channel <name>] [--transport <local|remote>] [--route-json <json>] [--idempotency-key <key>] [--allow-duplicate]\n  agenthub actor [--json] time-trigger-set --delay-seconds <seconds> --message <text> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] time-trigger-list [--actor-id <actor_id> | --agent-id <agent_id>] [--limit <n>]\n  agenthub actor [--json] time-trigger-cancel --trigger-id <trigger_id> [--actor-id <actor_id> | --agent-id <agent_id>]\n  agenthub actor [--json] permission-review-respond --permission-id <id> [--team-id <team_id>] [--actor-id <actor_id> | --agent-id <agent_id>] [--option-id <option_id> | --outcome cancelled]\n\nOutput:\n  Read-heavy results (`team-members`, `team-tasks`, `inbox`, `time-trigger-list`) default to TOON on stdout.\n  Human-oriented task and trigger confirmations (`team-task-create`, `team-task-update`, `time-trigger-set`, `time-trigger-cancel`) default to TOON on stdout.\n  Machine-oriented confirmations (`ack`, `send`, `permission-review-respond`) default to compact JSON for script compatibility.\n  `--json` forces JSON output for all structured success results.\n\nEnvironment fallback:\n  {}\n  {}\n  {}\n  {}\n  {}\n",
         ACTOR_RUNTIME_TEAM_ID_ENV,
         ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
         ACTOR_RUNTIME_ACTOR_ID_ENV,
@@ -150,6 +150,23 @@ fn resolve_actor_output_format(
             ActorOutputPreference::ToonPreferred => ActorOutputFormat::Toon,
             ActorOutputPreference::JsonPreferred => ActorOutputFormat::Json,
         },
+    }
+}
+
+fn actor_output_preference_for_command(command: &ActorCommand) -> ActorOutputPreference {
+    match command {
+        ActorCommand::Help => ActorOutputPreference::ToonPreferred,
+        ActorCommand::TeamMembers { .. }
+        | ActorCommand::TeamTasks { .. }
+        | ActorCommand::Inbox { .. }
+        | ActorCommand::TeamTaskCreate { .. }
+        | ActorCommand::TeamTaskUpdate { .. }
+        | ActorCommand::TimeTriggerList { .. }
+        | ActorCommand::TimeTriggerSet { .. }
+        | ActorCommand::TimeTriggerCancel { .. } => ActorOutputPreference::ToonPreferred,
+        ActorCommand::Ack { .. }
+        | ActorCommand::Send { .. }
+        | ActorCommand::PermissionReviewRespond { .. } => ActorOutputPreference::JsonPreferred,
     }
 }
 
@@ -334,14 +351,8 @@ async fn init_team_manager() -> anyhow::Result<(TeamManager, agenthub_config::Ap
     Ok((manager, config))
 }
 
-async fn init_actor_mailbox_service(
-    manager: &TeamManager,
-) -> anyhow::Result<Arc<dyn ActorMailboxService>> {
-    let service: Arc<dyn ActorMailboxService> = match maybe_remote_mailbox_service().await? {
-        Some(client) => Arc::new(client),
-        None => Arc::new(manager.actor_mailbox_service()),
-    };
-    Ok(service)
+fn init_actor_mailbox_service(manager: &TeamManager) -> Arc<dyn ActorMailboxService> {
+    Arc::new(manager.actor_mailbox_service())
 }
 
 fn map_actor_service_error(operation: &str, err: ActorServiceError) -> anyhow::Error {
@@ -1349,6 +1360,7 @@ async fn run_actor_command(
     command: ActorCommand,
     output_mode: ActorOutputMode,
 ) -> anyhow::Result<()> {
+    let output_preference = actor_output_preference_for_command(&command);
     match command {
         ActorCommand::Help => {
             println!("{}", actor_usage());
@@ -1359,11 +1371,7 @@ async fn run_actor_command(
             let team_context = manager
                 .describe_team_context(team_id.as_deref(), run_id.as_deref())
                 .await?;
-            write_actor_output(
-                &team_context,
-                output_mode,
-                ActorOutputPreference::ToonPreferred,
-            )?;
+            write_actor_output(&team_context, output_mode, output_preference)?;
         }
         ActorCommand::TeamTasks {
             team_id,
@@ -1382,7 +1390,7 @@ async fn run_actor_command(
             if let Some(status) = status {
                 tasks.retain(|task| task.status == status);
             }
-            write_actor_output(&tasks, output_mode, ActorOutputPreference::ToonPreferred)?;
+            write_actor_output(&tasks, output_mode, output_preference)?;
         }
         ActorCommand::TeamTaskCreate {
             team_id,
@@ -1414,7 +1422,7 @@ async fn run_actor_command(
                 "task": task,
                 "conversation": conversation,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
         ActorCommand::TeamTaskUpdate {
             team_id,
@@ -1431,7 +1439,7 @@ async fn run_actor_command(
                 "task does not belong to this team"
             );
             let task = manager.update_task_status(&task_id, status).await?;
-            write_actor_output(&task, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&task, output_mode, output_preference)?;
         }
         ActorCommand::Inbox {
             run_id,
@@ -1441,7 +1449,7 @@ async fn run_actor_command(
             include_delivered,
         } => {
             let (manager, _) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let states = if include_delivered {
                 Some(vec![
                     ActorMessageStatus::Pending,
@@ -1463,7 +1471,7 @@ async fn run_actor_command(
             )
             .await
             .map_err(|err| map_actor_service_error("actor inbox", err))?;
-            write_actor_output(&inbox, output_mode, ActorOutputPreference::ToonPreferred)?;
+            write_actor_output(&inbox, output_mode, output_preference)?;
         }
         ActorCommand::Ack {
             run_id,
@@ -1471,7 +1479,7 @@ async fn run_actor_command(
             message_id,
         } => {
             let (manager, _) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let message = service
                 .actor_ack(ActorAckRequest {
                     run_id,
@@ -1482,7 +1490,7 @@ async fn run_actor_command(
                 })
                 .await
                 .map_err(|err| map_actor_service_error("actor ack", err))?;
-            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&message, output_mode, output_preference)?;
         }
         ActorCommand::Send {
             run_id,
@@ -1497,7 +1505,7 @@ async fn run_actor_command(
             idempotency_key,
         } => {
             let (manager, config) = init_team_manager().await?;
-            let service = init_actor_mailbox_service(&manager).await?;
+            let service = init_actor_mailbox_service(&manager);
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {
                     run_id,
@@ -1537,7 +1545,7 @@ async fn run_actor_command(
                     "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
                 );
             }
-            write_actor_output(&message, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&message, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerSet {
             actor_id,
@@ -1560,7 +1568,7 @@ async fn run_actor_command(
                     fire_at: compute_time_trigger_fire_at(now_ts, delay_seconds),
                 })
                 .await?;
-            write_actor_output(&record, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&record, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerList { actor_id, limit } => {
             let db = agenthub_db::init_db().await?;
@@ -1568,7 +1576,7 @@ async fn run_actor_command(
             let records = manager
                 .list_triggers_for_agent(actor_id.as_str(), limit)
                 .await?;
-            write_actor_output(&records, output_mode, ActorOutputPreference::ToonPreferred)?;
+            write_actor_output(&records, output_mode, output_preference)?;
         }
         ActorCommand::TimeTriggerCancel {
             actor_id,
@@ -1584,7 +1592,7 @@ async fn run_actor_command(
                 "status": "ok",
                 "trigger_id": trigger_id,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
         ActorCommand::PermissionReviewRespond {
             team_id,
@@ -1640,7 +1648,7 @@ async fn run_actor_command(
                     "permission_id": permission_id,
                     "request_status": record.status,
                 });
-                write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+                write_actor_output(&output, output_mode, output_preference)?;
                 return Ok(());
             }
 
@@ -1675,7 +1683,7 @@ async fn run_actor_command(
                     "permission_id": permission_id,
                     "request_status": request_status,
                 });
-                write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+                write_actor_output(&output, output_mode, output_preference)?;
                 return Ok(());
             }
             let output = serde_json::json!({
@@ -1683,7 +1691,7 @@ async fn run_actor_command(
                 "permission_id": permission_id,
                 "reviewed_by_actor_id": actor_id,
             });
-            write_actor_output(&output, output_mode, ActorOutputPreference::JsonPreferred)?;
+            write_actor_output(&output, output_mode, output_preference)?;
         }
     }
     Ok(())
@@ -1704,6 +1712,7 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::team_tests::build_test_state;
     use agenthub_team_actor::ActorInboxResponse;
     use serde::Serialize;
     use std::sync::OnceLock;
@@ -2328,6 +2337,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn init_actor_mailbox_service_ignores_remote_mailbox_env_for_cli_commands() {
+        let _guard = env_lock().lock().await;
+        let prev_target =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
+        let prev_token =
+            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+                "https://127.0.0.1:9",
+            );
+            std::env::set_var(
+                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+                "test-token",
+            );
+        }
+
+        let state = build_test_state().await;
+        let service = init_actor_mailbox_service(state.teams.as_ref());
+        let inbox = service
+            .actor_inbox(ActorInboxRequest {
+                run_id: "missing-run".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(5),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            })
+            .await
+            .expect("local mailbox service should ignore remote env and remain usable");
+        assert!(inbox.messages.is_empty());
+        assert!(
+            inbox.pending_count == 0,
+            "unexpected inbox response: {inbox:?}"
+        );
+
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
+            prev_target,
+        );
+        restore_env(
+            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
+            prev_token,
+        );
+    }
+
+    #[tokio::test]
     async fn init_actor_mailbox_hint_client_from_config_skips_missing_remote_token() {
         let _guard = env_lock().lock().await;
         let prev_target =
@@ -2692,5 +2747,155 @@ mod tests {
         .expect("encode inbox response");
         assert!(output.contains("next_cursor: 42"));
         assert!(output.contains("pending_count: 3"));
+    }
+
+    #[test]
+    fn actor_output_preference_contract_covers_all_command_variants() {
+        let cases = vec![
+            (ActorCommand::Help, ActorOutputPreference::ToonPreferred),
+            (
+                ActorCommand::TeamMembers {
+                    team_id: Some("team-1".to_string()),
+                    run_id: Some("run-1".to_string()),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTasks {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    status: Some(TeamTaskStatus::Open),
+                    limit: 10,
+                    include_shared_thread: true,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTaskCreate {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    title: "Create task".to_string(),
+                    status: TeamTaskStatus::Open,
+                    topic: None,
+                    context: Value::Object(Default::default()),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTaskUpdate {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    task_id: "task-1".to_string(),
+                    status: TeamTaskStatus::InProgress,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::Inbox {
+                    run_id: "run-1".to_string(),
+                    actor_id: "worker".to_string(),
+                    limit: 20,
+                    after_id: None,
+                    include_delivered: false,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::Ack {
+                    run_id: "run-1".to_string(),
+                    actor_id: "worker".to_string(),
+                    message_id: 42,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::Send {
+                    run_id: "run-1".to_string(),
+                    from_actor_id: "leader".to_string(),
+                    to_actor_id: Some("worker".to_string()),
+                    channel_id: None,
+                    channel: "default".to_string(),
+                    transport: TeamActorMessageTransport::Local,
+                    route: None,
+                    payload: Box::new(Value::String("hello".to_string())),
+                    payload_source: ActorSendPayloadSource::Text,
+                    idempotency_key: None,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerSet {
+                    actor_id: "leader".to_string(),
+                    delay_seconds: 60,
+                    message: "follow up".to_string(),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerList {
+                    actor_id: "leader".to_string(),
+                    limit: 5,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TimeTriggerCancel {
+                    actor_id: "leader".to_string(),
+                    trigger_id: "trigger-1".to_string(),
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::PermissionReviewRespond {
+                    team_id: "team-1".to_string(),
+                    actor_id: "leader".to_string(),
+                    permission_id: "perm-1".to_string(),
+                    option_id: Some("allow".to_string()),
+                    outcome: None,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+        ];
+
+        for (command, expected) in cases {
+            assert_eq!(
+                actor_output_preference_for_command(&command),
+                expected,
+                "unexpected output preference for command variant: {command:?}"
+            );
+        }
+
+        let toon_output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Default,
+            actor_output_preference_for_command(&ActorCommand::TeamMembers {
+                team_id: Some("team-1".to_string()),
+                run_id: Some("run-1".to_string()),
+            }),
+        )
+        .expect("encode default team-members output");
+        assert!(toon_output.contains("name: alpha"));
+        assert!(toon_output.contains("count: 2"));
+        assert!(!toon_output.starts_with('{'));
+    }
+
+    #[test]
+    fn json_flag_still_forces_team_members_json_output() {
+        let output = encode_actor_output(
+            &OutputFixture {
+                name: "alpha",
+                count: 2,
+            },
+            ActorOutputMode::Json,
+            actor_output_preference_for_command(&ActorCommand::TeamMembers {
+                team_id: Some("team-1".to_string()),
+                run_id: Some("run-1".to_string()),
+            }),
+        )
+        .expect("encode forced json team-members output");
+        assert_eq!(output, r#"{"name":"alpha","count":2}"#);
     }
 }
