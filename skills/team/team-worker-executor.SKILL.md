@@ -171,7 +171,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Worker Loop
 
 1. Pull inbox and find the latest unhandled assignment:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --limit 50`
+   `agenthub actor inbox --limit 50`
 2. Acknowledge after parsing the task:
    `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.

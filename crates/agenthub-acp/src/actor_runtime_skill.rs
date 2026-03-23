@@ -34,28 +34,28 @@ Use the actor CLI for runtime coordination:
 Team mailbox commands:
 
 1. Pull inbox:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --run-id "<run-id>" --limit 20`
+   `agenthub actor inbox --run-id "<run-id>" --limit 20`
 2. Acknowledge a message after processing:
-   `"$AGENTHUB_ACTOR_CLI" actor ack --run-id "<run-id>" --message-id 123`
+   `agenthub actor ack --run-id "<run-id>" --message-id 123`
 3. Send a local direct message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
 5. Send a remote direct message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{{"endpoint":"https://..."}}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{{"endpoint":"https://..."}}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 6. Send an urgent human notification:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
 7. Force duplicate delivery when business logic requires repeated send:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 8. Use explicit idempotency key when coordinating retries across workers:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
 Team context commands:
 
 9. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
-   `"$AGENTHUB_ACTOR_CLI" actor team-members`
+   `agenthub actor team-members`
 10. When you need step-level overlay for a specific run:
-   `"$AGENTHUB_ACTOR_CLI" actor team-members --run-id "<run-id>"`
+   `agenthub actor team-members --run-id "<run-id>"`
 
 Protocol rules:
 
@@ -147,7 +147,7 @@ mod tests {
                 .instructions
                 .contains("default_channel`: `coordination`")
         );
-        assert!(skill.instructions.contains("$AGENTHUB_ACTOR_CLI"));
+        assert!(skill.instructions.contains("agenthub actor inbox"));
         assert!(skill.instructions.contains("actor inbox"));
         assert!(skill.instructions.contains("actor ack"));
         assert!(skill.instructions.contains("actor send"));

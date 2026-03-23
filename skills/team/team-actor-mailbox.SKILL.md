@@ -74,7 +74,7 @@ Recommended fields:
 ## Standard Command Loop
 
 1. Pull inbox for current actor scope:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --limit 50`
+   `agenthub actor inbox --limit 50`
    - `actor inbox` now includes `pending_count`; treat it as the live unread snapshot.
    - `actor inbox` is read-only by default. Add `--auto-ack` only when you intentionally want a
      bulk sweep to consume the returned pending messages.

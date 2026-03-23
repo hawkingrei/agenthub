@@ -18,3 +18,5 @@ Rationale:
 
 - Team runtime coordination is now CLI-first for mailbox work
 - local Codex approval prompts should not interrupt repeated mailbox commands
+- agent-facing reminders and runtime examples now prefer the shorter
+  `agenthub actor ...` form instead of spelling out `"$AGENTHUB_ACTOR_CLI"`
