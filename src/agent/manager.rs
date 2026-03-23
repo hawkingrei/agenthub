@@ -1264,6 +1264,11 @@ impl AgentManager {
         self.event_dbs.pool_for_agent(agent_id).await
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_event_db_path_for_agent(&self, agent_id: &str) -> std::path::PathBuf {
+        self.event_dbs.db_path_for_agent(agent_id)
+    }
+
     async fn record_agent_activity(&self, agent_id: &str) {
         if let Some(idle_gc) = &self.idle_gc {
             idle_gc.record_activity(agent_id).await;

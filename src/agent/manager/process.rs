@@ -220,14 +220,36 @@ impl AgentManager {
                 None
             }
         };
+        if row.is_none() {
+            tracing::debug!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                "finalize_process_exit skipped because agent session row no longer exists"
+            );
+            let removed = {
+                let mut guard = inner.write().await;
+                if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id);
+                    true
+                } else {
+                    false
+                }
+            };
+            if removed && let Some(idle_gc) = &idle_gc {
+                idle_gc.remove_agent(agent_id).await;
+            }
+            return;
+        }
         let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
         if ended_at.is_some() {
-            let mut guard = inner.write().await;
-            let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
-                guard.remove(agent_id);
-                true
-            } else {
-                false
+            let removed = {
+                let mut guard = inner.write().await;
+                if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id);
+                    true
+                } else {
+                    false
+                }
             };
             if removed && let Some(idle_gc) = &idle_gc {
                 idle_gc.remove_agent(agent_id).await;
@@ -517,6 +539,46 @@ mod tests {
             false,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn finalize_process_exit_skips_event_persist_when_session_row_is_missing() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "finalize-missing-session").await;
+        let event_db_path = state.agents.event_dbs.db_path_for_agent(&agent_id);
+
+        sqlx::query("DELETE FROM agent_sessions WHERE id = ?1")
+            .bind(&session_id)
+            .execute(&state.db)
+            .await
+            .expect("delete session row");
+
+        assert!(
+            !tokio::fs::try_exists(&event_db_path)
+                .await
+                .expect("check event db path before finalize"),
+            "per-agent event db should not exist before finalize"
+        );
+
+        super::AgentManager::finalize_process_exit(
+            &state.db,
+            &state.agents.event_dbs,
+            state.agents.idle_gc.clone(),
+            &state.agents.inner,
+            &state.push,
+            &agent_id,
+            &session_id,
+            false,
+        )
+        .await;
+
+        assert!(
+            !tokio::fs::try_exists(&event_db_path)
+                .await
+                .expect("check event db path after finalize"),
+            "finalize_process_exit must not recreate a deleted per-agent event db when the session row is already gone"
+        );
     }
 
     #[cfg(unix)]
