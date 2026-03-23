@@ -173,10 +173,10 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 1. Pull inbox and find the latest unhandled assignment:
    `agenthub actor inbox --limit 50`
 2. Acknowledge after parsing the task:
-   `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
+   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
-   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|completed|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
+   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|completed|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; agenthub actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 6. Proactively advance the assigned task:

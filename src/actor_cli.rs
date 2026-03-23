@@ -150,7 +150,11 @@ enum ActorCommand {
 }
 
 fn is_help_flag(arg: &str) -> bool {
-    matches!(arg.trim(), "help" | "--help" | "-h")
+    matches!(arg.trim(), "--help" | "-h")
+}
+
+fn is_help_subcommand(arg: &str) -> bool {
+    arg.trim() == "help"
 }
 
 fn normalize_help_topic(raw: &str) -> String {
@@ -721,7 +725,7 @@ fn parse_actor_command(
     let sub = args
         .first()
         .ok_or_else(|| anyhow::anyhow!("missing actor subcommand\n{}", actor_usage()))?;
-    if is_help_flag(sub) {
+    if is_help_subcommand(sub) || is_help_flag(sub) {
         let mut topic = None;
         for arg in args.iter().skip(1) {
             if arg == "--json" {
@@ -739,7 +743,10 @@ fn parse_actor_command(
         }
         return Ok(ActorCommand::Help { topic });
     }
-    if args.iter().skip(1).any(|arg| is_help_flag(arg)) {
+    let positional_help = args
+        .get(1)
+        .is_some_and(|arg| is_help_subcommand(arg.as_str()));
+    if positional_help || args.iter().skip(1).any(|arg| is_help_flag(arg)) {
         return Ok(ActorCommand::Help {
             topic: Some(resolve_actor_help_topic(sub)?),
         });
@@ -1898,7 +1905,6 @@ pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::team_tests::build_test_state;
     use agenthub_team_actor::{
         ActorAckRequest, ActorAckResponse, ActorInboxResponse, ActorSendRequest, ActorSendResponse,
     };
@@ -2936,6 +2942,37 @@ mod tests {
                 topic: Some(ACTOR_HELP_TOPIC_ACK)
             }
         ));
+    }
+
+    #[test]
+    fn parse_subcommand_positional_help_is_supported() {
+        let args = vec!["ack".to_string(), "help".to_string()];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse positional subcommand help");
+        assert!(matches!(
+            parsed,
+            ActorCommand::Help {
+                topic: Some(ACTOR_HELP_TOPIC_ACK)
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_team_members_allows_help_as_flag_value() {
+        let args = vec![
+            "team-members".to_string(),
+            "--team-id".to_string(),
+            "help".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-members with help value");
+        match parsed {
+            ActorCommand::TeamMembers { team_id, run_id } => {
+                assert_eq!(team_id.as_deref(), Some("help"));
+                assert!(run_id.is_none());
+            }
+            other => panic!("expected team-members command, got {other:?}"),
+        }
     }
 
     #[test]

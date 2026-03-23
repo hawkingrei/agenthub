@@ -457,12 +457,18 @@ impl TeamInternalControl for TeamInternalControlService {
         }
 
         let option_id = optional_trimmed(payload.option_id.as_str()).map(str::to_string);
+        let requested_outcome = optional_trimmed(payload.outcome.as_str());
+        if option_id.is_some() && requested_outcome.is_some() {
+            return Err(Status::invalid_argument(
+                "option_id and outcome cannot be set together",
+            ));
+        }
         let outcome = if let Some(selected_option_id) = option_id.as_ref() {
             agent_client_protocol::RequestPermissionOutcome::Selected(
                 agent_client_protocol::SelectedPermissionOutcome::new(selected_option_id.clone()),
             )
         } else {
-            match optional_trimmed(payload.outcome.as_str()) {
+            match requested_outcome {
                 Some("cancelled") | None => {
                     agent_client_protocol::RequestPermissionOutcome::Cancelled
                 }
@@ -1563,6 +1569,119 @@ mod tests {
         assert_eq!(response.status, "ok");
         assert_eq!(response.request_status, "responded");
         assert_eq!(response.reviewed_by_actor_id, "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fields() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("conflict-worker-agent")
+        .bind("conflict-worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("conflict-worker-session")
+        .bind("conflict-worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-conflict-review-1")
+        .bind("conflict-worker-agent")
+        .bind("conflict-worker-session")
+        .bind("acp-session-conflict-1")
+        .bind(&run.team_id)
+        .bind("reviewer")
+        .bind("worker")
+        .bind("tool-call-conflict-1")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let err = TeamInternalControl::respond_permission_review(
+            &service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    permission_id: "perm-conflict-review-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: "cancelled".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("conflicting response fields should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message()
+                .contains("option_id and outcome cannot be set together"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
