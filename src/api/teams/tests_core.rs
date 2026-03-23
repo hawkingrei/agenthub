@@ -346,8 +346,6 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("create team");
 
-    let _reviewer_session = wait_for_running_agent_session(&state, "reviewer").await;
-
     let Json(run) = create_team_run(
         State(state.clone()),
         headers.clone(),
@@ -3138,6 +3136,8 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
     )
     .await
     .expect("create run");
+
+    let _reviewer_session = wait_for_running_agent_session(&state, "reviewer").await;
 
     let Json(first_chat) = send_team_run_message(
         State(state.clone()),
