@@ -1,3 +1,26 @@
+async fn wait_for_agent_event_history_cleanup(
+    state: &AppState,
+    agent_id: &str,
+    session_id: &str,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    let event_db_path = state.agents.test_event_db_path_for_agent(agent_id);
+    loop {
+        if !tokio::fs::try_exists(&event_db_path)
+            .await
+            .expect("check member event db path")
+        {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "member event db was not deleted after delete_team: agent_id={agent_id}, session_id={session_id}, path={}",
+            event_db_path.display()
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
 #[tokio::test]
 async fn teams_api_requires_authorization() {
     let state = build_test_state().await;
@@ -522,18 +545,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             .expect("count member sessions");
     assert_eq!(session_count, 0);
 
-    let member_event_db = state
-        .agents
-        .test_event_pool_for_agent(member_agent_id)
-        .await
-        .expect("reopen member event db");
-    let event_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id = ?1")
-            .bind(&session_id)
-            .fetch_one(&member_event_db)
-            .await
-            .expect("count member events");
-    assert_eq!(event_count, 0);
+    wait_for_agent_event_history_cleanup(&state, member_agent_id, &session_id).await;
 
     let permission_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM acp_permission_requests WHERE agent_id = ?1")

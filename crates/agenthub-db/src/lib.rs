@@ -1,4 +1,10 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use sqlx::{
     Row, SqlitePool,
@@ -182,26 +188,57 @@ impl AgentEventDbRouter {
             let mut pools = self.pools.lock().await;
             pools.remove(agent_id)
         };
+        let db_path = self.db_path_for_agent(agent_id);
         if let Some(pool) = cell.and_then(|c| c.get().cloned()) {
+            if let Err(err) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(&pool)
+                .await
+            {
+                tracing::warn!(
+                    agent_id = agent_id,
+                    db_path = %db_path.display(),
+                    error = %err,
+                    "WAL checkpoint before deleting agent event db failed"
+                );
+            }
             pool.close().await;
         }
-        let db_path = self.db_path_for_agent(agent_id);
-        if db_path.exists() {
-            std::fs::remove_file(&db_path)?;
-        }
-        let wal_path = PathBuf::from(format!("{}-wal", db_path.display()));
-        if wal_path.exists() {
-            std::fs::remove_file(wal_path)?;
-        }
-        let shm_path = PathBuf::from(format!("{}-shm", db_path.display()));
-        if shm_path.exists() {
-            std::fs::remove_file(shm_path)?;
-        }
+        Self::remove_file_with_retry(&db_path).await?;
+        Self::remove_file_with_retry(&Self::suffixed_path(&db_path, "-wal")).await?;
+        Self::remove_file_with_retry(&Self::suffixed_path(&db_path, "-shm")).await?;
         Ok(())
     }
 
     pub fn db_path_for_agent(&self, agent_id: &str) -> PathBuf {
         self.base_dir.join(format!("{agent_id}.db"))
+    }
+
+    fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
+        let mut raw = path.as_os_str().to_os_string();
+        raw.push(suffix);
+        PathBuf::from(raw)
+    }
+
+    async fn remove_file_with_retry(path: &Path) -> std::io::Result<()> {
+        if !tokio::fs::try_exists(path).await? {
+            return Ok(());
+        }
+
+        let mut last_err = None;
+        for attempt in 0..5 {
+            match tokio::fs::remove_file(path).await {
+                Ok(()) => return Ok(()),
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+                Err(err) => {
+                    last_err = Some(err);
+                    if attempt < 4 {
+                        tokio::time::sleep(Duration::from_millis(20 * (attempt as u64 + 1))).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_err.expect("remove_file_with_retry should record the final deletion error"))
     }
 }
 
@@ -2750,6 +2787,76 @@ mod tests {
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn remove_agent_db_retries_cleanup_and_reopens_empty_history() {
+        let dir = unique_temp_dir("db-remove-agent");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let event_dbs = AgentEventDbRouter::new(dir.clone());
+        let agent_id = "agent-remove";
+        let db_path = event_dbs.db_path_for_agent(agent_id);
+        let wal_path = AgentEventDbRouter::suffixed_path(&db_path, "-wal");
+        let shm_path = AgentEventDbRouter::suffixed_path(&db_path, "-shm");
+
+        let pool = event_dbs
+            .pool_for_agent(agent_id)
+            .await
+            .expect("open per-agent db");
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-remove")
+        .bind("seq-1")
+        .bind(chrono::Utc::now().timestamp())
+        .bind("stdout")
+        .bind("cleanup-test")
+        .execute(&pool)
+        .await
+        .expect("insert event");
+
+        assert!(
+            tokio::fs::try_exists(&db_path)
+                .await
+                .expect("check db path")
+        );
+
+        event_dbs
+            .remove_agent_db(agent_id)
+            .await
+            .expect("remove agent db");
+
+        assert!(
+            !tokio::fs::try_exists(&db_path)
+                .await
+                .expect("check db removal")
+        );
+        assert!(
+            !tokio::fs::try_exists(&wal_path)
+                .await
+                .expect("check wal removal")
+        );
+        assert!(
+            !tokio::fs::try_exists(&shm_path)
+                .await
+                .expect("check shm removal")
+        );
+
+        let reopened = event_dbs
+            .pool_for_agent(agent_id)
+            .await
+            .expect("reopen per-agent db");
+        let event_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events")
+            .fetch_one(&reopened)
+            .await
+            .expect("count reopened events");
+        assert_eq!(event_count, 0);
+
+        reopened.close().await;
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
     #[tokio::test]
