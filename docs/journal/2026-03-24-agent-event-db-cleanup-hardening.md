@@ -18,8 +18,9 @@ The previous flaky cleanup change still had three structural problems:
 - built SQLite sidecar paths with `OsString` so non-UTF8 paths stay lossless
 - logged WAL checkpoint failures before deleting the event DB files
 - added a router-level regression test that removes an agent DB and verifies the reopened history is empty
-- updated the team delete regression test to poll for per-agent event DB removal instead of reopening the DB or sleeping
+- updated the team delete regression test to poll for per-agent event DB removal, including WAL/SHM sidecars, instead of reopening the DB or sleeping
 - stopped `finalize_process_exit(...)` from recreating a deleted event DB when `agent_sessions` has already been removed by higher-level cleanup
+- released the process-handle write lock before awaiting idle-gc cleanup in `finalize_process_exit(...)`
 
 ## Validation
 

@@ -5,17 +5,35 @@ async fn wait_for_agent_event_history_cleanup(
 ) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     let event_db_path = state.agents.test_event_db_path_for_agent(agent_id);
+    let event_db_wal_path = {
+        let mut raw = event_db_path.as_os_str().to_os_string();
+        raw.push("-wal");
+        std::path::PathBuf::from(raw)
+    };
+    let event_db_shm_path = {
+        let mut raw = event_db_path.as_os_str().to_os_string();
+        raw.push("-shm");
+        std::path::PathBuf::from(raw)
+    };
     loop {
-        if !tokio::fs::try_exists(&event_db_path)
+        let main_exists = tokio::fs::try_exists(&event_db_path)
             .await
-            .expect("check member event db path")
-        {
+            .expect("check member event db path");
+        let wal_exists = tokio::fs::try_exists(&event_db_wal_path)
+            .await
+            .expect("check member event db wal path");
+        let shm_exists = tokio::fs::try_exists(&event_db_shm_path)
+            .await
+            .expect("check member event db shm path");
+        if !main_exists && !wal_exists && !shm_exists {
             return;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "member event db was not deleted after delete_team: agent_id={agent_id}, session_id={session_id}, path={}",
-            event_db_path.display()
+            "member event db and sidecars were not deleted after delete_team: agent_id={agent_id}, session_id={session_id}, path={}, wal_path={}, shm_path={}",
+            event_db_path.display(),
+            event_db_wal_path.display(),
+            event_db_shm_path.display()
         );
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
@@ -357,17 +375,18 @@ async fn teams_api_delete_team_cascades_related_run_data() {
     .await
     .expect("insert acp permission request");
 
-    let Json(team) = create_team(
-        State(state.clone()),
-        headers.clone(),
-        Json(CreateTeamRequest {
-            name: "delete-team".to_string(),
-            description: Some("delete target".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
-        }),
-    )
-    .await
-    .expect("create team");
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "delete-team".to_string(),
+                description: Some("delete target".to_string()),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
 
     let Json(run) = create_team_run(
         State(state.clone()),

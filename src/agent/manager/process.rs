@@ -226,12 +226,14 @@ impl AgentManager {
                 session_id = %session_id,
                 "finalize_process_exit skipped because agent session row no longer exists"
             );
-            let mut guard = inner.write().await;
-            let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
-                guard.remove(agent_id);
-                true
-            } else {
-                false
+            let removed = {
+                let mut guard = inner.write().await;
+                if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id);
+                    true
+                } else {
+                    false
+                }
             };
             if removed && let Some(idle_gc) = &idle_gc {
                 idle_gc.remove_agent(agent_id).await;
@@ -240,12 +242,14 @@ impl AgentManager {
         }
         let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
         if ended_at.is_some() {
-            let mut guard = inner.write().await;
-            let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
-                guard.remove(agent_id);
-                true
-            } else {
-                false
+            let removed = {
+                let mut guard = inner.write().await;
+                if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                    guard.remove(agent_id);
+                    true
+                } else {
+                    false
+                }
             };
             if removed && let Some(idle_gc) = &idle_gc {
                 idle_gc.remove_agent(agent_id).await;
