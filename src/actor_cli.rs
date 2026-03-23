@@ -442,10 +442,6 @@ fn take_mailbox_actor_id(value: Option<String>) -> anyhow::Result<String> {
     take_required_with_env_keys(value, &[ACTOR_RUNTIME_ACTOR_ID_ENV], "actor_id")
 }
 
-fn take_mailbox_from_actor_id(value: Option<String>) -> anyhow::Result<String> {
-    take_required_with_env_keys(value, &[ACTOR_RUNTIME_ACTOR_ID_ENV], "from_actor_id")
-}
-
 fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> {
     match raw.trim() {
         "open" => Ok(TeamTaskStatus::Open),
@@ -1074,7 +1070,11 @@ fn parse_actor_command(
             let fallback_channel = normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV)
                 .unwrap_or_else(|| "default".to_string());
             let run_id = take_run_id(run_id)?;
-            let from_actor_id = take_mailbox_from_actor_id(from_actor_id)?;
+            let from_actor_id = take_required_with_env_keys(
+                from_actor_id,
+                &[ACTOR_RUNTIME_ACTOR_ID_ENV],
+                "from_actor_id",
+            )?;
             let (to_actor_id, channel_id) = resolve_actor_send_target(to_actor_id, channel_id)?;
             let channel = take_optional(channel).unwrap_or(fallback_channel);
             let (payload, payload_source) = resolve_actor_send_payload(text, payload)?;
