@@ -25,6 +25,8 @@ use super::proto::agenthub::internal::v1::{
     ListActorInboxRequest as GrpcListActorInboxRequest,
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListAgentEventsResponse as GrpcListAgentEventsResponse,
+    RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
+    RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
     SendActorMessageRequest as GrpcSendActorMessageRequest,
     SendAgentInputRequest as GrpcSendAgentInputRequest,
     StartManagedAgentRequest as GrpcStartManagedAgentRequest,
@@ -56,6 +58,14 @@ pub struct InternalGrpcPeerClientConfig {
 pub struct InternalGrpcMailboxClient {
     channel: Channel,
     access_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InternalPermissionReviewResponse {
+    pub status: String,
+    pub permission_id: String,
+    pub request_status: String,
+    pub reviewed_by_actor_id: String,
 }
 
 impl InternalGrpcMailboxClient {
@@ -264,6 +274,36 @@ impl InternalGrpcMailboxClient {
             .await
             .map_err(map_grpc_status_anyhow)?;
         Ok(())
+    }
+
+    pub async fn respond_permission_review(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        permission_id: &str,
+        option_id: Option<&str>,
+        outcome: Option<&str>,
+    ) -> anyhow::Result<InternalPermissionReviewResponse> {
+        let mut client = self.client();
+        let response: GrpcRespondPermissionReviewResponse = client
+            .respond_permission_review(self.control_request(
+                GrpcRespondPermissionReviewRequest {
+                    team_id: team_id.trim().to_string(),
+                    actor_id: actor_id.trim().to_string(),
+                    permission_id: permission_id.trim().to_string(),
+                    option_id: option_id.unwrap_or_default().trim().to_string(),
+                    outcome: outcome.unwrap_or_default().trim().to_string(),
+                },
+            )?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        Ok(InternalPermissionReviewResponse {
+            status: response.status,
+            permission_id: response.permission_id,
+            request_status: response.request_status,
+            reviewed_by_actor_id: response.reviewed_by_actor_id,
+        })
     }
 
     pub async fn list_agent_events(

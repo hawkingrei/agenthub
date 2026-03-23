@@ -1,6 +1,13 @@
+use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
 use crate::internal::client::{
     InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, normalize_existing_path,
 };
+use crate::internal::tls::InternalGrpcSecurityMode;
+
+fn actor_runtime_loopback_target(listen_addr: &str) -> Option<String> {
+    let parsed = listen_addr.trim().parse::<std::net::SocketAddr>().ok()?;
+    Some(format!("https://127.0.0.1:{}", parsed.port()))
+}
 
 type OptionalRemoteMailboxClient = anyhow::Result<Option<InternalGrpcMailboxClient>>;
 
@@ -52,6 +59,85 @@ pub(crate) async fn maybe_remote_mailbox_service() -> OptionalRemoteMailboxClien
         ACTOR_RUNTIME_INTERNAL_GRPC_CLIENT_KEY_ENV,
     )?;
     let tls_server_name = normalized_env_var(ACTOR_RUNTIME_INTERNAL_GRPC_TLS_SERVER_NAME_ENV);
+    let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
+        target,
+        access_token,
+        ca_cert_path,
+        tls_server_name,
+        client_cert_path,
+        client_key_path,
+    })
+    .await?;
+    Ok(Some(client))
+}
+
+fn maybe_runtime_tls_paths(
+    cert_dir: &str,
+    security_mode: InternalGrpcSecurityMode,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let cert_root = std::path::Path::new(cert_dir);
+    let ca_cert_path = cert_root.join("ca-cert.pem");
+    let client_cert_path = cert_root.join("client-cert.pem");
+    let client_key_path = cert_root.join("client-key.pem");
+    let ca = ca_cert_path
+        .is_file()
+        .then(|| ca_cert_path.to_string_lossy().to_string());
+    if security_mode == InternalGrpcSecurityMode::Mtls {
+        (
+            ca,
+            client_cert_path
+                .is_file()
+                .then(|| client_cert_path.to_string_lossy().to_string()),
+            client_key_path
+                .is_file()
+                .then(|| client_key_path.to_string_lossy().to_string()),
+        )
+    } else {
+        (ca, None, None)
+    }
+}
+
+pub(crate) async fn connect_runtime_internal_mailbox_service(
+    actor_id: &str,
+    run_id: Option<&str>,
+    permissions: &[InternalAction],
+) -> anyhow::Result<Option<InternalGrpcMailboxClient>> {
+    if let Some(client) = maybe_remote_mailbox_service().await? {
+        return Ok(Some(client));
+    }
+    let config = agenthub_config::AppConfig::load_with_info()?.0;
+    if !config.internal_grpc_enabled() {
+        return Ok(None);
+    }
+    let target = actor_runtime_loopback_target(&config.internal_grpc_listen_addr())
+        .ok_or_else(|| anyhow::anyhow!("invalid internal gRPC listen address"))?;
+    let cert_dir = config.internal_grpc_cert_dir();
+    let security_mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
+    let authz = InternalAuthz::new(InternalAuthzConfig {
+        shared_secret: config
+            .internal_grpc_auth_shared_secret()
+            .ok_or_else(|| anyhow::anyhow!("internal gRPC auth shared secret is required"))?,
+        expected_issuer: config.internal_grpc_auth_issuer(),
+        expected_audience: config.internal_grpc_auth_audience(),
+    });
+    let permissions = permissions
+        .iter()
+        .map(|permission| permission.as_str().to_string())
+        .collect::<Vec<_>>();
+    let (access_token, _expires_at) = authz.issue_access_token(
+        InternalRole::Worker,
+        Some(actor_id),
+        run_id,
+        permissions,
+        600,
+    )?;
+    let (ca_cert_path, client_cert_path, client_key_path) =
+        maybe_runtime_tls_paths(&cert_dir, security_mode);
+    let tls_server_name = if security_mode == InternalGrpcSecurityMode::Disabled {
+        None
+    } else {
+        Some("localhost".to_string())
+    };
     let client = InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
         target,
         access_token,
