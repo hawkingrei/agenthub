@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use sqlx::Row;
@@ -19,6 +20,65 @@ use crate::acp::{
 use crate::agent::event_message_codec::persist_agent_event;
 use crate::agent::{AgentStatus, OutputStream};
 use agent_client_protocol::Implementation;
+
+const RESUMED_ACP_SESSION_GRACE_PERIOD: Duration = Duration::from_secs(2);
+const RESUMED_ACP_SESSION_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResumedSessionStartupState {
+    Running,
+    Exited { success: bool },
+}
+
+fn should_retry_resumed_acp_session(
+    resumed_session_id: Option<&str>,
+    actual_session_id: &str,
+    startup_state: ResumedSessionStartupState,
+) -> bool {
+    matches!(
+        startup_state,
+        ResumedSessionStartupState::Exited { success: false }
+    ) && resumed_session_id == Some(actual_session_id)
+}
+
+async fn observe_resumed_session_startup(
+    child: &Arc<Mutex<Option<tokio::process::Child>>>,
+    grace_period: Duration,
+    poll_interval: Duration,
+) -> ResumedSessionStartupState {
+    let deadline = tokio::time::Instant::now() + grace_period;
+    loop {
+        let poll_result = {
+            let mut child_guard = child.lock().await;
+            match child_guard.as_mut() {
+                Some(child) => child.try_wait(),
+                None => return ResumedSessionStartupState::Exited { success: false },
+            }
+        };
+
+        match poll_result {
+            Ok(Some(status)) => {
+                return ResumedSessionStartupState::Exited {
+                    success: status.success(),
+                };
+            }
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "failed to poll resumed acp session child during startup grace window"
+                );
+                return ResumedSessionStartupState::Exited { success: false };
+            }
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return ResumedSessionStartupState::Running;
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
+}
 
 impl AgentManager {
     async fn get_persistent_session(
@@ -222,6 +282,16 @@ impl AgentManager {
         &self,
         agent: crate::agent::AgentRecord,
         actor_context: Option<AcpActorSkillContext>,
+    ) -> anyhow::Result<String> {
+        self.start_local_agent_with_resume_fallback(agent, actor_context, true)
+            .await
+    }
+
+    async fn start_local_agent_with_resume_fallback(
+        &self,
+        agent: crate::agent::AgentRecord,
+        actor_context: Option<AcpActorSkillContext>,
+        allow_resume_retry: bool,
     ) -> anyhow::Result<String> {
         let session_id = Uuid::new_v4().to_string();
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
@@ -469,8 +539,12 @@ impl AgentManager {
             .await?;
 
         let mut loop_controller = None;
+        let mut resumed_provider_id = None::<String>;
+        let mut resumed_persistent_session_id = None::<String>;
+        let mut active_acp_session_id = None::<String>;
         let input = if let Some(provider) = acp_provider {
             let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
+            resumed_provider_id = Some(provider.id.to_string());
             let stdout = match stdout.take() {
                 Some(stdout) => stdout,
                 None => {
@@ -553,7 +627,7 @@ impl AgentManager {
                 permission_review_dispatcher,
                 agent_id: agent.id.clone(),
                 agent_session_id: session_id.clone(),
-                resume_session_id,
+                resume_session_id: resume_session_id.clone(),
                 workdir: start_policy.workdir.clone(),
                 client_info,
                 stdout,
@@ -592,6 +666,9 @@ impl AgentManager {
                     return Err(err);
                 }
             };
+            active_acp_session_id = Some(handle.session_id.clone());
+            resumed_persistent_session_id =
+                resume_session_id.filter(|resume_id| resume_id == &handle.session_id);
             if let Err(err) = self
                 .set_persistent_session(&agent.id, provider.id, &handle.session_id)
                 .await
@@ -645,7 +722,7 @@ impl AgentManager {
             output_tx: output_tx.clone(),
             input,
             session_id: session_id.clone(),
-            actor_context,
+            actor_context: actor_context.clone(),
             loop_controller,
         };
 
@@ -688,6 +765,56 @@ impl AgentManager {
             "running",
         )
         .await;
+
+        if allow_resume_retry
+            && let (Some(provider_id), Some(resume_id), Some(acp_session_id)) = (
+                resumed_provider_id.as_deref(),
+                resumed_persistent_session_id.as_deref(),
+                active_acp_session_id.as_deref(),
+            )
+        {
+            let startup_state = observe_resumed_session_startup(
+                &child,
+                RESUMED_ACP_SESSION_GRACE_PERIOD,
+                RESUMED_ACP_SESSION_POLL_INTERVAL,
+            )
+            .await;
+            if should_retry_resumed_acp_session(Some(resume_id), acp_session_id, startup_state) {
+                tracing::warn!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    acp_session_id = %acp_session_id,
+                    resumed_session_id = %resume_id,
+                    "resumed acp session exited during startup; clearing persistent session and retrying with a new session"
+                );
+                Self::finalize_process_exit(
+                    &self.db,
+                    &self.event_dbs,
+                    self.idle_gc.clone(),
+                    &self.inner,
+                    &self.push,
+                    &agent.id,
+                    &session_id,
+                    false,
+                )
+                .await;
+                if let Err(err) = self.clear_persistent_session(&agent.id, provider_id).await {
+                    tracing::warn!(
+                        agent_id = %agent.id,
+                        provider = %provider_id,
+                        acp_session_id = %resume_id,
+                        error = %err,
+                        "failed to clear dirty persistent acp session before retry"
+                    );
+                }
+                return Box::pin(self.start_local_agent_with_resume_fallback(
+                    agent,
+                    actor_context,
+                    false,
+                ))
+                .await;
+            }
+        }
 
         Ok(session_id)
     }
@@ -833,5 +960,98 @@ impl AgentManager {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        RESUMED_ACP_SESSION_GRACE_PERIOD, RESUMED_ACP_SESSION_POLL_INTERVAL,
+        ResumedSessionStartupState, observe_resumed_session_startup,
+        should_retry_resumed_acp_session,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::process::Command;
+    use tokio::sync::Mutex;
+
+    #[test]
+    fn should_retry_resumed_acp_session_only_on_failed_matching_resume() {
+        assert!(should_retry_resumed_acp_session(
+            Some("resume-1"),
+            "resume-1",
+            ResumedSessionStartupState::Exited { success: false },
+        ));
+        assert!(!should_retry_resumed_acp_session(
+            None,
+            "resume-1",
+            ResumedSessionStartupState::Exited { success: false },
+        ));
+        assert!(!should_retry_resumed_acp_session(
+            Some("resume-1"),
+            "new-session",
+            ResumedSessionStartupState::Exited { success: false },
+        ));
+        assert!(!should_retry_resumed_acp_session(
+            Some("resume-1"),
+            "resume-1",
+            ResumedSessionStartupState::Exited { success: true },
+        ));
+        assert!(!should_retry_resumed_acp_session(
+            Some("resume-1"),
+            "resume-1",
+            ResumedSessionStartupState::Running,
+        ));
+    }
+
+    #[tokio::test]
+    async fn observe_resumed_session_startup_detects_early_failure() {
+        let child = Command::new("/bin/sh")
+            .arg("-lc")
+            .arg("exit 1")
+            .spawn()
+            .expect("spawn failing child");
+        let child = Arc::new(Mutex::new(Some(child)));
+
+        let startup_state = observe_resumed_session_startup(
+            &child,
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .await;
+        assert_eq!(
+            startup_state,
+            ResumedSessionStartupState::Exited { success: false }
+        );
+    }
+
+    #[tokio::test]
+    async fn observe_resumed_session_startup_treats_running_child_as_healthy() {
+        let child = Command::new("/bin/sh")
+            .arg("-lc")
+            .arg("sleep 1")
+            .spawn()
+            .expect("spawn sleeping child");
+        let child = Arc::new(Mutex::new(Some(child)));
+
+        let startup_state = observe_resumed_session_startup(
+            &child,
+            RESUMED_ACP_SESSION_POLL_INTERVAL,
+            Duration::from_millis(10),
+        )
+        .await;
+        assert_eq!(startup_state, ResumedSessionStartupState::Running);
+
+        let mut child_guard = child.lock().await;
+        if let Some(mut child) = child_guard.take() {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+        }
+    }
+
+    #[test]
+    fn resumed_session_grace_period_stays_short() {
+        assert!(RESUMED_ACP_SESSION_GRACE_PERIOD >= Duration::from_secs(1));
+        assert!(RESUMED_ACP_SESSION_GRACE_PERIOD <= Duration::from_secs(5));
     }
 }

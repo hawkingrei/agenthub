@@ -16,6 +16,12 @@ use crate::push::PushService;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
 
 impl AgentManager {
+    fn handle_matches_session(handle: Option<&AgentHandle>, session_id: &str) -> bool {
+        handle
+            .map(|handle| handle.session_id.as_str() == session_id)
+            .unwrap_or(false)
+    }
+
     pub(super) async fn emit_run_status(
         &self,
         output_tx: broadcast::Sender<AgentOutput>,
@@ -217,8 +223,13 @@ impl AgentManager {
         let ended_at: Option<i64> = row.map(|r| r.get("ended_at"));
         if ended_at.is_some() {
             let mut guard = inner.write().await;
-            guard.remove(agent_id);
-            if let Some(idle_gc) = &idle_gc {
+            let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
+                guard.remove(agent_id);
+                true
+            } else {
+                false
+            };
+            if removed && let Some(idle_gc) = &idle_gc {
                 idle_gc.remove_agent(agent_id).await;
             }
             return;
@@ -317,7 +328,12 @@ impl AgentManager {
             stream: OutputStream::Acp,
             message,
         };
-        if let Some(handle) = inner.read().await.get(agent_id) {
+        if let Some(handle) = inner
+            .read()
+            .await
+            .get(agent_id)
+            .filter(|handle| handle.session_id == session_id)
+        {
             let _ = handle.output_tx.send(output);
         }
 
@@ -330,8 +346,13 @@ impl AgentManager {
             );
         }
         let mut guard = inner.write().await;
-        guard.remove(agent_id);
-        if let Some(idle_gc) = &idle_gc {
+        let removed = if Self::handle_matches_session(guard.get(agent_id), session_id) {
+            guard.remove(agent_id);
+            true
+        } else {
+            false
+        };
+        if removed && let Some(idle_gc) = &idle_gc {
             idle_gc.remove_agent(agent_id).await;
         }
     }
@@ -342,10 +363,14 @@ mod tests {
     use chrono::Utc;
     use sqlx::{Row, SqlitePool};
     use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
+    use tokio::sync::{Mutex, broadcast};
     use tokio::time::{Duration, timeout};
     use uuid::Uuid;
 
+    use crate::agent::AgentOutput;
     use crate::agent::OutputStream;
+    use crate::agent::manager::{AgentHandle, AgentInput};
 
     async fn insert_agent_and_session(db: &SqlitePool, suffix: &str) -> (String, String) {
         let now = Utc::now().timestamp();
@@ -486,5 +511,93 @@ mod tests {
             false,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn finalize_process_exit_keeps_newer_running_handle_for_different_session() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, old_session_id) =
+            insert_agent_and_session(&state.db, "finalize-mismatch-old").await;
+        let now = Utc::now().timestamp();
+        let new_session_id = format!("session-process-finalize-new-{}", Uuid::new_v4());
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(&new_session_id)
+        .bind(&agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert newer session");
+
+        sqlx::query(
+            r#"
+            UPDATE agent_sessions
+            SET status = 'failed', ended_at = ?1
+            WHERE id = ?2
+            "#,
+        )
+        .bind(now)
+        .bind(&old_session_id)
+        .execute(&state.db)
+        .await
+        .expect("mark old session ended");
+
+        let child = Command::new("/bin/sh")
+            .arg("-lc")
+            .arg("sleep 5")
+            .spawn()
+            .expect("spawn newer child");
+        let (output_tx, _rx) = broadcast::channel::<AgentOutput>(8);
+        let handle = AgentHandle {
+            child: std::sync::Arc::new(Mutex::new(Some(child))),
+            output_tx,
+            input: AgentInput::Stdin(std::sync::Arc::new(Mutex::new(None))),
+            session_id: new_session_id.clone(),
+            actor_context: None,
+            loop_controller: None,
+        };
+        state
+            .agents
+            .inner
+            .write()
+            .await
+            .insert(agent_id.clone(), handle);
+
+        super::AgentManager::finalize_process_exit(
+            &state.db,
+            &state.agents.event_dbs,
+            state.agents.idle_gc.clone(),
+            &state.agents.inner,
+            &state.push,
+            &agent_id,
+            &old_session_id,
+            false,
+        )
+        .await;
+
+        let running_handle_session = state
+            .agents
+            .inner
+            .read()
+            .await
+            .get(&agent_id)
+            .map(|handle| handle.session_id.clone());
+        assert_eq!(
+            running_handle_session.as_deref(),
+            Some(new_session_id.as_str())
+        );
+
+        if let Some(handle) = state.agents.inner.write().await.remove(&agent_id) {
+            let mut child_guard = handle.child.lock().await;
+            if let Some(mut child) = child_guard.take() {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
+        }
     }
 }
