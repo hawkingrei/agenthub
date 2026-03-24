@@ -45,5 +45,9 @@ The actor CLI was still able to fall back to local sqlite-backed managers in sev
 - PR `#198` exposed a stale internal gRPC time-trigger regression test: `build_test_state()` already seeds a `reviewer` agent, so `internal_grpc_time_trigger_rejects_unknown_agent` was accidentally exercising a valid actor instead of a missing one.
 - The test now uses a unique unseeded actor id and explicitly asserts the precondition before calling `create_time_trigger`.
 - The positive time-trigger wire-compat test also dropped a redundant `reviewer` insert so the fixture contract stays obvious.
+- Follow-up review cleanup tightened the new internal gRPC team-context path:
+  - mailbox client helpers now deserialize team context/task/time-trigger responses into typed structs instead of raw `serde_json::Value`
+  - run-scoped principals default `describe_team_context` to their scoped `run_id` when the request omits it
+  - team-context validation now maps a typed `TeamContextLookupError` instead of relying on substring checks
 - Focused validation:
   - `cargo test internal_grpc_time_trigger -- --nocapture`

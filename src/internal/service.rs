@@ -14,8 +14,8 @@ use crate::acp::AcpPermissionRespondResult;
 use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::state::AppState;
 use crate::team::{
-    TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
-    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
+    TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
 };
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
@@ -427,9 +427,15 @@ impl TeamInternalControl for TeamInternalControlService {
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
 
         let team_id = optional_trimmed(&payload.team_id);
-        let run_id = optional_trimmed(&payload.run_id);
-        if let Some(run_id) = run_id {
-            self.authz.ensure_run_scope(&principal, run_id)?;
+        let mut run_id = optional_trimmed(&payload.run_id);
+        if let Some(principal_run_id) = principal.run_id.as_deref() {
+            if let Some(request_run_id) = run_id {
+                self.authz.ensure_run_scope(&principal, request_run_id)?;
+            } else {
+                run_id = Some(principal_run_id);
+            }
+        } else if let Some(request_run_id) = run_id {
+            self.authz.ensure_run_scope(&principal, request_run_id)?;
         }
 
         let context =
@@ -1308,9 +1314,13 @@ fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
 }
 
 fn map_team_context_error(err: anyhow::Error) -> Status {
-    let message = err.to_string();
-    if message.contains("team_id or run_id is required") || message.contains("belongs to team") {
-        return Status::invalid_argument(message);
+    if let Some(cause) = err.downcast_ref::<TeamContextLookupError>() {
+        return match cause {
+            TeamContextLookupError::MissingSelector
+            | TeamContextLookupError::RunTeamMismatch { .. } => {
+                Status::invalid_argument(cause.to_string())
+            }
+        };
     }
     map_manager_error(err)
 }
@@ -1759,7 +1769,7 @@ mod tests {
         let state = build_test_state().await;
         let run = create_team_run(&state).await;
         let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
         let service = TeamInternalControlService::new(
             state.clone(),
             authz,
@@ -1818,6 +1828,40 @@ mod tests {
         .expect_err("mismatched team/run should fail");
         assert_eq!(mismatch_err.code(), Code::InvalidArgument);
         assert!(mismatch_err.message().contains("belongs to team"));
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_describe_team_context_defaults_to_scoped_run() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let context = TeamInternalControl::describe_team_context(
+            &service,
+            authenticated_request(
+                DescribeTeamContextRequest {
+                    team_id: String::new(),
+                    run_id: String::new(),
+                    actor_id: "planner".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("scoped run should default describe_team_context target")
+        .into_inner();
+        let context_json: serde_json::Value =
+            serde_json::from_str(&context.context_json).expect("decode scoped run context");
+        assert_eq!(context_json["team_id"], json!(run.team_id));
+        assert_eq!(context_json["run"]["run_id"], json!(run.id));
     }
 
     #[tokio::test]

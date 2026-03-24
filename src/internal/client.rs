@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use crate::acp::AcpActorSkillContext;
-use crate::agent::{AgentConfig, AgentEvent, AgentRecord, OutputStream};
+use crate::agent::{AgentConfig, AgentEvent, AgentRecord, AgentTimeTriggerRecord, OutputStream};
+use crate::team::{TeamContextRecord, TeamTaskRecord};
 use agenthub_team_actor::{
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
     ActorMessageRecord, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
@@ -324,7 +325,7 @@ impl InternalGrpcMailboxClient {
         team_id: Option<&str>,
         run_id: Option<&str>,
         actor_id: &str,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<TeamContextRecord> {
         let mut client = self.client();
         let response = client
             .describe_team_context(self.control_request(GrpcDescribeTeamContextRequest {
@@ -345,7 +346,7 @@ impl InternalGrpcMailboxClient {
         limit: i64,
         status: Option<&str>,
         include_shared_thread: bool,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<Vec<TeamTaskRecord>> {
         let mut client = self.client();
         let response = client
             .list_team_tasks(self.control_request(GrpcListTeamTasksRequest {
@@ -392,7 +393,7 @@ impl InternalGrpcMailboxClient {
         actor_id: &str,
         task_id: &str,
         status: &str,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<TeamTaskRecord> {
         let mut client = self.client();
         let response = client
             .update_team_task(self.control_request(GrpcUpdateTeamTaskRequest {
@@ -412,7 +413,7 @@ impl InternalGrpcMailboxClient {
         actor_id: &str,
         message_text: &str,
         fire_at: i64,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<AgentTimeTriggerRecord> {
         let mut client = self.client();
         let response = client
             .create_time_trigger(self.control_request(GrpcCreateTimeTriggerRequest {
@@ -430,7 +431,7 @@ impl InternalGrpcMailboxClient {
         &self,
         actor_id: &str,
         limit: i64,
-    ) -> anyhow::Result<serde_json::Value> {
+    ) -> anyhow::Result<Vec<AgentTimeTriggerRecord>> {
         let mut client = self.client();
         let response = client
             .list_time_triggers(self.control_request(GrpcListTimeTriggersRequest {

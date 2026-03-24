@@ -21,8 +21,9 @@ pub(crate) use mailbox_hint::{
 };
 #[allow(unused_imports)]
 pub use manager::{
-    SendActorMessageInput, TeamContextRecord, TeamConversationStreamEvent, TeamManager,
-    TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings, TeamRuntimeRecord, TeamRuntimeStatus,
+    SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
+    TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings, TeamRuntimeRecord,
+    TeamRuntimeStatus,
 };
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
