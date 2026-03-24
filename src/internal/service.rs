@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorSendRequest,
@@ -38,6 +39,7 @@ use super::proto::agenthub::internal::v1::{
 use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 
 const BOOTSTRAP_TOKEN_HEADER: &str = "x-agenthub-bootstrap-token";
+const MAILBOX_HINT_NOTIFY_TIMEOUT: Duration = Duration::from_millis(300);
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
 
@@ -221,16 +223,31 @@ impl TeamInternalControl for TeamInternalControlService {
                 .map_err(map_manager_error)?;
         }
 
-        if let Err(err) =
-            maybe_notify_actor_new_mailbox_message_type(&self.state, run_id, &message).await
+        match tokio::time::timeout(
+            MAILBOX_HINT_NOTIFY_TIMEOUT,
+            maybe_notify_actor_new_mailbox_message_type(&self.state, run_id, &message),
+        )
+        .await
         {
-            tracing::warn!(
-                run_id = %run_id,
-                to_actor_id = %message.message.to_actor_id,
-                message_id = message.message_id,
-                "team mailbox type hint notify failed: {}",
-                err
-            );
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    run_id = %run_id,
+                    to_actor_id = %message.message.to_actor_id,
+                    message_id = message.message_id,
+                    "team mailbox type hint notify failed: {}",
+                    err
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    run_id = %run_id,
+                    to_actor_id = %message.message.to_actor_id,
+                    message_id = message.message_id,
+                    timeout_ms = MAILBOX_HINT_NOTIFY_TIMEOUT.as_millis(),
+                    "team mailbox type hint notify timed out"
+                );
+            }
         }
 
         Ok(Response::new(SendActorMessageResponse {
@@ -437,7 +454,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let mut tasks = self
             .state
             .teams
-            .list_tasks(team_id, payload.limit)
+            .list_tasks(team_id, payload.limit.clamp(1, 500))
             .await
             .map_err(map_manager_error)?;
         if !payload.include_shared_thread {
@@ -548,6 +565,9 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        if payload.fire_at <= chrono::Utc::now().timestamp() {
+            return Err(Status::invalid_argument("fire_at must be in the future"));
+        }
         let manager = AgentTimeTriggerManager::new(self.state.db.clone());
         let trigger = manager
             .create_time_trigger(AgentTimeTriggerCreateInput {
@@ -1821,6 +1841,57 @@ mod tests {
             serde_json::to_value(&canceled_trigger.status).expect("serialize canceled status"),
             json!("canceled")
         );
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_time_trigger_rejects_past_fire_at() {
+        let state = build_test_state().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_time_triggers");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let err = TeamInternalControl::create_time_trigger(
+            &service,
+            authenticated_request(
+                CreateTimeTriggerRequest {
+                    actor_id: "reviewer".to_string(),
+                    message_text: "late trigger".to_string(),
+                    fire_at: chrono::Utc::now().timestamp() - 1,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("past fire_at should be rejected");
+        assert_eq!(err.code(), Code::InvalidArgument);
+        assert_eq!(err.message(), "fire_at must be in the future");
     }
 
     #[tokio::test]
