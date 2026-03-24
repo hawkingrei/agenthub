@@ -1,4 +1,6 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 
@@ -103,11 +105,74 @@ pub fn install_managed_skills(home_dir: Option<&Path>) -> Result<Vec<PathBuf>> {
             .context("managed skill document missing parent directory")?;
         std::fs::create_dir_all(parent)
             .with_context(|| format!("create managed skill directory {}", parent.display()))?;
-        std::fs::write(&doc.path, doc.contents.as_bytes())
-            .with_context(|| format!("write managed skill {}", doc.path.display()))?;
+        write_managed_skill_file(&doc.path, doc.contents.as_bytes())?;
         installed.push(doc.path);
     }
     Ok(installed)
+}
+
+fn write_managed_skill_file(path: &Path, contents: &[u8]) -> Result<()> {
+    if std::fs::read(path).ok().as_deref() == Some(contents) {
+        return Ok(());
+    }
+
+    let parent = path
+        .parent()
+        .context("managed skill document missing parent directory")?;
+    let temp_path = unique_temp_path(parent, path);
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp_path)
+            .with_context(|| format!("create temp managed skill {}", temp_path.display()))?;
+        file.write_all(contents)
+            .with_context(|| format!("write temp managed skill {}", temp_path.display()))?;
+        file.sync_all()
+            .with_context(|| format!("sync temp managed skill {}", temp_path.display()))?;
+    }
+
+    match std::fs::rename(&temp_path, path) {
+        Ok(()) => Ok(()),
+        Err(rename_err) => {
+            #[cfg(windows)]
+            {
+                if path.exists() {
+                    std::fs::remove_file(path)
+                        .with_context(|| format!("remove managed skill {}", path.display()))?;
+                    std::fs::rename(&temp_path, path).with_context(|| {
+                        format!(
+                            "replace managed skill {} from {}",
+                            path.display(),
+                            temp_path.display()
+                        )
+                    })?;
+                    return Ok(());
+                }
+            }
+
+            let _ = std::fs::remove_file(&temp_path);
+            Err(rename_err).with_context(|| {
+                format!(
+                    "replace managed skill {} from {}",
+                    path.display(),
+                    temp_path.display()
+                )
+            })
+        }
+    }
+}
+
+fn unique_temp_path(parent: &Path, target_path: &Path) -> PathBuf {
+    let basename = target_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(SKILL_DOC_NAME);
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    parent.join(format!(".{basename}.{}.{}.tmp", std::process::id(), nonce))
 }
 
 pub fn resolve_home_dir(home_dir: Option<&Path>) -> Result<PathBuf> {
@@ -234,36 +299,37 @@ You are running inside an AgentHub actor session.
 
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
-`current_run_id`, `actor_id`, `default_channel`, and optional continuity
-summary for this specific session.
+`current_run_id`, `actor_id`, `default_channel`, `actor_cli_path`, and
+optional continuity summary for this specific session.
 
-Use the actor CLI for runtime coordination:
+Use the concrete `actor_cli_path` from the runtime context block for runtime
+coordination.
 
 Team mailbox commands:
 
 1. Pull inbox:
-   `"$AGENTHUB_ACTOR_CLI" actor inbox --run-id "<run-id>" --limit 20`
+   `<actor_cli_path> actor inbox --run-id "<run-id>" --limit 20`
 2. Acknowledge a message after processing:
-   `"$AGENTHUB_ACTOR_CLI" actor ack --run-id "<run-id>" --message-id 123`
+   `<actor_cli_path> actor ack --run-id "<run-id>" --message-id 123`
 3. Send a local direct message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `<actor_cli_path> actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
 5. Send a remote direct message:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 6. Send an urgent human notification:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
+   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
 7. Force duplicate delivery when business logic requires repeated send:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 8. Use explicit idempotency key when coordinating retries across workers:
-   `"$AGENTHUB_ACTOR_CLI" actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
 Team context commands:
 
 9. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
-   `"$AGENTHUB_ACTOR_CLI" actor team-members`
+   `<actor_cli_path> actor team-members`
 10. When you need step-level overlay for a specific run:
-   `"$AGENTHUB_ACTOR_CLI" actor team-members --run-id "<run-id>"`
+   `<actor_cli_path> actor team-members --run-id "<run-id>"`
 
 Protocol rules:
 
@@ -321,6 +387,8 @@ mod tests {
                 .starts_with("---\nname: agenthub-actor-runtime\n")
         );
         assert!(doc.contents.contains("Runtime coordination contract"));
+        assert!(doc.contents.contains("`actor_cli_path`"));
+        assert!(doc.contents.contains("<actor_cli_path> actor inbox"));
     }
 
     #[test]

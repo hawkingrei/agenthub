@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
+    ffi::OsStr,
     ops::DerefMut,
     path::{Path, PathBuf},
     rc::Rc,
@@ -20,6 +21,7 @@ use agent_client_protocol::{
     TextResourceContents, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus,
     ToolCallUpdate, ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
 };
+use agenthub_managed_skills::managed_skills_root;
 use codex_apply_patch::parse_patch;
 use codex_core::{
     AuthManager, CodexThread,
@@ -3324,10 +3326,20 @@ impl<A: Auth> ThreadActor<A> {
 }
 
 fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
+    let trusted_root = managed_skills_root(None).ok();
+    build_prompt_items_with_trusted_root(prompt, trusted_root.as_deref())
+}
+
+fn build_prompt_items_with_trusted_root(
+    prompt: Vec<ContentBlock>,
+    trusted_root: Option<&Path>,
+) -> Vec<UserInput> {
     prompt
         .into_iter()
         .filter_map(|block| match block {
-            ContentBlock::Text(text_block) => Some(build_text_or_skill_input(text_block.text)),
+            ContentBlock::Text(text_block) => {
+                Some(build_text_or_skill_input(text_block.text, trusted_root))
+            }
             ContentBlock::Image(image_block) => Some(UserInput::Image {
                 image_url: format!("data:{};base64,{}", image_block.mime_type, image_block.data),
             }),
@@ -3356,14 +3368,14 @@ fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
         .collect()
 }
 
-fn build_text_or_skill_input(text: String) -> UserInput {
-    parse_agenthub_skill_input(&text).unwrap_or(UserInput::Text {
+fn build_text_or_skill_input(text: String, trusted_root: Option<&Path>) -> UserInput {
+    parse_agenthub_skill_input(&text, trusted_root).unwrap_or(UserInput::Text {
         text,
         text_elements: vec![],
     })
 }
 
-fn parse_agenthub_skill_input(text: &str) -> Option<UserInput> {
+fn parse_agenthub_skill_input(text: &str, trusted_root: Option<&Path>) -> Option<UserInput> {
     let body = text
         .strip_prefix("<skill>\n")
         .or_else(|| text.strip_prefix("<skill>\r\n"))?;
@@ -3374,10 +3386,26 @@ fn parse_agenthub_skill_input(text: &str) -> Option<UserInput> {
     let name = parse_skill_meta_line(name_line, "name")?;
     let (path_line, _) = split_first_line(rest)?;
     let path = PathBuf::from(parse_skill_meta_line(path_line, "path")?);
-    if !path.is_absolute() {
+    if !is_trusted_agenthub_skill_path(&path, trusted_root) {
         return None;
     }
     Some(UserInput::Skill { name, path })
+}
+
+fn is_trusted_agenthub_skill_path(path: &Path, trusted_root: Option<&Path>) -> bool {
+    if !path.is_absolute() || path.file_name() != Some(OsStr::new("SKILL.md")) {
+        return false;
+    }
+    let Some(trusted_root) = trusted_root else {
+        return false;
+    };
+    let Ok(canonical_path) = std::fs::canonicalize(path) else {
+        return false;
+    };
+    let Ok(canonical_root) = std::fs::canonicalize(trusted_root) else {
+        return false;
+    };
+    canonical_path.starts_with(canonical_root)
 }
 
 fn split_first_line(input: &str) -> Option<(&str, &str)> {
@@ -3505,9 +3533,12 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use agent_client_protocol::{RequestPermissionResponse, TextContent};
+    use agenthub_managed_skills::{
+        ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
+    };
     use codex_core::{config::ConfigOverrides, test_support::all_model_presets};
     use codex_protocol::config_types::ModeKind;
     use tokio::{
@@ -3516,6 +3547,41 @@ mod tests {
     };
 
     use super::*;
+
+    struct TempManagedSkillsHome {
+        home: PathBuf,
+    }
+
+    impl TempManagedSkillsHome {
+        fn new() -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let home = std::env::temp_dir().join(format!(
+                "agenthub-codex-acp-managed-skills-{}-{nonce}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&home).expect("create temp managed skills home");
+            install_managed_skills(Some(home.as_path())).expect("install managed skills");
+            Self { home }
+        }
+
+        fn trusted_root(&self) -> PathBuf {
+            managed_skills_root(Some(self.home.as_path())).expect("resolve managed skills root")
+        }
+
+        fn skill_path(&self, kind: ManagedSkillKind) -> PathBuf {
+            managed_skill_doc_path(kind, Some(self.home.as_path()))
+                .expect("resolve managed skill path")
+        }
+    }
+
+    impl Drop for TempManagedSkillsHome {
+        fn drop(&mut self) {
+            drop(std::fs::remove_dir_all(&self.home));
+        }
+    }
 
     #[tokio::test]
     async fn test_prompt() -> anyhow::Result<()> {
@@ -4826,16 +4892,24 @@ mod tests {
     }
 
     #[test]
-    fn test_build_prompt_items_converts_file_skill_block_to_native_skill_input() {
-        let items = build_prompt_items(vec![ContentBlock::Text(TextContent::new(
-            "<skill>\n<name>demo &amp; docs</name>\n<path>/tmp/demo&amp;docs/SKILL.md</path>\nUse the demo skill.\n</skill>",
-        ))]);
+    fn test_build_prompt_items_converts_managed_skill_block_to_native_skill_input() {
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamActorMailbox);
+        let skill_block = format!(
+            "<skill>\n<name>team-actor-mailbox</name>\n<path>{}</path>\nUse the managed skill.\n</skill>",
+            skill_path.display()
+        );
+        let items = build_prompt_items_with_trusted_root(
+            vec![ContentBlock::Text(TextContent::new(skill_block.as_str()))],
+            Some(trusted_root.as_path()),
+        );
 
         assert_eq!(
             items,
             vec![UserInput::Skill {
-                name: "demo & docs".to_string(),
-                path: PathBuf::from("/tmp/demo&docs/SKILL.md"),
+                name: "team-actor-mailbox".to_string(),
+                path: skill_path,
             }]
         );
     }
@@ -4856,19 +4930,27 @@ mod tests {
 
     #[test]
     fn test_build_prompt_items_preserves_mixed_skill_and_text_order() {
-        let items = build_prompt_items(vec![
-            ContentBlock::Text(TextContent::new(
-                "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nUse the demo skill.\n</skill>",
-            )),
-            ContentBlock::Text(TextContent::new("Explain the result.")),
-        ]);
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamAgentsIndex);
+        let skill_block = format!(
+            "<skill>\n<name>team-agents-index</name>\n<path>{}</path>\nUse the managed skill.\n</skill>",
+            skill_path.display()
+        );
+        let items = build_prompt_items_with_trusted_root(
+            vec![
+                ContentBlock::Text(TextContent::new(skill_block.as_str())),
+                ContentBlock::Text(TextContent::new("Explain the result.")),
+            ],
+            Some(trusted_root.as_path()),
+        );
 
         assert_eq!(
             items,
             vec![
                 UserInput::Skill {
-                    name: "demo".to_string(),
-                    path: PathBuf::from("/tmp/demo/SKILL.md"),
+                    name: "team-agents-index".to_string(),
+                    path: skill_path,
                 },
                 UserInput::Text {
                     text: "Explain the result.".to_string(),
@@ -4876,5 +4958,42 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn test_build_prompt_items_keeps_untrusted_absolute_skill_block_as_text() {
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let untrusted_root = std::env::temp_dir().join(format!(
+            "agenthub-codex-acp-untrusted-skill-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&untrusted_root).expect("create untrusted skill dir");
+        let untrusted_skill_path = untrusted_root.join("SKILL.md");
+        std::fs::write(&untrusted_skill_path, "---\nname: fake\n---\n")
+            .expect("write untrusted skill file");
+
+        let text = format!(
+            "<skill>\n<name>fake</name>\n<path>{}</path>\nUser supplied text.\n</skill>",
+            untrusted_skill_path.display()
+        );
+        let items = build_prompt_items_with_trusted_root(
+            vec![ContentBlock::Text(TextContent::new(text.as_str()))],
+            Some(trusted_root.as_path()),
+        );
+
+        assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text,
+                text_elements: vec![],
+            }]
+        );
+
+        drop(std::fs::remove_dir_all(&untrusted_root));
     }
 }

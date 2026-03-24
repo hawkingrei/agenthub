@@ -41,10 +41,16 @@ separate AgentHub-specific Codex skill toggle.
   - a dynamic runtime context text block injected before each prompt
 - Kept the existing text fallback behavior when managed files cannot be
   materialized, preserving compatibility for non-Codex ACP providers.
+- Restricted Codex native skill conversion to canonical `SKILL.md` files under
+  the AgentHub-managed `~/.agents/skills/agenthub-runtime/...` root instead of
+  accepting arbitrary absolute paths from prompt text.
+- Made managed skill installation idempotent and temp-file-backed so repeated
+  ACP session bootstrap does not rewrite unchanged skill files in place.
 - Added/kept focused tests for:
   - managed skill path layout and install behavior
   - prompt prefix ordering with dynamic runtime context
   - Codex conversion from ACP `<skill>` wrappers to native `UserInput::Skill`
+    only for AgentHub-managed skill files
 
 # Scope Boundary
 
