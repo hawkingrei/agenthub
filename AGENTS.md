@@ -25,6 +25,7 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 - Frontend UI standard: all new UI features and UI refactors must use the project UI library (`@mantine/core`) plus Tailwind CSS utility classes as the default styling path
 - CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
 - Maintainability policy: low-risk maintainability review suggestions should be implemented directly in the active change instead of being deferred by default
+- Agent context/file-boundary policy: there is no hard single-file LOC cap, but code should be organized for token-efficient navigation; prefer cohesive files plus thin routing/index files, and split files when mixed responsibilities or sustained work would require reading large unrelated sections (rough warning threshold: ~800-1000 LOC or multi-domain ownership)
 - Development policy: AgentHub follows TDD / test-first for non-trivial changes; add or update focused tests before or alongside implementation, and treat missing regression coverage as unfinished work
 - Database: SQLite
 - Deployment: single binary, no separate frontend deployment
@@ -38,21 +39,26 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 4) Login uses username/password with token-based auth; join/bootstrap remains available for initial setup flows.
 5) ACP (Agent Control Protocol) renders structured agent output; history must be retained.
 6) Rust code should be decomposed by domain into library crates (`crates/<domain>`), not by arbitrary file split.
-7) `src/main.rs` should stay a thin bootstrap entry; business logic should live in library crates and be composed in `src/app.rs` or domain crates.
+7) `cmd/agenthub/src/main.rs` should stay a thin bootstrap entry; business logic should live in library crates and be composed in `src/app.rs` plus domain crates.
 8) New Rust domain modules should define Bazel targets with boundaries aligned to crate boundaries (one domain crate, one Bazel package as default).
 
 ## 5. Directory Plan (adjustable)
 
 ```
 agenthub/
+  cmd/
+    agenthub/
+      Cargo.toml
+      src/
+        main.rs          # binary bootstrap only
   crates/
     acp/
     openapi/
     ...                 # domain-oriented libraries
   src/
     app.rs              # bootstrap composition
+    actor_cli.rs        # CLI entry library module
     lib.rs              # library entry point
-    main.rs
     api/
     agent/
     auth/
@@ -162,6 +168,7 @@ agenthub/
   - Worker/sub-agent runs should default to minimal prompt mode by omitting nonessential sections to control token budget.
   - Tool constraints should prefer an appended `Allowed actions` policy block over runtime mutation of tool schemas.
   - Context and memory sections in `AGENTS.md` should stay concise as index pointers; append implementation details to dedicated skills/docs.
+  - Repository file boundaries should help agents load small relevant slices: prefer thin index/routing files plus cohesive implementation files over large grab-bag modules or many tiny files without clear ownership.
   - Team runtime coordination details live in `docs/features/actor-foundation.md` and the Team mailbox/role skills; `docs/features/team-mcp-enforcement.md` is historical background only.
 - Rust crate decomposition policy (Bazel-oriented):
   - Prefer extracting domain libraries into `crates/<domain>` and keep crate APIs cohesive and stable
