@@ -5,9 +5,18 @@ import { AcpPanel } from "../components/acp_panel";
 import { getAcpConversationCacheStats } from "../components/acp_conversation";
 import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";
+import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
 import {
+  OUTPUT_HEADER_META_CLASS,
+  OUTPUT_HEADER_PILL_CLASS,
+  OUTPUT_HEADER_ROOT_CLASS,
+  OUTPUT_HEADER_SESSION_CLASS,
+  OUTPUT_HEADER_TITLE_CLASS,
+  OUTPUT_HEADER_TITLE_HEADING_CLASS,
+  OUTPUT_HEADER_TITLE_MAIN_CLASS,
+  OUTPUT_HEADER_TITLE_TEXT_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
@@ -69,8 +78,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [memberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
+  const thinkingStartTs = acpView.thinkingStartTs;
   const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
+  const [, setThinkingTick] = React.useState(0);
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -126,6 +137,16 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     setAcpTab("conversation");
   }, [selectedMemberId, selectedSessionId]);
   React.useEffect(() => {
+    if (!thinkingStartTs) {
+      return;
+    }
+    setThinkingTick(0);
+    const timer = window.setInterval(() => {
+      setThinkingTick((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [thinkingStartTs]);
+  React.useEffect(() => {
     setInput("");
     setInputHistory([]);
     setInputHistoryCursor(-1);
@@ -138,6 +159,24 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     memberEventsHasMore &&
     oldestMemberEventId != null;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
+  const memberTitle = selectedMemberId.trim() || "No team member selected";
+  const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
+  const memberRoleLabel =
+    selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
+  const memberStatus = (
+    acpView.runStatus?.status?.trim() ||
+    selectedMemberSnapshot?.status?.trim() ||
+    selectedMemberSnapshot?.session_status?.trim() ||
+    memberRoleLabel ||
+    "unknown"
+  ).toLowerCase();
+  const thinkingLabel = thinkingStartTs
+    ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - thinkingStartTs))}s`
+    : null;
+  const memberStatusLabel = thinkingLabel
+    ? `${memberStatus} · ${thinkingLabel}`
+    : memberStatus;
+  const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
   const handleTerminalScroll = React.useCallback(() => {
     const element = terminalRef.current;
     if (!element) {
@@ -358,8 +397,10 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpSetModel: NOOP,
         onAcpSetConfig: NOOP,
         onAcpCancel: NOOP,
-        onAcpClearSession: onForceNewSession ?? NOOP,
-        acpClearSessionLabel: "Force New Session",
+        onAcpClearSession: () => {
+          void onForceNewSession?.();
+        },
+        acpClearSessionLabel: onForceNewSession ? "Force New Session" : undefined,
         onJumpToPermissionHistory: NOOP,
         runtimeMetrics: acpRuntimeMetrics,
       },
@@ -459,6 +500,36 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
 
       {shouldRenderPanel && (
         <div className="relative mt-2 min-h-0 flex-1">
+          <div className={OUTPUT_HEADER_ROOT_CLASS}>
+            <div className={OUTPUT_HEADER_TITLE_CLASS}>
+              <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
+                <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
+                  <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
+                  {memberModelLabel ? (
+                    <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            <div className={OUTPUT_HEADER_META_CLASS}>
+              <StatusBadge
+                label={memberStatusLabel}
+                tone={resolveTeamRunStatusTone(memberStatus)}
+                className={`agent-status status-${memberStatusClassToken}`}
+                title={`status: ${memberStatusLabel}`}
+              />
+              {memberRoleLabel ? (
+                <span className={OUTPUT_HEADER_PILL_CLASS}>
+                  Role {memberRoleLabel}
+                </span>
+              ) : null}
+              {developerMode && selectedSessionId ? (
+                <span className={OUTPUT_HEADER_SESSION_CLASS}>
+                  Session {selectedSessionId.slice(0, 8)}
+                </span>
+              ) : null}
+            </div>
+          </div>
           <AcpPanel {...acpPanelProps} />
         </div>
       )}

@@ -57,6 +57,7 @@ Active backlog only. Keep this file small and current.
 
 ## CI, Docs, And Maintainability
 
+- [ ] Verify the Bazel CI linker baseline after installing `lld`: `bazel build //...` and `bazel test //...` on both `push` and `pull_request` should stop emitting the Rust gold-linker deprecation warning, and the workflow run IDs should be recorded before closing this item (see `docs/journal/2026-03-24-bazel-ci-lld-linker.md`).
 - [ ] Verify Codecov strict-mode uploads and core CI matrices (`Rust`, `Web`, `Web E2E`, distributed node tests, Linux sandbox hardening) on both `push` and `pull_request`, and record run IDs before closing the remaining rollout items (see `docs/journal/2026-02-19-ci-libcap-linux-sandbox.md`, `docs/journal/2026-02-20-ci-codecov-fail-fast-upload.md`, `docs/journal/2026-03-19-distributed-node-architecture.md`).
 - [ ] Continue `docs/features` compaction wave 2: move stable conclusions out of residual Team and UI micro-journals into canonical feature specs and replace merged records with explicit supersession pointers where useful (see `docs/features/README.md`).
 - [ ] Strengthen documentation governance: every user-visible workflow change should update `userdocs/`, stable engineering contracts should live in `docs/features/`, and `docs/todo.md` should remain an active backlog rather than a historical ledger (see `docs/README.md`, `docs/journal/2026-03-24-documentation-surface-compaction.md`).

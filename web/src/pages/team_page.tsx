@@ -118,6 +118,8 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedTeamTask,
   resolveTaskConversationMemberIds,
+  removeTeamMemberLookupEntry,
+  resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   sortTasksByActivity,
@@ -213,6 +215,10 @@ export {
   selectRunsForTask,
   selectTeamPreviewEvents,
 } from "./team/run_helpers";
+export {
+  removeTeamMemberLookupEntry,
+  resolveTeamMemberAgentControlState,
+} from "./team/page_helpers";
 export type { MailboxTemplateKey, TeamMailboxChatActors } from "./team/mailbox_helpers";
 export type {
   TeamMemberAgentStatus,
@@ -2374,6 +2380,13 @@ export function TeamPage(props: TeamPageProps) {
       ),
     [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
   );
+  const selectedAgentWorkspaceAgent = useMemo(() => {
+    const memberId = selectedAgentWorkspaceMemberId.trim();
+    if (!memberId) {
+      return null;
+    }
+    return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
+  }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
   const selectedAgentSpecDraft = useMemo(() => {
     if (!selectedTeam) {
       return null;
@@ -2688,6 +2701,130 @@ export function TeamPage(props: TeamPageProps) {
     setError,
     setWarning,
   ]);
+  const onStartSelectedTeamAgent = useCallback(async () => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setBusy("start-team-member-agent");
+    try {
+      await api.startAgent(props.token, selectedAgentWorkspaceAgent.id);
+      void Promise.all([
+        refreshAgents(),
+        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
+      ]).catch(() => undefined);
+      setWarning(`Started ${selectedAgentLabel}.`);
+    } catch (err) {
+      const message = parseErrorMessage(err);
+      if (message.toLowerCase().includes("agent already running")) {
+        void Promise.all([
+          refreshAgents(),
+          selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
+        ]).catch(() => undefined);
+        setWarning(`${selectedAgentLabel} is already running.`);
+        return;
+      }
+      setError(message);
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    selectedAgentLabel,
+    selectedAgentWorkspaceAgent,
+    selectedTeamId,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
+  const onStopSelectedTeamAgent = useCallback(async () => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setBusy("stop-team-member-agent");
+    try {
+      await api.stopAgent(props.token, selectedAgentWorkspaceAgent.id);
+      void Promise.all([
+        refreshAgents(),
+        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
+      ]).catch(() => undefined);
+      setWarning(`Stopped ${selectedAgentLabel}.`);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    selectedAgentLabel,
+    selectedAgentWorkspaceAgent,
+    selectedTeamId,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
+  const onDeleteSelectedTeamAgent = useCallback(async () => {
+    if (!props.token || !selectedAgentWorkspaceAgent || !selectedAgentWorkspaceMemberId) {
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setBusy("delete-team-member-agent");
+    try {
+      await api.deleteAgent(props.token, selectedAgentWorkspaceAgent.id);
+      setAgents((prev) =>
+        prev.filter((agent) => agent.id !== selectedAgentWorkspaceAgent.id)
+      );
+      setTeamMemberAgentsById((prev) => ({
+        ...prev,
+        [selectedAgentWorkspaceMemberId]: null,
+      }));
+      setMemberDiscoveryCardsById((prev) => {
+        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
+      });
+      setMemberDiscoveryCardLoadingById((prev) => {
+        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
+      });
+      void Promise.all([
+        refreshAgents(),
+        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
+      ]).catch(() => undefined);
+      setWarning(
+        `Deleted ${selectedAgentLabel}. The Team member remains in the spec until you edit the profile.`
+      );
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    selectedAgentLabel,
+    selectedAgentWorkspaceAgent,
+    selectedAgentWorkspaceMemberId,
+    selectedTeamId,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
+  const selectedAgentControlState = useMemo(
+    () =>
+      resolveTeamMemberAgentControlState(
+        selectedAgentWorkspaceAgent,
+        selectedAgentStatusView.lifecycle,
+        busy
+      ),
+    [busy, selectedAgentStatusView.lifecycle, selectedAgentWorkspaceAgent]
+  );
   useEffect(() => {
     if (!selectedTeamId) {
       return;
@@ -3437,6 +3574,28 @@ export function TeamPage(props: TeamPageProps) {
                             onClick={openTeamMemberEditModal}
                           >
                             Edit profile
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                            onClick={onStartSelectedTeamAgent}
+                            disabled={!selectedAgentControlState.canStart}
+                          >
+                            Start Agent
+                          </Menu.Item>
+                          <Menu.Item
+                            leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                            onClick={onStopSelectedTeamAgent}
+                            disabled={!selectedAgentControlState.canStop}
+                          >
+                            Stop Agent
+                          </Menu.Item>
+                          <Menu.Item
+                            color="red"
+                            leftSection={<i className="bi bi-trash" aria-hidden="true" />}
+                            onClick={onDeleteSelectedTeamAgent}
+                            disabled={!selectedAgentControlState.canDelete}
+                          >
+                            Delete Agent
                           </Menu.Item>
                         </Menu.Dropdown>
                       </Menu>

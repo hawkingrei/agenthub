@@ -2671,6 +2671,35 @@ describe("team panels interactions", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
   });
+  it("TeamMemberAcpPanel mirrors member header status and model metadata", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          model: "gpt-5",
+          status: "working",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("gpt-5");
+    expect(container.textContent).toContain("working");
+    expect(container.textContent).toContain("Role worker");
+    expect(container.textContent).toContain("Session task-77");
+  });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
     const onForceNewSession = vi.fn();
@@ -2698,7 +2727,6 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Force New Session"));
     expect(onForceNewSession).toHaveBeenCalledTimes(1);
   });
-
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
     const onLoadOlder = vi.fn();
 
@@ -2756,6 +2784,47 @@ describe("team panels interactions", () => {
       "Inspecting the previous failure before replying."
     );
     expect(container.textContent).toContain("I found the relevant stack trace.");
+  });
+
+  it("TeamMemberAcpPanel shows active thinking status in the header", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_700_000_208_000);
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          status: "working",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[
+          {
+            event_id: 23,
+            agent_id: "worker-agent",
+            session_id: "task-77",
+            seq: "23",
+            ts: 1_700_000_203,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_thought",
+              text: "Inspecting the previous failure before replying.",
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("working · thinking 5s");
+    nowSpy.mockRestore();
   });
 
   it("TeamMemberAcpPanel hides technical metadata when developer mode is off", () => {
