@@ -8,24 +8,32 @@ use serde_json::Value;
 use sqlx::Row;
 use tonic::{Request, Response, Status, metadata::MetadataMap};
 
+use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionRespondResult;
+use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::state::AppState;
-use crate::team::{TeamStepRecord, TeamStepStatus};
-use crate::{acp::AcpActorSkillContext, agent::AgentConfig};
+use crate::team::{
+    TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+};
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
 use super::p2p::{CredentialProvider, NodeCredentialRequest};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
-    DeleteManagedAgentRequest, DeleteManagedAgentResponse, EnsureAgentRecordRequest,
-    EnsureAgentRecordResponse, GetAgentRecordRequest, GetAgentRecordResponse,
-    IssueNodeCredentialRequest, IssueNodeCredentialResponse, ListActorInboxRequest,
-    ListActorInboxResponse, ListAgentEventsRequest, ListAgentEventsResponse,
-    RespondPermissionReviewRequest, RespondPermissionReviewResponse, SendActorMessageRequest,
-    SendActorMessageResponse, SendAgentInputRequest, SendAgentInputResponse,
-    StartManagedAgentRequest, StartManagedAgentResponse, StopManagedAgentRequest,
-    StopManagedAgentResponse, TransitionStepRequest, TransitionStepResponse,
+    CancelTimeTriggerRequest, CancelTimeTriggerResponse, CreateTeamTaskRequest,
+    CreateTeamTaskResponse, CreateTimeTriggerRequest, CreateTimeTriggerResponse,
+    DeleteManagedAgentRequest, DeleteManagedAgentResponse, DescribeTeamContextRequest,
+    DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
+    GetAgentRecordRequest, GetAgentRecordResponse, IssueNodeCredentialRequest,
+    IssueNodeCredentialResponse, ListActorInboxRequest, ListActorInboxResponse,
+    ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
+    ListTimeTriggersRequest, ListTimeTriggersResponse, RespondPermissionReviewRequest,
+    RespondPermissionReviewResponse, SendActorMessageRequest, SendActorMessageResponse,
+    SendAgentInputRequest, SendAgentInputResponse, StartManagedAgentRequest,
+    StartManagedAgentResponse, StopManagedAgentRequest, StopManagedAgentResponse,
+    TransitionStepRequest, TransitionStepResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
 };
 use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 
@@ -213,6 +221,18 @@ impl TeamInternalControl for TeamInternalControlService {
                 .map_err(map_manager_error)?;
         }
 
+        if let Err(err) =
+            maybe_notify_actor_new_mailbox_message_type(&self.state, run_id, &message).await
+        {
+            tracing::warn!(
+                run_id = %run_id,
+                to_actor_id = %message.message.to_actor_id,
+                message_id = message.message_id,
+                "team mailbox type hint notify failed: {}",
+                err
+            );
+        }
+
         Ok(Response::new(SendActorMessageResponse {
             message_id: message.message_id,
             status: message.state.as_str().to_string(),
@@ -370,6 +390,228 @@ impl TeamInternalControl for TeamInternalControlService {
                 from_peer_id,
                 to_peer_id,
             }),
+        }))
+    }
+
+    async fn describe_team_context(
+        &self,
+        request: Request<DescribeTeamContextRequest>,
+    ) -> Result<Response<DescribeTeamContextResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamRead)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+
+        let team_id = optional_trimmed(&payload.team_id);
+        let run_id = optional_trimmed(&payload.run_id);
+        if let Some(run_id) = run_id {
+            self.authz.ensure_run_scope(&principal, run_id)?;
+        }
+
+        let context =
+            load_team_context_for_actor(&self.state.teams, team_id, run_id, actor_id).await?;
+        Ok(Response::new(DescribeTeamContextResponse {
+            context_json: serde_json::to_string(&context).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn list_team_tasks(
+        &self,
+        request: Request<ListTeamTasksRequest>,
+    ) -> Result<Response<ListTeamTasksResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamRead)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        ensure_team_member_access(&self.state.teams, team_id, actor_id).await?;
+
+        let mut tasks = self
+            .state
+            .teams
+            .list_tasks(team_id, payload.limit)
+            .await
+            .map_err(map_manager_error)?;
+        if !payload.include_shared_thread {
+            tasks.retain(|task| !is_shared_thread_task(task));
+        }
+        if let Some(status) = optional_trimmed(&payload.status) {
+            let status = parse_team_task_status(status)?;
+            tasks.retain(|task| task.status == status);
+        }
+
+        Ok(Response::new(ListTeamTasksResponse {
+            tasks_json: serde_json::to_string(&tasks).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn create_team_task(
+        &self,
+        request: Request<CreateTeamTaskRequest>,
+    ) -> Result<Response<CreateTeamTaskResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+
+        let title = required_field(&payload.title, "title")?;
+        let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
+        let topic = optional_trimmed(&payload.topic);
+        let context = parse_json_required(&payload.context_json, "context_json")?;
+
+        let (task, conversation) = self
+            .state
+            .teams
+            .create_task(team_id, title, actor_id, context, "group_chat", topic)
+            .await
+            .map_err(map_manager_error)?;
+        let task = if status == TeamTaskStatus::Open {
+            task
+        } else {
+            self.state
+                .teams
+                .update_task_status(&task.id, status)
+                .await
+                .map_err(map_manager_error)?
+        };
+        Ok(Response::new(CreateTeamTaskResponse {
+            output_json: serde_json::to_string(&serde_json::json!({
+                "task": task,
+                "conversation": conversation,
+            }))
+            .map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn update_team_task(
+        &self,
+        request: Request<UpdateTeamTaskRequest>,
+    ) -> Result<Response<UpdateTeamTaskResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+
+        let task_id = required_field(&payload.task_id, "task_id")?;
+        let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
+        let existing = self
+            .state
+            .teams
+            .get_task(task_id)
+            .await
+            .map_err(map_manager_error)?;
+        if existing.team_id != team_id {
+            return Err(Status::permission_denied(
+                "task does not belong to this team",
+            ));
+        }
+        let task = self
+            .state
+            .teams
+            .update_task_status(task_id, status)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(UpdateTeamTaskResponse {
+            task_json: serde_json::to_string(&task).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn create_time_trigger(
+        &self,
+        request: Request<CreateTimeTriggerRequest>,
+    ) -> Result<Response<CreateTimeTriggerResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TimeTriggerManage)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let trigger = manager
+            .create_time_trigger(AgentTimeTriggerCreateInput {
+                agent_id: actor_id.to_string(),
+                created_by_actor_id: actor_id.to_string(),
+                message_text: required_field(&payload.message_text, "message_text")?.to_string(),
+                fire_at: payload.fire_at,
+            })
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(CreateTimeTriggerResponse {
+            trigger_json: serde_json::to_string(&trigger).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn list_time_triggers(
+        &self,
+        request: Request<ListTimeTriggersRequest>,
+    ) -> Result<Response<ListTimeTriggersResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TimeTriggerManage)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let triggers = manager
+            .list_triggers_for_agent(actor_id, payload.limit)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(ListTimeTriggersResponse {
+            triggers_json: serde_json::to_string(&triggers).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn cancel_time_trigger(
+        &self,
+        request: Request<CancelTimeTriggerRequest>,
+    ) -> Result<Response<CancelTimeTriggerResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TimeTriggerManage)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let trigger_id = required_field(&payload.trigger_id, "trigger_id")?;
+        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let canceled = manager
+            .cancel_trigger(actor_id, trigger_id)
+            .await
+            .map_err(map_manager_error)?;
+        if !canceled {
+            return Err(Status::not_found("time trigger not found"));
+        }
+        Ok(Response::new(CancelTimeTriggerResponse {
+            output_json: serde_json::to_string(&serde_json::json!({
+                "status": "ok",
+                "trigger_id": trigger_id,
+            }))
+            .map_err(map_serde_status)?,
         }))
     }
 
@@ -917,6 +1159,140 @@ fn resolve_channel_replica_request(payload: &Value) -> Option<ChannelReplicaRequ
     })
 }
 
+async fn maybe_notify_actor_new_mailbox_message_type(
+    state: &AppState,
+    run_id: &str,
+    send_result: &agenthub_team_actor::ActorSendResponse,
+) -> anyhow::Result<()> {
+    let Some(plan) = plan_actor_mailbox_immediate_hint(&state.teams, run_id, send_result).await?
+    else {
+        return Ok(());
+    };
+    let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
+    let reason_label = match plan.reason {
+        crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
+        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention => {
+            "leader_channel_mention"
+        }
+    };
+    let mut sent_targets = Vec::new();
+    let mut failed_targets = Vec::new();
+    for target_actor_id in &plan.target_actor_ids {
+        match state
+            .agents
+            .send_input(target_actor_id, &prompt, None, None)
+            .await
+        {
+            Ok(()) => sent_targets.push(target_actor_id.clone()),
+            Err(err) => {
+                tracing::debug!(
+                    run_id = %run_id,
+                    actor_id = %target_actor_id,
+                    reason = ?plan.reason,
+                    "skip mailbox hint push because agent input is unavailable: {}",
+                    err
+                );
+                failed_targets.push(target_actor_id.clone());
+            }
+        }
+    }
+    if let Err(err) = state
+        .teams
+        .append_run_event(
+            run_id,
+            "actor_mailbox_type_hint",
+            serde_json::json!({
+                "status": if failed_targets.is_empty() { "sent" } else if sent_targets.is_empty() { "send_failed" } else { "partial" },
+                "message_id": send_result.message_id,
+                "reason": reason_label,
+                "target_actor_ids": plan.target_actor_ids,
+                "sent_actor_ids": sent_targets,
+                "failed_actor_ids": failed_targets,
+            }),
+        )
+        .await
+    {
+        tracing::warn!(
+            run_id = %run_id,
+            "failed to append actor_mailbox_type_hint event: {}",
+            err
+        );
+    }
+    Ok(())
+}
+
+async fn load_team_context_for_actor(
+    manager: &TeamManager,
+    team_id: Option<&str>,
+    run_id: Option<&str>,
+    actor_id: &str,
+) -> Result<crate::team::TeamContextRecord, Status> {
+    let context = manager
+        .describe_team_context(team_id, run_id)
+        .await
+        .map_err(map_manager_error)?;
+    ensure_team_member_access(manager, &context.team_id, actor_id).await?;
+    Ok(context)
+}
+
+async fn ensure_team_member_access(
+    manager: &TeamManager,
+    team_id: &str,
+    actor_id: &str,
+) -> Result<(), Status> {
+    if manager
+        .team_has_member(team_id, actor_id)
+        .await
+        .map_err(map_manager_error)?
+    {
+        return Ok(());
+    }
+    Err(Status::permission_denied(
+        "current actor is not a member of this team",
+    ))
+}
+
+async fn ensure_leader_team_access(
+    manager: &TeamManager,
+    team_id: &str,
+    actor_id: &str,
+) -> Result<(), Status> {
+    ensure_team_member_access(manager, team_id, actor_id).await?;
+    let team = manager.get_team(team_id).await.map_err(map_manager_error)?;
+    let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
+    if actor_id == leader_member_id {
+        return Ok(());
+    }
+    Err(Status::permission_denied(
+        "only leader may create or update Team tasks",
+    ))
+}
+
+fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
+    match raw.trim() {
+        "open" => Ok(TeamTaskStatus::Open),
+        "in_progress" => Ok(TeamTaskStatus::InProgress),
+        "in_review" => Ok(TeamTaskStatus::InReview),
+        "completed" => Ok(TeamTaskStatus::Completed),
+        "canceled" => Ok(TeamTaskStatus::Canceled),
+        other => Err(Status::invalid_argument(format!(
+            "invalid task status '{other}', expected one of: open, in_progress, in_review, completed, canceled"
+        ))),
+    }
+}
+
+fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
+    if task.title.trim().eq_ignore_ascii_case("all") {
+        return true;
+    }
+    task.context
+        .as_object()
+        .and_then(|obj| obj.get("bootstrap_kind"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("shared_thread"))
+}
+
 fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
 where
     T: serde::de::DeserializeOwned,
@@ -945,6 +1321,10 @@ fn optional_json_object(raw: Option<&str>, field: &str) -> Result<Option<Value>,
         )));
     }
     Ok(Some(parsed))
+}
+
+fn map_serde_status(err: serde_json::Error) -> Status {
+    Status::internal(err.to_string())
 }
 
 fn map_manager_error(err: anyhow::Error) -> Status {
@@ -1051,6 +1431,9 @@ fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::TeamRead.as_str().to_string(),
+            InternalAction::TeamTaskWrite.as_str().to_string(),
+            InternalAction::TimeTriggerManage.as_str().to_string(),
             InternalAction::PermissionReview.as_str().to_string(),
             InternalAction::StepTransition.as_str().to_string(),
             InternalAction::NodeIssue.as_str().to_string(),
@@ -1059,12 +1442,18 @@ fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::TeamRead.as_str().to_string(),
+            InternalAction::TeamTaskWrite.as_str().to_string(),
+            InternalAction::TimeTriggerManage.as_str().to_string(),
             InternalAction::PermissionReview.as_str().to_string(),
         ],
         InternalRole::Orchestrator => vec![
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::TeamRead.as_str().to_string(),
+            InternalAction::TeamTaskWrite.as_str().to_string(),
+            InternalAction::TimeTriggerManage.as_str().to_string(),
             InternalAction::PermissionReview.as_str().to_string(),
             InternalAction::StepTransition.as_str().to_string(),
             InternalAction::NodeIssue.as_str().to_string(),
@@ -1109,12 +1498,15 @@ mod tests {
     use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
     use super::super::proto::agenthub::internal::v1::{
-        AckActorMessageRequest, IssueNodeCredentialRequest, ListActorInboxRequest,
-        RespondPermissionReviewRequest, SendActorMessageRequest,
+        AckActorMessageRequest, CancelTimeTriggerRequest, CreateTeamTaskRequest,
+        CreateTimeTriggerRequest, DescribeTeamContextRequest, IssueNodeCredentialRequest,
+        ListActorInboxRequest, ListTeamTasksRequest, ListTimeTriggersRequest,
+        RespondPermissionReviewRequest, SendActorMessageRequest, UpdateTeamTaskRequest,
     };
     use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
+    use crate::agent::AgentTimeTriggerRecord;
     use crate::api::team_tests::build_test_state;
-    use crate::team::TeamDefinitionConfig;
+    use crate::team::{TeamDefinitionConfig, TeamTaskRecord};
     use agenthub_team_actor::ActorMessageStatus;
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";
@@ -1137,6 +1529,9 @@ mod tests {
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),
+            InternalAction::TeamRead.as_str().to_string(),
+            InternalAction::TeamTaskWrite.as_str().to_string(),
+            InternalAction::TimeTriggerManage.as_str().to_string(),
             InternalAction::PermissionReview.as_str().to_string(),
         ];
         let (token, _expires_at) = authz
@@ -1180,6 +1575,252 @@ mod tests {
             )
             .await
             .expect("create test run")
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let context = TeamInternalControl::describe_team_context(
+            &service,
+            authenticated_request(
+                DescribeTeamContextRequest {
+                    team_id: String::new(),
+                    run_id: run.id.clone(),
+                    actor_id: "planner".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("describe team context")
+        .into_inner();
+        let context_json: serde_json::Value =
+            serde_json::from_str(&context.context_json).expect("decode team context");
+        assert_eq!(context_json["team_id"], json!(run.team_id));
+        assert_eq!(context_json["run"]["run_id"], json!(run.id));
+        assert_eq!(context_json["runtime"]["member_count"], json!(2));
+        assert!(
+            context_json["members"]
+                .as_array()
+                .expect("members array")
+                .iter()
+                .any(|member| member["member_id"] == json!("planner"))
+        );
+        assert!(
+            context_json["members"]
+                .as_array()
+                .expect("members array")
+                .iter()
+                .any(|member| member["member_id"] == json!("reviewer"))
+        );
+
+        let created = TeamInternalControl::create_team_task(
+            &service,
+            authenticated_request(
+                CreateTeamTaskRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    title: "Investigate authority-only actor CLI".to_string(),
+                    status: "in_progress".to_string(),
+                    topic: "actor-cli".to_string(),
+                    context_json: json!({"goal":"remove sqlite fallback"}).to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("create team task")
+        .into_inner();
+        let created_json: serde_json::Value =
+            serde_json::from_str(&created.output_json).expect("decode created task output");
+        let task_id = created_json["task"]["id"]
+            .as_str()
+            .expect("task id")
+            .to_string();
+        assert_eq!(created_json["task"]["status"], json!("in_progress"));
+        assert_eq!(
+            created_json["task"]["created_by_actor_id"],
+            json!("planner")
+        );
+        assert_eq!(
+            created_json["task"]["assigned_member_id"],
+            serde_json::Value::Null
+        );
+        assert_eq!(created_json["conversation"]["topic"], json!("actor-cli"));
+
+        let listed = TeamInternalControl::list_team_tasks(
+            &service,
+            authenticated_request(
+                ListTeamTasksRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    limit: 20,
+                    status: "in_progress".to_string(),
+                    include_shared_thread: false,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list team tasks")
+        .into_inner();
+        let listed_tasks: Vec<TeamTaskRecord> =
+            serde_json::from_str(&listed.tasks_json).expect("decode task list");
+        let created_task = listed_tasks
+            .iter()
+            .find(|task| task.id == task_id)
+            .expect("created task in filtered list");
+        assert_eq!(created_task.status, crate::team::TeamTaskStatus::InProgress);
+        assert!(created_task.assigned_member_id.is_none());
+
+        let updated = TeamInternalControl::update_team_task(
+            &service,
+            authenticated_request(
+                UpdateTeamTaskRequest {
+                    team_id: run.team_id,
+                    actor_id: "planner".to_string(),
+                    task_id: task_id.clone(),
+                    status: "completed".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("update team task")
+        .into_inner();
+        let updated_task: TeamTaskRecord =
+            serde_json::from_str(&updated.task_json).expect("decode updated task");
+        assert_eq!(updated_task.id, task_id);
+        assert_eq!(updated_task.status, crate::team::TeamTaskStatus::Completed);
+        assert!(updated_task.assigned_member_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_time_trigger_controls_are_wire_compatible() {
+        let state = build_test_state().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_time_triggers");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let fire_at = chrono::Utc::now().timestamp() + 120;
+
+        let created = TeamInternalControl::create_time_trigger(
+            &service,
+            authenticated_request(
+                CreateTimeTriggerRequest {
+                    actor_id: "reviewer".to_string(),
+                    message_text: "Ping the reviewer inbox".to_string(),
+                    fire_at,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("create time trigger")
+        .into_inner();
+        let trigger: AgentTimeTriggerRecord =
+            serde_json::from_str(&created.trigger_json).expect("decode trigger");
+        assert_eq!(trigger.agent_id, "reviewer");
+        assert_eq!(trigger.created_by_actor_id, "reviewer");
+        assert_eq!(trigger.message_text, "Ping the reviewer inbox");
+        assert_eq!(trigger.fire_at, fire_at);
+
+        let listed = TeamInternalControl::list_time_triggers(
+            &service,
+            authenticated_request(
+                ListTimeTriggersRequest {
+                    actor_id: "reviewer".to_string(),
+                    limit: 20,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list time triggers")
+        .into_inner();
+        let triggers: Vec<AgentTimeTriggerRecord> =
+            serde_json::from_str(&listed.triggers_json).expect("decode trigger list");
+        assert!(triggers.iter().any(|item| item.id == trigger.id));
+
+        let canceled = TeamInternalControl::cancel_time_trigger(
+            &service,
+            authenticated_request(
+                CancelTimeTriggerRequest {
+                    actor_id: "reviewer".to_string(),
+                    trigger_id: trigger.id.clone(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("cancel time trigger")
+        .into_inner();
+        let canceled_json: serde_json::Value =
+            serde_json::from_str(&canceled.output_json).expect("decode cancel output");
+        assert_eq!(canceled_json["status"], json!("ok"));
+        assert_eq!(canceled_json["trigger_id"], json!(trigger.id.clone()));
+
+        let listed_after_cancel = TeamInternalControl::list_time_triggers(
+            &service,
+            authenticated_request(
+                ListTimeTriggersRequest {
+                    actor_id: "reviewer".to_string(),
+                    limit: 20,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("list time triggers after cancel")
+        .into_inner();
+        let triggers_after_cancel: Vec<AgentTimeTriggerRecord> =
+            serde_json::from_str(&listed_after_cancel.triggers_json)
+                .expect("decode trigger list after cancel");
+        let canceled_trigger = triggers_after_cancel
+            .iter()
+            .find(|item| item.id == trigger.id)
+            .expect("canceled trigger remains queryable");
+        assert_eq!(
+            serde_json::to_value(&canceled_trigger.status).expect("serialize canceled status"),
+            json!("canceled")
+        );
     }
 
     #[tokio::test]

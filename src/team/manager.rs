@@ -200,6 +200,7 @@ struct AgentRunningSessionRow {
 }
 
 impl TeamManager {
+    #[cfg(test)]
     pub fn new(db: SqlitePool) -> Self {
         Self::new_with_event_dbs(db, AgentEventDbRouter::with_default_base_dir())
     }

@@ -19,18 +19,25 @@ use super::p2p::{CredentialProvider, NodeCredentialRequest, P2PTransport};
 use super::proto::agenthub::internal::v1::team_internal_control_client::TeamInternalControlClient;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest as GrpcAckActorMessageRequest,
+    CancelTimeTriggerRequest as GrpcCancelTimeTriggerRequest,
+    CreateTeamTaskRequest as GrpcCreateTeamTaskRequest,
+    CreateTimeTriggerRequest as GrpcCreateTimeTriggerRequest,
     DeleteManagedAgentRequest as GrpcDeleteManagedAgentRequest,
+    DescribeTeamContextRequest as GrpcDescribeTeamContextRequest,
     EnsureAgentRecordRequest as GrpcEnsureAgentRecordRequest,
     GetAgentRecordRequest as GrpcGetAgentRecordRequest,
     ListActorInboxRequest as GrpcListActorInboxRequest,
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListAgentEventsResponse as GrpcListAgentEventsResponse,
+    ListTeamTasksRequest as GrpcListTeamTasksRequest,
+    ListTimeTriggersRequest as GrpcListTimeTriggersRequest,
     RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
     RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
     SendActorMessageRequest as GrpcSendActorMessageRequest,
     SendAgentInputRequest as GrpcSendAgentInputRequest,
     StartManagedAgentRequest as GrpcStartManagedAgentRequest,
     StopManagedAgentRequest as GrpcStopManagedAgentRequest,
+    UpdateTeamTaskRequest as GrpcUpdateTeamTaskRequest,
 };
 use super::tls::{InternalGrpcSecurityMode, install_rustls_crypto_provider};
 
@@ -312,6 +319,147 @@ impl InternalGrpcMailboxClient {
         })
     }
 
+    pub async fn describe_team_context(
+        &self,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+        actor_id: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .describe_team_context(self.control_request(GrpcDescribeTeamContextRequest {
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+                run_id: run_id.unwrap_or_default().trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.context_json, "context_json")
+    }
+
+    pub async fn list_team_tasks(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        limit: i64,
+        status: Option<&str>,
+        include_shared_thread: bool,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .list_team_tasks(self.control_request(GrpcListTeamTasksRequest {
+                team_id: team_id.trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                limit,
+                status: status.unwrap_or_default().trim().to_string(),
+                include_shared_thread,
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.tasks_json, "tasks_json")
+    }
+
+    pub async fn create_team_task(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        title: &str,
+        status: &str,
+        topic: Option<&str>,
+        context: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .create_team_task(self.control_request(GrpcCreateTeamTaskRequest {
+                team_id: team_id.trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                title: title.to_string(),
+                status: status.trim().to_string(),
+                topic: topic.unwrap_or_default().trim().to_string(),
+                context_json: serde_json::to_string(context)?,
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.output_json, "output_json")
+    }
+
+    pub async fn update_team_task(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        task_id: &str,
+        status: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .update_team_task(self.control_request(GrpcUpdateTeamTaskRequest {
+                team_id: team_id.trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                task_id: task_id.trim().to_string(),
+                status: status.trim().to_string(),
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.task_json, "task_json")
+    }
+
+    pub async fn create_time_trigger(
+        &self,
+        actor_id: &str,
+        message_text: &str,
+        fire_at: i64,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .create_time_trigger(self.control_request(GrpcCreateTimeTriggerRequest {
+                actor_id: actor_id.trim().to_string(),
+                message_text: message_text.to_string(),
+                fire_at,
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.trigger_json, "trigger_json")
+    }
+
+    pub async fn list_time_triggers(
+        &self,
+        actor_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .list_time_triggers(self.control_request(GrpcListTimeTriggersRequest {
+                actor_id: actor_id.trim().to_string(),
+                limit,
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.triggers_json, "triggers_json")
+    }
+
+    pub async fn cancel_time_trigger(
+        &self,
+        actor_id: &str,
+        trigger_id: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut client = self.client();
+        let response = client
+            .cancel_time_trigger(self.control_request(GrpcCancelTimeTriggerRequest {
+                actor_id: actor_id.trim().to_string(),
+                trigger_id: trigger_id.trim().to_string(),
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.output_json, "output_json")
+    }
+
     pub async fn list_agent_events(
         &self,
         agent_id: &str,
@@ -332,6 +480,13 @@ impl InternalGrpcMailboxClient {
             .into_inner();
         parse_agent_events(response)
     }
+}
+
+fn parse_json_response<T>(raw: &str, field: &str) -> anyhow::Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_str(raw).map_err(|err| anyhow::anyhow!("decode {field}: {err}"))
 }
 
 fn parse_transport(raw: &str) -> ActorMessageTransport {

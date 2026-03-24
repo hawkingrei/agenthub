@@ -8,15 +8,11 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_TEAM_ID_ENV,
 };
 #[cfg(test)]
-use crate::internal::tls::InternalGrpcSecurityMode;
-#[cfg(test)]
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
     ActorServiceError,
 };
 
-const TEAM_SHARED_THREAD_TITLE: &str = "all";
-const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
 const TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS: i64 = 1;
 const ACTOR_HELP_TOPIC_INBOX: &str = "inbox";
@@ -69,6 +65,7 @@ enum ActorCommand {
     TeamMembers {
         team_id: Option<String>,
         run_id: Option<String>,
+        actor_id: String,
     },
     Inbox {
         run_id: String,
@@ -151,11 +148,7 @@ use self::output::{actor_output_preference_for_command, encode_actor_output};
 #[cfg(test)]
 use self::parse::{compute_time_trigger_fire_at, parse_actor_command};
 #[cfg(test)]
-use self::runtime::{
-    actor_cli_internal_grpc_hint_target, actor_runtime_internal_control_requested,
-    init_actor_mailbox_hint_client_from_config, init_team_manager, load_actor_inbox,
-    maybe_notify_actor_new_mailbox_message_type_from_cli,
-};
+use self::runtime::load_actor_inbox;
 
 fn maybe_reject_legacy_actor_mcp_args(args: &[String]) -> Option<anyhow::Result<()>> {
     if args.first().map(String::as_str) == Some("actor-mcp") {
@@ -284,25 +277,6 @@ mod tests {
         }
     }
 
-    fn test_internal_grpc_config(
-        listen: &str,
-        cert_dir: &std::path::Path,
-    ) -> agenthub_config::AppConfig {
-        agenthub_config::AppConfig {
-            internal_grpc: Some(agenthub_config::InternalGrpcConfig {
-                enabled: Some(true),
-                listen: Some(listen.to_string()),
-                security: Some(agenthub_config::InternalGrpcSecurityConfig {
-                    mode: Some("disabled".to_string()),
-                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
-                }),
-                auth: None,
-                bootstrap: None,
-            }),
-            ..Default::default()
-        }
-    }
-
     #[test]
     fn parse_inbox_uses_env_fallback() {
         let _guard = env_lock().blocking_lock();
@@ -403,22 +377,30 @@ mod tests {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-members-team");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-team-members");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-team-members");
         }
         let args = vec!["team-members".to_string()];
         let parsed =
             parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
-            ActorCommand::TeamMembers { team_id, run_id } => {
+            ActorCommand::TeamMembers {
+                team_id,
+                run_id,
+                actor_id,
+            } => {
                 assert_eq!(team_id.as_deref(), Some("team-members-team"));
                 assert_eq!(run_id.as_deref(), Some("run-team-members"));
+                assert_eq!(actor_id, "worker-team-members");
             }
             _ => panic!("expected team-members command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -426,12 +408,14 @@ mod tests {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env-should-be-ignored");
             std::env::set_var(
                 ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
                 "run-env-should-be-ignored",
             );
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-run-explicit");
         }
         let args = vec![
             "team-members".to_string(),
@@ -441,14 +425,20 @@ mod tests {
         let parsed =
             parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
-            ActorCommand::TeamMembers { team_id, run_id } => {
+            ActorCommand::TeamMembers {
+                team_id,
+                run_id,
+                actor_id,
+            } => {
                 assert!(team_id.is_none());
                 assert_eq!(run_id.as_deref(), Some("run-explicit"));
+                assert_eq!(actor_id, "worker-run-explicit");
             }
             _ => panic!("expected team-members command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -456,9 +446,11 @@ mod tests {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-env");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-team-explicit");
         }
         let args = vec![
             "team-members".to_string(),
@@ -468,14 +460,20 @@ mod tests {
         let parsed =
             parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-members");
         match parsed {
-            ActorCommand::TeamMembers { team_id, run_id } => {
+            ActorCommand::TeamMembers {
+                team_id,
+                run_id,
+                actor_id,
+            } => {
                 assert_eq!(team_id.as_deref(), Some("team-explicit"));
                 assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker-team-explicit");
             }
             _ => panic!("expected team-members command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -915,101 +913,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn actor_send_type_hint_is_best_effort_without_internal_grpc_client() {
-        let _guard = env_lock().lock().await;
-        let prev_target =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
-        let prev_token =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
-        unsafe {
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
-        }
-        let (manager, config) = init_team_manager().await.expect("init team manager");
-        let send_result = agenthub_team_actor::ActorSendResponse {
-            message_id: 42,
-            state: agenthub_team_actor::ActorMessageStatus::Pending,
-            deduped: false,
-            created_at: 1_700_000_000,
-            message: agenthub_team_actor::ActorMessageRecord {
-                message_id: 42,
-                run_id: "run-cli-hint".to_string(),
-                from_actor_id: "leader".to_string(),
-                from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
-                from_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
-                to_actor_id: "worker".to_string(),
-                to_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
-                to_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
-                channel: "default".to_string(),
-                transport: agenthub_team_actor::ActorMessageTransport::Local,
-                route: None,
-                payload: serde_json::json!({
-                    "type": "worker_status",
-                    "status": "ready"
-                }),
-                status: agenthub_team_actor::ActorMessageStatus::Pending,
-                created_at: 1_700_000_000,
-                delivered_at: None,
-            },
-        };
-        maybe_notify_actor_new_mailbox_message_type_from_cli(&manager, &config, &send_result)
-            .await
-            .expect("best-effort mailbox hint should not fail");
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-            prev_target,
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-            prev_token,
-        );
-    }
-
-    #[tokio::test]
-    async fn actor_runtime_internal_control_requested_requires_actor_and_run_env() {
-        let _guard = env_lock().lock().await;
-        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
-        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
-        let prev_target =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
-        let prev_token =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
-        unsafe {
-            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
-            std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
-            std::env::set_var(
-                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-                "https://127.0.0.1:9",
-            );
-            std::env::set_var(
-                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-                "test-token",
-            );
-        }
-
-        assert!(!actor_runtime_internal_control_requested());
-        unsafe {
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
-        }
-        assert!(!actor_runtime_internal_control_requested());
-        unsafe {
-            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-1");
-        }
-        assert!(actor_runtime_internal_control_requested());
-
-        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
-        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-            prev_target,
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-            prev_token,
-        );
-    }
-
-    #[tokio::test]
     async fn load_actor_inbox_keeps_pending_messages_read_only_by_default() {
         let service = MockMailboxService {
             inbox: vec![mock_inbox_message(1, ActorMessageStatus::Pending)],
@@ -1077,97 +980,6 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
-        );
-    }
-
-    #[tokio::test]
-    async fn init_actor_mailbox_hint_client_from_config_skips_missing_remote_token() {
-        let _guard = env_lock().lock().await;
-        let prev_target =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
-        let prev_token =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
-        unsafe {
-            std::env::set_var(
-                crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-                "https://127.0.0.1:50051",
-            );
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
-        }
-        assert!(
-            init_actor_mailbox_hint_client_from_config(&agenthub_config::AppConfig::default())
-                .await
-                .expect("missing token should degrade to None")
-                .is_none()
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-            prev_target,
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-            prev_token,
-        );
-    }
-
-    #[tokio::test]
-    async fn init_actor_mailbox_hint_client_from_config_skips_when_internal_grpc_disabled() {
-        let _guard = env_lock().lock().await;
-        let prev_target =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
-        let prev_token =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
-        unsafe {
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
-        }
-        assert!(
-            init_actor_mailbox_hint_client_from_config(&agenthub_config::AppConfig::default())
-                .await
-                .expect("disabled internal grpc should return None")
-                .is_none()
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-            prev_target,
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-            prev_token,
-        );
-    }
-
-    #[tokio::test]
-    async fn init_actor_mailbox_hint_client_from_config_skips_invalid_listen_addr() {
-        let _guard = env_lock().lock().await;
-        let prev_target =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV).ok();
-        let prev_token =
-            std::env::var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV).ok();
-        unsafe {
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV);
-            std::env::remove_var(crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV);
-        }
-        let tempdir = std::env::temp_dir().join(format!(
-            "agenthub-actor-cli-invalid-listen-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&tempdir).expect("create temp cert dir");
-        let config = test_internal_grpc_config("not-an-addr", &tempdir);
-        assert!(
-            init_actor_mailbox_hint_client_from_config(&config)
-                .await
-                .expect("invalid listen addr should return None")
-                .is_none()
-        );
-        let _ = std::fs::remove_dir_all(&tempdir);
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TARGET_ENV,
-            prev_target,
-        );
-        restore_env(
-            crate::actor_runtime_env::ACTOR_RUNTIME_INTERNAL_GRPC_TOKEN_ENV,
-            prev_token,
         );
     }
 
@@ -1250,6 +1062,11 @@ mod tests {
 
     #[test]
     fn parse_team_members_allows_help_as_flag_value() {
+        let _guard = env_lock().blocking_lock();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-help");
+        }
         let args = vec![
             "team-members".to_string(),
             "--team-id".to_string(),
@@ -1258,12 +1075,18 @@ mod tests {
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
             .expect("parse team-members with help value");
         match parsed {
-            ActorCommand::TeamMembers { team_id, run_id } => {
+            ActorCommand::TeamMembers {
+                team_id,
+                run_id,
+                actor_id,
+            } => {
                 assert_eq!(team_id.as_deref(), Some("help"));
                 assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker-help");
             }
             other => panic!("expected team-members command, got {other:?}"),
         }
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -1398,32 +1221,6 @@ mod tests {
     }
 
     #[test]
-    fn actor_cli_internal_grpc_hint_target_forces_loopback() {
-        assert_eq!(
-            actor_cli_internal_grpc_hint_target(
-                "0.0.0.0:50051",
-                InternalGrpcSecurityMode::Disabled
-            )
-            .as_deref(),
-            Some("http://127.0.0.1:50051")
-        );
-        assert_eq!(
-            actor_cli_internal_grpc_hint_target("127.0.0.1:50052", InternalGrpcSecurityMode::Tls)
-                .as_deref(),
-            Some("https://127.0.0.1:50052")
-        );
-        assert_eq!(
-            actor_cli_internal_grpc_hint_target("127.0.0.1:50053", InternalGrpcSecurityMode::Mtls)
-                .as_deref(),
-            Some("https://127.0.0.1:50053")
-        );
-        assert!(
-            actor_cli_internal_grpc_hint_target("not-an-addr", InternalGrpcSecurityMode::Disabled)
-                .is_none()
-        );
-    }
-
-    #[test]
     fn parse_permission_review_respond_rejects_conflicting_outcome_flags() {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
@@ -1530,6 +1327,7 @@ mod tests {
                 ActorCommand::TeamMembers {
                     team_id: Some("team-1".to_string()),
                     run_id: Some("run-1".to_string()),
+                    actor_id: "worker".to_string(),
                 },
                 ActorOutputPreference::ToonPreferred,
             ),
@@ -1648,6 +1446,7 @@ mod tests {
             actor_output_preference_for_command(&ActorCommand::TeamMembers {
                 team_id: Some("team-1".to_string()),
                 run_id: Some("run-1".to_string()),
+                actor_id: "worker".to_string(),
             }),
         )
         .expect("encode default team-members output");
@@ -1667,6 +1466,7 @@ mod tests {
             actor_output_preference_for_command(&ActorCommand::TeamMembers {
                 team_id: Some("team-1".to_string()),
                 run_id: Some("run-1".to_string()),
+                actor_id: "worker".to_string(),
             }),
         )
         .expect("encode forced json team-members output");
