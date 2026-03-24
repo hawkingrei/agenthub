@@ -1,5 +1,6 @@
 ---
 name: team-worker-executor
+description: Execution and evidence-reporting workflow for AgentHub Team worker sessions.
 ---
 
 # Team Worker Executor

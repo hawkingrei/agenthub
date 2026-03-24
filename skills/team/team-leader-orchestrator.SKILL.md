@@ -1,5 +1,6 @@
 ---
 name: team-leader-orchestrator
+description: Planning, delegation, and synthesis workflow for AgentHub Team leader sessions.
 ---
 
 # Team Leader Orchestrator

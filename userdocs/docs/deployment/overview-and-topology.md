@@ -91,9 +91,14 @@ token = "replace-me-for-bootstrap"
 Operational notes:
 
 - `internal_grpc.enabled` must be `true` on the main control plane if you want
-  to create or control remote-target agents.
+  to create or control remote-target agents, or if operators/scripts will use
+  `agenthub actor ...` against the authority node.
 - `tls` is the default recommended starting point. `mtls` is available when you
   want client-certificate verification as well.
+- Keep `internal_grpc.auth.shared_secret` explicitly in `config.toml` when
+  local actor CLI commands use the loopback control plane. The server can
+  persist a generated secret under `cert_dir/auth_secret.txt`, but the CLI
+  client only reads the config file when minting its token.
 - The node registry stores routing metadata only (`grpc_target`,
   `tls_server_name`, `default_worktree_root`). It does not store node bootstrap
   secrets.
