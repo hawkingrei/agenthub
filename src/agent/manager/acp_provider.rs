@@ -115,6 +115,16 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     }
 }
 
+pub(super) fn default_env_for_acp_provider(
+    provider: Option<AcpProviderSpec>,
+) -> Vec<(String, String)> {
+    if provider.map(|spec| spec.id) == Some(ACP_PROVIDER_CODEX) {
+        vec![("RUST_BACKTRACE".to_string(), "1".to_string())]
+    } else {
+        Vec::new()
+    }
+}
+
 fn acp_provider_for_command_with_binary(
     codex_acp_binary: &str,
     command: &str,
@@ -137,5 +147,30 @@ fn acp_provider_for_command_with_binary(
                 None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ACP_PROVIDER_CODEX, AcpProviderSpec, acp_provider_spec_for_agent_with_binary,
+        default_env_for_acp_provider,
+    };
+
+    #[test]
+    fn default_env_for_codex_provider_enables_rust_backtrace() {
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX));
+        assert_eq!(env, vec![("RUST_BACKTRACE".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn default_env_for_non_codex_provider_is_empty() {
+        let provider = acp_provider_spec_for_agent_with_binary(
+            "agenthub-codex-acp",
+            "gemini",
+            &["--experimental-acp".to_string()],
+        );
+        assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
+        assert!(default_env_for_acp_provider(provider).is_empty());
     }
 }
