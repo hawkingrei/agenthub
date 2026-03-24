@@ -20,6 +20,7 @@ import {
   parseTeamSpecMembers,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
+  removeTeamMemberLookupEntry,
   resolveTeamMemberAgentControlState,
   toggleSkillSelection,
   selectMailboxConversation,
@@ -505,6 +506,17 @@ describe("team run list helpers", () => {
       canStop: false,
       canDelete: true,
     });
+  });
+
+  it("removes selected Team member discovery cache entries without cloning untouched maps", () => {
+    const existing = {
+      "worker-agent": { title: "Worker" },
+      "reviewer-agent": { title: "Reviewer" },
+    };
+    expect(removeTeamMemberLookupEntry(existing, "worker-agent")).toEqual({
+      "reviewer-agent": { title: "Reviewer" },
+    });
+    expect(removeTeamMemberLookupEntry(existing, "missing-agent")).toBe(existing);
   });
 
   it("maps lifecycle tone to active, inactive, and missing", () => {

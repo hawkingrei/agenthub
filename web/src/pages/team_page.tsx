@@ -118,6 +118,7 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedTeamTask,
   resolveTaskConversationMemberIds,
+  removeTeamMemberLookupEntry,
   resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
@@ -214,7 +215,10 @@ export {
   selectRunsForTask,
   selectTeamPreviewEvents,
 } from "./team/run_helpers";
-export { resolveTeamMemberAgentControlState } from "./team/page_helpers";
+export {
+  removeTeamMemberLookupEntry,
+  resolveTeamMemberAgentControlState,
+} from "./team/page_helpers";
 export type { MailboxTemplateKey, TeamMailboxChatActors } from "./team/mailbox_helpers";
 export type {
   TeamMemberAgentStatus,
@@ -2778,20 +2782,10 @@ export function TeamPage(props: TeamPageProps) {
         [selectedAgentWorkspaceMemberId]: null,
       }));
       setMemberDiscoveryCardsById((prev) => {
-        if (!(selectedAgentWorkspaceMemberId in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[selectedAgentWorkspaceMemberId];
-        return next;
+        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
       });
       setMemberDiscoveryCardLoadingById((prev) => {
-        if (!(selectedAgentWorkspaceMemberId in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[selectedAgentWorkspaceMemberId];
-        return next;
+        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
       });
       void Promise.all([
         refreshAgents(),

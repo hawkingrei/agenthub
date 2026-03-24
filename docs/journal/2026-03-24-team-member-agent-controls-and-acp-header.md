@@ -31,10 +31,13 @@ Two Team workspace gaps were still slowing operators down:
   - role pill
   - session pill in developer mode
 - added focused tests for Team member lifecycle control derivation and Team ACP header rendering
+- extracted `removeTeamMemberLookupEntry(...)` so Team member discovery cache cleanup no longer
+  duplicates inline object mutation logic during agent deletion
 
 ## Validation
 
 - `npm --prefix web run test -- --run src/pages/team_page.runs.test.ts src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx`
+- `npm --prefix web run test -- --run src/pages/team_page.runs.test.ts`
 - `npm --prefix web run build`
 - `git -c core.fsmonitor=false diff --check`
 

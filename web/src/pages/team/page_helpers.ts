@@ -127,6 +127,17 @@ export function resolveTeamMemberAgentControlState(
   };
 }
 
+export function removeTeamMemberLookupEntry<T>(
+  lookup: Record<string, T>,
+  memberId: string
+): Record<string, T> {
+  if (!Object.prototype.hasOwnProperty.call(lookup, memberId)) {
+    return lookup;
+  }
+  const { [memberId]: _removed, ...next } = lookup;
+  return next;
+}
+
 export function resolveTeamRuntimeStatus(
   summary: TeamMemberAgentStatusSummary | null,
   runtime?: TeamRuntimeStatusRecord | null
