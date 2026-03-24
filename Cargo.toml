@@ -62,6 +62,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 sha2 = "0.10"
 zstd = "0.13"
 agenthub-acp = { path = "crates/agenthub-acp" }
+agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
 agenthub-text = { path = "crates/agenthub-text" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
