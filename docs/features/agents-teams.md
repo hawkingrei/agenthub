@@ -217,6 +217,9 @@ Constraint:
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
 - Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
 - Manual `compile preview` and `Create Run` actions are debug/advanced tools, not the primary Team workflow.
+- Team runtime start failures that originate from a concrete member runtime should surface that
+  member-scoped failure to the caller instead of collapsing into a generic opaque team-start
+  error.
 
 ## Validation Matrix
 

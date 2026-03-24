@@ -13,13 +13,17 @@ agent shell.
 
 - Added provider-specific runtime env injection for ACP providers.
 - Enabled `RUST_BACKTRACE=1` only for the Codex ACP provider.
+- Preserved caller/operator overrides by injecting the Codex default only when
+  `RUST_BACKTRACE` is not already set in the parent environment.
 - Kept Gemini and Kimi unchanged.
 - Added focused tests for:
   - the Codex-only env selection rule
+  - the "do not override an existing `RUST_BACKTRACE`" rule
   - child-process env propagation inside the local executor
 
 # Validation
 
 - `cargo test -p agenthub default_env_for_codex_provider_enables_rust_backtrace -- --nocapture`
+- `cargo test -p agenthub default_env_for_codex_provider_preserves_existing_backtrace_override -- --nocapture`
 - `cargo test -p agenthub local_executor_applies_extra_env_pairs -- --nocapture`
 - `cargo fmt --all --check`

@@ -36,6 +36,7 @@ use self::store::{
     AgentInsertRecord, AgentSchemaCaps, RemoteManagedAgentUpsert, decode_agent_record,
     get_agent_row, insert_agent_record, list_agent_rows, upsert_remote_managed_agent_record,
 };
+use self::worktree::git_command_without_fsmonitor;
 use super::event_message_codec::{decode_message_from_storage, persist_agent_event};
 use super::{
     AGENT_NODE_MAIN_ID, AgentConfig, AgentEvent, AgentNodeConfig, AgentNodeRecord, AgentOutput,
@@ -1379,7 +1380,7 @@ impl AgentManager {
     }
 
     async fn checkout_team_worker_branch(&self, workdir: &str, branch: &str) -> anyhow::Result<()> {
-        let output = Command::new("git")
+        let output = git_command_without_fsmonitor()
             .arg("-C")
             .arg(workdir)
             .arg("checkout")

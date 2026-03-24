@@ -106,6 +106,11 @@ ACP permission requests are first-class runtime records:
 
 - Input/send paths must validate session alignment to avoid stale session writes.
 - Session mismatch and unavailable gateway states should surface deterministic, non-leaky errors.
+- Resumed Codex sessions must tolerate dirty rollout history:
+  - if a stored `CustomToolCall`, `FunctionCall`, or shell-call item is missing its matching output
+    item, the adapter should repair the history with a synthetic aborted output before resume
+  - orphan output items without a matching call should be dropped during the same repair pass
+  - history repair should happen before compaction/normalization can panic on missing outputs
 
 ### 5) Transport Recovery Contract
 
@@ -150,6 +155,9 @@ ACP permission requests are first-class runtime records:
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
+- Team/operator recovery may explicitly clear a persisted ACP session and force a new session for a
+  selected member when provider history is irrecoverably dirty; this should remain a targeted
+  recovery path, not the normal resume flow.
 
 ## Open Risks
 

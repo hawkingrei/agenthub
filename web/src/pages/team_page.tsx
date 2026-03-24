@@ -297,7 +297,7 @@ type RunInputValidation = {
 };
 
 export function formatTeamRuntimeActionSummary(
-  action: "start" | "stop",
+  action: "start" | "stop" | "force",
   members: ReadonlyArray<{ action: string }>
 ): string {
   const counts = members.reduce<Record<string, number>>((acc, member) => {
@@ -307,7 +307,12 @@ export function formatTeamRuntimeActionSummary(
   const parts = Object.entries(counts)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${key}=${value}`);
-  const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
+  const prefix =
+    action === "start"
+      ? "Team runtime updated"
+      : action === "stop"
+        ? "Team runtime stopped"
+        : "Forced new session";
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
 }
 

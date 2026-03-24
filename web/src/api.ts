@@ -592,6 +592,12 @@ export const api = {
       token,
       { method: "POST" }
     ),
+  forceTeamMemberNewSession: (token: string, teamId: string, memberId: string) =>
+    apiFetch<TeamRuntimeControlResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/members/${encodePathSegment(memberId)}/force_new_session`,
+      token,
+      { method: "POST" }
+    ),
   deleteTeam: (token: string, id: string) =>
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
