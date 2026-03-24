@@ -71,7 +71,7 @@ pub fn ensure_shared_secret(cert_dir: &Path, configured: Option<String>) -> anyh
         }
     }
     let mut bytes = [0_u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     let secret = base64::encode_config(bytes, URL_SAFE_NO_PAD);
     std::fs::write(&secret_path, &secret)
         .with_context(|| format!("write internal auth secret '{}'", secret_path.display()))?;
@@ -97,7 +97,7 @@ pub fn ensure_bootstrap_token(
         }
     }
     let mut bytes = [0_u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     let token = base64::encode_config(bytes, URL_SAFE_NO_PAD);
     std::fs::write(&token_path, &token)
         .with_context(|| format!("write internal bootstrap token '{}'", token_path.display()))?;
