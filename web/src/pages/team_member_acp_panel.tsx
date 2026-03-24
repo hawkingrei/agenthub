@@ -27,6 +27,7 @@ type TeamMemberAcpPanelProps = {
   eventsLoading: boolean;
   oldestMemberEventId: number | null;
   onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  onForceNewSession?: () => Promise<void> | void;
   onRefresh: () => Promise<void> | void;
   onLoadOlder: () => Promise<void> | void;
 };
@@ -48,6 +49,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     eventsLoading,
     oldestMemberEventId,
     onSendInput,
+    onForceNewSession,
     onRefresh,
     onLoadOlder,
   } = props;
@@ -356,7 +358,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpSetModel: NOOP,
         onAcpSetConfig: NOOP,
         onAcpCancel: NOOP,
-        onAcpClearSession: NOOP,
+        onAcpClearSession: onForceNewSession ?? NOOP,
+        acpClearSessionLabel: "Force New Session",
         onJumpToPermissionHistory: NOOP,
         runtimeMetrics: acpRuntimeMetrics,
       },
@@ -377,6 +380,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       effectiveAcpTab,
       handleTerminalScroll,
       jumpToTerminalBottom,
+      onForceNewSession,
       panelSubtitle,
       terminalOutputs,
       terminalShowJump,

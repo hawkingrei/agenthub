@@ -56,7 +56,15 @@ pub(super) fn map_resume_run_error(err: anyhow::Error) -> ApiError {
 pub(super) fn map_runtime_start_error(err: anyhow::Error) -> ApiError {
     if let Some(runtime_err) = err.downcast_ref::<TeamRuntimeStartError>() {
         tracing::warn!("team runtime start rejected: {}", runtime_err);
-        return ApiError::bad_request(&runtime_err.to_string());
+        return match runtime_err {
+            TeamRuntimeStartError::InvalidConfig(_)
+            | TeamRuntimeStartError::MissingMemberAgent(_) => {
+                ApiError::bad_request(&runtime_err.to_string())
+            }
+            TeamRuntimeStartError::MemberRuntimeStart(_) => {
+                ApiError::conflict(&runtime_err.to_string())
+            }
+        };
     }
     map_team_internal_error(err)
 }
@@ -109,6 +117,17 @@ mod tests {
         assert_eq!(
             api_err.into_response().status(),
             axum::http::StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn map_runtime_start_error_maps_member_runtime_failures_to_conflict() {
+        let api_err = map_runtime_start_error(
+            TeamRuntimeStartError::MemberRuntimeStart("member runtime failed".to_string()).into(),
+        );
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::CONFLICT
         );
     }
 

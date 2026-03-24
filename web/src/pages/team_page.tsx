@@ -291,7 +291,7 @@ type RunInputValidation = {
 };
 
 export function formatTeamRuntimeActionSummary(
-  action: "start" | "stop",
+  action: "start" | "stop" | "force",
   members: ReadonlyArray<{ action: string }>
 ): string {
   const counts = members.reduce<Record<string, number>>((acc, member) => {
@@ -301,7 +301,12 @@ export function formatTeamRuntimeActionSummary(
   const parts = Object.entries(counts)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${key}=${value}`);
-  const prefix = action === "start" ? "Team runtime updated" : "Team runtime stopped";
+  const prefix =
+    action === "start"
+      ? "Team runtime updated"
+      : action === "stop"
+        ? "Team runtime stopped"
+        : "Forced new session";
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
 }
 
@@ -2650,6 +2655,39 @@ export function TeamPage(props: TeamPageProps) {
       setError,
     ]
   );
+  const onForceNewTeamMemberSession = useCallback(async () => {
+    if (!props.token || !selectedTeamId || !selectedAgentWorkspaceMemberId) {
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setBusy("force-new-session");
+    try {
+      const runtime = await api.forceTeamMemberNewSession(
+        props.token,
+        selectedTeamId,
+        selectedAgentWorkspaceMemberId
+      );
+      void Promise.all([
+        refreshTeamRuntime(selectedTeamId),
+        refreshAgents(),
+      ]).catch(() => undefined);
+      setWarning(formatTeamRuntimeActionSummary("force", runtime.members));
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    selectedAgentWorkspaceMemberId,
+    selectedTeamId,
+    setBusy,
+    setError,
+    setWarning,
+  ]);
   useEffect(() => {
     if (!selectedTeamId) {
       return;
@@ -3686,6 +3724,7 @@ export function TeamPage(props: TeamPageProps) {
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
                       onSendInput={onSendAgentAcpInput}
+                      onForceNewSession={onForceNewTeamMemberSession}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}
                     />

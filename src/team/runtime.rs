@@ -16,6 +16,8 @@ pub enum TeamRuntimeStartError {
     InvalidConfig(String),
     #[error("{0}")]
     MissingMemberAgent(String),
+    #[error("{0}")]
+    MemberRuntimeStart(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -459,12 +461,11 @@ pub async fn ensure_team_runtime_started(
                 for started_member_id in &started_member_ids {
                     let _ = agents.stop_agent(started_member_id.as_str()).await;
                 }
-                return Err(anyhow::anyhow!(
+                return Err(TeamRuntimeStartError::MemberRuntimeStart(format!(
                     "failed to start team member runtime '{}' for team '{}': {}",
-                    member.member_id,
-                    team.id,
-                    err
-                ));
+                    member.member_id, team.id, err
+                ))
+                .into());
             }
         }
     }
@@ -473,6 +474,85 @@ pub async fn ensure_team_runtime_started(
         team_id: team.id.clone(),
         status: TeamRuntimeStatus::Running,
         members,
+    })
+}
+
+pub async fn force_team_member_new_session(
+    agents: &AgentManager,
+    team: &TeamDefinitionRecord,
+    member_id: &str,
+) -> anyhow::Result<TeamRuntimeControlRecord> {
+    let member_specs = parse_runtime_member_specs(&team.spec)?;
+    let member = member_specs
+        .iter()
+        .find(|candidate| candidate.member_id == member_id)
+        .ok_or_else(|| {
+            TeamRuntimeStartError::InvalidConfig(format!(
+                "team member '{}' is not defined in team '{}'",
+                member_id, team.id
+            ))
+        })?;
+    let actor_cli_path = default_actor_cli_path()?;
+    reconcile_team_member_runtime(agents, member)
+        .await
+        .with_context(|| format!("prepare runtime for member '{}'", member.member_id))?;
+    let actor_context =
+        build_team_member_actor_context(team.id.as_str(), member, actor_cli_path.as_str())
+            .with_context(|| format!("build actor context for member '{}'", member.member_id))?;
+    let agent = agents
+        .get_agent(member.member_id.as_str())
+        .await
+        .map_err(|_| {
+            TeamRuntimeStartError::MissingMemberAgent(format!(
+                "team member agent '{}' not found",
+                member.member_id
+            ))
+        })?;
+    let provider = agents
+        .acp_provider_for_agent(&agent.command, &agent.args)
+        .unwrap_or("codex");
+    agents
+        .clear_persistent_session(member.member_id.as_str(), provider)
+        .await
+        .with_context(|| {
+            format!(
+                "clear persistent {} session for member '{}'",
+                provider, member.member_id
+            )
+        })?;
+
+    let action = if agents
+        .running_session_id_for_agent(member.member_id.as_str())
+        .await
+        .is_some()
+    {
+        agents
+            .stop_agent(member.member_id.as_str())
+            .await
+            .with_context(|| format!("stop runtime for member '{}'", member.member_id))?;
+        "forced_restart"
+    } else {
+        "forced_new_session"
+    };
+
+    let session_id = agents
+        .start_agent_with_actor_context(member.member_id.as_str(), Some(actor_context))
+        .await
+        .map_err(|err| {
+            TeamRuntimeStartError::MemberRuntimeStart(format!(
+                "failed to force a new session for team member '{}' in team '{}': {}",
+                member.member_id, team.id, err
+            ))
+        })?;
+
+    Ok(TeamRuntimeControlRecord {
+        team_id: team.id.clone(),
+        status: TeamRuntimeStatus::Running,
+        members: vec![TeamRuntimeMemberStatusRecord {
+            member_id: member.member_id.clone(),
+            session_id,
+            action: action.to_string(),
+        }],
     })
 }
 

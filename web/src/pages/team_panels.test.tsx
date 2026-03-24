@@ -2672,6 +2672,33 @@ describe("team panels interactions", () => {
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
   });
 
+  it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
+    const onForceNewSession = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedSessionId="runtime-session-1"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onForceNewSession={onForceNewSession}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Debug"));
+    clickElement(findButtonByText(container, "Force New Session"));
+    expect(onForceNewSession).toHaveBeenCalledTimes(1);
+  });
+
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
     const onLoadOlder = vi.fn();
 

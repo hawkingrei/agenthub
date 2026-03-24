@@ -202,11 +202,18 @@ Constraint:
   agent review cannot complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- `Agent ACP -> Debug` may expose a member-scoped `Force New Session` recovery action:
+  - it clears the selected member's persisted ACP session for the active provider
+  - restarts only that member runtime
+  - other team members keep their current sessions
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
 - Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
 - Manual `compile preview` and `Create Run` actions are debug/advanced tools, not the primary Team workflow.
+- Team runtime start failures that originate from a concrete member runtime should surface that
+  member-scoped failure to the caller instead of collapsing into a generic opaque team-start
+  error.
 
 ## Validation Matrix
 

@@ -62,6 +62,7 @@ type AcpDebugProps = {
   onAcpSetConfig: () => void;
   onAcpCancel: () => void;
   onAcpClearSession: () => void;
+  acpClearSessionLabel?: string;
   onJumpToPermissionHistory: (permission: AcpPermissionRecord) => void;
   runtimeMetrics: AcpRuntimeMetrics;
   initialTab?: DebugTab;
@@ -93,6 +94,7 @@ export function AcpDebug({
   onAcpSetConfig,
   onAcpCancel,
   onAcpClearSession,
+  acpClearSessionLabel = "Clear Session",
   onJumpToPermissionHistory,
   runtimeMetrics,
   initialTab,
@@ -321,7 +323,7 @@ export function AcpDebug({
               Cancel Run
             </button>
             <button className={debugSecondaryButtonClassName} onClick={onAcpClearSession}>
-              Clear Session
+              {acpClearSessionLabel}
             </button>
           </div>
         </div>
