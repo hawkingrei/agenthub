@@ -10,6 +10,13 @@ service TeamInternalControl {
   rpc SendActorMessage(SendActorMessageRequest) returns (SendActorMessageResponse);
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
+  rpc DescribeTeamContext(DescribeTeamContextRequest) returns (DescribeTeamContextResponse);
+  rpc ListTeamTasks(ListTeamTasksRequest) returns (ListTeamTasksResponse);
+  rpc CreateTeamTask(CreateTeamTaskRequest) returns (CreateTeamTaskResponse);
+  rpc UpdateTeamTask(UpdateTeamTaskRequest) returns (UpdateTeamTaskResponse);
+  rpc CreateTimeTrigger(CreateTimeTriggerRequest) returns (CreateTimeTriggerResponse);
+  rpc ListTimeTriggers(ListTimeTriggersRequest) returns (ListTimeTriggersResponse);
+  rpc CancelTimeTrigger(CancelTimeTriggerRequest) returns (CancelTimeTriggerResponse);
   rpc RespondPermissionReview(RespondPermissionReviewRequest) returns (RespondPermissionReviewResponse);
   rpc TransitionStep(TransitionStepRequest) returns (TransitionStepResponse);
   rpc IssueNodeCredential(IssueNodeCredentialRequest) returns (IssueNodeCredentialResponse);
@@ -64,6 +71,80 @@ message AckActorMessageRequest {
 
 message AckActorMessageResponse {
   ActorMessage message = 1;
+}
+
+message DescribeTeamContextRequest {
+  string team_id = 1;
+  string run_id = 2;
+  string actor_id = 3;
+}
+
+message DescribeTeamContextResponse {
+  string context_json = 1;
+}
+
+message ListTeamTasksRequest {
+  string team_id = 1;
+  string actor_id = 2;
+  int64 limit = 3;
+  string status = 4;
+  bool include_shared_thread = 5;
+}
+
+message ListTeamTasksResponse {
+  string tasks_json = 1;
+}
+
+message CreateTeamTaskRequest {
+  string team_id = 1;
+  string actor_id = 2;
+  string title = 3;
+  string status = 4;
+  string topic = 5;
+  string context_json = 6;
+}
+
+message CreateTeamTaskResponse {
+  string output_json = 1;
+}
+
+message UpdateTeamTaskRequest {
+  string team_id = 1;
+  string actor_id = 2;
+  string task_id = 3;
+  string status = 4;
+}
+
+message UpdateTeamTaskResponse {
+  string task_json = 1;
+}
+
+message CreateTimeTriggerRequest {
+  string actor_id = 1;
+  string message_text = 2;
+  int64 fire_at = 3;
+}
+
+message CreateTimeTriggerResponse {
+  string trigger_json = 1;
+}
+
+message ListTimeTriggersRequest {
+  string actor_id = 1;
+  int64 limit = 2;
+}
+
+message ListTimeTriggersResponse {
+  string triggers_json = 1;
+}
+
+message CancelTimeTriggerRequest {
+  string actor_id = 1;
+  string trigger_id = 2;
+}
+
+message CancelTimeTriggerResponse {
+  string output_json = 1;
 }
 
 message RespondPermissionReviewRequest {

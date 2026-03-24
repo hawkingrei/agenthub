@@ -70,6 +70,112 @@ pub struct AckActorMessageResponse {
     pub message: ::core::option::Option<ActorMessage>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DescribeTeamContextRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub actor_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DescribeTeamContextResponse {
+    #[prost(string, tag = "1")]
+    pub context_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListTeamTasksRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub limit: i64,
+    #[prost(string, tag = "4")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(bool, tag = "5")]
+    pub include_shared_thread: bool,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListTeamTasksResponse {
+    #[prost(string, tag = "1")]
+    pub tasks_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTeamTaskRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub topic: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub context_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTeamTaskResponse {
+    #[prost(string, tag = "1")]
+    pub output_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateTeamTaskRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub status: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UpdateTeamTaskResponse {
+    #[prost(string, tag = "1")]
+    pub task_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTimeTriggerRequest {
+    #[prost(string, tag = "1")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub message_text: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub fire_at: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTimeTriggerResponse {
+    #[prost(string, tag = "1")]
+    pub trigger_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListTimeTriggersRequest {
+    #[prost(string, tag = "1")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub limit: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListTimeTriggersResponse {
+    #[prost(string, tag = "1")]
+    pub triggers_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelTimeTriggerRequest {
+    #[prost(string, tag = "1")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub trigger_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CancelTimeTriggerResponse {
+    #[prost(string, tag = "1")]
+    pub output_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RespondPermissionReviewRequest {
     #[prost(string, tag = "1")]
     pub team_id: ::prost::alloc::string::String,
@@ -480,6 +586,209 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn describe_team_context(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DescribeTeamContextRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DescribeTeamContextResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/DescribeTeamContext",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "DescribeTeamContext",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list_team_tasks(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListTeamTasksRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTeamTasksResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/ListTeamTasks",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ListTeamTasks",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn create_team_task(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CreateTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTeamTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/CreateTeamTask",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "CreateTeamTask",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn update_team_task(
+            &mut self,
+            request: impl tonic::IntoRequest<super::UpdateTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::UpdateTeamTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/UpdateTeamTask",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "UpdateTeamTask",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn create_time_trigger(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CreateTimeTriggerRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTimeTriggerResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/CreateTimeTrigger",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "CreateTimeTrigger",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list_time_triggers(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListTimeTriggersRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTimeTriggersResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/ListTimeTriggers",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ListTimeTriggers",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn cancel_time_trigger(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CancelTimeTriggerRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CancelTimeTriggerResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/CancelTimeTrigger",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "CancelTimeTrigger",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn respond_permission_review(
             &mut self,
             request: impl tonic::IntoRequest<super::RespondPermissionReviewRequest>,
@@ -806,6 +1115,55 @@ pub mod team_internal_control_server {
             tonic::Response<super::AckActorMessageResponse>,
             tonic::Status,
         >;
+        async fn describe_team_context(
+            &self,
+            request: tonic::Request<super::DescribeTeamContextRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DescribeTeamContextResponse>,
+            tonic::Status,
+        >;
+        async fn list_team_tasks(
+            &self,
+            request: tonic::Request<super::ListTeamTasksRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTeamTasksResponse>,
+            tonic::Status,
+        >;
+        async fn create_team_task(
+            &self,
+            request: tonic::Request<super::CreateTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTeamTaskResponse>,
+            tonic::Status,
+        >;
+        async fn update_team_task(
+            &self,
+            request: tonic::Request<super::UpdateTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::UpdateTeamTaskResponse>,
+            tonic::Status,
+        >;
+        async fn create_time_trigger(
+            &self,
+            request: tonic::Request<super::CreateTimeTriggerRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTimeTriggerResponse>,
+            tonic::Status,
+        >;
+        async fn list_time_triggers(
+            &self,
+            request: tonic::Request<super::ListTimeTriggersRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTimeTriggersResponse>,
+            tonic::Status,
+        >;
+        async fn cancel_time_trigger(
+            &self,
+            request: tonic::Request<super::CancelTimeTriggerRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CancelTimeTriggerResponse>,
+            tonic::Status,
+        >;
         async fn respond_permission_review(
             &self,
             request: tonic::Request<super::RespondPermissionReviewRequest>,
@@ -1085,6 +1443,346 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = AckActorMessageSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/DescribeTeamContext" => {
+                    #[allow(non_camel_case_types)]
+                    struct DescribeTeamContextSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::DescribeTeamContextRequest>
+                    for DescribeTeamContextSvc<T> {
+                        type Response = super::DescribeTeamContextResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DescribeTeamContextRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::describe_team_context(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DescribeTeamContextSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/ListTeamTasks" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListTeamTasksSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ListTeamTasksRequest>
+                    for ListTeamTasksSvc<T> {
+                        type Response = super::ListTeamTasksResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListTeamTasksRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::list_team_tasks(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListTeamTasksSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/CreateTeamTask" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateTeamTaskSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::CreateTeamTaskRequest>
+                    for CreateTeamTaskSvc<T> {
+                        type Response = super::CreateTeamTaskResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateTeamTaskRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::create_team_task(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateTeamTaskSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/UpdateTeamTask" => {
+                    #[allow(non_camel_case_types)]
+                    struct UpdateTeamTaskSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::UpdateTeamTaskRequest>
+                    for UpdateTeamTaskSvc<T> {
+                        type Response = super::UpdateTeamTaskResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::UpdateTeamTaskRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::update_team_task(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = UpdateTeamTaskSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/CreateTimeTrigger" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateTimeTriggerSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::CreateTimeTriggerRequest>
+                    for CreateTimeTriggerSvc<T> {
+                        type Response = super::CreateTimeTriggerResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateTimeTriggerRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::create_time_trigger(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateTimeTriggerSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/ListTimeTriggers" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListTimeTriggersSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ListTimeTriggersRequest>
+                    for ListTimeTriggersSvc<T> {
+                        type Response = super::ListTimeTriggersResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListTimeTriggersRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::list_time_triggers(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListTimeTriggersSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/CancelTimeTrigger" => {
+                    #[allow(non_camel_case_types)]
+                    struct CancelTimeTriggerSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::CancelTimeTriggerRequest>
+                    for CancelTimeTriggerSvc<T> {
+                        type Response = super::CancelTimeTriggerResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CancelTimeTriggerRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::cancel_time_trigger(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CancelTimeTriggerSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

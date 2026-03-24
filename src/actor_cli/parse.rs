@@ -128,55 +128,6 @@ fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> 
     }
 }
 
-pub(super) fn resolve_team_leader_member_id(spec: &Value) -> anyhow::Result<String> {
-    if let Some(leader_member_id) = spec
-        .as_object()
-        .and_then(|obj| obj.get("leader_member_id"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return Ok(leader_member_id.to_string());
-    }
-
-    if let Some(members) = spec
-        .as_object()
-        .and_then(|obj| obj.get("members"))
-        .and_then(Value::as_array)
-    {
-        for member in members {
-            let Some(member_obj) = member.as_object() else {
-                continue;
-            };
-            let role = member_obj
-                .get("role")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or_default();
-            let member_id = member_obj
-                .get("member_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or_default();
-            if role.eq_ignore_ascii_case("leader") && !member_id.is_empty() {
-                return Ok(member_id.to_string());
-            }
-        }
-    }
-
-    if let Some(entrypoint) = spec
-        .as_object()
-        .and_then(|obj| obj.get("entrypoint"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return Ok(entrypoint.to_string());
-    }
-
-    Err(anyhow::anyhow!("team has no leader configured"))
-}
-
 pub(super) fn compute_time_trigger_fire_at(now_ts: i64, delay_seconds: i64) -> i64 {
     now_ts + delay_seconds + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
 }
@@ -235,6 +186,7 @@ pub(super) fn parse_actor_command(
         "team-members" => {
             let mut team_id = None;
             let mut run_id = None;
+            let mut actor_id = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -253,6 +205,14 @@ pub(super) fn parse_actor_command(
                             args.get(idx)
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
                         );
                     }
                     other => {
@@ -280,7 +240,12 @@ pub(super) fn parse_actor_command(
                     "team-members requires --team-id, --run-id, or actor runtime env fallback"
                 ));
             }
-            Ok(ActorCommand::TeamMembers { team_id, run_id })
+            let actor_id = take_actor_id(actor_id)?;
+            Ok(ActorCommand::TeamMembers {
+                team_id,
+                run_id,
+                actor_id,
+            })
         }
         "team-tasks" => {
             let mut team_id = None;

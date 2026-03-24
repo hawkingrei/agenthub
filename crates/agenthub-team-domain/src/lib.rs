@@ -87,6 +87,33 @@ pub enum TeamTaskStatus {
     Canceled,
 }
 
+impl TeamTaskStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::InProgress => "in_progress",
+            Self::InReview => "in_review",
+            Self::Completed => "completed",
+            Self::Canceled => "canceled",
+        }
+    }
+}
+
+impl std::str::FromStr for TeamTaskStatus {
+    type Err = String;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw.trim() {
+            "open" => Ok(Self::Open),
+            "in_progress" => Ok(Self::InProgress),
+            "in_review" => Ok(Self::InReview),
+            "completed" => Ok(Self::Completed),
+            "canceled" => Ok(Self::Canceled),
+            other => Err(other.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamTaskRecord {
     pub id: String,
@@ -204,6 +231,7 @@ mod tests {
     use super::{
         TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
         TEAM_TASK_STATUS_VALUES, TeamRunResumeError, TeamStepRecord, TeamStepStatus,
+        TeamTaskStatus,
     };
     use serde_json::json;
 
@@ -220,6 +248,29 @@ mod tests {
         assert_eq!(
             TeamRunResumeError::CompletedRun.to_string(),
             "completed run cannot be resumed"
+        );
+    }
+
+    #[test]
+    fn team_task_status_string_roundtrip_is_stable() {
+        for (status, label) in [
+            (TeamTaskStatus::Open, "open"),
+            (TeamTaskStatus::InProgress, "in_progress"),
+            (TeamTaskStatus::InReview, "in_review"),
+            (TeamTaskStatus::Completed, "completed"),
+            (TeamTaskStatus::Canceled, "canceled"),
+        ] {
+            assert_eq!(status.as_str(), label);
+            assert_eq!(
+                label.parse::<TeamTaskStatus>().expect("parse status"),
+                status
+            );
+        }
+        assert_eq!(
+            "invalid"
+                .parse::<TeamTaskStatus>()
+                .expect_err("invalid status"),
+            "invalid"
         );
     }
 

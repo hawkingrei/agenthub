@@ -116,6 +116,18 @@ pub struct TeamContextRunOverlayRecord {
     pub run_id: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum TeamContextLookupError {
+    #[error("team_id or run_id is required")]
+    MissingSelector,
+    #[error("run_id {run_id} belongs to team {actual_team_id}, not {requested_team_id}")]
+    RunTeamMismatch {
+        run_id: String,
+        actual_team_id: String,
+        requested_team_id: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TeamRuntimeStatus {
@@ -200,6 +212,7 @@ struct AgentRunningSessionRow {
 }
 
 impl TeamManager {
+    #[cfg(test)]
     pub fn new(db: SqlitePool) -> Self {
         Self::new_with_event_dbs(db, AgentEventDbRouter::with_default_base_dir())
     }
@@ -1125,14 +1138,15 @@ impl TeamManager {
 
         if let Some(run_id) = normalized_run_id.as_deref() {
             let roster = self.describe_run_members(run_id).await?;
-            if let Some(explicit_team_id) = normalized_team_id.as_deref() {
-                anyhow::ensure!(
-                    explicit_team_id == roster.team_id,
-                    "run_id {} belongs to team {}, not {}",
-                    run_id,
-                    roster.team_id,
-                    explicit_team_id
-                );
+            if let Some(explicit_team_id) = normalized_team_id.as_deref()
+                && explicit_team_id != roster.team_id
+            {
+                return Err(TeamContextLookupError::RunTeamMismatch {
+                    run_id: run_id.to_string(),
+                    actual_team_id: roster.team_id.clone(),
+                    requested_team_id: explicit_team_id.to_string(),
+                }
+                .into());
             }
             let runtime = self.describe_team_runtime(&roster.team_id).await?;
             return Ok(TeamContextRecord {
@@ -1146,8 +1160,7 @@ impl TeamManager {
             });
         }
 
-        let team_id =
-            normalized_team_id.ok_or_else(|| anyhow::anyhow!("team_id or run_id is required"))?;
+        let team_id = normalized_team_id.ok_or(TeamContextLookupError::MissingSelector)?;
         let runtime = self.describe_team_runtime(&team_id).await?;
         let runtime_summary = build_team_runtime_summary(&runtime);
         let members = runtime
