@@ -2940,12 +2940,12 @@ mod tests {
         assert!(
             steps
                 .iter()
-                .all(|step| step["member_id"] != Value::from("worker-1")),
+                .all(|step| step["member_id"].as_str() != Some("worker-1")),
             "deleted worker steps should be pruned: {updated_spec}"
         );
         let synth = steps
             .iter()
-            .find(|step| step["step_key"] == Value::from("leader_synthesize"))
+            .find(|step| step["step_key"].as_str() == Some("leader_synthesize"))
             .expect("leader synth step");
         assert_eq!(synth["depends_on"], json!([]));
     }
