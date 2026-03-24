@@ -92,19 +92,17 @@ impl AgentExecutor for LocalExecutor {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     use super::{AgentExecutor, LocalExecutionRequest, LocalExecutor};
     use crate::agent::manager::ProxyPolicy;
 
     fn temp_workdir(prefix: &str) -> std::path::PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos();
+        let unique = Uuid::new_v4();
         std::env::temp_dir().join(format!("{prefix}-{unique}"))
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn local_executor_applies_extra_env_pairs() {
         let workdir = temp_workdir("agenthub-executor-extra-env");
