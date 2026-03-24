@@ -223,7 +223,7 @@ mod tests {
             .iter()
             .map(|item| item.name.as_str())
             .collect::<Vec<_>>();
-        assert!(names.iter().any(|item| *item == "team-task-lifecycle"));
+        assert!(names.contains(&"team-task-lifecycle"));
     }
 
     #[test]
@@ -237,7 +237,7 @@ mod tests {
             .iter()
             .map(|item| item.name.as_str())
             .collect::<Vec<_>>();
-        assert!(names.iter().any(|item| *item == "team-deliberation-rules"));
+        assert!(names.contains(&"team-deliberation-rules"));
     }
 
     #[test]
