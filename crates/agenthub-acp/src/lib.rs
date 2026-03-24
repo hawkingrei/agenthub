@@ -28,12 +28,13 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use uuid::Uuid;
 
-use actor_runtime_skill::build_actor_runtime_skill;
+use actor_runtime_skill::{build_actor_runtime_context_block, build_actor_runtime_skill};
 use agenthub_acp_core::{
     AcpSkill, build_skill, build_skill_blocks, build_skills_meta, expand_tilde, extract_skill_name,
     filter_mcp_servers, parse_mcp_config, parse_skills_config,
 };
 use agenthub_config::path_utils::{is_path_allowed, normalize_path};
+use agenthub_managed_skills::install_managed_skills;
 use team_role_skills::{
     build_team_role_skills, is_reserved_team_role_skill, should_attach_team_role_skills,
 };
@@ -464,6 +465,17 @@ fn dedupe_skills(skills: Vec<AcpSkill>) -> Vec<AcpSkill> {
     out
 }
 
+fn build_prompt_prefix_blocks(
+    skills: &[AcpSkill],
+    actor_context: Option<&AcpActorSkillContext>,
+) -> Vec<ContentBlock> {
+    let mut blocks = build_skill_blocks(skills);
+    if let Some(context) = actor_context {
+        blocks.push(build_actor_runtime_context_block(context));
+    }
+    blocks
+}
+
 #[derive(Clone)]
 pub struct AcpClient {
     sink: Arc<dyn AcpEventSink>,
@@ -764,7 +776,7 @@ async fn dispatch_acp_command(
     conn: Rc<ClientSideConnection>,
     event_sink: Arc<dyn AcpEventSink>,
     session_id: &str,
-    skill_blocks: &[ContentBlock],
+    prompt_prefix_blocks: &[ContentBlock],
     prompt_done_tx: &mpsc::UnboundedSender<()>,
     active_prompt_count: &mut usize,
 ) {
@@ -776,8 +788,8 @@ async fn dispatch_acp_command(
             let event_sink = event_sink.clone();
             let session_id = session_id.to_string();
             let prompt_done_tx = prompt_done_tx.clone();
-            let mut blocks = Vec::with_capacity(skill_blocks.len() + 1);
-            blocks.extend(skill_blocks.iter().cloned());
+            let mut blocks = Vec::with_capacity(prompt_prefix_blocks.len() + 1);
+            blocks.extend(prompt_prefix_blocks.iter().cloned());
             blocks.push(ContentBlock::Text(TextContent::new(prompt)));
             tokio::task::spawn_local(async move {
                 let request = PromptRequest::new(session_id, blocks);
@@ -850,6 +862,14 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
 
     std::thread::spawn(move || match runtime_location {
         AcpRuntimeLocation::LocalProcess => {
+            if actor_context.is_some()
+                && let Err(err) = install_managed_skills(None)
+            {
+                tracing::warn!(
+                    error = %err,
+                    "failed to materialize managed skills under ~/.agents/skills; falling back to inline skill paths"
+                );
+            }
             let mcp_servers = load_mcp_servers();
             let mut skills = load_skills(Path::new(&workdir), &safe_paths);
             skills.retain(|skill| !is_reserved_team_role_skill(skill.name.as_str()));
@@ -859,7 +879,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     skills.extend(build_team_role_skills(ctx));
                     attached_team_role_skills = true;
                 }
-                skills.push(build_actor_runtime_skill(ctx));
+                skills.push(build_actor_runtime_skill());
             }
             let skills = dedupe_skills(skills);
             if let Some(ctx) = actor_context.as_ref() {
@@ -879,7 +899,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                     "acp actor session bootstrap prepared runtime capabilities"
                 );
             }
-            let skill_blocks = build_skill_blocks(&skills);
+            let prompt_prefix_blocks = build_prompt_prefix_blocks(&skills, actor_context.as_ref());
             let skills_meta = build_skills_meta(&skills);
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -994,7 +1014,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         conn.clone(),
                         event_sink.clone(),
                         &session_id,
-                        &skill_blocks,
+                        &prompt_prefix_blocks,
                         &prompt_done_tx,
                         &mut active_prompt_count,
                     )
@@ -1034,7 +1054,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                                     conn.clone(),
                                     event_sink.clone(),
                                     &session_id,
-                                    &skill_blocks,
+                                    &prompt_prefix_blocks,
                                     &prompt_done_tx,
                                     &mut active_prompt_count,
                                 )
@@ -1708,13 +1728,17 @@ fn parse_permission_record_row(
 #[cfg(test)]
 mod tests {
     use super::{
-        AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, dedupe_skills,
+        AcpActorContinuityEnvelope, AcpActorSkillContext, AcpCommand, AcpHandle,
+        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
+        AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks, dedupe_skills,
         load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
         should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
-    use agent_client_protocol::{RequestPermissionOutcome, SelectedPermissionOutcome};
+    use agent_client_protocol::{
+        ContentBlock, RequestPermissionOutcome, SelectedPermissionOutcome,
+    };
+    use agenthub_acp_core::build_skill;
     use sqlx::Row;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
@@ -2130,6 +2154,70 @@ Fallback to the user-level review contract.
         assert_eq!(deduped.len(), 1);
         assert_eq!(deduped[0].name, "shared-review");
         assert_eq!(deduped[0].path, local_skill.to_string_lossy());
+    }
+
+    fn sample_actor_context() -> AcpActorSkillContext {
+        AcpActorSkillContext {
+            team_id: Some("team-7".to_string()),
+            current_run_id: Some("run-42".to_string()),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+            actor_cli_path: "/tmp/agenthub-actor-cli".to_string(),
+            member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
+            contract_version: Some("v1".to_string()),
+            continuity: Some(AcpActorContinuityEnvelope {
+                mode: "resume".to_string(),
+                source_run_id: "run-41".to_string(),
+                source_session_id: Some("session-41".to_string()),
+                summary_text: "Continue implementation with the same branch.".to_string(),
+                history_window: serde_json::json!({"messages": 3}),
+            }),
+        }
+    }
+
+    #[test]
+    fn prompt_prefix_blocks_append_runtime_context_after_skills() {
+        let skill = build_skill(
+            "demo-skill".to_string(),
+            "/tmp/demo-skill/SKILL.md".to_string(),
+            "---\nname: demo-skill\n---\nUse the demo skill.\n",
+        );
+        let blocks = build_prompt_prefix_blocks(&[skill], Some(&sample_actor_context()));
+
+        assert_eq!(blocks.len(), 2);
+        let ContentBlock::Text(skill_block) = &blocks[0] else {
+            panic!("expected first prompt prefix block to be text");
+        };
+        assert!(skill_block.text.starts_with("<skill>\n"));
+
+        let ContentBlock::Text(runtime_block) = &blocks[1] else {
+            panic!("expected runtime context block to be text");
+        };
+        assert!(runtime_block.text.contains("AgentHub runtime context:"));
+        assert!(runtime_block.text.contains("actor_id: planner"));
+        assert!(runtime_block.text.contains("current_run_id: run-42"));
+        assert!(
+            runtime_block
+                .text
+                .contains("continuity_source_run_id: run-41")
+        );
+    }
+
+    #[test]
+    fn prompt_prefix_blocks_skip_runtime_context_without_actor_context() {
+        let skill = build_skill(
+            "demo-skill".to_string(),
+            "/tmp/demo-skill/SKILL.md".to_string(),
+            "---\nname: demo-skill\n---\nUse the demo skill.\n",
+        );
+        let blocks = build_prompt_prefix_blocks(&[skill], None);
+
+        assert_eq!(blocks.len(), 1);
+        let ContentBlock::Text(skill_block) = &blocks[0] else {
+            panic!("expected text skill block");
+        };
+        assert!(skill_block.text.starts_with("<skill>\n"));
     }
 
     #[tokio::test]

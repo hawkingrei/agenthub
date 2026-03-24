@@ -1,19 +1,9 @@
 use agenthub_acp_core::{AcpSkill, build_skill};
+use agenthub_managed_skills::{
+    ManagedSkillKind, managed_skill_contents, managed_skill_doc, managed_skill_name,
+};
 
 use crate::AcpActorSkillContext;
-
-const TEAM_LEADER_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-leader-orchestrator.SKILL.md");
-const TEAM_WORKER_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-worker-executor.SKILL.md");
-const TEAM_DELIBERATION_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-deliberation-rules.SKILL.md");
-const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
-const TEAM_AGENTS_INDEX_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-agents-index.SKILL.md");
-const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
 
 const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
 const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
@@ -31,113 +21,43 @@ enum TeamRoleIndexKind {
 }
 
 impl TeamRoleIndexKind {
-    fn skill_name(self) -> &'static str {
+    fn managed_kind(self) -> ManagedSkillKind {
         match self {
-            Self::Leader => TEAM_LEADER_AGENTS_INDEX_SKILL_NAME,
-            Self::Worker => TEAM_WORKER_AGENTS_INDEX_SKILL_NAME,
+            Self::Leader => ManagedSkillKind::TeamLeaderAgentsIndex,
+            Self::Worker => ManagedSkillKind::TeamWorkerAgentsIndex,
         }
     }
 
-    fn skill_path(self) -> &'static str {
+    fn fallback_path(self) -> &'static str {
         match self {
             Self::Leader => "builtin://agenthub/team/team-leader-agents-index",
             Self::Worker => "builtin://agenthub/team/team-worker-agents-index",
         }
     }
+}
 
-    fn title(self) -> &'static str {
-        match self {
-            Self::Leader => "Team Leader AGENTS Index",
-            Self::Worker => "Team Worker AGENTS Index",
-        }
-    }
-
-    fn role_label(self) -> &'static str {
-        match self {
-            Self::Leader => "leader",
-            Self::Worker => "worker",
-        }
-    }
-
-    fn role_core_skill(self) -> &'static str {
-        match self {
-            Self::Leader => TEAM_LEADER_SKILL_NAME,
-            Self::Worker => TEAM_WORKER_SKILL_NAME,
-        }
-    }
-
-    fn memory_rule(self) -> &'static str {
-        match self {
-            Self::Leader => {
-                "Keep leader durable memory lightweight; empty coordination workspaces normally do not need `.agenthubmemory/`."
-            }
-            Self::Worker => {
-                "Maintain project-local durable memory under `.agenthubmemory/` when operating inside a concrete repository."
-            }
-        }
-    }
-
-    fn responsibility_lines(self) -> &'static [&'static str] {
-        match self {
-            Self::Leader => &[
-                "Maintain leader workspace `AGENTS.md` as the coordination index.",
-                "Keep current phase, transition condition, assignment map, and integration checklist concise.",
-                "Keep human-facing planning decisions in leader index records.",
-                "Keep `team-task-lifecycle` active whenever leader is creating, reviewing, or closing canonical Team tasks.",
-            ],
-            Self::Worker => &[
-                "Maintain worker workspace `AGENTS.md` as the execution index.",
-                "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
-                "Keep worker updates routed to leader unless explicit escalation policy applies.",
-                "Keep `team-task-lifecycle` active whenever worker execution must advance a leader-owned Team task toward review.",
-            ],
-        }
+fn build_managed_skill(kind: ManagedSkillKind, fallback_path: &str) -> AcpSkill {
+    match managed_skill_doc(kind, None) {
+        Ok(doc) if doc.path.exists() => build_skill(
+            doc.name.to_string(),
+            doc.path.to_string_lossy().to_string(),
+            &doc.contents,
+        ),
+        Ok(doc) => build_skill(
+            doc.name.to_string(),
+            fallback_path.to_string(),
+            &doc.contents,
+        ),
+        Err(_) => build_skill(
+            managed_skill_name(kind).to_string(),
+            fallback_path.to_string(),
+            managed_skill_contents(kind).as_str(),
+        ),
     }
 }
 
 fn build_role_agents_index_skill(kind: TeamRoleIndexKind) -> AcpSkill {
-    let responsibilities = kind
-        .responsibility_lines()
-        .iter()
-        .map(|line| format!("- {line}\n"))
-        .collect::<String>();
-    let instructions = format!(
-        r#"# {title}
-
-Use this skill as the {role_label}-specific AGENTS index initializer.
-
-Primary references:
-
-- Shared baseline: `skills/team/AGENTS.md`
-- Unified runtime template: `skills/team/TEAM_AGENTS.md`
-
-## Responsibilities
-
-{responsibilities}- {memory_rule}
-- Keep the active skill set minimal and phase-scoped.
-
-## Startup Checklist
-
-1. Read shared baseline (`skills/team/AGENTS.md`).
-2. Initialize or refresh workspace `AGENTS.md` from `skills/team/TEAM_AGENTS.md`.
-3. Set `role={role_label}` and keep `Active Skills` minimal:
-   - `{role_core_skill}` (role execution skill)
-   - `team-actor-mailbox`
-   - add `team-task-lifecycle` only when canonical Team task state must change
-   - add `team-deliberation-rules` only when option comparison or consensus work is active
-4. Check `TODO.md` before mailbox rounds.
-"#,
-        title = kind.title(),
-        role_label = kind.role_label(),
-        responsibilities = responsibilities,
-        memory_rule = kind.memory_rule(),
-        role_core_skill = kind.role_core_skill(),
-    );
-    build_skill(
-        kind.skill_name().to_string(),
-        kind.skill_path().to_string(),
-        &instructions,
-    )
+    build_managed_skill(kind.managed_kind(), kind.fallback_path())
 }
 
 fn normalize_member_role(role: Option<&str>) -> Option<&str> {
@@ -176,66 +96,56 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
     let mut out = Vec::new();
     match role {
         Some("leader") => {
-            out.push(build_skill(
-                TEAM_AGENTS_INDEX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-agents-index".to_string(),
-                TEAM_AGENTS_INDEX_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamAgentsIndex,
+                "builtin://agenthub/team/team-agents-index",
             ));
             out.push(build_role_agents_index_skill(TeamRoleIndexKind::Leader));
-            out.push(build_skill(
-                TEAM_LEADER_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-leader-orchestrator".to_string(),
-                TEAM_LEADER_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamLeaderOrchestrator,
+                "builtin://agenthub/team/team-leader-orchestrator",
             ));
             if enable_task_lifecycle {
-                out.push(build_skill(
-                    TEAM_TASK_LIFECYCLE_SKILL_NAME.to_string(),
-                    "builtin://agenthub/team/team-task-lifecycle".to_string(),
-                    TEAM_TASK_LIFECYCLE_SKILL_TEXT,
+                out.push(build_managed_skill(
+                    ManagedSkillKind::TeamTaskLifecycle,
+                    "builtin://agenthub/team/team-task-lifecycle",
                 ));
             }
-            out.push(build_skill(
-                TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-actor-mailbox".to_string(),
-                TEAM_ACTOR_MAILBOX_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamActorMailbox,
+                "builtin://agenthub/team/team-actor-mailbox",
             ));
             if enable_deliberation {
-                out.push(build_skill(
-                    TEAM_DELIBERATION_SKILL_NAME.to_string(),
-                    "builtin://agenthub/team/team-deliberation-rules".to_string(),
-                    TEAM_DELIBERATION_SKILL_TEXT,
+                out.push(build_managed_skill(
+                    ManagedSkillKind::TeamDeliberationRules,
+                    "builtin://agenthub/team/team-deliberation-rules",
                 ));
             }
         }
         Some("worker") => {
-            out.push(build_skill(
-                TEAM_AGENTS_INDEX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-agents-index".to_string(),
-                TEAM_AGENTS_INDEX_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamAgentsIndex,
+                "builtin://agenthub/team/team-agents-index",
             ));
             out.push(build_role_agents_index_skill(TeamRoleIndexKind::Worker));
-            out.push(build_skill(
-                TEAM_WORKER_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-worker-executor".to_string(),
-                TEAM_WORKER_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamWorkerExecutor,
+                "builtin://agenthub/team/team-worker-executor",
             ));
             if enable_task_lifecycle {
-                out.push(build_skill(
-                    TEAM_TASK_LIFECYCLE_SKILL_NAME.to_string(),
-                    "builtin://agenthub/team/team-task-lifecycle".to_string(),
-                    TEAM_TASK_LIFECYCLE_SKILL_TEXT,
+                out.push(build_managed_skill(
+                    ManagedSkillKind::TeamTaskLifecycle,
+                    "builtin://agenthub/team/team-task-lifecycle",
                 ));
             }
-            out.push(build_skill(
-                TEAM_ACTOR_MAILBOX_SKILL_NAME.to_string(),
-                "builtin://agenthub/team/team-actor-mailbox".to_string(),
-                TEAM_ACTOR_MAILBOX_SKILL_TEXT,
+            out.push(build_managed_skill(
+                ManagedSkillKind::TeamActorMailbox,
+                "builtin://agenthub/team/team-actor-mailbox",
             ));
             if enable_deliberation {
-                out.push(build_skill(
-                    TEAM_DELIBERATION_SKILL_NAME.to_string(),
-                    "builtin://agenthub/team/team-deliberation-rules".to_string(),
-                    TEAM_DELIBERATION_SKILL_TEXT,
+                out.push(build_managed_skill(
+                    ManagedSkillKind::TeamDeliberationRules,
+                    "builtin://agenthub/team/team-deliberation-rules",
                 ));
             }
         }
@@ -279,7 +189,7 @@ mod tests {
                 "team-agents-index",
                 "team-leader-agents-index",
                 "team-leader-orchestrator",
-                "team-actor-mailbox"
+                "team-actor-mailbox",
             ]
         );
     }
@@ -297,7 +207,7 @@ mod tests {
                 "team-agents-index",
                 "team-worker-agents-index",
                 "team-worker-executor",
-                "team-actor-mailbox"
+                "team-actor-mailbox",
             ]
         );
     }
@@ -313,12 +223,12 @@ mod tests {
             .iter()
             .map(|item| item.name.as_str())
             .collect::<Vec<_>>();
-        assert!(names.contains(&"team-task-lifecycle"));
+        assert!(names.iter().any(|item| *item == "team-task-lifecycle"));
     }
 
     #[test]
     fn build_team_role_skills_enables_deliberation_when_requested() {
-        let mut context = context_with_role(Some("leader"));
+        let mut context = context_with_role(Some("worker"));
         context
             .member_skills
             .push("team-deliberation-rules".to_string());
@@ -327,7 +237,7 @@ mod tests {
             .iter()
             .map(|item| item.name.as_str())
             .collect::<Vec<_>>();
-        assert!(names.contains(&"team-deliberation-rules"));
+        assert!(names.iter().any(|item| *item == "team-deliberation-rules"));
     }
 
     #[test]
@@ -368,17 +278,11 @@ mod tests {
     }
 
     #[test]
-    fn role_agents_index_builder_keeps_role_specific_contract_small() {
+    fn role_agents_index_skill_uses_expected_names() {
         let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader);
         assert_eq!(leader.name, "team-leader-agents-index");
-        assert!(leader.instructions.contains("role=leader"));
-        assert!(leader.instructions.contains("team-leader-orchestrator"));
-        assert!(!leader.instructions.contains("team-worker-executor"));
 
         let worker = build_role_agents_index_skill(TeamRoleIndexKind::Worker);
         assert_eq!(worker.name, "team-worker-agents-index");
-        assert!(worker.instructions.contains("role=worker"));
-        assert!(worker.instructions.contains("team-worker-executor"));
-        assert!(!worker.instructions.contains("team-leader-orchestrator"));
     }
 }

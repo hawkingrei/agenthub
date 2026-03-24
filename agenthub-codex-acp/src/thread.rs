@@ -3327,10 +3327,7 @@ fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
     prompt
         .into_iter()
         .filter_map(|block| match block {
-            ContentBlock::Text(text_block) => Some(UserInput::Text {
-                text: text_block.text,
-                text_elements: vec![],
-            }),
+            ContentBlock::Text(text_block) => Some(build_text_or_skill_input(text_block.text)),
             ContentBlock::Image(image_block) => Some(UserInput::Image {
                 image_url: format!("data:{};base64,{}", image_block.mime_type, image_block.data),
             }),
@@ -3357,6 +3354,50 @@ fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
             ContentBlock::Audio(..) | ContentBlock::Resource(..) | _ => None,
         })
         .collect()
+}
+
+fn build_text_or_skill_input(text: String) -> UserInput {
+    parse_agenthub_skill_input(&text).unwrap_or(UserInput::Text {
+        text,
+        text_elements: vec![],
+    })
+}
+
+fn parse_agenthub_skill_input(text: &str) -> Option<UserInput> {
+    let body = text
+        .strip_prefix("<skill>\n")
+        .or_else(|| text.strip_prefix("<skill>\r\n"))?;
+    let body = body
+        .strip_suffix("\n</skill>")
+        .or_else(|| body.strip_suffix("\r\n</skill>"))?;
+    let (name_line, rest) = split_first_line(body)?;
+    let name = parse_skill_meta_line(name_line, "name")?;
+    let (path_line, _) = split_first_line(rest)?;
+    let path = PathBuf::from(parse_skill_meta_line(path_line, "path")?);
+    if !path.is_absolute() {
+        return None;
+    }
+    Some(UserInput::Skill { name, path })
+}
+
+fn split_first_line(input: &str) -> Option<(&str, &str)> {
+    let newline = input.find('\n')?;
+    let (line, rest) = input.split_at(newline);
+    Some((line.strip_suffix('\r').unwrap_or(line), &rest[1..]))
+}
+
+fn parse_skill_meta_line(line: &str, tag: &str) -> Option<String> {
+    let open_tag = format!("<{tag}>");
+    let close_tag = format!("</{tag}>");
+    let value = line.strip_prefix(&open_tag)?.strip_suffix(&close_tag)?;
+    Some(unescape_skill_meta(value))
+}
+
+fn unescape_skill_meta(value: &str) -> String {
+    value
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
 }
 
 fn format_uri_as_link(name: Option<String>, uri: String) -> String {
@@ -4782,5 +4823,58 @@ mod tests {
         assert!(matches!(ops.last(), Some(Op::Shutdown)));
 
         Ok(())
+    }
+
+    #[test]
+    fn test_build_prompt_items_converts_file_skill_block_to_native_skill_input() {
+        let items = build_prompt_items(vec![ContentBlock::Text(TextContent::new(
+            "<skill>\n<name>demo &amp; docs</name>\n<path>/tmp/demo&amp;docs/SKILL.md</path>\nUse the demo skill.\n</skill>",
+        ))]);
+
+        assert_eq!(
+            items,
+            vec![UserInput::Skill {
+                name: "demo & docs".to_string(),
+                path: PathBuf::from("/tmp/demo&docs/SKILL.md"),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_items_keeps_builtin_skill_block_as_text() {
+        let text = "<skill>\n<name>team-leader</name>\n<path>builtin://team/leader</path>\nBuiltin body.\n</skill>";
+        let items = build_prompt_items(vec![ContentBlock::Text(TextContent::new(text))]);
+
+        assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: text.to_string(),
+                text_elements: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_items_preserves_mixed_skill_and_text_order() {
+        let items = build_prompt_items(vec![
+            ContentBlock::Text(TextContent::new(
+                "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nUse the demo skill.\n</skill>",
+            )),
+            ContentBlock::Text(TextContent::new("Explain the result.")),
+        ]);
+
+        assert_eq!(
+            items,
+            vec![
+                UserInput::Skill {
+                    name: "demo".to_string(),
+                    path: PathBuf::from("/tmp/demo/SKILL.md"),
+                },
+                UserInput::Text {
+                    text: "Explain the result.".to_string(),
+                    text_elements: vec![],
+                },
+            ]
+        );
     }
 }

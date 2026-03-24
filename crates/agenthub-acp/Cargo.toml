@@ -7,6 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 agenthub-acp-core = { path = "../agenthub-acp-core" }
 agenthub-config = { path = "../agenthub-config" }
+agenthub-managed-skills = { path = "../agenthub-managed-skills" }
 agenthub-text = { path = "../agenthub-text" }
 agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
 anyhow = "1"

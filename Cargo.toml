@@ -4,6 +4,7 @@ members = [
     "agenthub-codex-acp",
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
+    "crates/agenthub-managed-skills",
     "crates/agenthub-text",
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",

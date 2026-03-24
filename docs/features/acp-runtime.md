@@ -140,6 +140,13 @@ ACP permission requests are first-class runtime records:
 - `agenthub-codex-acp` should enable Codex `multi_agent` / `Feature::Collab` by default so
   AgentHub ACP sessions expose subagent tools without requiring per-user `~/.codex/config.toml`
   toggles; retain a follow-up to surface this as an explicit AgentHub-owned config knob later.
+- `agenthub-acp` should materialize AgentHub-managed Codex skills under
+  `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
+  file-backed skills through ACP `<skill>` wrappers so `agenthub-codex-acp` can translate them into
+  native Codex `UserInput::Skill` items.
+- Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
+  stay in a separate text prefix block injected before each prompt instead of being rewritten into
+  the managed `SKILL.md` files.
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
@@ -160,3 +167,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-02-20-web-tailwind-ui-phase9-acp-conversation-shell.md`
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
 - `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`
+- `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
