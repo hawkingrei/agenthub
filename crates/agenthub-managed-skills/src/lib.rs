@@ -437,13 +437,12 @@ mod tests {
             let doc =
                 managed_skill_doc(kind, Some(home.as_path())).expect("build managed skill doc");
             assert_frontmatter_has_name_and_description(&doc);
+            if kind == ManagedSkillKind::ActorRuntime {
+                assert!(doc.contents.contains("Runtime coordination contract"));
+                assert!(doc.contents.contains("`actor_cli_path`"));
+                assert!(doc.contents.contains("<actor_cli_path> actor inbox"));
+            }
         }
-
-        let actor_runtime_doc = managed_skill_doc(ManagedSkillKind::ActorRuntime, Some(home.as_path()))
-            .expect("build managed actor runtime skill");
-        assert!(actor_runtime_doc.contents.contains("Runtime coordination contract"));
-        assert!(actor_runtime_doc.contents.contains("`actor_cli_path`"));
-        assert!(actor_runtime_doc.contents.contains("<actor_cli_path> actor inbox"));
     }
 
     fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {

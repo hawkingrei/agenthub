@@ -106,8 +106,8 @@ Operational notes:
 2. Confirm the server is listening on the configured internal gRPC address.
 3. If you use `agenthub actor ...` outside an injected runtime shell, include
    `--actor-id <actor_id>` explicitly.
-4. Run one authority-side read command such as `agenthub actor team-members
-   --actor-id <actor_id> --run-id <run_id>`.
+4. Run one authority-side read command such as `agenthub actor inbox
+   --actor-id <actor_id> --run-id <run_id> --limit 1`.
 5. Log in through the browser.
 6. Create one test agent in `create_worktree` mode.
 7. Confirm the generated path is under `worktree.default_root`.
