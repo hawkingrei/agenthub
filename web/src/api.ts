@@ -450,6 +450,14 @@ export function parseApiErrorMessage(err: unknown): string | null {
   return null;
 }
 
+export function getApiErrorStatus(err: unknown): number | null {
+  if (!err || typeof err !== "object") {
+    return null;
+  }
+  const { status } = err as { status?: unknown };
+  return typeof status === "number" ? status : null;
+}
+
 function authHeaders(token: string | null): HeadersInit {
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
@@ -474,7 +482,11 @@ async function apiFetch<T>(
     if (shouldRedirectOnAuthError(res.status, token, msg)) {
       clearAuthAndRedirect();
     }
-    throw new Error(msg || raw || res.statusText);
+    const error = new Error(msg || raw || res.statusText) as Error & {
+      status?: number;
+    };
+    error.status = res.status;
+    throw error;
   }
   return (await res.json()) as T;
 }

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { AgentRecord } from "../../api";
-import { api } from "../../api";
+import { api, getApiErrorStatus } from "../../api";
 
 type UseTeamMemberBackfillEffectParams = {
   token: string;
@@ -11,6 +11,11 @@ type UseTeamMemberBackfillEffectParams = {
   setTeamMemberAgentsById: Dispatch<
     SetStateAction<Record<string, AgentRecord | null>>
   >;
+};
+
+type ResolvedTeamMemberAgent = {
+  memberId: string;
+  agent?: AgentRecord | null;
 };
 
 function areAgentRecordsEqual(
@@ -74,22 +79,34 @@ export function useTeamMemberBackfillEffect({
 
     let canceled = false;
     const loadMissingMemberAgents = async () => {
-      const resolved = await Promise.all(
+      const resolved: ResolvedTeamMemberAgent[] = await Promise.all(
         unresolvedMemberIds.map(async (memberId) => {
           try {
-            const agent = await api.getAgent(token, memberId);
-            return [memberId, agent] as const;
-          } catch {
-            return [memberId, null] as const;
+            return {
+              memberId,
+              agent: await api.getAgent(token, memberId),
+            };
+          } catch (err) {
+            if (getApiErrorStatus(err) === 404) {
+              return { memberId, agent: null };
+            }
+            return { memberId };
           }
         })
       );
       if (canceled) {
         return;
       }
+      if (resolved.every(({ agent }) => agent === undefined)) {
+        return;
+      }
       setTeamMemberAgentsById((prev) => {
         let next: Record<string, AgentRecord | null> | null = null;
-        for (const [memberId, agent] of resolved) {
+        for (const { memberId, agent } of resolved) {
+          // Preserve prior cache on transient failures; only clear confirmed 404s.
+          if (agent === undefined) {
+            continue;
+          }
           if (areAgentRecordsEqual(prev[memberId], agent)) {
             continue;
           }

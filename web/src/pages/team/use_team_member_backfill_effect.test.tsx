@@ -36,6 +36,10 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
   };
 }
 
+function makeApiError(status: number, message: string): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
 function HookHarness({ params }: { params: HookParams }) {
   useTeamMemberBackfillEffect(params);
   return null;
@@ -77,13 +81,13 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(params.setTeamMemberAgentsById).not.toHaveBeenCalled();
   });
 
-  it("backfills missing members and stores null for fetch failures", async () => {
+  it("backfills missing members and stores null for confirmed not found failures", async () => {
     const params = createParams();
     vi.spyOn(api, "getAgent").mockImplementation(async (_token, agentId) => {
       if (agentId === "missing-a") {
         return makeAgent("missing-a");
       }
-      throw new Error("not-found");
+      throw makeApiError(404, "not-found");
     });
 
     act(() => {
@@ -111,7 +115,7 @@ describe("useTeamMemberBackfillEffect", () => {
       teamSpecMemberIds: ["listed-agent", "missing-a"],
       teamMemberAgentsById: { "missing-a": makeAgent("missing-a") },
     });
-    vi.spyOn(api, "getAgent").mockRejectedValue(new Error("not-found"));
+    vi.spyOn(api, "getAgent").mockRejectedValue(makeApiError(404, "not-found"));
 
     act(() => {
       root.render(<HookHarness params={params} />);
@@ -129,5 +133,23 @@ describe("useTeamMemberBackfillEffect", () => {
     const next = updater({ "missing-a": makeAgent("missing-a") });
 
     expect(next["missing-a"]).toBeNull();
+  });
+
+  it("preserves cached hidden members on transient revalidation failures", async () => {
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": makeAgent("missing-a") },
+    });
+    vi.spyOn(api, "getAgent").mockRejectedValue(makeApiError(503, "unavailable"));
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.setTeamMemberAgentsById).not.toHaveBeenCalled();
   });
 });
