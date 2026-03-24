@@ -493,6 +493,13 @@ describe("team run list helpers", () => {
       canStop: true,
       canDelete: true,
     });
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "idle", null)
+    ).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
 
     expect(resolveTeamMemberAgentControlState(null, "missing", null)).toEqual({
       canStart: false,

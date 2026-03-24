@@ -81,7 +81,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const thinkingStartTs = acpView.thinkingStartTs;
   const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
-  const [thinkingTick, setThinkingTick] = React.useState(0);
+  const [, setThinkingTick] = React.useState(0);
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -177,7 +177,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     ? `${memberStatus} · ${thinkingLabel}`
     : memberStatus;
   const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
-  void thinkingTick;
   const handleTerminalScroll = React.useCallback(() => {
     const element = terminalRef.current;
     if (!element) {

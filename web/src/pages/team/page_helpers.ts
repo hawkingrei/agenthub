@@ -114,15 +114,17 @@ export function resolveTeamMemberAgentControlState(
 ): TeamMemberAgentControlState {
   const normalizedLifecycle = lifecycle.trim().toLowerCase();
   const hasAgent = Boolean(agent?.id?.trim());
+  const isRunning =
+    normalizedLifecycle === "working" || normalizedLifecycle === "idle";
   return {
     canStart:
       hasAgent &&
       busy !== "start-team-member-agent" &&
-      normalizedLifecycle !== "working",
+      !isRunning,
     canStop:
       hasAgent &&
       busy !== "stop-team-member-agent" &&
-      normalizedLifecycle === "working",
+      isRunning,
     canDelete: hasAgent && busy !== "delete-team-member-agent",
   };
 }
