@@ -1,24 +1,30 @@
 # Documentation Guide
 
-This folder contains engineering-facing documentation for AgentHub contributors.
+This folder contains engineering-facing documentation for AgentHub
+contributors.
 
 ## Structure
 
-- `docs/features/`: append-only implementation notes with date-prefixed filenames
-- `docs/todo.md`: follow-up verification and backlog checklist
+- `docs/features/`: stable domain-oriented engineering specs
+- `docs/journal/`: dated implementation checkpoints and compaction notes
+- `docs/todo.md`: active follow-up backlog only
 - `docs/api_naming.md`: payload naming conventions for AgentHub-owned APIs
-- `userdocs/`: end-user documentation site (Docusaurus, generated static pages)
+- `userdocs/`: published end-user documentation site (Docusaurus)
 
 ## When You Change Code
 
 Use this checklist for every non-trivial change:
 
-1. Add or update a feature note in `docs/features/`.
-2. Add a follow-up item in `docs/todo.md` when verification or continuation is needed.
-3. If API payloads changed, ensure naming still conforms to `docs/api_naming.md`.
-4. If behavior is user-visible, update `userdocs/docs/` accordingly.
+1. Update the canonical feature spec in `docs/features/` when contracts or
+   behavior changed.
+2. Add or append a dated journal in `docs/journal/` for the implementation
+   checkpoint.
+3. Add a follow-up item in `docs/todo.md` only when open work remains.
+4. If API payloads changed, ensure naming still conforms to
+   `docs/api_naming.md`.
+5. If behavior is user-visible, update `userdocs/docs/` accordingly.
 
-## Feature Note Convention
+## Journal Convention
 
 - Filename: `YYYY-MM-DD-topic.md`
 - Keep notes concise and operational:
@@ -29,15 +35,32 @@ Use this checklist for every non-trivial change:
   - Validation
   - Follow-ups
 
+## Compaction Rules
+
+- `docs/features/` holds stable domain docs only; do not turn it into a
+  chronological changelog.
+- `docs/journal/` holds dated implementation records (`YYYY-MM-DD-topic.md`).
+- When a feature evolves, update the canonical feature doc and add or append a
+  journal note.
+- When documentation-only journals stop carrying distinct decisions, merge them
+  into a background journal and remove the stale micro-journals.
+
+## TODO Hygiene
+
+- Keep `docs/todo.md` as an active backlog, not a historical ledger.
+- Remove completed items after evidence is captured in a journal, PR, or
+  canonical feature spec.
+- Prefer one umbrella rollout item over many duplicated verification bullets
+  for the same surface.
+
 ## Working With User Docs
 
-`userdocs/` is the static documentation site generator target.
+`userdocs/` is the published user documentation site.
 
 ```bash
-cd userdocs
-npm install
-npm run start
-npm run build
+npm --prefix userdocs ci
+npm --prefix userdocs run start
+npm --prefix userdocs run build
 ```
 
 Build artifacts are generated at `userdocs/build/`.

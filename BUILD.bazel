@@ -61,7 +61,7 @@ rust_test(
 
 rust_binary(
     name = "agenthub",
-    srcs = ["src/main.rs"],
+    srcs = ["cmd/agenthub/src/main.rs"],
     edition = "2024",
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [":agenthub_lib"],

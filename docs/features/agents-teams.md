@@ -202,6 +202,16 @@ Constraint:
   agent review cannot complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- `Agent ACP -> Debug` may expose a member-scoped `Force New Session` recovery action:
+  - it clears the selected member's persisted ACP session for the active provider
+  - restarts only that member runtime
+  - other team members keep their current sessions
+- The selected Team member workspace also exposes per-agent lifecycle controls:
+  - `Start Agent`
+  - `Stop Agent`
+  - `Delete Agent`
+  These act on the selected member's underlying agent record without requiring a Team-wide runtime
+  restart.
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.

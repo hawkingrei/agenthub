@@ -1,14 +1,17 @@
-# AgentHub User Docs (Docusaurus)
+# AgentHub User Docs
 
-This directory contains the end-user documentation site for AgentHub.
-It is used as a static site generator (no runtime backend required for hosting docs).
+This directory contains the published end-user documentation site for
+AgentHub.
+
+Published site:
+
+- `https://doc.agenthub.hawkingrei.com/`
 
 ## Local Preview
 
 ```bash
-cd userdocs
-npm install
-npm run start
+npm --prefix userdocs ci
+npm --prefix userdocs run start
 ```
 
 Default preview URL is `http://localhost:3000`.
@@ -16,8 +19,7 @@ Default preview URL is `http://localhost:3000`.
 ## Build Static Site
 
 ```bash
-cd userdocs
-npm run build
+npm --prefix userdocs run build
 ```
 
 Static output is generated at `userdocs/build/`.
@@ -25,22 +27,24 @@ Static output is generated at `userdocs/build/`.
 ## Serve Built Output Locally
 
 ```bash
-cd userdocs
-npm run serve
+npm --prefix userdocs run serve
 ```
 
-## Deploy on Vercel (Static Hosting)
+## Deploy Notes
 
-Recommended project settings:
+The `userdocs/` site is built as a static Docusaurus site and is suitable for
+static hosting.
 
-- Root Directory: `userdocs`
-- Install Command: `npm install`
-- Build Command: `npm run build`
-- Output Directory: `build`
+Recommended static-host settings:
+
+- Root directory: `userdocs`
+- Install command: `npm ci`
+- Build command: `npm run build`
+- Output directory: `build`
 
 ## Content Organization
 
 - `docs/`: user-facing pages
 - `sidebars.js`: navigation structure
-- `docusaurus.config.js`: site-level config
-- `src/css/custom.css`: docs site styling
+- `docusaurus.config.js`: site-level metadata and routing
+- `src/css/custom.css`: docs-site styling

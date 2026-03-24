@@ -20,6 +20,8 @@ import {
   parseTeamSpecMembers,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
+  removeTeamMemberLookupEntry,
+  resolveTeamMemberAgentControlState,
   toggleSkillSelection,
   selectMailboxConversation,
   selectTeamForgeAgents,
@@ -471,6 +473,57 @@ describe("team run list helpers", () => {
       missing: 1,
       total: 4,
     });
+  });
+
+  it("derives selected Team member lifecycle controls from agent presence and busy state", () => {
+    const stoppedAgent = buildAgent("worker-agent", "stopped");
+    expect(
+      resolveTeamMemberAgentControlState(stoppedAgent, "stopped", null)
+    ).toEqual({
+      canStart: true,
+      canStop: false,
+      canDelete: true,
+    });
+
+    const runningAgent = buildAgent("worker-agent", "running");
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "working", null)
+    ).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "idle", null)
+    ).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
+
+    expect(resolveTeamMemberAgentControlState(null, "missing", null)).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: false,
+    });
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "working", "stop-team-member-agent")
+    ).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: true,
+    });
+  });
+
+  it("removes selected Team member discovery cache entries without cloning untouched maps", () => {
+    const existing = {
+      "worker-agent": { title: "Worker" },
+      "reviewer-agent": { title: "Reviewer" },
+    };
+    expect(removeTeamMemberLookupEntry(existing, "worker-agent")).toEqual({
+      "reviewer-agent": { title: "Reviewer" },
+    });
+    expect(removeTeamMemberLookupEntry(existing, "missing-agent")).toBe(existing);
   });
 
   it("maps lifecycle tone to active, inactive, and missing", () => {

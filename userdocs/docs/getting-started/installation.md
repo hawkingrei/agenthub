@@ -8,61 +8,69 @@ sidebar_position: 1
 
 - Rust (stable toolchain)
 - Node.js 20+
+- Git
 
-## Start AgentHub Locally
+## Install Web Dependencies
 
 ```bash
-# Build frontend assets
-cd web
-npm install
-npm run build
-
-# Start backend service
-cd ..
-cargo run
+npm --prefix web ci
 ```
 
-By default, AgentHub serves the UI at `http://localhost:8080`.
+## Create A Minimal Config
 
-## Run With Explicit Config
+AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 
-If your setup uses a custom config path, run:
+Start with a minimal single-node config:
+
+```toml
+safe_paths = [
+  "/home/you/projects",
+  "/home/you/sandboxes",
+]
+
+[server]
+listen = "127.0.0.1:8080"
+
+[worktree]
+default_root = "/home/you/.agenthub/worktrees"
+```
+
+`safe_paths` should list the repository roots that users are allowed to use as
+agent workdirs.
+
+## Start AgentHub
+
+For the standard local workflow:
+
+```bash
+make run
+```
+
+`make run` builds the web UI as part of the normal startup path, so you do not
+need a separate `npm --prefix web run build` step for the default local setup.
+
+If you want to point at an explicit config file:
 
 ```bash
 cargo run -- -c /path/to/config.toml
 ```
 
+By default, AgentHub serves the UI at `http://localhost:8080`.
+
 ## Runtime Data Location
 
-AgentHub stores data under `~/.agenthub/` by default, including:
+AgentHub stores runtime data under `~/.agenthub/` by default, including:
 
 - SQLite database
-- Runtime session state
-- Logs and operational files
-
-## Configuration
-
-AgentHub reads settings from `config.toml`.
-
-Example:
-
-```toml
-listen_addr = "0.0.0.0:8080"
-
-safe_paths = [
-  "/home/you",
-  "/home/you/projects"
-]
-```
-
-Set `safe_paths` to the directories users are allowed to use as agent workdirs.
+- runtime session state
+- logs and operational files
 
 ## Smoke Check
 
 After startup:
 
 1. Open `http://localhost:8080`
-2. Confirm login page loads
+2. Confirm the login page loads
 3. Create one test agent
-4. Start and send one simple instruction
-5. Confirm output appears in Conversation
+4. Start it and send one simple instruction
+5. Confirm output appears in `Conversation`

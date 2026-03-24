@@ -3,68 +3,94 @@ sidebar_position: 1
 slug: /
 ---
 
-# AgentHub User Guide
+# AgentHub Docs
 
-This site explains how to use AgentHub from an end-user perspective.
+AgentHub is a single-binary control plane for long-lived AI agents, Team
+workflows, and optional remote execution nodes.
 
-## What You Can Do in AgentHub
+## What AgentHub Gives You
 
-- Create and manage agents with different workdir/worktree strategies
-- Start an agent task and keep it running even if you close your browser tab
-- Interact with running tasks and inspect structured ACP output
-- Review task history, logs, and statuses from one workspace
-- Receive completion notifications inside the app
-- Orchestrate multi-agent team runs from Team Workbench (`/teams`)
-- Integrate with OpenAPI endpoints for automation
+Most agent tools are optimized for one terminal and one short-lived session.
+AgentHub is built for the operational side of agent work:
 
-## Who This Guide Is For
+- keep agent sessions alive after the browser tab closes
+- inspect structured ACP history instead of relying on raw scrollback
+- manage Team workflows with explicit shared conversation and task surfaces
+- route execution to remote nodes with actor p2p control and mailbox relay when
+  one machine is not enough
+- keep runtime state, history, and operator control in one place
 
-- Individual developers running daily coding tasks with AI agents
-- Tech leads who need auditable agent runs and repeatable workflows
-- Teams adopting isolated worktree-based automation
-- Operators deploying AgentHub in internal environments
+## Why This Matters
 
-## Core Workflow
+AgentHub is useful when you want the browser to be an operator surface rather
+than the runtime itself.
 
-1. Install and run AgentHub server
-2. Sign in
-3. Create an agent
-4. Start a task and send instructions
-5. Watch output, debug when needed, and continue from history
+That changes a few things:
 
-Use the sidebar to follow this order if you are new to AgentHub.
+- reconnecting to a session should be normal, not a recovery edge case
+- output should stay structured and reviewable after the original run ends
+- multi-agent collaboration should use explicit coordination surfaces instead of
+  ad-hoc shell copy/paste
+- remote execution should preserve the same actor and mailbox model instead of
+  introducing a separate control plane
 
-## Additional Tracks
+## Core Surfaces
 
-- **Deployment**: from local setup to production checklist and static docs
-  publishing
-- **Advanced Usage**: Team Workbench, OpenAPI-based integration, and connection
-  state recovery
-- **Operations**: daily runbook, security guardrails, troubleshooting, FAQ
+AgentHub has four primary user-facing surfaces:
 
-## Reading Path Recommendation
+- **Agents**: create, start, stop, reconnect, and inspect single-agent runs
+- **Conversation and ACP timelines**: review plans, tool calls, command output,
+  and debug events as structured history
+- **Teams**: coordinate leader/worker collaboration with shared conversation and
+  task tracking
+- **Agent Nodes and actor p2p**: extend execution onto remote machines without
+  moving the control plane, while keeping mailbox/control traffic on the same
+  operational model
 
-If you are new:
+## Choose Your Path
 
-1. `Installation and Startup`
-2. `Configuration Basics`
-3. `Login and Access`
-4. `First Task Walkthrough`
-5. `Workdir and Worktree Strategy`
-6. `Task Instruction Patterns`
-7. `Daily Operations Checklist`
+### Evaluate AgentHub
 
-If you already run agents daily:
+1. [Product Overview](./overview/product-overview.md)
+2. [Feature Overview](./overview/feature-overview.md)
+3. [Architecture Overview](./overview/architecture-overview.md)
 
-1. `Session Lifecycle`
-2. `Review and Apply Changes`
-3. `Troubleshooting`
-4. `FAQ`
-5. `Connection Status and Recovery`
+### Start Running Locally
 
-If you manage deployment/integration:
+1. [Installation and Startup](./getting-started/installation.md)
+2. [Configuration Basics](./getting-started/configuration-basics.md)
+3. [Login and Access](./getting-started/login.md)
+4. [First Task Walkthrough](./getting-started/first-task-walkthrough.md)
+5. [Create Your First Agent](./core/create-agent.md)
 
-1. `Deployment Overview and Topology`
-2. `Production Checklist`
-3. `OpenAPI and Automation`
-4. `Deploy User Docs on Vercel (Static)`
+### Operate Teams Or Distributed Execution
+
+1. [Team Workbench](./advanced/team-workbench.md)
+2. [Agent Nodes and Remote Execution](./core/agent-nodes.md)
+3. [Deployment Overview and Topology](./deployment/overview-and-topology.md)
+4. [Production Checklist](./deployment/production-checklist.md)
+5. [Troubleshooting](./operations/troubleshooting.md)
+
+## Documentation Map
+
+- **Overview**: what AgentHub is, which surfaces matter, and how the system is
+  structured.
+- **Getting Started**: install, configure, log in, and complete one first task.
+- **Core Workflow**: create agents, choose workdirs/worktrees, run tasks,
+  inspect output, and review changes.
+- **Advanced Usage**: Team workflows, OpenAPI-based automation, and connection
+  recovery.
+- **Deployment and Operations**: rollout, production checks, security, and
+  troubleshooting.
+
+## After The Basics
+
+- Inspect session persistence and history:
+  [Run and Interact](./core/run-and-interact.md),
+  [View Output](./core/view-output.md),
+  [Session Lifecycle](./core/session-lifecycle.md)
+- Learn the workdir and review flow:
+  [Workdir and Worktree Strategy](./core/workdir-worktree-strategy.md),
+  [Review and Apply Changes](./core/review-and-apply-changes.md)
+- Go deeper on Team operation:
+  [Team Workbench](./advanced/team-workbench.md)
