@@ -1,5 +1,6 @@
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
@@ -20,6 +21,8 @@ const TEAM_ACTOR_MAILBOX_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-actor-mailbox.SKILL.md");
 const TEAM_TASK_LIFECYCLE_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-task-lifecycle.SKILL.md");
+
+static MANAGED_SKILL_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManagedSkillKind {
@@ -96,9 +99,12 @@ pub fn managed_skill_doc(
 }
 
 pub fn install_managed_skills(home_dir: Option<&Path>) -> Result<Vec<PathBuf>> {
+    let Some(home_dir) = resolve_home_dir_optional(home_dir) else {
+        return Ok(Vec::new());
+    };
     let mut installed = Vec::with_capacity(ManagedSkillKind::ALL.len());
     for kind in ManagedSkillKind::ALL {
-        let doc = managed_skill_doc(kind, home_dir)?;
+        let doc = managed_skill_doc(kind, Some(home_dir.as_path()))?;
         let parent = doc
             .path
             .parent()
@@ -119,13 +125,8 @@ fn write_managed_skill_file(path: &Path, contents: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .context("managed skill document missing parent directory")?;
-    let temp_path = unique_temp_path(parent, path);
+    let (temp_path, mut file) = create_temp_skill_file(parent, path)?;
     {
-        let mut file = std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temp_path)
-            .with_context(|| format!("create temp managed skill {}", temp_path.display()))?;
         file.write_all(contents)
             .with_context(|| format!("write temp managed skill {}", temp_path.display()))?;
         file.sync_all()
@@ -168,21 +169,65 @@ fn unique_temp_path(parent: &Path, target_path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(SKILL_DOC_NAME);
+    let counter = MANAGED_SKILL_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    parent.join(format!(".{basename}.{}.{}.tmp", std::process::id(), nonce))
+    parent.join(format!(
+        ".{basename}.{}.{}.{}.tmp",
+        std::process::id(),
+        nonce,
+        counter
+    ))
 }
 
 pub fn resolve_home_dir(home_dir: Option<&Path>) -> Result<PathBuf> {
-    if let Some(home_dir) = home_dir {
-        return Ok(home_dir.to_path_buf());
-    }
-    let Some(home_dir) = std::env::var_os("HOME") else {
+    let Some(home_dir) = resolve_home_dir_optional(home_dir) else {
         bail!("HOME is not set; unable to resolve ~/.agents/skills");
     };
-    Ok(PathBuf::from(home_dir))
+    Ok(home_dir)
+}
+
+fn resolve_home_dir_optional(home_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(home_dir) = home_dir {
+        return Some(home_dir.to_path_buf());
+    }
+
+    #[cfg(windows)]
+    {
+        std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+    }
+
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+fn create_temp_skill_file(parent: &Path, target_path: &Path) -> Result<(PathBuf, std::fs::File)> {
+    for _ in 0..8 {
+        let temp_path = unique_temp_path(parent, target_path);
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp_path)
+        {
+            Ok(file) => return Ok((temp_path, file)),
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(err)
+                    .with_context(|| format!("create temp managed skill {}", temp_path.display()));
+            }
+        }
+    }
+
+    bail!(
+        "failed to allocate temp managed skill path for {}",
+        target_path.display()
+    );
 }
 
 pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
@@ -359,10 +404,17 @@ Protocol rules:
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
     use super::{
         ManagedSkillKind, SKILL_DOC_NAME, install_managed_skills, managed_skill_doc,
         managed_skill_doc_path, managed_skills_root,
     };
+
+    fn env_lock() -> &'static Mutex<()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn managed_skill_paths_live_under_agents_skills_namespace() {
@@ -407,5 +459,26 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn install_managed_skills_without_home_dir_is_noop() {
+        let _guard = env_lock().lock().expect("lock env");
+        let previous_home = std::env::var_os("HOME");
+        // SAFETY: the test serializes environment mutation through `env_lock`.
+        unsafe {
+            std::env::remove_var("HOME");
+        }
+
+        let installed = install_managed_skills(None).expect("skip install without home");
+        assert!(installed.is_empty());
+
+        // SAFETY: the test serializes environment mutation through `env_lock`.
+        unsafe {
+            if let Some(home) = previous_home {
+                std::env::set_var("HOME", home);
+            }
+        }
     }
 }

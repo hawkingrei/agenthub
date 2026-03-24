@@ -3326,7 +3326,9 @@ impl<A: Auth> ThreadActor<A> {
 }
 
 fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
-    let trusted_root = managed_skills_root(None).ok();
+    let trusted_root = managed_skills_root(None)
+        .ok()
+        .and_then(|root| std::fs::canonicalize(root).ok());
     build_prompt_items_with_trusted_root(prompt, trusted_root.as_deref())
 }
 
@@ -3402,10 +3404,7 @@ fn is_trusted_agenthub_skill_path(path: &Path, trusted_root: Option<&Path>) -> b
     let Ok(canonical_path) = std::fs::canonicalize(path) else {
         return false;
     };
-    let Ok(canonical_root) = std::fs::canonicalize(trusted_root) else {
-        return false;
-    };
-    canonical_path.starts_with(canonical_root)
+    canonical_path.starts_with(trusted_root)
 }
 
 fn split_first_line(input: &str) -> Option<(&str, &str)> {

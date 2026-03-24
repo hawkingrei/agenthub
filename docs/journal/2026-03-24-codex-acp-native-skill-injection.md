@@ -46,6 +46,13 @@ separate AgentHub-specific Codex skill toggle.
   accepting arbitrary absolute paths from prompt text.
 - Made managed skill installation idempotent and temp-file-backed so repeated
   ACP session bootstrap does not rewrite unchanged skill files in place.
+- Followed up on review hardening:
+  - skip managed skill installation quietly when no home directory can be
+    resolved for the current process
+  - canonicalize the managed skill trust root once per prompt build instead of
+    once per skill block
+  - retry temp-file allocation on `AlreadyExists` and add an in-process counter
+    to reduce collision risk under concurrent bootstrap
 - Added/kept focused tests for:
   - managed skill path layout and install behavior
   - prompt prefix ordering with dynamic runtime context
