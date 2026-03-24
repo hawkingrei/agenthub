@@ -16,16 +16,6 @@ use chrono::Utc;
 use crate::internal::auth::InternalAction;
 use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
 
-fn team_task_status_label(status: TeamTaskStatus) -> &'static str {
-    match status {
-        TeamTaskStatus::Open => "open",
-        TeamTaskStatus::InProgress => "in_progress",
-        TeamTaskStatus::InReview => "in_review",
-        TeamTaskStatus::Completed => "completed",
-        TeamTaskStatus::Canceled => "canceled",
-    }
-}
-
 pub(super) async fn run_actor_command(
     command: ActorCommand,
     output_mode: ActorOutputMode,
@@ -75,7 +65,7 @@ pub(super) async fn run_actor_command(
                     &team_id,
                     &actor_id,
                     limit,
-                    status.map(team_task_status_label),
+                    status.as_ref().map(TeamTaskStatus::as_str),
                     include_shared_thread,
                 )
                 .await?;
@@ -101,7 +91,7 @@ pub(super) async fn run_actor_command(
                     &team_id,
                     &actor_id,
                     &title,
-                    team_task_status_label(status),
+                    status.as_str(),
                     topic.as_deref(),
                     &context,
                 )
@@ -122,12 +112,7 @@ pub(super) async fn run_actor_command(
             )
             .await?;
             let task = client
-                .update_team_task(
-                    &team_id,
-                    &actor_id,
-                    &task_id,
-                    team_task_status_label(status),
-                )
+                .update_team_task(&team_id, &actor_id, &task_id, status.as_str())
                 .await?;
             write_actor_output(&task, output_mode, output_preference)?;
         }

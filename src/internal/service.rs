@@ -40,6 +40,9 @@ use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 
 const BOOTSTRAP_TOKEN_HEADER: &str = "x-agenthub-bootstrap-token";
 const MAILBOX_HINT_NOTIFY_TIMEOUT: Duration = Duration::from_millis(300);
+const MAX_INTERNAL_TEAM_TASK_LIST_LIMIT: i64 = 500;
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
 
@@ -454,7 +457,10 @@ impl TeamInternalControl for TeamInternalControlService {
         let mut tasks = self
             .state
             .teams
-            .list_tasks(team_id, payload.limit.clamp(1, 500))
+            .list_tasks(
+                team_id,
+                payload.limit.clamp(1, MAX_INTERNAL_TEAM_TASK_LIST_LIMIT),
+            )
             .await
             .map_err(map_manager_error)?;
         if !payload.include_shared_thread {
@@ -1289,20 +1295,19 @@ async fn ensure_leader_team_access(
 }
 
 fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
-    match raw.trim() {
-        "open" => Ok(TeamTaskStatus::Open),
-        "in_progress" => Ok(TeamTaskStatus::InProgress),
-        "in_review" => Ok(TeamTaskStatus::InReview),
-        "completed" => Ok(TeamTaskStatus::Completed),
-        "canceled" => Ok(TeamTaskStatus::Canceled),
-        other => Err(Status::invalid_argument(format!(
+    raw.trim().parse::<TeamTaskStatus>().map_err(|other| {
+        Status::invalid_argument(format!(
             "invalid task status '{other}', expected one of: open, in_progress, in_review, completed, canceled"
-        ))),
-    }
+        ))
+    })
 }
 
 fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
-    if task.title.trim().eq_ignore_ascii_case("all") {
+    if task
+        .title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+    {
         return true;
     }
     task.context
@@ -1310,7 +1315,7 @@ fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
         .and_then(|obj| obj.get("bootstrap_kind"))
         .and_then(Value::as_str)
         .map(str::trim)
-        .is_some_and(|value| value.eq_ignore_ascii_case("shared_thread"))
+        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
 }
 
 fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
