@@ -136,7 +136,8 @@ export function removeTeamMemberLookupEntry<T>(
   if (!Object.prototype.hasOwnProperty.call(lookup, memberId)) {
     return lookup;
   }
-  const { [memberId]: _removed, ...next } = lookup;
+  const next = { ...lookup };
+  delete next[memberId];
   return next;
 }
 
