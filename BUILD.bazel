@@ -22,8 +22,8 @@ exports_files(
 rust_library(
     name = "agenthub_lib",
     srcs = glob(
-        ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
+        ["src/**/*.rs", "cmd/agenthub/src/**/*.rs"],
+        exclude = ["src/main.rs", "cmd/agenthub/src/main.rs"],
     ),
     crate_name = "agenthub",
     crate_root = "src/lib.rs",
@@ -61,7 +61,7 @@ rust_test(
 
 rust_binary(
     name = "agenthub",
-    srcs = ["src/main.rs"],
+    srcs = ["cmd/agenthub/src/main.rs"],
     edition = "2024",
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [":agenthub_lib"],

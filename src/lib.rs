@@ -1,12 +1,14 @@
 #![recursion_limit = "512"]
 
 mod acp;
+#[path = "../cmd/agenthub/src/actor_cli.rs"]
 mod actor_cli;
 mod actor_runtime_env;
 mod agent;
 #[cfg(test)]
 mod agenthub_binary;
 mod api;
+#[path = "../cmd/agenthub/src/app.rs"]
 mod app;
 mod auth;
 pub use agenthub_config as config;
