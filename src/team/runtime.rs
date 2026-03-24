@@ -524,6 +524,11 @@ pub async fn force_team_member_new_session(
         .get_agent(member.member_id.as_str())
         .await
         .map_err(|err| map_member_agent_lookup_error(member.member_id.as_str(), err))?;
+    let had_live_session = agents
+        .live_session_id_for_agent(member.member_id.as_str())
+        .await
+        .with_context(|| format!("load live session for member '{}'", member.member_id))?
+        .is_some();
     let provider = agents
         .acp_provider_for_agent(&agent.command, &agent.args)
         .unwrap_or("codex");
@@ -546,6 +551,8 @@ pub async fn force_team_member_new_session(
             .stop_agent(member.member_id.as_str())
             .await
             .with_context(|| format!("stop runtime for member '{}'", member.member_id))?;
+        "forced_restart"
+    } else if had_live_session {
         "forced_restart"
     } else {
         "forced_new_session"

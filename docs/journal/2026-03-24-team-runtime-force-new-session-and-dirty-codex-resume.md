@@ -35,14 +35,19 @@ Two failure modes were still too expensive to recover from:
   - repair compacted replacement history too
   - use `HashSet`-backed presence checks so history repair remains linear for long resumed sessions
 - updated focused tests so:
-  - Team API route coverage uses a stable leader-only restart path
-  - worker restart coverage exercises the runtime helper directly and preserves the error chain
+  - planner API and worker runtime force-new-session coverage now share one helper-backed test
+  - force-new-session waits for the started member session to become visible before asserting restart semantics
+  - worker restart coverage still exercises the runtime helper directly and preserves the error chain
+- hardened `force_team_member_new_session(...)` against a narrow race where a member had a live
+  session immediately before the force request but the runtime handle disappeared before
+  `running_session_id_for_agent(...)` rechecked it; the control now still reports
+  `forced_restart` for that replacement path
 - updated test schema to include `agent_persistent_sessions`
 
 ## Validation
 
 - `cargo test -p agenthub teams_api_force_new_session_restarts_only_selected_member -- --nocapture`
-- `cargo test -p agenthub force_new_session_restarts_worker_runtime_with_new_session_id -- --nocapture`
+- `cargo test -p agenthub force_new_session_restarts_member_runtime_with_new_session_id -- --nocapture`
 - `cargo test -p agenthub map_runtime_start_error_maps_member_runtime_failures_to_conflict -- --nocapture`
 - `cargo test -p agenthub member_agent_lookup_ -- --nocapture`
 - `cargo test -p agenthub-codex-acp repair_initial_history -- --nocapture`

@@ -39,6 +39,44 @@ async fn wait_for_agent_event_history_cleanup(
     }
 }
 
+async fn wait_for_running_agent_session(
+    state: &AppState,
+    agent_id: &str,
+    expected_session_id: &str,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        if state
+            .agents
+            .running_session_id_for_agent(agent_id)
+            .await
+            .as_deref()
+            == Some(expected_session_id)
+        {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "running session did not stabilize before force_new_session: agent_id={agent_id}, expected_session_id={expected_session_id}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+fn assert_forced_restart_runtime(
+    runtime: &crate::team::TeamRuntimeControlRecord,
+    team_id: &str,
+    member_id: &str,
+    original_session_id: &str,
+) {
+    assert_eq!(runtime.team_id, team_id);
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Running);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, member_id);
+    assert_eq!(runtime.members[0].action, "forced_restart");
+    assert_ne!(runtime.members[0].session_id, original_session_id);
+}
+
 #[tokio::test]
 async fn teams_api_requires_authorization() {
     let state = build_test_state().await;
@@ -753,7 +791,7 @@ async fn teams_api_start_and_stop_team_runtime() {
 }
 
 #[tokio::test]
-async fn teams_api_force_new_session_restarts_only_selected_member() {
+async fn force_new_session_restarts_member_runtime_with_new_session_id() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     let Json(team) = create_team(
@@ -781,6 +819,7 @@ async fn teams_api_force_new_session_restarts_only_selected_member() {
         .expect("planner session")
         .session_id
         .clone();
+    wait_for_running_agent_session(&state, "planner", &original_planner_session).await;
 
     let Json(runtime) = force_new_session_for_team_member(
         State(state.clone()),
@@ -789,16 +828,8 @@ async fn teams_api_force_new_session_restarts_only_selected_member() {
     )
     .await
     .expect("force new planner session");
-    assert_eq!(runtime.team_id, team.id);
-    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Running);
-    assert_eq!(runtime.members.len(), 1);
-    assert_eq!(runtime.members[0].member_id, "planner");
-    assert_eq!(runtime.members[0].action, "forced_restart");
-    assert_ne!(runtime.members[0].session_id, original_planner_session);
-}
+    assert_forced_restart_runtime(&runtime, &team.id, "planner", &original_planner_session);
 
-#[tokio::test]
-async fn force_new_session_restarts_worker_runtime_with_new_session_id() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     configure_worker_team_member_agent(&state, "reviewer").await;
@@ -830,16 +861,12 @@ async fn force_new_session_restarts_worker_runtime_with_new_session_id() {
         .expect("reviewer session")
         .session_id
         .clone();
+    wait_for_running_agent_session(&state, "reviewer", &original_reviewer_session).await;
 
     let runtime = force_team_member_new_session(&state.agents, &team, "reviewer")
         .await
         .unwrap_or_else(|err| panic!("{err:#}"));
-    assert_eq!(runtime.team_id, team.id);
-    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Running);
-    assert_eq!(runtime.members.len(), 1);
-    assert_eq!(runtime.members[0].member_id, "reviewer");
-    assert_eq!(runtime.members[0].action, "forced_restart");
-    assert_ne!(runtime.members[0].session_id, original_reviewer_session);
+    assert_forced_restart_runtime(&runtime, &team.id, "reviewer", &original_reviewer_session);
 }
 
 #[tokio::test]

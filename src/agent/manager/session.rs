@@ -142,6 +142,26 @@ impl AgentManager {
         Ok(())
     }
 
+    pub async fn live_session_id_for_agent(
+        &self,
+        agent_id: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id
+            FROM agent_sessions
+            WHERE agent_id = ?1
+              AND ended_at IS NULL
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row.map(|row| row.get::<String, _>("id")))
+    }
+
     async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
         let (child, session_id) = {
             let guard = self.inner.read().await;
