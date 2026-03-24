@@ -65,6 +65,13 @@ AgentHub stores runtime data under `~/.agenthub/` by default, including:
 - runtime session state
 - logs and operational files
 
+For Codex-backed ACP sessions, AgentHub also materializes its managed Team and
+runtime skills under `~/.agents/skills/agenthub-runtime/...`.
+
+- No manual `~/.codex/config.toml` skill configuration is required.
+- Repo-local `.agents/skills` continue to work independently alongside the
+  managed AgentHub skill set.
+
 ## Smoke Check
 
 After startup:

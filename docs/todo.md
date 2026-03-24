@@ -44,6 +44,7 @@ Active backlog only. Keep this file small and current.
 
 ## ACP And Adapter Hardening
 
+- [ ] Verify AgentHub-managed Codex skill materialization end to end: ACP Team/runtime skills should be written under `~/.agents/skills/agenthub-runtime/...`, injected as absolute-path ACP `<skill>` wrappers, and translated by `agenthub-codex-acp` into native Codex `UserInput::Skill` items while dynamic actor runtime context remains a separate text prefix block; record evidence before closing this item (see `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`).
 - [ ] Verify `agenthub-codex-acp` default multi-agent enablement after merge and decide whether it should become an explicit AgentHub-owned config knob instead of adapter-owned behavior (see `docs/features/acp-runtime.md`, `docs/journal/2026-03-23-codex-acp-default-multi-agent.md`).
 - [ ] Audit `agenthub-codex-acp` provenance and licensing metadata so any MIT-derived material preserves the required notice and repository metadata stays legally accurate before the next release.
 - [ ] Verify the codex-acp upstream PR160 sync after the current lockfile upgrade so approvals, `ModelReroute`, and model preset lookup remain compatible across config, options, and model APIs (see `docs/features/acp-runtime.md`, `docs/journal/2026-02-19-codex-acp-upstream-sync-pr160.md`).
