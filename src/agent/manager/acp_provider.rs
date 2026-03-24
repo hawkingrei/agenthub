@@ -118,7 +118,9 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
 pub(super) fn default_env_for_acp_provider(
     provider: Option<AcpProviderSpec>,
 ) -> Vec<(String, String)> {
-    if provider.map(|spec| spec.id) == Some(ACP_PROVIDER_CODEX) {
+    if provider.map(|spec| spec.id) == Some(ACP_PROVIDER_CODEX)
+        && std::env::var_os("RUST_BACKTRACE").is_none()
+    {
         vec![("RUST_BACKTRACE".to_string(), "1".to_string())]
     } else {
         Vec::new()
@@ -152,13 +154,26 @@ fn acp_provider_for_command_with_binary(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, MutexGuard};
+
     use super::{
         ACP_PROVIDER_CODEX, AcpProviderSpec, acp_provider_spec_for_agent_with_binary,
         default_env_for_acp_provider,
     };
 
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_env() -> MutexGuard<'static, ()> {
+        ENV_LOCK.lock().expect("lock env")
+    }
+
     #[test]
     fn default_env_for_codex_provider_enables_rust_backtrace() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var("RUST_BACKTRACE");
+        }
         let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX));
         assert_eq!(env, vec![("RUST_BACKTRACE".to_string(), "1".to_string())]);
     }
@@ -172,5 +187,20 @@ mod tests {
         );
         assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
         assert!(default_env_for_acp_provider(provider).is_empty());
+    }
+
+    #[test]
+    fn default_env_for_codex_provider_preserves_existing_backtrace_override() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "full");
+        }
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX));
+        assert!(env.is_empty());
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var("RUST_BACKTRACE");
+        }
     }
 }
