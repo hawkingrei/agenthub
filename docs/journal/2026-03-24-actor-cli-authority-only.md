@@ -39,3 +39,11 @@ The actor CLI was still able to fall back to local sqlite-backed managers in sev
 - `cargo clippy --locked -p agenthub --all-targets -- -D warnings`
 - `cargo fmt --all --check`
 - `git -c core.fsmonitor=false diff --check`
+
+## CI Follow-up
+
+- PR `#198` exposed a stale internal gRPC time-trigger regression test: `build_test_state()` already seeds a `reviewer` agent, so `internal_grpc_time_trigger_rejects_unknown_agent` was accidentally exercising a valid actor instead of a missing one.
+- The test now uses a unique unseeded actor id and explicitly asserts the precondition before calling `create_time_trigger`.
+- The positive time-trigger wire-compat test also dropped a redundant `reviewer` insert so the fixture contract stays obvious.
+- Focused validation:
+  - `cargo test internal_grpc_time_trigger -- --nocapture`

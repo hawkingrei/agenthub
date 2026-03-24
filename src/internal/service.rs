@@ -1844,26 +1844,6 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create agent_time_triggers");
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
-            "#,
-        )
-        .bind("reviewer")
-        .bind("reviewer")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert reviewer agent");
         let authz = build_authz();
         let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
         let service = TeamInternalControlService::new(
@@ -2032,8 +2012,14 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create agent_time_triggers");
+        let missing_actor_id = format!("missing-reviewer-{}", Uuid::new_v4());
+        state
+            .agents
+            .get_agent(&missing_actor_id)
+            .await
+            .expect_err("missing actor should not be seeded in test state");
         let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
+        let token = issue_token(&authz, InternalRole::Worker, Some(&missing_actor_id), None);
         let service = TeamInternalControlService::new(
             state,
             authz,
@@ -2046,7 +2032,7 @@ mod tests {
             &service,
             authenticated_request(
                 CreateTimeTriggerRequest {
-                    actor_id: "reviewer".to_string(),
+                    actor_id: missing_actor_id,
                     message_text: "missing agent".to_string(),
                     fire_at: chrono::Utc::now().timestamp() + 120,
                 },
