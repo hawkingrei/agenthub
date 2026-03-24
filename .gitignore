@@ -1,5 +1,6 @@
 /target
 cmd/agenthub/target
+cmd/agenthub/Cargo.lock
 .agenthub
 .cache
 .cargo

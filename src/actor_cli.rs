@@ -8,7 +8,6 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_TEAM_ID_ENV,
 };
 #[cfg(test)]
-#[cfg(test)]
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
     ActorServiceError,
@@ -136,15 +135,10 @@ enum ActorCommand {
         idempotency_key: Option<String>,
     },
 }
-#[path = "actor_cli/execute.rs"]
 mod execute;
-#[path = "actor_cli/help.rs"]
 mod help;
-#[path = "actor_cli/output.rs"]
 mod output;
-#[path = "actor_cli/parse.rs"]
 mod parse;
-#[path = "actor_cli/runtime.rs"]
 mod runtime;
 
 use self::execute::run_actor_command;

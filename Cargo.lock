@@ -198,15 +198,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agenthub-cmd"
-version = "0.1.0"
-dependencies = [
- "agenthub",
- "anyhow",
- "tokio",
-]
-
-[[package]]
 name = "agenthub-codex-acp"
 version = "0.10.0"
 dependencies = [

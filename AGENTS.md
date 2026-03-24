@@ -39,21 +39,26 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 4) Login uses username/password with token-based auth; join/bootstrap remains available for initial setup flows.
 5) ACP (Agent Control Protocol) renders structured agent output; history must be retained.
 6) Rust code should be decomposed by domain into library crates (`crates/<domain>`), not by arbitrary file split.
-7) `cmd/agenthub/src/main.rs` should stay a thin bootstrap entry; business logic should live in library crates and be composed in `cmd/agenthub/src/app.rs` plus domain crates.
+7) `cmd/agenthub/src/main.rs` should stay a thin bootstrap entry; business logic should live in library crates and be composed in `src/app.rs` plus domain crates.
 8) New Rust domain modules should define Bazel targets with boundaries aligned to crate boundaries (one domain crate, one Bazel package as default).
 
 ## 5. Directory Plan (adjustable)
 
 ```
 agenthub/
+  cmd/
+    agenthub/
+      Cargo.toml
+      src/
+        main.rs          # binary bootstrap only
   crates/
     acp/
     openapi/
     ...                 # domain-oriented libraries
   src/
     app.rs              # bootstrap composition
+    actor_cli.rs        # CLI entry library module
     lib.rs              # library entry point
-    main.rs
     api/
     agent/
     auth/
