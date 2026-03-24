@@ -105,4 +105,29 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(next["missing-a"]?.id).toBe("missing-a");
     expect(next["missing-b"]).toBeNull();
   });
+
+  it("revalidates cached hidden members and clears stale entries after deletion", async () => {
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": makeAgent("missing-a") },
+    });
+    vi.spyOn(api, "getAgent").mockRejectedValue(new Error("not-found"));
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const setById = params.setTeamMemberAgentsById as ReturnType<typeof vi.fn>;
+    expect(setById).toHaveBeenCalledTimes(1);
+    const updater = setById.mock.calls[0]?.[0] as (
+      prev: Record<string, AgentRecord | null>
+    ) => Record<string, AgentRecord | null>;
+    const next = updater({ "missing-a": makeAgent("missing-a") });
+
+    expect(next["missing-a"]).toBeNull();
+  });
 });

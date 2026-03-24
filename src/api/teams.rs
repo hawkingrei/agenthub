@@ -541,6 +541,48 @@ async fn stop_team(
     Ok(Json(runtime))
 }
 
+pub(crate) async fn prune_deleted_agent_from_team_specs(
+    state: &AppState,
+    agent_id: &str,
+) -> Result<(), ApiError> {
+    let teams = state.teams.list_teams().await?;
+    for team in teams {
+        let Some(next_spec) = prune_deleted_member_from_team_spec(&team.spec, agent_id)? else {
+            continue;
+        };
+        let updated = match state
+            .teams
+            .update_team_spec_if_unchanged(&team.id, team.updated_at, next_spec.clone())
+            .await?
+        {
+            Some(updated) => updated,
+            None => {
+                let latest = state.teams.get_team(&team.id).await?;
+                let Some(latest_spec) =
+                    prune_deleted_member_from_team_spec(&latest.spec, agent_id)?
+                else {
+                    continue;
+                };
+                state
+                    .teams
+                    .update_team_spec_if_unchanged(&latest.id, latest.updated_at, latest_spec)
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::conflict(
+                            "team definition changed concurrently while pruning deleted agent",
+                        )
+                    })?
+            }
+        };
+        if has_configured_team_members(&updated.spec)? {
+            ensure_team_runtime_started(state.agents.as_ref(), &updated)
+                .await
+                .map_err(map_runtime_start_error)?;
+        }
+    }
+    Ok(())
+}
+
 async fn force_new_session_for_team_member(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3228,6 +3270,184 @@ fn normalize_team_spec(spec: &mut Value) -> Result<(), ApiError> {
     let version = parse_team_spec_version(spec_obj.get("spec_version"))?;
     spec_obj.insert("spec_version".to_string(), Value::from(version));
     inject_team_spec_defaults(spec_obj)?;
+    Ok(())
+}
+
+fn prune_deleted_member_from_team_spec(
+    spec: &Value,
+    member_id: &str,
+) -> Result<Option<Value>, ApiError> {
+    let spec_map = spec
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let current_members = parse_member_specs(spec.get("members"))?;
+    if !current_members
+        .iter()
+        .any(|member| member.member_id == member_id)
+    {
+        return Ok(None);
+    }
+
+    let mut next = spec.clone();
+    let spec_obj = next
+        .as_object_mut()
+        .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
+    let members = spec_obj
+        .get_mut("members")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
+    members.retain(|member| {
+        member
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            != Some(member_id)
+    });
+
+    let remaining_members = parse_member_specs(spec_obj.get("members"))?;
+    if remaining_members.is_empty() {
+        normalize_team_spec(&mut next)?;
+        validate_team_spec(&next)?;
+        return Ok(Some(next));
+    }
+
+    let previous_leader_id = parse_spec_leader_member_id(spec_map, &current_members)?;
+    let leader_changed = previous_leader_id.as_deref() == Some(member_id);
+    let next_leader_id = resolve_pruned_team_leader_id(spec_obj, &remaining_members)?;
+
+    if leader_changed {
+        promote_pruned_team_leader(spec_obj, next_leader_id.as_str())?;
+    }
+    spec_obj.insert(
+        "leader_member_id".to_string(),
+        Value::String(next_leader_id.clone()),
+    );
+
+    let remaining_member_ids = remaining_members
+        .iter()
+        .map(|member| member.member_id.clone())
+        .collect::<HashSet<_>>();
+    let mut regenerate_default_steps = leader_changed;
+    let current_entrypoint = spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    if let Some(steps) = spec_obj.get_mut("steps").and_then(Value::as_array_mut) {
+        let mut removed_step_keys = HashSet::new();
+        steps.retain(|step| {
+            let member_matches = step
+                .get("member_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_some_and(|value| value == member_id);
+            if member_matches && let Some(step_key) = step.get("step_key").and_then(Value::as_str) {
+                removed_step_keys.insert(step_key.trim().to_string());
+            }
+            !member_matches
+        });
+
+        let surviving_step_keys = steps
+            .iter()
+            .filter_map(|step| step.get("step_key").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<HashSet<_>>();
+        for step in steps.iter_mut() {
+            if let Some(depends_on) = step.get_mut("depends_on").and_then(Value::as_array_mut) {
+                depends_on.retain(|dependency| {
+                    dependency.as_str().map(str::trim).is_some_and(|dep| {
+                        !removed_step_keys.contains(dep) && surviving_step_keys.contains(dep)
+                    })
+                });
+            }
+        }
+
+        regenerate_default_steps = regenerate_default_steps
+            || steps.is_empty()
+            || !surviving_step_keys.contains(current_entrypoint.as_str())
+            || validate_steps(
+                current_entrypoint.as_str(),
+                &Value::Array(steps.clone()),
+                &remaining_member_ids,
+            )
+            .is_err();
+    } else if spec_obj
+        .get("entrypoint")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|entrypoint| entrypoint == member_id)
+    {
+        regenerate_default_steps = true;
+    }
+
+    if regenerate_default_steps {
+        spec_obj.remove("steps");
+        spec_obj.insert("entrypoint".to_string(), Value::String(next_leader_id));
+    }
+
+    normalize_team_spec(&mut next)?;
+    validate_team_spec(&next)?;
+    Ok(Some(next))
+}
+
+fn resolve_pruned_team_leader_id(
+    spec_obj: &Map<String, Value>,
+    remaining_members: &[TeamMemberSpec],
+) -> Result<String, ApiError> {
+    let remaining_member_ids = remaining_members
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<HashSet<_>>();
+    if let Some(explicit) = spec_obj
+        .get("leader_member_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| remaining_member_ids.contains(value))
+    {
+        return Ok(explicit.to_string());
+    }
+    if let Some(role_leader) = remaining_members
+        .iter()
+        .find(|member| member.role == "leader")
+    {
+        return Ok(role_leader.member_id.clone());
+    }
+    remaining_members
+        .first()
+        .map(|member| member.member_id.clone())
+        .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))
+}
+
+fn promote_pruned_team_leader(
+    spec_obj: &mut Map<String, Value>,
+    leader_member_id: &str,
+) -> Result<(), ApiError> {
+    let members = spec_obj
+        .get_mut("members")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| ApiError::bad_request("spec.members must be an array"))?;
+    for member in members {
+        let Some(member_obj) = member.as_object_mut() else {
+            continue;
+        };
+        let Some(current_member_id) = member_obj
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+        else {
+            continue;
+        };
+        let next_role = if current_member_id == leader_member_id {
+            "leader"
+        } else {
+            "worker"
+        };
+        member_obj.insert("role".to_string(), Value::String(next_role.to_string()));
+    }
     Ok(())
 }
 

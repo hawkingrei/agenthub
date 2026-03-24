@@ -18,6 +18,7 @@ use crate::agent::{
 };
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::api::teams::prune_deleted_agent_from_team_specs;
 use crate::state::AppState;
 
 const AGENT_SOURCE_MANUAL: &str = "manual";
@@ -338,6 +339,7 @@ async fn delete_agent(
     let _user = require_user(&headers, &state).await?;
     let _ = state.agents.stop_agent(&agent_id).await;
     state.agents.delete_agent(&agent_id).await?;
+    prune_deleted_agent_from_team_specs(&state, &agent_id).await?;
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
@@ -2859,6 +2861,93 @@ mod tests {
         assert!(tags.contains("acp_codex"));
 
         remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn delete_agent_prunes_team_member_references_from_team_specs() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let token = crate::api::team_tests::create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        let team_id = Uuid::new_v4().to_string();
+        let worker_step_key = "worker_1_worker_1";
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+            "#,
+        )
+        .bind(&team_id)
+        .bind("delete-agent-prune-team")
+        .bind("prune deleted team member references")
+        .bind(
+            json!({
+                "spec_version": 1,
+                "leader_member_id": "leader",
+                "entrypoint": "leader_plan",
+                "members": [
+                    {"member_id": "leader", "role": "leader"},
+                    {"member_id": "worker-1", "role": "worker"}
+                ],
+                "steps": [
+                    {"step_key": "leader_plan", "member_id": "leader", "depends_on": []},
+                    {"step_key": worker_step_key, "member_id": "worker-1", "depends_on": ["leader_plan"]},
+                    {
+                        "step_key": "leader_synthesize",
+                        "member_id": "leader",
+                        "depends_on": [worker_step_key]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert team definition");
+
+        let delete_resp = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/worker-1",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("delete team member agent");
+        assert_eq!(delete_resp.status(), StatusCode::OK);
+
+        let team_row = sqlx::query("SELECT spec_json FROM team_definitions WHERE id = ?1")
+            .bind(&team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load updated team definition");
+        let spec_json = team_row.get::<String, _>("spec_json");
+        let updated_spec: Value =
+            serde_json::from_str(spec_json.as_str()).expect("parse updated spec json");
+
+        let members = updated_spec["members"]
+            .as_array()
+            .expect("updated team members");
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0]["member_id"], Value::from("leader"));
+
+        let steps = updated_spec["steps"]
+            .as_array()
+            .expect("updated team steps");
+        assert!(
+            steps
+                .iter()
+                .all(|step| step["member_id"] != Value::from("worker-1")),
+            "deleted worker steps should be pruned: {updated_spec}"
+        );
+        let synth = steps
+            .iter()
+            .find(|step| step["step_key"] == Value::from("leader_synthesize"))
+            .expect("leader synth step");
+        assert_eq!(synth["depends_on"], json!([]));
     }
 
     #[tokio::test]
