@@ -125,7 +125,7 @@ impl PushService {
                     .clone()
             };
             let mut sig_builder =
-                VapidSignatureBuilder::from_base64(&private_key, URL_SAFE_NO_PAD, &subscription)?;
+                VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
             sig_builder.add_claim("sub", self.subject.as_str());
             let sig = sig_builder.build()?;
 
@@ -172,7 +172,7 @@ fn generate_vapid_keys() -> anyhow::Result<VapidKeys> {
     let key_pair = ES256KeyPair::generate();
     let private_bytes = key_pair.to_bytes();
     let private_key = base64::encode_config(private_bytes, URL_SAFE_NO_PAD);
-    let builder = VapidSignatureBuilder::from_base64_no_sub(&private_key, URL_SAFE_NO_PAD)?;
+    let builder = VapidSignatureBuilder::from_base64_no_sub(&private_key)?;
     let public_key = base64::encode_config(builder.get_public_key(), URL_SAFE_NO_PAD);
     Ok(VapidKeysFile {
         public_key,
