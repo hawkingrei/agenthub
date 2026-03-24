@@ -7,6 +7,19 @@ sidebar_position: 2
 AgentHub can bind an agent to either the local `Main Node` or a registered
 remote Agent Node.
 
+## Why Agent Nodes Matter
+
+Agent Nodes are not just a deployment detail. They let AgentHub keep one
+control plane while moving execution closer to:
+
+- the repository or dataset
+- the available compute
+- the required network boundary
+- another machine that should own local worktrees and runtime files
+
+This is also where the actor p2p model matters: mailbox and control traffic can
+stay consistent even when the process runs remotely.
+
 ## What Agent Nodes Control
 
 Each registered node stores:
@@ -71,6 +84,30 @@ layout without forcing operators to type paths for every agent.
 When you select a node in the create modal, the `Workdir` placeholder updates
 to reflect the effective default root for that node.
 
+## What Still Stays Central
+
+Even in distributed mode, the main AgentHub instance still owns:
+
+- the operator-facing UI and API
+- the node registry
+- high-level lifecycle intent
+- the main control-plane view of tasks, teams, and coordination
+
+Execution moves, but the control surface does not.
+
+## Actor P2P And Mailbox Delivery
+
+Remote execution is designed to preserve the actor model instead of replacing it
+with a separate job runner:
+
+- actor control is relayed over internal gRPC
+- mailbox delivery can target remote recipients through the same runtime path
+- remote nodes keep their local execution data, but the main node still acts as
+  the primary operator-facing control plane
+
+This matters because remote execution should still feel like `AgentHub`, not
+like a different product with a different control contract.
+
 ## Operator Rollout Flow
 
 For a new remote node:
@@ -90,3 +127,5 @@ For a new remote node:
   home directory layout
 - Leave the node default blank when operators must always choose an explicit
   remote workdir
+- Validate one remote-target agent end to end before onboarding a full Team to
+  that node

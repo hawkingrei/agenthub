@@ -4,6 +4,15 @@ const sidebars = {
     'intro',
     {
       type: 'category',
+      label: 'Overview',
+      items: [
+        'overview/product-overview',
+        'overview/feature-overview',
+        'overview/architecture-overview',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Getting Started',
       items: [
         'getting-started/installation',
