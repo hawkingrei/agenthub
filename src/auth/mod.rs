@@ -510,7 +510,7 @@ impl AuthService {
 }
 
 fn hash_password(password: &str) -> anyhow::Result<String> {
-    let salt = SaltString::generate(&mut rand::thread_rng());
+    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)

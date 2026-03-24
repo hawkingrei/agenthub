@@ -338,13 +338,13 @@ async fn join_start(
 
 fn generate_pin() -> String {
     let mut bytes = [0u8; 4];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     let num = u32::from_le_bytes(bytes) % 1_000_000;
     format!("{:06}", num)
 }
 
 fn hash_pin(pin: &str) -> anyhow::Result<String> {
-    let salt = argon2::password_hash::SaltString::generate(&mut rand::thread_rng());
+    let salt = argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(pin.as_bytes(), &salt)
