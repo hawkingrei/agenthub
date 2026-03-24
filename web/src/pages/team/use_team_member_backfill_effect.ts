@@ -88,16 +88,17 @@ export function useTeamMemberBackfillEffect({
         return;
       }
       setTeamMemberAgentsById((prev) => {
-        const next = { ...prev };
-        let changed = false;
+        let next: Record<string, AgentRecord | null> | null = null;
         for (const [memberId, agent] of resolved) {
           if (areAgentRecordsEqual(prev[memberId], agent)) {
             continue;
           }
+          if (next === null) {
+            next = { ...prev };
+          }
           next[memberId] = agent;
-          changed = true;
         }
-        return changed ? next : prev;
+        return next ?? prev;
       });
     };
 

@@ -545,7 +545,7 @@ pub(crate) async fn prune_deleted_agent_from_team_specs(
     state: &AppState,
     agent_id: &str,
 ) -> Result<(), ApiError> {
-    let teams = state.teams.list_teams().await?;
+    let teams = state.teams.list_teams_referencing_member(agent_id).await?;
     for team in teams {
         let Some(next_spec) = prune_deleted_member_from_team_spec(&team.spec, agent_id)? else {
             continue;

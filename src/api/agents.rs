@@ -339,7 +339,13 @@ async fn delete_agent(
     let _user = require_user(&headers, &state).await?;
     let _ = state.agents.stop_agent(&agent_id).await;
     state.agents.delete_agent(&agent_id).await?;
-    prune_deleted_agent_from_team_specs(&state, &agent_id).await?;
+    if let Err(err) = prune_deleted_agent_from_team_specs(&state, &agent_id).await {
+        tracing::warn!(
+            agent_id = %agent_id,
+            error = ?err,
+            "delete_agent completed after best-effort team spec prune failed"
+        );
+    }
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
@@ -2948,6 +2954,85 @@ mod tests {
             .find(|step| step["step_key"].as_str() == Some("leader_synthesize"))
             .expect("leader synth step");
         assert_eq!(synth["depends_on"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn delete_agent_returns_ok_when_team_prune_follow_up_fails() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let token = crate::api::team_tests::create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        let team_id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+            "#,
+        )
+        .bind(&team_id)
+        .bind("delete-agent-best-effort-prune")
+        .bind("delete endpoint should stay successful after prune follow-up failure")
+        .bind(
+            json!({
+                "spec_version": 1,
+                "leader_member_id": "missing-leader",
+                "entrypoint": "leader_plan",
+                "members": [
+                    {"member_id": "missing-leader", "role": "leader"},
+                    {"member_id": "worker-1", "role": "worker"}
+                ],
+                "steps": [
+                    {"step_key": "leader_plan", "member_id": "missing-leader", "depends_on": []},
+                    {
+                        "step_key": "worker_1_worker_1",
+                        "member_id": "worker-1",
+                        "depends_on": ["leader_plan"]
+                    },
+                    {
+                        "step_key": "leader_synthesize",
+                        "member_id": "missing-leader",
+                        "depends_on": ["worker_1_worker_1"]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert team definition");
+
+        let delete_resp = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/worker-1",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("delete team member agent");
+        assert_eq!(delete_resp.status(), StatusCode::OK);
+
+        let remaining_agents: i64 = sqlx::query("SELECT COUNT(*) AS cnt FROM agents WHERE id = ?1")
+            .bind("worker-1")
+            .fetch_one(&state.db)
+            .await
+            .expect("count deleted agent rows")
+            .get("cnt");
+        assert_eq!(remaining_agents, 0);
+
+        let team_row = sqlx::query("SELECT spec_json FROM team_definitions WHERE id = ?1")
+            .bind(&team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load updated team definition");
+        let spec_json = team_row.get::<String, _>("spec_json");
+        assert!(
+            !spec_json.contains("worker-1"),
+            "deleted worker reference should still be pruned from team spec"
+        );
     }
 
     #[tokio::test]

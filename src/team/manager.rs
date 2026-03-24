@@ -317,6 +317,30 @@ impl TeamManager {
         Ok(teams)
     }
 
+    pub async fn list_teams_referencing_member(
+        &self,
+        member_id: &str,
+    ) -> anyhow::Result<Vec<TeamDefinitionRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT DISTINCT td.id, td.name, td.description, td.spec_json, td.owner_user_id, td.created_at, td.updated_at
+            FROM team_definitions AS td,
+                 json_each(td.spec_json, '$.members') AS member
+            WHERE json_extract(member.value, '$.member_id') = ?1
+            ORDER BY td.created_at DESC
+            "#,
+        )
+        .bind(member_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut teams = Vec::with_capacity(rows.len());
+        for row in rows {
+            teams.push(parse_team_definition_row(&row)?);
+        }
+        Ok(teams)
+    }
+
     pub async fn get_team(&self, team_id: &str) -> anyhow::Result<TeamDefinitionRecord> {
         let row = sqlx::query(
             r#"

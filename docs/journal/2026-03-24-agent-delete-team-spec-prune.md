@@ -3,6 +3,8 @@
 ## Summary
 
 - Fixed `DELETE /api/agents/:id` so removing an agent also prunes matching Team `spec.members[]` entries and their dependent `spec.steps[]` references.
+- Kept `DELETE /api/agents/:id` successful even if the Team-spec prune follow-up later fails, so callers do not see a false-negative delete after the agent row is already gone.
+- Narrowed Team pruning to only Team definitions that actually reference the deleted `member_id` instead of scanning every Team on each delete.
 - Preserved valid surviving Team steps when possible and regenerated the default Team workflow only when the deleted member invalidated the current leader or step graph.
 - Tightened the Team page fallback backfill hook so cached hidden agents are revalidated and cleared to `null` after external deletion instead of sticking forever in client memory.
 
@@ -15,6 +17,7 @@
 ## Validation
 
 - Targeted Rust regression test covers deleting an agent that is still referenced by a Team spec and asserts the Team definition is pruned.
+- Targeted Rust regression test covers the best-effort delete path when Team prune follow-up fails after the agent row is already deleted.
 - Targeted web hook regression test covers an already-cached hidden Team member agent that now returns `404` and asserts the fallback cache is cleared to `null`.
 
 ## Follow-up
