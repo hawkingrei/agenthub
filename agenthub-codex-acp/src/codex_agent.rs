@@ -263,21 +263,26 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
         _ => true,
     });
     let mut repaired = before_len - items.len();
+    let mut function_output_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::FunctionCallOutput { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let mut custom_output_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::CustomToolCallOutput { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
 
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         match item {
             ResponseItem::FunctionCall { call_id, .. } => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        ResponseItem::FunctionCallOutput {
-                            call_id: existing,
-                            ..
-                        } if existing == call_id
-                    )
-                });
-                if !has_output {
+                if function_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         ResponseItem::FunctionCallOutput {
@@ -288,16 +293,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
                 }
             }
             ResponseItem::CustomToolCall { call_id, .. } => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        ResponseItem::CustomToolCallOutput {
-                            call_id: existing,
-                            ..
-                        } if existing == call_id
-                    )
-                });
-                if !has_output {
+                if custom_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         ResponseItem::CustomToolCallOutput {
@@ -311,16 +307,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
                 call_id: Some(call_id),
                 ..
             } => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        ResponseItem::FunctionCallOutput {
-                            call_id: existing,
-                            ..
-                        } if existing == call_id
-                    )
-                });
-                if !has_output {
+                if function_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         ResponseItem::FunctionCallOutput {
@@ -403,21 +390,30 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
         }
     }
     *items = retained;
+    let mut function_output_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput { call_id, .. }) => {
+                Some(call_id.clone())
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let mut custom_output_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, .. }) => {
+                Some(call_id.clone())
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
 
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         match item {
             RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. }) => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                            call_id: existing,
-                            ..
-                        }) if existing == call_id
-                    )
-                });
-                if !has_output {
+                if function_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
@@ -428,16 +424,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                 }
             }
             RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. }) => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
-                            call_id: existing,
-                            ..
-                        }) if existing == call_id
-                    )
-                });
-                if !has_output {
+                if custom_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
@@ -451,16 +438,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                 call_id: Some(call_id),
                 ..
             }) => {
-                let has_output = items.iter().any(|candidate| {
-                    matches!(
-                        candidate,
-                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                            call_id: existing,
-                            ..
-                        }) if existing == call_id
-                    )
-                });
-                if !has_output {
+                if function_output_call_ids.insert(call_id.clone()) {
                     synthetic_outputs.push((
                         idx,
                         RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {

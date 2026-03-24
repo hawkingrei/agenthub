@@ -4,6 +4,7 @@ use std::path::Path;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sqlx::Error as SqlxError;
 
 use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
@@ -353,12 +354,7 @@ async fn reconcile_team_member_runtime(
     let agent = agents
         .get_agent(member.member_id.as_str())
         .await
-        .map_err(|_| {
-            TeamRuntimeStartError::MissingMemberAgent(format!(
-                "team member agent '{}' not found",
-                member.member_id
-            ))
-        })?;
+        .map_err(|err| map_member_agent_lookup_error(member.member_id.as_str(), err))?;
     if let Some(runtime) = member.runtime.as_ref()
         && runtime_target_node_hint_is_present(runtime.target_node_id.as_deref())
     {
@@ -402,6 +398,25 @@ async fn reconcile_team_member_runtime(
 
 fn runtime_target_node_hint_is_present(raw: Option<&str>) -> bool {
     trimmed_opt(raw).is_some()
+}
+
+fn is_row_not_found_error(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    )
+}
+
+fn map_member_agent_lookup_error(member_id: &str, err: anyhow::Error) -> anyhow::Error {
+    if is_row_not_found_error(&err) {
+        return TeamRuntimeStartError::MissingMemberAgent(format!(
+            "team member agent '{}' not found",
+            member_id
+        ))
+        .into();
+    }
+
+    err.context(format!("load team member agent '{}'", member_id))
 }
 
 pub async fn ensure_team_runtime_started(
@@ -458,12 +473,18 @@ pub async fn ensure_team_runtime_started(
                 });
             }
             Err(err) => {
+                tracing::error!(
+                    team_id = %team.id,
+                    member_id = %member.member_id,
+                    error = %err,
+                    "failed to start team member runtime"
+                );
                 for started_member_id in &started_member_ids {
                     let _ = agents.stop_agent(started_member_id.as_str()).await;
                 }
                 return Err(TeamRuntimeStartError::MemberRuntimeStart(format!(
-                    "failed to start team member runtime '{}' for team '{}': {}",
-                    member.member_id, team.id, err
+                    "failed to start team member runtime '{}' for team '{}'",
+                    member.member_id, team.id
                 ))
                 .into());
             }
@@ -502,12 +523,7 @@ pub async fn force_team_member_new_session(
     let agent = agents
         .get_agent(member.member_id.as_str())
         .await
-        .map_err(|_| {
-            TeamRuntimeStartError::MissingMemberAgent(format!(
-                "team member agent '{}' not found",
-                member.member_id
-            ))
-        })?;
+        .map_err(|err| map_member_agent_lookup_error(member.member_id.as_str(), err))?;
     let provider = agents
         .acp_provider_for_agent(&agent.command, &agent.args)
         .unwrap_or("codex");
@@ -539,9 +555,15 @@ pub async fn force_team_member_new_session(
         .start_agent_with_actor_context(member.member_id.as_str(), Some(actor_context))
         .await
         .map_err(|err| {
+            tracing::error!(
+                team_id = %team.id,
+                member_id = %member.member_id,
+                error = %err,
+                "failed to force a new runtime session for team member"
+            );
             TeamRuntimeStartError::MemberRuntimeStart(format!(
-                "failed to force a new session for team member '{}' in team '{}': {}",
-                member.member_id, team.id, err
+                "failed to force a new session for team member '{}' in team '{}'",
+                member.member_id, team.id
             ))
         })?;
 
@@ -590,9 +612,11 @@ pub async fn stop_team_runtime(
 mod tests {
     use super::{
         TeamRuntimeStartError, WorkerRuntimeRepairConfig,
-        adjust_worker_runtime_workdir_for_safe_paths, runtime_target_node_hint_is_present,
+        adjust_worker_runtime_workdir_for_safe_paths, map_member_agent_lookup_error,
+        runtime_target_node_hint_is_present,
     };
     use crate::path_utils::expand_tilde;
+    use sqlx::Error as SqlxError;
 
     #[test]
     fn expand_tilde_uses_path_join_for_home_relative_paths() {
@@ -629,5 +653,31 @@ mod tests {
         assert!(!runtime_target_node_hint_is_present(Some("  ")));
         assert!(runtime_target_node_hint_is_present(Some("main")));
         assert!(runtime_target_node_hint_is_present(Some("node-east")));
+    }
+
+    #[test]
+    fn member_agent_lookup_maps_row_not_found_to_missing_member_agent() {
+        let err = map_member_agent_lookup_error("worker-1", SqlxError::RowNotFound.into());
+        let typed = err
+            .downcast_ref::<TeamRuntimeStartError>()
+            .expect("typed runtime error");
+        assert!(matches!(
+            typed,
+            TeamRuntimeStartError::MissingMemberAgent(_)
+        ));
+    }
+
+    #[test]
+    fn member_agent_lookup_keeps_non_not_found_errors_internal() {
+        let err = map_member_agent_lookup_error("worker-1", anyhow::anyhow!("db offline"));
+        assert!(err.chain().any(|cause| {
+            cause
+                .to_string()
+                .contains("load team member agent 'worker-1'")
+        }));
+        assert!(
+            err.chain()
+                .any(|cause| cause.to_string().contains("db offline"))
+        );
     }
 }
