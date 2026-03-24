@@ -60,6 +60,12 @@ export type AgentWorkspaceStatusView = {
   currentWork: string;
 };
 
+export type TeamMemberAgentControlState = {
+  canStart: boolean;
+  canStop: boolean;
+  canDelete: boolean;
+};
+
 type TeamRuntimeStatusRecord = {
   status: TeamRuntimeRecord["status"];
   members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
@@ -99,6 +105,40 @@ export function resolveAgentWorkspaceStatusView(
     currentWork:
       member?.current_work?.trim() || "No direct activity reported yet.",
   };
+}
+
+export function resolveTeamMemberAgentControlState(
+  agent: Pick<AgentRecord, "id"> | null,
+  lifecycle: string,
+  busy: string | null
+): TeamMemberAgentControlState {
+  const normalizedLifecycle = lifecycle.trim().toLowerCase();
+  const hasAgent = Boolean(agent?.id?.trim());
+  const isRunning =
+    normalizedLifecycle === "working" || normalizedLifecycle === "idle";
+  return {
+    canStart:
+      hasAgent &&
+      busy !== "start-team-member-agent" &&
+      !isRunning,
+    canStop:
+      hasAgent &&
+      busy !== "stop-team-member-agent" &&
+      isRunning,
+    canDelete: hasAgent && busy !== "delete-team-member-agent",
+  };
+}
+
+export function removeTeamMemberLookupEntry<T>(
+  lookup: Record<string, T>,
+  memberId: string
+): Record<string, T> {
+  if (!Object.prototype.hasOwnProperty.call(lookup, memberId)) {
+    return lookup;
+  }
+  const next = { ...lookup };
+  delete next[memberId];
+  return next;
 }
 
 export function resolveTeamRuntimeStatus(
