@@ -20,6 +20,7 @@ import {
   parseTeamSpecMembers,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
+  resolveTeamMemberAgentControlState,
   toggleSkillSelection,
   selectMailboxConversation,
   selectTeamForgeAgents,
@@ -470,6 +471,39 @@ describe("team run list helpers", () => {
       inactive: 1,
       missing: 1,
       total: 4,
+    });
+  });
+
+  it("derives selected Team member lifecycle controls from agent presence and busy state", () => {
+    const stoppedAgent = buildAgent("worker-agent", "stopped");
+    expect(
+      resolveTeamMemberAgentControlState(stoppedAgent, "stopped", null)
+    ).toEqual({
+      canStart: true,
+      canStop: false,
+      canDelete: true,
+    });
+
+    const runningAgent = buildAgent("worker-agent", "running");
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "working", null)
+    ).toEqual({
+      canStart: false,
+      canStop: true,
+      canDelete: true,
+    });
+
+    expect(resolveTeamMemberAgentControlState(null, "missing", null)).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: false,
+    });
+    expect(
+      resolveTeamMemberAgentControlState(runningAgent, "working", "stop-team-member-agent")
+    ).toEqual({
+      canStart: false,
+      canStop: false,
+      canDelete: true,
     });
   });
 

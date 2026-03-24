@@ -60,6 +60,12 @@ export type AgentWorkspaceStatusView = {
   currentWork: string;
 };
 
+export type TeamMemberAgentControlState = {
+  canStart: boolean;
+  canStop: boolean;
+  canDelete: boolean;
+};
+
 type TeamRuntimeStatusRecord = {
   status: TeamRuntimeRecord["status"];
   members: Array<Pick<TeamRuntimeRecord["members"][number], "member_id" | "session_id">>;
@@ -98,6 +104,26 @@ export function resolveAgentWorkspaceStatusView(
       member?.pending_inbox_count == null ? "-" : String(member.pending_inbox_count),
     currentWork:
       member?.current_work?.trim() || "No direct activity reported yet.",
+  };
+}
+
+export function resolveTeamMemberAgentControlState(
+  agent: Pick<AgentRecord, "id"> | null,
+  lifecycle: string,
+  busy: string | null
+): TeamMemberAgentControlState {
+  const normalizedLifecycle = lifecycle.trim().toLowerCase();
+  const hasAgent = Boolean(agent?.id?.trim());
+  return {
+    canStart:
+      hasAgent &&
+      busy !== "start-team-member-agent" &&
+      normalizedLifecycle !== "working",
+    canStop:
+      hasAgent &&
+      busy !== "stop-team-member-agent" &&
+      normalizedLifecycle === "working",
+    canDelete: hasAgent && busy !== "delete-team-member-agent",
   };
 }
 
