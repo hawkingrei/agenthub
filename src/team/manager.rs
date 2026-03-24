@@ -1138,15 +1138,15 @@ impl TeamManager {
 
         if let Some(run_id) = normalized_run_id.as_deref() {
             let roster = self.describe_run_members(run_id).await?;
-            if let Some(explicit_team_id) = normalized_team_id.as_deref() {
-                if explicit_team_id != roster.team_id {
-                    return Err(TeamContextLookupError::RunTeamMismatch {
-                        run_id: run_id.to_string(),
-                        actual_team_id: roster.team_id.clone(),
-                        requested_team_id: explicit_team_id.to_string(),
-                    }
-                    .into());
+            if let Some(explicit_team_id) = normalized_team_id.as_deref()
+                && explicit_team_id != roster.team_id
+            {
+                return Err(TeamContextLookupError::RunTeamMismatch {
+                    run_id: run_id.to_string(),
+                    actual_team_id: roster.team_id.clone(),
+                    requested_team_id: explicit_team_id.to_string(),
                 }
+                .into());
             }
             let runtime = self.describe_team_runtime(&roster.team_id).await?;
             return Ok(TeamContextRecord {
