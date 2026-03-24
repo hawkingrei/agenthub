@@ -50,9 +50,17 @@ fn build_actor_cli_internal_grpc_peer_client(
     }))
 }
 
-pub(super) fn actor_cli_internal_grpc_hint_target(listen_addr: &str) -> Option<String> {
+pub(super) fn actor_cli_internal_grpc_hint_target(
+    listen_addr: &str,
+    security_mode: InternalGrpcSecurityMode,
+) -> Option<String> {
     let parsed = listen_addr.parse::<SocketAddr>().ok()?;
-    Some(format!("https://127.0.0.1:{}", parsed.port()))
+    let scheme = if security_mode == InternalGrpcSecurityMode::Disabled {
+        "http"
+    } else {
+        "https"
+    };
+    Some(format!("{scheme}://127.0.0.1:{}", parsed.port()))
 }
 
 pub(super) async fn init_actor_mailbox_hint_client_from_config(
@@ -79,8 +87,10 @@ pub(super) async fn init_actor_mailbox_hint_client_from_config(
     }) else {
         return Ok(None);
     };
-    let Some(target) = actor_cli_internal_grpc_hint_target(&config.internal_grpc_listen_addr())
-    else {
+    let Some(target) = actor_cli_internal_grpc_hint_target(
+        &config.internal_grpc_listen_addr(),
+        peer_client.security_mode,
+    ) else {
         tracing::debug!(
             listen_addr = %config.internal_grpc_listen_addr(),
             "skip mailbox hint client because internal grpc listen address is not a socket address"

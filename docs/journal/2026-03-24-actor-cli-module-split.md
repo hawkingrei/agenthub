@@ -15,6 +15,8 @@ The file had grown into a mixed parser/runtime/execution/test surface. That made
 - Moved CLI argument parsing into `src/actor_cli/parse.rs`.
 - Moved command execution into `src/actor_cli/execute.rs`.
 - Tightened module-local imports so the split does not leave large parent-level unused import sets behind.
+- Kept actor CLI mailbox hint loopback target selection aligned with internal gRPC security mode:
+  plaintext uses `http://127.0.0.1:<port>`, while TLS/mTLS keep `https://`.
 
 ## Validation
 

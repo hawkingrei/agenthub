@@ -8,6 +8,8 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_TEAM_ID_ENV,
 };
 #[cfg(test)]
+use crate::internal::tls::InternalGrpcSecurityMode;
+#[cfg(test)]
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
     ActorServiceError,
@@ -1398,14 +1400,27 @@ mod tests {
     #[test]
     fn actor_cli_internal_grpc_hint_target_forces_loopback() {
         assert_eq!(
-            actor_cli_internal_grpc_hint_target("0.0.0.0:50051").as_deref(),
-            Some("https://127.0.0.1:50051")
+            actor_cli_internal_grpc_hint_target(
+                "0.0.0.0:50051",
+                InternalGrpcSecurityMode::Disabled
+            )
+            .as_deref(),
+            Some("http://127.0.0.1:50051")
         );
         assert_eq!(
-            actor_cli_internal_grpc_hint_target("127.0.0.1:50052").as_deref(),
+            actor_cli_internal_grpc_hint_target("127.0.0.1:50052", InternalGrpcSecurityMode::Tls)
+                .as_deref(),
             Some("https://127.0.0.1:50052")
         );
-        assert!(actor_cli_internal_grpc_hint_target("not-an-addr").is_none());
+        assert_eq!(
+            actor_cli_internal_grpc_hint_target("127.0.0.1:50053", InternalGrpcSecurityMode::Mtls)
+                .as_deref(),
+            Some("https://127.0.0.1:50053")
+        );
+        assert!(
+            actor_cli_internal_grpc_hint_target("not-an-addr", InternalGrpcSecurityMode::Disabled)
+                .is_none()
+        );
     }
 
     #[test]
