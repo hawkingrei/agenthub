@@ -28,5 +28,6 @@ pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
 };
 pub use runtime::{
-    TeamRuntimeControlRecord, TeamRuntimeStartError, ensure_team_runtime_started, stop_team_runtime,
+    TeamRuntimeControlRecord, TeamRuntimeStartError, ensure_team_runtime_started,
+    force_team_member_new_session, stop_team_runtime,
 };

@@ -32,7 +32,8 @@ use crate::team::{
     TeamDefinitionConfig, TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
     TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
     TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
-    ensure_team_runtime_started, plan_actor_mailbox_immediate_hint, stop_team_runtime,
+    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
+    stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -388,6 +389,10 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}/runtime", get(get_team_runtime))
         .route("/{id}/start", post(start_team))
         .route("/{id}/stop", post(stop_team))
+        .route(
+            "/{id}/members/{member_id}/force_new_session",
+            post(force_new_session_for_team_member),
+        )
         .route("/{id}/tasks", post(create_team_task).get(list_team_tasks))
         .route(
             "/{id}/tasks/{task_id}",
@@ -533,6 +538,20 @@ async fn stop_team(
     let runtime = stop_team_runtime(state.agents.as_ref(), &team)
         .await
         .map_err(map_team_internal_error)?;
+    Ok(Json(runtime))
+}
+
+async fn force_new_session_for_team_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, member_id)): Path<(String, String)>,
+) -> Result<Json<TeamRuntimeControlResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    ensure_team_execution_ready(&team.spec)?;
+    let runtime = force_team_member_new_session(state.agents.as_ref(), &team, &member_id)
+        .await
+        .map_err(map_runtime_start_error)?;
     Ok(Json(runtime))
 }
 

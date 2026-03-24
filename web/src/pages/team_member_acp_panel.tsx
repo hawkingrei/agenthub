@@ -400,7 +400,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpClearSession: () => {
           void onForceNewSession?.();
         },
-        acpClearSessionLabel: "Force New Session",
+        acpClearSessionLabel: onForceNewSession ? "Force New Session" : undefined,
         onJumpToPermissionHistory: NOOP,
         runtimeMetrics: acpRuntimeMetrics,
       },
