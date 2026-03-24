@@ -574,6 +574,11 @@ impl TeamInternalControl for TeamInternalControlService {
         if payload.fire_at <= chrono::Utc::now().timestamp() {
             return Err(Status::invalid_argument("fire_at must be in the future"));
         }
+        self.state
+            .agents
+            .get_agent(actor_id)
+            .await
+            .map_err(map_agent_lookup_error)?;
         let manager = AgentTimeTriggerManager::new(self.state.db.clone());
         let trigger = manager
             .create_time_trigger(AgentTimeTriggerCreateInput {
@@ -1256,7 +1261,7 @@ async fn load_team_context_for_actor(
     let context = manager
         .describe_team_context(team_id, run_id)
         .await
-        .map_err(map_manager_error)?;
+        .map_err(map_team_context_error)?;
     ensure_team_member_access(manager, &context.team_id, actor_id).await?;
     Ok(context)
 }
@@ -1300,6 +1305,24 @@ fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
             "invalid task status '{other}', expected one of: open, in_progress, in_review, completed, canceled"
         ))
     })
+}
+
+fn map_team_context_error(err: anyhow::Error) -> Status {
+    let message = err.to_string();
+    if message.contains("team_id or run_id is required") || message.contains("belongs to team") {
+        return Status::invalid_argument(message);
+    }
+    map_manager_error(err)
+}
+
+fn map_agent_lookup_error(err: anyhow::Error) -> Status {
+    if err
+        .downcast_ref::<sqlx::Error>()
+        .is_some_and(|cause| matches!(cause, sqlx::Error::RowNotFound))
+    {
+        return Status::not_found("agent not found");
+    }
+    map_manager_error(err)
 }
 
 fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
@@ -1732,6 +1755,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
+        let state = build_test_state().await;
+        let run = create_team_run(&state).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let missing_selector_err = TeamInternalControl::describe_team_context(
+            &service,
+            authenticated_request(
+                DescribeTeamContextRequest {
+                    team_id: String::new(),
+                    run_id: String::new(),
+                    actor_id: "planner".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("missing team/run selector should fail");
+        assert_eq!(missing_selector_err.code(), Code::InvalidArgument);
+        assert_eq!(
+            missing_selector_err.message(),
+            "team_id or run_id is required"
+        );
+
+        let other_team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("other-team-{}", Uuid::new_v4()),
+                description: Some("other team".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "leader_member_id":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create other team");
+        let mismatch_err = TeamInternalControl::describe_team_context(
+            &service,
+            authenticated_request(
+                DescribeTeamContextRequest {
+                    team_id: other_team.id,
+                    run_id: run.id,
+                    actor_id: "planner".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("mismatched team/run should fail");
+        assert_eq!(mismatch_err.code(), Code::InvalidArgument);
+        assert!(mismatch_err.message().contains("belongs to team"));
+    }
+
+    #[tokio::test]
     async fn internal_grpc_time_trigger_controls_are_wire_compatible() {
         let state = build_test_state().await;
         sqlx::query(
@@ -1755,6 +1844,26 @@ mod tests {
         .execute(&state.db)
         .await
         .expect("create agent_time_triggers");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("reviewer")
+        .bind("reviewer")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert reviewer agent");
         let authz = build_authz();
         let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
         let service = TeamInternalControlService::new(
@@ -1897,6 +2006,57 @@ mod tests {
         .expect_err("past fire_at should be rejected");
         assert_eq!(err.code(), Code::InvalidArgument);
         assert_eq!(err.message(), "fire_at must be in the future");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_time_trigger_rejects_unknown_agent() {
+        let state = build_test_state().await;
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_time_triggers (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                created_by_actor_id TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                fire_at INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                fired_at INTEGER,
+                last_error TEXT,
+                FOREIGN KEY(agent_id) REFERENCES agents(id)
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_time_triggers");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
+        let service = TeamInternalControlService::new(
+            state,
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+
+        let err = TeamInternalControl::create_time_trigger(
+            &service,
+            authenticated_request(
+                CreateTimeTriggerRequest {
+                    actor_id: "reviewer".to_string(),
+                    message_text: "missing agent".to_string(),
+                    fire_at: chrono::Utc::now().timestamp() + 120,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("missing actor agent should fail");
+        assert_eq!(err.code(), Code::NotFound);
+        assert_eq!(err.message(), "agent not found");
     }
 
     #[tokio::test]
