@@ -753,6 +753,96 @@ async fn teams_api_start_and_stop_team_runtime() {
 }
 
 #[tokio::test]
+async fn teams_api_force_new_session_restarts_only_selected_member() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "team-force-new-session".to_string(),
+            description: Some("force one member to use a new session".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(started) = start_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("start team");
+    let original_planner_session = started
+        .members
+        .iter()
+        .find(|member| member.member_id == "planner")
+        .expect("planner session")
+        .session_id
+        .clone();
+
+    let Json(runtime) = force_new_session_for_team_member(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), "planner".to_string())),
+    )
+    .await
+    .expect("force new planner session");
+    assert_eq!(runtime.team_id, team.id);
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Running);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "planner");
+    assert_eq!(runtime.members[0].action, "forced_restart");
+    assert_ne!(runtime.members[0].session_id, original_planner_session);
+}
+
+#[tokio::test]
+async fn force_new_session_restarts_worker_runtime_with_new_session_id() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+    configure_worker_team_member_agent(&state, "reviewer").await;
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "team-force-new-worker-session".to_string(),
+            description: Some("force worker member to use a new session".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(started) = start_team(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("start team");
+    let original_reviewer_session = started
+        .members
+        .iter()
+        .find(|member| member.member_id == "reviewer")
+        .expect("reviewer session")
+        .session_id
+        .clone();
+
+    let runtime = force_team_member_new_session(&state.agents, &team, "reviewer")
+        .await
+        .unwrap_or_else(|err| panic!("{err:#}"));
+    assert_eq!(runtime.team_id, team.id);
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Running);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "reviewer");
+    assert_eq!(runtime.members[0].action, "forced_restart");
+    assert_ne!(runtime.members[0].session_id, original_reviewer_session);
+}
+
+#[tokio::test]
 async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_validation_is_allowed()
 {
     let state = build_test_state().await;

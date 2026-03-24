@@ -11,11 +11,17 @@ pub(super) struct GitWorktreeEntry {
     pub(super) branch: Option<String>,
 }
 
+pub(super) fn git_command_without_fsmonitor() -> Command {
+    let mut command = Command::new("git");
+    command.arg("-c").arg("core.fsmonitor=false");
+    command
+}
+
 pub(super) async fn repo_find_worktree_entry(
     repo: &str,
     workdir: &str,
 ) -> anyhow::Result<Option<GitWorktreeEntry>> {
-    let output = Command::new("git")
+    let output = git_command_without_fsmonitor()
         .arg("-C")
         .arg(repo)
         .arg("worktree")

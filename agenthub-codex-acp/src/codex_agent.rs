@@ -24,16 +24,18 @@ use codex_core::{
 use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
 use codex_protocol::{
     ThreadId,
-    protocol::{InitialHistory, SessionSource},
+    models::{FunctionCallOutputPayload, ResponseItem},
+    protocol::{InitialHistory, ResumedHistory, RolloutItem, SessionSource},
 };
 use std::{
     cell::RefCell,
     collections::HashMap,
+    collections::HashSet,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
@@ -220,6 +222,290 @@ impl CodexAgent {
     }
 }
 
+fn aborted_call_output() -> FunctionCallOutputPayload {
+    FunctionCallOutputPayload::from_text("aborted".to_string())
+}
+
+fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
+    let function_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::FunctionCall { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let local_shell_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let custom_tool_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponseItem::CustomToolCall { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
+    let before_len = items.len();
+    items.retain(|item| match item {
+        ResponseItem::FunctionCallOutput { call_id, .. } => {
+            function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id)
+        }
+        ResponseItem::CustomToolCallOutput { call_id, .. } => {
+            custom_tool_call_ids.contains(call_id)
+        }
+        _ => true,
+    });
+    let mut repaired = before_len - items.len();
+
+    let mut synthetic_outputs = Vec::new();
+    for (idx, item) in items.iter().enumerate() {
+        match item {
+            ResponseItem::FunctionCall { call_id, .. } => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        ResponseItem::FunctionCallOutput {
+                            call_id: existing,
+                            ..
+                        } if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        ResponseItem::FunctionCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        },
+                    ));
+                }
+            }
+            ResponseItem::CustomToolCall { call_id, .. } => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        ResponseItem::CustomToolCallOutput {
+                            call_id: existing,
+                            ..
+                        } if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        ResponseItem::CustomToolCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        },
+                    ));
+                }
+            }
+            ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            } => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        ResponseItem::FunctionCallOutput {
+                            call_id: existing,
+                            ..
+                        } if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        ResponseItem::FunctionCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        },
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    repaired += synthetic_outputs.len();
+    for (idx, output) in synthetic_outputs.into_iter().rev() {
+        items.insert(idx + 1, output);
+    }
+    repaired
+}
+
+fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
+    let function_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. }) => {
+                Some(call_id.clone())
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let local_shell_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            }) => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let custom_tool_call_ids = items
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. }) => {
+                Some(call_id.clone())
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
+    let mut repaired = 0usize;
+    let mut retained = Vec::with_capacity(items.len());
+    for item in std::mem::take(items) {
+        match item {
+            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput { call_id, output }) => {
+                if function_call_ids.contains(&call_id) || local_shell_call_ids.contains(&call_id) {
+                    retained.push(RolloutItem::ResponseItem(
+                        ResponseItem::FunctionCallOutput { call_id, output },
+                    ));
+                } else {
+                    repaired += 1;
+                }
+            }
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output }) => {
+                if custom_tool_call_ids.contains(&call_id) {
+                    retained.push(RolloutItem::ResponseItem(
+                        ResponseItem::CustomToolCallOutput { call_id, output },
+                    ));
+                } else {
+                    repaired += 1;
+                }
+            }
+            RolloutItem::Compacted(mut compacted) => {
+                if let Some(replacement_history) = compacted.replacement_history.as_mut() {
+                    repaired += repair_response_item_history(replacement_history);
+                }
+                retained.push(RolloutItem::Compacted(compacted));
+            }
+            other => retained.push(other),
+        }
+    }
+    *items = retained;
+
+    let mut synthetic_outputs = Vec::new();
+    for (idx, item) in items.iter().enumerate() {
+        match item {
+            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. }) => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                            call_id: existing,
+                            ..
+                        }) if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        }),
+                    ));
+                }
+            }
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. }) => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                            call_id: existing,
+                            ..
+                        }) if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        }),
+                    ));
+                }
+            }
+            RolloutItem::ResponseItem(ResponseItem::LocalShellCall {
+                call_id: Some(call_id),
+                ..
+            }) => {
+                let has_output = items.iter().any(|candidate| {
+                    matches!(
+                        candidate,
+                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                            call_id: existing,
+                            ..
+                        }) if existing == call_id
+                    )
+                });
+                if !has_output {
+                    synthetic_outputs.push((
+                        idx,
+                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                            call_id: call_id.clone(),
+                            output: aborted_call_output(),
+                        }),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    repaired += synthetic_outputs.len();
+    for (idx, output) in synthetic_outputs.into_iter().rev() {
+        items.insert(idx + 1, output);
+    }
+    repaired
+}
+
+fn repair_initial_history(history: InitialHistory) -> (InitialHistory, usize) {
+    match history {
+        InitialHistory::New => (InitialHistory::New, 0),
+        InitialHistory::Forked(mut items) => {
+            let repaired = repair_rollout_items(&mut items);
+            (InitialHistory::Forked(items), repaired)
+        }
+        InitialHistory::Resumed(ResumedHistory {
+            conversation_id,
+            mut history,
+            rollout_path,
+        }) => {
+            let repaired = repair_rollout_items(&mut history);
+            (
+                InitialHistory::Resumed(ResumedHistory {
+                    conversation_id,
+                    history,
+                    rollout_path,
+                }),
+                repaired,
+            )
+        }
+    }
+}
+
 #[async_trait::async_trait(?Send)]
 impl Agent for CodexAgent {
     async fn initialize(&self, request: InitializeRequest) -> Result<InitializeResponse, Error> {
@@ -403,12 +689,16 @@ impl Agent for CodexAgent {
         let history = RolloutRecorder::get_rollout_history(&rollout_path)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
+        let (history, repaired_items) = repair_initial_history(history);
+        if repaired_items > 0 {
+            warn!(
+                session_id = %session_id,
+                repaired_items,
+                "repaired dirty Codex rollout history before session resume"
+            );
+        }
 
-        let rollout_items = match &history {
-            InitialHistory::Resumed(resumed) => resumed.history.clone(),
-            InitialHistory::Forked(items) => items.clone(),
-            InitialHistory::New => Vec::new(),
-        };
+        let rollout_items = history.get_rollout_items();
 
         let config = self.build_session_config(&cwd, mcp_servers)?;
 
@@ -416,10 +706,11 @@ impl Agent for CodexAgent {
             thread_id: _,
             thread,
             session_configured: _,
-        } = Box::pin(self.thread_manager.resume_thread_from_rollout(
+        } = Box::pin(self.thread_manager.resume_thread_with_history(
             config.clone(),
-            rollout_path,
+            history,
             self.auth_manager.clone(),
+            false,
         ))
         .await
         .map_err(|e| Error::internal_error().data(e.to_string()))?;
@@ -588,6 +879,107 @@ impl Agent for CodexAgent {
         let config_options = thread.config_options().await?;
 
         Ok(SetSessionConfigOptionResponse::new(config_options))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{repair_initial_history, repair_response_item_history};
+    use codex_protocol::{
+        ThreadId,
+        models::{
+            FunctionCallOutputPayload, LocalShellAction, LocalShellExecAction, LocalShellStatus,
+            ResponseItem,
+        },
+        protocol::{CompactedItem, InitialHistory, ResumedHistory, RolloutItem},
+    };
+    use std::path::PathBuf;
+
+    #[test]
+    fn repair_initial_history_inserts_missing_custom_tool_outputs() {
+        let thread_id = ThreadId::new();
+        let history = InitialHistory::Resumed(ResumedHistory {
+            conversation_id: thread_id,
+            history: vec![RolloutItem::ResponseItem(ResponseItem::CustomToolCall {
+                id: None,
+                status: Some("completed".to_string()),
+                call_id: "call-1".to_string(),
+                name: "actor_send".to_string(),
+                input: "{}".to_string(),
+            })],
+            rollout_path: PathBuf::from("/tmp/rollout.jsonl"),
+        });
+
+        let (repaired, repaired_count) = repair_initial_history(history);
+        assert_eq!(repaired_count, 1);
+        let items = repaired.get_rollout_items();
+        assert_eq!(items.len(), 2);
+        assert!(matches!(
+            &items[1],
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output })
+                if call_id == "call-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+        ));
+    }
+
+    #[test]
+    fn repair_response_item_history_drops_orphan_outputs() {
+        let mut history = vec![
+            ResponseItem::CustomToolCallOutput {
+                call_id: "missing".to_string(),
+                output: FunctionCallOutputPayload::from_text("ok".to_string()),
+            },
+            ResponseItem::CustomToolCall {
+                id: None,
+                status: Some("completed".to_string()),
+                call_id: "call-2".to_string(),
+                name: "actor_ack".to_string(),
+                input: "{}".to_string(),
+            },
+        ];
+
+        let repaired = repair_response_item_history(&mut history);
+        assert_eq!(repaired, 2);
+        assert_eq!(history.len(), 2);
+        assert!(matches!(
+            &history[1],
+            ResponseItem::CustomToolCallOutput { call_id, output }
+                if call_id == "call-2" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+        ));
+    }
+
+    #[test]
+    fn repair_initial_history_updates_compacted_replacement_history() {
+        let history = InitialHistory::Forked(vec![RolloutItem::Compacted(CompactedItem {
+            message: "compacted".to_string(),
+            replacement_history: Some(vec![ResponseItem::LocalShellCall {
+                id: None,
+                call_id: Some("shell-1".to_string()),
+                status: LocalShellStatus::Completed,
+                action: LocalShellAction::Exec(LocalShellExecAction {
+                    command: vec!["echo".to_string(), "hi".to_string()],
+                    timeout_ms: None,
+                    working_directory: Some(".".to_string()),
+                    env: None,
+                    user: None,
+                }),
+            }]),
+        })]);
+
+        let (repaired, repaired_count) = repair_initial_history(history);
+        assert_eq!(repaired_count, 1);
+        let items = repaired.get_rollout_items();
+        let RolloutItem::Compacted(compacted) = &items[0] else {
+            panic!("expected compacted item");
+        };
+        let replacement_history = compacted
+            .replacement_history
+            .as_ref()
+            .expect("replacement history");
+        assert!(matches!(
+            &replacement_history[1],
+            ResponseItem::FunctionCallOutput { call_id, output }
+                if call_id == "shell-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
+        ));
     }
 }
 

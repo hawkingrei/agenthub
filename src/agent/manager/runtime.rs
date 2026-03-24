@@ -1,10 +1,11 @@
 use std::path::Path;
 
 use chrono::Utc;
-use tokio::process::Command;
 
 use super::codec::is_dir_empty;
-use super::worktree::{repo_find_worktree_entry, worktree_ref_matches};
+use super::worktree::{
+    git_command_without_fsmonitor, repo_find_worktree_entry, worktree_ref_matches,
+};
 use super::{
     AgentInput, AgentManager, expand_tilde, normalize_agent_loop_config,
     spawn_agent_loop_controller, worktree_mode_to_str,
@@ -237,7 +238,7 @@ impl AgentManager {
                         .await;
                     anyhow::bail!("workdir is not empty");
                 }
-                let output = Command::new("git")
+                let output = git_command_without_fsmonitor()
                     .arg("-C")
                     .arg(repo)
                     .arg("worktree")
