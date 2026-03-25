@@ -124,8 +124,12 @@ managed runtime, bootstrap the Team skills first:
 scripts/setup_team_skills.sh
 ```
 
-If you want actor CLI actions to stop prompting repeatedly in local Codex
-development, allow the canonical prefix:
+Managed Team runtime actor commands that use the injected canonical
+`AGENTHUB_ACTOR_CLI` path are now auto-approved by the ACP permission layer.
+
+If you also run `agenthub actor ...` manually in a local Codex shell and want
+those manual commands to stop prompting repeatedly, allow the human-typed
+prefix:
 
 ```text
 prefix_rule(pattern=["agenthub", "actor"], decision="allow")

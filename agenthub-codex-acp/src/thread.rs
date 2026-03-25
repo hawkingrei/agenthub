@@ -77,6 +77,7 @@ use crate::{
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
+const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
@@ -463,6 +464,7 @@ struct PromptState {
     active_commands: HashMap<String, ActiveCommand>,
     active_web_search: Option<String>,
     thread: Arc<dyn CodexThreadImpl>,
+    runtime_actor_cli_path: Option<PathBuf>,
     resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
     pending_permission_interactions: HashMap<String, PendingPermissionInteraction>,
     event_count: usize,
@@ -478,11 +480,28 @@ impl PromptState {
         resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
         response_tx: oneshot::Sender<Result<StopReason, Error>>,
     ) -> Self {
+        Self::new_with_runtime_actor_cli_path(
+            submission_id,
+            thread,
+            resolution_tx,
+            response_tx,
+            resolve_runtime_actor_cli_path(),
+        )
+    }
+
+    fn new_with_runtime_actor_cli_path(
+        submission_id: String,
+        thread: Arc<dyn CodexThreadImpl>,
+        resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
+        response_tx: oneshot::Sender<Result<StopReason, Error>>,
+        runtime_actor_cli_path: Option<PathBuf>,
+    ) -> Self {
         Self {
             submission_id,
             active_commands: HashMap::new(),
             active_web_search: None,
             thread,
+            runtime_actor_cli_path,
             resolution_tx,
             pending_permission_interactions: HashMap::new(),
             event_count: 0,
@@ -1377,7 +1396,7 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
             call_id,
-            command: _,
+            command,
             turn_id,
             cwd,
             reason,
@@ -1409,6 +1428,27 @@ impl PromptState {
                 file_extension,
             },
         );
+
+        let resolved_approval_id = approval_id.unwrap_or(call_id.clone());
+        if let Some(decision) = auto_approve_runtime_actor_cli_decision(
+            &command,
+            &available_decisions,
+            self.runtime_actor_cli_path.as_deref(),
+        ) {
+            info!(
+                "Auto-approving runtime actor CLI command: call_id={}, command={:?}",
+                call_id, command
+            );
+            self.thread
+                .submit(Op::ExecApproval {
+                    id: resolved_approval_id,
+                    turn_id: Some(turn_id),
+                    decision,
+                })
+                .await
+                .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            return Ok(());
+        }
 
         let mut content = vec![];
 
@@ -1460,7 +1500,7 @@ impl PromptState {
             client,
             exec_request_key(&call_id),
             PendingPermissionRequest::Exec {
-                approval_id: approval_id.unwrap_or(call_id.clone()),
+                approval_id: resolved_approval_id,
                 turn_id,
                 option_map: permission_options
                     .iter()
@@ -1965,6 +2005,84 @@ fn build_exec_permission_options(
             },
         })
         .collect()
+}
+
+fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
+    std::env::var(ACTOR_RUNTIME_CLI_ENV)
+        .ok()
+        .and_then(|value| canonicalize_runtime_actor_cli_path(value.as_str()))
+}
+
+fn canonicalize_runtime_actor_cli_path(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    std::fs::canonicalize(trimmed).ok()
+}
+
+fn auto_approve_runtime_actor_cli_decision(
+    command: &[String],
+    available_decisions: &[ReviewDecision],
+    runtime_actor_cli_path: Option<&Path>,
+) -> Option<ReviewDecision> {
+    let runtime_actor_cli_path = runtime_actor_cli_path?;
+    if !matches_runtime_actor_cli_command(command, runtime_actor_cli_path) {
+        return None;
+    }
+    available_decisions
+        .iter()
+        .find(|decision| matches!(decision, ReviewDecision::Approved))
+        .cloned()
+        .or_else(|| {
+            available_decisions
+                .iter()
+                .find(|decision| {
+                    matches!(decision, ReviewDecision::ApprovedExecpolicyAmendment { .. })
+                })
+                .cloned()
+        })
+}
+
+fn matches_runtime_actor_cli_command(command: &[String], runtime_actor_cli_path: &Path) -> bool {
+    command_has_runtime_actor_cli_prefix(command, runtime_actor_cli_path)
+        || extract_shell_wrapped_command(command)
+            .and_then(|shell_command| shlex::split(shell_command))
+            .is_some_and(|segments| {
+                command_has_runtime_actor_cli_prefix(segments.as_slice(), runtime_actor_cli_path)
+            })
+}
+
+fn command_has_runtime_actor_cli_prefix<T: AsRef<str>>(
+    command: &[T],
+    runtime_actor_cli_path: &Path,
+) -> bool {
+    if command.len() < 2 {
+        return false;
+    }
+    if command[1].as_ref() != "actor" {
+        return false;
+    }
+    canonicalize_runtime_actor_cli_path(command[0].as_ref())
+        .as_deref()
+        .is_some_and(|candidate| candidate == runtime_actor_cli_path)
+}
+
+fn extract_shell_wrapped_command(command: &[String]) -> Option<&str> {
+    if command.len() != 3 {
+        return None;
+    }
+    match command[1].as_str() {
+        "-c" | "-lc" => {}
+        _ => return None,
+    }
+    let shell = Path::new(command[0].as_str())
+        .file_name()
+        .and_then(OsStr::to_str)?;
+    match shell {
+        "sh" | "bash" | "zsh" => Some(command[2].as_str()),
+        _ => None,
+    }
 }
 
 struct ParseCommandToolCall {
@@ -4665,6 +4783,166 @@ mod tests {
                         id,
                         turn_id,
                         decision: ReviewDecision::Denied,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_exec_approval_auto_approves_runtime_actor_cli_command() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let actor_cli_path =
+                    std::env::current_exe().expect("resolve current test binary path");
+                let actor_cli = actor_cli_path.to_string_lossy().to_string();
+                let mut prompt_state = PromptState::new_with_runtime_actor_cli_path(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                    Some(actor_cli_path),
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec![
+                                actor_cli.clone(),
+                                "actor".to_string(),
+                                "inbox".to_string(),
+                            ],
+                            cwd: std::env::current_dir()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            skill_metadata: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: format!("{actor_cli} actor inbox"),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                assert!(
+                    message_rx.try_recv().is_err(),
+                    "auto-approved runtime actor cli command should not open a permission request"
+                );
+                let requests = client.permission_requests.lock().unwrap();
+                assert!(
+                    requests.is_empty(),
+                    "runtime actor cli command should bypass permission prompt"
+                );
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Approved,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_exec_approval_auto_approves_shell_wrapped_runtime_actor_cli_command()
+    -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let actor_cli_path =
+                    std::env::current_exe().expect("resolve current test binary path");
+                let actor_cli = actor_cli_path.to_string_lossy().to_string();
+                let shell_command = format!("{actor_cli} actor permission-review-respond");
+                let mut prompt_state = PromptState::new_with_runtime_actor_cli_path(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                    Some(actor_cli_path),
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec![
+                                "/bin/zsh".to_string(),
+                                "-lc".to_string(),
+                                shell_command.clone(),
+                            ],
+                            cwd: std::env::current_dir()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            skill_metadata: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: format!("/bin/zsh -lc '{shell_command}'"),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                assert!(
+                    message_rx.try_recv().is_err(),
+                    "shell-wrapped runtime actor cli command should not open a permission request"
+                );
+                let requests = client.permission_requests.lock().unwrap();
+                assert!(
+                    requests.is_empty(),
+                    "shell-wrapped runtime actor cli command should bypass permission prompt"
+                );
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Approved,
                     }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
                 ));
 
