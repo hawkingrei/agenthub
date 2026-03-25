@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use chrono::Utc;
-use rand::RngCore;
+use rand::Rng;
 use sqlx::Row;
 use uuid::Uuid;
 
