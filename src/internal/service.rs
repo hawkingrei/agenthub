@@ -692,6 +692,14 @@ impl TeamInternalControl for TeamInternalControlService {
                 "current actor is not a member of this team",
             ));
         }
+        if record.status != "pending" {
+            return Ok(Response::new(RespondPermissionReviewResponse {
+                status: "already_resolved".to_string(),
+                permission_id: permission_id.to_string(),
+                request_status: record.status,
+                reviewed_by_actor_id: record.reviewed_by_actor_id.unwrap_or_default(),
+            }));
+        }
         if record.requester_actor_id.as_deref() == Some(actor_id) {
             return Err(Status::permission_denied(
                 "requester cannot review its own permission request",
@@ -722,16 +730,6 @@ impl TeamInternalControl for TeamInternalControlService {
                 "leader is the only reviewer for worker-originated permission requests"
             } else {
                 "current actor is not the active reviewer for this permission request"
-            }));
-        }
-        if record.status != "pending" {
-            return Ok(Response::new(RespondPermissionReviewResponse {
-                status: "already_resolved".to_string(),
-                permission_id: permission_id.to_string(),
-                request_status: record.status,
-                reviewed_by_actor_id: record
-                    .reviewed_by_actor_id
-                    .unwrap_or_else(|| actor_id.to_string()),
             }));
         }
 
@@ -1635,6 +1633,168 @@ mod tests {
             .expect("create test run")
     }
 
+    async fn create_permission_review_run(
+        state: &crate::state::AppState,
+        name_suffix: &str,
+        prompt: &str,
+    ) -> crate::team::TeamRunRecord {
+        let context_id = format!("ctx-internal-grpc-{name_suffix}");
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("internal-grpc-{name_suffix}-{}", Uuid::new_v4()),
+                description: Some(format!("{name_suffix} permission review test")),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "leader_member_id":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"observer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create permission review team");
+        state
+            .teams
+            .create_run(
+                &team.id,
+                Some(context_id.as_str()),
+                json!({"prompt": prompt}),
+            )
+            .await
+            .expect("create permission review run")
+    }
+
+    struct PermissionReviewFixture {
+        state: crate::state::AppState,
+        run: crate::team::TeamRunRecord,
+        service: TeamInternalControlService,
+        token: String,
+        now: i64,
+    }
+
+    struct PermissionReviewSeed<'a> {
+        request_id: &'a str,
+        agent_id: &'a str,
+        session_id: &'a str,
+        acp_session_id: &'a str,
+        requester_actor_id: &'a str,
+        requester_role: &'a str,
+        review_target_actor_id: Option<&'a str>,
+        tool_call_id: &'a str,
+        status: &'a str,
+    }
+
+    async fn setup_permission_review_fixture(
+        name_suffix: &str,
+        prompt: &str,
+    ) -> PermissionReviewFixture {
+        let state = build_test_state().await;
+        let run = create_permission_review_run(&state, name_suffix, prompt).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("observer"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        PermissionReviewFixture {
+            state,
+            run,
+            service,
+            token,
+            now: chrono::Utc::now().timestamp(),
+        }
+    }
+
+    async fn seed_permission_review_request(
+        state: &crate::state::AppState,
+        run: &crate::team::TeamRunRecord,
+        seed: PermissionReviewSeed<'_>,
+        now: i64,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind(seed.agent_id)
+        .bind(seed.agent_id)
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(seed.session_id)
+        .bind(seed.agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                review_target_actor_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind(seed.request_id)
+        .bind(seed.agent_id)
+        .bind(seed.session_id)
+        .bind(seed.acp_session_id)
+        .bind(&run.team_id)
+        .bind(seed.requester_actor_id)
+        .bind(seed.requester_role)
+        .bind(seed.review_target_actor_id)
+        .bind(seed.tool_call_id)
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(seed.status)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review request");
+    }
+
     #[tokio::test]
     async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         let state = build_test_state().await;
@@ -2476,6 +2636,103 @@ mod tests {
         assert_eq!(response.status, "ok");
         assert_eq!(response.request_status, "responded");
         assert_eq!(response.reviewed_by_actor_id, "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_reports_timeout_before_reviewer_check() {
+        let fixture = setup_permission_review_fixture(
+            "timeout-review",
+            "validate resolved review precedence",
+        )
+        .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            PermissionReviewSeed {
+                request_id: "perm-timeout-review-1",
+                agent_id: "timeout-worker-agent",
+                session_id: "timeout-worker-session",
+                acp_session_id: "acp-session-timeout-1",
+                requester_actor_id: "planner",
+                requester_role: "leader",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-timeout-1",
+                status: "timeout",
+            },
+            fixture.now,
+        )
+        .await;
+
+        let response = TeamInternalControl::respond_permission_review(
+            &fixture.service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: fixture.run.team_id.clone(),
+                    actor_id: "observer".to_string(),
+                    permission_id: "perm-timeout-review-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &fixture.token,
+            ),
+        )
+        .await
+        .expect("timeout permission review should report already resolved")
+        .into_inner();
+
+        assert_eq!(response.status, "already_resolved");
+        assert_eq!(response.request_status, "timeout");
+        assert!(
+            response.reviewed_by_actor_id.is_empty(),
+            "expected no reviewer for timed-out request"
+        );
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() {
+        let fixture =
+            setup_permission_review_fixture("pending-review", "validate pending reviewer guard")
+                .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            PermissionReviewSeed {
+                request_id: "perm-pending-review-1",
+                agent_id: "pending-worker-agent",
+                session_id: "pending-worker-session",
+                acp_session_id: "acp-session-pending-1",
+                requester_actor_id: "planner",
+                requester_role: "leader",
+                review_target_actor_id: Some("reviewer"),
+                tool_call_id: "tool-call-pending-1",
+                status: "pending",
+            },
+            fixture.now,
+        )
+        .await;
+
+        let err = TeamInternalControl::respond_permission_review(
+            &fixture.service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: fixture.run.team_id.clone(),
+                    actor_id: "observer".to_string(),
+                    permission_id: "perm-pending-review-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &fixture.token,
+            ),
+        )
+        .await
+        .expect_err("pending permission review should reject non-reviewer actor");
+
+        assert_eq!(err.code(), tonic::Code::PermissionDenied);
+        assert!(
+            err.message()
+                .contains("current actor is not the active reviewer for this permission request"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
