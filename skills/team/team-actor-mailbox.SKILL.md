@@ -129,6 +129,9 @@ Recommended fields:
   worker reviewer.
 - The current reviewer is assigned automatically by the Team runtime; requester must never review
   its own permission request.
+- When responding through `actor permission-review-respond`, use the request-provided
+  `--option-id` for any allow/session/persistent approval path.
+- Do not invent `--outcome always`; `--outcome` currently supports only `cancelled`.
 - Do not forward `permission_review_request` payloads manually through `actor_send`; they are
   system-managed control messages rather than normal mailbox work items.
 - If agent review cannot complete in time, the system may surface the same permission request in

@@ -388,6 +388,9 @@ Protocol rules:
 - Treat the runtime context block as the canonical source for the current actor identity and default run scope.
 - If inbox has pending items, process and `actor ack` them before emitting final result.
 - Acknowledge each consumed message exactly once.
+- For `actor permission-review-respond`, choose any allow/session/persistent approval by passing the
+  concrete request-provided `--option-id`; do not invent `--outcome always`.
+- `actor permission-review-respond --outcome` currently supports only `cancelled`.
 - Keep payload JSON compact and deterministic.
 - Prefer `actor send --text` for markdown-rich messages; it preserves formatting better than wrapping prose inside structured fields.
 - For group chat / channel sends, use `channel_id`; the message will still fan out to all relevant teammates even when `@member_id` appears in the text.

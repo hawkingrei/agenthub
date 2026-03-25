@@ -78,7 +78,7 @@ enum ActorCommand {
     Ack {
         run_id: String,
         actor_id: String,
-        message_id: i64,
+        message_ids: Vec<i64>,
     },
     TeamTasks {
         team_id: String,
@@ -117,7 +117,7 @@ enum ActorCommand {
     PermissionReviewRespond {
         team_id: String,
         actor_id: String,
-        permission_id: String,
+        permission_ids: Vec<String>,
         option_id: Option<String>,
         outcome: Option<String>,
     },
@@ -710,6 +710,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_ack_accepts_repeated_message_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-batch");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "ack".to_string(),
+            "--message-id".to_string(),
+            "41".to_string(),
+            "--message-id".to_string(),
+            "42".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse repeated ack message ids");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert_eq!(run_id, "run-ack-batch");
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41, 42]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
     fn parse_send_accepts_agent_id_alias_flags() {
         let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
@@ -1248,6 +1285,49 @@ mod tests {
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
+    #[test]
+    fn parse_permission_review_respond_accepts_repeated_permission_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "permission-review-respond".to_string(),
+            "--permission-id".to_string(),
+            "perm-1".to_string(),
+            "--permission-id".to_string(),
+            "perm-2".to_string(),
+            "--option-id".to_string(),
+            "allow".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse repeated permission review ids");
+        match parsed {
+            ActorCommand::PermissionReviewRespond {
+                team_id,
+                actor_id,
+                permission_ids,
+                option_id,
+                outcome,
+            } => {
+                assert_eq!(team_id, "team-review");
+                assert_eq!(actor_id, "leader");
+                assert_eq!(permission_ids, vec!["perm-1", "perm-2"]);
+                assert_eq!(option_id.as_deref(), Some("allow"));
+                assert_eq!(outcome, None);
+            }
+            _ => panic!("expected permission-review-respond command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
     #[derive(Serialize)]
     struct OutputFixture {
         name: &'static str,
@@ -1376,7 +1456,7 @@ mod tests {
                 ActorCommand::Ack {
                     run_id: "run-1".to_string(),
                     actor_id: "worker".to_string(),
-                    message_id: 42,
+                    message_ids: vec![42],
                 },
                 ActorOutputPreference::JsonPreferred,
             ),
@@ -1421,7 +1501,7 @@ mod tests {
                 ActorCommand::PermissionReviewRespond {
                     team_id: "team-1".to_string(),
                     actor_id: "leader".to_string(),
-                    permission_id: "perm-1".to_string(),
+                    permission_ids: vec!["perm-1".to_string()],
                     option_id: Some("allow".to_string()),
                     outcome: None,
                 },
