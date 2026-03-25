@@ -4,14 +4,15 @@ sidebar_position: 2
 
 # Configuration Basics
 
-This page lists the minimum settings needed for normal day-to-day AgentHub
-usage.
+This page lists all available configuration options for AgentHub.
 
-## Config File
+## Configuration File
 
 AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 
-Start from a minimal single-node baseline:
+## Minimal Configuration
+
+Start with this baseline for single-node usage:
 
 ```toml
 safe_paths = [
@@ -30,85 +31,309 @@ event_retention_days = 5
 vacuum_on_cleanup = false
 ```
 
-## Required Fields For Daily Use
+## Complete Configuration Reference
 
-- `server.listen`: where the UI and API are served
-- `safe_paths`: top-level allowlist of workdir roots for agent runs
-- `worktree.default_root`: default base for `create_worktree` mode
+### Top-Level Options
 
-If these are missing or incorrect, users usually see login, start, or path
-validation errors.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `safe_paths` | array of strings | `["~/.agenthub/worktrees"]` | Allowed workdir roots |
+| `web_dir` | string | `web/dist` (dev only) | Path to web assets |
+| `log_path` | string | none | Log file path (default: stdout) |
 
-## Notes About `safe_paths`
+### `[server]` Section
 
-- Keep `safe_paths` as short and explicit as possible.
-- Prefer repository roots over broad paths such as `/` or your full home
-  directory.
-- By default, `~/.agenthub/worktrees` is automatically included in the
-  effective safe-path allowlist, so the default `create_worktree` layout works
-  without extra configuration.
-- If you change `worktree.default_root` to another location, add that root or a
-  containing directory to `safe_paths` as well, or `create_worktree` path
-  validation will fail.
+HTTP server configuration.
 
-## Internal gRPC Settings
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `listen` | string | `"127.0.0.1:8080"` | Bind address and port |
 
-Add an `internal_grpc` block when either of these is true:
+### `[web]` Section
 
-- you plan to register or control remote Agent Nodes
-- you want `agenthub actor ...` commands such as `team-members`, `inbox`,
-  `ack`, `send`, or `time-trigger-*` to talk to the authority control plane
+WebAuthn/Passkey configuration.
 
-Recommended single-node baseline:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `rp_id` | string | `"localhost"` | Relying party ID for WebAuthn |
+| `rp_origin` | string | `"http://localhost:8080"` | Origin for WebAuthn |
+| `rp_name` | string | `"AgentHub"` | Display name for WebAuthn |
+
+**Production WebAuthn Setup**:
+
+WebAuthn requires HTTPS and a valid origin:
+
+```toml
+[web]
+rp_id = "agenthub.example.com"
+rp_origin = "https://agenthub.example.com"
+rp_name = "AgentHub Production"
+```
+
+### `[worktree]` Section
+
+Worktree creation settings.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `default_root` | string | `"~/.agenthub/worktrees"` | Base directory for new worktrees |
+
+### `[codex_acp]` Section
+
+ACP (Agent Control Protocol) provider settings.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `binary` | string | `"agenthub-codex-acp"` | ACP binary name or path |
+| `default_mode` | string | `"auto"` | Default ACP mode (`auto`, `full`, `suggest`) |
+
+### `[history]` Section
+
+Event history retention settings.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `event_retention_days` | integer | `5` | Days to keep events (0 = unlimited) |
+| `vacuum_on_cleanup` | boolean | `false` | Run VACUUM after cleanup |
+| `delete_batch_size` | integer | `10000` | Rows per cleanup batch (100-200000) |
+
+**Retention Example**:
+
+```toml
+[history]
+# Keep events for 30 days
+event_retention_days = 30
+# Reclaim disk space after cleanup
+vacuum_on_cleanup = true
+# Smaller batches for lower I/O impact
+delete_batch_size = 5000
+```
+
+### `[push]` Section
+
+Web Push notification settings.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `subject` | string | `"mailto:admin@example.com"` | VAPID contact email |
+| `keys_path` | string | `"~/.agenthub/vapid.json"` | Path to VAPID keys |
+
+**Push Configuration**:
+
+```toml
+[push]
+subject = "mailto:ops@company.com"
+keys_path = "/etc/agenthub/vapid.json"
+```
+
+### `[internal_grpc]` Section
+
+Internal gRPC control plane for remote nodes and actor CLI.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable internal gRPC server |
+| `listen` | string | `"127.0.0.1:50051"` | gRPC bind address |
+
+#### `[internal_grpc.security]` Subsection
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `mode` | string | `"tls"` | Security mode: `tls`, `mtls`, or `disabled` |
+| `cert_dir` | string | `"~/.agenthub/internal-grpc"` | TLS certificate directory |
+
+#### `[internal_grpc.auth]` Subsection
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `shared_secret` | string | none | JWT signing secret |
+| `issuer` | string | none | JWT issuer claim |
+| `audience` | string | none | JWT audience claim |
+
+#### `[internal_grpc.bootstrap]` Subsection
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `token` | string | none | Bootstrap token for remote nodes |
+
+**Complete Internal gRPC Example**:
 
 ```toml
 [internal_grpc]
 enabled = true
-listen = "127.0.0.1:50051"
+listen = "0.0.0.0:50051"
 
 [internal_grpc.security]
 mode = "tls"
-cert_dir = "~/.agenthub/internal-grpc"
+cert_dir = "/etc/agenthub/internal-grpc"
 
 [internal_grpc.auth]
+shared_secret = "your-256-bit-secret-here-minimum-32-chars"
 issuer = "agenthub"
 audience = "agenthub-internal"
-shared_secret = "replace-this-with-a-long-random-secret"
 
 [internal_grpc.bootstrap]
-# optional unless you bootstrap remote nodes
-token = "replace-me-if-you-use-node-bootstrap"
+token = "bootstrap-token-for-remote-nodes"
 ```
 
-Why the explicit `shared_secret` matters:
+### `[proxy]` Section
 
-- the authority server can auto-generate and persist a secret under
-  `cert_dir/auth_secret.txt`
-- `agenthub actor ...` is a client, not a server; it only reads
-  `~/.agenthub/config.toml` when minting its loopback token
-- if `shared_secret` is omitted from the config file, the actor CLI cannot mint
-  a valid local internal token even when the authority server already started
+HTTP proxy configuration.
 
-Operational notes:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `http` | string | none | HTTP proxy URL |
+| `https` | string | none | HTTPS proxy URL |
+| `all` | string | none | Proxy for all protocols |
 
-- `agenthub actor ...` does not start the internal gRPC server for you. A
-  separate AgentHub authority process must already be running with
-  `internal_grpc.enabled = true`.
-- `tls` is the recommended default. Use `mtls` when you need client-certificate
-  validation between nodes. `disabled` is for local development/testing only.
-- In a normal shell, mailbox commands usually need an explicit `--actor-id`.
-  Inside an injected actor runtime shell, `AGENTHUB_ACTOR_ID` and
-  `AGENTHUB_ACTOR_CURRENT_RUN_ID` may provide the fallback scope instead.
+**Proxy Example**:
 
-## First Validation After Config Update
+```toml
+[proxy]
+http = "http://proxy.company.com:8080"
+https = "http://proxy.company.com:8080"
+```
 
-1. Restart AgentHub.
-2. Confirm the server is listening on the configured internal gRPC address.
-3. If you use `agenthub actor ...` outside an injected runtime shell, include
-   `--actor-id <actor_id>` explicitly.
-4. Run one authority-side read command such as `agenthub actor inbox
-   --actor-id <actor_id> --run-id <run_id> --limit 1`.
-5. Log in through the browser.
-6. Create one test agent in `create_worktree` mode.
-7. Confirm the generated path is under `worktree.default_root`.
-8. Confirm a path outside `safe_paths` is rejected.
+## Environment Variables
+
+All configuration options can be overridden via environment variables:
+
+| Environment Variable | Config Path |
+|---------------------|-------------|
+| `AGENTHUB_LISTEN` | `server.listen` |
+| `AGENTHUB_SAFE_PATHS` | `safe_paths` (comma-separated) |
+| `AGENTHUB_WEB_DIR` | `web_dir` |
+| `AGENTHUB_LOG_PATH` | `log_path` |
+| `AGENTHUB_RP_ID` | `web.rp_id` |
+| `AGENTHUB_RP_ORIGIN` | `web.rp_origin` |
+| `AGENTHUB_RP_NAME` | `web.rp_name` |
+| `AGENTHUB_CODEX_ACP_BINARY` | `codex_acp.binary` |
+| `AGENTHUB_CODEX_ACP_DEFAULT_MODE` | `codex_acp.default_mode` |
+| `AGENTHUB_HISTORY_EVENT_RETENTION_DAYS` | `history.event_retention_days` |
+| `AGENTHUB_HISTORY_VACUUM_ON_CLEANUP` | `history.vacuum_on_cleanup` |
+| `AGENTHUB_INTERNAL_GRPC_ENABLED` | `internal_grpc.enabled` |
+| `AGENTHUB_INTERNAL_GRPC_LISTEN` | `internal_grpc.listen` |
+| `AGENTHUB_INTERNAL_GRPC_SECURITY_MODE` | `internal_grpc.security.mode` |
+| `AGENTHUB_INTERNAL_GRPC_CERT_DIR` | `internal_grpc.security.cert_dir` |
+| `AGENTHUB_INTERNAL_GRPC_AUTH_SHARED_SECRET` | `internal_grpc.auth.shared_secret` |
+| `AGENTHUB_INTERNAL_GRPC_AUTH_ISSUER` | `internal_grpc.auth.issuer` |
+| `AGENTHUB_INTERNAL_GRPC_AUTH_AUDIENCE` | `internal_grpc.auth.audience` |
+| `AGENTHUB_INTERNAL_GRPC_BOOTSTRAP_TOKEN` | `internal_grpc.bootstrap.token` |
+| `AGENTHUB_HTTP_PROXY` | `proxy.http` |
+| `AGENTHUB_HTTPS_PROXY` | `proxy.https` |
+| `AGENTHUB_ALL_PROXY` | `proxy.all` |
+| `AGENTHUB_VAPID_SUBJECT` | `push.subject` |
+
+## Safe Paths
+
+The `safe_paths` array defines which directories agents can access:
+
+```toml
+safe_paths = [
+  "/home/you/projects",
+  "/home/you/experiments",
+  "/data/shared",
+]
+```
+
+**Important Notes**:
+
+- `~/.agenthub/worktrees` is **automatically included**
+- All configured `safe_paths` are expanded (`~` → `$HOME`)
+- Duplicate paths are deduplicated
+- Paths are validated at agent creation time
+
+## Configuration Validation
+
+After updating configuration:
+
+1. **Restart AgentHub**:
+   ```bash
+   # If running as service
+   systemctl restart agenthub
+   
+   # If running directly
+   pkill agenthub && agenthub
+   ```
+
+2. **Verify Server Startup**:
+   ```bash
+   curl http://localhost:8080/
+   ```
+
+3. **Test Configuration**:
+   ```bash
+   # Create a test agent
+   # Verify workdir validation works
+   # Test internal gRPC (if enabled)
+   agenthub actor inbox --actor-id test --limit 1
+   ```
+
+## Production Configuration Example
+
+```toml
+# Production AgentHub Configuration
+safe_paths = [
+  "/var/agenthub/workspaces",
+  "/data/repos",
+]
+
+[server]
+listen = "0.0.0.0:8080"
+
+[web]
+rp_id = "agenthub.company.com"
+rp_origin = "https://agenthub.company.com"
+rp_name = "Company AgentHub"
+
+[worktree]
+default_root = "/var/agenthub/worktrees"
+
+[history]
+event_retention_days = 30
+vacuum_on_cleanup = true
+delete_batch_size = 5000
+
+[push]
+subject = "mailto:ops@company.com"
+
+[internal_grpc]
+enabled = true
+listen = "0.0.0.0:50051"
+
+[internal_grpc.security]
+mode = "tls"
+cert_dir = "/etc/agenthub/certs"
+
+[internal_grpc.auth]
+shared_secret = "change-me-to-256-bit-random-secret"
+issuer = "agenthub"
+audience = "agenthub-internal"
+
+[proxy]
+http = "http://proxy.company.com:8080"
+https = "http://proxy.company.com:8080"
+
+# Log to file for log rotation
+log_path = "/var/log/agenthub/agenthub.log"
+```
+
+## Troubleshooting
+
+### Config Changes Not Applied
+
+- Configuration is loaded at startup; restart required
+- Check file permissions on `~/.agenthub/config.toml`
+- Verify TOML syntax is valid
+
+### Internal gRPC Connection Failures
+
+- Ensure `shared_secret` is explicitly set (not auto-generated)
+- Verify firewall allows traffic on gRPC port
+- Check TLS certificates exist in `cert_dir`
+
+### Path Validation Errors
+
+- Ensure paths in `safe_paths` exist and are readable
+- Remember that `~` is expanded to `$HOME`
+- Verify worktree directories are writable

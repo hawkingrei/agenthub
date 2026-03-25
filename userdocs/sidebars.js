@@ -65,6 +65,7 @@ const sidebars = {
         'operations/security-and-path-safety',
         'operations/notifications',
         'operations/troubleshooting',
+        'operations/api-error-reference',
         'operations/faq',
       ],
     },
