@@ -957,7 +957,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use axum::body::{Body, to_bytes};
+    use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
     use serde_json::{Value, json};
