@@ -23,6 +23,8 @@ real `SKILL.md` paths consistently.
 - `crates/agenthub-acp/src/actor_runtime_skill.rs`
   - introduced a strict `build_required_managed_skill(...)` helper
   - `build_actor_runtime_skill()` now returns an error if the managed skill is not materialized
+  - materialization validation now requires a regular file, not only path existence
+  - startup error text is generic to ACP session startup, so Team role skill failures report accurately
 - `crates/agenthub-acp/src/team_role_skills.rs`
   - Team role skill builders now return `Result<_>` and require materialized managed skill files
   - tests now install managed skills into a temp home instead of relying on ambient `~/.agents`
@@ -31,6 +33,7 @@ real `SKILL.md` paths consistently.
     - managed skill installation fails
     - Team role skill loading fails
     - actor runtime skill loading fails
+  - reserved Team/actor managed skills now evict conflicting preloaded skills by canonical name/path before dedupe, so the materialized runtime skills always win over workspace/config aliases
 
 ## Validation
 

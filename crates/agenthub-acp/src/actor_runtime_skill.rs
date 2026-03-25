@@ -13,9 +13,9 @@ pub(super) fn build_required_managed_skill(
     home_dir: Option<&Path>,
 ) -> Result<AcpSkill> {
     let doc = managed_skill_doc(kind, home_dir)?;
-    if !doc.path.exists() {
+    if !doc.path.is_file() {
         bail!(
-            "managed skill '{}' is not materialized at {}; run `agenthub doctor` or fix managed skill installation before starting the actor runtime",
+            "managed skill '{}' is not materialized as a regular file at {}; run `agenthub doctor` or fix managed skill installation before starting the ACP session",
             doc.name,
             doc.path.display()
         );
@@ -105,44 +105,17 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
 mod tests {
     use std::fs;
 
-    use agenthub_managed_skills::{ManagedSkillKind, install_managed_skills};
+    use agenthub_managed_skills::{ManagedSkillKind, install_managed_skills, managed_skill_doc};
 
     use super::{
         AcpActorSkillContext, build_actor_runtime_context_block, build_required_managed_skill,
     };
+    use crate::test_utils::TempManagedSkillsHome;
     use agent_client_protocol::ContentBlock;
-    use uuid::Uuid;
-
-    struct TempManagedSkillsHome {
-        root: std::path::PathBuf,
-    }
-
-    impl TempManagedSkillsHome {
-        fn new() -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "agenthub-acp-managed-skill-home-{}",
-                Uuid::new_v4()
-            ));
-            fs::create_dir_all(&root).expect("create temp managed skills home");
-            Self { root }
-        }
-
-        fn path(&self) -> &std::path::Path {
-            &self.root
-        }
-    }
-
-    impl Drop for TempManagedSkillsHome {
-        fn drop(&mut self) {
-            if self.root.exists() {
-                let _ = fs::remove_dir_all(&self.root);
-            }
-        }
-    }
 
     #[test]
     fn actor_runtime_skill_uses_static_name() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-managed-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let skill = build_required_managed_skill(ManagedSkillKind::ActorRuntime, Some(home.path()))
             .expect("build actor runtime skill");
@@ -152,11 +125,29 @@ mod tests {
 
     #[test]
     fn required_managed_skill_errors_when_not_materialized() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-managed-skill-home");
         let err = build_required_managed_skill(ManagedSkillKind::ActorRuntime, Some(home.path()))
             .expect_err("missing managed skill should hard fail");
         assert!(
             err.to_string().contains("is not materialized"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            err.to_string().contains("ACP session"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn required_managed_skill_errors_when_path_is_directory() {
+        let home = TempManagedSkillsHome::new("agenthub-acp-managed-skill-home");
+        let doc = managed_skill_doc(ManagedSkillKind::ActorRuntime, Some(home.path()))
+            .expect("load managed skill doc");
+        fs::create_dir_all(&doc.path).expect("create directory at skill path");
+        let err = build_required_managed_skill(ManagedSkillKind::ActorRuntime, Some(home.path()))
+            .expect_err("directory should not satisfy materialized skill contract");
+        assert!(
+            err.to_string().contains("regular file"),
             "unexpected error: {err}"
         );
     }

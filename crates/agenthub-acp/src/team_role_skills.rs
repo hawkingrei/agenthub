@@ -31,15 +31,11 @@ impl TeamRoleIndexKind {
     }
 }
 
-fn build_managed_skill(kind: ManagedSkillKind, home_dir: Option<&Path>) -> Result<AcpSkill> {
-    build_required_managed_skill(kind, home_dir)
-}
-
 fn build_role_agents_index_skill(
     kind: TeamRoleIndexKind,
     home_dir: Option<&Path>,
 ) -> Result<AcpSkill> {
-    build_managed_skill(kind.managed_kind(), home_dir)
+    build_required_managed_skill(kind.managed_kind(), home_dir)
 }
 
 fn normalize_member_role(role: Option<&str>) -> Option<&str> {
@@ -85,7 +81,7 @@ fn build_team_role_skills_with_home(
     let mut out = Vec::new();
     match role {
         Some("leader") => {
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamAgentsIndex,
                 home_dir,
             )?);
@@ -93,29 +89,29 @@ fn build_team_role_skills_with_home(
                 TeamRoleIndexKind::Leader,
                 home_dir,
             )?);
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamLeaderOrchestrator,
                 home_dir,
             )?);
             if enable_task_lifecycle {
-                out.push(build_managed_skill(
+                out.push(build_required_managed_skill(
                     ManagedSkillKind::TeamTaskLifecycle,
                     home_dir,
                 )?);
             }
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
                 home_dir,
             )?);
             if enable_deliberation {
-                out.push(build_managed_skill(
+                out.push(build_required_managed_skill(
                     ManagedSkillKind::TeamDeliberationRules,
                     home_dir,
                 )?);
             }
         }
         Some("worker") => {
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamAgentsIndex,
                 home_dir,
             )?);
@@ -123,22 +119,22 @@ fn build_team_role_skills_with_home(
                 TeamRoleIndexKind::Worker,
                 home_dir,
             )?);
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamWorkerExecutor,
                 home_dir,
             )?);
             if enable_task_lifecycle {
-                out.push(build_managed_skill(
+                out.push(build_required_managed_skill(
                     ManagedSkillKind::TeamTaskLifecycle,
                     home_dir,
                 )?);
             }
-            out.push(build_managed_skill(
+            out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
                 home_dir,
             )?);
             if enable_deliberation {
-                out.push(build_managed_skill(
+                out.push(build_required_managed_skill(
                     ManagedSkillKind::TeamDeliberationRules,
                     home_dir,
                 )?);
@@ -151,10 +147,7 @@ fn build_team_role_skills_with_home(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use agenthub_managed_skills::install_managed_skills;
-    use uuid::Uuid;
 
     use super::{
         TeamRoleIndexKind, build_role_agents_index_skill, build_team_role_skills,
@@ -162,33 +155,7 @@ mod tests {
         should_attach_team_role_skills,
     };
     use crate::AcpActorSkillContext;
-
-    struct TempManagedSkillsHome {
-        root: std::path::PathBuf,
-    }
-
-    impl TempManagedSkillsHome {
-        fn new() -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "agenthub-acp-team-role-skill-home-{}",
-                Uuid::new_v4()
-            ));
-            fs::create_dir_all(&root).expect("create temp managed skills home");
-            Self { root }
-        }
-
-        fn path(&self) -> &std::path::Path {
-            &self.root
-        }
-    }
-
-    impl Drop for TempManagedSkillsHome {
-        fn drop(&mut self) {
-            if self.root.exists() {
-                let _ = fs::remove_dir_all(&self.root);
-            }
-        }
-    }
+    use crate::test_utils::TempManagedSkillsHome;
 
     fn context_with_role(role: Option<&str>) -> AcpActorSkillContext {
         AcpActorSkillContext {
@@ -206,7 +173,7 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_for_leader() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let skills =
             build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
@@ -228,7 +195,7 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_for_worker() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let skills =
             build_team_role_skills_with_home(&context_with_role(Some("worker")), Some(home.path()))
@@ -250,7 +217,7 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_includes_task_lifecycle_when_requested() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let mut context = context_with_role(Some("leader"));
         context
@@ -267,7 +234,7 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_enables_deliberation_when_requested() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let mut context = context_with_role(Some("worker"));
         context
@@ -329,7 +296,7 @@ mod tests {
 
     #[test]
     fn role_agents_index_skill_uses_expected_names() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
         let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader, Some(home.path()))
             .expect("build leader role agents index skill");
@@ -342,12 +309,16 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_error_when_managed_skill_not_materialized() {
-        let home = TempManagedSkillsHome::new();
+        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         let err =
             build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
                 .expect_err("missing managed team skills should hard fail");
         assert!(
             err.to_string().contains("is not materialized"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            err.to_string().contains("ACP session"),
             "unexpected error: {err}"
         );
     }
