@@ -70,6 +70,24 @@ explicitly present in `~/.agenthub/config.toml`. The authority server may
 persist a generated secret under `cert_dir/auth_secret.txt`, but the CLI client
 does not reread that generated file when issuing its own token.
 
+## Actor CLI Batch Operations
+
+The authority-side actor CLI also supports small client-side batch workflows for
+high-frequency operator actions:
+
+- `agenthub actor ack --message-id 101 --message-id 102`
+- `agenthub actor permission-review-respond --permission-id req-1 --permission-id req-2 --option-id approved`
+
+Batch handling is still sequential on the client side. AgentHub does not expose
+a separate batch internal gRPC protocol for these operations.
+
+Single-item calls keep their original JSON object output. Multi-item calls
+return a JSON array of per-item responses.
+
+For permission review responses, any session or persistent approval path must
+use the request-provided `--option-id` value. `--outcome` currently supports
+only `cancelled`.
+
 ## Register and Edit Nodes
 
 From the `Agents` page, root operators can:

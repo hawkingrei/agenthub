@@ -533,7 +533,7 @@ pub(super) fn parse_actor_command(
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
-                    .ok_or_else(|| anyhow::anyhow!("message_id is required"))?,
+                    .ok_or_else(|| anyhow::anyhow!("at least one --message-id is required"))?,
             })
         }
         "send" => {
@@ -930,15 +930,21 @@ pub(super) fn parse_actor_command(
             }
             let permission_ids = permission_ids
                 .into_iter()
-                .map(|permission_id| permission_id.trim().to_string())
-                .filter(|permission_id| !permission_id.is_empty())
+                .filter_map(|permission_id| {
+                    let trimmed = permission_id.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                })
                 .collect::<Vec<_>>();
             Ok(ActorCommand::PermissionReviewRespond {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
                 permission_ids: (!permission_ids.is_empty())
                     .then_some(permission_ids)
-                    .ok_or_else(|| anyhow::anyhow!("permission_id is required"))?,
+                    .ok_or_else(|| anyhow::anyhow!("at least one --permission-id is required"))?,
                 option_id: take_optional(option_id),
                 outcome: take_optional(outcome),
             })
