@@ -344,7 +344,8 @@ fn generate_pin() -> String {
 }
 
 fn hash_pin(pin: &str) -> anyhow::Result<String> {
-    let salt = argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let salt =
+        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(pin.as_bytes(), &salt)
