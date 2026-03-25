@@ -1675,6 +1675,18 @@ mod tests {
         now: i64,
     }
 
+    struct PermissionReviewSeed<'a> {
+        request_id: &'a str,
+        agent_id: &'a str,
+        session_id: &'a str,
+        acp_session_id: &'a str,
+        requester_actor_id: &'a str,
+        requester_role: &'a str,
+        review_target_actor_id: Option<&'a str>,
+        tool_call_id: &'a str,
+        status: &'a str,
+    }
+
     async fn setup_permission_review_fixture(
         name_suffix: &str,
         prompt: &str,
@@ -1702,15 +1714,7 @@ mod tests {
     async fn seed_permission_review_request(
         state: &crate::state::AppState,
         run: &crate::team::TeamRunRecord,
-        request_id: &str,
-        agent_id: &str,
-        session_id: &str,
-        acp_session_id: &str,
-        requester_actor_id: &str,
-        requester_role: &str,
-        review_target_actor_id: Option<&str>,
-        tool_call_id: &str,
-        status: &str,
+        seed: PermissionReviewSeed<'_>,
         now: i64,
     ) {
         sqlx::query(
@@ -1721,8 +1725,8 @@ mod tests {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
             "#,
         )
-        .bind(agent_id)
-        .bind(agent_id)
+        .bind(seed.agent_id)
+        .bind(seed.agent_id)
         .bind("/tmp")
         .bind("agenthub-codex-acp")
         .bind("[]")
@@ -1738,8 +1742,8 @@ mod tests {
             VALUES (?1, ?2, 'running', ?3, NULL)
             "#,
         )
-        .bind(session_id)
-        .bind(agent_id)
+        .bind(seed.session_id)
+        .bind(seed.agent_id)
         .bind(now)
         .execute(&state.db)
         .await
@@ -1764,15 +1768,15 @@ mod tests {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
         )
-        .bind(request_id)
-        .bind(agent_id)
-        .bind(session_id)
-        .bind(acp_session_id)
+        .bind(seed.request_id)
+        .bind(seed.agent_id)
+        .bind(seed.session_id)
+        .bind(seed.acp_session_id)
         .bind(&run.team_id)
-        .bind(requester_actor_id)
-        .bind(requester_role)
-        .bind(review_target_actor_id)
-        .bind(tool_call_id)
+        .bind(seed.requester_actor_id)
+        .bind(seed.requester_role)
+        .bind(seed.review_target_actor_id)
+        .bind(seed.tool_call_id)
         .bind(
             json!([
                 {
@@ -1784,7 +1788,7 @@ mod tests {
             .to_string(),
         )
         .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
-        .bind(status)
+        .bind(seed.status)
         .bind(now)
         .execute(&state.db)
         .await
@@ -2644,15 +2648,17 @@ mod tests {
         seed_permission_review_request(
             &fixture.state,
             &fixture.run,
-            "perm-timeout-review-1",
-            "timeout-worker-agent",
-            "timeout-worker-session",
-            "acp-session-timeout-1",
-            "planner",
-            "leader",
-            None,
-            "tool-call-timeout-1",
-            "timeout",
+            PermissionReviewSeed {
+                request_id: "perm-timeout-review-1",
+                agent_id: "timeout-worker-agent",
+                session_id: "timeout-worker-session",
+                acp_session_id: "acp-session-timeout-1",
+                requester_actor_id: "planner",
+                requester_role: "leader",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-timeout-1",
+                status: "timeout",
+            },
             fixture.now,
         )
         .await;
@@ -2690,15 +2696,17 @@ mod tests {
         seed_permission_review_request(
             &fixture.state,
             &fixture.run,
-            "perm-pending-review-1",
-            "pending-worker-agent",
-            "pending-worker-session",
-            "acp-session-pending-1",
-            "planner",
-            "leader",
-            Some("reviewer"),
-            "tool-call-pending-1",
-            "pending",
+            PermissionReviewSeed {
+                request_id: "perm-pending-review-1",
+                agent_id: "pending-worker-agent",
+                session_id: "pending-worker-session",
+                acp_session_id: "acp-session-pending-1",
+                requester_actor_id: "planner",
+                requester_role: "leader",
+                review_target_actor_id: Some("reviewer"),
+                tool_call_id: "tool-call-pending-1",
+                status: "pending",
+            },
             fixture.now,
         )
         .await;
