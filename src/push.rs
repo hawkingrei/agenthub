@@ -124,8 +124,7 @@ impl PushService {
                     .private_key
                     .clone()
             };
-            let mut sig_builder =
-                VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
+            let mut sig_builder = VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
             sig_builder.add_claim("sub", self.subject.as_str());
             let sig = sig_builder.build()?;
 
