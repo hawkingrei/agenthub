@@ -2135,9 +2135,9 @@ fn runtime_actor_cli_path_candidates(
     path_ext_env: Option<&OsStr>,
 ) -> Vec<PathBuf> {
     let base = dir.join(command);
-    let mut candidates = vec![base.clone()];
     #[cfg(windows)]
     {
+        let mut candidates = vec![base.clone()];
         if base.extension().is_none() {
             let path_ext_env = path_ext_env
                 .and_then(OsStr::to_str)
@@ -2151,10 +2151,13 @@ fn runtime_actor_cli_path_candidates(
                 candidates.push(base.with_extension(normalized));
             }
         }
+        candidates
     }
     #[cfg(not(windows))]
-    let _ = path_ext_env;
-    candidates
+    {
+        let _ = path_ext_env;
+        vec![base]
+    }
 }
 
 fn shell_command_is_single_actor_cli_invocation(shell_command: &str) -> bool {
