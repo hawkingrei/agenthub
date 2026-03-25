@@ -18,41 +18,35 @@ type ResolvedTeamMemberAgent = {
   agent?: AgentRecord | null;
 };
 
+function stableSerializeRecord(value: unknown): string {
+  return JSON.stringify(sortRecordValue(value));
+}
+
+function sortRecordValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortRecordValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entryValue]) => [key, sortRecordValue(entryValue)])
+    );
+  }
+  return value;
+}
+
 function areAgentRecordsEqual(
   left: AgentRecord | null | undefined,
   right: AgentRecord | null
 ): boolean {
-  if (right === null) {
-    return left === null;
+  if (left === right) {
+    return true;
   }
-  if (left == null) {
-    return false;
+  if (left == null || right == null) {
+    return left === right;
   }
-  if (left.args.length !== right.args.length) {
-    return false;
-  }
-  for (let index = 0; index < left.args.length; index += 1) {
-    if (left.args[index] !== right.args[index]) {
-      return false;
-    }
-  }
-  return (
-    left.id === right.id &&
-    left.name === right.name &&
-    left.workdir === right.workdir &&
-    left.command === right.command &&
-    left.target_node_id === right.target_node_id &&
-    left.worktree_mode === right.worktree_mode &&
-    left.worktree_repo === right.worktree_repo &&
-    left.worktree_ref === right.worktree_ref &&
-    left.code_mode === right.code_mode &&
-    left.agent_loop_enabled === right.agent_loop_enabled &&
-    left.agent_loop_idle_seconds === right.agent_loop_idle_seconds &&
-    left.agent_loop_prompt === right.agent_loop_prompt &&
-    left.status === right.status &&
-    left.created_at === right.created_at &&
-    left.updated_at === right.updated_at
-  );
+  return stableSerializeRecord(left) === stableSerializeRecord(right);
 }
 
 export function useTeamMemberBackfillEffect({

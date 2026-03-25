@@ -152,4 +152,39 @@ describe("useTeamMemberBackfillEffect", () => {
 
     expect(params.setTeamMemberAgentsById).not.toHaveBeenCalled();
   });
+
+  it("treats newly added agent fields as cache differences during revalidation", async () => {
+    const cachedAgent = {
+      ...makeAgent("missing-a"),
+      extra_marker: "old",
+    } as AgentRecord;
+    const refreshedAgent = {
+      ...makeAgent("missing-a"),
+      extra_marker: "new",
+    } as AgentRecord;
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": cachedAgent },
+    });
+    vi.spyOn(api, "getAgent").mockResolvedValue(refreshedAgent);
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const setById = params.setTeamMemberAgentsById as ReturnType<typeof vi.fn>;
+    expect(setById).toHaveBeenCalledTimes(1);
+    const updater = setById.mock.calls[0]?.[0] as (
+      prev: Record<string, AgentRecord | null>
+    ) => Record<string, AgentRecord | null>;
+    const prev = { "missing-a": cachedAgent };
+    const next = updater(prev);
+
+    expect(next).not.toBe(prev);
+    expect(next["missing-a"]).toEqual(refreshedAgent);
+  });
 });
