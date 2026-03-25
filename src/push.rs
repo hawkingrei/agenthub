@@ -1,4 +1,5 @@
-use base64::URL_SAFE_NO_PAD;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::Utc;
 use jwt_simple::prelude::ES256KeyPair;
 use serde::{Deserialize, Serialize};
@@ -124,8 +125,7 @@ impl PushService {
                     .private_key
                     .clone()
             };
-            let mut sig_builder =
-                VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
+            let mut sig_builder = VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
             sig_builder.add_claim("sub", self.subject.as_str());
             let sig = sig_builder.build()?;
 
@@ -171,9 +171,9 @@ fn load_or_create_vapid_keys(path: &std::path::Path) -> anyhow::Result<VapidKeys
 fn generate_vapid_keys() -> anyhow::Result<VapidKeys> {
     let key_pair = ES256KeyPair::generate();
     let private_bytes = key_pair.to_bytes();
-    let private_key = base64::encode_config(private_bytes, URL_SAFE_NO_PAD);
+    let private_key = URL_SAFE_NO_PAD.encode(&private_bytes);
     let builder = VapidSignatureBuilder::from_base64_no_sub(&private_key)?;
-    let public_key = base64::encode_config(builder.get_public_key(), URL_SAFE_NO_PAD);
+    let public_key = URL_SAFE_NO_PAD.encode(builder.get_public_key());
     Ok(VapidKeysFile {
         public_key,
         private_key,

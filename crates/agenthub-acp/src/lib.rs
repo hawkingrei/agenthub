@@ -1,7 +1,9 @@
 mod actor_runtime_skill;
 mod team_role_skills;
+#[cfg(test)]
+mod test_utils;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -465,6 +467,25 @@ fn dedupe_skills(skills: Vec<AcpSkill>) -> Vec<AcpSkill> {
     out
 }
 
+fn remove_skills_conflicting_with_reserved(existing: &mut Vec<AcpSkill>, reserved: &[AcpSkill]) {
+    if reserved.is_empty() {
+        return;
+    }
+
+    let reserved_names = reserved
+        .iter()
+        .map(|skill| skill.name.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let reserved_paths = reserved
+        .iter()
+        .map(|skill| skill.path.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    existing.retain(|skill| {
+        !reserved_names.contains(&skill.name.to_ascii_lowercase())
+            && !reserved_paths.contains(&skill.path.to_ascii_lowercase())
+    });
+}
+
 fn build_prompt_prefix_blocks(
     skills: &[AcpSkill],
     actor_context: Option<&AcpActorSkillContext>,
@@ -882,6 +903,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             return;
                         }
                     };
+                    remove_skills_conflicting_with_reserved(&mut skills, &team_role_skills);
                     skills.extend(team_role_skills);
                     attached_team_role_skills = true;
                 }
@@ -893,6 +915,10 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         return;
                     }
                 };
+                remove_skills_conflicting_with_reserved(
+                    &mut skills,
+                    std::slice::from_ref(&actor_runtime_skill),
+                );
                 skills.push(actor_runtime_skill);
             }
             let skills = dedupe_skills(skills);
@@ -1746,7 +1772,7 @@ mod tests {
         AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
         AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks, dedupe_skills,
         load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        should_queue_while_prompts_active,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::McpServer;
     use agent_client_protocol::{
@@ -2168,6 +2194,41 @@ Fallback to the user-level review contract.
         assert_eq!(deduped.len(), 1);
         assert_eq!(deduped[0].name, "shared-review");
         assert_eq!(deduped[0].path, local_skill.to_string_lossy());
+    }
+
+    #[test]
+    fn reserved_skills_take_precedence_over_preloaded_name_and_path_aliases() {
+        let reserved = build_skill(
+            "agenthub-actor-runtime".to_string(),
+            "/tmp/runtime/actor/SKILL.md".to_string(),
+            "---\nname: agenthub-actor-runtime\n---\nCanonical runtime skill.\n",
+        );
+        let mut skills = vec![
+            build_skill(
+                "agenthub-actor-runtime".to_string(),
+                "/tmp/custom/runtime-alias/SKILL.md".to_string(),
+                "---\nname: agenthub-actor-runtime\n---\nAlias by name.\n",
+            ),
+            build_skill(
+                "custom-runtime-alias".to_string(),
+                reserved.path.clone(),
+                "---\nname: custom-runtime-alias\n---\nAlias by path.\n",
+            ),
+            build_skill(
+                "shared-review".to_string(),
+                "/tmp/review/SKILL.md".to_string(),
+                "---\nname: shared-review\n---\nUnrelated skill.\n",
+            ),
+        ];
+
+        remove_skills_conflicting_with_reserved(&mut skills, std::slice::from_ref(&reserved));
+        skills.push(reserved.clone());
+        let deduped = dedupe_skills(skills);
+
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].name, "shared-review");
+        assert_eq!(deduped[1].name, reserved.name);
+        assert_eq!(deduped[1].path, reserved.path);
     }
 
     fn sample_actor_context() -> AcpActorSkillContext {
