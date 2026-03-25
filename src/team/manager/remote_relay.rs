@@ -8,7 +8,8 @@ use agenthub_team_actor::{
     ActorSendRequest, ActorServiceError, ActorServiceErrorCode,
 };
 use async_trait::async_trait;
-use base64::encode_config;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use reqwest::{Method, Url, header};
@@ -784,7 +785,7 @@ fn apply_route_signing(
             mac.update(timestamp.as_bytes());
             mac.update(b".");
             mac.update(payload_bytes);
-            let signature = encode_config(mac.finalize().into_bytes(), base64::STANDARD);
+            let signature = STANDARD.encode(mac.finalize().into_bytes().as_slice());
             let header_name = header
                 .as_deref()
                 .map(str::trim)
