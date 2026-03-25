@@ -697,9 +697,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 status: "already_resolved".to_string(),
                 permission_id: permission_id.to_string(),
                 request_status: record.status,
-                reviewed_by_actor_id: record
-                    .reviewed_by_actor_id
-                    .unwrap_or_else(|| actor_id.to_string()),
+                reviewed_by_actor_id: record.reviewed_by_actor_id.unwrap_or_default(),
             }));
         }
         if record.requester_actor_id.as_deref() == Some(actor_id) {
@@ -1635,6 +1633,164 @@ mod tests {
             .expect("create test run")
     }
 
+    async fn create_permission_review_run(
+        state: &crate::state::AppState,
+        name_suffix: &str,
+        prompt: &str,
+    ) -> crate::team::TeamRunRecord {
+        let context_id = format!("ctx-internal-grpc-{name_suffix}");
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("internal-grpc-{name_suffix}-{}", Uuid::new_v4()),
+                description: Some(format!("{name_suffix} permission review test")),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "leader_member_id":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"},
+                        {"member_id":"observer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create permission review team");
+        state
+            .teams
+            .create_run(
+                &team.id,
+                Some(context_id.as_str()),
+                json!({"prompt": prompt}),
+            )
+            .await
+            .expect("create permission review run")
+    }
+
+    struct PermissionReviewFixture {
+        state: crate::state::AppState,
+        run: crate::team::TeamRunRecord,
+        service: TeamInternalControlService,
+        token: String,
+        now: i64,
+    }
+
+    async fn setup_permission_review_fixture(
+        name_suffix: &str,
+        prompt: &str,
+    ) -> PermissionReviewFixture {
+        let state = build_test_state().await;
+        let run = create_permission_review_run(&state, name_suffix, prompt).await;
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("observer"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        PermissionReviewFixture {
+            state,
+            run,
+            service,
+            token,
+            now: chrono::Utc::now().timestamp(),
+        }
+    }
+
+    async fn seed_permission_review_request(
+        state: &crate::state::AppState,
+        run: &crate::team::TeamRunRecord,
+        request_id: &str,
+        agent_id: &str,
+        session_id: &str,
+        acp_session_id: &str,
+        requester_actor_id: &str,
+        requester_role: &str,
+        review_target_actor_id: Option<&str>,
+        tool_call_id: &str,
+        status: &str,
+        now: i64,
+    ) {
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(agent_id)
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind(session_id)
+        .bind(agent_id)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                review_target_actor_id,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+        )
+        .bind(request_id)
+        .bind(agent_id)
+        .bind(session_id)
+        .bind(acp_session_id)
+        .bind(&run.team_id)
+        .bind(requester_actor_id)
+        .bind(requester_role)
+        .bind(review_target_actor_id)
+        .bind(tool_call_id)
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(status)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission review request");
+    }
+
     #[tokio::test]
     async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         let state = build_test_state().await;
@@ -2480,129 +2636,38 @@ mod tests {
 
     #[tokio::test]
     async fn internal_grpc_permission_review_respond_reports_timeout_before_reviewer_check() {
-        let state = build_test_state().await;
-        let team = state
-            .teams
-            .create_team(TeamDefinitionConfig {
-                name: format!("internal-grpc-timeout-review-{}", Uuid::new_v4()),
-                description: Some("timeout review precedence".to_string()),
-                spec: json!({
-                    "entrypoint":"planner",
-                    "leader_member_id":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"leader"},
-                        {"member_id":"reviewer","role":"worker"},
-                        {"member_id":"observer","role":"worker"}
-                    ]
-                }),
-            })
-            .await
-            .expect("create timeout review team");
-        let run = state
-            .teams
-            .create_run(
-                &team.id,
-                Some("ctx-internal-grpc-timeout-review"),
-                json!({"prompt":"validate resolved review precedence"}),
-            )
-            .await
-            .expect("create timeout review run");
-        let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Worker, Some("observer"), None);
-        let service = TeamInternalControlService::new(
-            state.clone(),
-            authz,
-            super::InternalGrpcSecurityMode::Disabled,
-            std::env::temp_dir(),
-            "bootstrap-token".to_string(),
-        );
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
-            "#,
+        let fixture = setup_permission_review_fixture(
+            "timeout-review",
+            "validate resolved review precedence",
         )
-        .bind("timeout-worker-agent")
-        .bind("timeout-worker-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert timeout worker agent");
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'running', ?3, NULL)
-            "#,
+        .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            "perm-timeout-review-1",
+            "timeout-worker-agent",
+            "timeout-worker-session",
+            "acp-session-timeout-1",
+            "planner",
+            "leader",
+            None,
+            "tool-call-timeout-1",
+            "timeout",
+            fixture.now,
         )
-        .bind("timeout-worker-session")
-        .bind("timeout-worker-agent")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert timeout worker session");
-        sqlx::query(
-            r#"
-            INSERT INTO acp_permission_requests (
-                id,
-                agent_id,
-                session_id,
-                acp_session_id,
-                team_id,
-                requester_actor_id,
-                requester_role,
-                tool_call_id,
-                options_json,
-                tool_call_json,
-                status,
-                created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'timeout', ?11)
-            "#,
-        )
-        .bind("perm-timeout-review-1")
-        .bind("timeout-worker-agent")
-        .bind("timeout-worker-session")
-        .bind("acp-session-timeout-1")
-        .bind(&run.team_id)
-        .bind("planner")
-        .bind("leader")
-        .bind("tool-call-timeout-1")
-        .bind(
-            json!([
-                {
-                    "option_id": "allow",
-                    "name": "Allow once",
-                    "kind": "allow_once"
-                }
-            ])
-            .to_string(),
-        )
-        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert timeout permission request");
+        .await;
 
         let response = TeamInternalControl::respond_permission_review(
-            &service,
+            &fixture.service,
             authenticated_request(
                 RespondPermissionReviewRequest {
-                    team_id: run.team_id.clone(),
+                    team_id: fixture.run.team_id.clone(),
                     actor_id: "observer".to_string(),
                     permission_id: "perm-timeout-review-1".to_string(),
                     option_id: "allow".to_string(),
                     outcome: String::new(),
                 },
-                &token,
+                &fixture.token,
             ),
         )
         .await
@@ -2611,136 +2676,44 @@ mod tests {
 
         assert_eq!(response.status, "already_resolved");
         assert_eq!(response.request_status, "timeout");
-        assert_eq!(response.reviewed_by_actor_id, "observer");
+        assert!(
+            response.reviewed_by_actor_id.is_empty(),
+            "expected no reviewer for timed-out request"
+        );
     }
 
     #[tokio::test]
     async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() {
-        let state = build_test_state().await;
-        let team = state
-            .teams
-            .create_team(TeamDefinitionConfig {
-                name: format!("internal-grpc-pending-review-{}", Uuid::new_v4()),
-                description: Some("pending review guard".to_string()),
-                spec: json!({
-                    "entrypoint":"planner",
-                    "leader_member_id":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"leader"},
-                        {"member_id":"reviewer","role":"worker"},
-                        {"member_id":"observer","role":"worker"}
-                    ]
-                }),
-            })
-            .await
-            .expect("create pending review team");
-        let run = state
-            .teams
-            .create_run(
-                &team.id,
-                Some("ctx-internal-grpc-pending-review"),
-                json!({"prompt":"validate pending reviewer guard"}),
-            )
-            .await
-            .expect("create pending review run");
-        let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Worker, Some("observer"), None);
-        let service = TeamInternalControlService::new(
-            state.clone(),
-            authz,
-            super::InternalGrpcSecurityMode::Disabled,
-            std::env::temp_dir(),
-            "bootstrap-token".to_string(),
-        );
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
-            "#,
+        let fixture =
+            setup_permission_review_fixture("pending-review", "validate pending reviewer guard")
+                .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            "perm-pending-review-1",
+            "pending-worker-agent",
+            "pending-worker-session",
+            "acp-session-pending-1",
+            "planner",
+            "leader",
+            Some("reviewer"),
+            "tool-call-pending-1",
+            "pending",
+            fixture.now,
         )
-        .bind("pending-worker-agent")
-        .bind("pending-worker-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert pending worker agent");
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'running', ?3, NULL)
-            "#,
-        )
-        .bind("pending-worker-session")
-        .bind("pending-worker-agent")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert pending worker session");
-        sqlx::query(
-            r#"
-            INSERT INTO acp_permission_requests (
-                id,
-                agent_id,
-                session_id,
-                acp_session_id,
-                team_id,
-                requester_actor_id,
-                requester_role,
-                review_target_actor_id,
-                tool_call_id,
-                options_json,
-                tool_call_json,
-                status,
-                created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12)
-            "#,
-        )
-        .bind("perm-pending-review-1")
-        .bind("pending-worker-agent")
-        .bind("pending-worker-session")
-        .bind("acp-session-pending-1")
-        .bind(&run.team_id)
-        .bind("planner")
-        .bind("leader")
-        .bind("reviewer")
-        .bind("tool-call-pending-1")
-        .bind(
-            json!([
-                {
-                    "option_id": "allow",
-                    "name": "Allow once",
-                    "kind": "allow_once"
-                }
-            ])
-            .to_string(),
-        )
-        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert pending permission request");
+        .await;
 
         let err = TeamInternalControl::respond_permission_review(
-            &service,
+            &fixture.service,
             authenticated_request(
                 RespondPermissionReviewRequest {
-                    team_id: run.team_id.clone(),
+                    team_id: fixture.run.team_id.clone(),
                     actor_id: "observer".to_string(),
                     permission_id: "perm-pending-review-1".to_string(),
                     option_id: "allow".to_string(),
                     outcome: String::new(),
                 },
-                &token,
+                &fixture.token,
             ),
         )
         .await
