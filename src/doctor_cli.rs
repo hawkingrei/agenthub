@@ -34,11 +34,11 @@ fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
 
 fn render_install_report(installed: &[PathBuf]) -> String {
     if installed.is_empty() {
-        return "No managed skills were installed because HOME is not set.".to_string();
+        return "No managed skills were installed because no home directory environment variable (HOME/USERPROFILE) is set.".to_string();
     }
 
     let mut lines = vec![format!(
-        "Installed {} managed skill document(s):",
+        "Ensured {} managed skill document(s):",
         installed.len()
     )];
     lines.extend(installed.iter().map(|path| format!("- {}", path.display())));
@@ -100,9 +100,15 @@ mod tests {
             PathBuf::from("/tmp/a/SKILL.md"),
             PathBuf::from("/tmp/b/SKILL.md"),
         ]);
-        assert!(output.contains("Installed 2 managed skill document(s):"));
+        assert!(output.contains("Ensured 2 managed skill document(s):"));
         assert!(output.contains("/tmp/a/SKILL.md"));
         assert!(output.contains("/tmp/b/SKILL.md"));
+    }
+
+    #[test]
+    fn render_install_report_mentions_home_env_vars_when_missing() {
+        let output = render_install_report(&[]);
+        assert!(output.contains("HOME/USERPROFILE"));
     }
 
     #[test]
