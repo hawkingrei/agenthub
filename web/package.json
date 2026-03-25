@@ -41,7 +41,7 @@
     "autoprefixer": "^10.4.27",
     "eslint": "^10.1.0",
     "eslint-plugin-react-hooks": "7.1.0-canary-8b2e903a-20260320",
-    "globals": "^13.24.0",
+    "globals": "^17.4.0",
     "jsdom": "^29.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.2.2",
