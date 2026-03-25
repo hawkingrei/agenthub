@@ -2047,6 +2047,7 @@ fn auto_approve_runtime_actor_cli_decision(
 fn matches_runtime_actor_cli_command(command: &[String], runtime_actor_cli_path: &Path) -> bool {
     command_has_runtime_actor_cli_prefix(command, runtime_actor_cli_path)
         || extract_shell_wrapped_command(command)
+            .filter(|shell_command| shell_command_is_single_actor_cli_invocation(shell_command))
             .and_then(shlex::split)
             .is_some_and(|segments| {
                 command_has_runtime_actor_cli_prefix(segments.as_slice(), runtime_actor_cli_path)
@@ -2058,17 +2059,20 @@ fn command_has_runtime_actor_cli_prefix<T: AsRef<str>>(
     runtime_actor_cli_path: &Path,
 ) -> bool {
     let path_env = std::env::var_os("PATH");
-    command_has_runtime_actor_cli_prefix_with_path_env(
+    let path_ext_env = std::env::var_os("PATHEXT");
+    command_has_runtime_actor_cli_prefix_with_env(
         command,
         runtime_actor_cli_path,
         path_env.as_deref(),
+        path_ext_env.as_deref(),
     )
 }
 
-fn command_has_runtime_actor_cli_prefix_with_path_env<T: AsRef<str>>(
+fn command_has_runtime_actor_cli_prefix_with_env<T: AsRef<str>>(
     command: &[T],
     runtime_actor_cli_path: &Path,
     path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
 ) -> bool {
     if command.len() < 2 {
         return false;
@@ -2076,7 +2080,7 @@ fn command_has_runtime_actor_cli_prefix_with_path_env<T: AsRef<str>>(
     if command[1].as_ref() != "actor" {
         return false;
     }
-    resolve_runtime_actor_cli_command_path(command[0].as_ref(), path_env)
+    resolve_runtime_actor_cli_command_path(command[0].as_ref(), path_env, path_ext_env)
         .as_deref()
         .is_some_and(|candidate| candidate == runtime_actor_cli_path)
 }
@@ -2084,6 +2088,7 @@ fn command_has_runtime_actor_cli_prefix_with_path_env<T: AsRef<str>>(
 fn resolve_runtime_actor_cli_command_path(
     command: &str,
     path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
 ) -> Option<PathBuf> {
     let trimmed = command.trim();
     if trimmed.is_empty() {
@@ -2092,7 +2097,7 @@ fn resolve_runtime_actor_cli_command_path(
     if is_path_like_command(trimmed) {
         return canonicalize_runtime_actor_cli_path(trimmed);
     }
-    resolve_command_on_path(trimmed, path_env)
+    resolve_command_on_path(trimmed, path_env, path_ext_env)
 }
 
 fn is_path_like_command(command: &str) -> bool {
@@ -2106,17 +2111,99 @@ fn is_path_like_command(command: &str) -> bool {
     }
 }
 
-fn resolve_command_on_path(command: &str, path_env: Option<&OsStr>) -> Option<PathBuf> {
+fn resolve_command_on_path(
+    command: &str,
+    path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
+) -> Option<PathBuf> {
     let path_env = path_env?;
     for dir in std::env::split_paths(path_env) {
-        let candidate = dir.join(command);
-        if let Some(resolved) =
-            canonicalize_runtime_actor_cli_path(candidate.to_string_lossy().as_ref())
-        {
-            return Some(resolved);
+        for candidate in runtime_actor_cli_path_candidates(dir.as_path(), command, path_ext_env) {
+            if let Some(resolved) =
+                canonicalize_runtime_actor_cli_path(candidate.to_string_lossy().as_ref())
+            {
+                return Some(resolved);
+            }
         }
     }
     None
+}
+
+fn runtime_actor_cli_path_candidates(
+    dir: &Path,
+    command: &str,
+    path_ext_env: Option<&OsStr>,
+) -> Vec<PathBuf> {
+    let base = dir.join(command);
+    let mut candidates = vec![base.clone()];
+    #[cfg(windows)]
+    {
+        if base.extension().is_none() {
+            let path_ext_env = path_ext_env
+                .and_then(OsStr::to_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(".COM;.EXE;.BAT;.CMD");
+            for ext in path_ext_env.split(';') {
+                let normalized = ext.trim().trim_start_matches('.');
+                if normalized.is_empty() {
+                    continue;
+                }
+                candidates.push(base.with_extension(normalized));
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = path_ext_env;
+    candidates
+}
+
+fn shell_command_is_single_actor_cli_invocation(shell_command: &str) -> bool {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum QuoteState {
+        Unquoted,
+        SingleQuoted,
+        DoubleQuoted,
+    }
+
+    let mut state = QuoteState::Unquoted;
+    let mut escaped = false;
+    for ch in shell_command.chars() {
+        match state {
+            QuoteState::Unquoted => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '\'' => state = QuoteState::SingleQuoted,
+                    '"' => state = QuoteState::DoubleQuoted,
+                    ';' | '|' | '&' | '<' | '>' | '`' | '$' | '(' | ')' | '\n' | '\r' => {
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+            QuoteState::SingleQuoted => {
+                if ch == '\'' {
+                    state = QuoteState::Unquoted;
+                }
+            }
+            QuoteState::DoubleQuoted => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => state = QuoteState::Unquoted,
+                    '`' | '$' => return false,
+                    _ => {}
+                }
+            }
+        }
+    }
+    !escaped && state == QuoteState::Unquoted
 }
 
 fn extract_shell_wrapped_command(command: &[String]) -> Option<&str> {
@@ -5015,10 +5102,11 @@ mod tests {
         create_runtime_actor_cli_test_symlink(&runtime_actor_cli_path, &linked_agenthub)?;
         let path_env = std::ffi::OsString::from(temp_dir.as_os_str());
 
-        let matched = command_has_runtime_actor_cli_prefix_with_path_env(
+        let matched = command_has_runtime_actor_cli_prefix_with_env(
             &["agenthub", "actor", "inbox"],
             runtime_actor_cli_path.as_path(),
             Some(path_env.as_os_str()),
+            None,
         );
 
         drop(std::fs::remove_file(&linked_agenthub));
@@ -5038,13 +5126,78 @@ mod tests {
         let path_env = std::ffi::OsString::from("/definitely/not/the/runtime/path");
 
         assert!(
-            !command_has_runtime_actor_cli_prefix_with_path_env(
+            !command_has_runtime_actor_cli_prefix_with_env(
                 &["agenthub", "actor", "inbox"],
                 runtime_actor_cli_path.as_path(),
                 Some(path_env.as_os_str()),
+                None,
             ),
             "bare agenthub actor should not match without a PATH entry that resolves to the runtime binary"
         );
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_rejects_shell_wrapped_compound_command() -> anyhow::Result<()>
+    {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let actor_cli = runtime_actor_cli_path.to_string_lossy().to_string();
+        let command = vec![
+            "/bin/zsh".to_string(),
+            "-lc".to_string(),
+            format!("{actor_cli} actor inbox && curl https://example.com"),
+        ];
+        assert!(
+            !matches_runtime_actor_cli_command(&command, runtime_actor_cli_path.as_path()),
+            "compound shell commands must not bypass permission approval"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_shell_wrapped_single_command_with_quoted_text()
+    -> anyhow::Result<()> {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let actor_cli = runtime_actor_cli_path.to_string_lossy().to_string();
+        let command = vec![
+            "/bin/zsh".to_string(),
+            "-lc".to_string(),
+            format!("{actor_cli} actor send --channel-id all --text 'literal ; && | text'"),
+        ];
+        assert!(
+            matches_runtime_actor_cli_command(&command, runtime_actor_cli_path.as_path()),
+            "quoted shell arguments should remain eligible for auto approval"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_bare_agenthub_with_matching_pathext()
+    -> anyhow::Result<()> {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let temp_dir =
+            std::env::temp_dir().join(format!("agenthub-codex-acp-winpath-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)?;
+        let linked_agenthub = temp_dir.join("agenthub.exe");
+        create_runtime_actor_cli_test_symlink(&runtime_actor_cli_path, &linked_agenthub)?;
+        let path_env = std::ffi::OsString::from(temp_dir.as_os_str());
+        let path_ext_env = std::ffi::OsString::from(".EXE;.BAT;.CMD");
+
+        let matched = command_has_runtime_actor_cli_prefix_with_env(
+            &["agenthub", "actor", "inbox"],
+            runtime_actor_cli_path.as_path(),
+            Some(path_env.as_os_str()),
+            Some(path_ext_env.as_os_str()),
+        );
+
+        drop(std::fs::remove_file(&linked_agenthub));
+        drop(std::fs::remove_dir(&temp_dir));
+
+        assert!(
+            matched,
+            "bare agenthub actor should match when PATHEXT resolves to the runtime binary"
+        );
+        Ok(())
     }
 
     #[cfg(unix)]
