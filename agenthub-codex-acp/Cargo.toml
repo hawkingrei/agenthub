@@ -42,7 +42,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-unicode-segmentation = "1.11.0"
+unicode-segmentation = "1.13.1"
 uuid = { version = "1", features = ["v4"] }
 
 [lints.rust]
