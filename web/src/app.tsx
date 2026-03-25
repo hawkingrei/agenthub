@@ -3104,6 +3104,12 @@ export function App() {
       acpRuntimeMetrics,
     ]
   );
+  const showInputDock = !(
+    developerMode &&
+    acpTab === "debug" &&
+    acpView.hasAcp
+  );
+
   const acpPanelProps = useMemo(
     () => ({
       acpView,
@@ -3114,6 +3120,7 @@ export function App() {
       onSelectTab: handleAcpTabSelect,
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
+      showFloatingConversationJump: !showInputDock,
       onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
       conversation: acpConversationProps,
       plan: {
@@ -3133,12 +3140,8 @@ export function App() {
       acpConversation.jumpToConversationBottom,
       acpConversationProps,
       acpDebugProps,
+      showInputDock,
     ]
-  );
-  const showInputDock = !(
-    developerMode &&
-    acpTab === "debug" &&
-    acpView.hasAcp
   );
 
   useEffect(() => {
@@ -3407,9 +3410,7 @@ export function App() {
                 onNavigateHistory={onNavigateInputHistory}
                 onSelectHistoryCommand={onSelectInputHistory}
                 onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                showConversationJump={
-                  !acpView.hasAcp && inputDockJumpMode.showConversationJump
-                }
+                showConversationJump={inputDockJumpMode.showConversationJump}
                 isComposingRef={isComposingRef}
               />
             )}

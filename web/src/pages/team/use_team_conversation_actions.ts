@@ -24,6 +24,11 @@ import {
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 
+const TEAM_CONVERSATION_INITIAL_MESSAGE_LIMIT = 60;
+const TEAM_CONVERSATION_EXTENDED_MESSAGE_LIMIT = 200;
+const TEAM_CONVERSATION_INITIAL_MAILBOX_LIMIT = 60;
+const TEAM_CONVERSATION_EXTENDED_MAILBOX_LIMIT = 200;
+
 type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
@@ -99,7 +104,7 @@ export function useTeamConversationActions({
             : taskList.find((task) => task.id === taskId) ?? null;
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
-            limit: 200,
+            limit: TEAM_CONVERSATION_INITIAL_MESSAGE_LIMIT,
           }),
           taskRecord && isSharedThreadTask(taskRecord)
             ? api.getTeamTask(token, teamId, taskId)
@@ -115,7 +120,7 @@ export function useTeamConversationActions({
         if (conversationRunId) {
           const conversationSnapshot = await api.getTeamRunSnapshot(token, conversationRunId, {
             event_limit: 1,
-            message_limit: 200,
+            message_limit: TEAM_CONVERSATION_INITIAL_MAILBOX_LIMIT,
           });
           if (!isCurrentRequest()) {
             return;
@@ -128,6 +133,43 @@ export function useTeamConversationActions({
             setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
           });
         }
+        void (async () => {
+          try {
+            const extendedMessagesPromise =
+              TEAM_CONVERSATION_EXTENDED_MESSAGE_LIMIT >
+              TEAM_CONVERSATION_INITIAL_MESSAGE_LIMIT
+                ? api.listTeamTaskMessages(token, teamId, taskId, {
+                    limit: TEAM_CONVERSATION_EXTENDED_MESSAGE_LIMIT,
+                  })
+                : Promise.resolve<TeamConversationMessageRecord[]>(messages);
+            const extendedMailboxPromise =
+              conversationRunId &&
+              TEAM_CONVERSATION_EXTENDED_MAILBOX_LIMIT >
+                TEAM_CONVERSATION_INITIAL_MAILBOX_LIMIT
+                ? api.getTeamRunSnapshot(token, conversationRunId, {
+                    event_limit: 1,
+                    message_limit: TEAM_CONVERSATION_EXTENDED_MAILBOX_LIMIT,
+                  })
+                : Promise.resolve(null);
+            const [extendedMessages, extendedMailboxSnapshot] = await Promise.all([
+              extendedMessagesPromise,
+              extendedMailboxPromise,
+            ]);
+            if (!isCurrentRequest()) {
+              return;
+            }
+            startTransition(() => {
+              setTaskMessages((prev) => mergeConversationMessages(prev, extendedMessages));
+            });
+            if (extendedMailboxSnapshot) {
+              startTransition(() => {
+                setConversationMailboxMessages(extendedMailboxSnapshot.mailbox.recent_messages);
+              });
+            }
+          } catch {
+            // Keep the fast-path payload visible even if the background hydration misses.
+          }
+        })();
       } catch (err) {
         if (!isCurrentRequest()) {
           return;

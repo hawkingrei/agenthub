@@ -1,5 +1,6 @@
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post},
@@ -308,10 +309,11 @@ async fn start_agent(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(agent_id): Path<String>,
-    payload: Option<Json<StartAgentRequest>>,
+    body: Bytes,
 ) -> Result<Json<StartAgentResponse>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let actor_context = parse_start_actor_runtime_context(payload.map(|Json(body)| body))?;
+    let payload = parse_optional_start_agent_request(body)?;
+    let actor_context = parse_start_actor_runtime_context(payload)?;
     if actor_context.is_some() {
         return Err(ApiError::bad_request(
             "actor_runtime is reserved for team orchestrator and is not supported by /api/agents/:id/start",
@@ -938,6 +940,15 @@ fn parse_start_actor_runtime_context(
     }))
 }
 
+fn parse_optional_start_agent_request(body: Bytes) -> Result<Option<StartAgentRequest>, ApiError> {
+    if body.is_empty() || body.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(None);
+    }
+    serde_json::from_slice::<StartAgentRequest>(&body)
+        .map(Some)
+        .map_err(|err| ApiError::bad_request(&format!("invalid request body JSON: {err}")))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -969,9 +980,9 @@ mod tests {
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
-        map_create_agent_error, parse_agent_source, parse_start_actor_runtime_context,
-        parse_worktree_mode, resolve_create_agent_workdir, resolve_member_description_from_spec,
-        router, sanitize_worktree_segment,
+        map_create_agent_error, parse_agent_source, parse_optional_start_agent_request,
+        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
+        resolve_member_description_from_spec, router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -1266,6 +1277,13 @@ mod tests {
         }))
         .expect_err("actor_cli_path should be validated");
         let _ = err;
+    }
+
+    #[test]
+    fn parse_optional_start_agent_request_accepts_empty_json_body() {
+        let payload = parse_optional_start_agent_request(Bytes::from_static(b"   "))
+            .expect("empty request body should be accepted");
+        assert!(payload.is_none());
     }
 
     async fn create_test_db_with_options(options: SqliteConnectOptions) -> SqlitePool {
@@ -2728,6 +2746,71 @@ mod tests {
             !env_file.exists(),
             "agent mode should reject actor_runtime payload and must not spawn process"
         );
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn start_route_accepts_empty_body_with_json_content_type() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir =
+            std::env::temp_dir().join(format!("agenthub-start-empty-json-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "empty-json-start-agent",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_request = Request::builder()
+            .method(Method::POST)
+            .uri(format!("/{agent_id}/start"))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::empty())
+            .expect("build empty-json start request");
+        let start_resp = app
+            .clone()
+            .oneshot(start_request)
+            .await
+            .expect("start agent with empty json header");
+        assert_eq!(start_resp.status(), StatusCode::OK);
+
+        let stop_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop agent");
+        assert_eq!(stop_resp.status(), StatusCode::OK);
 
         remove_dir_best_effort(&workdir);
     }

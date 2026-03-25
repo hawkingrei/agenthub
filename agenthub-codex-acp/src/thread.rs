@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     ops::DerefMut,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
     sync::{Arc, LazyLock, Mutex},
 };
@@ -369,7 +369,7 @@ enum SubmissionState {
     /// Loading custom prompts from the project
     CustomPrompts(CustomPromptsState),
     /// User prompts, including slash commands like /init, /review, /compact, /undo.
-    Prompt(PromptState),
+    Prompt(Box<PromptState>),
 }
 
 impl SubmissionState {
@@ -2047,7 +2047,7 @@ fn auto_approve_runtime_actor_cli_decision(
 fn matches_runtime_actor_cli_command(command: &[String], runtime_actor_cli_path: &Path) -> bool {
     command_has_runtime_actor_cli_prefix(command, runtime_actor_cli_path)
         || extract_shell_wrapped_command(command)
-            .and_then(|shell_command| shlex::split(shell_command))
+            .and_then(shlex::split)
             .is_some_and(|segments| {
                 command_has_runtime_actor_cli_prefix(segments.as_slice(), runtime_actor_cli_path)
             })
@@ -2057,15 +2057,66 @@ fn command_has_runtime_actor_cli_prefix<T: AsRef<str>>(
     command: &[T],
     runtime_actor_cli_path: &Path,
 ) -> bool {
+    let path_env = std::env::var_os("PATH");
+    command_has_runtime_actor_cli_prefix_with_path_env(
+        command,
+        runtime_actor_cli_path,
+        path_env.as_deref(),
+    )
+}
+
+fn command_has_runtime_actor_cli_prefix_with_path_env<T: AsRef<str>>(
+    command: &[T],
+    runtime_actor_cli_path: &Path,
+    path_env: Option<&OsStr>,
+) -> bool {
     if command.len() < 2 {
         return false;
     }
     if command[1].as_ref() != "actor" {
         return false;
     }
-    canonicalize_runtime_actor_cli_path(command[0].as_ref())
+    resolve_runtime_actor_cli_command_path(command[0].as_ref(), path_env)
         .as_deref()
         .is_some_and(|candidate| candidate == runtime_actor_cli_path)
+}
+
+fn resolve_runtime_actor_cli_command_path(
+    command: &str,
+    path_env: Option<&OsStr>,
+) -> Option<PathBuf> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if is_path_like_command(trimmed) {
+        return canonicalize_runtime_actor_cli_path(trimmed);
+    }
+    resolve_command_on_path(trimmed, path_env)
+}
+
+fn is_path_like_command(command: &str) -> bool {
+    let mut components = Path::new(command).components();
+    match components.next() {
+        Some(
+            Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_),
+        ) => true,
+        Some(_) => components.next().is_some(),
+        None => false,
+    }
+}
+
+fn resolve_command_on_path(command: &str, path_env: Option<&OsStr>) -> Option<PathBuf> {
+    let path_env = path_env?;
+    for dir in std::env::split_paths(path_env) {
+        let candidate = dir.join(command);
+        if let Some(resolved) =
+            canonicalize_runtime_actor_cli_path(candidate.to_string_lossy().as_ref())
+        {
+            return Some(resolved);
+        }
+    }
+    None
 }
 
 fn extract_shell_wrapped_command(command: &[String]) -> Option<&str> {
@@ -2986,12 +3037,12 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = SubmissionState::Prompt(PromptState::new(
+        let state = SubmissionState::Prompt(Box::new(PromptState::new(
             submission_id.clone(),
             self.thread.clone(),
             self.resolution_tx.clone(),
             response_tx,
-        ));
+        )));
 
         self.submissions.insert(submission_id, state);
 
@@ -4951,6 +5002,59 @@ mod tests {
             .await?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_bare_agenthub_on_matching_path() -> anyhow::Result<()>
+    {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let temp_dir =
+            std::env::temp_dir().join(format!("agenthub-codex-acp-path-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)?;
+        let linked_agenthub = temp_dir.join("agenthub");
+        create_runtime_actor_cli_test_symlink(&runtime_actor_cli_path, &linked_agenthub)?;
+        let path_env = std::ffi::OsString::from(temp_dir.as_os_str());
+
+        let matched = command_has_runtime_actor_cli_prefix_with_path_env(
+            &["agenthub", "actor", "inbox"],
+            runtime_actor_cli_path.as_path(),
+            Some(path_env.as_os_str()),
+        );
+
+        drop(std::fs::remove_file(&linked_agenthub));
+        drop(std::fs::remove_dir(&temp_dir));
+
+        assert!(
+            matched,
+            "bare agenthub actor should match when PATH resolves to the runtime binary"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_rejects_bare_agenthub_without_matching_path() {
+        let runtime_actor_cli_path =
+            std::env::current_exe().expect("resolve current test binary path");
+        let path_env = std::ffi::OsString::from("/definitely/not/the/runtime/path");
+
+        assert!(
+            !command_has_runtime_actor_cli_prefix_with_path_env(
+                &["agenthub", "actor", "inbox"],
+                runtime_actor_cli_path.as_path(),
+                Some(path_env.as_os_str()),
+            ),
+            "bare agenthub actor should not match without a PATH entry that resolves to the runtime binary"
+        );
+    }
+
+    #[cfg(unix)]
+    fn create_runtime_actor_cli_test_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(source, target)
+    }
+
+    #[cfg(windows)]
+    fn create_runtime_actor_cli_test_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_file(source, target)
     }
 
     #[tokio::test]

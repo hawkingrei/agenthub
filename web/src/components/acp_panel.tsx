@@ -24,6 +24,7 @@ type AcpPanelProps = {
   onSelectTab: (tab: AcpPanelTab) => void;
   showConversationBadge: boolean;
   showConversationJump: boolean;
+  showFloatingConversationJump?: boolean;
   onJumpToConversationBottom: () => void;
   conversation: AcpConversationProps;
   plan: AcpPlanProps;
@@ -38,6 +39,7 @@ function AcpPanelView({
   onSelectTab,
   showConversationBadge,
   showConversationJump,
+  showFloatingConversationJump = true,
   onJumpToConversationBottom,
   conversation,
   plan,
@@ -107,7 +109,9 @@ function AcpPanelView({
       {effectiveTab === "conversation" && <AcpConversation {...conversation} />}
       {effectiveTab === "plan" && <AcpPlan {...plan} />}
       {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
-      {effectiveTab === "conversation" && showConversationJump ? (
+      {effectiveTab === "conversation" &&
+      showConversationJump &&
+      showFloatingConversationJump ? (
         <button
           type="button"
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}

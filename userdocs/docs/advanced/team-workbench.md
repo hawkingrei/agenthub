@@ -124,8 +124,10 @@ managed runtime, bootstrap the Team skills first:
 scripts/setup_team_skills.sh
 ```
 
-Managed Team runtime actor commands that use the injected canonical
-`AGENTHUB_ACTOR_CLI` path are now auto-approved by the ACP permission layer.
+Managed Team runtime actor commands are now auto-approved by the ACP
+permission layer when they resolve to the injected `AGENTHUB_ACTOR_CLI`
+binary. This covers both the canonical absolute path form and bare
+`agenthub actor ...` when `PATH` resolves `agenthub` to that same binary.
 
 If you also run `agenthub actor ...` manually in a local Codex shell and want
 those manual commands to stop prompting repeatedly, allow the human-typed

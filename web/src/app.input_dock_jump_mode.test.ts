@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
 
 describe("resolveInputDockJumpMode", () => {
-  it("uses ACP jump behavior when ACP view is active", () => {
+  it("routes ACP jump behavior through the dock when ACP view is active", () => {
     const onConversationJump = vi.fn();
     const onTerminalJump = vi.fn();
     const resolved = resolveInputDockJumpMode({

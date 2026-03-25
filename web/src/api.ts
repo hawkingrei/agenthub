@@ -463,6 +463,21 @@ function authHeaders(token: string | null): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
+function buildApiHeaders(
+  token: string | null,
+  init?: RequestInit
+): Headers {
+  const headers = new Headers(init?.headers ?? {});
+  const auth = authHeaders(token);
+  for (const [key, value] of Object.entries(auth)) {
+    headers.set(key, value);
+  }
+  if (init?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+}
+
 async function apiFetch<T>(
   path: string,
   token: string | null,
@@ -470,11 +485,7 @@ async function apiFetch<T>(
 ): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(token),
-      ...(init?.headers ?? {}),
-    },
+    headers: buildApiHeaders(token, init),
   });
   if (!res.ok) {
     const raw = await res.text();

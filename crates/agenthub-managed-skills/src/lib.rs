@@ -408,8 +408,7 @@ mod tests {
 
     use super::{
         ManagedSkillDoc, ManagedSkillKind, SKILL_DOC_NAME, install_managed_skills,
-        managed_skill_doc,
-        managed_skill_doc_path, managed_skills_root,
+        managed_skill_doc, managed_skill_doc_path, managed_skills_root,
     };
 
     fn env_lock() -> &'static Mutex<()> {
@@ -447,7 +446,8 @@ mod tests {
 
     fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {
         assert!(
-            doc.contents.starts_with(&format!("---\nname: {}\n", doc.name)),
+            doc.contents
+                .starts_with(&format!("---\nname: {}\n", doc.name)),
             "managed skill '{}' is missing name front matter",
             doc.name
         );
