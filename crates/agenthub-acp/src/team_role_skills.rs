@@ -1,9 +1,11 @@
-use agenthub_acp_core::{AcpSkill, build_skill};
-use agenthub_managed_skills::{
-    ManagedSkillKind, managed_skill_contents, managed_skill_doc, managed_skill_name,
-};
+use std::path::Path;
+
+use agenthub_acp_core::AcpSkill;
+use agenthub_managed_skills::ManagedSkillKind;
+use anyhow::Result;
 
 use crate::AcpActorSkillContext;
+use crate::actor_runtime_skill::build_required_managed_skill;
 
 const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
 const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
@@ -27,37 +29,17 @@ impl TeamRoleIndexKind {
             Self::Worker => ManagedSkillKind::TeamWorkerAgentsIndex,
         }
     }
-
-    fn fallback_path(self) -> &'static str {
-        match self {
-            Self::Leader => "builtin://agenthub/team/team-leader-agents-index",
-            Self::Worker => "builtin://agenthub/team/team-worker-agents-index",
-        }
-    }
 }
 
-fn build_managed_skill(kind: ManagedSkillKind, fallback_path: &str) -> AcpSkill {
-    match managed_skill_doc(kind, None) {
-        Ok(doc) if doc.path.exists() => build_skill(
-            doc.name.to_string(),
-            doc.path.to_string_lossy().to_string(),
-            &doc.contents,
-        ),
-        Ok(doc) => build_skill(
-            doc.name.to_string(),
-            fallback_path.to_string(),
-            &doc.contents,
-        ),
-        Err(_) => build_skill(
-            managed_skill_name(kind).to_string(),
-            fallback_path.to_string(),
-            managed_skill_contents(kind).as_str(),
-        ),
-    }
+fn build_managed_skill(kind: ManagedSkillKind, home_dir: Option<&Path>) -> Result<AcpSkill> {
+    build_required_managed_skill(kind, home_dir)
 }
 
-fn build_role_agents_index_skill(kind: TeamRoleIndexKind) -> AcpSkill {
-    build_managed_skill(kind.managed_kind(), kind.fallback_path())
+fn build_role_agents_index_skill(
+    kind: TeamRoleIndexKind,
+    home_dir: Option<&Path>,
+) -> Result<AcpSkill> {
+    build_managed_skill(kind.managed_kind(), home_dir)
 }
 
 fn normalize_member_role(role: Option<&str>) -> Option<&str> {
@@ -89,7 +71,14 @@ pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
         || name.eq_ignore_ascii_case(TEAM_ACTOR_MAILBOX_SKILL_NAME)
 }
 
-pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpSkill> {
+pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Result<Vec<AcpSkill>> {
+    build_team_role_skills_with_home(context, None)
+}
+
+fn build_team_role_skills_with_home(
+    context: &AcpActorSkillContext,
+    home_dir: Option<&Path>,
+) -> Result<Vec<AcpSkill>> {
     let role = normalize_member_role(context.member_role.as_deref());
     let enable_deliberation = has_member_skill(context, TEAM_DELIBERATION_SKILL_NAME);
     let enable_task_lifecycle = has_member_skill(context, TEAM_TASK_LIFECYCLE_SKILL_NAME);
@@ -98,69 +87,108 @@ pub(super) fn build_team_role_skills(context: &AcpActorSkillContext) -> Vec<AcpS
         Some("leader") => {
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamAgentsIndex,
-                "builtin://agenthub/team/team-agents-index",
-            ));
-            out.push(build_role_agents_index_skill(TeamRoleIndexKind::Leader));
+                home_dir,
+            )?);
+            out.push(build_role_agents_index_skill(
+                TeamRoleIndexKind::Leader,
+                home_dir,
+            )?);
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamLeaderOrchestrator,
-                "builtin://agenthub/team/team-leader-orchestrator",
-            ));
+                home_dir,
+            )?);
             if enable_task_lifecycle {
                 out.push(build_managed_skill(
                     ManagedSkillKind::TeamTaskLifecycle,
-                    "builtin://agenthub/team/team-task-lifecycle",
-                ));
+                    home_dir,
+                )?);
             }
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
-                "builtin://agenthub/team/team-actor-mailbox",
-            ));
+                home_dir,
+            )?);
             if enable_deliberation {
                 out.push(build_managed_skill(
                     ManagedSkillKind::TeamDeliberationRules,
-                    "builtin://agenthub/team/team-deliberation-rules",
-                ));
+                    home_dir,
+                )?);
             }
         }
         Some("worker") => {
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamAgentsIndex,
-                "builtin://agenthub/team/team-agents-index",
-            ));
-            out.push(build_role_agents_index_skill(TeamRoleIndexKind::Worker));
+                home_dir,
+            )?);
+            out.push(build_role_agents_index_skill(
+                TeamRoleIndexKind::Worker,
+                home_dir,
+            )?);
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamWorkerExecutor,
-                "builtin://agenthub/team/team-worker-executor",
-            ));
+                home_dir,
+            )?);
             if enable_task_lifecycle {
                 out.push(build_managed_skill(
                     ManagedSkillKind::TeamTaskLifecycle,
-                    "builtin://agenthub/team/team-task-lifecycle",
-                ));
+                    home_dir,
+                )?);
             }
             out.push(build_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
-                "builtin://agenthub/team/team-actor-mailbox",
-            ));
+                home_dir,
+            )?);
             if enable_deliberation {
                 out.push(build_managed_skill(
                     ManagedSkillKind::TeamDeliberationRules,
-                    "builtin://agenthub/team/team-deliberation-rules",
-                ));
+                    home_dir,
+                )?);
             }
         }
         _ => {}
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use agenthub_managed_skills::install_managed_skills;
+    use uuid::Uuid;
+
     use super::{
         TeamRoleIndexKind, build_role_agents_index_skill, build_team_role_skills,
-        is_reserved_team_role_skill, should_attach_team_role_skills,
+        build_team_role_skills_with_home, is_reserved_team_role_skill,
+        should_attach_team_role_skills,
     };
     use crate::AcpActorSkillContext;
+
+    struct TempManagedSkillsHome {
+        root: std::path::PathBuf,
+    }
+
+    impl TempManagedSkillsHome {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "agenthub-acp-team-role-skill-home-{}",
+                Uuid::new_v4()
+            ));
+            fs::create_dir_all(&root).expect("create temp managed skills home");
+            Self { root }
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.root
+        }
+    }
+
+    impl Drop for TempManagedSkillsHome {
+        fn drop(&mut self) {
+            if self.root.exists() {
+                let _ = fs::remove_dir_all(&self.root);
+            }
+        }
+    }
 
     fn context_with_role(role: Option<&str>) -> AcpActorSkillContext {
         AcpActorSkillContext {
@@ -178,7 +206,11 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_for_leader() {
-        let skills = build_team_role_skills(&context_with_role(Some("leader")));
+        let home = TempManagedSkillsHome::new();
+        install_managed_skills(Some(home.path())).expect("install managed skills");
+        let skills =
+            build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
+                .expect("build leader team role skills");
         let names = skills
             .iter()
             .map(|item| item.name.as_str())
@@ -196,7 +228,11 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_for_worker() {
-        let skills = build_team_role_skills(&context_with_role(Some("worker")));
+        let home = TempManagedSkillsHome::new();
+        install_managed_skills(Some(home.path())).expect("install managed skills");
+        let skills =
+            build_team_role_skills_with_home(&context_with_role(Some("worker")), Some(home.path()))
+                .expect("build worker team role skills");
         let names = skills
             .iter()
             .map(|item| item.name.as_str())
@@ -214,11 +250,14 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_includes_task_lifecycle_when_requested() {
+        let home = TempManagedSkillsHome::new();
+        install_managed_skills(Some(home.path())).expect("install managed skills");
         let mut context = context_with_role(Some("leader"));
         context
             .member_skills
             .push("team-task-lifecycle".to_string());
-        let skills = build_team_role_skills(&context);
+        let skills = build_team_role_skills_with_home(&context, Some(home.path()))
+            .expect("build team role skills");
         let names = skills
             .iter()
             .map(|item| item.name.as_str())
@@ -228,11 +267,14 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_enables_deliberation_when_requested() {
+        let home = TempManagedSkillsHome::new();
+        install_managed_skills(Some(home.path())).expect("install managed skills");
         let mut context = context_with_role(Some("worker"));
         context
             .member_skills
             .push("team-deliberation-rules".to_string());
-        let skills = build_team_role_skills(&context);
+        let skills = build_team_role_skills_with_home(&context, Some(home.path()))
+            .expect("build team role skills");
         let names = skills
             .iter()
             .map(|item| item.name.as_str())
@@ -242,8 +284,16 @@ mod tests {
 
     #[test]
     fn build_team_role_skills_skips_unknown_role() {
-        assert!(build_team_role_skills(&context_with_role(Some("observer"))).is_empty());
-        assert!(build_team_role_skills(&context_with_role(None)).is_empty());
+        assert!(
+            build_team_role_skills(&context_with_role(Some("observer")))
+                .expect("build observer team role skills")
+                .is_empty()
+        );
+        assert!(
+            build_team_role_skills(&context_with_role(None))
+                .expect("build empty team role skills")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -279,10 +329,26 @@ mod tests {
 
     #[test]
     fn role_agents_index_skill_uses_expected_names() {
-        let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader);
+        let home = TempManagedSkillsHome::new();
+        install_managed_skills(Some(home.path())).expect("install managed skills");
+        let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader, Some(home.path()))
+            .expect("build leader role agents index skill");
         assert_eq!(leader.name, "team-leader-agents-index");
 
-        let worker = build_role_agents_index_skill(TeamRoleIndexKind::Worker);
+        let worker = build_role_agents_index_skill(TeamRoleIndexKind::Worker, Some(home.path()))
+            .expect("build worker role agents index skill");
         assert_eq!(worker.name, "team-worker-agents-index");
+    }
+
+    #[test]
+    fn build_team_role_skills_error_when_managed_skill_not_materialized() {
+        let home = TempManagedSkillsHome::new();
+        let err =
+            build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
+                .expect_err("missing managed team skills should hard fail");
+        assert!(
+            err.to_string().contains("is not materialized"),
+            "unexpected error: {err}"
+        );
     }
 }

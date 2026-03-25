@@ -865,10 +865,8 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             if actor_context.is_some()
                 && let Err(err) = install_managed_skills(None)
             {
-                tracing::warn!(
-                    error = %err,
-                    "failed to materialize managed skills under ~/.agents/skills; falling back to inline skill paths"
-                );
+                let _ = ready_tx.send(Err(format!("acp managed skill install failed: {err}")));
+                return;
             }
             let mcp_servers = load_mcp_servers();
             let mut skills = load_skills(Path::new(&workdir), &safe_paths);
@@ -876,10 +874,26 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             let mut attached_team_role_skills = false;
             if let Some(ctx) = actor_context.as_ref() {
                 if should_attach_team_role_skills(Some(ctx)) {
-                    skills.extend(build_team_role_skills(ctx));
+                    let team_role_skills = match build_team_role_skills(ctx) {
+                        Ok(team_role_skills) => team_role_skills,
+                        Err(err) => {
+                            let _ = ready_tx
+                                .send(Err(format!("acp managed team skill load failed: {err}")));
+                            return;
+                        }
+                    };
+                    skills.extend(team_role_skills);
                     attached_team_role_skills = true;
                 }
-                skills.push(build_actor_runtime_skill());
+                let actor_runtime_skill = match build_actor_runtime_skill() {
+                    Ok(actor_runtime_skill) => actor_runtime_skill,
+                    Err(err) => {
+                        let _ = ready_tx
+                            .send(Err(format!("acp actor runtime skill load failed: {err}")));
+                        return;
+                    }
+                };
+                skills.push(actor_runtime_skill);
             }
             let skills = dedupe_skills(skills);
             if let Some(ctx) = actor_context.as_ref() {
