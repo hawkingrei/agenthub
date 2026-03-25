@@ -7,4 +7,4 @@ license = "Apache-2.0"
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
-toml = "1.0"
+toml = "1.1"
