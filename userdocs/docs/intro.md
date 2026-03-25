@@ -94,3 +94,6 @@ AgentHub has four primary user-facing surfaces:
   [Review and Apply Changes](./core/review-and-apply-changes.md)
 - Go deeper on Team operation:
   [Team Workbench](./advanced/team-workbench.md)
+- Reference materials:
+  [API Error Reference](./operations/api-error-reference.md),
+  [Configuration Reference](./getting-started/configuration-basics.md)
