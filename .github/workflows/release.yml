@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            arch: amd64
+            cross: true
+          
+          # Linux ARM64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            arch: arm64
+            cross: true
+          
+          # macOS ARM64 (Apple Silicon)
+          - target: aarch64-apple-darwin
+            os: macos-14
+            arch: arm64
+            cross: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (for Linux cross-compilation)
+        if: matrix.cross
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install dependencies (Ubuntu)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
+
+      - name: Install dependencies (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          brew install protobuf
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build (native)
+        if: '!matrix.cross'
+        run: |
+          cargo build --release --target ${{ matrix.target }} --bin agenthub
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: |
+          cross build --release --target ${{ matrix.target }} --bin agenthub
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION=${{ github.ref_name }}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          
+          # Strip 'v' prefix if present
+          VERSION=${VERSION#v}
+          
+          BINARY_NAME="agenthub"
+          TARGET="${{ matrix.target }}"
+          ARCH="${{ matrix.arch }}"
+          
+          # Determine OS name
+          if [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            OS_NAME="linux"
+          elif [[ "${{ matrix.os }}" == macos* ]]; then
+            OS_NAME="darwin"
+          else
+            OS_NAME="unknown"
+          fi
+          
+          PACKAGE_NAME="${BINARY_NAME}-${VERSION}-${OS_NAME}-${ARCH}"
+          
+          # Create package directory
+          mkdir -p "dist/${PACKAGE_NAME}"
+          
+          # Copy binary
+          cp "target/${TARGET}/release/${BINARY_NAME}" "dist/${PACKAGE_NAME}/"
+          
+          # Copy additional files
+          cp README.md LICENSE "dist/${PACKAGE_NAME}/" 2>/dev/null || true
+          
+          # Create archive
+          cd dist
+          if [[ "${{ matrix.os }}" == windows* ]]; then
+            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
+            echo "ASSET=${PACKAGE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+            echo "ASSET=${PACKAGE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist/${{ env.ASSET }}
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: false
+
+      - name: Display structure
+        run: ls -R dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: Release ${{ github.event.inputs.version || github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.event.inputs.version || github.ref_name, 'alpha') || contains(github.event.inputs.version || github.ref_name, 'beta') || contains(github.event.inputs.version || github.ref_name, 'rc') }}
+          files: dist/**/*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Linux x86_64
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.version || github.ref_name }}/agenthub-${{ github.event.inputs.version || github.ref_name }}-linux-amd64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            ```
+
+            ### Linux ARM64
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.version || github.ref_name }}/agenthub-${{ github.event.inputs.version || github.ref_name }}-linux-arm64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            ```
+
+            ### macOS ARM64 (Apple Silicon)
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.version || github.ref_name }}/agenthub-${{ github.event.inputs.version || github.ref_name }}-darwin-arm64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            ```
+
+            ## Verification
+
+            Verify the binary:
+            ```bash
+            agenthub --version
+            ```
+
+            ## Documentation
+
+            See [User Documentation](https://github.com/${{ github.repository }}/tree/main/userdocs) for detailed usage instructions.
