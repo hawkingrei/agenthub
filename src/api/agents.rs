@@ -1,5 +1,6 @@
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, Query, State},
     http::HeaderMap,
     routing::{delete, get, post},
@@ -18,6 +19,7 @@ use crate::agent::{
 };
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::api::teams::prune_deleted_agent_from_team_specs;
 use crate::state::AppState;
 
 const AGENT_SOURCE_MANUAL: &str = "manual";
@@ -307,10 +309,11 @@ async fn start_agent(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(agent_id): Path<String>,
-    payload: Option<Json<StartAgentRequest>>,
+    body: Bytes,
 ) -> Result<Json<StartAgentResponse>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let actor_context = parse_start_actor_runtime_context(payload.map(|Json(body)| body))?;
+    let payload = parse_optional_start_agent_request(body)?;
+    let actor_context = parse_start_actor_runtime_context(payload)?;
     if actor_context.is_some() {
         return Err(ApiError::bad_request(
             "actor_runtime is reserved for team orchestrator and is not supported by /api/agents/:id/start",
@@ -338,6 +341,13 @@ async fn delete_agent(
     let _user = require_user(&headers, &state).await?;
     let _ = state.agents.stop_agent(&agent_id).await;
     state.agents.delete_agent(&agent_id).await?;
+    if let Err(err) = prune_deleted_agent_from_team_specs(&state, &agent_id).await {
+        tracing::warn!(
+            agent_id = %agent_id,
+            error = ?err,
+            "delete_agent completed after best-effort team spec prune failed"
+        );
+    }
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
@@ -930,6 +940,15 @@ fn parse_start_actor_runtime_context(
     }))
 }
 
+fn parse_optional_start_agent_request(body: Bytes) -> Result<Option<StartAgentRequest>, ApiError> {
+    if body.is_empty() || body.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(None);
+    }
+    serde_json::from_slice::<StartAgentRequest>(&body)
+        .map(Some)
+        .map_err(|err| ApiError::bad_request(&format!("invalid request body JSON: {err}")))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -938,7 +957,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use axum::body::{Body, to_bytes};
+    use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
     use serde_json::{Value, json};
@@ -961,9 +980,9 @@ mod tests {
 
     use super::{
         StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
-        map_create_agent_error, parse_agent_source, parse_start_actor_runtime_context,
-        parse_worktree_mode, resolve_create_agent_workdir, resolve_member_description_from_spec,
-        router, sanitize_worktree_segment,
+        map_create_agent_error, parse_agent_source, parse_optional_start_agent_request,
+        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
+        resolve_member_description_from_spec, router, sanitize_worktree_segment,
     };
 
     #[test]
@@ -1258,6 +1277,13 @@ mod tests {
         }))
         .expect_err("actor_cli_path should be validated");
         let _ = err;
+    }
+
+    #[test]
+    fn parse_optional_start_agent_request_accepts_empty_json_body() {
+        let payload = parse_optional_start_agent_request(Bytes::from_static(b"   "))
+            .expect("empty request body should be accepted");
+        assert!(payload.is_none());
     }
 
     async fn create_test_db_with_options(options: SqliteConnectOptions) -> SqlitePool {
@@ -2725,6 +2751,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_route_accepts_empty_body_with_json_content_type() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+
+        let workdir =
+            std::env::temp_dir().join(format!("agenthub-start-empty-json-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&workdir).expect("create workdir");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+            .bind(workdir.to_string_lossy().to_string())
+            .bind(now)
+            .execute(&state.db)
+            .await
+            .expect("insert safe path");
+
+        let create_resp = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "empty-json-start-agent",
+                    "workdir": workdir.to_string_lossy().to_string(),
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 30"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent");
+        assert_eq!(create_resp.status(), StatusCode::OK);
+        let created = decode_json_body(create_resp).await;
+        let agent_id = created["id"].as_str().expect("agent id");
+
+        let start_request = Request::builder()
+            .method(Method::POST)
+            .uri(format!("/{agent_id}/start"))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::empty())
+            .expect("build empty-json start request");
+        let start_resp = app
+            .clone()
+            .oneshot(start_request)
+            .await
+            .expect("start agent with empty json header");
+        assert_eq!(start_resp.status(), StatusCode::OK);
+
+        let stop_resp = app
+            .oneshot(build_json_request(
+                Method::POST,
+                &format!("/{agent_id}/stop"),
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("stop agent");
+        assert_eq!(stop_resp.status(), StatusCode::OK);
+
+        remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
     async fn discovery_card_route_exposes_agent_capabilities() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;
@@ -2859,6 +2950,172 @@ mod tests {
         assert!(tags.contains("acp_codex"));
 
         remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn delete_agent_prunes_team_member_references_from_team_specs() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let token = crate::api::team_tests::create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        let team_id = Uuid::new_v4().to_string();
+        let worker_step_key = "worker_1_worker_1";
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+            "#,
+        )
+        .bind(&team_id)
+        .bind("delete-agent-prune-team")
+        .bind("prune deleted team member references")
+        .bind(
+            json!({
+                "spec_version": 1,
+                "leader_member_id": "leader",
+                "entrypoint": "leader_plan",
+                "members": [
+                    {"member_id": "leader", "role": "leader"},
+                    {"member_id": "worker-1", "role": "worker"}
+                ],
+                "steps": [
+                    {"step_key": "leader_plan", "member_id": "leader", "depends_on": []},
+                    {"step_key": worker_step_key, "member_id": "worker-1", "depends_on": ["leader_plan"]},
+                    {
+                        "step_key": "leader_synthesize",
+                        "member_id": "leader",
+                        "depends_on": [worker_step_key]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert team definition");
+
+        let delete_resp = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/worker-1",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("delete team member agent");
+        assert_eq!(delete_resp.status(), StatusCode::OK);
+
+        let team_row = sqlx::query("SELECT spec_json FROM team_definitions WHERE id = ?1")
+            .bind(&team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load updated team definition");
+        let spec_json = team_row.get::<String, _>("spec_json");
+        let updated_spec: Value =
+            serde_json::from_str(spec_json.as_str()).expect("parse updated spec json");
+
+        let members = updated_spec["members"]
+            .as_array()
+            .expect("updated team members");
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0]["member_id"], Value::from("leader"));
+
+        let steps = updated_spec["steps"]
+            .as_array()
+            .expect("updated team steps");
+        assert!(
+            steps
+                .iter()
+                .all(|step| step["member_id"].as_str() != Some("worker-1")),
+            "deleted worker steps should be pruned: {updated_spec}"
+        );
+        let synth = steps
+            .iter()
+            .find(|step| step["step_key"].as_str() == Some("leader_synthesize"))
+            .expect("leader synth step");
+        assert_eq!(synth["depends_on"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn delete_agent_returns_ok_when_team_prune_follow_up_fails() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let token = crate::api::team_tests::create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+        let team_id = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (id, name, description, spec_json, owner_user_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+            "#,
+        )
+        .bind(&team_id)
+        .bind("delete-agent-best-effort-prune")
+        .bind("delete endpoint should stay successful after prune follow-up failure")
+        .bind(
+            json!({
+                "spec_version": 1,
+                "leader_member_id": "missing-leader",
+                "entrypoint": "leader_plan",
+                "members": [
+                    {"member_id": "missing-leader", "role": "leader"},
+                    {"member_id": "worker-1", "role": "worker"}
+                ],
+                "steps": [
+                    {"step_key": "leader_plan", "member_id": "missing-leader", "depends_on": []},
+                    {
+                        "step_key": "worker_1_worker_1",
+                        "member_id": "worker-1",
+                        "depends_on": ["leader_plan"]
+                    },
+                    {
+                        "step_key": "leader_synthesize",
+                        "member_id": "missing-leader",
+                        "depends_on": ["worker_1_worker_1"]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert team definition");
+
+        let delete_resp = app
+            .oneshot(build_json_request(
+                Method::DELETE,
+                "/worker-1",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("delete team member agent");
+        assert_eq!(delete_resp.status(), StatusCode::OK);
+
+        let remaining_agents: i64 = sqlx::query("SELECT COUNT(*) AS cnt FROM agents WHERE id = ?1")
+            .bind("worker-1")
+            .fetch_one(&state.db)
+            .await
+            .expect("count deleted agent rows")
+            .get("cnt");
+        assert_eq!(remaining_agents, 0);
+
+        let team_row = sqlx::query("SELECT spec_json FROM team_definitions WHERE id = ?1")
+            .bind(&team_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load updated team definition");
+        let spec_json = team_row.get::<String, _>("spec_json");
+        assert!(
+            !spec_json.contains("worker-1"),
+            "deleted worker reference should still be pruned from team spec"
+        );
     }
 
     #[tokio::test]

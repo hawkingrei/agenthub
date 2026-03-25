@@ -1,5 +1,6 @@
 ---
 name: team-agents-index
+description: Shared Team startup index and routing contract for AgentHub Team sessions.
 ---
 
 # Team AGENTS Index

@@ -1,0 +1,299 @@
+// @vitest-environment jsdom
+import React, { act, useEffect } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  type TeamActorMessageRecord,
+  type TeamConversationMessageRecord,
+  type TeamTaskRecord,
+  api,
+} from "../../api";
+import { useTeamConversationActions } from "./use_team_conversation_actions";
+
+vi.mock("../../api", async () => {
+  const actual = await vi.importActual<typeof import("../../api")>("../../api");
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      listTeamTaskMessages: vi.fn(),
+      getTeamTask: vi.fn(),
+      getTeamRunSnapshot: vi.fn(),
+      listTeamTasks: vi.fn(),
+      createTeamTask: vi.fn(),
+      sendTeamTaskMessage: vi.fn(),
+    },
+  };
+});
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true;
+
+type TeamConversationActions = ReturnType<typeof useTeamConversationActions>;
+type TeamConversationOptions = Parameters<typeof useTeamConversationActions>[0];
+
+function buildTaskMessage(
+  messageId: number,
+  text: string
+): TeamConversationMessageRecord {
+  return {
+    message_id: messageId,
+    conversation_id: "conv-all",
+    task_id: "task-all",
+    from_actor_id: "leader",
+    to_actor_id: null,
+    route: "group_chat",
+    payload: { type: "chat_message", text },
+    created_at: 1_700_000_000 + messageId,
+  };
+}
+
+function buildMailboxMessage(messageId: number, text: string): TeamActorMessageRecord {
+  return {
+    message_id: messageId,
+    run_id: "run-1",
+    from_actor_id: "leader",
+    to_actor_id: "worker",
+    channel: "default",
+    payload: { type: "chat_message", text },
+    transport: "local",
+    status: "pending",
+    created_at: 1_700_000_000 + messageId,
+    delivered_at: null,
+  };
+}
+
+function buildSharedThreadTask(): TeamTaskRecord {
+  return {
+    id: "task-all",
+    team_id: "team-1",
+    title: "all",
+    status: "in_progress",
+    created_by_actor_id: "leader",
+    assigned_member_id: null,
+    context: { bootstrap_kind: "shared_thread" },
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
+function createStateSetter<T>(initial: T) {
+  const state = { current: initial };
+  const setter = vi.fn((update: React.SetStateAction<T>) => {
+    state.current =
+      typeof update === "function"
+        ? (update as (previous: T) => T)(state.current)
+        : update;
+  });
+  return { state, setter };
+}
+
+function createOptions(
+  overrides: Partial<TeamConversationOptions> = {}
+): TeamConversationOptions {
+  const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+  const mailboxMessages = createStateSetter<TeamActorMessageRecord[]>([]);
+  return {
+    token: "token-1",
+    selectedTeamId: "team-1",
+    selectedConversation: buildSharedThreadTask(),
+    taskList: [buildSharedThreadTask()],
+    activeRunIdForSelectedTeam: "run-1",
+    refreshSnapshot: vi.fn().mockResolvedValue(undefined),
+    refreshEvents: vi.fn().mockResolvedValue(undefined),
+    setBusy: vi.fn(),
+    setError: vi.fn(),
+    setWarning: vi.fn(),
+    setTaskList: vi.fn(),
+    setTaskMessages: taskMessages.setter,
+    setTaskMessagesLoading: vi.fn(),
+    setConversationMailboxMessages: mailboxMessages.setter,
+    setTaskMessageDraft: vi.fn(),
+    ...overrides,
+  };
+}
+
+function HookHarness({
+  options,
+  onCapture,
+}: {
+  options: TeamConversationOptions;
+  onCapture: (actions: TeamConversationActions) => void;
+}) {
+  const actions = useTeamConversationActions(options);
+  useEffect(() => {
+    onCapture(actions);
+  }, [actions, onCapture]);
+  return null;
+}
+
+async function mountHarness(
+  options: TeamConversationOptions,
+  onCapture: (actions: TeamConversationActions) => void
+): Promise<{ root: Root; container: HTMLDivElement }> {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(<HookHarness options={options} onCapture={onCapture} />);
+    await Promise.resolve();
+  });
+  return { root, container };
+}
+
+function cleanupHarness(root: Root, container: HTMLDivElement): void {
+  act(() => {
+    root.unmount();
+  });
+  container.remove();
+}
+
+describe("useTeamConversationActions", () => {
+  const mockedApi = vi.mocked(api);
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("loads a small tail window first, then hydrates a larger shared-thread window", async () => {
+    mockedApi.listTeamTaskMessages
+      .mockResolvedValueOnce([buildTaskMessage(41, "latest tail")])
+      .mockResolvedValueOnce([
+        buildTaskMessage(1, "older"),
+        buildTaskMessage(41, "latest tail"),
+      ]);
+    mockedApi.getTeamTask.mockResolvedValue({
+      task: buildSharedThreadTask(),
+      conversation: {
+        id: "conv-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: {
+        id: "run-1",
+        team_id: "team-1",
+        context_id: "ctx-1",
+        status: "working",
+        input: {},
+        created_at: 1,
+        started_at: null,
+        ended_at: null,
+      },
+    });
+    mockedApi.getTeamRunSnapshot
+      .mockResolvedValueOnce({
+        run: {
+          id: "run-1",
+          team_id: "team-1",
+          context_id: "ctx-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
+        team: {
+          id: "team-1",
+          name: "Team One",
+          description: null,
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
+        },
+        leader_member_id: "leader",
+        members: [],
+        steps: [],
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [buildMailboxMessage(90, "latest mailbox")],
+        },
+      } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>)
+      .mockResolvedValueOnce({
+        run: {
+          id: "run-1",
+          team_id: "team-1",
+          context_id: "ctx-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
+        team: {
+          id: "team-1",
+          name: "Team One",
+          description: null,
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
+        },
+        leader_member_id: "leader",
+        members: [],
+        steps: [],
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [
+            buildMailboxMessage(80, "older mailbox"),
+            buildMailboxMessage(90, "latest mailbox"),
+          ],
+        },
+      } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>);
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "team-1",
+        "task-all",
+        { limit: 60 }
+      );
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "team-1",
+        "task-all",
+        { limit: 200 }
+      );
+      expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "run-1",
+        { event_limit: 1, message_limit: 60 }
+      );
+      expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "run-1",
+        { event_limit: 1, message_limit: 200 }
+      );
+      expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(true);
+      expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(false);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+});

@@ -407,8 +407,8 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     use super::{
-        ManagedSkillKind, SKILL_DOC_NAME, install_managed_skills, managed_skill_doc,
-        managed_skill_doc_path, managed_skills_root,
+        ManagedSkillDoc, ManagedSkillKind, SKILL_DOC_NAME, install_managed_skills,
+        managed_skill_doc, managed_skill_doc_path, managed_skills_root,
     };
 
     fn env_lock() -> &'static Mutex<()> {
@@ -432,15 +432,35 @@ mod tests {
     #[test]
     fn managed_skill_docs_include_expected_frontmatter() {
         let home = std::env::temp_dir().join("agenthub-managed-skills-doc-home");
-        let doc = managed_skill_doc(ManagedSkillKind::ActorRuntime, Some(home.as_path()))
-            .expect("build managed actor runtime skill");
+        for kind in ManagedSkillKind::ALL {
+            let doc =
+                managed_skill_doc(kind, Some(home.as_path())).expect("build managed skill doc");
+            assert_frontmatter_has_name_and_description(&doc);
+            if kind == ManagedSkillKind::ActorRuntime {
+                assert!(doc.contents.contains("Runtime coordination contract"));
+                assert!(doc.contents.contains("`actor_cli_path`"));
+                assert!(doc.contents.contains("<actor_cli_path> actor inbox"));
+            }
+        }
+    }
+
+    fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {
         assert!(
             doc.contents
-                .starts_with("---\nname: agenthub-actor-runtime\n")
+                .starts_with(&format!("---\nname: {}\n", doc.name)),
+            "managed skill '{}' is missing name front matter",
+            doc.name
         );
-        assert!(doc.contents.contains("Runtime coordination contract"));
-        assert!(doc.contents.contains("`actor_cli_path`"));
-        assert!(doc.contents.contains("<actor_cli_path> actor inbox"));
+        let frontmatter_end = doc
+            .contents
+            .find("\n---\n")
+            .expect("managed skill front matter terminator");
+        let frontmatter = &doc.contents[..frontmatter_end];
+        assert!(
+            frontmatter.contains("\ndescription: "),
+            "managed skill '{}' is missing description front matter",
+            doc.name
+        );
     }
 
     #[test]

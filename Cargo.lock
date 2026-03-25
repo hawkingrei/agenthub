@@ -157,6 +157,7 @@ dependencies = [
  "agenthub-config",
  "agenthub-db",
  "agenthub-logging",
+ "agenthub-managed-skills",
  "agenthub-team-actor",
  "agenthub-team-domain",
  "agenthub-team-prompts",

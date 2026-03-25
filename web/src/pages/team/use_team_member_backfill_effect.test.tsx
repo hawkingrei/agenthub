@@ -36,6 +36,10 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
   };
 }
 
+function makeApiError(status: number, message: string): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
 function HookHarness({ params }: { params: HookParams }) {
   useTeamMemberBackfillEffect(params);
   return null;
@@ -77,13 +81,13 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(params.setTeamMemberAgentsById).not.toHaveBeenCalled();
   });
 
-  it("backfills missing members and stores null for fetch failures", async () => {
+  it("backfills missing members and stores null for confirmed not found failures", async () => {
     const params = createParams();
     vi.spyOn(api, "getAgent").mockImplementation(async (_token, agentId) => {
       if (agentId === "missing-a") {
         return makeAgent("missing-a");
       }
-      throw new Error("not-found");
+      throw makeApiError(404, "not-found");
     });
 
     act(() => {
@@ -104,5 +108,83 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(next.existing?.id).toBe("existing");
     expect(next["missing-a"]?.id).toBe("missing-a");
     expect(next["missing-b"]).toBeNull();
+  });
+
+  it("revalidates cached hidden members and clears stale entries after deletion", async () => {
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": makeAgent("missing-a") },
+    });
+    vi.spyOn(api, "getAgent").mockRejectedValue(makeApiError(404, "not-found"));
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const setById = params.setTeamMemberAgentsById as ReturnType<typeof vi.fn>;
+    expect(setById).toHaveBeenCalledTimes(1);
+    const updater = setById.mock.calls[0]?.[0] as (
+      prev: Record<string, AgentRecord | null>
+    ) => Record<string, AgentRecord | null>;
+    const next = updater({ "missing-a": makeAgent("missing-a") });
+
+    expect(next["missing-a"]).toBeNull();
+  });
+
+  it("preserves cached hidden members on transient revalidation failures", async () => {
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": makeAgent("missing-a") },
+    });
+    vi.spyOn(api, "getAgent").mockRejectedValue(makeApiError(503, "unavailable"));
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.setTeamMemberAgentsById).not.toHaveBeenCalled();
+  });
+
+  it("treats newly added agent fields as cache differences during revalidation", async () => {
+    const cachedAgent = {
+      ...makeAgent("missing-a"),
+      extra_marker: "old",
+    } as AgentRecord;
+    const refreshedAgent = {
+      ...makeAgent("missing-a"),
+      extra_marker: "new",
+    } as AgentRecord;
+    const params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": cachedAgent },
+    });
+    vi.spyOn(api, "getAgent").mockResolvedValue(refreshedAgent);
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const setById = params.setTeamMemberAgentsById as ReturnType<typeof vi.fn>;
+    expect(setById).toHaveBeenCalledTimes(1);
+    const updater = setById.mock.calls[0]?.[0] as (
+      prev: Record<string, AgentRecord | null>
+    ) => Record<string, AgentRecord | null>;
+    const prev = { "missing-a": cachedAgent };
+    const next = updater(prev);
+
+    expect(next).not.toBe(prev);
+    expect(next["missing-a"]).toEqual(refreshedAgent);
   });
 });

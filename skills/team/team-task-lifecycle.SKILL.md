@@ -1,5 +1,6 @@
 ---
 name: team-task-lifecycle
+description: Canonical Team task lifecycle and status ownership for AgentHub Team sessions.
 ---
 
 # Team Task Lifecycle

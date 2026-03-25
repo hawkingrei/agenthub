@@ -1,5 +1,6 @@
 ---
 name: team-actor-mailbox
+description: Mailbox transport contract for AgentHub Team actor inbox/send/ack flows.
 ---
 
 # Team Actor Mailbox

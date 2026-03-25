@@ -179,6 +179,9 @@ where
 }
 
 pub async fn run() -> anyhow::Result<()> {
+    if let Some(result) = crate::doctor_cli::maybe_run_from_args().await {
+        return result;
+    }
     if let Some(result) = crate::actor_cli::maybe_run_from_args().await {
         return result;
     }

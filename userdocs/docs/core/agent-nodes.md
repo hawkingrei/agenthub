@@ -49,6 +49,27 @@ ready:
 If these prerequisites are missing, AgentHub now rejects remote-target agent
 creation instead of creating records that cannot be controlled later.
 
+## Internal gRPC Also Powers `agenthub actor ...`
+
+The same authority-side internal gRPC control plane is also used by the actor
+CLI for:
+
+- `agenthub actor team-members`
+- `agenthub actor inbox`
+- `agenthub actor ack`
+- `agenthub actor send`
+- `agenthub actor time-trigger-*`
+- `agenthub actor permission-review-respond`
+
+That means `internal_grpc.enabled = true` is no longer only a remote-node
+deployment concern. Even on a single machine, these commands need a running
+AgentHub authority process with internal gRPC enabled.
+
+For local loopback actor CLI usage, keep `internal_grpc.auth.shared_secret`
+explicitly present in `~/.agenthub/config.toml`. The authority server may
+persist a generated secret under `cert_dir/auth_secret.txt`, but the CLI client
+does not reread that generated file when issuing its own token.
+
 ## Register and Edit Nodes
 
 From the `Agents` page, root operators can:

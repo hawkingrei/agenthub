@@ -1,5 +1,6 @@
 ---
 name: team-deliberation-rules
+description: Shared decision and collaboration quality rules for AgentHub Team sessions.
 ---
 
 # Team Deliberation Rules

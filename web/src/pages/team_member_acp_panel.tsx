@@ -359,6 +359,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const hasSelectedMember = Boolean(selectedMemberId.trim());
   const canShowThreadOptions =
     hasSelectedMember || memberEventsLoading || memberEvents.length > 0;
+  const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const acpPanelProps = React.useMemo(
     () => ({
       acpView,
@@ -369,6 +370,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
+      showFloatingConversationJump: !showInputDock,
       onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
       conversation: acpConversationProps,
       plan: {
@@ -423,11 +425,11 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       jumpToTerminalBottom,
       onForceNewSession,
       panelSubtitle,
+      showInputDock,
       terminalOutputs,
       terminalShowJump,
     ]
   );
-  const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const inputDockJumpMode = React.useMemo(
     () =>
       resolveInputDockJumpMode({

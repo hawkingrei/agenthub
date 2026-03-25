@@ -51,9 +51,15 @@ validation errors.
   containing directory to `safe_paths` as well, or `create_worktree` path
   validation will fail.
 
-## Optional Remote-Node Settings
+## Internal gRPC Settings
 
-If you plan to use remote Agent Nodes, add an `internal_grpc` block as well:
+Add an `internal_grpc` block when either of these is true:
+
+- you plan to register or control remote Agent Nodes
+- you want `agenthub actor ...` commands such as `team-members`, `inbox`,
+  `ack`, `send`, or `time-trigger-*` to talk to the authority control plane
+
+Recommended single-node baseline:
 
 ```toml
 [internal_grpc]
@@ -67,16 +73,42 @@ cert_dir = "~/.agenthub/internal-grpc"
 [internal_grpc.auth]
 issuer = "agenthub"
 audience = "agenthub-internal"
-shared_secret = "replace-me"
+shared_secret = "replace-this-with-a-long-random-secret"
+
+[internal_grpc.bootstrap]
+# optional unless you bootstrap remote nodes
+token = "replace-me-if-you-use-node-bootstrap"
 ```
 
-This is optional for single-node deployments. It becomes required once the main
-control plane must register and control remote-target agents.
+Why the explicit `shared_secret` matters:
+
+- the authority server can auto-generate and persist a secret under
+  `cert_dir/auth_secret.txt`
+- `agenthub actor ...` is a client, not a server; it only reads
+  `~/.agenthub/config.toml` when minting its loopback token
+- if `shared_secret` is omitted from the config file, the actor CLI cannot mint
+  a valid local internal token even when the authority server already started
+
+Operational notes:
+
+- `agenthub actor ...` does not start the internal gRPC server for you. A
+  separate AgentHub authority process must already be running with
+  `internal_grpc.enabled = true`.
+- `tls` is the recommended default. Use `mtls` when you need client-certificate
+  validation between nodes. `disabled` is for local development/testing only.
+- In a normal shell, mailbox commands usually need an explicit `--actor-id`.
+  Inside an injected actor runtime shell, `AGENTHUB_ACTOR_ID` and
+  `AGENTHUB_ACTOR_CURRENT_RUN_ID` may provide the fallback scope instead.
 
 ## First Validation After Config Update
 
 1. Restart AgentHub.
-2. Log in through the browser.
-3. Create one test agent in `create_worktree` mode.
-4. Confirm the generated path is under `worktree.default_root`.
-5. Confirm a path outside `safe_paths` is rejected.
+2. Confirm the server is listening on the configured internal gRPC address.
+3. If you use `agenthub actor ...` outside an injected runtime shell, include
+   `--actor-id <actor_id>` explicitly.
+4. Run one authority-side read command such as `agenthub actor inbox
+   --actor-id <actor_id> --run-id <run_id> --limit 1`.
+5. Log in through the browser.
+6. Create one test agent in `create_worktree` mode.
+7. Confirm the generated path is under `worktree.default_root`.
+8. Confirm a path outside `safe_paths` is rejected.

@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     ops::DerefMut,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
     sync::{Arc, LazyLock, Mutex},
 };
@@ -77,6 +77,7 @@ use crate::{
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
+const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
@@ -368,7 +369,7 @@ enum SubmissionState {
     /// Loading custom prompts from the project
     CustomPrompts(CustomPromptsState),
     /// User prompts, including slash commands like /init, /review, /compact, /undo.
-    Prompt(PromptState),
+    Prompt(Box<PromptState>),
 }
 
 impl SubmissionState {
@@ -463,6 +464,7 @@ struct PromptState {
     active_commands: HashMap<String, ActiveCommand>,
     active_web_search: Option<String>,
     thread: Arc<dyn CodexThreadImpl>,
+    runtime_actor_cli_path: Option<PathBuf>,
     resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
     pending_permission_interactions: HashMap<String, PendingPermissionInteraction>,
     event_count: usize,
@@ -478,11 +480,28 @@ impl PromptState {
         resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
         response_tx: oneshot::Sender<Result<StopReason, Error>>,
     ) -> Self {
+        Self::new_with_runtime_actor_cli_path(
+            submission_id,
+            thread,
+            resolution_tx,
+            response_tx,
+            resolve_runtime_actor_cli_path(),
+        )
+    }
+
+    fn new_with_runtime_actor_cli_path(
+        submission_id: String,
+        thread: Arc<dyn CodexThreadImpl>,
+        resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
+        response_tx: oneshot::Sender<Result<StopReason, Error>>,
+        runtime_actor_cli_path: Option<PathBuf>,
+    ) -> Self {
         Self {
             submission_id,
             active_commands: HashMap::new(),
             active_web_search: None,
             thread,
+            runtime_actor_cli_path,
             resolution_tx,
             pending_permission_interactions: HashMap::new(),
             event_count: 0,
@@ -1377,7 +1396,7 @@ impl PromptState {
         let raw_input = serde_json::json!(&event);
         let ExecApprovalRequestEvent {
             call_id,
-            command: _,
+            command,
             turn_id,
             cwd,
             reason,
@@ -1409,6 +1428,27 @@ impl PromptState {
                 file_extension,
             },
         );
+
+        let resolved_approval_id = approval_id.unwrap_or(call_id.clone());
+        if let Some(decision) = auto_approve_runtime_actor_cli_decision(
+            &command,
+            &available_decisions,
+            self.runtime_actor_cli_path.as_deref(),
+        ) {
+            info!(
+                "Auto-approving runtime actor CLI command: call_id={}, command={:?}",
+                call_id, command
+            );
+            self.thread
+                .submit(Op::ExecApproval {
+                    id: resolved_approval_id,
+                    turn_id: Some(turn_id),
+                    decision,
+                })
+                .await
+                .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+            return Ok(());
+        }
 
         let mut content = vec![];
 
@@ -1460,7 +1500,7 @@ impl PromptState {
             client,
             exec_request_key(&call_id),
             PendingPermissionRequest::Exec {
-                approval_id: approval_id.unwrap_or(call_id.clone()),
+                approval_id: resolved_approval_id,
                 turn_id,
                 option_map: permission_options
                     .iter()
@@ -1965,6 +2005,225 @@ fn build_exec_permission_options(
             },
         })
         .collect()
+}
+
+fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
+    std::env::var(ACTOR_RUNTIME_CLI_ENV)
+        .ok()
+        .and_then(|value| canonicalize_runtime_actor_cli_path(value.as_str()))
+}
+
+fn canonicalize_runtime_actor_cli_path(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    std::fs::canonicalize(trimmed).ok()
+}
+
+fn auto_approve_runtime_actor_cli_decision(
+    command: &[String],
+    available_decisions: &[ReviewDecision],
+    runtime_actor_cli_path: Option<&Path>,
+) -> Option<ReviewDecision> {
+    let runtime_actor_cli_path = runtime_actor_cli_path?;
+    if !matches_runtime_actor_cli_command(command, runtime_actor_cli_path) {
+        return None;
+    }
+    available_decisions
+        .iter()
+        .find(|decision| matches!(decision, ReviewDecision::Approved))
+        .cloned()
+        .or_else(|| {
+            available_decisions
+                .iter()
+                .find(|decision| {
+                    matches!(decision, ReviewDecision::ApprovedExecpolicyAmendment { .. })
+                })
+                .cloned()
+        })
+}
+
+fn matches_runtime_actor_cli_command(command: &[String], runtime_actor_cli_path: &Path) -> bool {
+    command_has_runtime_actor_cli_prefix(command, runtime_actor_cli_path)
+        || extract_shell_wrapped_command(command)
+            .filter(|shell_command| shell_command_is_single_actor_cli_invocation(shell_command))
+            .and_then(shlex::split)
+            .is_some_and(|segments| {
+                command_has_runtime_actor_cli_prefix(segments.as_slice(), runtime_actor_cli_path)
+            })
+}
+
+fn command_has_runtime_actor_cli_prefix<T: AsRef<str>>(
+    command: &[T],
+    runtime_actor_cli_path: &Path,
+) -> bool {
+    let path_env = std::env::var_os("PATH");
+    let path_ext_env = std::env::var_os("PATHEXT");
+    command_has_runtime_actor_cli_prefix_with_env(
+        command,
+        runtime_actor_cli_path,
+        path_env.as_deref(),
+        path_ext_env.as_deref(),
+    )
+}
+
+fn command_has_runtime_actor_cli_prefix_with_env<T: AsRef<str>>(
+    command: &[T],
+    runtime_actor_cli_path: &Path,
+    path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
+) -> bool {
+    if command.len() < 2 {
+        return false;
+    }
+    if command[1].as_ref() != "actor" {
+        return false;
+    }
+    resolve_runtime_actor_cli_command_path(command[0].as_ref(), path_env, path_ext_env)
+        .as_deref()
+        .is_some_and(|candidate| candidate == runtime_actor_cli_path)
+}
+
+fn resolve_runtime_actor_cli_command_path(
+    command: &str,
+    path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
+) -> Option<PathBuf> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if is_path_like_command(trimmed) {
+        return canonicalize_runtime_actor_cli_path(trimmed);
+    }
+    resolve_command_on_path(trimmed, path_env, path_ext_env)
+}
+
+fn is_path_like_command(command: &str) -> bool {
+    let mut components = Path::new(command).components();
+    match components.next() {
+        Some(
+            Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_),
+        ) => true,
+        Some(_) => components.next().is_some(),
+        None => false,
+    }
+}
+
+fn resolve_command_on_path(
+    command: &str,
+    path_env: Option<&OsStr>,
+    path_ext_env: Option<&OsStr>,
+) -> Option<PathBuf> {
+    let path_env = path_env?;
+    for dir in std::env::split_paths(path_env) {
+        for candidate in runtime_actor_cli_path_candidates(dir.as_path(), command, path_ext_env) {
+            if let Some(resolved) =
+                canonicalize_runtime_actor_cli_path(candidate.to_string_lossy().as_ref())
+            {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
+fn runtime_actor_cli_path_candidates(
+    dir: &Path,
+    command: &str,
+    path_ext_env: Option<&OsStr>,
+) -> Vec<PathBuf> {
+    let base = dir.join(command);
+    #[cfg(windows)]
+    {
+        let mut candidates = vec![base.clone()];
+        if base.extension().is_none() {
+            let path_ext_env = path_ext_env
+                .and_then(OsStr::to_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(".COM;.EXE;.BAT;.CMD");
+            for ext in path_ext_env.split(';') {
+                let normalized = ext.trim().trim_start_matches('.');
+                if normalized.is_empty() {
+                    continue;
+                }
+                candidates.push(base.with_extension(normalized));
+            }
+        }
+        candidates
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path_ext_env;
+        vec![base]
+    }
+}
+
+fn shell_command_is_single_actor_cli_invocation(shell_command: &str) -> bool {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum QuoteState {
+        Unquoted,
+        SingleQuoted,
+        DoubleQuoted,
+    }
+
+    let mut state = QuoteState::Unquoted;
+    let mut escaped = false;
+    for ch in shell_command.chars() {
+        match state {
+            QuoteState::Unquoted => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '\'' => state = QuoteState::SingleQuoted,
+                    '"' => state = QuoteState::DoubleQuoted,
+                    ';' | '|' | '&' | '<' | '>' | '`' | '$' | '(' | ')' | '\n' | '\r' => {
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+            QuoteState::SingleQuoted => {
+                if ch == '\'' {
+                    state = QuoteState::Unquoted;
+                }
+            }
+            QuoteState::DoubleQuoted => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => state = QuoteState::Unquoted,
+                    '`' | '$' => return false,
+                    _ => {}
+                }
+            }
+        }
+    }
+    !escaped && state == QuoteState::Unquoted
+}
+
+fn extract_shell_wrapped_command(command: &[String]) -> Option<&str> {
+    if command.len() != 3 {
+        return None;
+    }
+    match command[1].as_str() {
+        "-c" | "-lc" => {}
+        _ => return None,
+    }
+    let shell = Path::new(command[0].as_str())
+        .file_name()
+        .and_then(OsStr::to_str)?;
+    match shell {
+        "sh" | "bash" | "zsh" => Some(command[2].as_str()),
+        _ => None,
+    }
 }
 
 struct ParseCommandToolCall {
@@ -2868,12 +3127,12 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = SubmissionState::Prompt(PromptState::new(
+        let state = SubmissionState::Prompt(Box::new(PromptState::new(
             submission_id.clone(),
             self.thread.clone(),
             self.resolution_tx.clone(),
             response_tx,
-        ));
+        )));
 
         self.submissions.insert(submission_id, state);
 
@@ -4673,6 +4932,285 @@ mod tests {
             .await?;
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_exec_approval_auto_approves_runtime_actor_cli_command() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let actor_cli_path =
+                    std::env::current_exe().expect("resolve current test binary path");
+                let actor_cli = actor_cli_path.to_string_lossy().to_string();
+                let mut prompt_state = PromptState::new_with_runtime_actor_cli_path(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                    Some(actor_cli_path),
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec![
+                                actor_cli.clone(),
+                                "actor".to_string(),
+                                "inbox".to_string(),
+                            ],
+                            cwd: std::env::current_dir()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            skill_metadata: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: format!("{actor_cli} actor inbox"),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                assert!(
+                    message_rx.try_recv().is_err(),
+                    "auto-approved runtime actor cli command should not open a permission request"
+                );
+                let requests = client.permission_requests.lock().unwrap();
+                assert!(
+                    requests.is_empty(),
+                    "runtime actor cli command should bypass permission prompt"
+                );
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Approved,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_exec_approval_auto_approves_shell_wrapped_runtime_actor_cli_command()
+    -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let actor_cli_path =
+                    std::env::current_exe().expect("resolve current test binary path");
+                let actor_cli = actor_cli_path.to_string_lossy().to_string();
+                let shell_command = format!("{actor_cli} actor permission-review-respond");
+                let mut prompt_state = PromptState::new_with_runtime_actor_cli_path(
+                    "submission-id".to_string(),
+                    thread.clone(),
+                    message_tx,
+                    response_tx,
+                    Some(actor_cli_path),
+                );
+
+                prompt_state
+                    .exec_approval(
+                        &session_client,
+                        ExecApprovalRequestEvent {
+                            call_id: "call-id".to_string(),
+                            approval_id: Some("approval-id".to_string()),
+                            turn_id: "turn-id".to_string(),
+                            command: vec![
+                                "/bin/zsh".to_string(),
+                                "-lc".to_string(),
+                                shell_command.clone(),
+                            ],
+                            cwd: std::env::current_dir()?,
+                            reason: None,
+                            network_approval_context: None,
+                            proposed_execpolicy_amendment: None,
+                            proposed_network_policy_amendments: None,
+                            additional_permissions: None,
+                            skill_metadata: None,
+                            available_decisions: Some(vec![
+                                ReviewDecision::Approved,
+                                ReviewDecision::Abort,
+                            ]),
+                            parsed_cmd: vec![ParsedCommand::Unknown {
+                                cmd: format!("/bin/zsh -lc '{shell_command}'"),
+                            }],
+                        },
+                    )
+                    .await?;
+
+                assert!(
+                    message_rx.try_recv().is_err(),
+                    "shell-wrapped runtime actor cli command should not open a permission request"
+                );
+                let requests = client.permission_requests.lock().unwrap();
+                assert!(
+                    requests.is_empty(),
+                    "shell-wrapped runtime actor cli command should bypass permission prompt"
+                );
+
+                let ops = thread.ops.lock().unwrap();
+                assert!(matches!(
+                    ops.last(),
+                    Some(Op::ExecApproval {
+                        id,
+                        turn_id,
+                        decision: ReviewDecision::Approved,
+                    }) if id == "approval-id" && turn_id.as_deref() == Some("turn-id")
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_bare_agenthub_on_matching_path() -> anyhow::Result<()>
+    {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let temp_dir =
+            std::env::temp_dir().join(format!("agenthub-codex-acp-path-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)?;
+        let linked_agenthub = temp_dir.join("agenthub");
+        create_runtime_actor_cli_test_symlink(&runtime_actor_cli_path, &linked_agenthub)?;
+        let path_env = std::ffi::OsString::from(temp_dir.as_os_str());
+
+        let matched = command_has_runtime_actor_cli_prefix_with_env(
+            &["agenthub", "actor", "inbox"],
+            runtime_actor_cli_path.as_path(),
+            Some(path_env.as_os_str()),
+            None,
+        );
+
+        drop(std::fs::remove_file(&linked_agenthub));
+        drop(std::fs::remove_dir(&temp_dir));
+
+        assert!(
+            matched,
+            "bare agenthub actor should match when PATH resolves to the runtime binary"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_rejects_bare_agenthub_without_matching_path() {
+        let runtime_actor_cli_path =
+            std::env::current_exe().expect("resolve current test binary path");
+        let path_env = std::ffi::OsString::from("/definitely/not/the/runtime/path");
+
+        assert!(
+            !command_has_runtime_actor_cli_prefix_with_env(
+                &["agenthub", "actor", "inbox"],
+                runtime_actor_cli_path.as_path(),
+                Some(path_env.as_os_str()),
+                None,
+            ),
+            "bare agenthub actor should not match without a PATH entry that resolves to the runtime binary"
+        );
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_rejects_shell_wrapped_compound_command() -> anyhow::Result<()>
+    {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let actor_cli = runtime_actor_cli_path.to_string_lossy().to_string();
+        let command = vec![
+            "/bin/zsh".to_string(),
+            "-lc".to_string(),
+            format!("{actor_cli} actor inbox && curl https://example.com"),
+        ];
+        assert!(
+            !matches_runtime_actor_cli_command(&command, runtime_actor_cli_path.as_path()),
+            "compound shell commands must not bypass permission approval"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_shell_wrapped_single_command_with_quoted_text()
+    -> anyhow::Result<()> {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let actor_cli = runtime_actor_cli_path.to_string_lossy().to_string();
+        let command = vec![
+            "/bin/zsh".to_string(),
+            "-lc".to_string(),
+            format!("{actor_cli} actor send --channel-id all --text 'literal ; && | text'"),
+        ];
+        assert!(
+            matches_runtime_actor_cli_command(&command, runtime_actor_cli_path.as_path()),
+            "quoted shell arguments should remain eligible for auto approval"
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_runtime_actor_cli_matcher_accepts_bare_agenthub_with_matching_pathext()
+    -> anyhow::Result<()> {
+        let runtime_actor_cli_path = std::env::current_exe()?;
+        let temp_dir =
+            std::env::temp_dir().join(format!("agenthub-codex-acp-winpath-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)?;
+        let linked_agenthub = temp_dir.join("agenthub.exe");
+        create_runtime_actor_cli_test_symlink(&runtime_actor_cli_path, &linked_agenthub)?;
+        let path_env = std::ffi::OsString::from(temp_dir.as_os_str());
+        let path_ext_env = std::ffi::OsString::from(".EXE;.BAT;.CMD");
+
+        let matched = command_has_runtime_actor_cli_prefix_with_env(
+            &["agenthub", "actor", "inbox"],
+            runtime_actor_cli_path.as_path(),
+            Some(path_env.as_os_str()),
+            Some(path_ext_env.as_os_str()),
+        );
+
+        drop(std::fs::remove_file(&linked_agenthub));
+        drop(std::fs::remove_dir(&temp_dir));
+
+        assert!(
+            matched,
+            "bare agenthub actor should match when PATHEXT resolves to the runtime binary"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn create_runtime_actor_cli_test_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(source, target)
+    }
+
+    #[cfg(windows)]
+    fn create_runtime_actor_cli_test_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_file(source, target)
     }
 
     #[tokio::test]

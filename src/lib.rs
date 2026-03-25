@@ -9,6 +9,8 @@ mod agenthub_binary;
 mod api;
 mod app;
 mod auth;
+mod cli_error;
+mod doctor_cli;
 pub use agenthub_config as config;
 pub use agenthub_db as db;
 mod internal;
@@ -20,3 +22,4 @@ mod team;
 mod web;
 
 pub use app::run;
+pub use cli_error::report_cli_error;
