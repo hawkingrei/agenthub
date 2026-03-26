@@ -193,8 +193,8 @@ function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextC
   return toneWindow.AudioContext ?? toneWindow.webkitAudioContext ?? null;
 }
 
-function closePermissionToneAudioContext(context: PermissionToneAudioContext): void {
-  if (!context.close) {
+function closePermissionToneAudioContext(context: PermissionToneAudioContext | null): void {
+  if (!context?.close) {
     return;
   }
   void context.close().catch(() => {});
