@@ -357,7 +357,7 @@ fn select_subordinate_reviewer<'a>(
             Some((member_id, role))
         })
         .find_map(|(member_id, role)| {
-            if member_id == requester_actor_id {
+            if member_id == requester_actor_id || member_id == leader_member_id {
                 return None;
             }
             if role.as_deref() == Some("worker") {
@@ -463,6 +463,26 @@ mod tests {
             build_permission_review_summary(&request),
             "worker-1 requests permission to execute mcp__fs__read."
         );
+    }
+
+    #[test]
+    fn worker_request_skips_leader_even_if_leader_member_role_is_misconfigured_as_worker() {
+        let spec = json!({
+            "entrypoint":"leader",
+            "leader_member_id":"leader",
+            "members":[
+                {"member_id":"leader","role":"worker"},
+                {"member_id":"reviewer","role":"worker"},
+                {"member_id":"worker","role":"worker"}
+            ]
+        });
+
+        let (reviewer, dispatch_status) =
+            resolve_team_permission_review_target(&spec, "worker", "worker")
+                .expect("resolve reviewer");
+
+        assert_eq!(reviewer, "reviewer");
+        assert_eq!(dispatch_status, "worker_dispatched");
     }
 
     #[tokio::test]
