@@ -224,6 +224,32 @@ All configuration options can be overridden via environment variables:
 | `AGENTHUB_ALL_PROXY` | `proxy.all` |
 | `AGENTHUB_VAPID_SUBJECT` | `push.subject` |
 
+## Pyroscope Profiling
+
+Continuous profiling is an operational opt-in and currently uses environment variables instead of
+`~/.agenthub/config.toml`.
+
+AgentHub starts a process-wide Pyroscope profiler only when all three variables are present with
+non-empty values:
+
+- `PYROSCOPE_SERVER_ADDRESS`
+- `PYROSCOPE_BASIC_AUTH_USER`
+- `PYROSCOPE_BASIC_AUTH_PASSWORD`
+
+If only part of the configuration is present, AgentHub logs a warning and continues without
+profiling.
+
+Example:
+
+```bash
+export PYROSCOPE_SERVER_ADDRESS="https://pyroscope.example.com"
+export PYROSCOPE_BASIC_AUTH_USER="agenthub"
+export PYROSCOPE_BASIC_AUTH_PASSWORD="super-secret"
+agenthub
+```
+
+The current bootstrap uses the fixed application name `agenthub.server`.
+
 ## Safe Paths
 
 The `safe_paths` array defines which directories agents can access:
