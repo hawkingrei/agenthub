@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v0.1.0)'
+        description: 'Version tag to release (for example v0.1.0 or preview-2026-03-26)'
         required: true
-        default: 'v0.1.0'
+      confirm_create_release_tag:
+        description: 'Required when workflow_dispatch creates a new semver-looking tag'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -65,12 +69,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev protobuf-compiler
-
-      - name: Install dependencies (macOS)
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          brew install protobuf
+          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -170,8 +169,23 @@ jobs:
           TAG_VERSION="${{ github.event.inputs.version || github.ref_name }}"
           ASSET_VERSION="${TAG_VERSION#v}"
           PRERELEASE=false
+          IS_SEMVER_TAG=false
+          TAG_EXISTS=false
           if [[ "${TAG_VERSION}" == *alpha* || "${TAG_VERSION}" == *beta* || "${TAG_VERSION}" == *rc* ]]; then
             PRERELEASE=true
+          fi
+          if [[ "${TAG_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.].+)?$ ]]; then
+            IS_SEMVER_TAG=true
+          fi
+          if git ls-remote --tags origin "refs/tags/${TAG_VERSION}" | grep -q "refs/tags/${TAG_VERSION}$"; then
+            TAG_EXISTS=true
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" \
+             && "${IS_SEMVER_TAG}" == "true" \
+             && "${TAG_EXISTS}" != "true" \
+             && "${{ github.event.inputs.confirm_create_release_tag || 'false' }}" != "true" ]]; then
+            echo "::error::Manual release would create a new semver tag (${TAG_VERSION}) from ${GITHUB_SHA}. Re-run with confirm_create_release_tag=true or use a preview tag."
+            exit 1
           fi
           echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           echo "asset_version=${ASSET_VERSION}" >> "$GITHUB_OUTPUT"
