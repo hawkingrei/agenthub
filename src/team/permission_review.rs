@@ -75,7 +75,7 @@ impl TeamPermissionReviewDispatcher {
             .unwrap_or("");
         let team = self.teams.get_team(team_id).await?;
         let (review_target_actor_id, dispatch_status) =
-            resolve_review_target(&team.spec, requester_actor_id, requester_role)?;
+            resolve_team_permission_review_target(&team.spec, requester_actor_id, requester_role)?;
 
         let (task_id, conversation_id) = self
             .teams
@@ -279,7 +279,7 @@ fn build_permission_review_payload(
     })
 }
 
-fn resolve_review_target(
+pub(crate) fn resolve_team_permission_review_target(
     spec: &Value,
     requester_actor_id: &str,
     requester_role: &str,
@@ -293,7 +293,16 @@ fn resolve_review_target(
             .ok_or_else(|| anyhow::anyhow!("team has no subordinate reviewer configured"))?;
         return Ok((reviewer.to_string(), "worker_dispatched"));
     }
-    Ok((leader_member_id.to_string(), "leader_dispatched"))
+    if let Some(reviewer) = select_subordinate_reviewer(spec, leader_member_id, requester_actor_id)
+    {
+        return Ok((reviewer.to_string(), "worker_dispatched"));
+    }
+    if leader_member_id != requester_actor_id {
+        return Ok((leader_member_id.to_string(), "leader_dispatched"));
+    }
+    Err(anyhow::anyhow!(
+        "team has no non-requester reviewer configured"
+    ))
 }
 
 fn team_leader_member_id(spec: &Value) -> Option<&str> {
@@ -457,7 +466,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatches_worker_permission_to_leader_and_can_fallback_to_human_review() {
+    async fn dispatches_worker_permission_to_peer_worker_before_human_review() {
         let state = build_test_state().await;
         let team = state
             .teams
@@ -469,6 +478,7 @@ mod tests {
                     "leader_member_id":"leader",
                     "members":[
                         {"member_id":"leader","role":"leader"},
+                        {"member_id":"reviewer","role":"worker"},
                         {"member_id":"worker","role":"worker"}
                     ]
                 }),
@@ -589,9 +599,10 @@ mod tests {
             .await
             .expect("load permission record")
             .expect("permission record");
+        assert_eq!(record.review_target_actor_id.as_deref(), Some("reviewer"));
         assert_eq!(
             record.review_dispatch_status.as_deref(),
-            Some("leader_dispatched")
+            Some("worker_dispatched")
         );
         let run_id = record
             .review_delivery_run_id
@@ -604,13 +615,13 @@ mod tests {
             .actor_mailbox_service()
             .actor_inbox(ActorInboxRequest {
                 run_id: run_id.clone(),
-                actor_id: "leader".to_string(),
+                actor_id: "reviewer".to_string(),
                 cursor: None,
                 limit: Some(20),
                 states: None,
             })
             .await
-            .expect("load leader inbox");
+            .expect("load reviewer inbox");
         assert_eq!(inbox.messages.len(), 1);
         assert_eq!(
             inbox.messages[0].payload["type"],

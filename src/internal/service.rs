@@ -16,6 +16,7 @@ use crate::state::AppState;
 use crate::team::{
     TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
     TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    resolve_team_permission_review_target,
 };
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
@@ -711,26 +712,25 @@ impl TeamInternalControl for TeamInternalControlService {
             .get_team(team_id)
             .await
             .map_err(map_manager_error)?;
-        let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
-        let worker_originated_request = record
-            .requester_role
-            .as_deref()
-            .is_some_and(|role| role.eq_ignore_ascii_case("worker"));
         let active_reviewer =
-            record
-                .review_target_actor_id
-                .as_deref()
-                .or(if worker_originated_request {
-                    Some(leader_member_id.as_str())
-                } else {
-                    None
-                });
-        if active_reviewer != Some(actor_id) {
-            return Err(Status::permission_denied(if worker_originated_request {
-                "leader is the only reviewer for worker-originated permission requests"
+            if let Some(review_target_actor_id) = record.review_target_actor_id.as_deref() {
+                Some(review_target_actor_id.to_string())
             } else {
-                "current actor is not the active reviewer for this permission request"
-            }));
+                let requester_actor_id = record.requester_actor_id.as_deref().ok_or_else(|| {
+                    Status::failed_precondition("permission request is missing requester actor")
+                })?;
+                resolve_team_permission_review_target(
+                    &team.spec,
+                    requester_actor_id,
+                    record.requester_role.as_deref().unwrap_or_default(),
+                )
+                .map(|(reviewer, _)| reviewer)
+                .ok()
+            };
+        if active_reviewer.as_deref() != Some(actor_id) {
+            return Err(Status::permission_denied(
+                "current actor is not the active reviewer for this permission request",
+            ));
         }
 
         let option_id = optional_trimmed(payload.option_id.as_str()).map(str::to_string);
@@ -2636,6 +2636,84 @@ mod tests {
         assert_eq!(response.status, "ok");
         assert_eq!(response.request_status, "responded");
         assert_eq!(response.reviewed_by_actor_id, "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_accepts_legacy_team_peer_worker_fallback() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("internal-grpc-legacy-peer-worker-{}", Uuid::new_v4()),
+                description: Some("legacy team peer worker fallback".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"requester","role":"worker"},
+                        {"member_id":"reviewer","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create legacy peer-worker team");
+        let run = state
+            .teams
+            .create_run(
+                &team.id,
+                Some("ctx-internal-grpc-legacy-peer-worker"),
+                json!({"prompt":"validate legacy peer worker fallback"}),
+            )
+            .await
+            .expect("create test run");
+        let authz = build_authz();
+        let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
+        let service = TeamInternalControlService::new(
+            state.clone(),
+            authz,
+            super::InternalGrpcSecurityMode::Disabled,
+            std::env::temp_dir(),
+            "bootstrap-token".to_string(),
+        );
+        let now = chrono::Utc::now().timestamp();
+        seed_permission_review_request(
+            &state,
+            &run,
+            PermissionReviewSeed {
+                request_id: "perm-legacy-peer-worker-1",
+                agent_id: "legacy-peer-worker-agent",
+                session_id: "legacy-peer-worker-session",
+                acp_session_id: "acp-session-legacy-peer-worker-1",
+                requester_actor_id: "requester",
+                requester_role: "worker",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-legacy-peer-worker-1",
+                status: "pending",
+            },
+            now,
+        )
+        .await;
+
+        let response = TeamInternalControl::respond_permission_review(
+            &service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: run.team_id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    permission_id: "perm-legacy-peer-worker-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("respond permission review")
+        .into_inner();
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.request_status, "responded");
+        assert_eq!(response.reviewed_by_actor_id, "reviewer");
     }
 
     #[tokio::test]
