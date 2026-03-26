@@ -16,6 +16,7 @@ use crate::state::AppState;
 use crate::team::{
     TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
     TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    resolve_team_permission_review_target,
 };
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
@@ -711,26 +712,31 @@ impl TeamInternalControl for TeamInternalControlService {
             .get_team(team_id)
             .await
             .map_err(map_manager_error)?;
-        let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
-        let worker_originated_request = record
-            .requester_role
-            .as_deref()
-            .is_some_and(|role| role.eq_ignore_ascii_case("worker"));
         let active_reviewer =
-            record
-                .review_target_actor_id
-                .as_deref()
-                .or(if worker_originated_request {
-                    Some(leader_member_id.as_str())
-                } else {
-                    None
-                });
-        if active_reviewer != Some(actor_id) {
-            return Err(Status::permission_denied(if worker_originated_request {
-                "leader is the only reviewer for worker-originated permission requests"
+            if let Some(review_target_actor_id) = record.review_target_actor_id.as_deref() {
+                Some(review_target_actor_id.to_string())
             } else {
-                "current actor is not the active reviewer for this permission request"
-            }));
+                let requester_actor_id = record.requester_actor_id.as_deref().ok_or_else(|| {
+                    Status::failed_precondition("permission request is missing requester actor")
+                })?;
+                Some(
+                    resolve_team_permission_review_target(
+                        &team.spec,
+                        requester_actor_id,
+                        record.requester_role.as_deref().unwrap_or_default(),
+                    )
+                    .map(|(reviewer, _)| reviewer)
+                    .map_err(|err| {
+                        Status::failed_precondition(format!(
+                            "failed to resolve active reviewer for permission request: {err}"
+                        ))
+                    })?,
+                )
+            };
+        if active_reviewer.as_deref() != Some(actor_id) {
+            return Err(Status::permission_denied(
+                "current actor is not the active reviewer for this permission request",
+            ));
         }
 
         let option_id = optional_trimmed(payload.option_id.as_str()).map(str::to_string);
@@ -1546,7 +1552,7 @@ fn security_mode_to_str(mode: InternalGrpcSecurityMode) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
     use sqlx::Row;
     use tonic::{Code, Request, metadata::MetadataValue};
     use uuid::Uuid;
@@ -1633,10 +1639,23 @@ mod tests {
             .expect("create test run")
     }
 
-    async fn create_permission_review_run(
+    fn default_permission_review_team_spec() -> Value {
+        json!({
+            "entrypoint":"planner",
+            "leader_member_id":"planner",
+            "members":[
+                {"member_id":"planner","role":"leader"},
+                {"member_id":"reviewer","role":"worker"},
+                {"member_id":"observer","role":"worker"}
+            ]
+        })
+    }
+
+    async fn create_permission_review_run_with_spec(
         state: &crate::state::AppState,
         name_suffix: &str,
         prompt: &str,
+        spec: Value,
     ) -> crate::team::TeamRunRecord {
         let context_id = format!("ctx-internal-grpc-{name_suffix}");
         let team = state
@@ -1644,15 +1663,7 @@ mod tests {
             .create_team(TeamDefinitionConfig {
                 name: format!("internal-grpc-{name_suffix}-{}", Uuid::new_v4()),
                 description: Some(format!("{name_suffix} permission review test")),
-                spec: json!({
-                    "entrypoint":"planner",
-                    "leader_member_id":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"leader"},
-                        {"member_id":"reviewer","role":"worker"},
-                        {"member_id":"observer","role":"worker"}
-                    ]
-                }),
+                spec,
             })
             .await
             .expect("create permission review team");
@@ -1687,14 +1698,17 @@ mod tests {
         status: &'a str,
     }
 
-    async fn setup_permission_review_fixture(
+    async fn setup_permission_review_fixture_with_spec(
         name_suffix: &str,
         prompt: &str,
+        spec: Value,
+        token_role: InternalRole,
+        token_actor_id: &str,
     ) -> PermissionReviewFixture {
         let state = build_test_state().await;
-        let run = create_permission_review_run(&state, name_suffix, prompt).await;
+        let run = create_permission_review_run_with_spec(&state, name_suffix, prompt, spec).await;
         let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Worker, Some("observer"), None);
+        let token = issue_token(&authz, token_role, Some(token_actor_id), None);
         let service = TeamInternalControlService::new(
             state.clone(),
             authz,
@@ -1709,6 +1723,20 @@ mod tests {
             token,
             now: chrono::Utc::now().timestamp(),
         }
+    }
+
+    async fn setup_permission_review_fixture(
+        name_suffix: &str,
+        prompt: &str,
+    ) -> PermissionReviewFixture {
+        setup_permission_review_fixture_with_spec(
+            name_suffix,
+            prompt,
+            default_permission_review_team_spec(),
+            InternalRole::Worker,
+            "observer",
+        )
+        .await
     }
 
     async fn seed_permission_review_request(
@@ -2507,126 +2535,50 @@ mod tests {
 
     #[tokio::test]
     async fn internal_grpc_permission_review_respond_accepts_legacy_team_leader_fallback() {
-        let state = build_test_state().await;
-        let team = state
-            .teams
-            .create_team(TeamDefinitionConfig {
-                name: format!("internal-grpc-legacy-leader-{}", Uuid::new_v4()),
-                description: Some("legacy team leader fallback".to_string()),
-                spec: json!({
-                    "entrypoint":"planner",
-                    "members":[
-                        {"member_id":"planner","role":"leader"},
-                        {"member_id":"reviewer","role":"worker"}
-                    ]
-                }),
-            })
-            .await
-            .expect("create legacy team");
-        let run = state
-            .teams
-            .create_run(
-                &team.id,
-                Some("ctx-internal-grpc-legacy-mailbox"),
-                json!({"prompt":"validate legacy leader fallback"}),
-            )
-            .await
-            .expect("create test run");
-        let authz = build_authz();
-        let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
-        let service = TeamInternalControlService::new(
-            state.clone(),
-            authz,
-            super::InternalGrpcSecurityMode::Disabled,
-            std::env::temp_dir(),
-            "bootstrap-token".to_string(),
-        );
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agents (
-                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
-            "#,
+        let fixture = setup_permission_review_fixture_with_spec(
+            "legacy-leader-fallback",
+            "validate legacy leader fallback",
+            json!({
+                "entrypoint":"planner",
+                "leader_member_id":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+            InternalRole::Leader,
+            "planner",
         )
-        .bind("legacy-worker-agent")
-        .bind("legacy-worker-agent")
-        .bind("/tmp")
-        .bind("agenthub-codex-acp")
-        .bind("[]")
-        .bind("use_existing")
-        .bind(now)
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert worker agent");
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
-            VALUES (?1, ?2, 'running', ?3, NULL)
-            "#,
+        .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            PermissionReviewSeed {
+                request_id: "perm-legacy-leader-1",
+                agent_id: "legacy-worker-agent",
+                session_id: "legacy-worker-session",
+                acp_session_id: "acp-session-legacy-1",
+                requester_actor_id: "reviewer",
+                requester_role: "worker",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-legacy-1",
+                status: "pending",
+            },
+            fixture.now,
         )
-        .bind("legacy-worker-session")
-        .bind("legacy-worker-agent")
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert worker session");
-        sqlx::query(
-            r#"
-            INSERT INTO acp_permission_requests (
-                id,
-                agent_id,
-                session_id,
-                acp_session_id,
-                team_id,
-                requester_actor_id,
-                requester_role,
-                tool_call_id,
-                options_json,
-                tool_call_json,
-                status,
-                created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
-            "#,
-        )
-        .bind("perm-legacy-leader-1")
-        .bind("legacy-worker-agent")
-        .bind("legacy-worker-session")
-        .bind("acp-session-legacy-1")
-        .bind(&run.team_id)
-        .bind("reviewer")
-        .bind("worker")
-        .bind("tool-call-legacy-1")
-        .bind(
-            json!([
-                {
-                    "option_id": "allow",
-                    "name": "Allow once",
-                    "kind": "allow_once"
-                }
-            ])
-            .to_string(),
-        )
-        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
-        .bind(now)
-        .execute(&state.db)
-        .await
-        .expect("insert permission request");
+        .await;
 
         let response = TeamInternalControl::respond_permission_review(
-            &service,
+            &fixture.service,
             authenticated_request(
                 RespondPermissionReviewRequest {
-                    team_id: run.team_id.clone(),
+                    team_id: fixture.run.team_id.clone(),
                     actor_id: "planner".to_string(),
                     permission_id: "perm-legacy-leader-1".to_string(),
                     option_id: "allow".to_string(),
                     outcome: String::new(),
                 },
-                &token,
+                &fixture.token,
             ),
         )
         .await
@@ -2636,6 +2588,122 @@ mod tests {
         assert_eq!(response.status, "ok");
         assert_eq!(response.request_status, "responded");
         assert_eq!(response.reviewed_by_actor_id, "planner");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_accepts_legacy_team_peer_worker_fallback() {
+        let fixture = setup_permission_review_fixture_with_spec(
+            "legacy-peer-worker-fallback",
+            "validate legacy peer worker fallback",
+            json!({
+                "entrypoint":"planner",
+                "leader_member_id":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"requester","role":"worker"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+            InternalRole::Worker,
+            "reviewer",
+        )
+        .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            PermissionReviewSeed {
+                request_id: "perm-legacy-peer-worker-1",
+                agent_id: "legacy-peer-worker-agent",
+                session_id: "legacy-peer-worker-session",
+                acp_session_id: "acp-session-legacy-peer-worker-1",
+                requester_actor_id: "requester",
+                requester_role: "worker",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-legacy-peer-worker-1",
+                status: "pending",
+            },
+            fixture.now,
+        )
+        .await;
+
+        let response = TeamInternalControl::respond_permission_review(
+            &fixture.service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: fixture.run.team_id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    permission_id: "perm-legacy-peer-worker-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &fixture.token,
+            ),
+        )
+        .await
+        .expect("respond permission review")
+        .into_inner();
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.request_status, "responded");
+        assert_eq!(response.reviewed_by_actor_id, "reviewer");
+    }
+
+    #[tokio::test]
+    async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolution_errors() {
+        let fixture = setup_permission_review_fixture_with_spec(
+            "legacy-reviewer-resolution-error",
+            "validate legacy reviewer resolution errors",
+            json!({
+                "entrypoint":"reviewer",
+                "leader_member_id":"reviewer",
+                "members":[
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+            InternalRole::Worker,
+            "reviewer",
+        )
+        .await;
+        seed_permission_review_request(
+            &fixture.state,
+            &fixture.run,
+            PermissionReviewSeed {
+                request_id: "perm-legacy-resolution-error-1",
+                agent_id: "legacy-resolution-error-agent",
+                session_id: "legacy-resolution-error-session",
+                acp_session_id: "acp-session-legacy-resolution-error-1",
+                requester_actor_id: "removed-planner",
+                requester_role: "leader",
+                review_target_actor_id: None,
+                tool_call_id: "tool-call-legacy-resolution-error-1",
+                status: "pending",
+            },
+            fixture.now,
+        )
+        .await;
+
+        let err = TeamInternalControl::respond_permission_review(
+            &fixture.service,
+            authenticated_request(
+                RespondPermissionReviewRequest {
+                    team_id: fixture.run.team_id.clone(),
+                    actor_id: "reviewer".to_string(),
+                    permission_id: "perm-legacy-resolution-error-1".to_string(),
+                    option_id: "allow".to_string(),
+                    outcome: String::new(),
+                },
+                &fixture.token,
+            ),
+        )
+        .await
+        .expect_err("legacy reviewer resolution should fail");
+
+        assert_eq!(err.code(), tonic::Code::FailedPrecondition);
+        assert!(
+            err.message()
+                .contains("failed to resolve active reviewer for permission request"),
+            "unexpected error message: {err}"
+        );
     }
 
     #[tokio::test]

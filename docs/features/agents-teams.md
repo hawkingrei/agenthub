@@ -110,12 +110,15 @@ terminology and operating expectations drift.
   - injected loop prompts are follow-up nudges for the current task, not new human intent
   - enabling/disabling or updating loop settings must not block normal Team profile/task flows
 - Team ACP permission review is mailbox-first:
-  - worker-originated ACP permission requests route to leader first
+  - worker-originated ACP permission requests should prefer a non-requester agent reviewer first;
+    if another worker is available, route there before falling back to leader
   - leader-originated ACP permission requests route to an automatically selected subordinate worker reviewer
   - requester must never review its own request; only the current automatically assigned reviewer should see the approval action
   - approval/rejection should be treated as ACP-side review control flow rather than normal peer mailbox work
   - if agent review is unavailable or times out, the system posts a human-review request into
     `Conversation` (`all`)
+  - when a new human-review card lands in the Team conversation UI, the browser should emit a
+    short local alert tone so the operator notices the fallback immediately
   - human review stays valid in parallel and must not block the original Team workflow
 
 MCP enforcement baseline:

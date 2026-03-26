@@ -25,6 +25,7 @@ pub use manager::{
     TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings, TeamRuntimeRecord,
     TeamRuntimeStatus,
 };
+pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
 };
