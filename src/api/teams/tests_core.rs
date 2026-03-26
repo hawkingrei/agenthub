@@ -5079,6 +5079,146 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
 }
 
 #[tokio::test]
+async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_length() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "detail-ref-object-team".to_string(),
+            description: Some("detail_ref object normalization coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Object detail_ref normalization".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let long_text = format!("Summary {}", "x".repeat(400));
+    let Json(message) = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text": long_text,
+                "detail_ref": {
+                    "uri":" artifact://team/detail-1 ",
+                    "label":" full evidence ",
+                    "kind":" artifact ",
+                    "content_type":" application/json ",
+                    "ignored":["nested"]
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send normalized detail_ref message");
+
+    let summary = message.payload["summary"]
+        .as_str()
+        .expect("summary should be injected");
+    assert_eq!(summary.chars().count(), 240);
+    assert!(summary.ends_with("..."));
+    assert_eq!(
+        message.payload["detail_ref"],
+        json!({
+            "uri":"artifact://team/detail-1",
+            "label":"full evidence",
+            "kind":"artifact",
+            "content_type":"application/json"
+        })
+    );
+}
+
+#[tokio::test]
+async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_injection() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "invalid-detail-ref-object-team".to_string(),
+            description: Some("invalid detail_ref object coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Invalid detail_ref object".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(message) = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"short evidence summary",
+                "detail_ref": {
+                    "uri":"   ",
+                    "label":" full evidence "
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send invalid detail_ref message");
+
+    let payload = message
+        .payload
+        .as_object()
+        .expect("message payload should remain an object");
+    assert!(!payload.contains_key("detail_ref"));
+    assert!(!payload.contains_key("summary"));
+}
+
+#[tokio::test]
 async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

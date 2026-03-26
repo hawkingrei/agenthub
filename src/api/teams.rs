@@ -2302,17 +2302,16 @@ fn normalize_task_message_detail_ref(payload_obj: &mut Map<String, Value>) {
         return;
     };
     let normalized = match detail_ref_value {
-        Value::String(uri) => {
-            let trimmed_uri = uri.trim();
-            if trimmed_uri.is_empty() {
-                None
-            } else {
-                let mut detail_ref = Map::new();
-                detail_ref.insert("uri".to_string(), Value::String(trimmed_uri.to_string()));
-                Some(Value::Object(detail_ref))
-            }
-        }
-        Value::Object(_) => Some(detail_ref_value),
+        Value::String(uri) => normalize_task_message_detail_ref_object(&uri, None, None, None),
+        Value::Object(detail_ref_obj) => normalize_task_message_detail_ref_object(
+            detail_ref_obj
+                .get("uri")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            detail_ref_obj.get("label").and_then(Value::as_str),
+            detail_ref_obj.get("kind").and_then(Value::as_str),
+            detail_ref_obj.get("content_type").and_then(Value::as_str),
+        ),
         _ => None,
     };
     match normalized {
@@ -2323,6 +2322,36 @@ fn normalize_task_message_detail_ref(payload_obj: &mut Map<String, Value>) {
             payload_obj.remove("detail_ref");
         }
     }
+}
+
+fn normalize_task_message_detail_ref_object(
+    uri: &str,
+    label: Option<&str>,
+    kind: Option<&str>,
+    content_type: Option<&str>,
+) -> Option<Value> {
+    let trimmed_uri = uri.trim();
+    if trimmed_uri.is_empty() {
+        return None;
+    }
+    let mut detail_ref = Map::new();
+    detail_ref.insert("uri".to_string(), Value::String(trimmed_uri.to_string()));
+    if let Some(label) = label.map(str::trim).filter(|value| !value.is_empty()) {
+        detail_ref.insert("label".to_string(), Value::String(label.to_string()));
+    }
+    if let Some(kind) = kind.map(str::trim).filter(|value| !value.is_empty()) {
+        detail_ref.insert("kind".to_string(), Value::String(kind.to_string()));
+    }
+    if let Some(content_type) = content_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        detail_ref.insert(
+            "content_type".to_string(),
+            Value::String(content_type.to_string()),
+        );
+    }
+    Some(Value::Object(detail_ref))
 }
 
 fn ensure_task_message_summary(payload_obj: &mut Map<String, Value>) {
@@ -2353,19 +2382,17 @@ fn ensure_task_message_summary(payload_obj: &mut Map<String, Value>) {
 }
 
 fn truncate_task_message_summary(value: &str) -> String {
-    let mut out = String::new();
-    let mut chars = value.chars();
-    for _ in 0..TEAM_MESSAGE_SUMMARY_MAX_CHARS {
-        let Some(ch) = chars.next() else {
-            return value.to_string();
-        };
+    if value.chars().count() <= TEAM_MESSAGE_SUMMARY_MAX_CHARS {
+        return value.to_string();
+    }
+    const ELLIPSIS: &str = "...";
+    let prefix_len = TEAM_MESSAGE_SUMMARY_MAX_CHARS.saturating_sub(ELLIPSIS.chars().count());
+    let mut out = String::with_capacity(TEAM_MESSAGE_SUMMARY_MAX_CHARS);
+    for ch in value.chars().take(prefix_len) {
         out.push(ch);
     }
-    if chars.next().is_some() {
-        out.push_str("...");
-        return out;
-    }
-    value.to_string()
+    out.push_str(ELLIPSIS);
+    out
 }
 
 #[derive(Debug)]
