@@ -79,6 +79,7 @@ const TEAM_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
 const DEFAULT_TEAM_TASK_ACCEPTANCE_CRITERION: &str =
     "All assigned steps complete and leader synthesis is delivered.";
 const TEAM_TASK_COMPILE_MAX_LIST_ITEMS: usize = 32;
+const TEAM_MESSAGE_SUMMARY_MAX_CHARS: usize = 240;
 const TEAM_MEMORY_FLUSH_TRIGGER_VALUES: [&str; 3] = ["manual", "soft_threshold", "hard_error"];
 const TEAM_TASK_COMPILE_MAX_TEXT_LEN: usize = 280;
 const TEAM_TASK_COMPILE_MAX_DEADLINE_LEN: usize = 40;
@@ -812,10 +813,16 @@ async fn send_team_task_message(
         .filter(|value| !value.is_empty())
         .map(|raw| normalize_task_actor_id(raw, "to_actor_id", &user))
         .transpose()?;
-    let route = normalize_conversation_route(route.as_deref())?;
+    let route = infer_task_message_route(
+        &actor_scope,
+        route.as_deref(),
+        to_actor_id.as_deref(),
+        &payload,
+    )?;
     validate_task_message_sender(&actor_scope, &from_actor_id)?;
-    let resolved_to_actor_id = resolve_task_message_target(&actor_scope, &route, to_actor_id)?;
-    let payload = ensure_task_message_correlation_id(payload);
+    let resolved_to_actor_id =
+        resolve_task_message_target(&actor_scope, &route, to_actor_id, &payload)?;
+    let payload = ensure_task_message_correlation_id(normalize_task_message_payload(payload));
     let message = state
         .teams
         .append_task_conversation_message(
@@ -2199,6 +2206,30 @@ fn normalize_conversation_route(value: Option<&str>) -> Result<String, ApiError>
     )
 }
 
+fn infer_task_message_route(
+    actor_scope: &TaskActorScope,
+    requested_route: Option<&str>,
+    to_actor_id: Option<&str>,
+    payload: &Value,
+) -> Result<String, ApiError> {
+    if requested_route.is_some() {
+        return normalize_conversation_route(requested_route);
+    }
+    if let Some(to_actor_id) = to_actor_id.map(str::trim).filter(|value| !value.is_empty()) {
+        if actor_scope.leader_member_id.as_deref() == Some(to_actor_id) {
+            return Ok("to_leader".to_string());
+        }
+        return Ok("to_member".to_string());
+    }
+    let Some(target_actor_id) = infer_single_task_message_target(actor_scope, payload) else {
+        return Ok("group_chat".to_string());
+    };
+    if actor_scope.leader_member_id.as_deref() == Some(target_actor_id.as_str()) {
+        return Ok("to_leader".to_string());
+    }
+    Ok("to_member".to_string())
+}
+
 fn canonical_user_actor_id(user: &UserRecord) -> String {
     format!("{TEAM_SPECIAL_USER_ACTOR_PREFIX}{}", user.id)
 }
@@ -2257,6 +2288,86 @@ fn ensure_task_message_correlation_id(payload: Value) -> Value {
     Value::Object(payload_obj)
 }
 
+fn normalize_task_message_payload(payload: Value) -> Value {
+    let Value::Object(mut payload_obj) = payload else {
+        return payload;
+    };
+    normalize_task_message_detail_ref(&mut payload_obj);
+    ensure_task_message_summary(&mut payload_obj);
+    Value::Object(payload_obj)
+}
+
+fn normalize_task_message_detail_ref(payload_obj: &mut Map<String, Value>) {
+    let Some(detail_ref_value) = payload_obj.get("detail_ref").cloned() else {
+        return;
+    };
+    let normalized = match detail_ref_value {
+        Value::String(uri) => {
+            let trimmed_uri = uri.trim();
+            if trimmed_uri.is_empty() {
+                None
+            } else {
+                let mut detail_ref = Map::new();
+                detail_ref.insert("uri".to_string(), Value::String(trimmed_uri.to_string()));
+                Some(Value::Object(detail_ref))
+            }
+        }
+        Value::Object(_) => Some(detail_ref_value),
+        _ => None,
+    };
+    match normalized {
+        Some(value) => {
+            payload_obj.insert("detail_ref".to_string(), value);
+        }
+        None => {
+            payload_obj.remove("detail_ref");
+        }
+    }
+}
+
+fn ensure_task_message_summary(payload_obj: &mut Map<String, Value>) {
+    if !payload_obj.contains_key("detail_ref") {
+        return;
+    }
+    if payload_obj
+        .get("summary")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return;
+    }
+    let summary_source = payload_obj
+        .get("text")
+        .and_then(Value::as_str)
+        .or_else(|| payload_obj.get("result").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let Some(summary_source) = summary_source else {
+        return;
+    };
+    payload_obj.insert(
+        "summary".to_string(),
+        Value::String(truncate_task_message_summary(summary_source)),
+    );
+}
+
+fn truncate_task_message_summary(value: &str) -> String {
+    let mut out = String::new();
+    let mut chars = value.chars();
+    for _ in 0..TEAM_MESSAGE_SUMMARY_MAX_CHARS {
+        let Some(ch) = chars.next() else {
+            return value.to_string();
+        };
+        out.push(ch);
+    }
+    if chars.next().is_some() {
+        out.push_str("...");
+        return out;
+    }
+    value.to_string()
+}
+
 #[derive(Debug)]
 struct TaskActorScope {
     user_actor_id: String,
@@ -2307,6 +2418,7 @@ fn resolve_task_message_target(
     actor_scope: &TaskActorScope,
     route: &str,
     to_actor_id: Option<String>,
+    payload: &Value,
 ) -> Result<Option<String>, ApiError> {
     match route {
         "group_chat" => {
@@ -2318,9 +2430,13 @@ fn resolve_task_message_target(
             Ok(None)
         }
         "to_member" => {
-            let to_actor_id = to_actor_id.ok_or_else(|| {
-                ApiError::bad_request("to_actor_id is required when route=to_member")
-            })?;
+            let to_actor_id = to_actor_id
+                .or_else(|| infer_single_task_message_target(actor_scope, payload))
+                .ok_or_else(|| {
+                    ApiError::bad_request(
+                        "to_actor_id is required when route=to_member or payload must mention exactly one member",
+                    )
+                })?;
             if !actor_scope.member_ids.contains(to_actor_id.as_str()) {
                 return Err(ApiError::bad_request(
                     "to_actor_id must reference spec.members[].member_id when route=to_member",
@@ -2346,6 +2462,18 @@ fn resolve_task_message_target(
         }
         _ => Err(ApiError::bad_request("unsupported route")),
     }
+}
+
+fn infer_single_task_message_target(
+    actor_scope: &TaskActorScope,
+    payload: &Value,
+) -> Option<String> {
+    let mention_actor_ids =
+        extract_task_message_mention_actor_ids(payload, &actor_scope.member_ids);
+    if mention_actor_ids.len() == 1 {
+        return mention_actor_ids.first().cloned();
+    }
+    None
 }
 
 async fn maybe_forward_task_message_to_mailbox(

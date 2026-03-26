@@ -296,4 +296,56 @@ describe("useTeamConversationActions", () => {
       cleanupHarness(root, container);
     }
   });
+
+  it("lets the backend infer direct routing from a single mention", async () => {
+    mockedApi.sendTeamTaskMessage.mockResolvedValue({
+      message_id: 51,
+      conversation_id: "conv-all",
+      task_id: "task-all",
+      from_actor_id: "user:test",
+      to_actor_id: "worker-1",
+      route: "to_member",
+      payload: {
+        type: "chat_message",
+        text: "<at>worker-1</at> please inspect the patch",
+        mention_actor_ids: ["worker-1"],
+      },
+      created_at: 1_700_000_051,
+    });
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions();
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.sendTaskMessage({
+          text: "<at>worker-1</at> please inspect the patch",
+          mentionActorIds: ["worker-1"],
+        });
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.sendTeamTaskMessage).toHaveBeenCalledWith(
+        "token-1",
+        "team-1",
+        "task-all",
+        {
+          payload: {
+            type: "chat_message",
+            text: "<at>worker-1</at> please inspect the patch",
+            source: "team_workbench",
+            mention_actor_ids: ["worker-1"],
+          },
+        }
+      );
+      expect(options.setTaskMessageDraft).toHaveBeenCalledWith("");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
 });
