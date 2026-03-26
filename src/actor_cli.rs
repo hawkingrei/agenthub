@@ -10,7 +10,7 @@ use crate::actor_runtime_env::{
 #[cfg(test)]
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorServiceError,
+    ActorServiceError, ActorServiceErrorCode,
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -78,7 +78,7 @@ enum ActorCommand {
     Ack {
         run_id: String,
         actor_id: String,
-        message_id: i64,
+        message_ids: Vec<i64>,
     },
     TeamTasks {
         team_id: String,
@@ -117,7 +117,7 @@ enum ActorCommand {
     PermissionReviewRespond {
         team_id: String,
         actor_id: String,
-        permission_id: String,
+        permission_ids: Vec<String>,
         option_id: Option<String>,
         outcome: Option<String>,
     },
@@ -143,6 +143,8 @@ mod runtime;
 use self::execute::run_actor_command;
 use self::parse::parse_actor_args;
 
+#[cfg(test)]
+use self::execute::ack_actor_messages;
 #[cfg(test)]
 use self::output::{actor_output_preference_for_command, encode_actor_output};
 #[cfg(test)]
@@ -203,6 +205,11 @@ mod tests {
         acked_ids: Arc<StdMutex<Vec<i64>>>,
     }
 
+    #[derive(Clone)]
+    struct FailingAckMailboxService {
+        fail_message_id: i64,
+    }
+
     #[async_trait::async_trait]
     impl ActorMailboxService for MockMailboxService {
         async fn actor_send(
@@ -251,6 +258,42 @@ mod tests {
                     ..message
                 },
             })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ActorMailboxService for FailingAckMailboxService {
+        async fn actor_send(
+            &self,
+            _request: ActorSendRequest,
+        ) -> Result<ActorSendResponse, ActorServiceError> {
+            unreachable!("send is not used in this test")
+        }
+
+        async fn actor_inbox(
+            &self,
+            _request: ActorInboxRequest,
+        ) -> Result<ActorInboxResponse, ActorServiceError> {
+            unreachable!("inbox is not used in this test")
+        }
+
+        async fn actor_ack(
+            &self,
+            request: ActorAckRequest,
+        ) -> Result<ActorAckResponse, ActorServiceError> {
+            if request.message_id == self.fail_message_id {
+                Err(ActorServiceError::new(
+                    ActorServiceErrorCode::Conflict,
+                    "ack failed",
+                ))
+            } else {
+                Ok(ActorAckResponse {
+                    message_id: request.message_id,
+                    state: ActorMessageStatus::Delivered,
+                    acked_at: 100,
+                    message: mock_inbox_message(request.message_id, ActorMessageStatus::Delivered),
+                })
+            }
         }
     }
 
@@ -710,6 +753,65 @@ mod tests {
     }
 
     #[test]
+    fn parse_ack_accepts_repeated_message_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-batch");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "ack".to_string(),
+            "--message-id".to_string(),
+            "41".to_string(),
+            "--message-id".to_string(),
+            "42".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse repeated ack message ids");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert_eq!(run_id, "run-ack-batch");
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41, 42]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_ack_requires_at_least_one_message_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-batch");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let err = parse_actor_command(&["ack".to_string()], &mut ActorOutputMode::Default)
+            .expect_err("ack without message ids should fail");
+        assert!(
+            err.to_string()
+                .contains("at least one --message-id is required")
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
     fn parse_send_accepts_agent_id_alias_flags() {
         let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
@@ -969,6 +1071,39 @@ mod tests {
             *service.acked_ids.lock().expect("acquire acked ids"),
             vec![7]
         );
+    }
+
+    #[tokio::test]
+    async fn ack_actor_messages_batches_requests_in_order() {
+        let service = MockMailboxService {
+            inbox: vec![
+                mock_inbox_message(11, ActorMessageStatus::Pending),
+                mock_inbox_message(12, ActorMessageStatus::Pending),
+            ],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+        };
+        let responses = ack_actor_messages(&service, "run-1", "worker", &[11, 12])
+            .await
+            .expect("batch ack should succeed");
+        assert_eq!(responses.len(), 2);
+        assert_eq!(responses[0].message_id, 11);
+        assert_eq!(responses[1].message_id, 12);
+        assert_eq!(
+            *service.acked_ids.lock().expect("acquire acked ids"),
+            vec![11, 12]
+        );
+    }
+
+    #[tokio::test]
+    async fn ack_actor_messages_reports_failed_message_id_in_context() {
+        let service = FailingAckMailboxService {
+            fail_message_id: 12,
+        };
+        let err = ack_actor_messages(&service, "run-1", "worker", &[11, 12])
+            .await
+            .expect_err("batch ack should fail on configured message id");
+        assert!(err.to_string().contains("failed to ack message_id=12"));
+        assert!(format!("{err:#}").contains("actor ack failed"));
     }
 
     #[test]
@@ -1248,6 +1383,74 @@ mod tests {
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
     }
 
+    #[test]
+    fn parse_permission_review_respond_accepts_repeated_permission_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "permission-review-respond".to_string(),
+            "--permission-id".to_string(),
+            "perm-1".to_string(),
+            "--permission-id".to_string(),
+            "perm-2".to_string(),
+            "--option-id".to_string(),
+            "allow".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse repeated permission review ids");
+        match parsed {
+            ActorCommand::PermissionReviewRespond {
+                team_id,
+                actor_id,
+                permission_ids,
+                option_id,
+                outcome,
+            } => {
+                assert_eq!(team_id, "team-review");
+                assert_eq!(actor_id, "leader");
+                assert_eq!(permission_ids, vec!["perm-1", "perm-2"]);
+                assert_eq!(option_id.as_deref(), Some("allow"));
+                assert_eq!(outcome, None);
+            }
+            _ => panic!("expected permission-review-respond command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_permission_review_respond_requires_at_least_one_permission_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let err = parse_actor_command(
+            &["permission-review-respond".to_string()],
+            &mut ActorOutputMode::Default,
+        )
+        .expect_err("permission-review-respond without ids should fail");
+        assert!(
+            err.to_string()
+                .contains("at least one --permission-id is required")
+        );
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
     #[derive(Serialize)]
     struct OutputFixture {
         name: &'static str,
@@ -1376,7 +1579,7 @@ mod tests {
                 ActorCommand::Ack {
                     run_id: "run-1".to_string(),
                     actor_id: "worker".to_string(),
-                    message_id: 42,
+                    message_ids: vec![42],
                 },
                 ActorOutputPreference::JsonPreferred,
             ),
@@ -1421,7 +1624,7 @@ mod tests {
                 ActorCommand::PermissionReviewRespond {
                     team_id: "team-1".to_string(),
                     actor_id: "leader".to_string(),
-                    permission_id: "perm-1".to_string(),
+                    permission_ids: vec!["perm-1".to_string()],
                     option_id: Some("allow".to_string()),
                     outcome: None,
                 },

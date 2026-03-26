@@ -496,7 +496,7 @@ pub(super) fn parse_actor_command(
         "ack" => {
             let mut run_id = None;
             let mut actor_id = None;
-            let mut message_id = None;
+            let mut message_ids = Vec::new();
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -522,7 +522,7 @@ pub(super) fn parse_actor_command(
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--message-id requires a value"))?;
-                        message_id = Some(parse_i64(raw, "message_id")?);
+                        message_ids.push(parse_i64(raw, "message_id")?);
                     }
                     other => return Err(anyhow::anyhow!("unknown flag for ack: {}", other)),
                 }
@@ -531,7 +531,9 @@ pub(super) fn parse_actor_command(
             Ok(ActorCommand::Ack {
                 run_id: take_run_id(run_id)?,
                 actor_id: take_mailbox_actor_id(actor_id)?,
-                message_id: message_id.ok_or_else(|| anyhow::anyhow!("message_id is required"))?,
+                message_ids: (!message_ids.is_empty())
+                    .then_some(message_ids)
+                    .ok_or_else(|| anyhow::anyhow!("at least one --message-id is required"))?,
             })
         }
         "send" => {
@@ -865,7 +867,7 @@ pub(super) fn parse_actor_command(
         "permission-review-respond" => {
             let mut team_id = None;
             let mut actor_id = None;
-            let mut permission_id = None;
+            let mut permission_ids = Vec::new();
             let mut option_id = None;
             let mut outcome = None;
             let mut idx = 1;
@@ -890,10 +892,11 @@ pub(super) fn parse_actor_command(
                     }
                     "--permission-id" => {
                         idx += 1;
-                        permission_id =
-                            Some(args.get(idx).cloned().ok_or_else(|| {
+                        permission_ids.push(
+                            args.get(idx).cloned().ok_or_else(|| {
                                 anyhow::anyhow!("--permission-id requires a value")
-                            })?);
+                            })?,
+                        );
                     }
                     "--option-id" => {
                         idx += 1;
@@ -925,11 +928,23 @@ pub(super) fn parse_actor_command(
                     "--option-id and --outcome cannot be used together"
                 ));
             }
+            let permission_ids = permission_ids
+                .into_iter()
+                .filter_map(|permission_id| {
+                    let trimmed = permission_id.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                })
+                .collect::<Vec<_>>();
             Ok(ActorCommand::PermissionReviewRespond {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
-                permission_id: take_optional(permission_id)
-                    .ok_or_else(|| anyhow::anyhow!("permission_id is required"))?,
+                permission_ids: (!permission_ids.is_empty())
+                    .then_some(permission_ids)
+                    .ok_or_else(|| anyhow::anyhow!("at least one --permission-id is required"))?,
                 option_id: take_optional(option_id),
                 outcome: take_optional(outcome),
             })

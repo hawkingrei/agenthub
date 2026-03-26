@@ -9,12 +9,38 @@ use super::{
     ActorCommand, ActorOutputMode, ActorSendPayloadSource, MAX_TIME_TRIGGER_DELAY_SECONDS,
 };
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest, ActorMessageStatus,
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest,
+    ActorMailboxService, ActorMessageStatus,
 };
+use anyhow::Context;
 use chrono::Utc;
 
 use crate::internal::auth::InternalAction;
 use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
+
+pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
+    service: &S,
+    run_id: &str,
+    actor_id: &str,
+    message_ids: &[i64],
+) -> anyhow::Result<Vec<ActorAckResponse>> {
+    let mut responses = Vec::with_capacity(message_ids.len());
+    for &message_id in message_ids {
+        let response = service
+            .actor_ack(ActorAckRequest {
+                run_id: run_id.to_string(),
+                actor_id: actor_id.to_string(),
+                message_id,
+                ack_token: None,
+                result: None,
+            })
+            .await
+            .map_err(|err| map_actor_service_error("actor ack", err))
+            .with_context(|| format!("failed to ack message_id={message_id}"))?;
+        responses.push(response);
+    }
+    Ok(responses)
+}
 
 pub(super) async fn run_actor_command(
     command: ActorCommand,
@@ -152,20 +178,20 @@ pub(super) async fn run_actor_command(
         ActorCommand::Ack {
             run_id,
             actor_id,
-            message_id,
+            message_ids,
         } => {
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
-            let message = service
-                .actor_ack(ActorAckRequest {
-                    run_id,
-                    actor_id,
-                    message_id,
-                    ack_token: None,
-                    result: None,
-                })
-                .await
-                .map_err(|err| map_actor_service_error("actor ack", err))?;
-            write_actor_output(&message, output_mode, output_preference)?;
+            let messages =
+                ack_actor_messages(service.as_ref(), &run_id, &actor_id, &message_ids).await?;
+            if messages.len() == 1 {
+                let message = messages
+                    .into_iter()
+                    .next()
+                    .expect("single ack response should be present");
+                write_actor_output(&message, output_mode, output_preference)?;
+            } else {
+                write_actor_output(&messages, output_mode, output_preference)?;
+            }
         }
         ActorCommand::Send {
             run_id,
@@ -266,21 +292,43 @@ pub(super) async fn run_actor_command(
         ActorCommand::PermissionReviewRespond {
             team_id,
             actor_id,
-            permission_id,
+            permission_ids,
             option_id,
             outcome,
         } => {
             let client = init_actor_permission_review_client(&actor_id).await?;
-            let response = client
-                .respond_permission_review(
-                    &team_id,
-                    &actor_id,
-                    &permission_id,
-                    option_id.as_deref(),
-                    outcome.as_deref(),
-                )
-                .await?;
-            write_actor_output(&response, output_mode, output_preference)?;
+            if permission_ids.len() == 1 {
+                let response = client
+                    .respond_permission_review(
+                        &team_id,
+                        &actor_id,
+                        &permission_ids[0],
+                        option_id.as_deref(),
+                        outcome.as_deref(),
+                    )
+                    .await?;
+                write_actor_output(&response, output_mode, output_preference)?;
+            } else {
+                let mut responses = Vec::with_capacity(permission_ids.len());
+                for permission_id in permission_ids {
+                    let response = client
+                        .respond_permission_review(
+                            &team_id,
+                            &actor_id,
+                            &permission_id,
+                            option_id.as_deref(),
+                            outcome.as_deref(),
+                        )
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "failed to respond permission review for permission_id={permission_id}"
+                            )
+                        })?;
+                    responses.push(response);
+                }
+                write_actor_output(&responses, output_mode, output_preference)?;
+            }
         }
     }
     Ok(())
