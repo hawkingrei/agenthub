@@ -2848,7 +2848,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
     expect(container.textContent).toContain("Role worker");
-    expect(container.textContent).toContain("Session task-77");
+    expect(container.textContent).toContain("member=worker-agent");
+    expect(container.textContent).toContain("role=worker");
+    expect(container.textContent).toContain("session=task-77");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
