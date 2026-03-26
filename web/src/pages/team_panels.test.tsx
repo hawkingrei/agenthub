@@ -1999,6 +1999,156 @@ describe("team panels interactions", () => {
     }
   });
 
+  it("TeamTaskPanel plays a tone only when a new human permission review card arrives", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const audioWindow = window as typeof window & {
+      AudioContext?: unknown;
+      webkitAudioContext?: unknown;
+    };
+    const previousAudioContext = audioWindow.AudioContext;
+    const previousWebkitAudioContext = audioWindow.webkitAudioContext;
+    const oscillatorStart = vi.fn();
+    const oscillatorStop = vi.fn();
+    const oscillatorConnect = vi.fn();
+    const frequencySet = vi.fn();
+    const frequencyRamp = vi.fn();
+    const gainConnect = vi.fn();
+    const gainSet = vi.fn();
+    const gainRamp = vi.fn();
+
+    const audioContextSpy = vi.fn();
+
+    class MockAudioContext {
+      currentTime = 1;
+      destination = {};
+      state = "running";
+
+      constructor() {
+        audioContextSpy();
+      }
+
+      createOscillator() {
+        return {
+          type: "sine",
+          frequency: {
+            setValueAtTime: frequencySet,
+            linearRampToValueAtTime: frequencyRamp,
+          },
+          connect: oscillatorConnect,
+          start: oscillatorStart,
+          stop: oscillatorStop,
+          onended: null,
+        };
+      }
+
+      createGain() {
+        return {
+          gain: {
+            setValueAtTime: gainSet,
+            exponentialRampToValueAtTime: gainRamp,
+          },
+          connect: gainConnect,
+        };
+      }
+
+      close() {
+        return Promise.resolve();
+      }
+    }
+
+    audioWindow.AudioContext = MockAudioContext;
+    delete audioWindow.webkitAudioContext;
+
+    const renderPanel = (messages: TeamConversationMessageRecord[]) => {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={messages}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "WorkerAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "waiting for review",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+    };
+
+    const humanReviewCardMessage = buildTaskMessage(1, {
+      from_actor_id: "worker-agent",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "permission_review_card",
+        permission_id: "perm-tone-1",
+        agent_id: "worker-agent",
+        tool_name: "git push",
+        summary: "worker requests permission to execute git push.",
+        reason: "review_timeout",
+        reason_text: "Agent review timed out",
+        status: "pending",
+        options: [{ option_id: "allow", name: "Allow once", kind: "allow_once" }],
+      },
+    });
+
+    try {
+      renderPanel([]);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(audioContextSpy).not.toHaveBeenCalled();
+
+      renderPanel([humanReviewCardMessage]);
+      await waitForCondition(() => audioContextSpy.mock.calls.length === 1);
+      expect(oscillatorStart).toHaveBeenCalledTimes(1);
+      expect(oscillatorStop).toHaveBeenCalledTimes(1);
+      expect(oscillatorConnect).toHaveBeenCalledTimes(1);
+      expect(gainConnect).toHaveBeenCalledTimes(1);
+      expect(frequencySet).toHaveBeenCalledTimes(1);
+      expect(frequencyRamp).toHaveBeenCalledTimes(1);
+      expect(gainSet).toHaveBeenCalledTimes(1);
+      expect(gainRamp).toHaveBeenCalledTimes(2);
+
+      renderPanel([humanReviewCardMessage]);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(audioContextSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousAudioContext === undefined) {
+        delete audioWindow.AudioContext;
+      } else {
+        audioWindow.AudioContext = previousAudioContext;
+      }
+      if (previousWebkitAudioContext === undefined) {
+        delete audioWindow.webkitAudioContext;
+      } else {
+        audioWindow.webkitAudioContext = previousWebkitAudioContext;
+      }
+    }
+  });
+
   it("TeamTaskPanel tolerates malformed permission record options after refresh", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([
@@ -2698,7 +2848,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
     expect(container.textContent).toContain("Role worker");
-    expect(container.textContent).toContain("Session task-77");
+    expect(container.textContent).toContain("member=worker-agent");
+    expect(container.textContent).toContain("role=worker");
+    expect(container.textContent).toContain("session=task-77");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {

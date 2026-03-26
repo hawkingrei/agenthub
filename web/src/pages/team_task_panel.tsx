@@ -67,6 +67,44 @@ type PermissionReviewCardPayload = {
   status?: string | null;
 };
 
+type PermissionToneAudioContextConstructor = new () => PermissionToneAudioContext;
+
+type PermissionToneAudioContext = {
+  currentTime: number;
+  destination: unknown;
+  state?: string;
+  createOscillator: () => PermissionToneOscillator;
+  createGain: () => PermissionToneGainNode;
+  resume?: () => Promise<void>;
+  close?: () => Promise<void>;
+};
+
+type PermissionToneOscillator = {
+  type: string;
+  frequency: {
+    setValueAtTime: (value: number, time: number) => void;
+    linearRampToValueAtTime: (value: number, time: number) => void;
+  };
+  connect: (target: PermissionToneGainNode) => void;
+  start: () => void;
+  stop: (when?: number) => void;
+  onended: (() => void) | null;
+};
+
+type PermissionToneGainNode = {
+  gain: {
+    setValueAtTime: (value: number, time: number) => void;
+    exponentialRampToValueAtTime: (value: number, time: number) => void;
+  };
+  connect: (target: unknown) => void;
+};
+
+type TeamTaskPanelAudioWindow = Window &
+  typeof globalThis & {
+    AudioContext?: PermissionToneAudioContextConstructor;
+    webkitAudioContext?: PermissionToneAudioContextConstructor;
+  };
+
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
   "mt-2.5 flex flex-col gap-2 rounded-[12px] border border-black/[0.06] bg-white/[0.72] px-2.5 py-2";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
@@ -146,6 +184,54 @@ const TEAM_TASK_JUMP_BUTTON_CLASS =
 const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
 const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
+
+function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const toneWindow = window as TeamTaskPanelAudioWindow;
+  return toneWindow.AudioContext ?? toneWindow.webkitAudioContext ?? null;
+}
+
+function closePermissionToneAudioContext(context: PermissionToneAudioContext | null): void {
+  if (!context?.close) {
+    return;
+  }
+  void context.close().catch(() => {});
+}
+
+async function playHumanReviewFallbackTone(): Promise<void> {
+  const AudioContextCtor = getPermissionToneAudioContextConstructor();
+  if (!AudioContextCtor) {
+    return;
+  }
+  let context: PermissionToneAudioContext | null = null;
+  try {
+    context = new AudioContextCtor();
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    oscillator.frequency.linearRampToValueAtTime(660, context.currentTime + 0.16);
+    gainNode.gain.setValueAtTime(0.0001, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.24);
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.onended = () => {
+      closePermissionToneAudioContext(context);
+    };
+    if (context.state === "suspended" && context.resume) {
+      await context.resume();
+    }
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.26);
+  } catch {
+    if (context) {
+      closePermissionToneAudioContext(context);
+    }
+  }
+}
 
 function resolveMessageText(
   message: TeamConversationMessageRecord,
@@ -628,6 +714,25 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         .join("|"),
     [permissionCardTargets]
   );
+  const humanReviewToneInitializedRef = React.useRef(false);
+  const humanReviewToneSeenPermissionIdsRef = React.useRef<Set<string>>(new Set());
+  const pendingHumanReviewPermissionIds = React.useMemo(() => {
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const message of orderedMessages) {
+      const payload = parsePermissionReviewCardPayload(message.payload);
+      if (!payload) {
+        continue;
+      }
+      const status = permissionRecordsById[payload.permission_id]?.status ?? payload.status ?? "pending";
+      if (status !== "pending" || seen.has(payload.permission_id)) {
+        continue;
+      }
+      seen.add(payload.permission_id);
+      ids.push(payload.permission_id);
+    }
+    return ids;
+  }, [orderedMessages, permissionRecordsById]);
   const refreshPermissionCards = React.useCallback(async () => {
     if (!token || permissionCardTargets.length === 0) {
       return;
@@ -674,6 +779,24 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       return next ?? current;
     });
   }, [permissionCardTargets, token]);
+  React.useEffect(() => {
+    if (!humanReviewToneInitializedRef.current) {
+      humanReviewToneSeenPermissionIdsRef.current = new Set(pendingHumanReviewPermissionIds);
+      humanReviewToneInitializedRef.current = true;
+      return;
+    }
+    let shouldPlayTone = false;
+    for (const permissionId of pendingHumanReviewPermissionIds) {
+      if (humanReviewToneSeenPermissionIdsRef.current.has(permissionId)) {
+        continue;
+      }
+      humanReviewToneSeenPermissionIdsRef.current.add(permissionId);
+      shouldPlayTone = true;
+    }
+    if (shouldPlayTone) {
+      void playHumanReviewFallbackTone();
+    }
+  }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
     () => windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
     [orderedMessages, stickToBottom]

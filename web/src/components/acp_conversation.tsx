@@ -51,6 +51,7 @@ type AcpConversationProps = {
   avgHeight: number;
   topHint?: string | null;
   focusedToolCallId?: string | null;
+  bottomClearancePx?: number;
   onScroll: () => void;
   containerRef: React.RefObject<HTMLDivElement>;
   ansi: (input: string) => string;
@@ -162,15 +163,26 @@ export function AcpConversation({
   avgHeight,
   topHint,
   focusedToolCallId,
+  bottomClearancePx = 0,
   onScroll,
   containerRef,
   ansi,
 }: AcpConversationProps) {
+  const bottomClearance = Number.isFinite(bottomClearancePx)
+    ? Math.max(0, Math.round(bottomClearancePx))
+    : 0;
+  const conversationScrollStyle =
+    bottomClearance > 0
+      ? ({
+          scrollPaddingBottom: `${bottomClearance}px`,
+        } satisfies React.CSSProperties)
+      : undefined;
   return (
     <div
       className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-1.5"
       ref={containerRef}
       onScroll={onScroll}
+      style={conversationScrollStyle}
     >
       <div className="acp-conversation-inner flex w-full flex-col gap-2">
         {topHint ? (
@@ -214,6 +226,13 @@ export function AcpConversation({
           <div
             className="acp-conversation-spacer virtual-bottom"
             style={{ height: virtualBottomSpacer }}
+          />
+        )}
+        {bottomClearance > 0 && (
+          <div
+            aria-hidden="true"
+            className="acp-conversation-spacer dock-clearance"
+            style={{ height: bottomClearance }}
           />
         )}
         {!stickToBottom && pendingCount > 0 && (

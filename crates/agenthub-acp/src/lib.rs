@@ -46,6 +46,7 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
+const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(600);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
@@ -618,28 +619,27 @@ impl Client for AcpClient {
         }))
         .await;
 
-        let outcome =
-            match tokio::time::timeout(std::time::Duration::from_secs(300), response_rx).await {
-                Ok(Ok(outcome)) => outcome,
-                Ok(Err(_)) => RequestPermissionOutcome::Cancelled,
-                Err(_) => {
-                    let fallback = pick_allow_option(&args);
-                    let _ = self
-                        .permissions
-                        .mark_timeout(&request_id, Some(&fallback))
-                        .await;
-                    self.emit_json(serde_json::json!({
-                        "type": "permission_timeout",
-                        "permission_id": request_id,
-                        "session_id": args.session_id.to_string(),
-                        "tool_call_id": args.tool_call.tool_call_id.to_string(),
-                        "outcome": &fallback,
-                        "responded_at": Utc::now().timestamp(),
-                    }))
+        let outcome = match tokio::time::timeout(ACP_PERMISSION_REVIEW_TIMEOUT, response_rx).await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(_)) => RequestPermissionOutcome::Cancelled,
+            Err(_) => {
+                let fallback = pick_allow_option(&args);
+                let _ = self
+                    .permissions
+                    .mark_timeout(&request_id, Some(&fallback))
                     .await;
-                    fallback
-                }
-            };
+                self.emit_json(serde_json::json!({
+                    "type": "permission_timeout",
+                    "permission_id": request_id,
+                    "session_id": args.session_id.to_string(),
+                    "tool_call_id": args.tool_call.tool_call_id.to_string(),
+                    "outcome": &fallback,
+                    "responded_at": Utc::now().timestamp(),
+                }))
+                .await;
+                fallback
+            }
+        };
 
         self.emit_json(serde_json::json!({
             "type": "permission_response",

@@ -422,7 +422,7 @@ const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-1 py-1.5 backdrop-blur-sm";
+  "flex flex-wrap items-center justify-between gap-1.5 border-b border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-1 py-1 backdrop-blur-sm";
 const teamWorkbenchHeaderIconButtonClassName =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-black/[0.08] bg-white/[0.75] text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
@@ -432,7 +432,7 @@ const teamWorkbenchDetailLayoutCollapsedClassName =
 const teamWorkbenchDetailLayoutExpandedClassName =
   "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(256px,312px)_minmax(0,1fr)]";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] px-2 py-1.5";
+  "rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] px-2 py-1";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
 const teamWorkbenchInfoStripGridClassName =
@@ -3260,7 +3260,7 @@ export function TeamPage(props: TeamPageProps) {
             </button>
           )}
           <div className="min-w-0">
-            <h1 className="text-[clamp(1.15rem,2vw,1.55rem)] font-semibold tracking-tight text-black">
+            <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
               {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
             </h1>
             {isSelectorRoute ? (
@@ -3488,255 +3488,274 @@ export function TeamPage(props: TeamPageProps) {
 
             {selectedTeam && (
               <>
-                <div className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName}`}>
-                <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    {workspaceEyebrow && (
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
-                        {workspaceEyebrow}
-                      </p>
-                    )}
-                    {showDedicatedWorkspaceHeading ? (
-                      <h2 className={`${workspaceEyebrow ? "mt-1" : ""} text-[18px] font-semibold tracking-tight text-black`}>
-                        {workspaceTitle}
-                      </h2>
-                    ) : null}
-                    {workspaceDescription && (
-                      <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                  {isAgentWorkspace ? (
-                      <Menu withinPortal={false} position="bottom-end" shadow="md">
-                        <Menu.Target>
-                          <button
-                            type="button"
-                            className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-semibold`}
-                            aria-label="Open agent workspace menu"
-                          >
-                            <i className="bi bi-person-badge" aria-hidden="true" />
-                            <span>Agent</span>
-                          </button>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Label>{selectedAgentLabel}</Menu.Label>
-                          {[
-                            {
-                              label: "Member",
-                              value: selectedAgentWorkspaceMemberId || "-",
-                            },
-                            { label: "Role", value: selectedAgentStatusView.role },
-                            {
-                              label: "Lifecycle",
-                              value: selectedAgentStatusView.lifecycle,
-                            },
-                            { label: "Work", value: selectedAgentStatusView.work },
-                            { label: "Inbox", value: selectedAgentStatusView.inbox },
-                            {
-                              label: "Loop",
-                              value: selectedAgentSpecDraft?.agent_loop_enabled
-                                ? `${
-                                    selectedAgentSpecDraft.agent_loop_idle_seconds.trim() || "?"
-                                  }s idle`
-                                : "disabled",
-                            },
-                          ].map((item) => (
-                            <Menu.Item key={item.label} disabled>
-                              <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                                <span className="font-semibold text-ui-text-primary">
-                                  {item.label}
-                                </span>
-                                <span className="ml-2">{item.value}</span>
-                              </div>
-                            </Menu.Item>
-                          ))}
-                          <Menu.Item disabled>
-                            <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                              <span className="font-semibold text-ui-text-primary">Identity</span>
-                              <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                                {selectedAgentSpecDraft?.description?.trim() ||
-                                  "No agent identity description yet."}
-                              </p>
-                            </div>
-                          </Menu.Item>
-                          <Menu.Item disabled>
-                            <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                              <span className="font-semibold text-ui-text-primary">Current work</span>
-                              <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                                {selectedAgentStatusView.currentWork}
-                              </p>
-                            </div>
-                          </Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Item
-                            leftSection={<i className="bi bi-pencil-square" aria-hidden="true" />}
-                            onClick={openTeamMemberEditModal}
-                          >
-                            Edit profile
-                          </Menu.Item>
-                          <Menu.Item
-                            leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
-                            onClick={onStartSelectedTeamAgent}
-                            disabled={!selectedAgentControlState.canStart}
-                          >
-                            Start Agent
-                          </Menu.Item>
-                          <Menu.Item
-                            leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
-                            onClick={onStopSelectedTeamAgent}
-                            disabled={!selectedAgentControlState.canStop}
-                          >
-                            Stop Agent
-                          </Menu.Item>
-                          <Menu.Item
-                            color="red"
-                            leftSection={<i className="bi bi-trash" aria-hidden="true" />}
-                            onClick={onDeleteSelectedTeamAgent}
-                            disabled={!selectedAgentControlState.canDelete}
-                          >
-                            Delete Agent
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                  ) : showWorkspaceRuntimeBadge ? (
-                      <Tooltip
-                        label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
-                        withArrow
-                      >
-                        <Group
-                          gap={8}
-                          wrap="nowrap"
-                          className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
-                        >
-                          <Badge
-                            variant="light"
-                            color={selectedTeamRuntimeControlTone.statusColor}
-                            radius="sm"
-                          >
-                            {selectedTeamRuntimeStatus.label}
-                          </Badge>
-                          <Badge
-                            variant="dot"
-                            color={selectedTeamRuntimeControlTone.countColor}
-                            radius="sm"
-                          >
-                            {`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} online`}
-                          </Badge>
-                        </Group>
-                      </Tooltip>
-                  ) : null}
-                  <div className={workspaceToolbarClassName}>
-                    <button
-                      type="button"
-                      className={
-                        tab === "runs"
-                          ? workspaceToolbarButtonActiveClassName
-                          : workspaceToolbarButtonIdleClassName
-                      }
-                      onClick={onOpenRunsWorkspace}
+                <div
+                  className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
+                    isAgentWorkspace ? "py-0.5" : ""
+                  }`}
+                >
+                  <div className={`flex flex-col ${isAgentWorkspace ? "gap-2" : "gap-3"}`}>
+                    <div
+                      className={`flex flex-wrap items-start justify-between ${
+                        isAgentWorkspace ? "gap-1.5" : "gap-2"
+                      }`}
                     >
-                      <i className="bi bi-play-circle" aria-hidden="true" />
-                      <span>Runs</span>
-                    </button>
-                    {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
-                      <Menu withinPortal={false} position="bottom-end" shadow="md">
-                        <Menu.Target>
+                      <div className="min-w-0 flex-1">
+                        {workspaceEyebrow && (
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
+                            {workspaceEyebrow}
+                          </p>
+                        )}
+                        {showDedicatedWorkspaceHeading ? (
+                          <h2
+                            className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
+                              isAgentWorkspace
+                                ? "text-[15px] font-semibold leading-[1.1]"
+                                : "text-[17px] font-semibold leading-tight"
+                            } tracking-tight text-black`}
+                          >
+                            {workspaceTitle}
+                          </h2>
+                        ) : null}
+                        {workspaceDescription && (
+                          <p className="mt-1 text-[12px] leading-[1.45] text-ui-text-secondary">
+                            {workspaceDescription}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {isAgentWorkspace ? (
+                          <Menu withinPortal={false} position="bottom-end" shadow="md">
+                            <Menu.Target>
+                              <button
+                                type="button"
+                                className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold`}
+                                aria-label="Open agent workspace menu"
+                              >
+                                <i className="bi bi-person-badge" aria-hidden="true" />
+                                <span>Agent</span>
+                              </button>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              <Menu.Label>{selectedAgentLabel}</Menu.Label>
+                              {[
+                                {
+                                  label: "Member",
+                                  value: selectedAgentWorkspaceMemberId || "-",
+                                },
+                                { label: "Role", value: selectedAgentStatusView.role },
+                                {
+                                  label: "Lifecycle",
+                                  value: selectedAgentStatusView.lifecycle,
+                                },
+                                { label: "Work", value: selectedAgentStatusView.work },
+                                { label: "Inbox", value: selectedAgentStatusView.inbox },
+                                {
+                                  label: "Loop",
+                                  value: selectedAgentSpecDraft?.agent_loop_enabled
+                                    ? `${
+                                        selectedAgentSpecDraft.agent_loop_idle_seconds.trim() || "?"
+                                      }s idle`
+                                    : "disabled",
+                                },
+                              ].map((item) => (
+                                <Menu.Item key={item.label} disabled>
+                                  <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                                    <span className="font-semibold text-ui-text-primary">
+                                      {item.label}
+                                    </span>
+                                    <span className="ml-2">{item.value}</span>
+                                  </div>
+                                </Menu.Item>
+                              ))}
+                              <Menu.Item disabled>
+                                <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                                  <span className="font-semibold text-ui-text-primary">Identity</span>
+                                  <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
+                                    {selectedAgentSpecDraft?.description?.trim() ||
+                                      "No agent identity description yet."}
+                                  </p>
+                                </div>
+                              </Menu.Item>
+                              <Menu.Item disabled>
+                                <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                                  <span className="font-semibold text-ui-text-primary">Current work</span>
+                                  <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
+                                    {selectedAgentStatusView.currentWork}
+                                  </p>
+                                </div>
+                              </Menu.Item>
+                              <Menu.Divider />
+                              <Menu.Item
+                                leftSection={<i className="bi bi-pencil-square" aria-hidden="true" />}
+                                onClick={openTeamMemberEditModal}
+                              >
+                                Edit profile
+                              </Menu.Item>
+                              <Menu.Item
+                                leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                                onClick={onStartSelectedTeamAgent}
+                                disabled={!selectedAgentControlState.canStart}
+                              >
+                                Start Agent
+                              </Menu.Item>
+                              <Menu.Item
+                                leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                                onClick={onStopSelectedTeamAgent}
+                                disabled={!selectedAgentControlState.canStop}
+                              >
+                                Stop Agent
+                              </Menu.Item>
+                              <Menu.Item
+                                color="red"
+                                leftSection={<i className="bi bi-trash" aria-hidden="true" />}
+                                onClick={onDeleteSelectedTeamAgent}
+                                disabled={!selectedAgentControlState.canDelete}
+                              >
+                                Delete Agent
+                              </Menu.Item>
+                            </Menu.Dropdown>
+                          </Menu>
+                        ) : showWorkspaceRuntimeBadge ? (
+                          <Tooltip
+                            label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
+                            withArrow
+                          >
+                            <Group
+                              gap={8}
+                              wrap="nowrap"
+                              className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
+                            >
+                              <Badge
+                                variant="light"
+                                color={selectedTeamRuntimeControlTone.statusColor}
+                                radius="sm"
+                              >
+                                {selectedTeamRuntimeStatus.label}
+                              </Badge>
+                              <Badge
+                                variant="dot"
+                                color={selectedTeamRuntimeControlTone.countColor}
+                                radius="sm"
+                              >
+                                {`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} online`}
+                              </Badge>
+                            </Group>
+                          </Tooltip>
+                        ) : null}
+                        <div className={workspaceToolbarClassName}>
                           <button
                             type="button"
                             className={
-                              isAdvancedWorkspace
+                              tab === "runs"
                                 ? workspaceToolbarButtonActiveClassName
                                 : workspaceToolbarButtonIdleClassName
                             }
-                            aria-label="Open more workspace actions"
+                            onClick={onOpenRunsWorkspace}
                           >
-                            <i className="bi bi-three-dots" aria-hidden="true" />
-                            <span>More</span>
+                            <i className="bi bi-play-circle" aria-hidden="true" />
+                            <span>Runs</span>
                           </button>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          {workspaceAdvancedTabItems.length > 0 && (
-                            <>
-                              <Menu.Label>Views</Menu.Label>
-                              {workspaceAdvancedTabItems.map((item) => (
-                                <Menu.Item key={item.value} onClick={() => setTab(item.value)}>
-                                  {item.label}
-                                </Menu.Item>
-                              ))}
-                            </>
+                          {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
+                            <Menu withinPortal={false} position="bottom-end" shadow="md">
+                              <Menu.Target>
+                                <button
+                                  type="button"
+                                  className={
+                                    isAdvancedWorkspace
+                                      ? workspaceToolbarButtonActiveClassName
+                                      : workspaceToolbarButtonIdleClassName
+                                  }
+                                  aria-label="Open more workspace actions"
+                                >
+                                  <i className="bi bi-three-dots" aria-hidden="true" />
+                                  <span>More</span>
+                                </button>
+                              </Menu.Target>
+                              <Menu.Dropdown>
+                                {workspaceAdvancedTabItems.length > 0 && (
+                                  <>
+                                    <Menu.Label>Views</Menu.Label>
+                                    {workspaceAdvancedTabItems.map((item) => (
+                                      <Menu.Item key={item.value} onClick={() => setTab(item.value)}>
+                                        {item.label}
+                                      </Menu.Item>
+                                    ))}
+                                  </>
+                                )}
+                                {showRunActionsInAdvanced && (
+                                  <>
+                                    {workspaceAdvancedTabItems.length > 0 && <Menu.Divider />}
+                                    <Menu.Label>Run</Menu.Label>
+                                    <Menu.Item onClick={onRefreshActiveRun}>Refresh Run</Menu.Item>
+                                    <Menu.Item
+                                      onClick={onCancelRun}
+                                      disabled={
+                                        busy === "cancel-run" ||
+                                        activeRunForSelectedTeam.status === "canceled"
+                                      }
+                                    >
+                                      Cancel
+                                    </Menu.Item>
+                                    <Menu.Item
+                                      onClick={onResumeRun}
+                                      disabled={busy === "resume-run" || !canResumeActiveRun}
+                                    >
+                                      Resume
+                                    </Menu.Item>
+                                    <Menu.Item
+                                      onClick={onRestartRun}
+                                      disabled={busy === "restart-run" || !canRestartActiveRun}
+                                    >
+                                      Restart
+                                    </Menu.Item>
+                                  </>
+                                )}
+                                {props.developerMode && workspaceDetailItems.length > 0 && (
+                                  <>
+                                    {(workspaceAdvancedTabItems.length > 0 ||
+                                      showRunActionsInAdvanced) && <Menu.Divider />}
+                                    <Menu.Label>Workspace</Menu.Label>
+                                    <Menu.Item
+                                      onClick={() =>
+                                        setWorkspaceDetailsOpen((current) => !current)
+                                      }
+                                    >
+                                      {workspaceDetailsOpen
+                                        ? "Hide workspace details"
+                                        : "Show workspace details"}
+                                    </Menu.Item>
+                                  </>
+                                )}
+                              </Menu.Dropdown>
+                            </Menu>
                           )}
-                          {showRunActionsInAdvanced && (
-                            <>
-                              {workspaceAdvancedTabItems.length > 0 && <Menu.Divider />}
-                              <Menu.Label>Run</Menu.Label>
-                              <Menu.Item onClick={onRefreshActiveRun}>Refresh Run</Menu.Item>
-                              <Menu.Item
-                                onClick={onCancelRun}
-                                disabled={
-                                  busy === "cancel-run" ||
-                                  activeRunForSelectedTeam.status === "canceled"
-                                }
-                              >
-                                Cancel
-                              </Menu.Item>
-                              <Menu.Item
-                                onClick={onResumeRun}
-                                disabled={busy === "resume-run" || !canResumeActiveRun}
-                              >
-                                Resume
-                              </Menu.Item>
-                              <Menu.Item
-                                onClick={onRestartRun}
-                                disabled={busy === "restart-run" || !canRestartActiveRun}
-                              >
-                                Restart
-                              </Menu.Item>
-                            </>
-                          )}
-                          {props.developerMode && workspaceDetailItems.length > 0 && (
-                            <>
-                              {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
-                                <Menu.Divider />
-                              )}
-                              <Menu.Label>Workspace</Menu.Label>
-                              <Menu.Item
-                                onClick={() => setWorkspaceDetailsOpen((current) => !current)}
-                              >
-                                {workspaceDetailsOpen
-                                  ? "Hide workspace details"
-                                  : "Show workspace details"}
-                              </Menu.Item>
-                            </>
-                          )}
-                        </Menu.Dropdown>
-                      </Menu>
-                    )}
-                  </div>
-                </div>
-                </div>
-                {(workspaceNoticeText || props.developerMode) && (
-                  <div className={workspaceNoticeClassName}>
-                    {workspaceNoticeText && (
-                      <div className={workspaceNoticeTextClassName}>
-                        <span className={workspaceNoticeDotClassName} aria-hidden="true" />
-                        <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted">
-                          {workspaceNoticeText}
-                        </span>
+                        </div>
+                      </div>
+                    </div>
+                    {(workspaceNoticeText || props.developerMode) && (
+                      <div className={workspaceNoticeClassName}>
+                        {workspaceNoticeText && (
+                          <div className={workspaceNoticeTextClassName}>
+                            <span className={workspaceNoticeDotClassName} aria-hidden="true" />
+                            <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted">
+                              {workspaceNoticeText}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
+                    {props.developerMode &&
+                      workspaceDetailsOpen &&
+                      workspaceDetailItems.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {workspaceDetailItems.map((item) => (
+                            <div key={item} className={teamRunMetaItemClassName}>
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                   </div>
-                )}
-                {props.developerMode && workspaceDetailsOpen && workspaceDetailItems.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {workspaceDetailItems.map((item) => (
-                      <div key={item} className={teamRunMetaItemClassName}>
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                </div>
               </div>
 
               {!selectedTeamHasConfiguredMembers && (
