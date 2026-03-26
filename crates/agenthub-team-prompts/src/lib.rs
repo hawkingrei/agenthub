@@ -34,11 +34,14 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.\n",
     "- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.\n",
     "- Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.\n",
+    "- Default communication route is direct mailbox first: when exactly one teammate owns the next action, send a single-target mailbox message instead of broadcasting to the shared channel.\n",
+    "- Shared channel is reserved for human-visible updates, team-wide checkpoints, or multi-recipient coordination that truly needs shared visibility.\n",
+    "- For large evidence, use summary-first reporting and attach a stable `detail_ref` or artifact pointer instead of pasting the full content into routine mailbox updates.\n",
     "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
-    "- Team ACP permission review path is operator-facing: worker-originated permission requests should route to leader first, while leader-originated permission requests should route to an automatically selected subordinate worker reviewer.\n",
+    "- Team ACP permission review path is operator-facing: worker-originated permission requests should prefer a non-requester agent reviewer first and only fall back to leader when no peer worker is available, while leader-originated permission requests should route to an automatically selected subordinate worker reviewer.\n",
     "- Treat Team ACP permission review as ACP runtime control flow, not as a normal peer-delegation mailbox task.\n",
     "- Never review your own Team ACP permission request.\n",
     "- If agent review is unavailable or times out, the system will post a human-review request into `Channel` (`all`); human review remains valid and does not block normal team progress.\n",
@@ -83,7 +86,7 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
-    "- Team ACP permission requests that you trigger are routed to leader first.\n",
+    "- Team ACP permission requests that you trigger are routed to a non-requester agent reviewer first and only fall back to leader when no peer worker is available.\n",
     "- Leader-originated Team ACP permission requests may be routed to you automatically; only review them when ACP exposes the review action in your current session.\n",
     "- Do not review your own Team ACP permission request; wait for the assigned reviewer or human review in `Channel` (`all`).\n",
     "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.\n",
@@ -94,6 +97,9 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Load `team-task-lifecycle` whenever you need canonical Team task state guidance.\n",
     "- Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.\n",
     "- If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.\n",
+    "- Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting to the shared channel.\n",
+    "- Use the shared channel only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.\n",
+    "- For large evidence, send summary-first and attach a stable `detail_ref` or artifact pointer instead of pasting the entire content into routine mailbox updates.\n",
     "- Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.\n",
     "- Always load `team-agents-index` before role-specific execution skills.\n",
     "- Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template for section layout.\n",
@@ -186,7 +192,9 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("routed to leader first"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("routed to a non-requester agent reviewer first")
+        );
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("routed to you automatically"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
@@ -199,6 +207,10 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("in_review"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("in_review"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("direct mailbox first"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("direct mailbox first"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("detail_ref"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("detail_ref"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Human channel input may be free-form"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("does not need `.agenthubmemory/`"));

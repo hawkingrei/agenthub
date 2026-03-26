@@ -61,7 +61,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - status: `pending|in_progress|completed|blocked`
 - latest update:
 - latest finding:
-- primary route: `leader-mailbox|peer-mailbox|shared-channel`
+- primary route: `leader-mailbox|peer-mailbox|shared-channel` (`direct mailbox first` unless the update needs shared visibility)
 - secondary route: `none|human-notification`
 - next checkpoint:
 - overdue action:

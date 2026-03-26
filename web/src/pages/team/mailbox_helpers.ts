@@ -329,7 +329,23 @@ type MailboxChatPayload = {
   text: string;
   source: "team_workbench";
   mention_actor_ids?: string[];
+  summary?: string;
+  detail_ref?: {
+    uri: string;
+    label?: string;
+    kind?: string;
+    content_type?: string;
+  };
 };
+
+type MailboxChatDetailRefInput =
+  | string
+  | {
+      uri: string;
+      label?: string;
+      kind?: string;
+      content_type?: string;
+    };
 
 export function parseStructuredTeamPayload(payload: unknown): unknown {
   if (typeof payload !== "string") {
@@ -365,7 +381,11 @@ export function resolveChatMessageText(payload: unknown): string | null {
 
 export function buildMailboxChatPayload(
   text: string,
-  options?: { mention_actor_ids?: string[] }
+  options?: {
+    mention_actor_ids?: string[];
+    summary?: string;
+    detail_ref?: MailboxChatDetailRefInput;
+  }
 ): MailboxChatPayload {
   const mentionActorIds = (options?.mention_actor_ids ?? [])
     .map((actorId) => actorId.trim())
@@ -377,6 +397,26 @@ export function buildMailboxChatPayload(
   };
   if (mentionActorIds.length > 0) {
     payload.mention_actor_ids = mentionActorIds;
+  }
+  const detailRef =
+    typeof options?.detail_ref === "string"
+      ? { uri: options.detail_ref.trim() }
+      : options?.detail_ref
+        ? {
+            uri: options.detail_ref.uri.trim(),
+            label: options.detail_ref.label?.trim() || undefined,
+            kind: options.detail_ref.kind?.trim() || undefined,
+            content_type: options.detail_ref.content_type?.trim() || undefined,
+          }
+        : null;
+  if (detailRef?.uri) {
+    payload.detail_ref = detailRef;
+    const summary = (options?.summary ?? text).trim();
+    if (summary) {
+      payload.summary = summary;
+    }
+  } else if (options?.summary?.trim()) {
+    payload.summary = options.summary.trim();
   }
   return payload;
 }
