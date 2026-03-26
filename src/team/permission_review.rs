@@ -15,6 +15,7 @@ use super::TeamManager;
 
 const TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE: &str = "permission_review_request";
 const TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE: &str = "permission_review_card";
+const DEFAULT_TEAM_PERMISSION_REVIEW_HUMAN_FALLBACK_DELAY: Duration = Duration::from_secs(600);
 
 #[derive(Debug, Clone, Copy)]
 pub struct TeamPermissionReviewDispatcherSettings {
@@ -24,7 +25,7 @@ pub struct TeamPermissionReviewDispatcherSettings {
 impl Default for TeamPermissionReviewDispatcherSettings {
     fn default() -> Self {
         Self {
-            human_fallback_delay: Duration::from_secs(300),
+            human_fallback_delay: DEFAULT_TEAM_PERMISSION_REVIEW_HUMAN_FALLBACK_DELAY,
         }
     }
 }
@@ -425,10 +426,10 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn permission_review_dispatcher_default_human_fallback_is_five_minutes() {
+    fn permission_review_dispatcher_default_human_fallback_is_ten_minutes() {
         assert_eq!(
             TeamPermissionReviewDispatcherSettings::default().human_fallback_delay,
-            Duration::from_secs(300)
+            DEFAULT_TEAM_PERMISSION_REVIEW_HUMAN_FALLBACK_DELAY
         );
     }
 
