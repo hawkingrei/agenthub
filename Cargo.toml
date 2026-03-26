@@ -70,7 +70,7 @@ agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
-agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
+agent-client-protocol = { version = "0.10.3", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
