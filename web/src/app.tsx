@@ -66,6 +66,7 @@ import {
 } from "./agent_presets";
 import { AgentNodeSection, validateAgentNodeDraft } from "./components/agent_node_section";
 import { AgentsPanel } from "./components/agents_panel";
+import { ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX } from "./components/acp_panel";
 import { CreateAgentModal } from "./components/create_agent_modal";
 import { InputDock } from "./components/input_dock";
 import { OutputHeader } from "./components/output_header";
@@ -3117,6 +3118,7 @@ export function App() {
       mobileTitle: activeAgentRecord?.name ?? null,
       acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
       developerMode,
+      conversationBottomClearance: showInputDock ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX : 0,
       onSelectTab: handleAcpTabSelect,
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,

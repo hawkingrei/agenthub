@@ -21,6 +21,7 @@ type AcpPanelProps = {
   mobileTitle?: string | null;
   acpTab: AcpPanelTab;
   developerMode: boolean;
+  conversationBottomClearance?: number;
   onSelectTab: (tab: AcpPanelTab) => void;
   showConversationBadge: boolean;
   showConversationJump: boolean;
@@ -31,11 +32,14 @@ type AcpPanelProps = {
   debug: AcpDebugProps;
 };
 
+export const ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX = 104;
+
 function AcpPanelView({
   subtitle,
   mobileTitle,
   acpTab,
   developerMode,
+  conversationBottomClearance = 0,
   onSelectTab,
   showConversationBadge,
   showConversationJump,
@@ -106,7 +110,12 @@ function AcpPanelView({
           {tabsNode}
         </div>
       </div>
-      {effectiveTab === "conversation" && <AcpConversation {...conversation} />}
+      {effectiveTab === "conversation" && (
+        <AcpConversation
+          {...conversation}
+          bottomClearancePx={conversationBottomClearance}
+        />
+      )}
       {effectiveTab === "plan" && <AcpPlan {...plan} />}
       {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
       {effectiveTab === "conversation" &&

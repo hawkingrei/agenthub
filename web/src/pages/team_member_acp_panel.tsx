@@ -1,7 +1,10 @@
 import React from "react";
 import { buildAcpView } from "../acp";
 import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
-import { AcpPanel } from "../components/acp_panel";
+import {
+  ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
+  AcpPanel,
+} from "../components/acp_panel";
 import { getAcpConversationCacheStats } from "../components/acp_conversation";
 import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";
@@ -367,6 +370,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
+      conversationBottomClearance:
+        canSendInput && showInputDock ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX : 0,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
@@ -410,6 +415,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [
       acpConfigId,
       acpConfigValue,
+      canSendInput,
       acpConversation.jumpToConversationBottom,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
@@ -452,44 +458,29 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col rounded-[12px] border-black/[0.06] p-2.5`}>
       {canShowThreadOptions && (
-        <div className="flex shrink-0 flex-col gap-2">
-          <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full justify-end gap-2`}>
+        <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full shrink-0 justify-end gap-2`}>
+          <button
+            onClick={() => {
+              void onRefresh();
+            }}
+            disabled={hasSelectedMember && selectedSessionId ? memberEventsLoading : eventsLoading}
+            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            title="Refresh thread"
+            aria-label="Refresh thread"
+          >
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Refresh</span>
+          </button>
+          {canLoadOlder && (
             <button
               onClick={() => {
-                void onRefresh();
+                void onLoadOlder();
               }}
-              disabled={hasSelectedMember && selectedSessionId ? memberEventsLoading : eventsLoading}
-              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-              title="Refresh thread"
-              aria-label="Refresh thread"
+              disabled={!canLoadOlder}
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
             >
-              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              <span>Refresh</span>
+              Load Older
             </button>
-            {canLoadOlder && (
-              <button
-                onClick={() => {
-                  void onLoadOlder();
-                }}
-                disabled={!canLoadOlder}
-                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-              >
-                Load Older
-              </button>
-            )}
-          </div>
-          {developerMode && (
-            <div className="mono flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
-              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
-                member={selectedMemberId || "-"}
-              </div>
-              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
-                role={selectedMemberSnapshot?.role ?? selectedMemberRole ?? "-"}
-              </div>
-              <div className="rounded-lg border border-black/[0.06] bg-ui-surface/70 px-2.5 py-1.5">
-                session={selectedSessionId ?? "-"}
-              </div>
-            </div>
           )}
         </div>
       )}
@@ -537,7 +528,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       )}
 
       {canSendInput && showInputDock && (
-        <div className="mt-2.5 shrink-0">
+        <div className="mt-1.5 shrink-0">
           <InputDock
             input={input}
             historyCommands={inputHistory}

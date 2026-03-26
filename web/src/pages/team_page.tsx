@@ -422,7 +422,7 @@ const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-1 py-1.5 backdrop-blur-sm";
+  "flex flex-wrap items-center justify-between gap-1.5 border-b border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-1 py-1 backdrop-blur-sm";
 const teamWorkbenchHeaderIconButtonClassName =
   "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-black/[0.08] bg-white/[0.75] text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
@@ -432,7 +432,7 @@ const teamWorkbenchDetailLayoutCollapsedClassName =
 const teamWorkbenchDetailLayoutExpandedClassName =
   "teams-layout grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(256px,312px)_minmax(0,1fr)]";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] px-2 py-1.5";
+  "rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.74)] px-2 py-1";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[16px] border border-ui-border bg-ui-surface shadow-sm";
 const teamWorkbenchInfoStripGridClassName =
@@ -3260,7 +3260,7 @@ export function TeamPage(props: TeamPageProps) {
             </button>
           )}
           <div className="min-w-0">
-            <h1 className="text-[clamp(1.15rem,2vw,1.55rem)] font-semibold tracking-tight text-black">
+            <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
               {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
             </h1>
             {isSelectorRoute ? (
@@ -3488,9 +3488,17 @@ export function TeamPage(props: TeamPageProps) {
 
             {selectedTeam && (
               <>
-                <div className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName}`}>
-                <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div
+                  className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
+                    isAgentWorkspace ? "py-0.5" : ""
+                  }`}
+                >
+                <div className={`flex flex-col ${isAgentWorkspace ? "gap-2" : "gap-3"}`}>
+                <div
+                  className={`flex flex-wrap items-start justify-between ${
+                    isAgentWorkspace ? "gap-1.5" : "gap-2"
+                  }`}
+                >
                   <div className="min-w-0 flex-1">
                     {workspaceEyebrow && (
                       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
@@ -3498,12 +3506,20 @@ export function TeamPage(props: TeamPageProps) {
                       </p>
                     )}
                     {showDedicatedWorkspaceHeading ? (
-                      <h2 className={`${workspaceEyebrow ? "mt-1" : ""} text-[18px] font-semibold tracking-tight text-black`}>
+                      <h2
+                        className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
+                          isAgentWorkspace
+                            ? "text-[15px] font-semibold leading-[1.1]"
+                            : "text-[17px] font-semibold leading-tight"
+                        } tracking-tight text-black`}
+                      >
                         {workspaceTitle}
                       </h2>
                     ) : null}
                     {workspaceDescription && (
-                      <p className={teamSectionBodyTextClassName}>{workspaceDescription}</p>
+                      <p className="mt-1 text-[12px] leading-[1.45] text-ui-text-secondary">
+                        {workspaceDescription}
+                      </p>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2">
@@ -3512,7 +3528,9 @@ export function TeamPage(props: TeamPageProps) {
                         <Menu.Target>
                           <button
                             type="button"
-                            className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-semibold`}
+                            className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md ${
+                              isAgentWorkspace ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-[12px]"
+                            } font-semibold`}
                             aria-label="Open agent workspace menu"
                           >
                             <i className="bi bi-person-badge" aria-hidden="true" />

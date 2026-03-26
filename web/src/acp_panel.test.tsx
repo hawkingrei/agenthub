@@ -240,6 +240,18 @@ describe("AcpPanel layout", () => {
     expect(html).toContain('aria-label="Jump to bottom"');
   });
 
+  it("passes bottom clearance into the conversation scroll area when input dock is present", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        conversationBottomClearance={104}
+      />
+    );
+    expect(html).toContain('scroll-padding-bottom:104px');
+    expect(html).toContain('class="acp-conversation-spacer dock-clearance"');
+    expect(html).toContain('height:104px');
+  });
+
   it("hides conversation jump button when debug tab is active", () => {
     const html = renderToStaticMarkup(
       <AcpPanel
