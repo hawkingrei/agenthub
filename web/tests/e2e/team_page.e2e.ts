@@ -214,23 +214,59 @@ async function createTeamMemberFromModal(
     name: "No agents have joined this team yet.",
     exact: true,
   });
-  if (await visibleMenuItem.isVisible().catch(() => false)) {
-    await visibleMenuItem.click();
-  } else if (await emptyStateHeading.isVisible().catch(() => false)) {
-    await expect(primaryOpenButton).toBeVisible();
-    await primaryOpenButton.click();
-  } else if (await primaryOpenButton.isVisible().catch(() => false)) {
-    await primaryOpenButton.click();
-  } else if (await menuTrigger.isVisible().catch(() => false)) {
-    await clickSelectedTeamMenuItem(page, openButtonLabel);
-  } else {
-    await expect(menuTrigger).toBeVisible();
-    await clickSelectedTeamMenuItem(page, openButtonLabel);
-  }
+  const selectionError = page.getByText("Select a team first", { exact: true });
   const dialog = page
     .locator("[role='dialog']")
     .filter({ has: page.getByLabel("Agent name", { exact: true }) })
     .last();
+  const waitForDialog = async (): Promise<boolean> => {
+    try {
+      await expect(dialog).toBeVisible({ timeout: 1_500 });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const tryOpen = async (
+    action: () => Promise<void>,
+    options?: { waitForTeamSelection?: boolean }
+  ): Promise<boolean> => {
+    await action();
+    if (await waitForDialog()) {
+      return true;
+    }
+    if (options?.waitForTeamSelection && (await selectionError.isVisible().catch(() => false))) {
+      await expect(page.getByRole("heading", { name: /.+/, exact: false }).first()).toBeVisible();
+    }
+    return false;
+  };
+  if (
+    (await visibleMenuItem.isVisible().catch(() => false)) &&
+    (await tryOpen(async () => visibleMenuItem.click()))
+  ) {
+    // dialog opened
+  } else if (
+    (await emptyStateHeading.isVisible().catch(() => false)) &&
+    (await primaryOpenButton.isVisible().catch(() => false)) &&
+    (await tryOpen(async () => primaryOpenButton.click(), { waitForTeamSelection: true }))
+  ) {
+    // dialog opened
+  } else if (
+    (await primaryOpenButton.isVisible().catch(() => false)) &&
+    (await tryOpen(async () => primaryOpenButton.click(), { waitForTeamSelection: true }))
+  ) {
+    // dialog opened
+  } else {
+    await expect(menuTrigger).toBeVisible();
+    await openSelectedTeamMenu(page);
+    const menuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
+    await expect(menuItem).toBeVisible();
+    if (!(await tryOpen(async () => menuItem.click()))) {
+      await openSelectedTeamMenu(page);
+      await expect(menuItem).toBeVisible();
+      await menuItem.click();
+    }
+  }
   await expect(dialog).toBeVisible();
   if (options.identity) {
     await dialog.getByLabel("Identity").fill(options.identity);
