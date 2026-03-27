@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  rust:
+  rust-cargo:
     name: Rust (Cargo)
     runs-on: ubuntu-latest
     steps:
@@ -20,8 +20,64 @@ jobs:
           profile: minimal
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+      - name: Cargo check (workspace)
+        run: cargo check --workspace --locked
+
+  rust-proto-check:
+    name: Rust (Proto Check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
       - name: Verify internal protobuf codegen
         run: make proto-check
+
+  rust-grpc-integration:
+    name: Rust (gRPC Integration)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Distributed agent node gRPC integration tests
+        run: |
+          cargo test --locked remote_actor_grpc_pipeline_delivers_and_acks_over_tls -- --nocapture
+          cargo test --locked bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture
+          cargo test --locked remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls -- --nocapture
+
+  rust-coverage:
+    name: Rust (Coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
       - name: Setup Rust coverage tool
         run: |
           rustup component add llvm-tools-preview
@@ -29,13 +85,6 @@ jobs:
             cargo install cargo-llvm-cov --locked
           fi
           cargo llvm-cov --version
-      - name: Cargo check (workspace)
-        run: cargo check --workspace --locked
-      - name: Distributed agent node gRPC integration tests
-        run: |
-          cargo test --locked remote_actor_grpc_pipeline_delivers_and_acks_over_tls -- --nocapture
-          cargo test --locked bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_process_states -- --nocapture
-          cargo test --locked remote_agent_grpc_control_starts_inputs_and_lists_events_over_tls -- --nocapture
       - name: Cargo test coverage (workspace)
         run: |
           cargo llvm-cov --workspace --locked --lcov --output-path rust-cargo.lcov
