@@ -188,6 +188,24 @@ async function createTeamFromModal(
 
 type AddAgentEntryLane = "primary" | "menuItem" | "menuTrigger";
 
+async function restoreTeamAddAgentContext(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const showTeamsPanelButton = page.getByRole("button", {
+    name: "Show teams panel",
+    exact: true,
+  });
+  if (await showTeamsPanelButton.isVisible().catch(() => false)) {
+    await showTeamsPanelButton.click();
+  }
+
+  const conversationSubject = page.getByRole("button", { name: "# all", exact: true });
+  if (await conversationSubject.isVisible().catch(() => false)) {
+    await conversationSubject.click();
+    await page.waitForTimeout(150);
+  }
+}
+
 async function waitForAddAgentEntryLane(
   page: import("@playwright/test").Page
 ): Promise<AddAgentEntryLane> {
@@ -201,31 +219,37 @@ async function waitForAddAgentEntryLane(
     exact: true,
   });
 
-  await expect
-    .poll(async (): Promise<AddAgentEntryLane | "missing"> => {
-      if (await visibleMenuItem.isVisible().catch(() => false)) {
-        return "menuItem";
-      }
-      if (await primaryButton.isVisible().catch(() => false)) {
-        return "primary";
-      }
-      if (await menuTrigger.isVisible().catch(() => false)) {
-        return "menuTrigger";
-      }
-      return "missing";
-    }, {
-      timeout: 5_000,
-    })
-    .not.toBe("missing");
+  const detectLane = async (): Promise<AddAgentEntryLane | "missing"> => {
+    if (await visibleMenuItem.isVisible().catch(() => false)) {
+      return "menuItem";
+    }
+    if (await primaryButton.isVisible().catch(() => false)) {
+      return "primary";
+    }
+    if (await menuTrigger.isVisible().catch(() => false)) {
+      return "menuTrigger";
+    }
+    return "missing";
+  };
 
-  if (await visibleMenuItem.isVisible().catch(() => false)) {
-    return "menuItem";
+  const waitForLane = async (): Promise<void> => {
+    await expect
+      .poll(detectLane, {
+        timeout: 5_000,
+      })
+      .not.toBe("missing");
+  };
+
+  try {
+    await waitForLane();
+  } catch {
+    await restoreTeamAddAgentContext(page);
+    await waitForLane();
   }
-  if (await primaryButton.isVisible().catch(() => false)) {
-    return "primary";
-  }
-  if (await menuTrigger.isVisible().catch(() => false)) {
-    return "menuTrigger";
+
+  const lane = await detectLane();
+  if (lane !== "missing") {
+    return lane;
   }
   throw new Error("Timed out waiting for an Add Agent entry point");
 }
