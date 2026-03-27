@@ -275,6 +275,7 @@ function buildPanelTask(
   overrides: Partial<{
     title: string;
     status: "open" | "in_progress" | "in_review" | "completed" | "canceled";
+    assigned_member_id: string | null;
     context: Record<string, unknown>;
     created_at: number;
     updated_at: number;
@@ -286,6 +287,7 @@ function buildPanelTask(
     title: overrides.title ?? id,
     status: overrides.status ?? "open",
     created_by_actor_id: "user",
+    assigned_member_id: overrides.assigned_member_id ?? null,
     context: overrides.context ?? {},
     created_at: overrides.created_at ?? 1_700_000_000,
     updated_at: overrides.updated_at ?? 1_700_000_100,
@@ -2594,7 +2596,6 @@ describe("team panels interactions", () => {
     const onRefreshTasks = vi.fn();
     const onNewTaskTitleChange = vi.fn();
     const onCreateTask = vi.fn();
-    const onUpdateTaskStatus = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
     const onCompileTaskRunPreview = vi.fn();
     const onUseCompiledRunPayload = vi.fn();
@@ -2616,6 +2617,7 @@ describe("team panels interactions", () => {
               buildPanelTask("task-2", {
                 title: "Prepare rollout",
                 status: "in_progress",
+                assigned_member_id: "worker-1",
                 context: { owner: "leader" },
                 created_at: 90,
                 updated_at: 220,
@@ -2634,7 +2636,6 @@ describe("team panels interactions", () => {
             newTaskTitle="New task draft"
             onNewTaskTitleChange={onNewTaskTitleChange}
             onCreateTask={onCreateTask}
-            onUpdateTaskStatus={onUpdateTaskStatus}
             busy={null}
             runs={[
               buildRun({
@@ -2664,6 +2665,14 @@ describe("team panels interactions", () => {
             onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
             formatTs={(ts) => `ts-${String(ts)}`}
             toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[
+              buildMemberLiveState(),
+              buildMemberLiveState({
+                member_id: "worker-1",
+                role: "worker",
+                agent_name: "Worker One",
+              }),
+            ]}
           />
         </MantineProvider>
       );
@@ -2671,8 +2680,6 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
-    clickElement(findButtonByAriaLabel(container, "Start Investigate bug"));
-    clickElement(findButtonByAriaLabel(container, "Approve Review release notes"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
@@ -2701,8 +2708,6 @@ describe("team panels interactions", () => {
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
     expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
     expect(onCreateTask).toHaveBeenCalledTimes(1);
-    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-1", "in_progress");
-    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-3", "completed");
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -2713,6 +2718,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("In review");
     expect(container.textContent).toContain("Completed");
     expect(container.textContent).toContain("Prepare rollout");
+    expect(container.textContent).toContain("owner Worker One");
+    expect(container.textContent).toContain(
+      "Task status and ownership are agent-managed through Team runtime controls."
+    );
     expect(container.textContent).toContain("Latest run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
@@ -2738,7 +2747,6 @@ describe("team panels interactions", () => {
             newTaskTitle=""
             onNewTaskTitleChange={vi.fn()}
             onCreateTask={vi.fn()}
-            onUpdateTaskStatus={vi.fn()}
             busy={null}
             runs={[]}
             onOpenRun={vi.fn()}
@@ -2751,6 +2759,7 @@ describe("team panels interactions", () => {
             onCreateRunFromCompiledPreview={vi.fn()}
             formatTs={(ts) => `ts-${String(ts)}`}
             toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
           />
         </MantineProvider>
       );

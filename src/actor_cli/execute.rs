@@ -129,6 +129,8 @@ pub(super) async fn run_actor_command(
             actor_id,
             task_id,
             status,
+            assigned_member_id,
+            clear_assigned_member_id,
         } => {
             let client = init_actor_control_client(
                 &actor_id,
@@ -137,8 +139,20 @@ pub(super) async fn run_actor_command(
                 "actor team task control",
             )
             .await?;
+            if status.is_none() && assigned_member_id.is_none() && !clear_assigned_member_id {
+                return Err(anyhow::anyhow!(
+                    "team-task-update requires --status, --assigned-member-id, or --unassign"
+                ));
+            }
             let task = client
-                .update_team_task(&team_id, &actor_id, &task_id, status.as_str())
+                .update_team_task(
+                    &team_id,
+                    &actor_id,
+                    &task_id,
+                    status.as_ref().map(TeamTaskStatus::as_str),
+                    assigned_member_id.as_deref(),
+                    clear_assigned_member_id,
+                )
                 .await?;
             write_actor_output(&task, output_mode, output_preference)?;
         }

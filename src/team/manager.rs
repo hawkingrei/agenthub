@@ -163,6 +163,13 @@ pub struct TeamRuntimeRecord {
     pub members: Vec<TeamRuntimeMemberRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TeamTaskAssignmentUpdate {
+    Unchanged,
+    Unassigned,
+    Assigned(String),
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRuntimeSummaryRecord {
     pub status: TeamRuntimeStatus,
@@ -606,24 +613,86 @@ impl TeamManager {
         task_id: &str,
         status: TeamTaskStatus,
     ) -> anyhow::Result<TeamTaskRecord> {
+        self.update_task(task_id, Some(status), TeamTaskAssignmentUpdate::Unchanged)
+            .await
+    }
+
+    pub async fn update_task(
+        &self,
+        task_id: &str,
+        status: Option<TeamTaskStatus>,
+        assignment: TeamTaskAssignmentUpdate,
+    ) -> anyhow::Result<TeamTaskRecord> {
         let current = self.get_task(task_id).await?;
-        if current.status == status {
+        let status_patch = status.filter(|candidate| *candidate != current.status);
+        let assignment_patch = match assignment {
+            TeamTaskAssignmentUpdate::Unchanged => None,
+            TeamTaskAssignmentUpdate::Unassigned => {
+                if current.assigned_member_id.is_none() {
+                    None
+                } else {
+                    Some(None)
+                }
+            }
+            TeamTaskAssignmentUpdate::Assigned(member_id) => {
+                if current.assigned_member_id.as_deref() == Some(member_id.as_str()) {
+                    None
+                } else {
+                    Some(Some(member_id))
+                }
+            }
+        };
+        if status_patch.is_none() && assignment_patch.is_none() {
             return Ok(current);
         }
 
         let now = Utc::now().timestamp();
-        sqlx::query(
-            r#"
-            UPDATE team_tasks
-            SET status = ?2, updated_at = ?3
-            WHERE id = ?1
-            "#,
-        )
-        .bind(task_id)
-        .bind(team_task_status_to_str(&status))
-        .bind(now)
-        .execute(&self.db)
-        .await?;
+        match (status_patch.as_ref(), assignment_patch.as_ref()) {
+            (Some(next_status), Some(next_assignment)) => {
+                sqlx::query(
+                    r#"
+                    UPDATE team_tasks
+                    SET status = ?2, assigned_member_id = ?3, updated_at = ?4
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(task_id)
+                .bind(team_task_status_to_str(next_status))
+                .bind(next_assignment)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            }
+            (Some(next_status), None) => {
+                sqlx::query(
+                    r#"
+                    UPDATE team_tasks
+                    SET status = ?2, updated_at = ?3
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(task_id)
+                .bind(team_task_status_to_str(next_status))
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            }
+            (None, Some(next_assignment)) => {
+                sqlx::query(
+                    r#"
+                    UPDATE team_tasks
+                    SET assigned_member_id = ?2, updated_at = ?3
+                    WHERE id = ?1
+                    "#,
+                )
+                .bind(task_id)
+                .bind(next_assignment)
+                .bind(now)
+                .execute(&self.db)
+                .await?;
+            }
+            (None, None) => unreachable!("no-op task patch should return early"),
+        }
 
         self.get_task(task_id).await
     }

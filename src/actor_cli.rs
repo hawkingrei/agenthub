@@ -99,7 +99,9 @@ enum ActorCommand {
         team_id: String,
         actor_id: String,
         task_id: String,
-        status: TeamTaskStatus,
+        status: Option<TeamTaskStatus>,
+        assigned_member_id: Option<String>,
+        clear_assigned_member_id: bool,
     },
     TimeTriggerSet {
         actor_id: String,
@@ -1308,6 +1310,67 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_task_update_accepts_assignment_patch() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "team-task-update".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-1".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-update");
+        match parsed {
+            ActorCommand::TeamTaskUpdate {
+                team_id,
+                actor_id,
+                task_id,
+                status,
+                assigned_member_id,
+                clear_assigned_member_id,
+            } => {
+                assert_eq!(team_id, "team-update");
+                assert_eq!(actor_id, "leader");
+                assert_eq!(task_id, "task-1");
+                assert!(status.is_none());
+                assert_eq!(assigned_member_id.as_deref(), Some("worker-1"));
+                assert!(!clear_assigned_member_id);
+            }
+            _ => panic!("expected team-task-update command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_team_task_update_rejects_assign_and_unassign_together() {
+        let args = vec![
+            "team-task-update".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-1".to_string(),
+            "--unassign".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("reject conflicting assignee flags");
+        assert!(
+            err.to_string()
+                .contains("--assigned-member-id and --unassign cannot be used together")
+        );
+    }
+
+    #[test]
     fn parse_time_trigger_set_uses_actor_env_fallback() {
         let _guard = env_lock().blocking_lock();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
@@ -1560,7 +1623,9 @@ mod tests {
                     team_id: "team-1".to_string(),
                     actor_id: "leader".to_string(),
                     task_id: "task-1".to_string(),
-                    status: TeamTaskStatus::InProgress,
+                    status: Some(TeamTaskStatus::InProgress),
+                    assigned_member_id: None,
+                    clear_assigned_member_id: false,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),

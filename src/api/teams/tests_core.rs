@@ -4371,7 +4371,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
 }
 
 #[tokio::test]
-async fn teams_api_updates_task_status_and_rejects_invalid_values() {
+async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -4383,7 +4383,10 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
             description: Some("status update".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
             }),
         }),
     )
@@ -4405,46 +4408,47 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     .await
     .expect("create task");
 
-    let Json(updated) = update_team_task(
+    let status_err = update_team_task(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(UpdateTeamTaskRequest {
-            status: "in_progress".to_string(),
+            status: Some("in_progress".to_string()),
+            assigned_member_id: None,
         }),
     )
     .await
-    .expect("update task status");
-    assert_eq!(updated.id, created.task.id);
-    assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
-
-    let Json(reviewing) = update_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path((team.id.clone(), created.task.id.clone())),
-        Json(UpdateTeamTaskRequest {
-            status: "in_review".to_string(),
-        }),
-    )
-    .await
-    .expect("move task into review");
-    assert_eq!(reviewing.status, crate::team::TeamTaskStatus::InReview);
-
-    let err = update_team_task(
-        State(state),
-        headers,
-        Path((team.id, created.task.id)),
-        Json(UpdateTeamTaskRequest {
-            status: "paused".to_string(),
-        }),
-    )
-    .await
-    .expect_err("invalid status should fail");
-    let body = decode_json_body(err.into_response()).await;
+    .expect_err("human task status update should fail");
+    let status_body = decode_json_body(status_err.into_response()).await;
     assert_eq!(
-        body["error"],
-        Value::from("status must be one of: open, in_progress, in_review, completed, canceled")
+        status_body["error"],
+        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
     );
+
+    let owner_err = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: None,
+            assigned_member_id: Some(Some("worker-1".to_string())),
+        }),
+    )
+    .await
+    .expect_err("human task owner update should fail");
+    let owner_body = decode_json_body(owner_err.into_response()).await;
+    assert_eq!(
+        owner_body["error"],
+        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
+    );
+
+    let reloaded = state
+        .teams
+        .get_task(&created.task.id)
+        .await
+        .expect("reload task");
+    assert_eq!(reloaded.status, crate::team::TeamTaskStatus::Open);
+    assert_eq!(reloaded.assigned_member_id, None);
 }
 
 #[tokio::test]

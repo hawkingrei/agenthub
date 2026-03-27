@@ -2,8 +2,8 @@
 
 > Historical Note
 >
-> Team runtime coordination is now CLI-first via `AGENTHUB_ACTOR_CLI`
-> (`agenthub actor ...`). Actor MCP injection is no longer part of the active
+> Team runtime coordination is now CLI-first via `agenthub actor ...`.
+> Actor MCP injection is no longer part of the active
 > mainline runtime. This document is retained only as historical
 > enforcement/design background; current Team coordination contracts live in
 > `docs/features/actor-foundation.md` plus the Team mailbox/role skills.

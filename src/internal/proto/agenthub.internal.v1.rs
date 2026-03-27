@@ -129,8 +129,12 @@ pub struct UpdateTeamTaskRequest {
     pub actor_id: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
     pub task_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "4")]
-    pub status: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "4")]
+    pub status: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub assigned_member_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag = "6")]
+    pub clear_assigned_member_id: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UpdateTeamTaskResponse {

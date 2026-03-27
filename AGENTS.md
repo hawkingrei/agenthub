@@ -138,7 +138,7 @@ agenthub/
   - User-facing conversation input should not require user-supplied `run_id` or `from_actor_id`; backend must derive sender identity from session and resolve routing from `@member_id`.
   - `conversation_id` is the required human-facing scope key; `run_id` is execution-scoped and should be generated when execution starts.
   - `correlation_id` should link one intent chain across conversation events, mailbox commands, and run events.
-  - Team role sessions must receive a valid `AGENTHUB_ACTOR_CLI` path and actor runtime env so CLI-based mailbox/task coordination is available from the first turn.
+  - Team role sessions must receive the canonical actor CLI capability and actor runtime env so `agenthub actor ...` mailbox/task coordination is available from the first turn.
   - Team mode should keep communication on the canonical actor CLI path (`inbox -> process -> ack -> send/report`) instead of ad-hoc shell text routing or MCP mailbox injection.
   - Mention routing contract: `@member_id` means explicit recipients only; no `@` means broadcast to all team members.
   - Mailbox address translation: during mailbox fan-out, recipient `to_actor_id` should be translated into `@member_id` mention context for agent-facing chat payloads.

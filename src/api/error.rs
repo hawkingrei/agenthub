@@ -63,6 +63,13 @@ impl ApiError {
         }
     }
 
+    pub fn forbidden(msg: &str) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            error: anyhow::anyhow!(msg.to_string()),
+        }
+    }
+
     pub fn not_found(msg: &str) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,

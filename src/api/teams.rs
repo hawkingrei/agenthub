@@ -27,13 +27,12 @@ use crate::api::error::ApiError;
 use crate::auth::UserRecord;
 use crate::state::AppState;
 use crate::team::{
-    TEAM_RUN_STATUS_VALUES, TEAM_TASK_STATUS_VALUES, TeamActorMessageRecord,
-    TeamActorMessageTransport, TeamConversationMessageRecord, TeamConversationRecord,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
-    TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
-    TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
-    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
-    stop_team_runtime,
+    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
+    TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
+    TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
+    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
+    build_actor_mailbox_immediate_hint_prompt, ensure_team_runtime_started,
+    force_team_member_new_session, plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -169,9 +168,14 @@ pub struct ListTeamTasksQuery {
     pub limit: Option<i64>,
 }
 
+// Keep deserialization compatibility for existing human clients even though
+// canonical task mutation is now rejected on the public HTTP path.
 #[derive(Debug, Deserialize)]
 pub struct UpdateTeamTaskRequest {
-    pub status: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub assigned_member_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -758,6 +762,7 @@ async fn update_team_task(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
+    let _requested_patch = (&payload.status, &payload.assigned_member_id);
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
@@ -768,13 +773,9 @@ async fn update_team_task(
     if task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    let status = normalize_task_status(Some(payload.status.as_str()))?;
-    let updated = state
-        .teams
-        .update_task_status(&task_id, status)
-        .await
-        .map_err(map_team_internal_error)?;
-    Ok(Json(updated))
+    Err(ApiError::forbidden(
+        "canonical Team task status/owner updates are agent-only; use actor runtime controls",
+    ))
 }
 
 async fn send_team_task_message(
@@ -2153,23 +2154,6 @@ fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<St
         "status must be one of: {}",
         TEAM_RUN_STATUS_VALUES.join(", ")
     )))
-}
-
-fn normalize_task_status(value: Option<&str>) -> Result<TeamTaskStatus, ApiError> {
-    match value
-        .map(str::trim)
-        .filter(|candidate| !candidate.is_empty())
-    {
-        Some("open") => Ok(TeamTaskStatus::Open),
-        Some("in_progress") => Ok(TeamTaskStatus::InProgress),
-        Some("in_review") => Ok(TeamTaskStatus::InReview),
-        Some("completed") => Ok(TeamTaskStatus::Completed),
-        Some("canceled") => Ok(TeamTaskStatus::Canceled),
-        _ => Err(ApiError::bad_request(&format!(
-            "status must be one of: {}",
-            TEAM_TASK_STATUS_VALUES.join(", ")
-        ))),
-    }
 }
 
 fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, ApiError> {
