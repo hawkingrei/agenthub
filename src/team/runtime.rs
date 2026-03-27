@@ -41,7 +41,6 @@ struct TeamRuntimeMemberSpec {
     role: String,
     description: Option<String>,
     prompt: Option<String>,
-    skills: Vec<String>,
     runtime: Option<TeamRuntimeMemberRuntimeHint>,
 }
 
@@ -93,19 +92,6 @@ fn parse_runtime_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamRuntimeMem
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("worker");
-        let skills = member_obj
-            .get("skills")
-            .and_then(Value::as_array)
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
         let description = member_obj
             .get("description")
             .and_then(Value::as_str)
@@ -129,7 +115,6 @@ fn parse_runtime_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamRuntimeMem
             role: role.to_string(),
             description,
             prompt,
-            skills,
             runtime,
         });
     }
@@ -148,7 +133,7 @@ fn build_team_member_actor_context(
         default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
         actor_cli_path: actor_cli_path.to_string(),
         member_role: Some(member.role.clone()),
-        member_skills: member.skills.clone(),
+        member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
     })

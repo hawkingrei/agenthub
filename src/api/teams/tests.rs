@@ -67,7 +67,7 @@ fn build_team_member_actor_context(
         default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
         actor_cli_path: default_actor_cli_path()?,
         member_role: Some(member.role.clone()),
-        member_skills: member.skills.clone(),
+        member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
     })

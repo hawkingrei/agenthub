@@ -182,14 +182,92 @@ async function createTeamFromModal(
   }
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
+  await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
+  await openTeamFromSelector(page, options.name);
+  await expectAddAgentEntryVisible(page, options.name);
+}
+
+type AddAgentEntryLane = "primary" | "menuItem" | "menuTrigger";
+
+async function restoreTeamAddAgentContext(
+  page: import("@playwright/test").Page,
+  teamName?: string
+): Promise<void> {
+  const showTeamsPanelButton = page.getByRole("button", {
+    name: "Show teams panel",
+    exact: true,
+  });
+  if (await showTeamsPanelButton.isVisible().catch(() => false)) {
+    await showTeamsPanelButton.click();
+  }
+
+  const conversationSubject = page.getByRole("button", { name: "# all", exact: true });
+  if (await conversationSubject.isVisible().catch(() => false)) {
+    await conversationSubject.click();
+    await page.waitForTimeout(150);
+  }
+
+  if (teamName) {
+    await openTeamFromSelector(page, teamName);
+  }
+}
+
+async function waitForAddAgentEntryLane(
+  page: import("@playwright/test").Page,
+  teamName?: string
+): Promise<AddAgentEntryLane> {
+  const primaryButton = page
+    .locator(".teams-main")
+    .getByRole("button", { name: "Add Agent", exact: true })
+    .first();
+  const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+
+  const detectLane = async (): Promise<AddAgentEntryLane | "missing"> => {
+    if (await visibleMenuItem.isVisible().catch(() => false)) {
+      return "menuItem";
+    }
+    if (await primaryButton.isVisible().catch(() => false)) {
+      return "primary";
+    }
+    if (await menuTrigger.isVisible().catch(() => false)) {
+      return "menuTrigger";
+    }
+    return "missing";
+  };
+
+  const waitForLane = async (): Promise<void> => {
+    await expect
+      .poll(detectLane, {
+        timeout: 5_000,
+      })
+      .not.toBe("missing");
+  };
+
+  try {
+    await waitForLane();
+  } catch {
+    await restoreTeamAddAgentContext(page, teamName);
+    await waitForLane();
+  }
+
+  const lane = await detectLane();
+  if (lane !== "missing") {
+    return lane;
+  }
+  throw new Error("Timed out waiting for an Add Agent entry point");
 }
 
 async function createTeamMemberFromModal(
   page: import("@playwright/test").Page,
   options: {
+    teamName?: string;
     workdir: string;
     model?: string;
-    customSkills?: string;
     identity?: string;
   }
 ): Promise<void> {
@@ -199,19 +277,68 @@ async function createTeamMemberFromModal(
     kimi: "Kimi CLI",
   };
   const openButtonLabel = "Add Agent";
-  const title = "Add Agent";
   const confirmLabel = "Create Agent";
-  const openButton = page.getByRole("button", { name: openButtonLabel, exact: true }).first();
-  if ((await openButton.count()) > 0) {
-    await openButton.click();
-  } else {
-    await openSelectedTeamMenu(page);
-    await page.getByRole("menuitem", { name: openButtonLabel, exact: true }).click();
-  }
+  const primaryOpenButton = page
+    .locator(".teams-main")
+    .getByRole("button", { name: openButtonLabel, exact: true })
+    .first();
+  const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+  const selectionError = page.getByText("Select a team first", { exact: true });
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ hasText: title })
+    .filter({ has: page.getByLabel("Agent name", { exact: true }) })
     .last();
+  const waitForDialog = async (): Promise<boolean> => {
+    try {
+      await expect(dialog).toBeVisible({ timeout: 1_500 });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const tryOpen = async (
+    action: () => Promise<void>,
+    options?: { waitForTeamSelection?: boolean }
+  ): Promise<boolean> => {
+    await action();
+    if (await waitForDialog()) {
+      return true;
+    }
+    if (options?.waitForTeamSelection && (await selectionError.isVisible().catch(() => false))) {
+      await expect(page.getByRole("heading", { name: /.+/, exact: false }).first()).toBeVisible();
+    }
+    return false;
+  };
+  const openFromVisibleLane = async (): Promise<boolean> => {
+    const lane = await waitForAddAgentEntryLane(page, options.teamName);
+    if (lane === "menuItem") {
+      return tryOpen(async () => visibleMenuItem.click());
+    }
+    if (lane === "primary") {
+      return tryOpen(async () => primaryOpenButton.click(), {
+        waitForTeamSelection: true,
+      });
+    }
+
+    await expect(menuTrigger).toBeVisible();
+    await openSelectedTeamMenu(page);
+    const menuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
+    await expect(menuItem).toBeVisible();
+    return tryOpen(async () => menuItem.click());
+  };
+
+  if (!(await openFromVisibleLane())) {
+    await page.waitForTimeout(150);
+    if (!(await openFromVisibleLane())) {
+      await openSelectedTeamMenu(page);
+      await expect(visibleMenuItem).toBeVisible();
+      await visibleMenuItem.click();
+    }
+  }
   await expect(dialog).toBeVisible();
   if (options.identity) {
     await dialog.getByLabel("Identity").fill(options.identity);
@@ -220,9 +347,6 @@ async function createTeamMemberFromModal(
     const optionLabel = roleModelLabels[options.model] ?? options.model;
     await dialog.getByLabel("Role model").click();
     await page.getByRole("option", { name: optionLabel, exact: true }).click();
-  }
-  if (options.customSkills) {
-    await dialog.getByLabel("Custom skills").fill(options.customSkills);
   }
   await dialog.getByLabel(/Workdir/).fill(options.workdir);
   await dialog.getByRole("button", { name: confirmLabel }).click();
@@ -330,6 +454,23 @@ async function clickSelectedTeamMenuItem(
   const item = page.getByRole("menuitem", { name: label, exact: true });
   await expect(item).toBeVisible();
   await item.click();
+}
+
+async function expectAddAgentEntryVisible(
+  page: import("@playwright/test").Page,
+  teamName?: string
+): Promise<void> {
+  const lane = await waitForAddAgentEntryLane(page, teamName);
+  if (lane === "primary" || lane === "menuItem") {
+    return;
+  }
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+  await expect(menuTrigger).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
 }
 
 async function openKanbanDeveloperTools(
@@ -1255,26 +1396,27 @@ test("team member setup adds the first agent and appends more agents through spe
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
+  const teamName = "member-setup-team";
 
   await gotoTeams(page);
   await createTeamFromModal(page, {
-    name: "member-setup-team",
+    name: teamName,
     goal: "Create team first, then configure leader and worker profiles.",
   });
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/member-setup-leader",
     model: "codex",
-    customSkills: "custom-leader-skill",
     identity: "Principal planner and reviewer",
   });
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await openTeamFromSelector(page, teamName);
+  await expectAddAgentEntryVisible(page, teamName);
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/member-setup-worker",
     model: "gemini",
-    customSkills: "custom-worker-skill",
     identity: "Implementation specialist",
   });
 
@@ -1288,9 +1430,9 @@ test("team member setup adds the first agent and appends more agents through spe
   ]);
   const [leaderMember, workerMember] = updates[1]?.payload.spec.members ?? [];
   expect(leaderMember?.model).toBe("codex");
-  expect(leaderMember?.skills).toContain("custom-leader-skill");
+  expect(leaderMember?.skills).toBeUndefined();
   expect(workerMember?.model).toBe("gemini");
-  expect(workerMember?.skills).toContain("custom-worker-skill");
+  expect(workerMember?.skills).toBeUndefined();
   expect(updates[1]?.payload.spec.steps?.map((step) => step.step_key)).toEqual([
     "leader_plan",
     "worker_1_agent_forge_5",
@@ -1606,23 +1748,24 @@ test("team setup keeps add agent wording after the first member binds", async ({
 }) => {
   const fixture = await mockTeamPageApis(page);
   fixture.agents.splice(0, fixture.agents.length);
+  const teamName = "forge-team";
 
   await gotoTeams(page);
   await createTeamFromModal(page, {
-    name: "forge-team",
+    name: teamName,
     goal: "Bind leader in-place before worker setup.",
   });
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await expectAddAgentEntryVisible(page, teamName);
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/forge-leader",
     identity: "Leader bound in-place",
   });
 
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await openTeamFromSelector(page, teamName);
+  await expectAddAgentEntryVisible(page, teamName);
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");

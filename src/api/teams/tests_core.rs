@@ -115,9 +115,8 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
             .is_some_and(|prompt| !prompt.trim().is_empty())
     );
     assert!(
-        created.spec["members"][0]["skills"]
-            .as_array()
-            .is_some_and(|skills| !skills.is_empty())
+        created.spec["members"][0].get("skills").is_none(),
+        "normalized team spec should not persist member skill config"
     );
 
     let Json(listed) = list_teams(State(state.clone()), headers.clone())
@@ -986,7 +985,6 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
             role: "leader".to_string(),
             model: None,
             description: None,
-            skills: vec!["team-leader-orchestrator".to_string()],
             prompt: None,
         },
     )
@@ -999,7 +997,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         default_channel: "default".to_string(),
         actor_cli_path: default_actor_cli_path().expect("actor cli path"),
         member_role: Some("leader".to_string()),
-        member_skills: vec!["team-leader-orchestrator".to_string()],
+        member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
     };
@@ -1016,7 +1014,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
 }
 
 #[tokio::test]
-async fn teams_api_enforces_required_role_skills() {
+async fn teams_api_strips_member_skill_configuration_from_team_spec() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -1054,59 +1052,165 @@ async fn teams_api_enforces_required_role_skills() {
         .cloned()
         .expect("members array");
 
-    let resolve_skills = |member_id: &str| -> Vec<String> {
-        members
-            .iter()
-            .find(|member| {
-                member
-                    .get("member_id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|value| value == member_id)
-            })
-            .and_then(|member| member.get("skills"))
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|item| item.as_str().map(str::to_string))
-            .collect::<Vec<_>>()
-    };
+    for member in members {
+        assert!(
+            member.get("skills").is_none(),
+            "normalized team spec should not persist member skill config: {member}"
+        );
+    }
+}
 
-    let leader_skills = resolve_skills("leader-agent");
-    assert!(
-        leader_skills
-            .iter()
-            .any(|item| item == "agenthub-actor-runtime")
-    );
-    assert!(
-        leader_skills
-            .iter()
-            .any(|item| item == "team-leader-orchestrator")
-    );
-    assert!(leader_skills.iter().any(|item| item == "planning"));
-    assert!(
-        !leader_skills
-            .iter()
-            .any(|item| item == "team-worker-executor")
-    );
+#[tokio::test]
+async fn teams_api_ignores_legacy_member_skills_payload_shapes() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
 
-    let worker_skills = resolve_skills("worker-agent");
-    assert!(
-        worker_skills
-            .iter()
-            .any(|item| item == "agenthub-actor-runtime")
-    );
-    assert!(
-        worker_skills
-            .iter()
-            .any(|item| item == "team-worker-executor")
-    );
-    assert!(worker_skills.iter().any(|item| item == "coding"));
-    assert!(
-        !worker_skills
-            .iter()
-            .any(|item| item == "team-leader-orchestrator")
-    );
+    let Json(created) = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "ignored-legacy-member-skills".to_string(),
+            description: Some("legacy skills input should be ignored".to_string()),
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "skills":"planning"
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "skills":{"custom":"coding"}
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team with legacy skills payloads");
+
+    let members = created
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("members array");
+    for member in members {
+        assert!(
+            member.get("skills").is_none(),
+            "legacy member skill payloads should be dropped from normalized spec: {member}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn teams_api_read_paths_strip_legacy_member_skill_configuration() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "legacy-skill-read-team".to_string(),
+                description: Some("legacy team spec should be sanitized on read".to_string()),
+                spec: json!({
+                    "entrypoint":"leader-agent",
+                    "leader_member_id":"leader-agent",
+                    "members":[
+                        {
+                            "member_id":"leader-agent",
+                            "role":"leader",
+                            "skills":["planning","review"]
+                        },
+                        {
+                            "member_id":"worker-agent",
+                            "role":"worker",
+                            "skills":["coding"]
+                        }
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create legacy skill team");
+
+    let Json(listed_teams) = list_teams(State(state.clone()), headers.clone())
+        .await
+        .expect("list teams");
+    let listed = listed_teams
+        .into_iter()
+        .find(|item| item.id == team.id)
+        .expect("listed legacy team");
+    for member in listed
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("listed members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "list teams should redact legacy member skills: {member}"
+        );
+    }
+
+    let Json(fetched) = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("get team");
+    for member in fetched
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("fetched members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "get team should redact legacy member skills: {member}"
+        );
+    }
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-legacy-skill-read".to_string()),
+            input: Some(json!({"goal":"verify read sanitization"})),
+        }),
+    )
+    .await
+    .expect("create run for sanitized snapshot");
+
+    let Json(snapshot) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(50),
+            message_limit: Some(50),
+        }),
+    )
+    .await
+    .expect("get team run snapshot");
+    for member in snapshot
+        .team
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("snapshot members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "snapshot team payload should redact legacy member skills: {member}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -3527,8 +3631,7 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         "target":"team",
         "member_id":"planner",
         "prompt_append":"Escalate blockers in a dedicated section.",
-        "description":"Lead planner and review owner.",
-        "skills_add":["risk-analysis","planning"]
+        "description":"Lead planner and review owner."
     });
 
     let Json(_first_message) = send_team_run_message(
@@ -3596,17 +3699,6 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
         planner.get("description").and_then(Value::as_str),
         Some("Lead planner and review owner.")
     );
-    let planner_skills = planner
-        .get("skills")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|item| item.as_str().map(str::to_string))
-        .collect::<Vec<_>>();
-    assert!(planner_skills.iter().any(|skill| skill == "planning"));
-    assert!(planner_skills.iter().any(|skill| skill == "risk-analysis"));
-
     let Json(events) = list_team_run_events(
         State(state.clone()),
         headers.clone(),
@@ -3707,8 +3799,7 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
                 "target":"run",
                 "member_id":"worker-agent",
                 "prompt_append":"Ask one clarification question before coding when requirements are incomplete.",
-                "description":"Focused implementation specialist.",
-                "skills_add":["actor-mailbox"]
+                "description":"Focused implementation specialist."
             }),
             idempotency_key: Some("profile-run-1".to_string()),
         }),
@@ -3720,10 +3811,6 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
             .await
             .expect("get updated run");
-    assert_eq!(
-        updated_run.input["profile_overrides"]["members"]["worker-agent"]["skills_add"][0],
-        Value::from("actor-mailbox")
-    );
     assert_eq!(
         updated_run.input["profile_overrides"]["members"]["worker-agent"]["description"],
         Value::from("Focused implementation specialist.")
@@ -3779,13 +3866,8 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         worker_snapshot.description.as_deref(),
         Some("Focused implementation specialist.")
     );
-    assert!(worker_snapshot.skills.iter().any(|skill| skill == "coding"));
-    assert!(
-        worker_snapshot
-            .skills
-            .iter()
-            .any(|skill| skill == "actor-mailbox")
-    );
+    assert!(worker_snapshot.skills.iter().any(|skill| skill == "team-worker-executor"));
+    assert!(worker_snapshot.skills.iter().any(|skill| skill == "team-actor-mailbox"));
 
     let Json(events) = list_team_run_events(
         State(state),
@@ -3812,6 +3894,84 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
     assert_eq!(
         applied.payload["after"]["description"],
         Value::from("Focused implementation specialist.")
+    );
+}
+
+#[tokio::test]
+async fn team_run_messages_profile_patch_proposal_rejects_skills_add() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "actor-profile-patch-skill-reject".to_string(),
+            description: None,
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "description":"Run lead"
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "description":"Execution specialist"
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-profile-patch-skill-reject".to_string()),
+            input: Some(json!({"prompt":"reject skill patch"})),
+        }),
+    )
+    .await
+    .expect("create run");
+
+    let err = send_team_run_message(
+        State(state),
+        headers,
+        Path(run.id),
+        Json(SendTeamRunMessageRequest {
+            from_actor_id: "leader-agent".to_string(),
+            from_peer_id: None,
+            to_actor_id: "worker-agent".to_string(),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some("local".to_string()),
+            route: None,
+            payload: json!({
+                "type":"profile_patch_proposal",
+                "target":"run",
+                "member_id":"worker-agent",
+                "skills_add":["team-actor-mailbox"]
+            }),
+            idempotency_key: Some("profile-run-skill-reject".to_string()),
+        }),
+    )
+    .await
+    .expect_err("reject unsupported skills_add");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("system-managed from role")),
+        "unexpected error body: {body}",
     );
 }
 
@@ -4014,18 +4174,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     );
     assert_eq!(leader.model.as_deref(), Some("gpt-5"));
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
-    assert_eq!(
-        leader.skills,
-        vec![
-            "agenthub-actor-runtime".to_string(),
-            "team-agents-index".to_string(),
-            "team-task-lifecycle".to_string(),
-            "team-leader-orchestrator".to_string(),
-            "team-actor-mailbox".to_string(),
-            "planning".to_string(),
-            "review".to_string()
-        ]
-    );
+    assert_eq!(leader.skills, crate::team::effective_team_member_skills("leader"));
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");
     assert_eq!(leader.session_status.as_deref(), Some("working"));

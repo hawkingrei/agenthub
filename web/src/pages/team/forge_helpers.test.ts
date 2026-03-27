@@ -15,11 +15,11 @@ describe("team forge helpers", () => {
 
     expect(leaderDraft.role).toBe("leader");
     expect(leaderDraft.model).toBe("codex");
-    expect(leaderDraft.skills.length).toBeGreaterThan(0);
+    expect(leaderDraft.skills).toEqual([]);
     expect(leaderDraft.prompt).not.toBe(workerDraft.prompt);
     expect(workerDraft.role).toBe("worker");
     expect(workerDraft.model).toBe("codex");
-    expect(workerDraft.skills.length).toBeGreaterThan(0);
+    expect(workerDraft.skills).toEqual([]);
   });
 
   it("normalizes agent name tokens and initial role", () => {
@@ -67,7 +67,7 @@ describe("team forge helpers", () => {
         "Configure the planning identity that owns delegation, review, and final synthesis.",
       focus: "Own planning, review, and final synthesis.",
       skillsHint:
-        "Keep orchestration and deliberation skills pinned, then add helpers only when the leader truly needs them.",
+        "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
       promptHint:
         "Keep the prompt focused on planning policy, delegation rules, and synthesis expectations.",
     });
@@ -77,7 +77,7 @@ describe("team forge helpers", () => {
         "Configure the execution identity that implements scoped work and reports evidence.",
       focus: "Deliver implementation, validation, and execution evidence.",
       skillsHint:
-        "Keep the execution profile lean, then add optional helpers only for the assigned delivery lane.",
+        "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
       promptHint:
         "Keep the prompt focused on scope boundaries, evidence quality, and handoff discipline.",
     });

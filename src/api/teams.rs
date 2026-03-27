@@ -31,8 +31,9 @@ use crate::team::{
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
-    build_actor_mailbox_immediate_hint_prompt, ensure_team_runtime_started,
-    force_team_member_new_session, plan_actor_mailbox_immediate_hint, stop_team_runtime,
+    build_actor_mailbox_immediate_hint_prompt, effective_team_member_skills,
+    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
+    stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -40,34 +41,6 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
-const DEFAULT_TEAM_LEADER_SKILLS: [&str; 5] = [
-    "agenthub-actor-runtime",
-    "team-agents-index",
-    "team-task-lifecycle",
-    "team-leader-orchestrator",
-    "team-actor-mailbox",
-];
-const DEFAULT_TEAM_WORKER_SKILLS: [&str; 5] = [
-    "agenthub-actor-runtime",
-    "team-agents-index",
-    "team-task-lifecycle",
-    "team-worker-executor",
-    "team-actor-mailbox",
-];
-const REQUIRED_TEAM_LEADER_SKILLS: [&str; 5] = [
-    "agenthub-actor-runtime",
-    "team-agents-index",
-    "team-task-lifecycle",
-    "team-leader-orchestrator",
-    "team-actor-mailbox",
-];
-const REQUIRED_TEAM_WORKER_SKILLS: [&str; 5] = [
-    "agenthub-actor-runtime",
-    "team-agents-index",
-    "team-task-lifecycle",
-    "team-worker-executor",
-    "team-actor-mailbox",
-];
 const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
@@ -105,6 +78,26 @@ pub(crate) async fn load_team_for_user(
         return Err(ApiError::not_found("team not found"));
     }
     Ok(team)
+}
+
+fn sanitize_team_spec_for_response(spec: &mut Value) {
+    let Some(spec_obj) = spec.as_object_mut() else {
+        return;
+    };
+    let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for member in members {
+        let Some(member_obj) = member.as_object_mut() else {
+            continue;
+        };
+        member_obj.remove("skills");
+    }
+}
+
+fn sanitize_team_definition_for_response(mut team: TeamDefinitionRecord) -> TeamDefinitionRecord {
+    sanitize_team_spec_for_response(&mut team.spec);
+    team
 }
 
 async fn load_run_for_user(
@@ -484,7 +477,7 @@ async fn create_team(
         let _ = state.teams.delete_team(&team.id, &member_ids).await;
         return Err(map_runtime_start_error(err));
     }
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn update_team_spec(
@@ -516,7 +509,7 @@ async fn update_team_spec(
             .await
             .map_err(map_runtime_start_error)?;
     }
-    Ok(Json(updated))
+    Ok(Json(sanitize_team_definition_for_response(updated)))
 }
 
 async fn start_team(
@@ -613,6 +606,7 @@ async fn list_teams(
         .await?
         .into_iter()
         .filter(|team| team_owner_matches_user(team, &user))
+        .map(sanitize_team_definition_for_response)
         .collect::<Vec<_>>();
     Ok(Json(teams))
 }
@@ -624,7 +618,7 @@ async fn get_team(
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn get_team_runtime(
@@ -670,7 +664,7 @@ async fn delete_team(
         .delete_team(&team_id, &member_ids)
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn create_team_task(
@@ -762,7 +756,6 @@ async fn update_team_task(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
-    let _requested_patch = (&payload.status, &payload.assigned_member_id);
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
@@ -773,9 +766,12 @@ async fn update_team_task(
     if task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    Err(ApiError::forbidden(
-        "canonical Team task status/owner updates are agent-only; use actor runtime controls",
-    ))
+    let error_message = if payload.status.is_some() || payload.assigned_member_id.is_some() {
+        "canonical Team task status/owner updates are agent-only; use actor runtime controls"
+    } else {
+        "canonical Team task updates are agent-only; use actor runtime controls"
+    };
+    Err(ApiError::forbidden(error_message))
 }
 
 async fn send_team_task_message(
@@ -1079,7 +1075,6 @@ async fn get_team_run_snapshot(
             member.role.as_str()
         };
         let mut prompt = member.prompt.clone();
-        let mut skills = member.skills.clone();
         if let Some(override_item) = run_member_overrides.get(member.member_id.as_str()) {
             if let Some(prompt_append) = override_item.prompt_append.as_deref() {
                 prompt = Some(merge_prompt_append(prompt.as_deref(), Some(prompt_append)));
@@ -1087,15 +1082,15 @@ async fn get_team_run_snapshot(
             if let Some(description) = override_item.description.as_deref() {
                 member.description = Some(description.to_string());
             }
-            let _added = merge_skills_unique(&mut skills, &override_item.skills_add);
         }
+        let effective_skills = effective_team_member_skills(role);
         members.push(TeamMemberSnapshot {
             member_id: member.member_id.clone(),
             role: role.to_string(),
             model: member.model.clone(),
             description: member.description.clone(),
             prompt,
-            skills,
+            skills: effective_skills,
             pending_inbox_count: pending_counts.get(&member.member_id).copied().unwrap_or(0),
             status,
             latest_step,
@@ -1109,6 +1104,8 @@ async fn get_team_run_snapshot(
         dead_letter: status_counts.get("dead_letter").copied().unwrap_or(0),
         recent_messages,
     };
+
+    let team = sanitize_team_definition_for_response(team);
 
     Ok(Json(TeamRunSnapshotResponse {
         run,
@@ -1597,14 +1594,14 @@ fn parse_profile_patch_proposal(
         .map(parse_optional_profile_patch_description)
         .transpose()?
         .flatten();
-    let skills_add = payload_obj
-        .get("skills_add")
-        .map(parse_profile_patch_skills_add)
-        .transpose()?
-        .unwrap_or_default();
-    if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
+    if payload_obj.contains_key("skills_add") {
         return Err(ApiError::bad_request(
-            "profile_patch_proposal requires prompt_append and/or description and/or skills_add",
+            "profile_patch_proposal.skills_add is not supported; Team skills are system-managed from role",
+        ));
+    }
+    if prompt_append.is_none() && description.is_none() {
+        return Err(ApiError::bad_request(
+            "profile_patch_proposal requires prompt_append and/or description",
         ));
     }
 
@@ -1613,7 +1610,6 @@ fn parse_profile_patch_proposal(
         member_id,
         prompt_append,
         description,
-        skills_add,
     }))
 }
 
@@ -1647,30 +1643,6 @@ fn parse_optional_prompt_append(value: &Value) -> Result<Option<String>, ApiErro
         ));
     }
     Ok(Some(trimmed.to_string()))
-}
-
-fn parse_profile_patch_skills_add(value: &Value) -> Result<Vec<String>, ApiError> {
-    let items = value.as_array().ok_or_else(|| {
-        ApiError::bad_request("profile_patch_proposal.skills_add must be an array")
-    })?;
-    let mut out = Vec::with_capacity(items.len());
-    let mut seen = HashSet::with_capacity(items.len());
-    for item in items {
-        let skill = item
-            .as_str()
-            .map(str::trim)
-            .filter(|skill| !skill.is_empty())
-            .ok_or_else(|| {
-                ApiError::bad_request(
-                    "profile_patch_proposal.skills_add entries must be non-empty strings",
-                )
-            })?;
-        if !seen.insert(skill.to_string()) {
-            continue;
-        }
-        out.push(skill.to_string());
-    }
-    Ok(out)
 }
 
 fn parse_optional_profile_patch_description(value: &Value) -> Result<Option<String>, ApiError> {
@@ -1737,16 +1709,13 @@ async fn apply_profile_patch_proposal(
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
                         "description": proposal.description,
-                        "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
                             "description": before.description,
-                            "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
                             "description": after.description,
-                            "skills": after.skills_add,
                         },
                     }),
                 )
@@ -1781,16 +1750,13 @@ async fn apply_profile_patch_proposal(
                         "message_id": message_id,
                         "prompt_append": proposal.prompt_append,
                         "description": proposal.description,
-                        "skills_add": proposal.skills_add,
                         "before": {
                             "prompt": before.prompt_append,
                             "description": before.description,
-                            "skills": before.skills_add,
                         },
                         "after": {
                             "prompt": after.prompt_append,
                             "description": after.description,
-                            "skills": after.skills_add,
                         },
                     }),
                 )
@@ -1839,14 +1805,6 @@ fn apply_profile_patch_to_team_spec(
             Value::String(description.to_string()),
         );
     }
-    if !proposal.skills_add.is_empty() {
-        let mut current = parse_skills_array(member_obj.get("skills"))?;
-        let _added = merge_skills_unique(&mut current, &proposal.skills_add);
-        member_obj.insert(
-            "skills".to_string(),
-            Value::Array(current.into_iter().map(Value::String).collect()),
-        );
-    }
     Ok(())
 }
 
@@ -1892,15 +1850,6 @@ fn apply_profile_patch_to_run_input(
         );
     }
 
-    if !proposal.skills_add.is_empty() {
-        let mut current = parse_skills_array(member_obj.get("skills_add"))?;
-        let _added = merge_skills_unique(&mut current, &proposal.skills_add);
-        member_obj.insert(
-            "skills_add".to_string(),
-            Value::Array(current.into_iter().map(Value::String).collect()),
-        );
-    }
-
     Ok(())
 }
 
@@ -1914,43 +1863,6 @@ fn merge_prompt_append(existing: Option<&str>, incoming: Option<&str>) -> String
         return existing.to_string();
     }
     format!("{existing}\n\n{incoming}")
-}
-
-fn parse_skills_array(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    let Some(items) = value.as_array() else {
-        return Err(ApiError::bad_request(
-            "profile patch skills field must be an array of strings",
-        ));
-    };
-    let mut out = Vec::with_capacity(items.len());
-    let mut seen = HashSet::with_capacity(items.len());
-    for item in items {
-        let Some(skill) = item.as_str().map(str::trim).filter(|item| !item.is_empty()) else {
-            return Err(ApiError::bad_request(
-                "profile patch skills field must contain non-empty strings",
-            ));
-        };
-        if !seen.insert(skill.to_string()) {
-            continue;
-        }
-        out.push(skill.to_string());
-    }
-    Ok(out)
-}
-
-fn merge_skills_unique(current: &mut Vec<String>, incoming: &[String]) -> Vec<String> {
-    let mut seen = current.iter().cloned().collect::<HashSet<_>>();
-    let mut added = Vec::new();
-    for skill in incoming {
-        if seen.insert(skill.to_string()) {
-            current.push(skill.to_string());
-            added.push(skill.to_string());
-        }
-    }
-    added
 }
 
 fn extract_member_profile_override_from_spec(
@@ -1988,7 +1900,6 @@ fn extract_member_profile_override_from_spec(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
-        skills_add: parse_skills_array(member_obj.get("skills"))?,
     })
 }
 
@@ -2026,24 +1937,7 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
-        let skills_add = member_obj
-            .get("skills_add")
-            .and_then(Value::as_array)
-            .map(|items| {
-                let mut out = Vec::with_capacity(items.len());
-                let mut seen = HashSet::with_capacity(items.len());
-                for item in items {
-                    if let Some(skill) =
-                        item.as_str().map(str::trim).filter(|item| !item.is_empty())
-                        && seen.insert(skill.to_string())
-                    {
-                        out.push(skill.to_string());
-                    }
-                }
-                out
-            })
-            .unwrap_or_default();
-        if prompt_append.is_none() && description.is_none() && skills_add.is_empty() {
+        if prompt_append.is_none() && description.is_none() {
             continue;
         }
         out.insert(
@@ -2051,7 +1945,6 @@ fn extract_run_member_profile_overrides(input: &Value) -> HashMap<String, Member
             MemberProfileOverride {
                 prompt_append,
                 description,
-                skills_add,
             },
         );
     }
@@ -3368,7 +3261,6 @@ struct TeamMemberSpec {
     model: Option<String>,
     prompt: Option<String>,
     description: Option<String>,
-    skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3392,14 +3284,12 @@ struct ProfilePatchProposal {
     member_id: String,
     prompt_append: Option<String>,
     description: Option<String>,
-    skills_add: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct MemberProfileOverride {
     prompt_append: Option<String>,
     description: Option<String>,
-    skills_add: Vec<String>,
 }
 
 fn normalize_team_spec(spec: &mut Value) -> Result<(), ApiError> {
@@ -3641,23 +3531,7 @@ fn inject_team_spec_defaults(
                     Value::String(default_team_prompt_for_role(&member_spec.role).to_string()),
                 );
             }
-            let defaults = default_team_skills_for_role(&member_spec.role);
-            let required = required_team_skills_for_role(&member_spec.role);
-            let base_skills = if is_missing_or_null(member_obj.get("skills")) {
-                defaults.iter().map(|skill| (*skill).to_string()).collect()
-            } else {
-                member_spec.skills.clone()
-            };
-            let normalized_skills = ensure_required_role_skills(base_skills, required);
-            member_obj.insert(
-                "skills".to_string(),
-                Value::Array(
-                    normalized_skills
-                        .into_iter()
-                        .map(Value::String)
-                        .collect::<Vec<_>>(),
-                ),
-            );
+            member_obj.remove("skills");
         }
     }
 
@@ -3693,38 +3567,6 @@ fn inject_team_spec_defaults(
     }
 
     Ok(())
-}
-
-fn default_team_skills_for_role(role: &str) -> &'static [&'static str] {
-    if role == "leader" {
-        DEFAULT_TEAM_LEADER_SKILLS.as_slice()
-    } else {
-        DEFAULT_TEAM_WORKER_SKILLS.as_slice()
-    }
-}
-
-fn required_team_skills_for_role(role: &str) -> &'static [&'static str] {
-    if role == "leader" {
-        REQUIRED_TEAM_LEADER_SKILLS.as_slice()
-    } else {
-        REQUIRED_TEAM_WORKER_SKILLS.as_slice()
-    }
-}
-
-fn ensure_required_role_skills(mut skills: Vec<String>, required: &[&str]) -> Vec<String> {
-    let mut deduped = Vec::with_capacity(skills.len() + required.len());
-    let mut seen = HashSet::with_capacity(skills.len() + required.len());
-    for skill in required {
-        if seen.insert((*skill).to_string()) {
-            deduped.push((*skill).to_string());
-        }
-    }
-    for skill in skills.drain(..) {
-        if seen.insert(skill.clone()) {
-            deduped.push(skill);
-        }
-    }
-    deduped
 }
 
 fn is_missing_or_null(value: Option<&Value>) -> bool {
@@ -3897,15 +3739,12 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
         let model = parse_optional_member_text(member.get("model"), "model")?;
         let prompt = parse_optional_member_text(member.get("prompt"), "prompt")?;
         let description = parse_optional_member_description(member.get("description"))?;
-        let skills = parse_optional_member_skills(member.get("skills"))?;
-
         out.push(TeamMemberSpec {
             member_id,
             role,
             model,
             prompt,
             description,
-            skills,
         });
     }
     Ok(out)
@@ -3974,33 +3813,6 @@ fn parse_optional_member_description(value: Option<&Value>) -> Result<Option<Str
         return Ok(None);
     }
     Ok(Some(trimmed.to_string()))
-}
-
-fn parse_optional_member_skills(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    let skills = value
-        .as_array()
-        .ok_or_else(|| ApiError::bad_request("spec.members[].skills must be an array"))?;
-    let mut out = Vec::with_capacity(skills.len());
-    let mut seen = HashSet::with_capacity(skills.len());
-    for skill in skills {
-        let skill = skill
-            .as_str()
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .ok_or_else(|| {
-                ApiError::bad_request("spec.members[].skills entries must be non-empty strings")
-            })?;
-        if !seen.insert(skill.to_string()) {
-            return Err(ApiError::bad_request(
-                "spec.members[].skills must not contain duplicates",
-            ));
-        }
-        out.push(skill.to_string());
-    }
-    Ok(out)
 }
 
 fn parse_spec_leader_member_id(

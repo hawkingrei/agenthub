@@ -37,7 +37,7 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Default communication route is direct mailbox first: when exactly one teammate owns the next action, send a single-target mailbox message instead of broadcasting to the shared channel.\n",
     "- Shared channel is reserved for human-visible updates, team-wide checkpoints, or multi-recipient coordination that truly needs shared visibility.\n",
     "- For large evidence, use summary-first reporting and attach a stable `detail_ref` or artifact pointer instead of pasting the full content into routine mailbox updates.\n",
-    "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
+    "- If your own role description or prompt drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.\n",
     "- Use `agenthub actor time-trigger-set`, `agenthub actor time-trigger-list`, and `agenthub actor time-trigger-cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
@@ -67,7 +67,7 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "Structured payload contracts:\n",
     "- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}\n",
     "- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}\n",
-    "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"description\":\"...\",\"skills_add\":[\"...\"]}"
+    "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"description\":\"...\"}"
 );
 
 pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
@@ -81,7 +81,7 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.\n",
     "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.\n",
     "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.\n",
-    "- If your own description/prompt/skill profile is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.\n",
+    "- If your own description or prompt is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.\n",
     "- Use `agenthub actor time-trigger-set`, `agenthub actor time-trigger-list`, and `agenthub actor time-trigger-cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",

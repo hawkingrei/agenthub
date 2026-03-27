@@ -21,6 +21,7 @@ use crate::api::authz::require_user;
 use crate::api::error::ApiError;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
 use crate::state::AppState;
+use crate::team::effective_team_member_skills;
 
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
@@ -54,6 +55,8 @@ pub struct AgentDiscoveryCardResponse {
     pub description: String,
     pub identity: AgentDiscoveryIdentity,
     pub runtime: AgentDiscoveryRuntime,
+    pub team_member_role: Option<String>,
+    pub skills: Vec<String>,
     pub capability_tags: Vec<String>,
 }
 
@@ -296,12 +299,11 @@ async fn get_agent_discovery_card(
     let provider = state
         .agents
         .acp_provider_for_agent(&agent.command, &agent.args);
-    let member_description =
-        resolve_team_member_description(&state, user.id.as_str(), &agent.id).await;
+    let member_profile = resolve_team_member_profile(&state, user.id.as_str(), &agent.id).await;
     Ok(Json(build_agent_discovery_card(
         &agent,
         provider,
-        member_description.as_deref(),
+        member_profile.as_ref(),
     )))
 }
 
@@ -777,7 +779,7 @@ fn sanitize_worktree_segment(value: &str) -> String {
 fn build_agent_discovery_card(
     agent: &AgentRecord,
     acp_provider: Option<&str>,
-    member_description: Option<&str>,
+    member_profile: Option<&TeamMemberProfileRecord>,
 ) -> AgentDiscoveryCardResponse {
     let mut capability_tags = vec![
         "team_mailbox_v1".to_string(),
@@ -800,10 +802,15 @@ fn build_agent_discovery_card(
     }
     let provider_desc = acp_provider.unwrap_or("unknown");
     let capability_desc = capability_tags.join(", ");
-    let description = member_description
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+    let description = member_profile
+        .and_then(|profile| {
+            profile
+                .description
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| {
             format!(
                 "AgentHub team member {} (provider: {}) supports {}",
@@ -830,15 +837,25 @@ fn build_agent_discovery_card(
             worktree_repo: agent.worktree_repo.clone(),
             worktree_ref: agent.worktree_ref.clone(),
         },
+        team_member_role: member_profile.map(|profile| profile.role.clone()),
+        skills: member_profile
+            .map(|profile| effective_team_member_skills(&profile.role))
+            .unwrap_or_default(),
         capability_tags,
     }
 }
 
-async fn resolve_team_member_description(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TeamMemberProfileRecord {
+    role: String,
+    description: Option<String>,
+}
+
+async fn resolve_team_member_profile(
     state: &AppState,
     user_id: &str,
     member_id: &str,
-) -> Option<String> {
+) -> Option<TeamMemberProfileRecord> {
     let teams = state.teams.list_teams().await.ok()?;
     teams
         .into_iter()
@@ -847,14 +864,17 @@ async fn resolve_team_member_description(
             None => true,
         })
         .filter_map(|team| {
-            resolve_member_description_from_spec(&team.spec, member_id)
-                .map(|description| (team.updated_at, description))
+            resolve_member_profile_from_spec(&team.spec, member_id)
+                .map(|profile| (team.updated_at, profile))
         })
         .max_by_key(|(updated_at, _)| *updated_at)
-        .map(|(_, description)| description)
+        .map(|(_, profile)| profile)
 }
 
-fn resolve_member_description_from_spec(spec: &Value, member_id: &str) -> Option<String> {
+fn resolve_member_profile_from_spec(
+    spec: &Value,
+    member_id: &str,
+) -> Option<TeamMemberProfileRecord> {
     let target = member_id.trim();
     if target.is_empty() {
         return None;
@@ -871,12 +891,20 @@ fn resolve_member_description_from_spec(spec: &Value, member_id: &str) -> Option
                 if candidate_member_id != target {
                     return None;
                 }
-                member_obj
+                let role = member_obj
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("worker")
+                    .to_string();
+                let description = member_obj
                     .get("description")
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                    .map(str::to_string)
+                    .map(str::to_string);
+                Some(TeamMemberProfileRecord { role, description })
             })
         })
 }
@@ -979,10 +1007,11 @@ mod tests {
     use agenthub_config::{AppConfig, PushConfig, WebConfig};
 
     use super::{
-        StartAgentActorRuntimeRequest, StartAgentRequest, WorktreeMode, build_agent_discovery_card,
-        map_create_agent_error, parse_agent_source, parse_optional_start_agent_request,
-        parse_start_actor_runtime_context, parse_worktree_mode, resolve_create_agent_workdir,
-        resolve_member_description_from_spec, router, sanitize_worktree_segment,
+        StartAgentActorRuntimeRequest, StartAgentRequest, TeamMemberProfileRecord, WorktreeMode,
+        build_agent_discovery_card, map_create_agent_error, parse_agent_source,
+        parse_optional_start_agent_request, parse_start_actor_runtime_context, parse_worktree_mode,
+        resolve_create_agent_workdir, resolve_member_profile_from_spec, router,
+        sanitize_worktree_segment,
     };
 
     #[test]
@@ -1088,12 +1117,16 @@ mod tests {
             updated_at: 2,
         };
 
-        let card = build_agent_discovery_card(&agent, Some("codex"), Some("Database schema owner"));
+        let profile = TeamMemberProfileRecord {
+            role: "worker".to_string(),
+            description: Some("Database schema owner".to_string()),
+        };
+        let card = build_agent_discovery_card(&agent, Some("codex"), Some(&profile));
         assert_eq!(card.description, "Database schema owner");
     }
 
     #[test]
-    fn resolve_member_description_from_spec_matches_member_entry() {
+    fn resolve_member_profile_from_spec_matches_member_entry() {
         let spec = json!({
             "spec_version": 1,
             "members": [
@@ -1102,15 +1135,14 @@ mod tests {
                 {"member_id": "worker-b", "role": "worker"}
             ]
         });
-        assert_eq!(
-            resolve_member_description_from_spec(&spec, "worker-a").as_deref(),
-            Some("Primary implementer")
-        );
-        assert_eq!(
-            resolve_member_description_from_spec(&spec, "worker-b"),
-            None
-        );
-        assert_eq!(resolve_member_description_from_spec(&spec, "missing"), None);
+        let worker = resolve_member_profile_from_spec(&spec, "worker-a").expect("worker profile");
+        assert_eq!(worker.role, "worker");
+        assert_eq!(worker.description.as_deref(), Some("Primary implementer"));
+        let no_description =
+            resolve_member_profile_from_spec(&spec, "worker-b").expect("worker profile");
+        assert_eq!(no_description.role, "worker");
+        assert_eq!(no_description.description, None);
+        assert_eq!(resolve_member_profile_from_spec(&spec, "missing"), None);
     }
 
     #[test]
@@ -2931,6 +2963,18 @@ mod tests {
             "missing/invalid discovery card description: {card}"
         );
         assert_eq!(card["identity"]["agent_id"].as_str(), Some(agent_id));
+        assert_eq!(card["team_member_role"].as_str(), Some("worker"));
+        let skill_names: HashSet<&str> = card["skills"]
+            .as_array()
+            .expect("skills array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(skill_names.contains("agenthub-actor-runtime"));
+        assert!(skill_names.contains("team-agents-index"));
+        assert!(skill_names.contains("team-worker-agents-index"));
+        assert!(skill_names.contains("team-worker-executor"));
+        assert!(skill_names.contains("team-actor-mailbox"));
         assert_eq!(card["runtime"]["acp_provider"].as_str(), Some("codex"));
         assert_eq!(card["runtime"]["code_mode"].as_bool(), Some(true));
         assert_eq!(
