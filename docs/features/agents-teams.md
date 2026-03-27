@@ -127,7 +127,7 @@ terminology and operating expectations drift.
 
 MCP enforcement baseline:
 
-- Team sessions are CLI-first for mailbox/task coordination through `AGENTHUB_ACTOR_CLI`.
+- Team sessions are CLI-first for mailbox/task coordination through `agenthub actor ...`.
 - Team startup should fail-fast if the actor CLI coordination capability is missing or the runtime actor env is incomplete.
 - Team mode denies ad-hoc mailbox bypass for collaboration traffic.
 - Role defaults should keep skill set minimal; optional skills load by explicit profile.

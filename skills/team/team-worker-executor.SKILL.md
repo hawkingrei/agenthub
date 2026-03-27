@@ -38,9 +38,9 @@ findings.
 - Use `target="team"` for durable identity-card changes and `target="run"` for temporary
   run-scoped overrides.
 - Do not overwrite another member's identity description from worker context.
-- Use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
-  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
-  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel` for timed rechecks,
+- Use `agenthub actor time-trigger-set`,
+  `agenthub actor time-trigger-list`, and
+  `agenthub actor time-trigger-cancel` for timed rechecks,
   reminders, or future follow-up work that should come back as ACP prompts
   later.
 - `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
@@ -202,11 +202,11 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Task Status Discipline
 
 - Treat the leader-owned Team task as the canonical execution unit behind your assignment.
-- Use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` when you need to verify canonical Team task state directly.
+- Use `agenthub actor team-tasks` when you need to verify canonical Team task state directly.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
 - Keep the task moving with timely progress/blocker updates so the leader can maintain correct
   Kanban state.
-- Do not call `"$AGENTHUB_ACTOR_CLI" actor team-task-create` or `"$AGENTHUB_ACTOR_CLI" actor team-task-update`; raise the lifecycle change to leader.
+- Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to leader.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - For developer/code tasks, "ready for review" should normally mean merge-ready or very close to

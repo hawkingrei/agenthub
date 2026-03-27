@@ -496,7 +496,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+        let _team = ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
 
         let title = required_field(&payload.title, "title")?;
         let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
@@ -540,7 +540,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+        let team = ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
 
         let task_id = required_field(&payload.task_id, "task_id")?;
         let existing = self
@@ -554,12 +554,6 @@ impl TeamInternalControl for TeamInternalControlService {
                 "task does not belong to this team",
             ));
         }
-        let team = self
-            .state
-            .teams
-            .get_team(team_id)
-            .await
-            .map_err(map_manager_error)?;
         let status = payload
             .status
             .as_deref()
@@ -1317,12 +1311,12 @@ async fn ensure_leader_team_access(
     manager: &TeamManager,
     team_id: &str,
     actor_id: &str,
-) -> Result<(), Status> {
+) -> Result<crate::team::TeamDefinitionRecord, Status> {
     ensure_team_member_access(manager, team_id, actor_id).await?;
     let team = manager.get_team(team_id).await.map_err(map_manager_error)?;
     let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
     if actor_id == leader_member_id {
-        return Ok(());
+        return Ok(team);
     }
     Err(Status::permission_denied(
         "only leader may create or update Team tasks",

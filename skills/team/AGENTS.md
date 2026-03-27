@@ -47,9 +47,9 @@ restating the same rules.
 - Human/task boundary:
   - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
   - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
-  - `"$AGENTHUB_ACTOR_CLI" actor team-task-create` is the canonical leader path for Team task creation
-  - `"$AGENTHUB_ACTOR_CLI" actor team-task-update` is the canonical leader path for Team task lifecycle changes
-  - `"$AGENTHUB_ACTOR_CLI" actor team-tasks` is the canonical path for inspecting the current Team Kanban surface
+  - `agenthub actor team-task-create` is the canonical leader path for Team task creation
+  - `agenthub actor team-task-update` is the canonical leader path for Team task lifecycle changes
+  - `agenthub actor team-tasks` is the canonical path for inspecting the current Team Kanban surface
   - leader owns canonical task creation and task lifecycle management for the team
   - channels are for communication/review; Kanban is the canonical task-tracking surface
 - Self-maintenance:
@@ -57,9 +57,9 @@ restating the same rules.
   - use `target="team"` for durable identity-card changes and `target="run"` for temporary run-scoped overrides
   - do not patch another member's identity/profile from your own context
 - Deferred follow-up:
-  - use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
-    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
-    `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel` for one-shot timed reminders that should arrive later as ACP messages
+  - use `agenthub actor time-trigger-set`,
+    `agenthub actor time-trigger-list`, and
+    `agenthub actor time-trigger-cancel` for one-shot timed reminders that should arrive later as ACP messages
   - keep trigger messages concise and action-oriented so the future ACP prompt is directly executable
 - Agent loop:
   - `agent_loop` is a human/operator-controlled idle watchdog, disabled by default

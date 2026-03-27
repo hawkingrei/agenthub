@@ -47,9 +47,9 @@ You are the coordinator for a multi-agent team run.
 - If your own leader description/prompt/skill profile needs correction, send `profile_patch_proposal`
   for your own member record; use `target="team"` for durable identity changes and `target="run"`
   for temporary run-scoped coordination tweaks.
-- Use `"$AGENTHUB_ACTOR_CLI" actor time-trigger-set`,
-  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-list`, and
-  `"$AGENTHUB_ACTOR_CLI" actor time-trigger-cancel` for timed follow-ups such
+- Use `agenthub actor time-trigger-set`,
+  `agenthub actor time-trigger-list`, and
+  `agenthub actor time-trigger-cancel` for timed follow-ups such
   as scheduled check-ins, delayed consensus reminders, or future review pings.
 - `agent_loop` is operator-controlled. If a human enables it for you, silence may later inject a
   configured ACP reminder. Treat that reminder as a follow-up nudge for the current task and do
@@ -201,9 +201,9 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 1. Pull inbox before each coordination round:
    `agenthub actor inbox --limit 50`
 2. Acknowledge each consumed message once:
-   `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
+   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
 3. Delegate with deterministic payload JSON:
-   `MESSAGE="$(cat <<'EOF'\n## Task brief\n\n- task: ...\n- acceptance: ...\n- deadline: ...\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$WORKER_ID" --text "$MESSAGE"`
+   `MESSAGE="$(cat <<'EOF'\n## Task brief\n\n- task: ...\n- acceptance: ...\n- deadline: ...\nEOF\n)"; agenthub actor send --to-actor-id "$WORKER_ID" --text "$MESSAGE"`
 4. If a worker is blocked, ask for missing facts or re-scope the task.
 5. Keep a running decision log and conflict resolution summary.
 
@@ -264,10 +264,10 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - Do not require humans to express requests in a task-shaped format before planning can begin.
 - Create a Team task when execution work needs explicit ownership, progress tracking, or Kanban
   visibility.
-- Use `"$AGENTHUB_ACTOR_CLI" actor team-task-create` to create that canonical Team task and `"$AGENTHUB_ACTOR_CLI" actor team-tasks` to confirm it is
+- Use `agenthub actor team-task-create` to create that canonical Team task and `agenthub actor team-tasks` to confirm it is
   visible in Kanban.
 - Use `team-task-lifecycle` as the canonical state-transition contract.
-- Use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` when intentionally advancing the canonical Team task lifecycle.
+- Use `agenthub actor team-task-update` when intentionally advancing the canonical Team task lifecycle.
 - The expected Team task path is `open -> in_progress -> in_review -> completed|canceled`.
 - Successful worker execution should normally land in `in_review`, not directly `completed`.
 - Move `in_review -> completed` only after review/acceptance is explicit.

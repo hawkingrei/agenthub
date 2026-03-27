@@ -8,7 +8,7 @@ description: Mailbox transport contract for AgentHub Team actor inbox/send/ack f
 Use this skill for Team mailbox communication. It is the protocol reference for
 `actor inbox`, `actor send`, and `actor ack`.
 
-For Team runtime/roster context, use the single `"$AGENTHUB_ACTOR_CLI" actor team-members`
+For Team runtime/roster context, use the single `agenthub actor team-members`
 command. It exposes runtime summary, roster/card data, and per-member
 `pending_inbox_count`. Do not invent a second Team context query path.
 Shared routing, mention, and human-visible reply policy remain canonical in
@@ -86,17 +86,17 @@ Recommended fields:
      bulk sweep to consume the returned pending messages.
 2. Parse message payload and validate required fields before acting.
 3. Acknowledge each consumed message exactly once:
-   `MESSAGE_ID="<from inbox>"; "$AGENTHUB_ACTOR_CLI" actor ack --message-id "$MESSAGE_ID"`
+   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
 4. For human-readable coordination, prefer markdown text and preserve it verbatim:
-   `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
+   `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
 5. Use structured payloads only when the receiver truly needs machine-readable fields:
-   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
 6. Broadcast into the shared Team channel while preserving mentions as metadata:
-   `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; "$AGENTHUB_ACTOR_CLI" actor send --channel-id all --text "$MESSAGE"`
+   `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; agenthub actor send --channel-id all --text "$MESSAGE"`
 7. Escalate to human notifications when urgent coordination cannot wait:
-   `MESSAGE="Urgent: permission review timed out.\n\nPlease check Channel for details."; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id user --text "$MESSAGE"`
+   `MESSAGE="Urgent: permission review timed out.\n\nPlease check Channel for details."; agenthub actor send --to-actor-id user --text "$MESSAGE"`
 8. Direct a single peer when the update does not need channel visibility:
-   `MESSAGE="Please verify the migration assumption before I proceed."; "$AGENTHUB_ACTOR_CLI" actor send --to-actor-id "$PEER_ACTOR_ID" --text "$MESSAGE"`
+   `MESSAGE="Please verify the migration assumption before I proceed."; agenthub actor send --to-actor-id "$PEER_ACTOR_ID" --text "$MESSAGE"`
 
 ## Reply Modes
 
