@@ -629,7 +629,7 @@ impl TeamManager {
         if !query.include_shared_thread {
             builder.push(
                 " AND lower(trim(t.title)) != 'all' \
-                 AND trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) != ",
+                 AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) != ",
             );
             builder.push_bind("shared_thread");
         }

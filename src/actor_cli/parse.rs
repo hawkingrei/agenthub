@@ -679,17 +679,17 @@ pub(super) fn parse_actor_command(
                     "--context-json/--context-json-file and --context-merge-json/--context-merge-json-file cannot be used together"
                 ));
             }
+            let task_ids = task_ids
+                .into_iter()
+                .filter_map(|task_id| take_optional(Some(task_id)))
+                .collect::<Vec<_>>();
+            if task_ids.is_empty() {
+                return Err(anyhow::anyhow!("task_id is required"));
+            }
             Ok(ActorCommand::TeamTaskUpdate {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
-                task_ids: task_ids
-                    .into_iter()
-                    .map(Some)
-                    .map(take_optional)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>(),
+                task_ids,
                 status,
                 assigned_member_id: take_optional(assigned_member_id),
                 clear_assigned_member_id,

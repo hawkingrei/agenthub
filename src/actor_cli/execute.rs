@@ -16,6 +16,7 @@ use anyhow::Context;
 use chrono::Utc;
 
 use crate::internal::auth::InternalAction;
+use crate::internal::client::InternalTeamTaskPatch;
 use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
@@ -169,11 +170,13 @@ pub(super) async fn run_actor_command(
                         &team_id,
                         &actor_id,
                         &task_id,
-                        status.as_ref().map(TeamTaskStatus::as_str),
-                        assigned_member_id.as_deref(),
-                        clear_assigned_member_id,
-                        context.as_ref(),
-                        context_merge.as_ref(),
+                        InternalTeamTaskPatch {
+                            status: status.as_ref().map(TeamTaskStatus::as_str),
+                            assigned_member_id: assigned_member_id.as_deref(),
+                            clear_assigned_member_id,
+                            context_json: context.as_ref(),
+                            context_merge_json: context_merge.as_ref(),
+                        },
                     )
                     .await?;
                 tasks.push(task);

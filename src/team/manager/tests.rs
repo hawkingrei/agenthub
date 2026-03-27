@@ -1022,6 +1022,63 @@ async fn create_run_marks_linked_task_in_progress() {
 }
 
 #[tokio::test]
+async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensitively() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-shared-thread-casefold".to_string(),
+            description: Some(
+                "verify shared thread filtering remains case-insensitive".to_string(),
+            ),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (visible_task, _) = manager
+        .create_task(
+            &team.id,
+            "Normal task",
+            "leader",
+            json!({"topic":"visible"}),
+            "group_chat",
+            Some("visible"),
+        )
+        .await
+        .expect("create visible task");
+    manager
+        .create_task(
+            &team.id,
+            "Shared thread",
+            "leader",
+            json!({"bootstrap_kind":"Shared_Thread"}),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create shared thread task");
+
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            include_shared_thread: false,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list visible tasks");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, visible_task.id);
+}
+
+#[tokio::test]
 async fn linked_run_completion_marks_task_in_review() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

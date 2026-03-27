@@ -80,6 +80,15 @@ pub struct InternalPermissionReviewResponse {
     pub reviewed_by_actor_id: String,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InternalTeamTaskPatch<'a> {
+    pub status: Option<&'a str>,
+    pub assigned_member_id: Option<&'a str>,
+    pub clear_assigned_member_id: bool,
+    pub context_json: Option<&'a serde_json::Value>,
+    pub context_merge_json: Option<&'a serde_json::Value>,
+}
+
 impl InternalGrpcMailboxClient {
     pub async fn connect_peer(
         config: &InternalGrpcPeerClientConfig,
@@ -429,11 +438,7 @@ impl InternalGrpcMailboxClient {
         team_id: &str,
         actor_id: &str,
         task_id: &str,
-        status: Option<&str>,
-        assigned_member_id: Option<&str>,
-        clear_assigned_member_id: bool,
-        context_json: Option<&serde_json::Value>,
-        context_merge_json: Option<&serde_json::Value>,
+        patch: InternalTeamTaskPatch<'_>,
     ) -> anyhow::Result<TeamTaskRecord> {
         let mut client = self.client();
         let response = client
@@ -442,17 +447,20 @@ impl InternalGrpcMailboxClient {
                     team_id: team_id.trim().to_string(),
                     actor_id: actor_id.trim().to_string(),
                     task_id: task_id.trim().to_string(),
-                    status: status
+                    status: patch
+                        .status
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(str::to_string),
-                    assigned_member_id: assigned_member_id
+                    assigned_member_id: patch
+                        .assigned_member_id
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(str::to_string),
-                    clear_assigned_member_id,
-                    context_json: context_json.map(serde_json::to_string).transpose()?,
-                    context_merge_json: context_merge_json
+                    clear_assigned_member_id: patch.clear_assigned_member_id,
+                    context_json: patch.context_json.map(serde_json::to_string).transpose()?,
+                    context_merge_json: patch
+                        .context_merge_json
                         .map(serde_json::to_string)
                         .transpose()?,
                 })?,

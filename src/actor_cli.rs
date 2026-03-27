@@ -1386,7 +1386,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         let temp_path = std::env::temp_dir().join(format!(
             "agenthub-team-task-create-{}.json",
-            std::process::id()
+            uuid::Uuid::new_v4()
         ));
         std::fs::write(&temp_path, r#"{"area":"file"}"#).expect("write temp context");
         unsafe {
@@ -1562,6 +1562,24 @@ mod tests {
             err.to_string()
                 .contains("--assigned-member-id and --unassign cannot be used together")
         );
+    }
+
+    #[test]
+    fn parse_team_task_update_rejects_blank_task_ids() {
+        let args = vec![
+            "team-task-update".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--task-id".to_string(),
+            "   ".to_string(),
+            "--status".to_string(),
+            "in_progress".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("reject blank task ids");
+        assert!(err.to_string().contains("task_id is required"));
     }
 
     #[test]
