@@ -15,8 +15,9 @@ use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerMan
 use crate::state::AppState;
 use crate::team::{
     TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskAssignmentUpdate,
-    TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
-    plan_actor_mailbox_immediate_hint, resolve_team_permission_review_target,
+    TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
+    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    resolve_team_permission_review_target,
 };
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
@@ -24,11 +25,12 @@ use super::p2p::{CredentialProvider, NodeCredentialRequest};
 use super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AckActorMessageResponse, ActorMessage, AgentEventRecord,
-    CancelTimeTriggerRequest, CancelTimeTriggerResponse, CreateTeamTaskRequest,
-    CreateTeamTaskResponse, CreateTimeTriggerRequest, CreateTimeTriggerResponse,
-    DeleteManagedAgentRequest, DeleteManagedAgentResponse, DescribeTeamContextRequest,
-    DescribeTeamContextResponse, EnsureAgentRecordRequest, EnsureAgentRecordResponse,
-    GetAgentRecordRequest, GetAgentRecordResponse, IssueNodeCredentialRequest,
+    AppendTeamTaskNoteRequest, AppendTeamTaskNoteResponse, CancelTimeTriggerRequest,
+    CancelTimeTriggerResponse, CreateTeamTaskRequest, CreateTeamTaskResponse,
+    CreateTimeTriggerRequest, CreateTimeTriggerResponse, DeleteManagedAgentRequest,
+    DeleteManagedAgentResponse, DescribeTeamContextRequest, DescribeTeamContextResponse,
+    EnsureAgentRecordRequest, EnsureAgentRecordResponse, GetAgentRecordRequest,
+    GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse, IssueNodeCredentialRequest,
     IssueNodeCredentialResponse, ListActorInboxRequest, ListActorInboxResponse,
     ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
     ListTimeTriggersRequest, ListTimeTriggersResponse, RespondPermissionReviewRequest,
@@ -42,8 +44,6 @@ use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 const BOOTSTRAP_TOKEN_HEADER: &str = "x-agenthub-bootstrap-token";
 const MAILBOX_HINT_NOTIFY_TIMEOUT: Duration = Duration::from_millis(300);
 const MAX_INTERNAL_TEAM_TASK_LIST_LIMIT: i64 = 500;
-const TEAM_SHARED_THREAD_TITLE: &str = "all";
-const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
 
@@ -455,28 +455,34 @@ impl TeamInternalControl for TeamInternalControlService {
             .ensure_permission(&principal, InternalAction::TeamRead)?;
         let payload = request.into_inner();
 
-        let team_id = required_field(&payload.team_id, "team_id")?;
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        ensure_team_member_access(&self.state.teams, team_id, actor_id).await?;
-
-        let mut tasks = self
+        let context = load_team_context_for_actor(
+            &self.state.teams,
+            optional_trimmed(&payload.team_id),
+            optional_trimmed(&payload.run_id),
+            actor_id,
+        )
+        .await?;
+        let query = TeamTaskListQuery {
+            team_id: Some(context.team_id),
+            run_id: optional_trimmed(&payload.run_id).map(str::to_string),
+            limit: payload.limit.clamp(1, MAX_INTERNAL_TEAM_TASK_LIST_LIMIT),
+            status: optional_trimmed(&payload.status)
+                .map(parse_team_task_status)
+                .transpose()?,
+            task_id: optional_trimmed(&payload.task_id).map(str::to_string),
+            assigned_member_id: optional_trimmed(&payload.assigned_member_id).map(str::to_string),
+            topic: optional_trimmed(&payload.topic).map(str::to_string),
+            include_shared_thread: payload.include_shared_thread,
+        };
+        let tasks = self
             .state
             .teams
-            .list_tasks(
-                team_id,
-                payload.limit.clamp(1, MAX_INTERNAL_TEAM_TASK_LIST_LIMIT),
-            )
+            .list_tasks_with_query(query)
             .await
             .map_err(map_manager_error)?;
-        if !payload.include_shared_thread {
-            tasks.retain(|task| !is_shared_thread_task(task));
-        }
-        if let Some(status) = optional_trimmed(&payload.status) {
-            let status = parse_team_task_status(status)?;
-            tasks.retain(|task| task.status == status);
-        }
 
         Ok(Response::new(ListTeamTasksResponse {
             tasks_json: serde_json::to_string(&tasks).map_err(map_serde_status)?,
@@ -536,11 +542,17 @@ impl TeamInternalControl for TeamInternalControlService {
             .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
         let payload = request.into_inner();
 
-        let team_id = required_field(&payload.team_id, "team_id")?;
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let team = ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+        let context = load_team_context_for_actor(
+            &self.state.teams,
+            optional_trimmed(&payload.team_id),
+            None,
+            actor_id,
+        )
+        .await?;
+        let team = ensure_leader_team_access(&self.state.teams, &context.team_id, actor_id).await?;
 
         let task_id = required_field(&payload.task_id, "task_id")?;
         let existing = self
@@ -549,7 +561,7 @@ impl TeamInternalControl for TeamInternalControlService {
             .get_task(task_id)
             .await
             .map_err(map_manager_error)?;
-        if existing.team_id != team_id {
+        if existing.team_id != context.team_id {
             return Err(Status::permission_denied(
                 "task does not belong to this team",
             ));
@@ -564,19 +576,140 @@ impl TeamInternalControl for TeamInternalControlService {
             payload.assigned_member_id.as_deref(),
             payload.clear_assigned_member_id,
         )?;
-        if status.is_none() && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged) {
+        let context_json = payload
+            .context_json
+            .as_deref()
+            .map(|raw| parse_json_required(raw, "context_json"))
+            .transpose()?;
+        let context_merge_json = payload
+            .context_merge_json
+            .as_deref()
+            .map(|raw| parse_json_required(raw, "context_merge_json"))
+            .transpose()?;
+        if context_json.is_some() && context_merge_json.is_some() {
             return Err(Status::invalid_argument(
-                "task update requires status, assigned_member_id, or clear_assigned_member_id",
+                "context_json and context_merge_json cannot be used together",
+            ));
+        }
+        let context_patch = match (context_json, context_merge_json) {
+            (Some(context_json), None) => Some(TeamTaskContextPatch::Replace(context_json)),
+            (None, Some(context_merge_json)) => {
+                if !context_merge_json.is_object() {
+                    return Err(Status::invalid_argument(
+                        "context_merge_json must be a JSON object",
+                    ));
+                }
+                Some(TeamTaskContextPatch::Merge(context_merge_json))
+            }
+            (None, None) => None,
+            (Some(_), Some(_)) => unreachable!("validated exclusive context patch"),
+        };
+        if status.is_none()
+            && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged)
+            && context_patch.is_none()
+        {
+            return Err(Status::invalid_argument(
+                "task update requires status, assigned_member_id, clear_assigned_member_id, context_json, or context_merge_json",
             ));
         }
         let task = self
             .state
             .teams
-            .update_task(task_id, status, assignment)
+            .update_task_with_context(task_id, status, assignment, context_patch)
             .await
             .map_err(map_manager_error)?;
         Ok(Response::new(UpdateTeamTaskResponse {
             task_json: serde_json::to_string(&task).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn get_team_task(
+        &self,
+        request: Request<GetTeamTaskRequest>,
+    ) -> Result<Response<GetTeamTaskResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamRead)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let context = load_team_context_for_actor(
+            &self.state.teams,
+            optional_trimmed(&payload.team_id),
+            optional_trimmed(&payload.run_id),
+            actor_id,
+        )
+        .await?;
+        let task_id = required_field(&payload.task_id, "task_id")?;
+        let detail = self
+            .state
+            .teams
+            .get_task_detail(task_id, payload.message_limit.max(1))
+            .await
+            .map_err(map_manager_error)?;
+        if detail.task.team_id != context.team_id {
+            return Err(Status::permission_denied(
+                "task does not belong to this team",
+            ));
+        }
+        Ok(Response::new(GetTeamTaskResponse {
+            detail_json: serde_json::to_string(&detail).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn append_team_task_note(
+        &self,
+        request: Request<AppendTeamTaskNoteRequest>,
+    ) -> Result<Response<AppendTeamTaskNoteResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let context = load_team_context_for_actor(
+            &self.state.teams,
+            optional_trimmed(&payload.team_id),
+            optional_trimmed(&payload.run_id),
+            actor_id,
+        )
+        .await?;
+        let task_id = required_field(&payload.task_id, "task_id")?;
+        let task = self
+            .state
+            .teams
+            .get_task(task_id)
+            .await
+            .map_err(map_manager_error)?;
+        if task.team_id != context.team_id {
+            return Err(Status::permission_denied(
+                "task does not belong to this team",
+            ));
+        }
+        let kind = parse_team_task_note_kind(required_field(&payload.kind, "kind")?)?;
+        let text = required_field(&payload.text, "text")?;
+        let message = self
+            .state
+            .teams
+            .append_task_conversation_message(
+                task_id,
+                actor_id,
+                None,
+                "task_note",
+                serde_json::json!({
+                    "type": "task_note",
+                    "kind": kind,
+                    "text": text,
+                }),
+            )
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(AppendTeamTaskNoteResponse {
+            message_json: serde_json::to_string(&message).map_err(map_serde_status)?,
         }))
     }
 
@@ -1331,6 +1464,17 @@ fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
     })
 }
 
+fn parse_team_task_note_kind(raw: &str) -> Result<&'static str, Status> {
+    match raw.trim() {
+        "comment" => Ok("comment"),
+        "decision" => Ok("decision"),
+        "result" => Ok("result"),
+        other => Err(Status::invalid_argument(format!(
+            "invalid task note kind '{other}', expected one of: comment, decision, result"
+        ))),
+    }
+}
+
 fn normalize_task_assignment_update(
     team_spec: &Value,
     assigned_member_id: Option<&str>,
@@ -1383,22 +1527,6 @@ fn map_agent_lookup_error(err: anyhow::Error) -> Status {
         return Status::not_found("agent not found");
     }
     map_manager_error(err)
-}
-
-fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
-    if task
-        .title
-        .trim()
-        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
-    {
-        return true;
-    }
-    task.context
-        .as_object()
-        .and_then(|obj| obj.get("bootstrap_kind"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| value.eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND))
 }
 
 fn parse_json_as<T>(raw: &str, field: &str) -> Result<T, Status>
@@ -1624,15 +1752,16 @@ mod tests {
     use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
     use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
     use super::super::proto::agenthub::internal::v1::{
-        AckActorMessageRequest, CancelTimeTriggerRequest, CreateTeamTaskRequest,
-        CreateTimeTriggerRequest, DescribeTeamContextRequest, IssueNodeCredentialRequest,
-        ListActorInboxRequest, ListTeamTasksRequest, ListTimeTriggersRequest,
-        RespondPermissionReviewRequest, SendActorMessageRequest, UpdateTeamTaskRequest,
+        AckActorMessageRequest, AppendTeamTaskNoteRequest, CancelTimeTriggerRequest,
+        CreateTeamTaskRequest, CreateTimeTriggerRequest, DescribeTeamContextRequest,
+        GetTeamTaskRequest, IssueNodeCredentialRequest, ListActorInboxRequest,
+        ListTeamTasksRequest, ListTimeTriggersRequest, RespondPermissionReviewRequest,
+        SendActorMessageRequest, UpdateTeamTaskRequest,
     };
     use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
     use crate::agent::AgentTimeTriggerRecord;
     use crate::api::team_tests::build_test_state;
-    use crate::team::{TeamDefinitionConfig, TeamTaskRecord};
+    use crate::team::{TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord};
     use agenthub_team_actor::ActorMessageStatus;
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";
@@ -1978,6 +2107,10 @@ mod tests {
                     limit: 20,
                     status: "in_progress".to_string(),
                     include_shared_thread: false,
+                    run_id: String::new(),
+                    task_id: task_id.clone(),
+                    assigned_member_id: String::new(),
+                    topic: "actor-cli".to_string(),
                 },
                 &token,
             ),
@@ -1998,12 +2131,14 @@ mod tests {
             &service,
             authenticated_request(
                 UpdateTeamTaskRequest {
-                    team_id: run.team_id,
+                    team_id: run.team_id.clone(),
                     actor_id: "planner".to_string(),
                     task_id: task_id.clone(),
                     status: Some("completed".to_string()),
                     assigned_member_id: Some("reviewer".to_string()),
                     clear_assigned_member_id: false,
+                    context_json: None,
+                    context_merge_json: Some(json!({"repo":"agenthub","issue":128}).to_string()),
                 },
                 &token,
             ),
@@ -2016,6 +2151,71 @@ mod tests {
         assert_eq!(updated_task.id, task_id);
         assert_eq!(updated_task.status, crate::team::TeamTaskStatus::Completed);
         assert_eq!(updated_task.assigned_member_id.as_deref(), Some("reviewer"));
+        assert_eq!(updated_task.context["repo"], json!("agenthub"));
+        assert_eq!(updated_task.context["issue"], json!(128));
+
+        let detail = TeamInternalControl::get_team_task(
+            &service,
+            authenticated_request(
+                GetTeamTaskRequest {
+                    team_id: String::new(),
+                    run_id: run.id.clone(),
+                    actor_id: "planner".to_string(),
+                    task_id: task_id.clone(),
+                    message_limit: 10,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("get team task detail")
+        .into_inner();
+        let detail: TeamTaskDetailRecord =
+            serde_json::from_str(&detail.detail_json).expect("decode team task detail");
+        assert_eq!(detail.task.id, task_id);
+        assert_eq!(detail.conversation.topic.as_deref(), Some("actor-cli"));
+        assert_eq!(detail.latest_run.as_ref().map(|run| run.id.as_str()), None);
+        assert!(detail.recent_messages.is_empty());
+
+        let note = TeamInternalControl::append_team_task_note(
+            &service,
+            authenticated_request(
+                AppendTeamTaskNoteRequest {
+                    team_id: String::new(),
+                    run_id: detail.task.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    task_id: detail.task.id.clone(),
+                    kind: "result".to_string(),
+                    text: "implemented".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect_err("run_id must reference a run when team_id is omitted");
+        assert_eq!(note.code(), Code::NotFound);
+
+        let note = TeamInternalControl::append_team_task_note(
+            &service,
+            authenticated_request(
+                AppendTeamTaskNoteRequest {
+                    team_id: detail.task.team_id.clone(),
+                    run_id: String::new(),
+                    actor_id: "planner".to_string(),
+                    task_id: detail.task.id.clone(),
+                    kind: "result".to_string(),
+                    text: "implemented".to_string(),
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("append team task note")
+        .into_inner();
+        let note_json: serde_json::Value =
+            serde_json::from_str(&note.message_json).expect("decode note");
+        assert_eq!(note_json["payload"]["kind"], json!("result"));
+        assert_eq!(note_json["payload"]["text"], json!("implemented"));
 
         let cleared = TeamInternalControl::update_team_task(
             &service,
@@ -2027,6 +2227,8 @@ mod tests {
                     status: None,
                     assigned_member_id: None,
                     clear_assigned_member_id: true,
+                    context_json: Some(json!({"owner":"leader"}).to_string()),
+                    context_merge_json: None,
                 },
                 &token,
             ),
@@ -2037,6 +2239,7 @@ mod tests {
         let cleared_task: TeamTaskRecord =
             serde_json::from_str(&cleared.task_json).expect("decode cleared task");
         assert_eq!(cleared_task.assigned_member_id, None);
+        assert_eq!(cleared_task.context["owner"], json!("leader"));
     }
 
     #[tokio::test]

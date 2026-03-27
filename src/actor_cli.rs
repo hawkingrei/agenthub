@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
+use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus};
 
 #[cfg(test)]
 use crate::actor_runtime_env::{
@@ -19,11 +19,15 @@ const ACTOR_HELP_TOPIC_INBOX: &str = "inbox";
 const ACTOR_HELP_TOPIC_ACK: &str = "ack";
 const ACTOR_HELP_TOPIC_SEND: &str = "send";
 const ACTOR_HELP_TOPIC_PERMISSION_REVIEW_RESPOND: &str = "permission-review-respond";
+const ACTOR_HELP_TOPIC_TEAM_TASK_SHOW: &str = "team-task-show";
+const ACTOR_HELP_TOPIC_TEAM_TASK_NOTE: &str = "team-task-note";
 const ACTOR_HELP_TOPICS: &[&str] = &[
     "team-members",
     "team-tasks",
     "team-task-create",
     "team-task-update",
+    ACTOR_HELP_TOPIC_TEAM_TASK_SHOW,
+    ACTOR_HELP_TOPIC_TEAM_TASK_NOTE,
     ACTOR_HELP_TOPIC_INBOX,
     ACTOR_HELP_TOPIC_ACK,
     ACTOR_HELP_TOPIC_SEND,
@@ -57,6 +61,23 @@ enum ActorSendPayloadSource {
     Payload,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TeamTaskNoteKind {
+    Comment,
+    Decision,
+    Result,
+}
+
+impl TeamTaskNoteKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Comment => "comment",
+            Self::Decision => "decision",
+            Self::Result => "result",
+        }
+    }
+}
+
 #[derive(Debug)]
 enum ActorCommand {
     Help {
@@ -81,11 +102,8 @@ enum ActorCommand {
         message_ids: Vec<i64>,
     },
     TeamTasks {
-        team_id: String,
+        query: TeamTaskListQuery,
         actor_id: String,
-        limit: i64,
-        status: Option<TeamTaskStatus>,
-        include_shared_thread: bool,
     },
     TeamTaskCreate {
         team_id: String,
@@ -95,13 +113,30 @@ enum ActorCommand {
         topic: Option<String>,
         context: Value,
     },
+    TeamTaskShow {
+        team_id: Option<String>,
+        run_id: Option<String>,
+        actor_id: String,
+        task_id: String,
+        message_limit: i64,
+    },
     TeamTaskUpdate {
         team_id: String,
         actor_id: String,
-        task_id: String,
+        task_ids: Vec<String>,
         status: Option<TeamTaskStatus>,
         assigned_member_id: Option<String>,
         clear_assigned_member_id: bool,
+        context: Option<Value>,
+        context_merge: Option<Value>,
+    },
+    TeamTaskNote {
+        team_id: Option<String>,
+        run_id: Option<String>,
+        actor_id: String,
+        task_id: String,
+        kind: TeamTaskNoteKind,
+        text: String,
     },
     TimeTriggerSet {
         actor_id: String,
@@ -1246,23 +1281,58 @@ mod tests {
         let parsed =
             parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-tasks");
         match parsed {
-            ActorCommand::TeamTasks {
-                team_id,
-                actor_id,
-                status,
-                include_shared_thread,
-                ..
-            } => {
-                assert_eq!(team_id, "team-kanban");
+            ActorCommand::TeamTasks { query, actor_id } => {
+                assert_eq!(query.team_id.as_deref(), Some("team-kanban"));
+                assert!(query.run_id.is_none());
                 assert_eq!(actor_id, "leader");
-                assert_eq!(status, Some(TeamTaskStatus::InReview));
-                assert!(include_shared_thread);
+                assert_eq!(query.status, Some(TeamTaskStatus::InReview));
+                assert!(query.include_shared_thread);
             }
             _ => panic!("expected team-tasks command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_team_tasks_accepts_run_scoped_filters() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env-ignored");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-env-ignored");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-run-query");
+        }
+        let args = vec![
+            "team-tasks".to_string(),
+            "--run-id".to_string(),
+            "run-explicit".to_string(),
+            "--task-id".to_string(),
+            "task-7".to_string(),
+            "--assigned-member-id".to_string(),
+            "worker-2".to_string(),
+            "--topic".to_string(),
+            "kanban".to_string(),
+        ];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse team-tasks");
+        match parsed {
+            ActorCommand::TeamTasks { query, actor_id } => {
+                assert!(query.team_id.is_none());
+                assert_eq!(query.run_id.as_deref(), Some("run-explicit"));
+                assert_eq!(query.task_id.as_deref(), Some("task-7"));
+                assert_eq!(query.assigned_member_id.as_deref(), Some("worker-2"));
+                assert_eq!(query.topic.as_deref(), Some("kanban"));
+                assert_eq!(actor_id, "leader-run-query");
+            }
+            _ => panic!("expected team-tasks command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -1310,6 +1380,83 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_task_create_accepts_context_json_file() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let temp_path = std::env::temp_dir().join(format!(
+            "agenthub-team-task-create-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&temp_path, r#"{"area":"file"}"#).expect("write temp context");
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create-file");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec![
+            "team-task-create".to_string(),
+            "--title".to_string(),
+            "Use file context".to_string(),
+            "--context-json-file".to_string(),
+            temp_path.display().to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-create");
+        match parsed {
+            ActorCommand::TeamTaskCreate { context, .. } => {
+                assert_eq!(context["area"], "file");
+            }
+            _ => panic!("expected team-task-create command"),
+        }
+        let _ = std::fs::remove_file(temp_path);
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_task_show_accepts_run_scope() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-show-ignored");
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-show-ignored");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-show");
+        }
+        let args = vec![
+            "team-task-show".to_string(),
+            "--run-id".to_string(),
+            "run-7".to_string(),
+            "--task-id".to_string(),
+            "task-7".to_string(),
+            "--message-limit".to_string(),
+            "5".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-show");
+        match parsed {
+            ActorCommand::TeamTaskShow {
+                team_id,
+                run_id,
+                actor_id,
+                task_id,
+                message_limit,
+            } => {
+                assert!(team_id.is_none());
+                assert_eq!(run_id.as_deref(), Some("run-7"));
+                assert_eq!(actor_id, "leader-show");
+                assert_eq!(task_id, "task-7");
+                assert_eq!(message_limit, 5);
+            }
+            _ => panic!("expected team-task-show command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
     fn parse_team_task_update_accepts_assignment_patch() {
         let _guard = env_lock().blocking_lock();
         let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
@@ -1333,23 +1480,70 @@ mod tests {
             ActorCommand::TeamTaskUpdate {
                 team_id,
                 actor_id,
-                task_id,
+                task_ids,
                 status,
                 assigned_member_id,
                 clear_assigned_member_id,
+                context,
+                context_merge,
             } => {
                 assert_eq!(team_id, "team-update");
                 assert_eq!(actor_id, "leader");
-                assert_eq!(task_id, "task-1");
+                assert_eq!(task_ids, vec!["task-1".to_string()]);
                 assert!(status.is_none());
                 assert_eq!(assigned_member_id.as_deref(), Some("worker-1"));
                 assert!(!clear_assigned_member_id);
+                assert!(context.is_none());
+                assert!(context_merge.is_none());
             }
             _ => panic!("expected team-task-update command"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_team_task_update_accepts_batch_context_merge() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec![
+            "team-task-update".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--task-id".to_string(),
+            "task-2".to_string(),
+            "--context-merge-json".to_string(),
+            r#"{"repo":"agenthub"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-update");
+        match parsed {
+            ActorCommand::TeamTaskUpdate {
+                task_ids,
+                context,
+                context_merge,
+                ..
+            } => {
+                assert_eq!(task_ids, vec!["task-1".to_string(), "task-2".to_string()]);
+                assert!(context.is_none());
+                assert_eq!(
+                    context_merge
+                        .as_ref()
+                        .and_then(|value| value.get("repo"))
+                        .and_then(Value::as_str),
+                    Some("agenthub")
+                );
+            }
+            _ => panic!("expected team-task-update command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -1368,6 +1562,48 @@ mod tests {
             err.to_string()
                 .contains("--assigned-member-id and --unassign cannot be used together")
         );
+    }
+
+    #[test]
+    fn parse_team_task_note_accepts_kind_and_run_scope() {
+        let _guard = env_lock().blocking_lock();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-note");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-note");
+        }
+        let args = vec![
+            "team-task-note".to_string(),
+            "--task-id".to_string(),
+            "task-note-1".to_string(),
+            "--kind".to_string(),
+            "result".to_string(),
+            "--text".to_string(),
+            "done".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-note");
+        match parsed {
+            ActorCommand::TeamTaskNote {
+                team_id,
+                run_id,
+                actor_id,
+                task_id,
+                kind,
+                text,
+            } => {
+                assert!(team_id.is_none());
+                assert_eq!(run_id.as_deref(), Some("run-note"));
+                assert_eq!(actor_id, "leader-note");
+                assert_eq!(task_id, "task-note-1");
+                assert_eq!(kind.as_str(), "result");
+                assert_eq!(text, "done");
+            }
+            _ => panic!("expected team-task-note command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -1599,11 +1835,17 @@ mod tests {
             ),
             (
                 ActorCommand::TeamTasks {
-                    team_id: "team-1".to_string(),
+                    query: TeamTaskListQuery {
+                        team_id: Some("team-1".to_string()),
+                        run_id: None,
+                        limit: 10,
+                        status: Some(TeamTaskStatus::Open),
+                        task_id: None,
+                        assigned_member_id: None,
+                        topic: None,
+                        include_shared_thread: true,
+                    },
                     actor_id: "leader".to_string(),
-                    status: Some(TeamTaskStatus::Open),
-                    limit: 10,
-                    include_shared_thread: true,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),
@@ -1619,13 +1861,36 @@ mod tests {
                 ActorOutputPreference::ToonPreferred,
             ),
             (
+                ActorCommand::TeamTaskShow {
+                    team_id: Some("team-1".to_string()),
+                    run_id: None,
+                    actor_id: "leader".to_string(),
+                    task_id: "task-1".to_string(),
+                    message_limit: 10,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
                 ActorCommand::TeamTaskUpdate {
                     team_id: "team-1".to_string(),
                     actor_id: "leader".to_string(),
-                    task_id: "task-1".to_string(),
+                    task_ids: vec!["task-1".to_string()],
                     status: Some(TeamTaskStatus::InProgress),
                     assigned_member_id: None,
                     clear_assigned_member_id: false,
+                    context: None,
+                    context_merge: None,
+                },
+                ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamTaskNote {
+                    team_id: Some("team-1".to_string()),
+                    run_id: None,
+                    actor_id: "leader".to_string(),
+                    task_id: "task-1".to_string(),
+                    kind: TeamTaskNoteKind::Comment,
+                    text: "progress".to_string(),
                 },
                 ActorOutputPreference::ToonPreferred,
             ),

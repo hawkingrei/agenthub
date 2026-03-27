@@ -2,7 +2,9 @@ use std::path::Path;
 
 use crate::acp::AcpActorSkillContext;
 use crate::agent::{AgentConfig, AgentEvent, AgentRecord, AgentTimeTriggerRecord, OutputStream};
-use crate::team::{TeamContextRecord, TeamTaskRecord};
+use crate::team::{
+    TeamContextRecord, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord, TeamTaskStatus,
+};
 use agenthub_team_actor::{
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
     ActorMessageRecord, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
@@ -20,6 +22,7 @@ use super::p2p::{CredentialProvider, NodeCredentialRequest, P2PTransport};
 use super::proto::agenthub::internal::v1::team_internal_control_client::TeamInternalControlClient;
 use super::proto::agenthub::internal::v1::{
     AckActorMessageRequest as GrpcAckActorMessageRequest,
+    AppendTeamTaskNoteRequest as GrpcAppendTeamTaskNoteRequest,
     CancelTimeTriggerRequest as GrpcCancelTimeTriggerRequest,
     CreateTeamTaskRequest as GrpcCreateTeamTaskRequest,
     CreateTimeTriggerRequest as GrpcCreateTimeTriggerRequest,
@@ -27,6 +30,7 @@ use super::proto::agenthub::internal::v1::{
     DescribeTeamContextRequest as GrpcDescribeTeamContextRequest,
     EnsureAgentRecordRequest as GrpcEnsureAgentRecordRequest,
     GetAgentRecordRequest as GrpcGetAgentRecordRequest,
+    GetTeamTaskRequest as GrpcGetTeamTaskRequest,
     ListActorInboxRequest as GrpcListActorInboxRequest,
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListAgentEventsResponse as GrpcListAgentEventsResponse,
@@ -341,21 +345,54 @@ impl InternalGrpcMailboxClient {
 
     pub async fn list_team_tasks(
         &self,
-        team_id: &str,
         actor_id: &str,
-        limit: i64,
-        status: Option<&str>,
-        include_shared_thread: bool,
+        query: &TeamTaskListQuery,
     ) -> anyhow::Result<Vec<TeamTaskRecord>> {
         let mut client = self.client();
         let response = client
-            .list_team_tasks(self.control_request(GrpcListTeamTasksRequest {
-                team_id: team_id.trim().to_string(),
-                actor_id: actor_id.trim().to_string(),
-                limit,
-                status: status.unwrap_or_default().trim().to_string(),
-                include_shared_thread,
-            })?)
+            .list_team_tasks(
+                self.control_request(GrpcListTeamTasksRequest {
+                    team_id: query
+                        .team_id
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                    actor_id: actor_id.trim().to_string(),
+                    limit: query.limit,
+                    status: query
+                        .status
+                        .as_ref()
+                        .map(TeamTaskStatus::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    include_shared_thread: query.include_shared_thread,
+                    run_id: query
+                        .run_id
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                    task_id: query
+                        .task_id
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                    assigned_member_id: query
+                        .assigned_member_id
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                    topic: query
+                        .topic
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                })?,
+            )
             .await
             .map_err(map_grpc_status_anyhow)?
             .into_inner();
@@ -395,6 +432,8 @@ impl InternalGrpcMailboxClient {
         status: Option<&str>,
         assigned_member_id: Option<&str>,
         clear_assigned_member_id: bool,
+        context_json: Option<&serde_json::Value>,
+        context_merge_json: Option<&serde_json::Value>,
     ) -> anyhow::Result<TeamTaskRecord> {
         let mut client = self.client();
         let response = client
@@ -412,12 +451,64 @@ impl InternalGrpcMailboxClient {
                         .filter(|value| !value.is_empty())
                         .map(str::to_string),
                     clear_assigned_member_id,
+                    context_json: context_json.map(serde_json::to_string).transpose()?,
+                    context_merge_json: context_merge_json
+                        .map(serde_json::to_string)
+                        .transpose()?,
                 })?,
             )
             .await
             .map_err(map_grpc_status_anyhow)?
             .into_inner();
         parse_json_response(&response.task_json, "task_json")
+    }
+
+    pub async fn get_team_task(
+        &self,
+        actor_id: &str,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+        task_id: &str,
+        message_limit: i64,
+    ) -> anyhow::Result<TeamTaskDetailRecord> {
+        let mut client = self.client();
+        let response = client
+            .get_team_task(self.control_request(GrpcGetTeamTaskRequest {
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+                run_id: run_id.unwrap_or_default().trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                task_id: task_id.trim().to_string(),
+                message_limit,
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.detail_json, "detail_json")
+    }
+
+    pub async fn append_team_task_note(
+        &self,
+        actor_id: &str,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+        task_id: &str,
+        kind: &str,
+        text: &str,
+    ) -> anyhow::Result<crate::team::TeamConversationMessageRecord> {
+        let mut client = self.client();
+        let response = client
+            .append_team_task_note(self.control_request(GrpcAppendTeamTaskNoteRequest {
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+                run_id: run_id.unwrap_or_default().trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                task_id: task_id.trim().to_string(),
+                kind: kind.trim().to_string(),
+                text: text.to_string(),
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        parse_json_response(&response.message_json, "message_json")
     }
 
     pub async fn create_time_trigger(

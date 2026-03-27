@@ -19,9 +19,11 @@ pub(super) fn actor_output_preference_for_command(command: &ActorCommand) -> Act
         ActorCommand::Help { .. } => ActorOutputPreference::ToonPreferred,
         ActorCommand::TeamMembers { .. }
         | ActorCommand::TeamTasks { .. }
+        | ActorCommand::TeamTaskShow { .. }
         | ActorCommand::Inbox { .. }
         | ActorCommand::TeamTaskCreate { .. }
         | ActorCommand::TeamTaskUpdate { .. }
+        | ActorCommand::TeamTaskNote { .. }
         | ActorCommand::TimeTriggerList { .. }
         | ActorCommand::TimeTriggerSet { .. }
         | ActorCommand::TimeTriggerCancel { .. } => ActorOutputPreference::ToonPreferred,

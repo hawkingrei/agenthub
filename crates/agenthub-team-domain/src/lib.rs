@@ -151,6 +151,14 @@ pub struct TeamConversationMessageRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamTaskDetailRecord {
+    pub task: TeamTaskRecord,
+    pub conversation: TeamConversationRecord,
+    pub latest_run: Option<TeamRunRecord>,
+    pub recent_messages: Vec<TeamConversationMessageRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamRunEventRecord {
     pub event_id: i64,
     pub run_id: String,
