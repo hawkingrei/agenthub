@@ -243,6 +243,30 @@ describe("mailbox helpers", () => {
     });
   });
 
+  it("builds summary-first chat payload when detail_ref is present", () => {
+    expect(
+      buildMailboxChatPayload("Concise summary for the peer", {
+        detail_ref: {
+          uri: "artifact://team/task-all/evidence-1",
+          label: "full evidence",
+          kind: "artifact",
+          content_type: "application/json",
+        },
+      })
+    ).toEqual({
+      type: "chat_message",
+      text: "Concise summary for the peer",
+      source: "team_workbench",
+      summary: "Concise summary for the peer",
+      detail_ref: {
+        uri: "artifact://team/task-all/evidence-1",
+        label: "full evidence",
+        kind: "artifact",
+        content_type: "application/json",
+      },
+    });
+  });
+
   it("translates mailbox address into @ mention when forwarding without explicit mentions", () => {
     const broadcastPayload = buildMailboxChatPayload("please check logs");
     expect(buildMailboxForwardChatPayload(broadcastPayload, "worker-1")).toEqual({

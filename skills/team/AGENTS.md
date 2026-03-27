@@ -85,7 +85,9 @@ restating the same rules.
 
 - Non-trivial assignments must be reported when work starts, when meaningful progress happens,
   when blockers appear, and when work completes.
-- Default route: `leader-mailbox`.
+- Default route: direct mailbox first.
+  - `leader-mailbox` for the leader as the single owner/reviewer of the next action
+  - `peer-mailbox` when exactly one non-leader teammate needs the update
 - Use `peer-mailbox` for routine single-peer clarification, dependency handoff, or review nudges
   that do not need team-wide visibility.
 - Use `shared-channel` when the update changes shared plans, dependencies, review status, or
@@ -103,6 +105,10 @@ restating the same rules.
   without ownership context.
 - Findings, debugging experience, reusable heuristics, and newly discovered risks are first-class
   outputs; report them even before implementation completes when they can change team decisions.
+- Large evidence should be summary-first:
+  - send a concise summary in the mailbox text/payload
+  - attach a stable `detail_ref` / artifact pointer for the full content
+  - do not paste large logs, traces, or copied context into routine mailbox messages
 - Silent execution is unacceptable for long-running or uncertain work; send a progress or blocker
   update instead of waiting for the final result.
 - Leader owns integrated progress updates to the human/channel and must ensure each active

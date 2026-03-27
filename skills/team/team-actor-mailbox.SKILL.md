@@ -36,7 +36,8 @@ Shared routing, mention, and human-visible reply policy remain canonical in
 
 ## Routing Surface Contract
 
-- Direct mailbox (`to_actor_id`) is single-target delivery. Use it for `leader-mailbox` or
+- Direct mailbox (`to_actor_id`) is single-target delivery. This is the default when exactly one
+  teammate needs the update. Use it for `leader-mailbox` or
   `peer-mailbox`.
 - Shared channel (`channel_id`) is team-wide delivery. Use it for `shared-channel`.
 - Human mailbox (`to_actor_id = user` / `user:<id>`) is urgent operator-facing notification. Use
@@ -71,6 +72,10 @@ Recommended fields:
 - `idempotency_key`
 - `from_actor_kind` (`human|agent`)
 - `to_actor_kind` (`human|agent`)
+- `summary`
+- `detail_ref`
+- `next_action`
+- `correlation_id`
 
 ## Standard Command Loop
 
@@ -100,6 +105,8 @@ Recommended fields:
   - routine clarification, dependency negotiation, and internal discussion can be resolved directly in mailbox
     without first writing a channel update
   - use structured payloads with `status`, `result`, `evidence`, and `next_action` when needed
+  - when the full evidence is large, send summary-first and attach a stable `detail_ref` / artifact pointer
+    instead of pasting the full content into the mailbox body
   - include phase metadata only when it helps internal coordination
 - Human-facing team conversation replies:
   - follow the shared human-facing reply contract from `skills/team/AGENTS.md`

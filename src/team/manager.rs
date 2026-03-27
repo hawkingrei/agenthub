@@ -16,6 +16,16 @@ use agenthub_text::truncate_chars;
 use chrono::Utc;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+fn hex_encode(data: &[u8]) -> String {
+    const HEX_CHARS: &[u8] = b"0123456789abcdef";
+    let mut result = String::with_capacity(data.len() * 2);
+    for byte in data {
+        result.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        result.push(HEX_CHARS[(byte & 0xf) as usize] as char);
+    }
+    result
+}
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -1542,7 +1552,7 @@ impl TeamManager {
         let artifact_bytes = serde_json::to_vec(&artifact_payload)?;
         std::fs::write(&absolute_path, &artifact_bytes)?;
         let artifact_size_bytes = i64::try_from(artifact_bytes.len()).ok().unwrap_or(i64::MAX);
-        let content_checksum = format!("{:x}", Sha256::digest(&artifact_bytes));
+        let content_checksum = hex_encode(&Sha256::digest(&artifact_bytes));
         let absolute_path_string = absolute_path.to_string_lossy().to_string();
 
         sqlx::query(

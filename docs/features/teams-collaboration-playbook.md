@@ -160,6 +160,9 @@ Team collaboration should run with the canonical actor CLI mailbox path as the p
 - Team role sessions must prioritize `AGENTHUB_ACTOR_CLI` mailbox/task commands over ad-hoc message paths.
 - Startup should fail-fast when Team role is enabled but the canonical actor CLI coordination capability is missing.
 - Startup should also fail-fast when required actor mailbox commands are unavailable (`actor inbox`, `actor ack`, `actor send`).
+- Default routing should be direct mailbox first:
+  - use a single-target mailbox message when exactly one teammate owns the next action
+  - reserve shared-channel for human-visible or genuinely multi-recipient updates
 - Turn loop should stay deterministic:
   - pull inbox -> process -> ack -> send/report -> next pull.
 - Team prompt dynamic tail should include an explicit `Allowed actions` block to deny bypass paths.
@@ -179,6 +182,10 @@ as execution command authority:
 - backend normalizes sender identity from session, keeps channel fan-out broadcast, and extracts `@member_id` as mention metadata;
 - `conversation_id` is required for chat scope, `run_id` is optional until execution starts;
 - `correlation_id` should link one intent chain across chat events and mailbox/run evidence;
+- large evidence should be summary-first:
+  - send the short summary in the message body
+  - attach a stable `detail_ref` / artifact pointer for the full content
+  - avoid reposting large logs or copied context in routine coordination messages
 - execution command types still require mailbox path (`assignment`, `approval`, `step_action`, execution results).
 
 Detailed event-bus design:

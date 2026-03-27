@@ -1,8 +1,4 @@
-async fn wait_for_agent_event_history_cleanup(
-    state: &AppState,
-    agent_id: &str,
-    session_id: &str,
-) {
+async fn wait_for_agent_event_history_cleanup(state: &AppState, agent_id: &str, session_id: &str) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     let event_db_path = state.agents.test_event_db_path_for_agent(agent_id);
     let event_db_wal_path = {
@@ -3411,10 +3407,7 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
         "unexpected first hint status: {:?}",
         first_hint.payload["status"]
     );
-    assert_eq!(
-        first_hint.payload["reason"],
-        json!("direct_agent_message")
-    );
+    assert_eq!(first_hint.payload["reason"], json!("direct_agent_message"));
     assert_eq!(first_hint.payload["target_actor_ids"], json!(["reviewer"]));
 
     let second_hint = hint_events
@@ -3429,10 +3422,7 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
         "unexpected second hint status: {:?}",
         second_hint.payload["status"]
     );
-    assert_eq!(
-        second_hint.payload["reason"],
-        json!("direct_agent_message")
-    );
+    assert_eq!(second_hint.payload["reason"], json!("direct_agent_message"));
     assert_eq!(second_hint.payload["target_actor_ids"], json!(["reviewer"]));
 
     let worker_status_hint = hint_events
@@ -4284,7 +4274,10 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
         let forwarded_payload: Value =
             serde_json::from_str(row.get::<String, _>("payload_json").as_str())
                 .expect("parse forwarded payload");
-        assert_eq!(forwarded_payload["delivery_scope"], Value::from("broadcast"));
+        assert_eq!(
+            forwarded_payload["delivery_scope"],
+            Value::from("broadcast")
+        );
         assert_eq!(
             forwarded_payload["task_message_id"],
             Value::from(directed_message.message_id)
@@ -4293,10 +4286,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             forwarded_payload["task_conversation_id"],
             Value::from(directed_message.conversation_id.clone())
         );
-        assert_eq!(
-            forwarded_payload["mention_actor_ids"],
-            json!(["worker-1"])
-        );
+        assert_eq!(forwarded_payload["mention_actor_ids"], json!(["worker-1"]));
         assert_eq!(
             forwarded_payload["mentioned_actor_ids"],
             json!(["worker-1"])
@@ -4312,8 +4302,8 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             limit: Some(50),
             states: None,
         })
-    .await
-    .expect("load worker inbox");
+        .await
+        .expect("load worker inbox");
     assert_eq!(inbox.messages.len(), 1);
     assert_eq!(
         inbox.messages[0].payload["task_message_id"],
@@ -4916,6 +4906,316 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
                 .unwrap_or(false)
         );
     }
+}
+
+#[tokio::test]
+async fn team_task_messages_api_infers_direct_route_for_single_mention_and_normalizes_detail_ref() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-direct-default-team".to_string(),
+            description: Some("single mention should default to direct mailbox".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(task_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Direct by default".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(task_created.task.id.as_str()),
+            json!({
+                "task_id": task_created.task.id.clone(),
+                "conversation_id": task_created.conversation.id.clone(),
+            }),
+        )
+        .await
+        .expect("create explicit task run");
+
+    let Json(message) = send_team_task_message(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), task_created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"<at>worker-1</at> review the concise summary first",
+                "detail_ref":"artifact://task-direct-default/full-review-1"
+            }),
+        }),
+    )
+    .await
+    .expect("send inferred direct message");
+
+    assert_eq!(message.route, "to_member");
+    assert_eq!(message.to_actor_id.as_deref(), Some("worker-1"));
+    assert_eq!(
+        message.payload["summary"],
+        json!("<at>worker-1</at> review the concise summary first")
+    );
+    assert_eq!(
+        message.payload["detail_ref"]["uri"],
+        json!("artifact://task-direct-default/full-review-1")
+    );
+
+    let rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load inferred direct mailbox rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get::<String, _>("from_actor_id"), "planner");
+    assert_eq!(rows[0].get::<String, _>("to_actor_id"), "worker-1");
+
+    let payload: Value = serde_json::from_str(rows[0].get::<String, _>("payload_json").as_str())
+        .expect("parse inferred direct payload");
+    assert_eq!(payload["delivery_scope"], json!("direct"));
+    assert_eq!(
+        payload["summary"],
+        json!("<at>worker-1</at> review the concise summary first")
+    );
+    assert_eq!(
+        payload["detail_ref"]["uri"],
+        json!("artifact://task-direct-default/full-review-1")
+    );
+    assert_eq!(payload["mention_actor_ids"], json!(["worker-1"]));
+}
+
+#[tokio::test]
+async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-to-leader-default-team".to_string(),
+            description: Some("single leader mention should infer to_leader".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Leader inference".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(message) = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("worker-1".to_string()),
+            to_actor_id: None,
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"<at>planner</at> please review the latest patch"
+            }),
+        }),
+    )
+    .await
+    .expect("send inferred to_leader message");
+
+    assert_eq!(message.route, "to_leader");
+    assert_eq!(message.to_actor_id.as_deref(), Some("planner"));
+}
+
+#[tokio::test]
+async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_length() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "detail-ref-object-team".to_string(),
+            description: Some("detail_ref object normalization coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Object detail_ref normalization".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let long_text = format!("Summary {}", "x".repeat(400));
+    let Json(message) = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text": long_text,
+                "detail_ref": {
+                    "uri":" artifact://team/detail-1 ",
+                    "label":" full evidence ",
+                    "kind":" artifact ",
+                    "content_type":" application/json ",
+                    "ignored":["nested"]
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send normalized detail_ref message");
+
+    let summary = message.payload["summary"]
+        .as_str()
+        .expect("summary should be injected");
+    assert_eq!(summary.chars().count(), 240);
+    assert!(summary.ends_with("..."));
+    assert_eq!(
+        message.payload["detail_ref"],
+        json!({
+            "uri":"artifact://team/detail-1",
+            "label":"full evidence",
+            "kind":"artifact",
+            "content_type":"application/json"
+        })
+    );
+}
+
+#[tokio::test]
+async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_injection() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "invalid-detail-ref-object-team".to_string(),
+            description: Some("invalid detail_ref object coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Invalid detail_ref object".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        }),
+    )
+    .await
+    .expect("create task");
+
+    let Json(message) = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("planner".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"short evidence summary",
+                "detail_ref": {
+                    "uri":"   ",
+                    "label":" full evidence "
+                }
+            }),
+        }),
+    )
+    .await
+    .expect("send invalid detail_ref message");
+
+    let payload = message
+        .payload
+        .as_object()
+        .expect("message payload should remain an object");
+    assert!(!payload.contains_key("detail_ref"));
+    assert!(!payload.contains_key("summary"));
 }
 
 #[tokio::test]

@@ -17,7 +17,7 @@ name = "agenthub_codex_acp"
 path = "src/lib.rs"
 
 [dependencies]
-agent-client-protocol = { version = "=0.10.2", features = ["unstable"] }
+agent-client-protocol = { version = "=0.10.3", features = ["unstable"] }
 agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
@@ -42,7 +42,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 tokio-util = { version = "0.7", features = ["compat"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-unicode-segmentation = "1.13.1"
+unicode-segmentation = "1.13.2"
 uuid = { version = "1", features = ["v4"] }
 
 [lints.rust]

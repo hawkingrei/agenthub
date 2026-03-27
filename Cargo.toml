@@ -12,6 +12,7 @@ members = [
     "crates/agenthub-logging",
     "crates/agenthub-config",
     "crates/agenthub-db",
+    "crates/agenthub-pyroscope",
 ]
 exclude = ["cmd/agenthub"]
 
@@ -57,9 +58,9 @@ jwt-simple = { version = "0.12", default-features = false, features = ["pure-rus
 mime_guess = "2"
 rust-embed = "8"
 async-trait = "0.1"
-hmac = "0.12"
+hmac = "0.13.0-rc.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 zstd = "0.13"
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
@@ -70,12 +71,13 @@ agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
-agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
+agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
+agent-client-protocol = { version = "0.10.3", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
 rcgen = "0.14"
-rustls = "0.23"
+rustls = "0.23.37"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

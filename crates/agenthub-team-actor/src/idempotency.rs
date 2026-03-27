@@ -1,6 +1,16 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+fn hex_encode(data: &[u8]) -> String {
+    const HEX_CHARS: &[u8] = b"0123456789abcdef";
+    let mut result = String::with_capacity(data.len() * 2);
+    for byte in data {
+        result.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        result.push(HEX_CHARS[(byte & 0xf) as usize] as char);
+    }
+    result
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn actor_message_fingerprint(
     run_id: &str,
@@ -29,7 +39,7 @@ pub fn actor_message_fingerprint(
     push_component(&mut hasher, transport);
     push_component(&mut hasher, &route_canonical);
     push_component(&mut hasher, &payload_canonical);
-    format!("{:x}", hasher.finalize())
+    hex_encode(&hasher.finalize())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -86,7 +96,7 @@ pub fn build_default_actor_channel_idempotency_key(
     push_component(&mut hasher, transport);
     push_component(&mut hasher, &route_canonical);
     push_component(&mut hasher, &payload_canonical);
-    format!("auto:channel:v1:{:x}", hasher.finalize())
+    format!("auto:channel:v1:{}", hex_encode(&hasher.finalize()))
 }
 
 pub fn build_actor_channel_fanout_idempotency_key(
@@ -97,7 +107,7 @@ pub fn build_actor_channel_fanout_idempotency_key(
     hasher.update("actor-channel-fanout:v1");
     push_component(&mut hasher, channel_idempotency_key);
     push_component(&mut hasher, to_actor_id);
-    format!("fanout:v1:{:x}", hasher.finalize())
+    format!("fanout:v1:{}", hex_encode(&hasher.finalize()))
 }
 
 pub fn canonical_json(value: &Value) -> String {
