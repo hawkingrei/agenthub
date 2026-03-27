@@ -29,7 +29,6 @@ import {
   TeamRuntimeRecord,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
-  TeamTaskStatus,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamRunSnapshotRecord,
@@ -2168,54 +2167,6 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [applyCreatedRunState, newTaskTitle, props.token, selectedTeamId, setBusy, setTab]);
 
-  const onUpdateTaskStatus = useCallback(
-    async (taskId: string, status: TeamTaskStatus) => {
-      if (!selectedTeamId) {
-        setError("Select a team first");
-        return;
-      }
-      setBusy("update-task-status");
-      setError(null);
-      try {
-        const updated = await api.updateTeamTask(props.token, selectedTeamId, taskId, { status });
-        setTaskList((prev) =>
-          sortTasksByActivity([updated, ...prev.filter((task) => task.id !== updated.id)])
-        );
-        setSelectedTaskId(updated.id);
-      } catch (err) {
-        setError(parseErrorMessage(err));
-      } finally {
-        setBusy(null);
-      }
-    },
-    [props.token, selectedTeamId]
-  );
-
-  const onUpdateTaskAssignee = useCallback(
-    async (taskId: string, assignedMemberId: string | null) => {
-      if (!selectedTeamId) {
-        setError("Select a team first");
-        return;
-      }
-      setBusy("update-task-assignee");
-      setError(null);
-      try {
-        const updated = await api.updateTeamTask(props.token, selectedTeamId, taskId, {
-          assigned_member_id: assignedMemberId,
-        });
-        setTaskList((prev) =>
-          sortTasksByActivity([updated, ...prev.filter((task) => task.id !== updated.id)])
-        );
-        setSelectedTaskId(updated.id);
-      } catch (err) {
-        setError(parseErrorMessage(err));
-      } finally {
-        setBusy(null);
-      }
-    },
-    [props.token, selectedTeamId]
-  );
-
   const onRefreshMemberConsole = useCallback(async () => {
     if (selectedAgentWorkspaceMemberId && selectedAgentWorkspaceSessionId) {
       await loadMemberEvents("replace");
@@ -3096,8 +3047,6 @@ export function TeamPage(props: TeamPageProps) {
       newTaskTitle={newTaskTitle}
       onNewTaskTitleChange={setNewTaskTitle}
       onCreateTask={onCreateTask}
-      onUpdateTaskStatus={onUpdateTaskStatus}
-      onUpdateTaskAssignee={onUpdateTaskAssignee}
       busy={busy}
       runs={runs}
       onOpenRun={onOpenTaskRun}

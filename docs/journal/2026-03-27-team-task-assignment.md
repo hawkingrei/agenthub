@@ -2,7 +2,7 @@
 
 - added explicit Team task assign / unassign support on the canonical Kanban task path
 - kept assignment leader-owned and explicit; the runtime still does not guess task ownership
-- exposed assignment through HTTP API, internal gRPC / actor CLI, and the Kanban detail panel
+- exposed assignment through internal gRPC / actor CLI while keeping human UI/API task mutation disabled
 
 ## Why
 
@@ -11,7 +11,7 @@ field:
 
 - task creation always persisted `assigned_member_id = NULL`
 - the update path only changed task status
-- Kanban could not show or edit ownership explicitly
+- Kanban could not show ownership explicitly
 
 That left a gap between the ownership contract and the actual product behavior.
 
@@ -34,15 +34,15 @@ That left a gap between the ownership contract and the actual product behavior.
   - `--unassign`
 - internal gRPC request mirrors the same patch semantics
 
-### UI
+### UI / public API
 
-- Kanban detail panel now shows current assignee
-- Kanban detail panel can assign or clear task ownership through an assignee select
-- task cards surface the current owner label for at-a-glance visibility
+- Kanban task surfaces now show the current assignee as read-only context
+- Kanban explains that status/ownership stay agent-managed through Team runtime controls
+- public HTTP task mutation remains disabled for human clients
 
 ## Validation
 
 - `cargo test -p agenthub task_assignment_updates_are_persisted -- --nocapture`
-- `cargo test -p agenthub team_task_api_updates_status_and_assignment -- --nocapture`
+- `cargo test -p agenthub teams_api_rejects_human_task_status_and_owner_updates -- --nocapture`
 - `cargo test -p agenthub parse_team_task_update_accepts_assignment_patch -- --nocapture`
 - `cd web && npx vitest run src/pages/team_panels.test.tsx`

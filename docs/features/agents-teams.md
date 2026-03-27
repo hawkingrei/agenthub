@@ -37,6 +37,8 @@ terminology and operating expectations drift.
   explicitly; the system must not guess an assignee.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
+- Human-facing UI / HTTP APIs may display canonical task status and ownership, but they do not
+  mutate those fields directly.
 - Canonical task creation and lifecycle management belong to leader planning, not direct human task
   authoring.
 
@@ -197,6 +199,8 @@ Constraint:
 - `Kanban` is task-first and should show task state plus linked run history/summary.
 - Leader owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
+- Human clients may read Team task state from `Kanban`, but canonical task `status` and
+  `assigned_member_id` changes remain agent/runtime controls.
 - `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
   leader assigns a member explicitly.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for

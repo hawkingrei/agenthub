@@ -4371,7 +4371,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
 }
 
 #[tokio::test]
-async fn teams_api_updates_task_status_and_rejects_invalid_values() {
+async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -4408,7 +4408,7 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     .await
     .expect("create task");
 
-    let Json(updated) = update_team_task(
+    let status_err = update_team_task(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
@@ -4418,24 +4418,14 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
         }),
     )
     .await
-    .expect("update task status");
-    assert_eq!(updated.id, created.task.id);
-    assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+    .expect_err("human task status update should fail");
+    let status_body = decode_json_body(status_err.into_response()).await;
+    assert_eq!(
+        status_body["error"],
+        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
+    );
 
-    let Json(reviewing) = update_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path((team.id.clone(), created.task.id.clone())),
-        Json(UpdateTeamTaskRequest {
-            status: Some("in_review".to_string()),
-            assigned_member_id: None,
-        }),
-    )
-    .await
-    .expect("move task into review");
-    assert_eq!(reviewing.status, crate::team::TeamTaskStatus::InReview);
-
-    let Json(assigned) = update_team_task(
+    let owner_err = update_team_task(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
@@ -4445,72 +4435,20 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
         }),
     )
     .await
-    .expect("assign task owner");
-    assert_eq!(assigned.assigned_member_id.as_deref(), Some("worker-1"));
-
-    let Json(unassigned) = update_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path((team.id.clone(), created.task.id.clone())),
-        Json(UpdateTeamTaskRequest {
-            status: None,
-            assigned_member_id: Some(None),
-        }),
-    )
-    .await
-    .expect("clear task owner");
-    assert_eq!(unassigned.assigned_member_id, None);
-
-    let err = update_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path((team.id.clone(), created.task.id.clone())),
-        Json(UpdateTeamTaskRequest {
-            status: Some("paused".to_string()),
-            assigned_member_id: None,
-        }),
-    )
-    .await
-    .expect_err("invalid status should fail");
-    let body = decode_json_body(err.into_response()).await;
+    .expect_err("human task owner update should fail");
+    let owner_body = decode_json_body(owner_err.into_response()).await;
     assert_eq!(
-        body["error"],
-        Value::from("status must be one of: open, in_progress, in_review, completed, canceled")
+        owner_body["error"],
+        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
     );
 
-    let invalid_assignee = update_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path((team.id.clone(), created.task.id.clone())),
-        Json(UpdateTeamTaskRequest {
-            status: None,
-            assigned_member_id: Some(Some("ghost".to_string())),
-        }),
-    )
-    .await
-    .expect_err("unknown assignee should fail");
-    let invalid_body = decode_json_body(invalid_assignee.into_response()).await;
-    assert_eq!(
-        invalid_body["error"],
-        Value::from("assigned_member_id must reference spec.members[].member_id")
-    );
-
-    let empty_patch = update_team_task(
-        State(state),
-        headers,
-        Path((team.id, created.task.id)),
-        Json(UpdateTeamTaskRequest {
-            status: None,
-            assigned_member_id: None,
-        }),
-    )
-    .await
-    .expect_err("empty patch should fail");
-    let empty_body = decode_json_body(empty_patch.into_response()).await;
-    assert_eq!(
-        empty_body["error"],
-        Value::from("task update requires status or assigned_member_id")
-    );
+    let reloaded = state
+        .teams
+        .get_task(&created.task.id)
+        .await
+        .expect("reload task");
+    assert_eq!(reloaded.status, crate::team::TeamTaskStatus::Open);
+    assert_eq!(reloaded.assigned_member_id, None);
 }
 
 #[tokio::test]

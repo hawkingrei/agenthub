@@ -2596,8 +2596,6 @@ describe("team panels interactions", () => {
     const onRefreshTasks = vi.fn();
     const onNewTaskTitleChange = vi.fn();
     const onCreateTask = vi.fn();
-    const onUpdateTaskStatus = vi.fn();
-    const onUpdateTaskAssignee = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
     const onCompileTaskRunPreview = vi.fn();
     const onUseCompiledRunPayload = vi.fn();
@@ -2638,8 +2636,6 @@ describe("team panels interactions", () => {
             newTaskTitle="New task draft"
             onNewTaskTitleChange={onNewTaskTitleChange}
             onCreateTask={onCreateTask}
-            onUpdateTaskStatus={onUpdateTaskStatus}
-            onUpdateTaskAssignee={onUpdateTaskAssignee}
             busy={null}
             runs={[
               buildRun({
@@ -2684,8 +2680,6 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
-    clickElement(findButtonByAriaLabel(container, "Start Investigate bug"));
-    clickElement(findButtonByAriaLabel(container, "Approve Review release notes"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     changeInputValue(
       required(
@@ -2696,13 +2690,6 @@ describe("team panels interactions", () => {
     );
     clickElement(findButtonByText(container, "New Task"));
     clickElement(findInteractiveByText(container, "Developer tools", "summary"));
-    changeSelectValue(
-      required(
-        container.querySelector('select[aria-label="Task assignee"]') as HTMLSelectElement | null,
-        "task assignee select missing"
-      ),
-      ""
-    );
     changeInputValue(
       required(
         container.querySelector(
@@ -2721,9 +2708,6 @@ describe("team panels interactions", () => {
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
     expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
     expect(onCreateTask).toHaveBeenCalledTimes(1);
-    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-1", "in_progress");
-    expect(onUpdateTaskStatus).toHaveBeenCalledWith("task-3", "completed");
-    expect(onUpdateTaskAssignee).toHaveBeenCalledWith("task-2", null);
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -2735,6 +2719,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Completed");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
+    expect(container.textContent).toContain(
+      "Task status and ownership are agent-managed through Team runtime controls."
+    );
     expect(container.textContent).toContain("Latest run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
@@ -2760,8 +2747,6 @@ describe("team panels interactions", () => {
             newTaskTitle=""
             onNewTaskTitleChange={vi.fn()}
             onCreateTask={vi.fn()}
-            onUpdateTaskStatus={vi.fn()}
-            onUpdateTaskAssignee={vi.fn()}
             busy={null}
             runs={[]}
             onOpenRun={vi.fn()}

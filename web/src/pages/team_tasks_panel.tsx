@@ -1,5 +1,5 @@
 import React from "react";
-import { NativeSelect, SegmentedControl, TextInput } from "@mantine/core";
+import { SegmentedControl, TextInput } from "@mantine/core";
 import type {
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -35,8 +35,6 @@ type TeamTasksPanelProps = {
   newTaskTitle: string;
   onNewTaskTitleChange: (value: string) => void;
   onCreateTask: () => Promise<void> | void;
-  onUpdateTaskStatus: (taskId: string, status: TeamTaskStatus) => Promise<void> | void;
-  onUpdateTaskAssignee: (taskId: string, assignedMemberId: string | null) => Promise<void> | void;
   busy: string | null;
   runs: TeamRunRecord[];
   onOpenRun: (runId: string) => void;
@@ -75,10 +73,6 @@ const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
   "flex w-full min-w-0 flex-col items-start gap-1.5 text-left";
-const TASKS_BOARD_CARD_ACTIONS_CLASS =
-  "flex w-full flex-wrap gap-1.5 border-t border-ui-border pt-1.5";
-const TASKS_BOARD_STATUS_ACTION_CLASS =
-  "inline-flex items-center gap-1 rounded-full border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-[11px] font-medium text-ui-text-secondary transition hover:border-ui-border-strong hover:bg-ui-surface disabled:cursor-not-allowed disabled:opacity-60";
 const TASKS_DETAIL_PANEL_CLASS =
   "rounded-[18px] border border-ui-border bg-ui-surface p-3.5 shadow-sm";
 const TASKS_DETAIL_META_CLASS =
@@ -181,38 +175,6 @@ function resolveRunStatusTone(status: TeamRunRecord["status"]): StatusTone {
   }
 }
 
-function listTaskStatusActions(status: TeamTaskStatus): Array<{
-  nextStatus: TeamTaskStatus;
-  label: string;
-  icon: string;
-}> {
-  switch (status) {
-    case "open":
-      return [
-        { nextStatus: "in_progress", label: "Start", icon: "bi bi-play-fill" },
-        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
-      ];
-    case "in_progress":
-      return [
-        { nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" },
-        { nextStatus: "in_review", label: "Send to review", icon: "bi bi-eye" },
-        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
-      ];
-    case "in_review":
-      return [
-        { nextStatus: "in_progress", label: "Needs changes", icon: "bi bi-arrow-counterclockwise" },
-        { nextStatus: "completed", label: "Approve", icon: "bi bi-check2" },
-        { nextStatus: "canceled", label: "Cancel", icon: "bi bi-x-circle" },
-      ];
-    case "completed":
-      return [{ nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" }];
-    case "canceled":
-      return [{ nextStatus: "open", label: "Reopen", icon: "bi bi-arrow-counterclockwise" }];
-    default:
-      return [];
-  }
-}
-
 function resolveTaskAssigneeLabel(
   task: TeamTaskRecord,
   assigneeLabelById: Map<string, string>
@@ -235,8 +197,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     newTaskTitle,
     onNewTaskTitleChange,
     onCreateTask,
-    onUpdateTaskStatus,
-    onUpdateTaskAssignee,
     busy,
     runs,
     onOpenRun,
@@ -285,9 +245,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   const canCreateTask = newTaskTitle.trim().length > 0 && busy !== "create-task";
-  const taskStatusUpdateBusy = busy === "update-task-status";
-  const taskAssigneeUpdateBusy = busy === "update-task-assignee";
-  const taskMutationBusy = taskStatusUpdateBusy || taskAssigneeUpdateBusy;
   const assigneeLabelById = React.useMemo(
     () =>
       new Map(
@@ -297,20 +254,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
         ])
       ),
     [memberLiveStates]
-  );
-  const assigneeOptions = React.useMemo(
-    () => [
-      { value: "", label: "Unassigned" },
-      ...memberLiveStates.map((member) => ({
-        value: member.member_id,
-        label: member.agent_name?.trim() || member.member_id,
-      })),
-    ],
-    [memberLiveStates]
-  );
-  const selectedTaskStatusActions = React.useMemo(
-    () => (selectedTask ? listTaskStatusActions(selectedTask.status) : []),
-    [selectedTask]
   );
   const relatedRuns = React.useMemo(
     () => (selectedTask ? selectRunsForTask(runs, selectedTask.id) : []),
@@ -467,24 +410,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                                 <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
                               )}
                             </button>
-                            <div className={TASKS_BOARD_CARD_ACTIONS_CLASS}>
-                              {listTaskStatusActions(task.status).map((action) => (
-                                <button
-                                  key={`${task.id}-${action.nextStatus}`}
-                                  type="button"
-                                  className={TASKS_BOARD_STATUS_ACTION_CLASS}
-                                  onClick={() => {
-                                    void onUpdateTaskStatus(task.id, action.nextStatus);
-                                  }}
-                                  disabled={taskMutationBusy}
-                                  title={`Move task to ${action.nextStatus}`}
-                                  aria-label={`${action.label} ${task.title}`}
-                                >
-                                  <i className={action.icon} aria-hidden="true" />
-                                  <span>{action.label}</span>
-                                </button>
-                              ))}
-                            </div>
                           </div>
                         ))}
                     </div>
@@ -543,36 +468,8 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-end gap-2">
-                <NativeSelect
-                  className="w-full sm:w-[220px]"
-                  aria-label="Task assignee"
-                  value={selectedTask.assigned_member_id ?? ""}
-                  onChange={(event) => {
-                    const nextAssignee = event.currentTarget.value.trim();
-                    void onUpdateTaskAssignee(selectedTask.id, nextAssignee || null);
-                  }}
-                  data={assigneeOptions}
-                  size="sm"
-                  radius="md"
-                  disabled={taskMutationBusy}
-                />
-                {selectedTaskStatusActions.map((action) => (
-                  <button
-                    key={`${selectedTask.id}-${action.nextStatus}`}
-                    type="button"
-                    className={TASKS_BOARD_STATUS_ACTION_CLASS}
-                    onClick={() => {
-                      void onUpdateTaskStatus(selectedTask.id, action.nextStatus);
-                    }}
-                    disabled={taskMutationBusy}
-                    title={`Move task to ${action.nextStatus}`}
-                    aria-label={`${action.label} selected task`}
-                  >
-                    <i className={action.icon} aria-hidden="true" />
-                    <span>{action.label}</span>
-                  </button>
-                ))}
+              <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-2.5 py-2 text-sm text-ui-text-muted">
+                Task status and ownership are agent-managed through Team runtime controls.
               </div>
 
               <div className={TASKS_RUN_LIST_CLASS}>
