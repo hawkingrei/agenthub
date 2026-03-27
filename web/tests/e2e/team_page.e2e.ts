@@ -189,7 +189,6 @@ async function createTeamMemberFromModal(
   options: {
     workdir: string;
     model?: string;
-    customSkills?: string;
     identity?: string;
   }
 ): Promise<void> {
@@ -200,23 +199,32 @@ async function createTeamMemberFromModal(
   };
   const openButtonLabel = "Add Agent";
   const confirmLabel = "Create Agent";
+  const primaryOpenButton = page
+    .locator(".teams-main")
+    .getByRole("button", { name: openButtonLabel, exact: true })
+    .first();
   const menuTrigger = page.getByRole("button", {
     name: "Open selected team menu",
     exact: true,
   });
-  if (await menuTrigger.isVisible().catch(() => false)) {
+  const emptyStateHeading = page.getByRole("heading", {
+    name: "No agents have joined this team yet.",
+    exact: true,
+  });
+  if (await emptyStateHeading.isVisible().catch(() => false)) {
+    await expect(primaryOpenButton).toBeVisible();
+    await primaryOpenButton.click();
+  } else if (await primaryOpenButton.isVisible().catch(() => false)) {
+    await primaryOpenButton.click();
+  } else if (await menuTrigger.isVisible().catch(() => false)) {
     await clickSelectedTeamMenuItem(page, openButtonLabel);
   } else {
-    const openButton = page.getByRole("button", { name: openButtonLabel, exact: true }).first();
-    if (await openButton.isVisible().catch(() => false)) {
-      await openButton.click();
-    } else {
-      await clickSelectedTeamMenuItem(page, openButtonLabel);
-    }
+    await expect(menuTrigger).toBeVisible();
+    await clickSelectedTeamMenuItem(page, openButtonLabel);
   }
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ has: page.getByRole("button", { name: confirmLabel, exact: true }) })
+    .filter({ has: page.getByLabel("Agent name", { exact: true }) })
     .last();
   await expect(dialog).toBeVisible();
   if (options.identity) {
@@ -226,9 +234,6 @@ async function createTeamMemberFromModal(
     const optionLabel = roleModelLabels[options.model] ?? options.model;
     await dialog.getByLabel("Role model").click();
     await page.getByRole("option", { name: optionLabel, exact: true }).click();
-  }
-  if (options.customSkills) {
-    await dialog.getByLabel("Custom skills").fill(options.customSkills);
   }
   await dialog.getByLabel(/Workdir/).fill(options.workdir);
   await dialog.getByRole("button", { name: confirmLabel }).click();
@@ -1271,7 +1276,6 @@ test("team member setup adds the first agent and appends more agents through spe
   await createTeamMemberFromModal(page, {
     workdir: "/workspace/member-setup-leader",
     model: "codex",
-    customSkills: "custom-leader-skill",
     identity: "Principal planner and reviewer",
   });
   await openSelectedTeamMenu(page);
@@ -1280,7 +1284,6 @@ test("team member setup adds the first agent and appends more agents through spe
   await createTeamMemberFromModal(page, {
     workdir: "/workspace/member-setup-worker",
     model: "gemini",
-    customSkills: "custom-worker-skill",
     identity: "Implementation specialist",
   });
 
@@ -1294,9 +1297,9 @@ test("team member setup adds the first agent and appends more agents through spe
   ]);
   const [leaderMember, workerMember] = updates[1]?.payload.spec.members ?? [];
   expect(leaderMember?.model).toBe("codex");
-  expect(leaderMember?.skills).toContain("custom-leader-skill");
+  expect(leaderMember?.skills).toBeUndefined();
   expect(workerMember?.model).toBe("gemini");
-  expect(workerMember?.skills).toContain("custom-worker-skill");
+  expect(workerMember?.skills).toBeUndefined();
   expect(updates[1]?.payload.spec.steps?.map((step) => step.step_key)).toEqual([
     "leader_plan",
     "worker_1_agent_forge_5",
