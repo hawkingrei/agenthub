@@ -184,6 +184,7 @@ async function createTeamFromModal(
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
   await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
+  await openTeamFromSelector(page, options.name);
 }
 
 type AddAgentEntryLane = "primary" | "menuItem" | "menuTrigger";
