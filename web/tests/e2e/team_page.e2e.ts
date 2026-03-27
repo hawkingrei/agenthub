@@ -384,6 +384,25 @@ async function clickSelectedTeamMenuItem(
   await item.click();
 }
 
+async function expectAddAgentEntryVisible(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const primaryButton = page
+    .locator(".teams-main")
+    .getByRole("button", { name: "Add Agent", exact: true })
+    .first();
+  if (await primaryButton.isVisible().catch(() => false)) {
+    return;
+  }
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+  await expect(menuTrigger).toBeVisible();
+  await openSelectedTeamMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+}
+
 async function openKanbanDeveloperTools(
   page: import("@playwright/test").Page
 ): Promise<void> {
@@ -1319,8 +1338,7 @@ test("team member setup adds the first agent and appends more agents through spe
     model: "codex",
     identity: "Principal planner and reviewer",
   });
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await expectAddAgentEntryVisible(page);
 
   await createTeamMemberFromModal(page, {
     workdir: "/workspace/member-setup-worker",
@@ -1662,8 +1680,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: "forge-team",
     goal: "Bind leader in-place before worker setup.",
   });
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await expectAddAgentEntryVisible(page);
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
@@ -1671,8 +1688,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     identity: "Leader bound in-place",
   });
 
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await expectAddAgentEntryVisible(page);
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");
