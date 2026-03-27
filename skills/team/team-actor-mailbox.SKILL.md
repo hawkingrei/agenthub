@@ -131,12 +131,10 @@ Recommended fields:
 ## Escalation Rules
 
 - Worker reports blockers to leader first.
-- Worker-originated ACP permission requests should prefer a non-requester agent reviewer first and
-  only fall back to leader when no peer worker is available.
-- Leader-originated ACP permission requests should route to an automatically selected subordinate
-  worker reviewer.
 - The current reviewer is assigned automatically by the Team runtime; requester must never review
   its own permission request.
+- When ACP exposes a permission review action, inspect the request details and choose the narrowest
+  approval option that is sufficient for the task.
 - When responding through `actor permission-review-respond`, use the request-provided
   `--option-id` for any allow/session/persistent approval path.
 - Do not invent `--outcome always`; `--outcome` currently supports only `cancelled`.

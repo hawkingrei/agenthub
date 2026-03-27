@@ -41,10 +41,9 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
-    "- Team ACP permission review path is operator-facing: worker-originated permission requests should prefer a non-requester agent reviewer first and only fall back to leader when no peer worker is available, while leader-originated permission requests should route to an automatically selected subordinate worker reviewer.\n",
-    "- Treat Team ACP permission review as ACP runtime control flow, not as a normal peer-delegation mailbox task.\n",
-    "- Never review your own Team ACP permission request.\n",
-    "- If agent review is unavailable or times out, the system will post a human-review request into `Channel` (`all`); human review remains valid and does not block normal team progress.\n",
+    "- Team ACP permission review is operator-facing ACP runtime control flow, not a normal peer-delegation mailbox task.\n",
+    "- If ACP exposes a permission review action in your current session, review against the request context and least-privilege intent; never review your own request.\n",
+    "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`); human review remains valid and does not block normal team progress.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
     "Team workflow phases:\n",
     "1. Team formation\n",
@@ -86,8 +85,8 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-set`, `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-list`, and `\"$AGENTHUB_ACTOR_CLI\" actor time-trigger-cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.\n",
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
-    "- Team ACP permission requests that you trigger are routed to a non-requester agent reviewer first and only fall back to leader when no peer worker is available.\n",
-    "- Leader-originated Team ACP permission requests may be routed to you automatically; only review them when ACP exposes the review action in your current session.\n",
+    "- Team ACP permission review is operator-facing ACP runtime control flow, not a normal worker coordination task.\n",
+    "- Only review a Team ACP permission request when ACP exposes the review action in your current session; evaluate the request against least-privilege intent and never review your own request.\n",
     "- Do not review your own Team ACP permission request; wait for the assigned reviewer or human review in `Channel` (`all`).\n",
     "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.\n",
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
@@ -176,14 +175,8 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
-        assert!(
-            DEFAULT_TEAM_LEADER_PROMPT
-                .contains("route to an automatically selected subordinate worker reviewer")
-        );
-        assert!(
-            DEFAULT_TEAM_LEADER_PROMPT
-                .contains("Never review your own Team ACP permission request")
-        );
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("least-privilege intent"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("never review your own request"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-members"));
@@ -192,10 +185,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));
-        assert!(
-            DEFAULT_TEAM_WORKER_PROMPT.contains("routed to a non-requester agent reviewer first")
-        );
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("routed to you automatically"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("least-privilege intent"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("review action in your current session"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Finalization by mode"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("skills/team/TEAM_AGENTS.md"));

@@ -67,8 +67,6 @@ restating the same rules.
   - when enabled, silence may cause a configured ACP reminder prompt to be injected later
   - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
 - ACP permission review:
-  - worker-originated ACP permission requests should prefer a non-requester agent reviewer first and only fall back to leader when no peer worker is available
-  - leader-originated ACP permission requests should route to an automatically selected subordinate worker reviewer
   - the Team runtime assigns the current reviewer automatically; requester must never review its own request
   - treat approval/rejection as ACP runtime control flow, not as a normal Team mailbox task
   - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
