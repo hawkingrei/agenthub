@@ -87,16 +87,16 @@ Recommended fields:
 2. Parse message payload and validate required fields before acting.
 3. Acknowledge each consumed message exactly once:
    `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
-4. For human-readable coordination, prefer markdown text and preserve it verbatim:
-   `MESSAGE="$(cat <<'EOF'\n## Status update\n\n- work finished\n- tests passed\n- next: wait for review\nEOF\n)"; agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --text "$MESSAGE"`
-5. Use structured payloads only when the receiver truly needs machine-readable fields:
-   `PAYLOAD_JSON="$(jq -cn --arg status "completed|blocked" --arg result "..." --argjson evidence '["..."]' '{status:$status,result:$result,evidence:$evidence}')"; agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-json "$PAYLOAD_JSON"`
+4. For human-readable coordination, prefer markdown text and keep the source in a file:
+   `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/status-update.md`
+5. Use structured payload files only when the receiver truly needs machine-readable fields:
+   `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --payload-file .agenthubmemory/mailbox/outbox/status-update.json`
 6. Broadcast into the shared Team channel while preserving mentions as metadata:
-   `MESSAGE="@reviewer please validate the patch\n\n- focus on API shape\n- report blockers"; agenthub actor send --channel-id all --text "$MESSAGE"`
+   `agenthub actor send --channel-id all --text-file .agenthubmemory/mailbox/outbox/channel-update.md`
 7. Escalate to human notifications when urgent coordination cannot wait:
-   `MESSAGE="Urgent: permission review timed out.\n\nPlease check Channel for details."; agenthub actor send --to-actor-id user --text "$MESSAGE"`
+   `agenthub actor send --to-actor-id user --text-file .agenthubmemory/mailbox/outbox/human-notification.md`
 8. Direct a single peer when the update does not need channel visibility:
-   `MESSAGE="Please verify the migration assumption before I proceed."; agenthub actor send --to-actor-id "$PEER_ACTOR_ID" --text "$MESSAGE"`
+   `agenthub actor send --to-actor-id "$PEER_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/peer-update.md`
 
 ## Reply Modes
 

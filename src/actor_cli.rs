@@ -220,8 +220,10 @@ mod tests {
         ActorAckRequest, ActorAckResponse, ActorInboxResponse, ActorSendRequest, ActorSendResponse,
     };
     use serde::Serialize;
+    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex as StdMutex, OnceLock};
     use tokio::sync::Mutex;
+    use uuid::Uuid;
 
     fn env_lock() -> &'static Mutex<()> {
         static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -234,6 +236,28 @@ mod tests {
         } else {
             unsafe { std::env::remove_var(key) }
         }
+    }
+
+    struct TempActorCliTestFile {
+        path: PathBuf,
+    }
+
+    impl TempActorCliTestFile {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempActorCliTestFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    fn write_temp_actor_cli_test_file(prefix: &str, contents: &str) -> TempActorCliTestFile {
+        let path = std::env::temp_dir().join(format!("agenthub-{prefix}-{}.tmp", Uuid::new_v4()));
+        std::fs::write(&path, contents).expect("write temp actor cli test file");
+        TempActorCliTestFile { path }
     }
 
     #[derive(Clone)]
@@ -955,6 +979,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_send_accepts_text_file_and_preserves_markdown() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-text-file");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let markdown = "## Review\n\n- keep markdown\n- keep spacing\n";
+        let path = write_temp_actor_cli_test_file("actor-send-text", markdown);
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text-file".to_string(),
+            path.path().display().to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
+        match parsed {
+            ActorCommand::Send {
+                payload,
+                payload_source,
+                ..
+            } => {
+                assert_eq!(*payload, Value::String(markdown.to_string()));
+                assert_eq!(payload_source, ActorSendPayloadSource::Text);
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
     fn parse_send_rejects_text_and_payload_json_together() {
         let _guard = env_lock().blocking_lock();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
@@ -978,7 +1039,108 @@ mod tests {
             Ok(_) => panic!("text and payload should conflict"),
             Err(err) => err,
         };
-        assert!(err.to_string().contains("--text and --payload-json"));
+        assert!(
+            err.to_string()
+                .contains("--text/--text-file and --payload-json/--payload-file")
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_rejects_text_and_text_file_together() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+                "run-send-text-file-conflict",
+            );
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let path = write_temp_actor_cli_test_file("actor-send-inline-conflict", "hello from file");
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
+            "--text-file".to_string(),
+            path.path().display().to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("text and text-file should conflict");
+        assert!(err.to_string().contains("--text and --text-file"));
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_rejects_payload_json_and_payload_file_together() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+                "run-send-payload-file-conflict",
+            );
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let path =
+            write_temp_actor_cli_test_file("actor-send-payload-conflict", r#"{"from":"file"}"#);
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--payload-json".to_string(),
+            r#"{"from":"inline"}"#.to_string(),
+            "--payload-file".to_string(),
+            path.path().display().to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("payload-json and payload-file should conflict");
+        assert!(
+            err.to_string()
+                .contains("--payload-json and --payload-file cannot be used together")
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_payload_file_reports_flag_in_invalid_json_error() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+                "run-send-payload-file-invalid-json",
+            );
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let path = write_temp_actor_cli_test_file("actor-send-payload-invalid", "{not-json");
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--payload-file".to_string(),
+            path.path().display().to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("invalid payload-file json should fail");
+        assert!(err.to_string().contains("invalid --payload-file JSON"));
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
@@ -1001,6 +1163,40 @@ mod tests {
             "worker".to_string(),
             "--payload-json".to_string(),
             r#"{"status":"done","result":"ok"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
+        match parsed {
+            ActorCommand::Send { payload_source, .. } => {
+                assert_eq!(payload_source, ActorSendPayloadSource::Payload);
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_payload_file_marks_payload_source_for_warning() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-payload-file");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let path = write_temp_actor_cli_test_file(
+            "actor-send-payload",
+            r#"{"status":"done","result":"ok"}"#,
+        );
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--payload-file".to_string(),
+            path.path().display().to_string(),
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
