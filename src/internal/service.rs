@@ -572,7 +572,7 @@ impl TeamInternalControl for TeamInternalControlService {
         )?;
         if status.is_none() && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged) {
             return Err(Status::invalid_argument(
-                "task update requires status or assigned_member_id",
+                "task update requires status, assigned_member_id, or clear_assigned_member_id",
             ));
         }
         let task = self
