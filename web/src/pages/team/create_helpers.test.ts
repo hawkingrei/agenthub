@@ -59,8 +59,6 @@ describe("team create helpers", () => {
       "leader-main",
       "gpt-5",
       "Lead the mission",
-      ["team-deliberation-rules"],
-      "custom-leader-skill",
       [
         buildWorker({
           member_id: "worker alpha",
@@ -163,8 +161,6 @@ describe("team create helpers", () => {
     const spec = buildTeamSpecFromForm(
       "leader-only",
       "",
-      "",
-      [],
       "",
       [],
       [buildForgeAgent({ id: "leader-only" })]

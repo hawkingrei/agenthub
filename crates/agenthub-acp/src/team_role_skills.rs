@@ -10,10 +10,8 @@ use crate::actor_runtime_skill::build_required_managed_skill;
 const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
 const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
 const TEAM_WORKER_AGENTS_INDEX_SKILL_NAME: &str = "team-worker-agents-index";
-const TEAM_TASK_LIFECYCLE_SKILL_NAME: &str = "team-task-lifecycle";
 const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
 const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
-const TEAM_DELIBERATION_SKILL_NAME: &str = "team-deliberation-rules";
 const TEAM_ACTOR_MAILBOX_SKILL_NAME: &str = "team-actor-mailbox";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,10 +51,8 @@ pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
     name.eq_ignore_ascii_case(TEAM_AGENTS_INDEX_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_LEADER_AGENTS_INDEX_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_AGENTS_INDEX_SKILL_NAME)
-        || name.eq_ignore_ascii_case(TEAM_TASK_LIFECYCLE_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_SKILL_NAME)
-        || name.eq_ignore_ascii_case(TEAM_DELIBERATION_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_ACTOR_MAILBOX_SKILL_NAME)
 }
 
@@ -218,12 +214,12 @@ mod tests {
         assert!(is_reserved_team_role_skill("team-agents-index"));
         assert!(is_reserved_team_role_skill("team-leader-agents-index"));
         assert!(is_reserved_team_role_skill("team-worker-agents-index"));
-        assert!(is_reserved_team_role_skill("team-task-lifecycle"));
         assert!(is_reserved_team_role_skill("team-leader-orchestrator"));
         assert!(is_reserved_team_role_skill("team-worker-executor"));
-        assert!(is_reserved_team_role_skill("team-deliberation-rules"));
         assert!(is_reserved_team_role_skill("team-actor-mailbox"));
         assert!(is_reserved_team_role_skill("TEAM-WORKER-EXECUTOR"));
+        assert!(!is_reserved_team_role_skill("team-task-lifecycle"));
+        assert!(!is_reserved_team_role_skill("team-deliberation-rules"));
         assert!(!is_reserved_team_role_skill("custom-skill"));
     }
 

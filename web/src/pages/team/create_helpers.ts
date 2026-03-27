@@ -42,8 +42,6 @@ export function buildTeamSpecFromForm(
   leaderMemberId: string,
   leaderModel: string,
   leaderPrompt: string,
-  _leaderSkills: string[],
-  _leaderCustomSkills: string,
   workers: WorkerDraft[],
   teamForgeAgents: AgentRecord[]
 ): unknown {

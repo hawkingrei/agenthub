@@ -1061,6 +1061,159 @@ async fn teams_api_strips_member_skill_configuration_from_team_spec() {
 }
 
 #[tokio::test]
+async fn teams_api_ignores_legacy_member_skills_payload_shapes() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(created) = create_team(
+        State(state),
+        headers,
+        Json(CreateTeamRequest {
+            name: "ignored-legacy-member-skills".to_string(),
+            description: Some("legacy skills input should be ignored".to_string()),
+            spec: json!({
+                "entrypoint":"leader-agent",
+                "leader_member_id":"leader-agent",
+                "members":[
+                    {
+                        "member_id":"leader-agent",
+                        "role":"leader",
+                        "skills":"planning"
+                    },
+                    {
+                        "member_id":"worker-agent",
+                        "role":"worker",
+                        "skills":{"custom":"coding"}
+                    }
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team with legacy skills payloads");
+
+    let members = created
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("members array");
+    for member in members {
+        assert!(
+            member.get("skills").is_none(),
+            "legacy member skill payloads should be dropped from normalized spec: {member}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn teams_api_read_paths_strip_legacy_member_skill_configuration() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "legacy-skill-read-team".to_string(),
+                description: Some("legacy team spec should be sanitized on read".to_string()),
+                spec: json!({
+                    "entrypoint":"leader-agent",
+                    "leader_member_id":"leader-agent",
+                    "members":[
+                        {
+                            "member_id":"leader-agent",
+                            "role":"leader",
+                            "skills":["planning","review"]
+                        },
+                        {
+                            "member_id":"worker-agent",
+                            "role":"worker",
+                            "skills":["coding"]
+                        }
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create legacy skill team");
+
+    let Json(listed_teams) = list_teams(State(state.clone()), headers.clone())
+        .await
+        .expect("list teams");
+    let listed = listed_teams
+        .into_iter()
+        .find(|item| item.id == team.id)
+        .expect("listed legacy team");
+    for member in listed
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("listed members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "list teams should redact legacy member skills: {member}"
+        );
+    }
+
+    let Json(fetched) = get_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("get team");
+    for member in fetched
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("fetched members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "get team should redact legacy member skills: {member}"
+        );
+    }
+
+    let Json(run) = create_team_run(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamRunRequest {
+            context_id: Some("ctx-legacy-skill-read".to_string()),
+            input: Some(json!({"goal":"verify read sanitization"})),
+        }),
+    )
+    .await
+    .expect("create run for sanitized snapshot");
+
+    let Json(snapshot) = get_team_run_snapshot(
+        State(state),
+        headers,
+        Path(run.id),
+        Query(TeamRunSnapshotQuery {
+            event_limit: Some(50),
+            message_limit: Some(50),
+        }),
+    )
+    .await
+    .expect("get team run snapshot");
+    for member in snapshot
+        .team
+        .spec
+        .get("members")
+        .and_then(Value::as_array)
+        .cloned()
+        .expect("snapshot members")
+    {
+        assert!(
+            member.get("skills").is_none(),
+            "snapshot team payload should redact legacy member skills: {member}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
