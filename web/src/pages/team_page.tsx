@@ -96,6 +96,8 @@ import {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 import {
+  DEFAULT_TEAM_LEADER_SKILLS,
+  DEFAULT_TEAM_WORKER_SKILLS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   buildTeamMemberLiveStates,

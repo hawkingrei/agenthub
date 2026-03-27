@@ -185,12 +185,14 @@ async function createTeamFromModal(
   await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
   await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
   await openTeamFromSelector(page, options.name);
+  await expectAddAgentEntryVisible(page, options.name);
 }
 
 type AddAgentEntryLane = "primary" | "menuItem" | "menuTrigger";
 
 async function restoreTeamAddAgentContext(
-  page: import("@playwright/test").Page
+  page: import("@playwright/test").Page,
+  teamName?: string
 ): Promise<void> {
   const showTeamsPanelButton = page.getByRole("button", {
     name: "Show teams panel",
@@ -205,10 +207,15 @@ async function restoreTeamAddAgentContext(
     await conversationSubject.click();
     await page.waitForTimeout(150);
   }
+
+  if (teamName) {
+    await openTeamFromSelector(page, teamName);
+  }
 }
 
 async function waitForAddAgentEntryLane(
-  page: import("@playwright/test").Page
+  page: import("@playwright/test").Page,
+  teamName?: string
 ): Promise<AddAgentEntryLane> {
   const primaryButton = page
     .locator(".teams-main")
@@ -244,7 +251,7 @@ async function waitForAddAgentEntryLane(
   try {
     await waitForLane();
   } catch {
-    await restoreTeamAddAgentContext(page);
+    await restoreTeamAddAgentContext(page, teamName);
     await waitForLane();
   }
 
@@ -258,6 +265,7 @@ async function waitForAddAgentEntryLane(
 async function createTeamMemberFromModal(
   page: import("@playwright/test").Page,
   options: {
+    teamName?: string;
     workdir: string;
     model?: string;
     identity?: string;
@@ -306,7 +314,7 @@ async function createTeamMemberFromModal(
     return false;
   };
   const openFromVisibleLane = async (): Promise<boolean> => {
-    const lane = await waitForAddAgentEntryLane(page);
+    const lane = await waitForAddAgentEntryLane(page, options.teamName);
     if (lane === "menuItem") {
       return tryOpen(async () => visibleMenuItem.click());
     }
@@ -449,9 +457,10 @@ async function clickSelectedTeamMenuItem(
 }
 
 async function expectAddAgentEntryVisible(
-  page: import("@playwright/test").Page
+  page: import("@playwright/test").Page,
+  teamName?: string
 ): Promise<void> {
-  const lane = await waitForAddAgentEntryLane(page);
+  const lane = await waitForAddAgentEntryLane(page, teamName);
   if (lane === "primary" || lane === "menuItem") {
     return;
   }
@@ -1396,14 +1405,16 @@ test("team member setup adds the first agent and appends more agents through spe
   });
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/member-setup-leader",
     model: "codex",
     identity: "Principal planner and reviewer",
   });
   await openTeamFromSelector(page, teamName);
-  await expectAddAgentEntryVisible(page);
+  await expectAddAgentEntryVisible(page, teamName);
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/member-setup-worker",
     model: "gemini",
     identity: "Implementation specialist",
@@ -1744,16 +1755,17 @@ test("team setup keeps add agent wording after the first member binds", async ({
     name: teamName,
     goal: "Bind leader in-place before worker setup.",
   });
-  await expectAddAgentEntryVisible(page);
+  await expectAddAgentEntryVisible(page, teamName);
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
+    teamName,
     workdir: "/workspace/forge-leader",
     identity: "Leader bound in-place",
   });
 
   await openTeamFromSelector(page, teamName);
-  await expectAddAgentEntryVisible(page);
+  await expectAddAgentEntryVisible(page, teamName);
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
   expect(updates[0]?.payload.spec.members[0]?.member_id).toBe("agent-forge-1");
