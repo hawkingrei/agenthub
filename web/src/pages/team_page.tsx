@@ -96,16 +96,12 @@ import {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 import {
-  REQUIRED_TEAM_LEADER_SKILLS,
-  REQUIRED_TEAM_WORKER_SKILLS,
-  TEAM_SKILL_OPTIONS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   buildTeamMemberLiveStates,
   parseTeamSpecMembers,
   resolveTeamMemberAgentStatuses,
   summarizeTeamMemberAgentStatuses,
-  toggleSkillSelection,
 } from "./team/member_helpers";
 import {
   DEFAULT_TEAM_THREAD_TITLE,
@@ -192,9 +188,6 @@ export {
   DEFAULT_TEAM_LEADER_SKILLS,
   DEFAULT_TEAM_WORKER_PROMPT,
   DEFAULT_TEAM_WORKER_SKILLS,
-  REQUIRED_TEAM_LEADER_SKILLS,
-  REQUIRED_TEAM_WORKER_SKILLS,
-  TEAM_SKILL_OPTIONS,
   assignCreatedWorkerToDraft,
   buildDefaultWorkerDraft,
   buildTeamMemberLiveStates,
@@ -4426,50 +4419,26 @@ export function TeamPage(props: TeamPageProps) {
                 patchTeamMemberDraft({ description: event.currentTarget.value })
               }
             />
-            <div className="team-skill-tags mt-4 flex flex-wrap gap-2">
-              {TEAM_SKILL_OPTIONS.map((skill) => {
-                const selected = teamMemberDraft.skills.includes(skill);
-                const requiredSkills =
-                  teamMemberDraft.role === "leader"
-                    ? REQUIRED_TEAM_LEADER_SKILLS
-                    : REQUIRED_TEAM_WORKER_SKILLS;
-                const isRequired = requiredSkills.includes(skill);
-                return (
-                  <button
-                    key={`${teamMemberDraft.role}-skill-${skill}`}
-                    type="button"
-                    className={
-                      selected
-                        ? TEAM_CREATE_SKILL_TAG_SELECTED_CLASS
-                        : TEAM_CREATE_SKILL_TAG_IDLE_CLASS
-                    }
-                    onClick={() =>
-                      patchTeamMemberDraft({
-                        skills: toggleSkillSelection(
-                          teamMemberDraft.skills,
-                          skill,
-                          requiredSkills
-                        ),
-                      })
-                    }
-                    disabled={isRequired}
-                    title={isRequired ? "Required for this role" : undefined}
+            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
+              <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
+              <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                Role-bound Team skills are injected automatically from the system skill path. They
+                are no longer configured per member.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(teamMemberDraft.role === "leader"
+                  ? DEFAULT_TEAM_LEADER_SKILLS
+                  : DEFAULT_TEAM_WORKER_SKILLS
+                ).map((skill) => (
+                  <span
+                    key={`${teamMemberDraft.role}-system-skill-${skill}`}
+                    className={TEAM_CREATE_SKILL_TAG_SELECTED_CLASS}
                   >
                     {skill}
-                  </button>
-                );
-              })}
+                  </span>
+                ))}
+              </div>
             </div>
-            <TextInput
-              className="mt-3"
-              radius="md"
-              label="Custom skills"
-              placeholder="comma separated, optional"
-              value={teamMemberDraft.custom_skills}
-              onChange={(event) =>
-                patchTeamMemberDraft({ custom_skills: event.currentTarget.value })
-              }
-            />
             <Textarea
               className="mt-3"
               radius="md"
@@ -4609,50 +4578,26 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   </div>
                 </div>
-                <div className="team-skill-tags mt-4 flex flex-wrap gap-2">
-                  {TEAM_SKILL_OPTIONS.map((skill) => {
-                    const selected = teamMemberEditDraft.skills.includes(skill);
-                    const requiredSkills =
-                      teamMemberEditDraft.role === "leader"
-                        ? REQUIRED_TEAM_LEADER_SKILLS
-                        : REQUIRED_TEAM_WORKER_SKILLS;
-                    const isRequired = requiredSkills.includes(skill);
-                    return (
-                      <button
-                        key={`${teamMemberEditDraft.role}-edit-skill-${skill}`}
-                        type="button"
-                        className={
-                          selected
-                            ? TEAM_CREATE_SKILL_TAG_SELECTED_CLASS
-                            : TEAM_CREATE_SKILL_TAG_IDLE_CLASS
-                        }
-                        onClick={() =>
-                          patchTeamMemberEditDraft({
-                            skills: toggleSkillSelection(
-                              teamMemberEditDraft.skills,
-                              skill,
-                              requiredSkills
-                            ),
-                          })
-                        }
-                        disabled={isRequired}
-                        title={isRequired ? "Required for this role" : undefined}
+                <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
+                  <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
+                  <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
+                    Role-bound Team skills come from the system-managed skill path and are shown
+                    here as the effective runtime contract.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(teamMemberEditDraft.role === "leader"
+                      ? DEFAULT_TEAM_LEADER_SKILLS
+                      : DEFAULT_TEAM_WORKER_SKILLS
+                    ).map((skill) => (
+                      <span
+                        key={`${teamMemberEditDraft.role}-edit-system-skill-${skill}`}
+                        className={TEAM_CREATE_SKILL_TAG_SELECTED_CLASS}
                       >
                         {skill}
-                      </button>
-                    );
-                  })}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <TextInput
-                  className="mt-3"
-                  radius="md"
-                  label="Custom skills"
-                  placeholder="comma separated, optional"
-                  value={teamMemberEditDraft.custom_skills}
-                  onChange={(event) =>
-                    patchTeamMemberEditDraft({ custom_skills: event.currentTarget.value })
-                  }
-                />
                 <Textarea
                   className="mt-3"
                   radius="md"

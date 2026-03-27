@@ -94,7 +94,7 @@ describe("team create helpers", () => {
         model?: string;
         prompt: string;
         runtime?: Record<string, unknown>;
-        skills: string[];
+        skills?: string[];
       }>;
       steps: Array<{
         step_key: string;
@@ -110,24 +110,12 @@ describe("team create helpers", () => {
       "leader-main",
       "worker alpha",
     ]);
-    expect(spec.members[0]?.skills).toEqual(
-      expect.arrayContaining([
-        "agenthub-actor-runtime",
-        "team-leader-orchestrator",
-        "custom-leader-skill",
-      ])
-    );
+    expect(spec.members[0]?.skills).toBeUndefined();
     expect(spec.members[1]?.prompt).toContain("You are a Worker in an AgentHub team");
     expect(spec.members[1]?.description).toBe("query optimizer specialist");
     expect(spec.members[1]?.prompt).toContain("Work in your own git worktree only.");
     expect(spec.members[1]?.prompt).toContain("Create a random branch at start");
-    expect(spec.members[1]?.skills).toEqual(
-      expect.arrayContaining([
-        "agenthub-actor-runtime",
-        "team-worker-executor",
-        "custom-worker-skill",
-      ])
-    );
+    expect(spec.members[1]?.skills).toBeUndefined();
     expect(spec.members[0]?.runtime).toEqual({
       name: "leader-main-name",
       target_node_id: null,
@@ -445,14 +433,7 @@ describe("team create helpers", () => {
       model: "gpt-5.4",
       prompt: "Coordinate review and final synthesis.",
     });
-    expect(updated.members[0]?.skills).toEqual(
-      expect.arrayContaining([
-        "agenthub-actor-runtime",
-        "team-leader-orchestrator",
-        "team-deliberation-rules",
-        "custom-skill",
-      ])
-    );
+    expect(updated.members[0]?.skills).toBeUndefined();
     expect(updated.members[0]?.runtime).toEqual({
       name: "leader-1-name",
       workdir: "/tmp/leader-1",

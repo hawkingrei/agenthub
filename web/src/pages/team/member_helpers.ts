@@ -33,7 +33,7 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "- Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.",
   "- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.",
   "- Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.",
-  "- If your own role description/prompt/skill profile drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.",
+  "- If your own role description or prompt drifts, send a `profile_patch_proposal` for your member record; use `target=\"team\"` for durable identity updates and `target=\"run\"` for temporary run-scoped adjustments.",
   "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.",
   "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.",
   "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.",
@@ -63,7 +63,7 @@ export const DEFAULT_TEAM_LEADER_PROMPT = [
   "Structured payload contracts:",
   "- leader_task_assignment: {\"type\":\"leader_task_assignment\",\"task\":\"...\",\"acceptance\":\"...\",\"deadline\":\"...\"}",
   "- clarification_request: {\"type\":\"clarification_request\",\"question\":\"...\",\"choices\":[\"...\"],\"blocking_scope\":\"run|step\",\"context\":{}}",
-  "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"description\":\"...\",\"skills_add\":[\"...\"]}",
+  "- profile_patch_proposal: {\"type\":\"profile_patch_proposal\",\"target\":\"run|team\",\"prompt_append\":\"...\",\"description\":\"...\"}",
 ].join("\n");
 
 export const DEFAULT_TEAM_WORKER_PROMPT = [
@@ -77,7 +77,7 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
   "- Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.",
   "- Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.",
   "- Keep your identity in `spec.members[].description`; this text is exposed by `/api/agents/:id/.well-known/agent-card`.",
-  "- If your own description/prompt/skill profile is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.",
+  "- If your own description or prompt is stale, send `profile_patch_proposal` yourself instead of waiting for a human/operator to edit the card manually.",
   "- Use `agent_time_trigger_set` / `agent_time_trigger_list` / `agent_time_trigger_cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.",
   "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.",
   "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.",
@@ -117,22 +117,34 @@ export const DEFAULT_TEAM_WORKER_PROMPT = [
 
 export const DEFAULT_TEAM_LEADER_SKILLS = [
   "agenthub-actor-runtime",
+  "team-agents-index",
+  "team-leader-agents-index",
   "team-leader-orchestrator",
+  "team-actor-mailbox",
 ];
 
 export const DEFAULT_TEAM_WORKER_SKILLS = [
   "agenthub-actor-runtime",
+  "team-agents-index",
+  "team-worker-agents-index",
   "team-worker-executor",
+  "team-actor-mailbox",
 ];
 
 export const REQUIRED_TEAM_LEADER_SKILLS = [
   "agenthub-actor-runtime",
+  "team-agents-index",
+  "team-leader-agents-index",
   "team-leader-orchestrator",
+  "team-actor-mailbox",
 ];
 
 export const REQUIRED_TEAM_WORKER_SKILLS = [
   "agenthub-actor-runtime",
+  "team-agents-index",
+  "team-worker-agents-index",
   "team-worker-executor",
+  "team-actor-mailbox",
 ];
 
 const MANDATORY_TEAM_SKILLS = ["agenthub-actor-runtime"];

@@ -209,6 +209,8 @@ pub struct TeamMemberCardRecord {
     pub card_id: String,
     pub schema_version: String,
     pub description: String,
+    pub role: String,
+    pub skills: Vec<String>,
     pub capability_tags: Vec<String>,
 }
 
@@ -4114,6 +4116,8 @@ fn build_team_member_card(
         card_id: format!("agenthub://team-members/{}", member.member_id),
         schema_version: "agenthub.a2a.discovery_card.v1".to_string(),
         description,
+        role: member.role.clone(),
+        skills: crate::team::effective_team_member_skills(&member.role),
         capability_tags,
     }
 }

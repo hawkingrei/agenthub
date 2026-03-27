@@ -4,9 +4,6 @@ import {
   DEFAULT_TEAM_LEADER_SKILLS,
   DEFAULT_TEAM_WORKER_PROMPT,
   DEFAULT_TEAM_WORKER_SKILLS,
-  REQUIRED_TEAM_LEADER_SKILLS,
-  REQUIRED_TEAM_WORKER_SKILLS,
-  normalizeSkillSelection,
   type WorkerDraft,
 } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
@@ -45,8 +42,8 @@ export function buildTeamSpecFromForm(
   leaderMemberId: string,
   leaderModel: string,
   leaderPrompt: string,
-  leaderSkills: string[],
-  leaderCustomSkills: string,
+  _leaderSkills: string[],
+  _leaderCustomSkills: string,
   workers: WorkerDraft[],
   teamForgeAgents: AgentRecord[]
 ): unknown {
@@ -58,12 +55,6 @@ export function buildTeamSpecFromForm(
       description: worker.description.trim(),
       model: worker.model.trim(),
       prompt: worker.prompt.trim() || DEFAULT_TEAM_WORKER_PROMPT,
-      skills: normalizeSkillSelection(
-        worker.skills,
-        worker.custom_skills,
-        DEFAULT_TEAM_WORKER_SKILLS,
-        REQUIRED_TEAM_WORKER_SKILLS
-      ),
     }))
     .filter((worker) => worker.member_id.length > 0);
   const steps = buildDefaultWorkflowSteps(
@@ -78,12 +69,6 @@ export function buildTeamSpecFromForm(
       model: leaderModel.trim() || undefined,
       prompt: leaderPrompt.trim() || DEFAULT_TEAM_LEADER_PROMPT,
       runtime: buildMemberRuntimeHint(forgeAgentById.get(leaderId)),
-      skills: normalizeSkillSelection(
-        leaderSkills,
-        leaderCustomSkills,
-        DEFAULT_TEAM_LEADER_SKILLS,
-        REQUIRED_TEAM_LEADER_SKILLS
-      ),
     },
     ...normalizedWorkers.map((worker) => ({
       member_id: worker.member_id,
@@ -92,7 +77,6 @@ export function buildTeamSpecFromForm(
       model: worker.model || undefined,
       prompt: worker.prompt,
       runtime: buildMemberRuntimeHint(forgeAgentById.get(worker.member_id)),
-      skills: worker.skills,
     })),
   ];
 
@@ -174,20 +158,6 @@ export function appendTeamMemberToSpec(
     throw new Error("Create the first agent before adding more agents");
   }
 
-  const normalizedSkills =
-    role === "leader"
-      ? normalizeSkillSelection(
-          draft.skills,
-          draft.custom_skills,
-          DEFAULT_TEAM_LEADER_SKILLS,
-          REQUIRED_TEAM_LEADER_SKILLS
-        )
-      : normalizeSkillSelection(
-          draft.skills,
-          draft.custom_skills,
-          DEFAULT_TEAM_WORKER_SKILLS,
-          REQUIRED_TEAM_WORKER_SKILLS
-        );
   const prompt =
     draft.prompt.trim() ||
     (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
@@ -199,7 +169,6 @@ export function appendTeamMemberToSpec(
     model: draft.model.trim() || undefined,
     prompt,
     runtime: buildMemberRuntimeHint(agent),
-    skills: normalizedSkills,
   });
 
   const resolvedLeaderId =
@@ -228,16 +197,6 @@ function readOptionalStringField(
 ): string {
   const value = record[field];
   return typeof value === "string" ? value.trim() : "";
-}
-
-function readSkillsField(record: Record<string, unknown>): string[] {
-  const raw = record.skills;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter((item): item is string => item.length > 0);
 }
 
 function readRuntimeRecord(member: Record<string, unknown>): Record<string, unknown> | null {
@@ -303,7 +262,10 @@ export function buildTeamMemberDraftFromSpec(
     prompt:
       readOptionalStringField(member, "prompt") ||
       (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT),
-    skills: readSkillsField(member),
+    skills:
+      role === "leader"
+        ? [...DEFAULT_TEAM_LEADER_SKILLS]
+        : [...DEFAULT_TEAM_WORKER_SKILLS],
     custom_skills: "",
     agent_loop_enabled: agent?.agent_loop_enabled ?? readRuntimeLoopEnabled(member),
     agent_loop_idle_seconds:
@@ -334,20 +296,6 @@ export function updateTeamMemberProfileInSpec(
   }
   const existing = existingMembers[memberIndex];
   const role = readMemberRole(existing) === "leader" ? "leader" : "worker";
-  const normalizedSkills =
-    role === "leader"
-      ? normalizeSkillSelection(
-          draft.skills,
-          draft.custom_skills,
-          DEFAULT_TEAM_LEADER_SKILLS,
-          REQUIRED_TEAM_LEADER_SKILLS
-        )
-      : normalizeSkillSelection(
-          draft.skills,
-          draft.custom_skills,
-          DEFAULT_TEAM_WORKER_SKILLS,
-          REQUIRED_TEAM_WORKER_SKILLS
-        );
   const prompt =
     draft.prompt.trim() ||
     (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
@@ -369,7 +317,6 @@ export function updateTeamMemberProfileInSpec(
     description: draft.description.trim() || undefined,
     model: draft.model.trim() || undefined,
     prompt,
-    skills: normalizedSkills,
     runtime: {
       ...asObjectRecord(existing.runtime),
       agent_loop_enabled: draft.agent_loop_enabled || undefined,

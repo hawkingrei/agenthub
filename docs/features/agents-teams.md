@@ -98,11 +98,29 @@ terminology and operating expectations drift.
   - `.agenthubmemory/journal/` for chronological work logs
   - `.agenthubmemory/note/` for reusable lessons and heuristics
 - Leader usually starts from an empty coordination workspace and can skip `.agenthubmemory/`.
-- Load only required skills for current phase.
+- Team skills are system-managed from role, not configured per member:
+  - leader effective system skills:
+    - `agenthub-actor-runtime`
+    - `team-agents-index`
+    - `team-leader-agents-index`
+    - `team-leader-orchestrator`
+    - `team-actor-mailbox`
+  - worker effective system skills:
+    - `agenthub-actor-runtime`
+    - `team-agents-index`
+    - `team-worker-agents-index`
+    - `team-worker-executor`
+    - `team-actor-mailbox`
+- Team spec and human UI must not treat `spec.members[].skills` as an operator-managed contract.
+- Discovery cards and runtime snapshots should expose effective role-derived skills so operators can
+  inspect current capabilities without editing them.
+- Load only required phase skills on top of the role-bound system baseline.
 - Keep decisions/errors in workspace-local context files.
 - Agents may self-maintain their own role profile through `profile_patch_proposal`:
   - `target="team"` updates the durable member identity/card baseline
   - `target="run"` updates run-scoped temporary overrides
+  - profile patch scope is limited to prompt/description identity fields; it does not add or remove
+    Team skills
   - agents must only patch their own member profile, not another member's
 - Agents may schedule one-shot deferred follow-ups via `agent_time_trigger_set`, inspect them via
   `agent_time_trigger_list`, and cancel them via `agent_time_trigger_cancel`; fired triggers arrive
@@ -130,7 +148,8 @@ MCP enforcement baseline:
 - Team sessions are CLI-first for mailbox/task coordination through `AGENTHUB_ACTOR_CLI`.
 - Team startup should fail-fast if the actor CLI coordination capability is missing or the runtime actor env is incomplete.
 - Team mode denies ad-hoc mailbox bypass for collaboration traffic.
-- Role defaults should keep skill set minimal; optional skills load by explicit profile.
+- Role defaults should keep the system skill set minimal; phase-specific skills may be activated by
+  runtime/prompt guidance, but member-authored skill lists are not part of the public Team contract.
 - See `docs/features/actor-foundation.md` for CLI-first coordination and mailbox contract details.
 
 ### 6) Team AGENTS Injection Matrix
@@ -149,6 +168,8 @@ Constraint:
 
 - leader and worker share one template but keep different role-focused active skill sets.
 - runtime `AGENTS.md` should include only phase-required skills to control context size.
+- role-bound system skills come from runtime injection / managed skill install, not from
+  `spec.members[].skills`.
 
 ## Contracts
 

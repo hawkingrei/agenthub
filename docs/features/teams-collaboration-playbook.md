@@ -107,10 +107,10 @@ Worker cold-start:
 
 Self-maintenance and deferred follow-up:
 
-- members may patch their own role description/prompt/skill profile through
-  `profile_patch_proposal`
+- members may patch their own role description/prompt profile through `profile_patch_proposal`
 - durable identity-card changes should target Team spec; temporary coordination-only changes should
   target the active run override
+- Team skills remain system-managed from role and are not part of member-authored profile patches
 - members may create one-shot timed self-reminders with `agent_time_trigger_set` and later inspect
   or cancel them with `agent_time_trigger_list` / `agent_time_trigger_cancel`
 - timed triggers are for deferred follow-up/review pings, not a replacement for Team task tracking

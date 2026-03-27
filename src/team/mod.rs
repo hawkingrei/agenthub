@@ -1,6 +1,7 @@
 mod mailbox_hint;
 mod manager;
 mod permission_review;
+mod role_skills;
 mod runtime;
 
 pub use agenthub_team_actor::{
@@ -29,6 +30,7 @@ pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{
     TeamPermissionReviewDispatcher, TeamPermissionReviewDispatcherSettings,
 };
+pub use role_skills::effective_team_member_skills;
 pub use runtime::{
     TeamRuntimeControlRecord, TeamRuntimeStartError, ensure_team_runtime_started,
     force_team_member_new_session, stop_team_runtime,

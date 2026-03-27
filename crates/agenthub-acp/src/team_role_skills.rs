@@ -42,13 +42,6 @@ fn normalize_member_role(role: Option<&str>) -> Option<&str> {
     role.map(str::trim).filter(|value| !value.is_empty())
 }
 
-fn has_member_skill(context: &AcpActorSkillContext, skill_name: &str) -> bool {
-    context
-        .member_skills
-        .iter()
-        .any(|skill| skill.eq_ignore_ascii_case(skill_name))
-}
-
 pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillContext>) -> bool {
     matches!(
         context.and_then(|item| normalize_member_role(item.member_role.as_deref())),
@@ -76,8 +69,6 @@ fn build_team_role_skills_with_home(
     home_dir: Option<&Path>,
 ) -> Result<Vec<AcpSkill>> {
     let role = normalize_member_role(context.member_role.as_deref());
-    let enable_deliberation = has_member_skill(context, TEAM_DELIBERATION_SKILL_NAME);
-    let enable_task_lifecycle = has_member_skill(context, TEAM_TASK_LIFECYCLE_SKILL_NAME);
     let mut out = Vec::new();
     match role {
         Some("leader") => {
@@ -93,22 +84,10 @@ fn build_team_role_skills_with_home(
                 ManagedSkillKind::TeamLeaderOrchestrator,
                 home_dir,
             )?);
-            if enable_task_lifecycle {
-                out.push(build_required_managed_skill(
-                    ManagedSkillKind::TeamTaskLifecycle,
-                    home_dir,
-                )?);
-            }
             out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
                 home_dir,
             )?);
-            if enable_deliberation {
-                out.push(build_required_managed_skill(
-                    ManagedSkillKind::TeamDeliberationRules,
-                    home_dir,
-                )?);
-            }
         }
         Some("worker") => {
             out.push(build_required_managed_skill(
@@ -123,22 +102,10 @@ fn build_team_role_skills_with_home(
                 ManagedSkillKind::TeamWorkerExecutor,
                 home_dir,
             )?);
-            if enable_task_lifecycle {
-                out.push(build_required_managed_skill(
-                    ManagedSkillKind::TeamTaskLifecycle,
-                    home_dir,
-                )?);
-            }
             out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamActorMailbox,
                 home_dir,
             )?);
-            if enable_deliberation {
-                out.push(build_required_managed_skill(
-                    ManagedSkillKind::TeamDeliberationRules,
-                    home_dir,
-                )?);
-            }
         }
         _ => {}
     }
@@ -213,40 +180,6 @@ mod tests {
                 "team-actor-mailbox",
             ]
         );
-    }
-
-    #[test]
-    fn build_team_role_skills_includes_task_lifecycle_when_requested() {
-        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
-        install_managed_skills(Some(home.path())).expect("install managed skills");
-        let mut context = context_with_role(Some("leader"));
-        context
-            .member_skills
-            .push("team-task-lifecycle".to_string());
-        let skills = build_team_role_skills_with_home(&context, Some(home.path()))
-            .expect("build team role skills");
-        let names = skills
-            .iter()
-            .map(|item| item.name.as_str())
-            .collect::<Vec<_>>();
-        assert!(names.contains(&"team-task-lifecycle"));
-    }
-
-    #[test]
-    fn build_team_role_skills_enables_deliberation_when_requested() {
-        let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
-        install_managed_skills(Some(home.path())).expect("install managed skills");
-        let mut context = context_with_role(Some("worker"));
-        context
-            .member_skills
-            .push("team-deliberation-rules".to_string());
-        let skills = build_team_role_skills_with_home(&context, Some(home.path()))
-            .expect("build team role skills");
-        let names = skills
-            .iter()
-            .map(|item| item.name.as_str())
-            .collect::<Vec<_>>();
-        assert!(names.contains(&"team-deliberation-rules"));
     }
 
     #[test]
