@@ -284,6 +284,7 @@ pub(crate) fn resolve_team_permission_review_target(
     requester_actor_id: &str,
     requester_role: &str,
 ) -> anyhow::Result<(String, &'static str)> {
+    let requester_role = requester_role.trim();
     let leader_member_id = team_leader_member_id(spec)
         .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
     let requester_is_leader =
@@ -479,6 +480,25 @@ mod tests {
 
         let (reviewer, dispatch_status) =
             resolve_team_permission_review_target(&spec, "worker", "worker")
+                .expect("resolve reviewer");
+
+        assert_eq!(reviewer, "reviewer");
+        assert_eq!(dispatch_status, "worker_dispatched");
+    }
+
+    #[test]
+    fn requester_role_is_trimmed_before_review_target_resolution() {
+        let spec = json!({
+            "entrypoint":"planner",
+            "leader_member_id":"planner",
+            "members":[
+                {"member_id":"planner","role":"leader"},
+                {"member_id":"reviewer","role":"worker"}
+            ]
+        });
+
+        let (reviewer, dispatch_status) =
+            resolve_team_permission_review_target(&spec, "planner", " leader ")
                 .expect("resolve reviewer");
 
         assert_eq!(reviewer, "reviewer");
