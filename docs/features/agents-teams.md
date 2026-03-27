@@ -35,6 +35,8 @@ terminology and operating expectations drift.
 - A `task` is the primary agent-facing work object.
 - `task.assigned_member_id` is the canonical owner slot, but it stays empty until ownership is set
   explicitly; the system must not guess an assignee.
+- Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
+  unassign), not implicit runtime scheduling.
 - Canonical task creation and lifecycle management belong to leader planning, not direct human task
   authoring.
 

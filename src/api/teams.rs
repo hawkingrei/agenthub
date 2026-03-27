@@ -31,9 +31,9 @@ use crate::team::{
     TeamActorMessageTransport, TeamConversationMessageRecord, TeamConversationRecord,
     TeamDefinitionConfig, TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord,
     TeamRunRecord, TeamRunStatus, TeamRuntimeRecord, TeamStepRecord, TeamStepStatus,
-    TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
-    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
-    stop_team_runtime,
+    TeamTaskAssignmentUpdate, TeamTaskRecord, TeamTaskStatus,
+    build_actor_mailbox_immediate_hint_prompt, ensure_team_runtime_started,
+    force_team_member_new_session, plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -171,7 +171,10 @@ pub struct ListTeamTasksQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateTeamTaskRequest {
-    pub status: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub assigned_member_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -759,7 +762,7 @@ async fn update_team_task(
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
     let task = state
         .teams
         .get_task(&task_id)
@@ -768,10 +771,19 @@ async fn update_team_task(
     if task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    let status = normalize_task_status(Some(payload.status.as_str()))?;
+    let status = match payload.status.as_deref() {
+        Some(status) => Some(normalize_task_status(Some(status))?),
+        None => None,
+    };
+    let assignment = normalize_task_assignment_update(&team, payload.assigned_member_id)?;
+    if status.is_none() && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged) {
+        return Err(ApiError::bad_request(
+            "task update requires status or assigned_member_id",
+        ));
+    }
     let updated = state
         .teams
-        .update_task_status(&task_id, status)
+        .update_task(&task_id, status, assignment)
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(updated))
@@ -2170,6 +2182,29 @@ fn normalize_task_status(value: Option<&str>) -> Result<TeamTaskStatus, ApiError
             TEAM_TASK_STATUS_VALUES.join(", ")
         ))),
     }
+}
+
+fn normalize_task_assignment_update(
+    team: &TeamDefinitionRecord,
+    assigned_member_id: Option<Option<String>>,
+) -> Result<TeamTaskAssignmentUpdate, ApiError> {
+    let Some(assigned_member_id) = assigned_member_id else {
+        return Ok(TeamTaskAssignmentUpdate::Unchanged);
+    };
+    let Some(raw_member_id) = assigned_member_id else {
+        return Ok(TeamTaskAssignmentUpdate::Unassigned);
+    };
+    let member_id = raw_member_id.trim();
+    if member_id.is_empty() {
+        return Ok(TeamTaskAssignmentUpdate::Unassigned);
+    }
+    let member_ids = parse_member_ids(team.spec.get("members"))?;
+    if !member_ids.contains(member_id) {
+        return Err(ApiError::bad_request(
+            "assigned_member_id must reference spec.members[].member_id",
+        ));
+    }
+    Ok(TeamTaskAssignmentUpdate::Assigned(member_id.to_string()))
 }
 
 fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, ApiError> {

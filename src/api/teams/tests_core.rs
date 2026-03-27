@@ -4383,7 +4383,10 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
             description: Some("status update".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
             }),
         }),
     )
@@ -4410,7 +4413,8 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(UpdateTeamTaskRequest {
-            status: "in_progress".to_string(),
+            status: Some("in_progress".to_string()),
+            assigned_member_id: None,
         }),
     )
     .await
@@ -4423,19 +4427,47 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(UpdateTeamTaskRequest {
-            status: "in_review".to_string(),
+            status: Some("in_review".to_string()),
+            assigned_member_id: None,
         }),
     )
     .await
     .expect("move task into review");
     assert_eq!(reviewing.status, crate::team::TeamTaskStatus::InReview);
 
-    let err = update_team_task(
-        State(state),
-        headers,
-        Path((team.id, created.task.id)),
+    let Json(assigned) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
         Json(UpdateTeamTaskRequest {
-            status: "paused".to_string(),
+            status: None,
+            assigned_member_id: Some(Some("worker-1".to_string())),
+        }),
+    )
+    .await
+    .expect("assign task owner");
+    assert_eq!(assigned.assigned_member_id.as_deref(), Some("worker-1"));
+
+    let Json(unassigned) = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: None,
+            assigned_member_id: Some(None),
+        }),
+    )
+    .await
+    .expect("clear task owner");
+    assert_eq!(unassigned.assigned_member_id, None);
+
+    let err = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: Some("paused".to_string()),
+            assigned_member_id: None,
         }),
     )
     .await
@@ -4444,6 +4476,40 @@ async fn teams_api_updates_task_status_and_rejects_invalid_values() {
     assert_eq!(
         body["error"],
         Value::from("status must be one of: open, in_progress, in_review, completed, canceled")
+    );
+
+    let invalid_assignee = update_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(UpdateTeamTaskRequest {
+            status: None,
+            assigned_member_id: Some(Some("ghost".to_string())),
+        }),
+    )
+    .await
+    .expect_err("unknown assignee should fail");
+    let invalid_body = decode_json_body(invalid_assignee.into_response()).await;
+    assert_eq!(
+        invalid_body["error"],
+        Value::from("assigned_member_id must reference spec.members[].member_id")
+    );
+
+    let empty_patch = update_team_task(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(UpdateTeamTaskRequest {
+            status: None,
+            assigned_member_id: None,
+        }),
+    )
+    .await
+    .expect_err("empty patch should fail");
+    let empty_body = decode_json_body(empty_patch.into_response()).await;
+    assert_eq!(
+        empty_body["error"],
+        Value::from("task update requires status or assigned_member_id")
     );
 }
 

@@ -112,7 +112,9 @@ message UpdateTeamTaskRequest {
   string team_id = 1;
   string actor_id = 2;
   string task_id = 3;
-  string status = 4;
+  optional string status = 4;
+  optional string assigned_member_id = 5;
+  bool clear_assigned_member_id = 6;
 }
 
 message UpdateTeamTaskResponse {

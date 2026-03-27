@@ -163,6 +163,13 @@ pub struct TeamRuntimeRecord {
     pub members: Vec<TeamRuntimeMemberRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TeamTaskAssignmentUpdate {
+    Unchanged,
+    Unassigned,
+    Assigned(String),
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRuntimeSummaryRecord {
     pub status: TeamRuntimeStatus,
@@ -606,8 +613,24 @@ impl TeamManager {
         task_id: &str,
         status: TeamTaskStatus,
     ) -> anyhow::Result<TeamTaskRecord> {
+        self.update_task(task_id, Some(status), TeamTaskAssignmentUpdate::Unchanged)
+            .await
+    }
+
+    pub async fn update_task(
+        &self,
+        task_id: &str,
+        status: Option<TeamTaskStatus>,
+        assignment: TeamTaskAssignmentUpdate,
+    ) -> anyhow::Result<TeamTaskRecord> {
         let current = self.get_task(task_id).await?;
-        if current.status == status {
+        let next_status = status.unwrap_or_else(|| current.status.clone());
+        let next_assignment = match assignment {
+            TeamTaskAssignmentUpdate::Unchanged => current.assigned_member_id.clone(),
+            TeamTaskAssignmentUpdate::Unassigned => None,
+            TeamTaskAssignmentUpdate::Assigned(member_id) => Some(member_id),
+        };
+        if current.status == next_status && current.assigned_member_id == next_assignment {
             return Ok(current);
         }
 
@@ -615,12 +638,13 @@ impl TeamManager {
         sqlx::query(
             r#"
             UPDATE team_tasks
-            SET status = ?2, updated_at = ?3
+            SET status = ?2, assigned_member_id = ?3, updated_at = ?4
             WHERE id = ?1
             "#,
         )
         .bind(task_id)
-        .bind(team_task_status_to_str(&status))
+        .bind(team_task_status_to_str(&next_status))
+        .bind(next_assignment)
         .bind(now)
         .execute(&self.db)
         .await?;

@@ -392,16 +392,28 @@ impl InternalGrpcMailboxClient {
         team_id: &str,
         actor_id: &str,
         task_id: &str,
-        status: &str,
+        status: Option<&str>,
+        assigned_member_id: Option<&str>,
+        clear_assigned_member_id: bool,
     ) -> anyhow::Result<TeamTaskRecord> {
         let mut client = self.client();
         let response = client
-            .update_team_task(self.control_request(GrpcUpdateTeamTaskRequest {
-                team_id: team_id.trim().to_string(),
-                actor_id: actor_id.trim().to_string(),
-                task_id: task_id.trim().to_string(),
-                status: status.trim().to_string(),
-            })?)
+            .update_team_task(
+                self.control_request(GrpcUpdateTeamTaskRequest {
+                    team_id: team_id.trim().to_string(),
+                    actor_id: actor_id.trim().to_string(),
+                    task_id: task_id.trim().to_string(),
+                    status: status
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    assigned_member_id: assigned_member_id
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    clear_assigned_member_id,
+                })?,
+            )
             .await
             .map_err(map_grpc_status_anyhow)?
             .into_inner();

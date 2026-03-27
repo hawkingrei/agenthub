@@ -2191,6 +2191,31 @@ export function TeamPage(props: TeamPageProps) {
     [props.token, selectedTeamId]
   );
 
+  const onUpdateTaskAssignee = useCallback(
+    async (taskId: string, assignedMemberId: string | null) => {
+      if (!selectedTeamId) {
+        setError("Select a team first");
+        return;
+      }
+      setBusy("update-task-assignee");
+      setError(null);
+      try {
+        const updated = await api.updateTeamTask(props.token, selectedTeamId, taskId, {
+          assigned_member_id: assignedMemberId,
+        });
+        setTaskList((prev) =>
+          sortTasksByActivity([updated, ...prev.filter((task) => task.id !== updated.id)])
+        );
+        setSelectedTaskId(updated.id);
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [props.token, selectedTeamId]
+  );
+
   const onRefreshMemberConsole = useCallback(async () => {
     if (selectedAgentWorkspaceMemberId && selectedAgentWorkspaceSessionId) {
       await loadMemberEvents("replace");
@@ -3072,6 +3097,7 @@ export function TeamPage(props: TeamPageProps) {
       onNewTaskTitleChange={setNewTaskTitle}
       onCreateTask={onCreateTask}
       onUpdateTaskStatus={onUpdateTaskStatus}
+      onUpdateTaskAssignee={onUpdateTaskAssignee}
       busy={busy}
       runs={runs}
       onOpenRun={onOpenTaskRun}
@@ -3084,6 +3110,7 @@ export function TeamPage(props: TeamPageProps) {
       onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
       formatTs={formatTs}
       toPrettyJson={toPrettyJson}
+      memberLiveStates={selectedTeamMemberLiveStates}
     />
   );
 

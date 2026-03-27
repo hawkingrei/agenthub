@@ -662,7 +662,7 @@ export const api = {
     token: string,
     teamId: string,
     taskId: string,
-    payload: { status: TeamTaskStatus }
+    payload: { status?: TeamTaskStatus; assigned_member_id?: string | null }
   ) =>
     apiFetch<TeamTaskRecord>(
       `/api/teams/${encodePathSegment(teamId)}/tasks/${encodePathSegment(taskId)}`,

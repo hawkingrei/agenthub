@@ -1,5 +1,5 @@
 import React from "react";
-import { SegmentedControl, TextInput } from "@mantine/core";
+import { NativeSelect, SegmentedControl, TextInput } from "@mantine/core";
 import type {
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -8,6 +8,7 @@ import type {
 } from "../api";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { selectRunsForTask } from "./team/run_helpers";
+import type { TeamMemberLiveState } from "./team/member_helpers";
 import {
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
@@ -35,6 +36,7 @@ type TeamTasksPanelProps = {
   onNewTaskTitleChange: (value: string) => void;
   onCreateTask: () => Promise<void> | void;
   onUpdateTaskStatus: (taskId: string, status: TeamTaskStatus) => Promise<void> | void;
+  onUpdateTaskAssignee: (taskId: string, assignedMemberId: string | null) => Promise<void> | void;
   busy: string | null;
   runs: TeamRunRecord[];
   onOpenRun: (runId: string) => void;
@@ -47,6 +49,7 @@ type TeamTasksPanelProps = {
   onCreateRunFromCompiledPreview: () => Promise<void> | void;
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
+  memberLiveStates: TeamMemberLiveState[];
 };
 
 const TASKS_FILTER_BAR_CLASS =
@@ -210,6 +213,17 @@ function listTaskStatusActions(status: TeamTaskStatus): Array<{
   }
 }
 
+function resolveTaskAssigneeLabel(
+  task: TeamTaskRecord,
+  assigneeLabelById: Map<string, string>
+): string {
+  const assignedMemberId = task.assigned_member_id?.trim();
+  if (!assignedMemberId) {
+    return "Unassigned";
+  }
+  return assigneeLabelById.get(assignedMemberId) ?? assignedMemberId;
+}
+
 export function TeamTasksPanel(props: TeamTasksPanelProps) {
   const {
     developerMode,
@@ -222,6 +236,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     onNewTaskTitleChange,
     onCreateTask,
     onUpdateTaskStatus,
+    onUpdateTaskAssignee,
     busy,
     runs,
     onOpenRun,
@@ -234,6 +249,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     onCreateRunFromCompiledPreview,
     formatTs,
     toPrettyJson,
+    memberLiveStates,
   } = props;
   const [statusFilter, setStatusFilter] = React.useState<TaskStatusFilter>("all");
   const [debugToolsOpen, setDebugToolsOpen] = React.useState(false);
@@ -270,6 +286,28 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
 
   const canCreateTask = newTaskTitle.trim().length > 0 && busy !== "create-task";
   const taskStatusUpdateBusy = busy === "update-task-status";
+  const taskAssigneeUpdateBusy = busy === "update-task-assignee";
+  const taskMutationBusy = taskStatusUpdateBusy || taskAssigneeUpdateBusy;
+  const assigneeLabelById = React.useMemo(
+    () =>
+      new Map(
+        memberLiveStates.map((member) => [
+          member.member_id,
+          member.agent_name?.trim() || member.member_id,
+        ])
+      ),
+    [memberLiveStates]
+  );
+  const assigneeOptions = React.useMemo(
+    () => [
+      { value: "", label: "Unassigned" },
+      ...memberLiveStates.map((member) => ({
+        value: member.member_id,
+        label: member.agent_name?.trim() || member.member_id,
+      })),
+    ],
+    [memberLiveStates]
+  );
   const selectedTaskStatusActions = React.useMemo(
     () => (selectedTask ? listTaskStatusActions(selectedTask.status) : []),
     [selectedTask]
@@ -422,6 +460,9 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                                 <span>{`updated ${formatTs(task.updated_at)}`}</span>
                                 <span>{`created ${formatTs(task.created_at)}`}</span>
                               </span>
+                              <span className={TEAM_LIST_ITEM_META_CLASS}>
+                                {`owner ${resolveTaskAssigneeLabel(task, assigneeLabelById)}`}
+                              </span>
                               {developerMode && (
                                 <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
                               )}
@@ -435,7 +476,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                                   onClick={() => {
                                     void onUpdateTaskStatus(task.id, action.nextStatus);
                                   }}
-                                  disabled={taskStatusUpdateBusy}
+                                  disabled={taskMutationBusy}
                                   title={`Move task to ${action.nextStatus}`}
                                   aria-label={`${action.label} ${task.title}`}
                                 >
@@ -491,12 +532,31 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                   <div className="mt-1 text-xs text-ui-text-muted">{formatTs(selectedTask.created_at)}</div>
                 </div>
                 <div className={TASKS_DETAIL_META_ITEM_CLASS}>
+                  <strong>Assignee</strong>
+                  <div className="mt-1 text-xs text-ui-text-muted">
+                    {resolveTaskAssigneeLabel(selectedTask, assigneeLabelById)}
+                  </div>
+                </div>
+                <div className={TASKS_DETAIL_META_ITEM_CLASS}>
                   <strong>Updated</strong>
                   <div className="mt-1 text-xs text-ui-text-muted">{formatTs(selectedTask.updated_at)}</div>
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <NativeSelect
+                  className="w-full sm:w-[220px]"
+                  aria-label="Task assignee"
+                  value={selectedTask.assigned_member_id ?? ""}
+                  onChange={(event) => {
+                    const nextAssignee = event.currentTarget.value.trim();
+                    void onUpdateTaskAssignee(selectedTask.id, nextAssignee || null);
+                  }}
+                  data={assigneeOptions}
+                  size="sm"
+                  radius="md"
+                  disabled={taskMutationBusy}
+                />
                 {selectedTaskStatusActions.map((action) => (
                   <button
                     key={`${selectedTask.id}-${action.nextStatus}`}
@@ -505,7 +565,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                     onClick={() => {
                       void onUpdateTaskStatus(selectedTask.id, action.nextStatus);
                     }}
-                    disabled={taskStatusUpdateBusy}
+                    disabled={taskMutationBusy}
                     title={`Move task to ${action.nextStatus}`}
                     aria-label={`${action.label} selected task`}
                   >

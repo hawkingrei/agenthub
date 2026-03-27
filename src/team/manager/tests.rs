@@ -8,7 +8,7 @@ use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
     SendActorMessageInput, TeamActorMessageStatus, TeamActorMessageTransport, TeamDefinitionConfig,
-    TeamRunStatus, TeamStepStatus, TeamTaskStatus,
+    TeamRunStatus, TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskStatus,
 };
 use agenthub_db::AgentEventDbRouter;
 use agenthub_team_actor::{
@@ -652,6 +652,57 @@ async fn task_status_updates_are_persisted() {
         .expect("reload updated task");
     assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
     assert_eq!(reloaded.assigned_member_id, None);
+}
+
+#[tokio::test]
+async fn task_assignment_updates_are_persisted() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-assignment-team".to_string(),
+            description: Some("team for task assignment updates".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Assign a worker",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("assignment"),
+        )
+        .await
+        .expect("create task");
+    assert_eq!(task.assigned_member_id, None);
+
+    let assigned = manager
+        .update_task(
+            &task.id,
+            None,
+            TeamTaskAssignmentUpdate::Assigned("worker-1".to_string()),
+        )
+        .await
+        .expect("assign task");
+    assert_eq!(assigned.status, TeamTaskStatus::Open);
+    assert_eq!(assigned.assigned_member_id.as_deref(), Some("worker-1"));
+
+    let unassigned = manager
+        .update_task(&task.id, None, TeamTaskAssignmentUpdate::Unassigned)
+        .await
+        .expect("unassign task");
+    assert_eq!(unassigned.assigned_member_id, None);
 }
 
 #[tokio::test]

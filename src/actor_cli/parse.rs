@@ -385,6 +385,8 @@ pub(super) fn parse_actor_command(
             let mut actor_id = None;
             let mut task_id = None;
             let mut status = None;
+            let mut assigned_member_id = None;
+            let mut clear_assigned_member_id = false;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -420,6 +422,15 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--status requires a value"))?;
                         status = Some(parse_team_task_status_argument(raw)?);
                     }
+                    "--assigned-member-id" => {
+                        idx += 1;
+                        assigned_member_id = Some(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("--assigned-member-id requires a value")
+                        })?);
+                    }
+                    "--unassign" => {
+                        clear_assigned_member_id = true;
+                    }
                     other => {
                         return Err(anyhow::anyhow!(
                             "unknown flag for team-task-update: {}",
@@ -429,12 +440,19 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
+            if assigned_member_id.is_some() && clear_assigned_member_id {
+                return Err(anyhow::anyhow!(
+                    "--assigned-member-id and --unassign cannot be used together"
+                ));
+            }
             Ok(ActorCommand::TeamTaskUpdate {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
                 task_id: take_optional(task_id)
                     .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
-                status: status.ok_or_else(|| anyhow::anyhow!("status is required"))?,
+                status,
+                assigned_member_id: take_optional(assigned_member_id),
+                clear_assigned_member_id,
             })
         }
         "inbox" => {

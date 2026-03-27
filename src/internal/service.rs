@@ -14,9 +14,9 @@ use crate::acp::AcpPermissionRespondResult;
 use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::state::AppState;
 use crate::team::{
-    TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
-    TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
-    resolve_team_permission_review_target,
+    TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskAssignmentUpdate,
+    TeamTaskRecord, TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt,
+    plan_actor_mailbox_immediate_hint, resolve_team_permission_review_target,
 };
 
 use super::auth::{InternalAction, InternalAuthz, InternalRole};
@@ -543,7 +543,6 @@ impl TeamInternalControl for TeamInternalControlService {
         ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
 
         let task_id = required_field(&payload.task_id, "task_id")?;
-        let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
         let existing = self
             .state
             .teams
@@ -555,10 +554,31 @@ impl TeamInternalControl for TeamInternalControlService {
                 "task does not belong to this team",
             ));
         }
+        let team = self
+            .state
+            .teams
+            .get_team(team_id)
+            .await
+            .map_err(map_manager_error)?;
+        let status = payload
+            .status
+            .as_deref()
+            .map(parse_team_task_status)
+            .transpose()?;
+        let assignment = normalize_task_assignment_update(
+            &team.spec,
+            payload.assigned_member_id.as_deref(),
+            payload.clear_assigned_member_id,
+        )?;
+        if status.is_none() && matches!(assignment, TeamTaskAssignmentUpdate::Unchanged) {
+            return Err(Status::invalid_argument(
+                "task update requires status or assigned_member_id",
+            ));
+        }
         let task = self
             .state
             .teams
-            .update_task_status(task_id, status)
+            .update_task(task_id, status, assignment)
             .await
             .map_err(map_manager_error)?;
         Ok(Response::new(UpdateTeamTaskResponse {
@@ -1317,6 +1337,38 @@ fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
     })
 }
 
+fn normalize_task_assignment_update(
+    team_spec: &Value,
+    assigned_member_id: Option<&str>,
+    clear_assigned_member_id: bool,
+) -> Result<TeamTaskAssignmentUpdate, Status> {
+    if assigned_member_id.is_some() && clear_assigned_member_id {
+        return Err(Status::invalid_argument(
+            "assigned_member_id and clear_assigned_member_id cannot be combined",
+        ));
+    }
+    if clear_assigned_member_id {
+        return Ok(TeamTaskAssignmentUpdate::Unassigned);
+    }
+    let Some(assigned_member_id) = assigned_member_id else {
+        return Ok(TeamTaskAssignmentUpdate::Unchanged);
+    };
+    let member_id = assigned_member_id.trim();
+    if member_id.is_empty() {
+        return Ok(TeamTaskAssignmentUpdate::Unassigned);
+    }
+    let team_member_ids = collect_team_member_ids(team_spec)?;
+    if !team_member_ids
+        .iter()
+        .any(|candidate| candidate == member_id)
+    {
+        return Err(Status::invalid_argument(
+            "assigned_member_id must reference spec.members[].member_id",
+        ));
+    }
+    Ok(TeamTaskAssignmentUpdate::Assigned(member_id.to_string()))
+}
+
 fn map_team_context_error(err: anyhow::Error) -> Status {
     if let Some(cause) = err.downcast_ref::<TeamContextLookupError>() {
         return match cause {
@@ -1476,6 +1528,24 @@ fn resolve_team_leader_member_id(spec: &Value) -> Result<String, Status> {
     Err(Status::failed_precondition(
         "team spec does not define a leader (leader_member_id, members[].role == 'leader', or entrypoint)",
     ))
+}
+
+fn collect_team_member_ids(spec: &Value) -> Result<Vec<String>, Status> {
+    let members = spec
+        .get("members")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Status::failed_precondition("spec.members must be an array"))?;
+    let mut out = Vec::with_capacity(members.len());
+    for member in members {
+        let member_id = member
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| Status::failed_precondition("spec.members[].member_id is required"))?;
+        out.push(member_id.to_string());
+    }
+    Ok(out)
 }
 
 fn normalize_permission(raw: &str) -> Option<String> {
@@ -1937,7 +2007,9 @@ mod tests {
                     team_id: run.team_id,
                     actor_id: "planner".to_string(),
                     task_id: task_id.clone(),
-                    status: "completed".to_string(),
+                    status: Some("completed".to_string()),
+                    assigned_member_id: Some("reviewer".to_string()),
+                    clear_assigned_member_id: false,
                 },
                 &token,
             ),
@@ -1949,7 +2021,28 @@ mod tests {
             serde_json::from_str(&updated.task_json).expect("decode updated task");
         assert_eq!(updated_task.id, task_id);
         assert_eq!(updated_task.status, crate::team::TeamTaskStatus::Completed);
-        assert!(updated_task.assigned_member_id.is_none());
+        assert_eq!(updated_task.assigned_member_id.as_deref(), Some("reviewer"));
+
+        let cleared = TeamInternalControl::update_team_task(
+            &service,
+            authenticated_request(
+                UpdateTeamTaskRequest {
+                    team_id: updated_task.team_id.clone(),
+                    actor_id: "planner".to_string(),
+                    task_id: updated_task.id.clone(),
+                    status: None,
+                    assigned_member_id: None,
+                    clear_assigned_member_id: true,
+                },
+                &token,
+            ),
+        )
+        .await
+        .expect("clear task assignee")
+        .into_inner();
+        let cleared_task: TeamTaskRecord =
+            serde_json::from_str(&cleared.task_json).expect("decode cleared task");
+        assert_eq!(cleared_task.assigned_member_id, None);
     }
 
     #[tokio::test]
