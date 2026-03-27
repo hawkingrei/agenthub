@@ -182,6 +182,8 @@ async function createTeamFromModal(
   }
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
+  await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
 }
 
 async function createTeamMemberFromModal(
@@ -203,6 +205,7 @@ async function createTeamMemberFromModal(
     .locator(".teams-main")
     .getByRole("button", { name: openButtonLabel, exact: true })
     .first();
+  const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
   const menuTrigger = page.getByRole("button", {
     name: "Open selected team menu",
     exact: true,
@@ -211,7 +214,9 @@ async function createTeamMemberFromModal(
     name: "No agents have joined this team yet.",
     exact: true,
   });
-  if (await emptyStateHeading.isVisible().catch(() => false)) {
+  if (await visibleMenuItem.isVisible().catch(() => false)) {
+    await visibleMenuItem.click();
+  } else if (await emptyStateHeading.isVisible().catch(() => false)) {
     await expect(primaryOpenButton).toBeVisible();
     await primaryOpenButton.click();
   } else if (await primaryOpenButton.isVisible().catch(() => false)) {
