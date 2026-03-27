@@ -157,7 +157,7 @@ Mailbox operational priority (suggested):
 
 Team collaboration should run with the canonical actor CLI mailbox path as the primary communication path:
 
-- Team role sessions must prioritize `AGENTHUB_ACTOR_CLI` mailbox/task commands over ad-hoc message paths.
+- Team role sessions must prioritize `agenthub actor ...` mailbox/task commands over ad-hoc message paths.
 - Startup should fail-fast when Team role is enabled but the canonical actor CLI coordination capability is missing.
 - Startup should also fail-fast when required actor mailbox commands are unavailable (`actor inbox`, `actor ack`, `actor send`).
 - Default routing should be direct mailbox first:

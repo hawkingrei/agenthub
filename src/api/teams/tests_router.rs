@@ -241,10 +241,14 @@ async fn teams_router_http_contract() {
         ))
         .await
         .expect("update task via router");
-    assert_eq!(update_task_resp.status(), StatusCode::OK);
-    let updated_task = decode_json_body(update_task_resp).await;
-    assert_eq!(updated_task["id"], task_id);
-    assert_eq!(updated_task["status"], Value::from("in_progress"));
+    assert_eq!(update_task_resp.status(), StatusCode::FORBIDDEN);
+    let update_task_err = decode_json_body(update_task_resp).await;
+    assert_eq!(
+        update_task_err["error"],
+        Value::from(
+            "canonical Team task status/owner updates are agent-only; use actor runtime controls",
+        )
+    );
 
     let invalid_update_task_resp = app
         .clone()
@@ -258,7 +262,7 @@ async fn teams_router_http_contract() {
         ))
         .await
         .expect("invalid task status via router");
-    assert_eq!(invalid_update_task_resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(invalid_update_task_resp.status(), StatusCode::FORBIDDEN);
 
     let send_human_task_message_resp = app
         .clone()

@@ -143,7 +143,6 @@ pub struct ListTeamTasksQuery {
 
 // Keep deserialization compatibility for existing human clients even though
 // canonical task mutation is now rejected on the public HTTP path.
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct UpdateTeamTaskRequest {
     #[serde(default)]
@@ -734,8 +733,9 @@ async fn update_team_task(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((team_id, task_id)): Path<(String, String)>,
-    Json(_payload): Json<UpdateTeamTaskRequest>,
+    Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
+    let _ = (&payload.status, &payload.assigned_member_id);
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state

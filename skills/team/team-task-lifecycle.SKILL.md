@@ -61,17 +61,17 @@ Do not force task creation for:
 
 Leader may:
 
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-create` to create canonical Team tasks
-- use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` to verify the task is actually present in Kanban after creation
+- use `agenthub actor team-task-create` to create canonical Team tasks
+- use `agenthub actor team-tasks` to verify the task is actually present in Kanban after creation
 - leave `assigned_member_id` empty until ownership is set explicitly; do not guess an owner
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update --assigned-member-id <member_id>"` when the task needs an explicit owner
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update --unassign"` when ownership should be cleared explicitly
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `open -> in_progress`
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_progress -> in_review`
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_review -> completed`
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move `in_review -> in_progress` when changes are requested
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to move any unfinished task to `canceled`
-- use `"$AGENTHUB_ACTOR_CLI" actor team-task-update` to reopen `completed|canceled -> open` when follow-up is required
+- use `agenthub actor team-task-update --task-id <task_id> --assigned-member-id <member_id>` when the task needs an explicit owner
+- use `agenthub actor team-task-update --task-id <task_id> --unassign` when ownership should be cleared explicitly
+- use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to move `open -> in_progress`
+- use `agenthub actor team-task-update --task-id <task_id> --status in_review` to move `in_progress -> in_review`
+- use `agenthub actor team-task-update --task-id <task_id> --status completed` to move `in_review -> completed`
+- use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to move `in_review -> in_progress` when changes are requested
+- use `agenthub actor team-task-update --task-id <task_id> --status canceled` to move any unfinished task to `canceled`
+- use `agenthub actor team-task-update --task-id <task_id> --status open` to reopen `completed|canceled -> open` when follow-up is required
 
 Leader review rules:
 
@@ -85,7 +85,7 @@ Leader review rules:
 Workers should:
 
 - treat the leader-owned Team task as the canonical execution record
-- use `"$AGENTHUB_ACTOR_CLI" actor team-tasks` when they need to confirm canonical Team task state directly
+- use `agenthub actor team-tasks` when they need to confirm canonical Team task state directly
 - keep leader informed when work should move from `open` to `in_progress`
 - report evidence as soon as implementation/research materially changes
 - ask or signal for `in_review` when acceptance evidence is ready

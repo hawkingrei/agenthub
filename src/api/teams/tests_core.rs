@@ -115,9 +115,8 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
             .is_some_and(|prompt| !prompt.trim().is_empty())
     );
     assert!(
-        created.spec["members"][0]["skills"]
-            .as_array()
-            .is_some_and(|skills| !skills.is_empty())
+        created.spec["members"][0].get("skills").is_none(),
+        "normalized team spec should not persist member skill config"
     );
 
     let Json(listed) = list_teams(State(state.clone()), headers.clone())
@@ -4022,18 +4021,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     );
     assert_eq!(leader.model.as_deref(), Some("gpt-5"));
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
-    assert_eq!(
-        leader.skills,
-        vec![
-            "agenthub-actor-runtime".to_string(),
-            "team-agents-index".to_string(),
-            "team-task-lifecycle".to_string(),
-            "team-leader-orchestrator".to_string(),
-            "team-actor-mailbox".to_string(),
-            "planning".to_string(),
-            "review".to_string()
-        ]
-    );
+    assert_eq!(leader.skills, crate::team::effective_team_member_skills("leader"));
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");
     assert_eq!(leader.session_status.as_deref(), Some("working"));

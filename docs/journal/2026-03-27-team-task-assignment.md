@@ -44,5 +44,5 @@ That left a gap between the ownership contract and the actual product behavior.
 
 - `cargo test -p agenthub task_assignment_updates_are_persisted -- --nocapture`
 - `cargo test -p agenthub teams_api_rejects_human_task_status_and_owner_updates -- --nocapture`
-- `cargo test -p agenthub parse_team_task_update_accepts_assignment_patch -- --nocapture`
+- `cargo test -p agenthub internal_grpc_team_context_and_task_controls_are_wire_compatible -- --nocapture`
 - `cd web && npx vitest run src/pages/team_panels.test.tsx`

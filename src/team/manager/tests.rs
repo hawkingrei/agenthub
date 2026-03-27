@@ -706,6 +706,67 @@ async fn task_assignment_updates_are_persisted() {
 }
 
 #[tokio::test]
+async fn task_partial_updates_preserve_unpatched_fields() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-partial-update-team".to_string(),
+            description: Some("team for task patch semantics".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Keep unrelated task fields intact",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("patch"),
+        )
+        .await
+        .expect("create task");
+
+    let assigned = manager
+        .update_task(
+            &task.id,
+            None,
+            TeamTaskAssignmentUpdate::Assigned("worker-1".to_string()),
+        )
+        .await
+        .expect("assign task");
+    assert_eq!(assigned.assigned_member_id.as_deref(), Some("worker-1"));
+    assert_eq!(assigned.status, TeamTaskStatus::Open);
+
+    let status_updated = manager
+        .update_task_status(&task.id, TeamTaskStatus::InProgress)
+        .await
+        .expect("update task status");
+    assert_eq!(status_updated.status, TeamTaskStatus::InProgress);
+    assert_eq!(
+        status_updated.assigned_member_id.as_deref(),
+        Some("worker-1")
+    );
+
+    let unassigned = manager
+        .update_task(&task.id, None, TeamTaskAssignmentUpdate::Unassigned)
+        .await
+        .expect("unassign task");
+    assert_eq!(unassigned.status, TeamTaskStatus::InProgress);
+    assert_eq!(unassigned.assigned_member_id, None);
+}
+
+#[tokio::test]
 async fn create_run_marks_linked_task_in_progress() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
