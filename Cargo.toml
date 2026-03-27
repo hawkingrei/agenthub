@@ -12,6 +12,7 @@ members = [
     "crates/agenthub-logging",
     "crates/agenthub-config",
     "crates/agenthub-db",
+    "crates/agenthub-pyroscope",
 ]
 exclude = ["cmd/agenthub"]
 
@@ -70,6 +71,7 @@ agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agenthub-logging = { path = "crates/agenthub-logging" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
+agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
 agent-client-protocol = { version = "0.10.3", features = ["unstable"] }
 prost = "0.14"
 tonic-prost = "0.14"

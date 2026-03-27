@@ -199,6 +199,11 @@ pub async fn run() -> anyhow::Result<()> {
         log_spec.as_ref(),
         web_dir.as_deref(),
     );
+    let _pyroscope =
+        agenthub_pyroscope::maybe_start_from_env(agenthub_pyroscope::PyroscopeBootstrapOptions {
+            application_name: "agenthub.server",
+            application_version: env!("CARGO_PKG_VERSION"),
+        });
     let state = crate::state::AppState::init(config.clone()).await?;
     let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), &config).await?;
 
