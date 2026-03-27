@@ -245,7 +245,7 @@ pub(super) async fn run_actor_command(
                 .map_err(|err| map_actor_service_error("actor send", err))?;
             if payload_source == ActorSendPayloadSource::Payload {
                 eprintln!(
-                    "warning: prefer --text for markdown-rich mailbox messages; --payload-json is best reserved for structured machine-readable coordination"
+                    "warning: prefer --text or --text-file for markdown-rich mailbox messages; --payload-json and --payload-file are best reserved for structured machine-readable coordination"
                 );
             }
             write_actor_output(&message, output_mode, output_preference)?;

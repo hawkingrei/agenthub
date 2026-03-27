@@ -3,6 +3,8 @@ use super::{
     ActorCommand, ActorOutputMode, ActorSendPayloadSource,
     TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS,
 };
+use std::fs;
+
 use crate::actor_runtime_env::{
     ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var,
@@ -30,10 +32,40 @@ fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
         .map_err(|err| anyhow::anyhow!("invalid {} JSON: {}", field, err))
 }
 
+fn read_actor_send_file(path: &str, flag: &str) -> anyhow::Result<String> {
+    let trimmed = path.trim();
+    anyhow::ensure!(!trimmed.is_empty(), "{} requires a non-empty path", flag);
+    fs::read_to_string(trimmed)
+        .map_err(|err| anyhow::anyhow!("read {} '{}': {}", flag, trimmed, err))
+}
+
 fn resolve_actor_send_payload(
     text: Option<String>,
+    text_file: Option<String>,
     payload: Option<Value>,
+    payload_file: Option<String>,
 ) -> anyhow::Result<(Value, ActorSendPayloadSource)> {
+    if text.is_some() && text_file.is_some() {
+        return Err(anyhow::anyhow!(
+            "--text and --text-file cannot be used together"
+        ));
+    }
+    if payload.is_some() && payload_file.is_some() {
+        return Err(anyhow::anyhow!(
+            "--payload-json and --payload-file cannot be used together"
+        ));
+    }
+    let text = match text_file {
+        Some(path) => Some(read_actor_send_file(path.as_str(), "--text-file")?),
+        None => text,
+    };
+    let payload = match payload_file {
+        Some(path) => {
+            let raw = read_actor_send_file(path.as_str(), "--payload-file")?;
+            Some(parse_json(raw.as_str(), "--payload-file")?)
+        }
+        None => payload,
+    };
     match (text, payload) {
         (Some(text), None) => {
             if text.trim().is_empty() {
@@ -43,9 +75,11 @@ fn resolve_actor_send_payload(
         }
         (None, Some(payload)) => Ok((payload, ActorSendPayloadSource::Payload)),
         (Some(_), Some(_)) => Err(anyhow::anyhow!(
-            "--text and --payload-json cannot be used together"
+            "--text/--text-file and --payload-json/--payload-file cannot be used together"
         )),
-        (None, None) => Err(anyhow::anyhow!("--text or --payload-json is required")),
+        (None, None) => Err(anyhow::anyhow!(
+            "--text, --text-file, --payload-json, or --payload-file is required"
+        )),
     }
 }
 
@@ -563,7 +597,9 @@ pub(super) fn parse_actor_command(
             let mut transport = None;
             let mut route = None;
             let mut text = None;
+            let mut text_file = None;
             let mut payload = None;
+            let mut payload_file = None;
             let mut idempotency_key = None;
             let mut allow_duplicate = false;
             let mut idx = 1;
@@ -647,12 +683,27 @@ pub(super) fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--text requires a value"))?,
                         );
                     }
+                    "--text-file" => {
+                        idx += 1;
+                        text_file = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--text-file requires a value"))?,
+                        );
+                    }
                     "--payload-json" => {
                         idx += 1;
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--payload-json requires a value"))?;
                         payload = Some(parse_json(raw, "payload_json")?);
+                    }
+                    "--payload-file" => {
+                        idx += 1;
+                        payload_file =
+                            Some(args.get(idx).cloned().ok_or_else(|| {
+                                anyhow::anyhow!("--payload-file requires a value")
+                            })?);
                     }
                     "--idempotency-key" => {
                         idx += 1;
@@ -688,7 +739,8 @@ pub(super) fn parse_actor_command(
             )?;
             let (to_actor_id, channel_id) = resolve_actor_send_target(to_actor_id, channel_id)?;
             let channel = take_optional(channel).unwrap_or(fallback_channel);
-            let (payload, payload_source) = resolve_actor_send_payload(text, payload)?;
+            let (payload, payload_source) =
+                resolve_actor_send_payload(text, text_file, payload, payload_file)?;
             let explicit_idempotency_key = match idempotency_key {
                 Some(raw) => {
                     let trimmed = raw.trim();

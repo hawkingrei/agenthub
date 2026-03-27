@@ -109,6 +109,9 @@ restating the same rules.
   - send a concise summary in the mailbox text/payload
   - attach a stable `detail_ref` / artifact pointer for the full content
   - do not paste large logs, traces, or copied context into routine mailbox messages
+- For reusable or multi-line mailbox sends, write the content into a file first and prefer
+  `agenthub actor send --text-file ...` / `--payload-file ...` so the command stays anchored on the
+  `agenthub` prefix for runtime permission checks.
 - Silent execution is unacceptable for long-running or uncertain work; send a progress or blocker
   update instead of waiting for the final result.
 - Leader owns integrated progress updates to the human/channel and must ensure each active
