@@ -42,7 +42,7 @@ pub const DEFAULT_TEAM_LEADER_PROMPT: &str = concat!(
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Team ACP permission review is operator-facing ACP runtime control flow, not a normal peer-delegation mailbox task.\n",
-    "- If ACP exposes a permission review action in your current session, review against the request context and least-privilege intent; never review your own request.\n",
+    "- If ACP exposes a permission review action in your current session, review against the request context and least-privilege intent.\n",
     "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`); human review remains valid and does not block normal team progress.\n",
     "- Finalization by mode: persistent teams stay running; one-shot/non-interactive runs request graceful worker shutdown before final response.\n",
     "Team workflow phases:\n",
@@ -86,8 +86,7 @@ pub const DEFAULT_TEAM_WORKER_PROMPT: &str = concat!(
     "- `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.\n",
     "- Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.\n",
     "- Team ACP permission review is operator-facing ACP runtime control flow, not a normal worker coordination task.\n",
-    "- Only review a Team ACP permission request when ACP exposes the review action in your current session; evaluate the request against least-privilege intent and never review your own request.\n",
-    "- Do not review your own Team ACP permission request; wait for the assigned reviewer or human review in `Channel` (`all`).\n",
+    "- Only review a Team ACP permission request when ACP exposes the review action in your current session; evaluate the request against least-privilege intent.\n",
     "- If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.\n",
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.\n",
     "- Use `\"$AGENTHUB_ACTOR_CLI\" actor team-tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.\n",
@@ -176,7 +175,6 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("least-privilege intent"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("never review your own request"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".well-known/agent-card"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-members"));
