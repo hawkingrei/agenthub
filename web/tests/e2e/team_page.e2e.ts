@@ -199,7 +199,6 @@ async function createTeamMemberFromModal(
     kimi: "Kimi CLI",
   };
   const openButtonLabel = "Add Agent";
-  const title = "Add Agent";
   const confirmLabel = "Create Agent";
   const menuTrigger = page.getByRole("button", {
     name: "Open selected team menu",
@@ -217,7 +216,7 @@ async function createTeamMemberFromModal(
   }
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ hasText: title })
+    .filter({ has: page.getByRole("button", { name: confirmLabel, exact: true }) })
     .last();
   await expect(dialog).toBeVisible();
   if (options.identity) {
