@@ -131,8 +131,7 @@ Recommended fields:
 ## Escalation Rules
 
 - Worker reports blockers to leader first.
-- The current reviewer is assigned automatically by the Team runtime; requester must never review
-  its own permission request.
+- The current reviewer is assigned automatically by the Team runtime.
 - When ACP exposes a permission review action, inspect the request details and choose the narrowest
   approval option that is sufficient for the task.
 - When responding through `actor permission-review-respond`, use the request-provided

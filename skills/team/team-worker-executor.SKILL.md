@@ -52,7 +52,6 @@ findings.
 - Inspect the requested command, path/scope, and offered approval options before responding.
 - Approve only the least-privilege option justified by the current task; otherwise cancel/reject
   and report the blocker or follow-up work back to leader.
-- Do not review your own Team ACP permission request.
 - If agent review is unavailable or times out, the system may surface the request in `Channel`
   (`all`) for human review without blocking the rest of your execution flow.
 

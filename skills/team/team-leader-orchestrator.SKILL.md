@@ -61,7 +61,6 @@ You are the coordinator for a multi-agent team run.
   path/scope, and offered approval options before responding.
 - Approve only the least-privilege option justified by the current task; otherwise cancel/reject
   and route the follow-up work through normal team coordination.
-- Never try to review your own Team ACP permission request.
 - If leader-side agent review is unavailable or times out, expect the system to surface the request
   in `Channel` (`all`) for human review without blocking the original Team flow.
 

@@ -67,7 +67,7 @@ restating the same rules.
   - when enabled, silence may cause a configured ACP reminder prompt to be injected later
   - treat injected loop prompts as follow-up nudges for the same task, not as a new human request
 - ACP permission review:
-  - the Team runtime assigns the current reviewer automatically; requester must never review its own request
+  - the Team runtime assigns the current reviewer automatically
   - treat approval/rejection as ACP runtime control flow, not as a normal Team mailbox task
   - if agent review is unavailable or times out, the system should post a human-review request into `Channel` (`all`)
   - human review remains valid and should not block the original Team workflow
