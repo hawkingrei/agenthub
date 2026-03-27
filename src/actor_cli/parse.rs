@@ -62,7 +62,7 @@ fn resolve_actor_send_payload(
     let payload = match payload_file {
         Some(path) => {
             let raw = read_actor_send_file(path.as_str(), "--payload-file")?;
-            Some(parse_json(raw.as_str(), "payload_file")?)
+            Some(parse_json(raw.as_str(), "--payload-file")?)
         }
         None => payload,
     };
