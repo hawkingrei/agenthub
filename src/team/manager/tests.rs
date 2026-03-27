@@ -2031,6 +2031,60 @@ async fn actor_mailbox_service_returns_contract_responses() {
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_cursor_can_hide_page_messages_without_resetting_pending_count() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-cursor-team".to_string(),
+            description: Some("team for actor inbox cursor semantics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-msg-cursor"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+
+    let sent = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({"text":"please review"}),
+            idempotency_key: Some("msg-cursor-1".to_string()),
+        })
+        .await
+        .expect("actor send");
+
+    let inbox = service
+        .actor_inbox(ActorInboxRequest {
+            run_id: run.id.clone(),
+            actor_id: "reviewer".to_string(),
+            cursor: Some(sent.message_id),
+            limit: Some(50),
+            states: None,
+        })
+        .await
+        .expect("actor inbox with cursor");
+    assert!(inbox.messages.is_empty());
+    assert_eq!(inbox.next_cursor, None);
+    assert_eq!(inbox.pending_count, 1);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

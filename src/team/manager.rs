@@ -2988,29 +2988,6 @@ impl TeamManager {
         Ok(counts)
     }
 
-    pub async fn count_actor_pending_inbox(
-        &self,
-        run_id: &str,
-        actor_id: &str,
-    ) -> anyhow::Result<i64> {
-        let count = sqlx::query_scalar(
-            r#"
-            SELECT COUNT(*)
-            FROM team_actor_messages
-            WHERE run_id = ?1
-              AND to_actor_id = ?2
-              AND status = 'pending'
-              AND to_peer_id = ?3
-            "#,
-        )
-        .bind(run_id)
-        .bind(actor_id)
-        .bind(ACTOR_MAIN_PEER_ID)
-        .fetch_one(&self.db)
-        .await?;
-        Ok(count)
-    }
-
     pub async fn list_pending_actor_unread_counts(
         &self,
     ) -> anyhow::Result<Vec<TeamPendingActorUnreadRecord>> {

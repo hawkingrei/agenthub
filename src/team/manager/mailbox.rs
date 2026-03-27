@@ -13,7 +13,8 @@ use agenthub_team_actor::{
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::{Map, Value};
-use sqlx::{Error as SqlxError, QueryBuilder, Row, Sqlite, SqlitePool};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Error as SqlxError, Executor, QueryBuilder, Row, Sqlite, SqlitePool};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -195,6 +196,7 @@ impl TeamManager {
         Ok((result.message, result.created))
     }
 
+    #[cfg(test)]
     pub async fn list_actor_inbox(
         &self,
         run_id: &str,
@@ -765,11 +767,6 @@ impl ActorMailboxService for TeamActorMailboxService {
         let run_id = required_trimmed_field(&request.run_id, "run_id")?;
         let actor_id = required_trimmed_field(&request.actor_id, "actor_id")?;
         let limit = request.limit.unwrap_or(50).clamp(1, 1000);
-        let pending_count = self
-            .manager
-            .count_actor_pending_inbox(run_id, actor_id)
-            .await
-            .map_err(map_actor_service_error)?;
         let include_delivered = request
             .states
             .as_ref()
@@ -777,11 +774,21 @@ impl ActorMailboxService for TeamActorMailboxService {
         let states = request
             .states
             .unwrap_or_else(|| vec![TeamActorMessageStatus::Pending]);
-        let messages = self
-            .manager
-            .list_actor_inbox(run_id, actor_id, limit, request.cursor, include_delivered)
-            .await
-            .map_err(map_actor_service_error)?
+        let snapshot = SqlActorMailboxStore {
+            db: self.manager.db.clone(),
+        }
+        .read_inbox_snapshot(&ListActorInboxQuery {
+            run_id: run_id.to_string(),
+            actor_id: actor_id.to_string(),
+            peer_id: ACTOR_MAIN_PEER_ID.to_string(),
+            limit,
+            after_id: request.cursor,
+            include_delivered,
+        })
+        .await
+        .map_err(|err| map_actor_service_error(anyhow::Error::new(err)))?;
+        let messages = snapshot
+            .messages
             .into_iter()
             .filter(|message| states.contains(&message.status))
             .collect::<Vec<_>>();
@@ -790,7 +797,7 @@ impl ActorMailboxService for TeamActorMailboxService {
         Ok(ActorInboxResponse {
             messages,
             next_cursor,
-            pending_count,
+            pending_count: snapshot.pending_count,
         })
     }
 
@@ -835,6 +842,202 @@ enum SqlActorMailboxStoreError {
     Sql(#[from] sqlx::Error),
     #[error("actor message idempotency conflict")]
     IdempotencyConflict,
+}
+
+#[derive(Debug)]
+struct ActorInboxSnapshot {
+    messages: Vec<TeamActorMessageRecord>,
+    pending_count: i64,
+}
+
+async fn count_pending_inbox_on_executor<'e, E>(
+    executor: E,
+    run_id: &str,
+    actor_id: &str,
+    peer_id: &str,
+) -> Result<i64, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1
+          AND to_actor_id = ?2
+          AND status = 'pending'
+          AND to_peer_id = ?3
+        "#,
+    )
+    .bind(run_id)
+    .bind(actor_id)
+    .bind(peer_id)
+    .fetch_one(executor)
+    .await
+}
+
+async fn list_inbox_rows_on_executor<'e, E>(
+    executor: E,
+    query: &ListActorInboxQuery,
+) -> Result<Vec<SqliteRow>, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    if query.include_delivered {
+        if let Some(after_id) = query.after_id {
+            sqlx::query(
+                r#"
+                SELECT
+                    id,
+                    run_id,
+                    from_actor_id,
+                    from_peer_id,
+                    to_actor_id,
+                    to_peer_id,
+                    channel,
+                    transport,
+                    route_json,
+                    payload_json,
+                    status,
+                    created_at,
+                    delivered_at
+                FROM team_actor_messages
+                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND id > ?4
+                ORDER BY id ASC
+                LIMIT ?5
+                "#,
+            )
+            .bind(&query.run_id)
+            .bind(&query.actor_id)
+            .bind(&query.peer_id)
+            .bind(after_id)
+            .bind(query.limit)
+            .fetch_all(executor)
+            .await
+        } else {
+            sqlx::query(
+                r#"
+                SELECT
+                    id,
+                    run_id,
+                    from_actor_id,
+                    from_peer_id,
+                    to_actor_id,
+                    to_peer_id,
+                    channel,
+                    transport,
+                    route_json,
+                    payload_json,
+                    status,
+                    created_at,
+                    delivered_at
+                FROM team_actor_messages
+                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3
+                ORDER BY id ASC
+                LIMIT ?4
+                "#,
+            )
+            .bind(&query.run_id)
+            .bind(&query.actor_id)
+            .bind(&query.peer_id)
+            .bind(query.limit)
+            .fetch_all(executor)
+            .await
+        }
+    } else if let Some(after_id) = query.after_id {
+        sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                from_actor_id,
+                from_peer_id,
+                to_actor_id,
+                to_peer_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                status,
+                created_at,
+                delivered_at
+            FROM team_actor_messages
+            WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending' AND id > ?4
+            ORDER BY id ASC
+            LIMIT ?5
+            "#,
+        )
+        .bind(&query.run_id)
+        .bind(&query.actor_id)
+        .bind(&query.peer_id)
+        .bind(after_id)
+        .bind(query.limit)
+        .fetch_all(executor)
+        .await
+    } else {
+        sqlx::query(
+            r#"
+            SELECT
+                id,
+                run_id,
+                from_actor_id,
+                from_peer_id,
+                to_actor_id,
+                to_peer_id,
+                channel,
+                transport,
+                route_json,
+                payload_json,
+                status,
+                created_at,
+                delivered_at
+            FROM team_actor_messages
+            WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending'
+            ORDER BY id ASC
+            LIMIT ?4
+            "#,
+        )
+        .bind(&query.run_id)
+        .bind(&query.actor_id)
+        .bind(&query.peer_id)
+        .bind(query.limit)
+        .fetch_all(executor)
+        .await
+    }
+}
+
+fn parse_inbox_rows(rows: Vec<SqliteRow>) -> Result<Vec<TeamActorMessageRecord>, sqlx::Error> {
+    let mut messages = Vec::with_capacity(rows.len());
+    for row in rows {
+        messages.push(
+            parse_team_actor_message_row(&row)
+                .map_err(|err| sqlx::Error::Protocol(err.to_string()))?,
+        );
+    }
+    Ok(messages)
+}
+
+impl SqlActorMailboxStore {
+    async fn read_inbox_snapshot(
+        &self,
+        query: &ListActorInboxQuery,
+    ) -> Result<ActorInboxSnapshot, SqlActorMailboxStoreError> {
+        let mut tx = self.db.begin().await?;
+        let pending_count = count_pending_inbox_on_executor(
+            &mut *tx,
+            &query.run_id,
+            &query.actor_id,
+            &query.peer_id,
+        )
+        .await?;
+        let rows = list_inbox_rows_on_executor(&mut *tx, query).await?;
+        let messages = parse_inbox_rows(rows)?;
+        tx.commit().await?;
+        Ok(ActorInboxSnapshot {
+            messages,
+            pending_count,
+        })
+    }
 }
 
 #[async_trait]
@@ -921,136 +1124,8 @@ impl ActorMailboxStore for SqlActorMailboxStore {
         &self,
         query: &ListActorInboxQuery,
     ) -> Result<Vec<TeamActorMessageRecord>, Self::Error> {
-        let rows = if query.include_delivered {
-            if let Some(after_id) = query.after_id {
-                sqlx::query(
-                    r#"
-                    SELECT
-                        id,
-                        run_id,
-                        from_actor_id,
-                        from_peer_id,
-                        to_actor_id,
-                        to_peer_id,
-                        channel,
-                        transport,
-                        route_json,
-                        payload_json,
-                        status,
-                        created_at,
-                        delivered_at
-                    FROM team_actor_messages
-                    WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND id > ?4
-                    ORDER BY id ASC
-                    LIMIT ?5
-                    "#,
-                )
-                .bind(&query.run_id)
-                .bind(&query.actor_id)
-                .bind(&query.peer_id)
-                .bind(after_id)
-                .bind(query.limit)
-                .fetch_all(&self.db)
-                .await?
-            } else {
-                sqlx::query(
-                    r#"
-                    SELECT
-                        id,
-                        run_id,
-                        from_actor_id,
-                        from_peer_id,
-                        to_actor_id,
-                        to_peer_id,
-                        channel,
-                        transport,
-                        route_json,
-                        payload_json,
-                        status,
-                        created_at,
-                        delivered_at
-                    FROM team_actor_messages
-                    WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3
-                    ORDER BY id ASC
-                    LIMIT ?4
-                    "#,
-                )
-                .bind(&query.run_id)
-                .bind(&query.actor_id)
-                .bind(&query.peer_id)
-                .bind(query.limit)
-                .fetch_all(&self.db)
-                .await?
-            }
-        } else if let Some(after_id) = query.after_id {
-            sqlx::query(
-                r#"
-                SELECT
-                    id,
-                    run_id,
-                    from_actor_id,
-                    from_peer_id,
-                    to_actor_id,
-                    to_peer_id,
-                    channel,
-                    transport,
-                    route_json,
-                    payload_json,
-                    status,
-                    created_at,
-                    delivered_at
-                FROM team_actor_messages
-                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending' AND id > ?4
-                ORDER BY id ASC
-                LIMIT ?5
-                "#,
-            )
-            .bind(&query.run_id)
-            .bind(&query.actor_id)
-            .bind(&query.peer_id)
-            .bind(after_id)
-            .bind(query.limit)
-            .fetch_all(&self.db)
-            .await?
-        } else {
-            sqlx::query(
-                r#"
-                SELECT
-                    id,
-                    run_id,
-                    from_actor_id,
-                    from_peer_id,
-                    to_actor_id,
-                    to_peer_id,
-                    channel,
-                    transport,
-                    route_json,
-                    payload_json,
-                    status,
-                    created_at,
-                    delivered_at
-                FROM team_actor_messages
-                WHERE run_id = ?1 AND to_actor_id = ?2 AND to_peer_id = ?3 AND status = 'pending'
-                ORDER BY id ASC
-                LIMIT ?4
-                "#,
-            )
-            .bind(&query.run_id)
-            .bind(&query.actor_id)
-            .bind(&query.peer_id)
-            .bind(query.limit)
-            .fetch_all(&self.db)
-            .await?
-        };
-
-        let mut messages = Vec::with_capacity(rows.len());
-        for row in rows {
-            messages.push(
-                parse_team_actor_message_row(&row)
-                    .map_err(|err| sqlx::Error::Protocol(err.to_string()))?,
-            );
-        }
-        Ok(messages)
+        let rows = list_inbox_rows_on_executor(&self.db, query).await?;
+        parse_inbox_rows(rows).map_err(Into::into)
     }
 
     async fn ack_message(
