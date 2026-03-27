@@ -217,6 +217,13 @@ Constraint:
   restart.
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
+- When one specific teammate owns the next action, Team coordination should default to
+  `to_member` / `to_leader` direct mailbox delivery instead of `group_chat`.
+- `group_chat` should be reserved for human-visible progress, shared checkpoints, and genuinely
+  multi-recipient coordination.
+- Large evidence handoffs should be summary-first: send the concise summary in the mailbox/chat
+  payload and attach a stable `detail_ref` / artifact pointer for the full content instead of
+  pasting large logs or copied context into routine messages.
 - Conversation input should allow omission of `run_id`/`from_actor_id`; backend should enrich sender identity and routing from session + mention context.
 - Execution-command semantics (`assignment`/`approval`/`step_action`) should still route through mailbox, not event-bus-only transport.
 - Manual `compile preview` and `Create Run` actions are debug/advanced tools, not the primary Team workflow.

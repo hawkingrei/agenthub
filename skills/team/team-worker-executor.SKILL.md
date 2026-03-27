@@ -47,7 +47,8 @@ findings.
   configured ACP reminder. Treat that reminder as a follow-up nudge for the same assignment and
   not as a new human request.
 - Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
-- Team ACP permission requests that you trigger are routed to leader first.
+- Team ACP permission requests that you trigger are routed to a non-requester agent reviewer first
+  and only fall back to leader when no peer worker is available.
 - Leader-originated Team ACP permission requests may be routed to you automatically; only review
   them when ACP exposes the review action in your current session.
 - Do not review your own Team ACP permission request.
@@ -148,12 +149,16 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   additionally notify impacted peers or the shared channel when the discovery affects shared plans,
   dependencies, or future debugging work.
 - Treat those routes as:
-  - `leader-mailbox` by default
+  - `leader-mailbox` by default when the leader is the single next owner
   - `peer-mailbox` for one-peer coordination that does not need shared visibility
   - `shared-channel` when multiple teammates or the human need the update
 - When posting to a shared channel, use `channel_id` (for example `all`) as the transport target;
   keep `@member_id` in the message body as mention metadata for ownership context rather than as a
   recipient filter.
+- Large logs, traces, or copied context should be summary-first:
+  - send the short summary in mailbox text/payload
+  - attach a stable `detail_ref` / artifact pointer for the full content
+  - avoid pasting the full body unless the receiver truly cannot access the referenced detail
 - When posting to a shared channel, explicitly `@` the relevant owner, reviewer, dependency peer,
   or human stakeholder so the update has clear recipients.
 - If a blocker or risk needs immediate operator attention, send a concise human-mailbox

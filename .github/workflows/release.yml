@@ -1,0 +1,249 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to release (for example v0.1.0 or preview-2026-03-26)'
+        required: true
+      confirm_create_release_tag:
+        description: 'Required when workflow_dispatch creates a new semver-looking tag'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CROSS_VERSION: 0.2.5
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            arch: amd64
+            cross: true
+          
+          # Linux ARM64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            arch: arm64
+            cross: true
+          
+          # macOS ARM64 (Apple Silicon)
+          - target: aarch64-apple-darwin
+            os: macos-14
+            arch: arm64
+            cross: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (for Linux cross-compilation)
+        if: matrix.cross
+        run: |
+          cargo install cross --version ${{ env.CROSS_VERSION }} --locked
+
+      - name: Install dependencies (Ubuntu)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build agenthub (native)
+        if: '!matrix.cross'
+        run: |
+          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub
+
+      - name: Build agenthub (cross)
+        if: matrix.cross
+        run: |
+          cross build --locked --release --target ${{ matrix.target }} --bin agenthub
+
+      - name: Build agenthub-codex-acp (native)
+        if: '!matrix.cross'
+        run: |
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
+
+      - name: Build agenthub-codex-acp (cross)
+        if: matrix.cross
+        run: |
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
+
+      - name: Package
+        shell: bash
+        run: |
+          TAG_VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          ASSET_VERSION="${TAG_VERSION#v}"
+          
+          BINARY_NAME="agenthub"
+          TARGET="${{ matrix.target }}"
+          ARCH="${{ matrix.arch }}"
+          
+          # Determine OS name
+          if [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            OS_NAME="linux"
+          elif [[ "${{ matrix.os }}" == macos* ]]; then
+            OS_NAME="darwin"
+          else
+            OS_NAME="unknown"
+          fi
+          
+          PACKAGE_NAME="${BINARY_NAME}-${ASSET_VERSION}-${OS_NAME}-${ARCH}"
+          
+          # Create package directory
+          mkdir -p "dist/${PACKAGE_NAME}"
+          
+          # Copy binaries
+          cp "target/${TARGET}/release/${BINARY_NAME}" "dist/${PACKAGE_NAME}/"
+          cp "target/${TARGET}/release/agenthub-codex-acp" "dist/${PACKAGE_NAME}/"
+          
+          # Copy additional files
+          cp README.md LICENSE "dist/${PACKAGE_NAME}/" 2>/dev/null || true
+          
+          # Create archive
+          cd dist
+          if [[ "${{ matrix.os }}" == windows* ]]; then
+            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
+            echo "ASSET=${PACKAGE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+            echo "ASSET=${PACKAGE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_ENV
+          echo "ASSET_VERSION=${ASSET_VERSION}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist/${{ env.ASSET }}
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: false
+
+      - name: Prepare release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          TAG_VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          ASSET_VERSION="${TAG_VERSION#v}"
+          PRERELEASE=false
+          IS_SEMVER_TAG=false
+          TAG_EXISTS=false
+          if [[ "${TAG_VERSION}" == *alpha* || "${TAG_VERSION}" == *beta* || "${TAG_VERSION}" == *rc* ]]; then
+            PRERELEASE=true
+          fi
+          if [[ "${TAG_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.].+)?$ ]]; then
+            IS_SEMVER_TAG=true
+          fi
+          if git ls-remote --tags origin "refs/tags/${TAG_VERSION}" | grep -q "refs/tags/${TAG_VERSION}$"; then
+            TAG_EXISTS=true
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" \
+             && "${IS_SEMVER_TAG}" == "true" \
+             && "${TAG_EXISTS}" != "true" \
+             && "${{ github.event.inputs.confirm_create_release_tag || 'false' }}" != "true" ]]; then
+            echo "::error::Manual release would create a new semver tag (${TAG_VERSION}) from ${GITHUB_SHA}. Re-run with confirm_create_release_tag=true or use a preview tag."
+            exit 1
+          fi
+          echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "asset_version=${ASSET_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Display structure
+        run: ls -R dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag_version }}
+          name: Release ${{ steps.release_meta.outputs.tag_version }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: ${{ steps.release_meta.outputs.prerelease == 'true' }}
+          files: dist/**/*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Each archive contains two binaries:
+            - `agenthub` - Main AgentHub server
+            - `agenthub-codex-acp` - ACP adapter for Codex integration
+
+            ### Linux x86_64
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            ```
+
+            ### Linux ARM64
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-arm64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            ```
+
+            ### macOS ARM64 (Apple Silicon)
+            ```bash
+            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-darwin-arm64.tar.gz"
+            tar -xzf agenthub.tar.gz
+            sudo mv agenthub-*/agenthub /usr/local/bin/
+            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            ```
+
+            ## Verification
+
+            Verify the binaries:
+            ```bash
+            agenthub --version
+            agenthub-codex-acp --version
+            ```
+
+            ## Documentation
+
+            See [User Documentation](https://github.com/${{ github.repository }}/tree/main/userdocs) for detailed usage instructions.

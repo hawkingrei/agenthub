@@ -256,7 +256,6 @@ export function useTeamConversationActions({
         });
         if (taskId) {
           const message = await api.sendTeamTaskMessage(token, selectedTeamId, taskId, {
-            route: "group_chat",
             payload: chatPayload,
           });
           setTaskMessages((prev) =>

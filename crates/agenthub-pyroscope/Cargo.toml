@@ -1,0 +1,9 @@
+[package]
+name = "agenthub-pyroscope"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+pyroscope = { version = "2.0.0", features = ["backend-pprof-rs"] }
+tracing = "0.1"
