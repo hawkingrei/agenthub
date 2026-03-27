@@ -1386,10 +1386,11 @@ test("team member setup adds the first agent and appends more agents through spe
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
+  const teamName = "member-setup-team";
 
   await gotoTeams(page);
   await createTeamFromModal(page, {
-    name: "member-setup-team",
+    name: teamName,
     goal: "Create team first, then configure leader and worker profiles.",
   });
 
@@ -1398,6 +1399,7 @@ test("team member setup adds the first agent and appends more agents through spe
     model: "codex",
     identity: "Principal planner and reviewer",
   });
+  await openTeamFromSelector(page, teamName);
   await expectAddAgentEntryVisible(page);
 
   await createTeamMemberFromModal(page, {
@@ -1734,10 +1736,11 @@ test("team setup keeps add agent wording after the first member binds", async ({
 }) => {
   const fixture = await mockTeamPageApis(page);
   fixture.agents.splice(0, fixture.agents.length);
+  const teamName = "forge-team";
 
   await gotoTeams(page);
   await createTeamFromModal(page, {
-    name: "forge-team",
+    name: teamName,
     goal: "Bind leader in-place before worker setup.",
   });
   await expectAddAgentEntryVisible(page);
@@ -1748,6 +1751,7 @@ test("team setup keeps add agent wording after the first member binds", async ({
     identity: "Leader bound in-place",
   });
 
+  await openTeamFromSelector(page, teamName);
   await expectAddAgentEntryVisible(page);
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(1);
