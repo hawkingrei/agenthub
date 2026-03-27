@@ -47,9 +47,11 @@ findings.
   configured ACP reminder. Treat that reminder as a follow-up nudge for the same assignment and
   not as a new human request.
 - Do not self-enable or retune `agent_loop` unless the human/operator explicitly requests it.
-- Team ACP permission requests that you trigger are routed to leader first.
-- Leader-originated Team ACP permission requests may be routed to you automatically; only review
-  them when ACP exposes the review action in your current session.
+- Only review a Team ACP permission request when ACP exposes the review action in your current
+  session.
+- Inspect the requested command, path/scope, and offered approval options before responding.
+- Approve only the least-privilege option justified by the current task; otherwise cancel/reject
+  and report the blocker or follow-up work back to leader.
 - Do not review your own Team ACP permission request.
 - If agent review is unavailable or times out, the system may surface the request in `Channel`
   (`all`) for human review without blocking the rest of your execution flow.
