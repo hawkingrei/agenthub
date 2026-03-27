@@ -80,6 +80,26 @@ pub(crate) async fn load_team_for_user(
     Ok(team)
 }
 
+fn sanitize_team_spec_for_response(spec: &mut Value) {
+    let Some(spec_obj) = spec.as_object_mut() else {
+        return;
+    };
+    let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for member in members {
+        let Some(member_obj) = member.as_object_mut() else {
+            continue;
+        };
+        member_obj.remove("skills");
+    }
+}
+
+fn sanitize_team_definition_for_response(mut team: TeamDefinitionRecord) -> TeamDefinitionRecord {
+    sanitize_team_spec_for_response(&mut team.spec);
+    team
+}
+
 async fn load_run_for_user(
     state: &AppState,
     run_id: &str,
@@ -457,7 +477,7 @@ async fn create_team(
         let _ = state.teams.delete_team(&team.id, &member_ids).await;
         return Err(map_runtime_start_error(err));
     }
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn update_team_spec(
@@ -489,7 +509,7 @@ async fn update_team_spec(
             .await
             .map_err(map_runtime_start_error)?;
     }
-    Ok(Json(updated))
+    Ok(Json(sanitize_team_definition_for_response(updated)))
 }
 
 async fn start_team(
@@ -586,6 +606,7 @@ async fn list_teams(
         .await?
         .into_iter()
         .filter(|team| team_owner_matches_user(team, &user))
+        .map(sanitize_team_definition_for_response)
         .collect::<Vec<_>>();
     Ok(Json(teams))
 }
@@ -597,7 +618,7 @@ async fn get_team(
 ) -> Result<Json<TeamDefinitionRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn get_team_runtime(
@@ -643,7 +664,7 @@ async fn delete_team(
         .delete_team(&team_id, &member_ids)
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
-    Ok(Json(team))
+    Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
 async fn create_team_task(
@@ -735,7 +756,6 @@ async fn update_team_task(
     Path((team_id, task_id)): Path<(String, String)>,
     Json(payload): Json<UpdateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskRecord>, ApiError> {
-    let _ = (&payload.status, &payload.assigned_member_id);
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
     let task = state
@@ -746,9 +766,12 @@ async fn update_team_task(
     if task.team_id != team_id {
         return Err(ApiError::not_found("task not found"));
     }
-    Err(ApiError::forbidden(
-        "canonical Team task status/owner updates are agent-only; use actor runtime controls",
-    ))
+    let error_message = if payload.status.is_some() || payload.assigned_member_id.is_some() {
+        "canonical Team task status/owner updates are agent-only; use actor runtime controls"
+    } else {
+        "canonical Team task updates are agent-only; use actor runtime controls"
+    };
+    Err(ApiError::forbidden(error_message))
 }
 
 async fn send_team_task_message(
@@ -1081,6 +1104,8 @@ async fn get_team_run_snapshot(
         dead_letter: status_counts.get("dead_letter").copied().unwrap_or(0),
         recent_messages,
     };
+
+    let team = sanitize_team_definition_for_response(team);
 
     Ok(Json(TeamRunSnapshotResponse {
         run,
@@ -3714,8 +3739,6 @@ fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpe
         let model = parse_optional_member_text(member.get("model"), "model")?;
         let prompt = parse_optional_member_text(member.get("prompt"), "prompt")?;
         let description = parse_optional_member_description(member.get("description"))?;
-        let _skills = parse_optional_member_skills(member.get("skills"))?;
-
         out.push(TeamMemberSpec {
             member_id,
             role,
@@ -3790,33 +3813,6 @@ fn parse_optional_member_description(value: Option<&Value>) -> Result<Option<Str
         return Ok(None);
     }
     Ok(Some(trimmed.to_string()))
-}
-
-fn parse_optional_member_skills(value: Option<&Value>) -> Result<Vec<String>, ApiError> {
-    let Some(value) = value else {
-        return Ok(Vec::new());
-    };
-    let skills = value
-        .as_array()
-        .ok_or_else(|| ApiError::bad_request("spec.members[].skills must be an array"))?;
-    let mut out = Vec::with_capacity(skills.len());
-    let mut seen = HashSet::with_capacity(skills.len());
-    for skill in skills {
-        let skill = skill
-            .as_str()
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .ok_or_else(|| {
-                ApiError::bad_request("spec.members[].skills entries must be non-empty strings")
-            })?;
-        if !seen.insert(skill.to_string()) {
-            return Err(ApiError::bad_request(
-                "spec.members[].skills must not contain duplicates",
-            ));
-        }
-        out.push(skill.to_string());
-    }
-    Ok(out)
 }
 
 fn parse_spec_leader_member_id(

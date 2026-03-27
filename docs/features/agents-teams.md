@@ -112,9 +112,13 @@ terminology and operating expectations drift.
     - `team-worker-executor`
     - `team-actor-mailbox`
 - Team spec and human UI must not treat `spec.members[].skills` as an operator-managed contract.
+- Legacy `spec.members[].skills` input is ignored and stripped during normalization; public Team
+  read APIs also redact any persisted legacy member skill arrays from responses.
 - Discovery cards and runtime snapshots should expose effective role-derived skills so operators can
   inspect current capabilities without editing them.
 - Load only required phase skills on top of the role-bound system baseline.
+- Phase skills such as `team-task-lifecycle` and `team-deliberation-rules` remain separately
+  loadable; they are not part of the mandatory role-bound system skill set.
 - Keep decisions/errors in workspace-local context files.
 - Agents may self-maintain their own role profile through `profile_patch_proposal`:
   - `target="team"` updates the durable member identity/card baseline

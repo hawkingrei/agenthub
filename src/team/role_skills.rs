@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 const LEADER_ROLE_SYSTEM_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
@@ -25,12 +23,8 @@ pub fn mandatory_team_role_skills(role: &str) -> &'static [&'static str] {
 }
 
 pub fn effective_team_member_skills(role: &str) -> Vec<String> {
-    let mut out = Vec::with_capacity(mandatory_team_role_skills(role).len());
-    let mut seen = HashSet::with_capacity(out.capacity());
-    for skill in mandatory_team_role_skills(role) {
-        if seen.insert((*skill).to_string()) {
-            out.push((*skill).to_string());
-        }
-    }
-    out
+    mandatory_team_role_skills(role)
+        .iter()
+        .map(|skill| (*skill).to_string())
+        .collect()
 }

@@ -61,3 +61,12 @@ Observed:
 - Team spec normalization strips member `skills` configuration.
 - Discovery cards and runtime snapshots show effective system-managed role skills.
 - Team profile patch proposals still support prompt/description updates but reject `skills_add`.
+
+## Follow-up fixes
+
+- `team-task-lifecycle` and `team-deliberation-rules` remain loadable phase skills instead of
+  being treated as reserved role-managed skills.
+- Public Team read APIs (`create`, `update`, `list`, `get`, `delete`, run snapshot) redact any
+  persisted legacy `spec.members[].skills` arrays from responses.
+- Legacy `spec.members[].skills` request payloads are ignored during normalization instead of being
+  validated as an operator-managed field.
