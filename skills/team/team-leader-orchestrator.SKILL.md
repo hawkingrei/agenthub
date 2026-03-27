@@ -203,7 +203,7 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 2. Acknowledge each consumed message once:
    `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
 3. Delegate with deterministic payload JSON:
-   `MESSAGE="$(cat <<'EOF'\n## Task brief\n\n- task: ...\n- acceptance: ...\n- deadline: ...\nEOF\n)"; agenthub actor send --to-actor-id "$WORKER_ID" --text "$MESSAGE"`
+   `agenthub actor send --to-actor-id "$WORKER_ID" --text-file .agenthubmemory/mailbox/outbox/task-brief.md`
 4. If a worker is blocked, ask for missing facts or re-scope the task.
 5. Keep a running decision log and conflict resolution summary.
 

@@ -182,7 +182,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
-   `MESSAGE="$(cat <<'EOF'\n## Execution update\n\n- status: in_progress|completed|blocked\n- result: ...\n- evidence:\n  - ...\n- finding: ...\nEOF\n)"; agenthub actor send --to-actor-id "$LEADER_ID" --text "$MESSAGE"`
+   `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`
 5. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 6. Proactively advance the assigned task:
