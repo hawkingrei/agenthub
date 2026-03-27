@@ -186,6 +186,50 @@ async function createTeamFromModal(
   await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
 }
 
+type AddAgentEntryLane = "primary" | "menuItem" | "menuTrigger";
+
+async function waitForAddAgentEntryLane(
+  page: import("@playwright/test").Page
+): Promise<AddAgentEntryLane> {
+  const primaryButton = page
+    .locator(".teams-main")
+    .getByRole("button", { name: "Add Agent", exact: true })
+    .first();
+  const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+
+  await expect
+    .poll(async (): Promise<AddAgentEntryLane | "missing"> => {
+      if (await visibleMenuItem.isVisible().catch(() => false)) {
+        return "menuItem";
+      }
+      if (await primaryButton.isVisible().catch(() => false)) {
+        return "primary";
+      }
+      if (await menuTrigger.isVisible().catch(() => false)) {
+        return "menuTrigger";
+      }
+      return "missing";
+    }, {
+      timeout: 5_000,
+    })
+    .not.toBe("missing");
+
+  if (await visibleMenuItem.isVisible().catch(() => false)) {
+    return "menuItem";
+  }
+  if (await primaryButton.isVisible().catch(() => false)) {
+    return "primary";
+  }
+  if (await menuTrigger.isVisible().catch(() => false)) {
+    return "menuTrigger";
+  }
+  throw new Error("Timed out waiting for an Add Agent entry point");
+}
+
 async function createTeamMemberFromModal(
   page: import("@playwright/test").Page,
   options: {
@@ -208,10 +252,6 @@ async function createTeamMemberFromModal(
   const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
   const menuTrigger = page.getByRole("button", {
     name: "Open selected team menu",
-    exact: true,
-  });
-  const emptyStateHeading = page.getByRole("heading", {
-    name: "No agents have joined this team yet.",
     exact: true,
   });
   const selectionError = page.getByText("Select a team first", { exact: true });
@@ -240,31 +280,30 @@ async function createTeamMemberFromModal(
     }
     return false;
   };
-  if (
-    (await visibleMenuItem.isVisible().catch(() => false)) &&
-    (await tryOpen(async () => visibleMenuItem.click()))
-  ) {
-    // dialog opened
-  } else if (
-    (await emptyStateHeading.isVisible().catch(() => false)) &&
-    (await primaryOpenButton.isVisible().catch(() => false)) &&
-    (await tryOpen(async () => primaryOpenButton.click(), { waitForTeamSelection: true }))
-  ) {
-    // dialog opened
-  } else if (
-    (await primaryOpenButton.isVisible().catch(() => false)) &&
-    (await tryOpen(async () => primaryOpenButton.click(), { waitForTeamSelection: true }))
-  ) {
-    // dialog opened
-  } else {
+  const openFromVisibleLane = async (): Promise<boolean> => {
+    const lane = await waitForAddAgentEntryLane(page);
+    if (lane === "menuItem") {
+      return tryOpen(async () => visibleMenuItem.click());
+    }
+    if (lane === "primary") {
+      return tryOpen(async () => primaryOpenButton.click(), {
+        waitForTeamSelection: true,
+      });
+    }
+
     await expect(menuTrigger).toBeVisible();
     await openSelectedTeamMenu(page);
     const menuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
     await expect(menuItem).toBeVisible();
-    if (!(await tryOpen(async () => menuItem.click()))) {
+    return tryOpen(async () => menuItem.click());
+  };
+
+  if (!(await openFromVisibleLane())) {
+    await page.waitForTimeout(150);
+    if (!(await openFromVisibleLane())) {
       await openSelectedTeamMenu(page);
-      await expect(menuItem).toBeVisible();
-      await menuItem.click();
+      await expect(visibleMenuItem).toBeVisible();
+      await visibleMenuItem.click();
     }
   }
   await expect(dialog).toBeVisible();
@@ -387,11 +426,8 @@ async function clickSelectedTeamMenuItem(
 async function expectAddAgentEntryVisible(
   page: import("@playwright/test").Page
 ): Promise<void> {
-  const primaryButton = page
-    .locator(".teams-main")
-    .getByRole("button", { name: "Add Agent", exact: true })
-    .first();
-  if (await primaryButton.isVisible().catch(() => false)) {
+  const lane = await waitForAddAgentEntryLane(page);
+  if (lane === "primary" || lane === "menuItem") {
     return;
   }
   const menuTrigger = page.getByRole("button", {
