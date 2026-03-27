@@ -201,16 +201,18 @@ async function createTeamMemberFromModal(
   const openButtonLabel = "Add Agent";
   const title = "Add Agent";
   const confirmLabel = "Create Agent";
-  const menuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
-  if (await menuItem.isVisible().catch(() => false)) {
-    await menuItem.click();
+  const menuTrigger = page.getByRole("button", {
+    name: "Open selected team menu",
+    exact: true,
+  });
+  if (await menuTrigger.isVisible().catch(() => false)) {
+    await clickSelectedTeamMenuItem(page, openButtonLabel);
   } else {
     const openButton = page.getByRole("button", { name: openButtonLabel, exact: true }).first();
-    if ((await openButton.count()) > 0) {
+    if (await openButton.isVisible().catch(() => false)) {
       await openButton.click();
     } else {
-      await openSelectedTeamMenu(page);
-      await page.getByRole("menuitem", { name: openButtonLabel, exact: true }).click();
+      await clickSelectedTeamMenuItem(page, openButtonLabel);
     }
   }
   const dialog = page
