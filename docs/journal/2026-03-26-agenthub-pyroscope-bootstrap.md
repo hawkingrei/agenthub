@@ -11,6 +11,8 @@
 
 - bootstrap happens in `agenthub::run()` after tracing initialization and before `AppState::init()`;
 - incomplete environment configuration logs a warning and leaves profiling disabled;
+- environment inspection reads only the required keys and treats non-UTF8 values as missing so
+  profiling bootstrap remains non-fatal;
 - profiler startup failure is non-fatal so deployment issues do not block the main service;
 - process shutdown drops a guard that stops the running profiler agent and shuts down its worker threads.
 

@@ -109,7 +109,7 @@ impl ActivePyroscopeGuard {
 pub fn maybe_start_from_env(
     options: PyroscopeBootstrapOptions<'_>,
 ) -> Option<ActivePyroscopeGuard> {
-    match load_env_state(std::env::vars()) {
+    match load_process_env_state() {
         PyroscopeEnvState::Disabled => {
             tracing::info!("pyroscope profiler disabled: required environment variables not set");
             None
@@ -151,6 +151,14 @@ pub fn maybe_start_from_env(
     }
 }
 
+fn load_process_env_state() -> PyroscopeEnvState {
+    load_env_state(REQUIRED_ENV_KEYS.iter().filter_map(|key| {
+        std::env::var_os(key)
+            .and_then(|value| value.into_string().ok())
+            .map(|value| (*key, value))
+    }))
+}
+
 fn load_env_state<K, V, I>(vars: I) -> PyroscopeEnvState
 where
     K: AsRef<str>,
@@ -162,20 +170,14 @@ where
         .map(|(key, value)| (key.as_ref().to_string(), value.as_ref().to_string()))
         .collect::<HashMap<_, _>>();
 
-    let present = REQUIRED_ENV_KEYS
+    let (present, missing): (Vec<_>, Vec<_>) = REQUIRED_ENV_KEYS
         .iter()
         .copied()
-        .filter(|key| read_trimmed_env_value(&env_map, key).is_some())
-        .collect::<Vec<_>>();
+        .partition(|key| read_trimmed_env_value(&env_map, key).is_some());
     if present.is_empty() {
         return PyroscopeEnvState::Disabled;
     }
 
-    let missing = REQUIRED_ENV_KEYS
-        .iter()
-        .copied()
-        .filter(|key| read_trimmed_env_value(&env_map, key).is_none())
-        .collect::<Vec<_>>();
     if !missing.is_empty() {
         return PyroscopeEnvState::Incomplete { present, missing };
     }
@@ -200,10 +202,22 @@ fn read_trimmed_env_value(env_map: &HashMap<String, String>, key: &str) -> Optio
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+
     use super::{
         PYROSCOPE_BASIC_AUTH_PASSWORD_ENV, PYROSCOPE_BASIC_AUTH_USER_ENV,
         PYROSCOPE_SERVER_ADDRESS_ENV, PyroscopeEnvConfig, PyroscopeEnvState, load_env_state,
     };
+
+    fn load_os_env_state<I>(vars: I) -> PyroscopeEnvState
+    where
+        I: IntoIterator<Item = (&'static str, OsString)>,
+    {
+        load_env_state(
+            vars.into_iter()
+                .filter_map(|(key, value)| value.into_string().ok().map(|value| (key, value))),
+        )
+    }
 
     #[test]
     fn load_env_state_disables_profiler_when_all_keys_are_missing() {
@@ -267,6 +281,34 @@ mod tests {
                 basic_auth_user: "ops".to_string(),
                 server_address: "https://pyroscope.example.com".to_string(),
             })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_env_state_treats_non_utf8_values_as_missing() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let state = load_os_env_state([
+            (PYROSCOPE_BASIC_AUTH_PASSWORD_ENV, OsString::from("secret")),
+            (
+                PYROSCOPE_BASIC_AUTH_USER_ENV,
+                OsString::from_vec(vec![0xFF, 0xFE]),
+            ),
+            (
+                PYROSCOPE_SERVER_ADDRESS_ENV,
+                OsString::from("https://pyroscope.example.com"),
+            ),
+        ]);
+        assert_eq!(
+            state,
+            PyroscopeEnvState::Incomplete {
+                present: vec![
+                    PYROSCOPE_BASIC_AUTH_PASSWORD_ENV,
+                    PYROSCOPE_SERVER_ADDRESS_ENV,
+                ],
+                missing: vec![PYROSCOPE_BASIC_AUTH_USER_ENV],
+            }
         );
     }
 }

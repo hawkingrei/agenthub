@@ -44,6 +44,8 @@ Profiling starts only when all three environment variables are present with non-
 
 If none are present, profiling stays disabled.
 If only a subset is present, AgentHub logs a warning and continues without profiling.
+Non-UTF8 values are treated as missing so bootstrap never panics while inspecting the process
+environment.
 
 ### 3) Runtime Lifecycle
 
@@ -71,6 +73,8 @@ If only a subset is present, AgentHub logs a warning and continues without profi
 ### 2) Failure Contract
 
 - Missing or partial environment configuration must not abort the process.
+- Non-UTF8 environment values must not abort the process and should be treated the same as missing
+  configuration.
 - Startup failures from the upstream profiler library must be observable via structured logs.
 
 ### 3) Secret Handling Contract
