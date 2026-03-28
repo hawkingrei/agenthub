@@ -309,6 +309,14 @@ export function formatTeamRuntimeActionSummary(
   return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : prefix;
 }
 
+export function isCurrentTeamScopedRequest(
+  current: { teamId: string; requestSeq: number },
+  teamId: string,
+  requestSeq: number
+): boolean {
+  return Boolean(teamId) && current.teamId === teamId && current.requestSeq === requestSeq;
+}
+
 export function validateRunInputJson(raw: string): RunInputValidation {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -580,6 +588,10 @@ export function TeamPage(props: TeamPageProps) {
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [teamSelectorFilter, setTeamSelectorFilter] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(routeTeamId);
+  const sharedConversationRequestScopeRef = useRef({
+    teamId: routeTeamId ?? "",
+    requestSeq: 0,
+  });
   const setRouteScopedSelectedTeamId = useCallback<React.Dispatch<React.SetStateAction<string | null>>>(
     (next) => {
       setSelectedTeamId((current) => {
@@ -849,6 +861,12 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     setSelectedTeamId(routeTeamId);
   }, [routeTeamId]);
+  useEffect(() => {
+    sharedConversationRequestScopeRef.current = {
+      teamId: selectedTeamId?.trim() ?? "",
+      requestSeq: sharedConversationRequestScopeRef.current.requestSeq + 1,
+    };
+  }, [selectedTeamId]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -2086,11 +2104,25 @@ export function TeamPage(props: TeamPageProps) {
 
   const refreshSharedConversation = useCallback(
     async (teamId: string) => {
+      const normalizedTeamId = teamId.trim();
+      const requestSeq = sharedConversationRequestScopeRef.current.requestSeq;
+      const isCurrentRequest = () =>
+        isCurrentTeamScopedRequest(
+          sharedConversationRequestScopeRef.current,
+          normalizedTeamId,
+          requestSeq
+        );
       try {
-        const detail = await api.getTeamSharedThread(props.token, teamId);
+        const detail = await api.getTeamSharedThread(props.token, normalizedTeamId);
+        if (!isCurrentRequest()) {
+          return;
+        }
         setSharedConversation(detail.task);
         setSharedConversationLatestRun(detail.latest_run ?? null);
       } catch (err) {
+        if (!isCurrentRequest()) {
+          return;
+        }
         if (getApiErrorStatus(err) === 404) {
           setSharedConversation(null);
           setSharedConversationLatestRun(null);

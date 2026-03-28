@@ -26,7 +26,7 @@ fn hex_encode(data: &[u8]) -> String {
     }
     result
 }
-use sqlx::{Executor, QueryBuilder, Row, Sqlite, SqlitePool};
+use sqlx::{Error as SqlxError, Executor, QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -76,6 +76,13 @@ const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
 pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
 pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+
+fn is_row_not_found(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    )
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct TeamConversationStreamEvent {
@@ -133,22 +140,22 @@ where
         r#"
         SELECT
             t.id AS task_id,
-            c.id AS conversation_id
+            c.id AS conversation_id,
+            (
+                SELECT MAX(m.id)
+                FROM team_conversation_messages m
+                WHERE m.conversation_id = c.id
+            ) AS latest_message_id
         FROM team_tasks t
         INNER JOIN team_conversations c ON c.task_id = t.id
-        LEFT JOIN (
-            SELECT conversation_id, MAX(id) AS latest_message_id
-            FROM team_conversation_messages
-            GROUP BY conversation_id
-        ) m ON m.conversation_id = c.id
         WHERE t.team_id = ?1
           AND (
             lower(trim(t.title)) = ?2
             OR lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?3
           )
         ORDER BY
-            CASE WHEN m.latest_message_id IS NULL THEN 1 ELSE 0 END ASC,
-            m.latest_message_id DESC,
+            CASE WHEN latest_message_id IS NULL THEN 1 ELSE 0 END ASC,
+            latest_message_id DESC,
             c.created_at ASC,
             t.created_at ASC,
             t.id ASC
@@ -4180,10 +4187,14 @@ impl TeamManager {
         let Some(target) = fetch_canonical_shared_thread_target(&self.db, team_id).await? else {
             return Ok(None);
         };
-        let detail = self
+        match self
             .load_task_detail_for_team(team_id, &target.task_id)
-            .await?;
-        Ok(Some(detail))
+            .await
+        {
+            Ok(detail) => Ok(Some(detail)),
+            Err(err) if is_row_not_found(&err) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     pub async fn ensure_shared_thread_detail_for_team(

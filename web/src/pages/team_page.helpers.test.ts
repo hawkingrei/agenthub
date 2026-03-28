@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTeamDetailPath,
   formatTeamRuntimeActionSummary,
+  isCurrentTeamScopedRequest,
   parseTeamAgentInputSessionMismatch,
   validateRunInputJson,
 } from "./team_page";
@@ -37,6 +38,19 @@ describe("team_page helpers", () => {
       ])
     ).toBe("Team runtime updated (created=2, reused=1)");
     expect(formatTeamRuntimeActionSummary("stop", [])).toBe("Team runtime stopped");
+  });
+
+  it("rejects stale shared-thread requests after team selection changes", () => {
+    expect(
+      isCurrentTeamScopedRequest({ teamId: "team-1", requestSeq: 3 }, "team-1", 3)
+    ).toBe(true);
+    expect(
+      isCurrentTeamScopedRequest({ teamId: "team-2", requestSeq: 4 }, "team-1", 4)
+    ).toBe(false);
+    expect(
+      isCurrentTeamScopedRequest({ teamId: "team-1", requestSeq: 5 }, "team-1", 4)
+    ).toBe(false);
+    expect(isCurrentTeamScopedRequest({ teamId: "", requestSeq: 6 }, "", 6)).toBe(false);
   });
 
   it("validates optional run input JSON", () => {
