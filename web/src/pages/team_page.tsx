@@ -2066,7 +2066,9 @@ export function TeamPage(props: TeamPageProps) {
     async (teamId: string) => {
       setTasksLoading(true);
       try {
-        const list = await api.listTeamTasks(props.token, teamId, 100);
+        const list = await api.listTeamTasks(props.token, teamId, 100, {
+          include_shared_thread: true,
+        });
         const sorted = sortTasksByActivity(list);
         setTaskList(sorted);
         setSelectedTaskId((prev) => {

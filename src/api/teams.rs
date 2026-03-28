@@ -159,6 +159,8 @@ pub struct CreateTeamTaskRequest {
 #[derive(Debug, Deserialize)]
 pub struct ListTeamTasksQuery {
     pub limit: Option<i64>,
+    #[serde(default)]
+    pub include_shared_thread: bool,
 }
 
 // Keep deserialization compatibility for existing human clients even though
@@ -712,7 +714,12 @@ async fn list_team_tasks(
     load_team_for_user(&state, &team_id, &user).await?;
     let tasks = state
         .teams
-        .list_tasks(&team_id, query.limit.unwrap_or(100).clamp(1, 500))
+        .list_tasks_with_query(crate::team::TeamTaskListQuery {
+            team_id: Some(team_id),
+            limit: query.limit.unwrap_or(100).clamp(1, 500),
+            include_shared_thread: query.include_shared_thread,
+            ..crate::team::TeamTaskListQuery::default()
+        })
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(tasks))

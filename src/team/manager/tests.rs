@@ -552,7 +552,14 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["secret"], json!("[redacted]"));
 
-    let listed = manager.list_tasks(&team.id, 20).await.expect("list tasks");
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, task.id);
 

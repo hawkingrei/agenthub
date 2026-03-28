@@ -231,6 +231,8 @@ Constraint:
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
+- The canonical `# all` shared-thread task must remain discoverable across refreshes; hiding it is
+  a workspace-task presentation choice, not a storage/query invariant.
 - Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
   `leader -> subordinate worker`) and fall back to human review in `Conversation` (`all`) when
   agent review cannot complete.
