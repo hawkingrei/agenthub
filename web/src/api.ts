@@ -644,6 +644,17 @@ export const api = {
         body: JSON.stringify(payload),
       }
     ),
+  getTeamSharedThread: (token: string, teamId: string) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
+      token
+    ),
+  ensureTeamSharedThread: (token: string, teamId: string) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
+      token,
+      { method: "POST" }
+    ),
   listTeamTasks: (
     token: string,
     teamId: string,

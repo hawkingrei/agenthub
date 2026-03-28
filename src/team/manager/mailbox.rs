@@ -23,7 +23,9 @@ use super::codec::{
     team_actor_message_transport_to_str,
 };
 use super::{
-    TeamConversationStreamEvent, TeamManager, parse_team_member_specs, redact_sensitive_json,
+    TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
+    TeamManager, fetch_canonical_shared_thread_target, parse_team_member_specs,
+    redact_sensitive_json,
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
@@ -31,8 +33,6 @@ use crate::team::{
     TeamConversationMessageRecord,
 };
 
-const TEAM_SHARED_THREAD_TITLE: &str = "all";
-const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
@@ -1700,32 +1700,12 @@ async fn fetch_shared_thread_for_team(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     team_id: &str,
 ) -> Result<Option<SharedThreadTarget>, sqlx::Error> {
-    let row = sqlx::query(
-        r#"
-        SELECT
-            t.id AS task_id,
-            c.id AS conversation_id
-        FROM team_tasks t
-        INNER JOIN team_conversations c ON c.task_id = t.id
-        WHERE t.team_id = ?1
-          AND (
-            lower(trim(t.title)) = ?2
-            OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = ?3
-          )
-        ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(team_id)
-    .bind(TEAM_SHARED_THREAD_TITLE)
-    .bind(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
-    .fetch_optional(&mut **tx)
-    .await?;
-
-    Ok(row.map(|row| SharedThreadTarget {
-        task_id: row.get("task_id"),
-        conversation_id: row.get("conversation_id"),
-    }))
+    Ok(fetch_canonical_shared_thread_target(&mut **tx, team_id)
+        .await?
+        .map(|target| SharedThreadTarget {
+            task_id: target.task_id,
+            conversation_id: target.conversation_id,
+        }))
 }
 
 async fn fetch_message_by_id(
