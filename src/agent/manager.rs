@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
@@ -1061,10 +1061,32 @@ impl AgentManager {
             return Ok(false);
         }
 
-        let reconciled = self
-            .reconcile_running_agents_without_runtime_handles(vec![agent_id.to_string()])
-            .await?;
+        let requested_ids = [agent_id.to_string()];
+        let reconciled = self.reconcile_runtime_absence_batch(&requested_ids).await?;
         Ok(!reconciled.is_empty())
+    }
+
+    pub async fn reconcile_runtime_absence_batch(
+        &self,
+        agent_ids: &[String],
+    ) -> anyhow::Result<Vec<String>> {
+        if agent_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut requested_ids = Vec::with_capacity(agent_ids.len());
+        let mut seen = HashSet::with_capacity(agent_ids.len());
+        for agent_id in agent_ids {
+            let trimmed = agent_id.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if seen.insert(trimmed.to_string()) {
+                requested_ids.push(trimmed.to_string());
+            }
+        }
+        self.reconcile_running_agents_without_runtime_handles(requested_ids)
+            .await
     }
 
     async fn reconcile_stale_running_agents(&self) -> anyhow::Result<()> {
@@ -1111,31 +1133,46 @@ impl AgentManager {
 
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
+        let mut session_builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            UPDATE agent_sessions
+            SET status = 'exited', ended_at = 
+            "#,
+        );
+        session_builder.push_bind(now);
+        session_builder.push(
+            r#"
+            WHERE status = 'running'
+              AND ended_at IS NULL
+              AND agent_id IN (
+            "#,
+        );
+        let mut session_ids = session_builder.separated(", ");
         for agent_id in &stale_ids {
-            sqlx::query(
-                r#"
-                UPDATE agent_sessions
-                SET status = 'exited', ended_at = ?1
-                WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
-                "#,
-            )
-            .bind(now)
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-
-            sqlx::query(
-                r#"
-                UPDATE agents
-                SET status = 'exited', updated_at = ?1
-                WHERE id = ?2 AND status = 'running'
-                "#,
-            )
-            .bind(now)
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
+            session_ids.push_bind(agent_id.as_str());
         }
+        session_ids.push_unseparated(")");
+        session_builder.build().execute(&mut *tx).await?;
+
+        let mut agent_builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            UPDATE agents
+            SET status = 'exited', updated_at = 
+            "#,
+        );
+        agent_builder.push_bind(now);
+        agent_builder.push(
+            r#"
+            WHERE status = 'running'
+              AND id IN (
+            "#,
+        );
+        let mut agent_ids = agent_builder.separated(", ");
+        for agent_id in &stale_ids {
+            agent_ids.push_bind(agent_id.as_str());
+        }
+        agent_ids.push_unseparated(")");
+        agent_builder.build().execute(&mut *tx).await?;
         tx.commit().await?;
 
         tracing::warn!(

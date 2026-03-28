@@ -163,23 +163,11 @@ async fn reconcile_team_runtime_presence(
         .get_team(team_id)
         .await
         .map_err(map_team_context_error)?;
-    let Some(members) = team.spec.get("members").and_then(Value::as_array) else {
-        return Ok(());
-    };
-    for member in members {
-        let Some(member_id) = member
-            .get("member_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        agents
-            .reconcile_runtime_absence(member_id)
-            .await
-            .map_err(map_manager_error)?;
-    }
+    let member_ids = crate::team::collect_team_member_ids(&team.spec);
+    agents
+        .reconcile_runtime_absence_batch(&member_ids)
+        .await
+        .map_err(map_manager_error)?;
     Ok(())
 }
 

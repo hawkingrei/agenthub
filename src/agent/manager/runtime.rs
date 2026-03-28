@@ -1039,6 +1039,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reconcile_runtime_absence_batch_reconciles_requested_agents_only() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (first_agent_id, first_session_id) =
+            insert_agent_and_session(&state.db, "reconcile-runtime-batch-first").await;
+        let (second_agent_id, second_session_id) =
+            insert_agent_and_session(&state.db, "reconcile-runtime-batch-second").await;
+
+        let reconciled = state
+            .agents
+            .reconcile_runtime_absence_batch(std::slice::from_ref(&first_agent_id))
+            .await
+            .expect("reconcile requested stale runtime absences");
+        assert_eq!(reconciled, vec![first_agent_id.clone()]);
+
+        let first_agent_status: String =
+            sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+                .bind(&first_agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load first agent status");
+        assert_eq!(first_agent_status, "exited");
+        let first_session_status: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&first_session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load first session status");
+        assert_eq!(first_session_status, "exited");
+
+        let second_agent_status: String =
+            sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+                .bind(&second_agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load second agent status");
+        assert_eq!(second_agent_status, "running");
+        let second_session_status: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&second_session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load second session status");
+        assert_eq!(second_session_status, "running");
+    }
+
+    #[tokio::test]
     async fn stop_agent_removes_idle_gc_state_even_when_exit_watcher_exits_early() {
         let state = build_test_state_with_idle_gc().await;
         let idle_gc = state
