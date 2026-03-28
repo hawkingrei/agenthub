@@ -9,6 +9,8 @@ env:
   BAZEL_BUILD_TARGETS: >-
     //:agenthub
     //agenthub-codex-acp:agenthub_codex_acp_bin
+  BAZEL_ROOT_RUNTIME_PREREQ_TARGETS: >-
+    //:agenthub
   BAZEL_ROOT_TEST_TARGETS: >-
     //:agenthub_unit_tests
     //:web_assets_test
@@ -84,6 +86,8 @@ jobs:
           repository-cache: true
           external-cache: false
           disk-cache: bazel-test-root
+      - name: Build runtime prereqs for root tests
+        run: bazel build $BAZEL_ROOT_RUNTIME_PREREQ_TARGETS
       - name: Bazel test (root targets)
         run: bazel test --test_output=errors $BAZEL_ROOT_TEST_TARGETS
 
@@ -128,6 +132,8 @@ jobs:
           repository-cache: true
           external-cache: false
           disk-cache: bazel-coverage
+      - name: Build runtime prereqs for coverage
+        run: bazel build $BAZEL_ROOT_RUNTIME_PREREQ_TARGETS
       - name: Bazel coverage
         run: |
           bazel coverage --combined_report=lcov --test_output=errors \
@@ -136,7 +142,7 @@ jobs:
           test -s bazel.lcov
           wc -l bazel.lcov
       - name: Upload coverage reports to Codecov
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
+        if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

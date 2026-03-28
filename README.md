@@ -197,7 +197,7 @@ npm --prefix web run e2e
 # Bazel checks
 bazel build //...
 bazel test //...
-bazel coverage --combined_report=lcov --test_output=errors //crates/agenthub-text:agenthub_text_tests
+bazel coverage --combined_report=lcov --test_output=errors //crates/agenthub-text:agenthub_text_tests # Example for a single crate
 ```
 
 ### Recommended Pre-PR Checks
