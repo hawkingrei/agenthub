@@ -21,6 +21,8 @@ debug artifacts. They are not the primary planning surface.
 
 - **Channel**:
   - shared conversation thread, usually `# all`
+  - `# all` is a stable Team-level conversation target resolved by the backend, not whichever task
+    happens to be visible first in the Kanban list
   - human goals, constraints, approvals, and `@member_id` coordination requests
 - **Kanban**:
   - task ownership and lifecycle
@@ -76,6 +78,8 @@ In practice:
 Team Workbench is now task-first:
 
 - `Kanban` is the durable coordination surface
+- `Conversation` (`# all`) is a separate stable shared thread, not a workspace task you need to
+  recover manually from Kanban ordering
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model
@@ -106,9 +110,9 @@ still live in `Conversation` and `Kanban`.
 Permission review follows the Team routing model rather than a generic tool
 prompt:
 
-- worker-originated requests route to the leader
-- leader-originated requests route to a subordinate worker
-- nobody should review their own request
+- the system automatically assigns a non-requester reviewer
+- reviewers see the approval action in their Team workflow when they are the active reviewer
+- the requester never self-reviews
 - if agent review does not complete in time, the shared Team surface falls back
   to a human-visible review card
 

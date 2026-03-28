@@ -439,14 +439,6 @@ export function isSharedThreadTask(task: TeamTaskRecord): boolean {
   );
 }
 
-export function resolveTeamConversationTask(
-  tasks: TeamTaskRecord[],
-  teamId: string
-): TeamTaskRecord | null {
-  const teamTasks = sortTasksByActivity(tasks.filter((task) => task.team_id === teamId));
-  return teamTasks.find(isSharedThreadTask) ?? null;
-}
-
 export function listTeamWorkspaceTasks(
   tasks: TeamTaskRecord[],
   teamId: string

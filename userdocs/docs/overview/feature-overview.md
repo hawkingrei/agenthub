@@ -38,6 +38,8 @@ Use this when task review, auditability, or deep debugging matters.
 Key concepts:
 
 - `Conversation` (`# all`) is the shared human-facing thread
+- `Conversation` is resolved as one stable Team-level thread, not inferred from the visible Kanban
+  slice
 - `Kanban` is the canonical task lane
 - `Runs` and debug surfaces are execution artifacts, not the primary planning
   surface
