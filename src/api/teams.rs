@@ -634,6 +634,7 @@ async fn get_team_runtime(
 ) -> Result<Json<TeamRuntimeRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    reconcile_team_member_runtime_absence(&state, &team).await?;
     let runtime = state
         .teams
         .describe_team_runtime(team.id.as_str())
@@ -3761,6 +3762,19 @@ fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, Ap
         .into_iter()
         .map(|member| member.member_id)
         .collect())
+}
+
+async fn reconcile_team_member_runtime_absence(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+) -> Result<(), ApiError> {
+    let member_ids = crate::team::collect_team_member_ids(&team.spec);
+    state
+        .agents
+        .reconcile_runtime_absence_batch(&member_ids)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(())
 }
 
 fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpec>, ApiError> {

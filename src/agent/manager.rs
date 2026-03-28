@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
@@ -1047,44 +1047,91 @@ impl AgentManager {
     }
 
     pub async fn reconcile_runtime_absence(&self, agent_id: &str) -> anyhow::Result<bool> {
-        let running: i64 = sqlx::query_scalar(
-            r#"
-            SELECT COUNT(*)
-            FROM agents
-            WHERE id = ?1 AND status = 'running'
-            "#,
-        )
-        .bind(agent_id)
-        .fetch_one(&self.db)
-        .await?;
-        if running == 0 {
-            return Ok(false);
-        }
-
-        let reconciled = self
-            .reconcile_running_agents_without_runtime_handles(vec![agent_id.to_string()])
-            .await?;
+        let requested_ids = [agent_id.to_string()];
+        let reconciled = self.reconcile_runtime_absence_batch(&requested_ids).await?;
         Ok(!reconciled.is_empty())
     }
 
+    pub async fn reconcile_runtime_absence_batch(
+        &self,
+        agent_ids: &[String],
+    ) -> anyhow::Result<Vec<String>> {
+        if agent_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut requested_ids = Vec::with_capacity(agent_ids.len());
+        let mut seen = HashSet::with_capacity(agent_ids.len());
+        for agent_id in agent_ids {
+            let trimmed = agent_id.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if seen.insert(trimmed.to_string()) {
+                requested_ids.push(trimmed.to_string());
+            }
+        }
+        let local_running_ids = self
+            .load_local_running_agent_ids(Some(&requested_ids))
+            .await?;
+        self.reconcile_running_agents_without_runtime_handles(local_running_ids)
+            .await
+    }
+
     async fn reconcile_stale_running_agents(&self) -> anyhow::Result<()> {
-        let running_rows = sqlx::query(
-            r#"
-            SELECT id
-            FROM agents
-            WHERE status = 'running'
-            "#,
-        )
-        .fetch_all(&self.db)
-        .await?;
-        let running_ids = running_rows
-            .into_iter()
-            .map(|row| row.get::<String, _>("id"))
-            .collect::<Vec<_>>();
+        let running_ids = self.load_local_running_agent_ids(None).await?;
         let _ = self
             .reconcile_running_agents_without_runtime_handles(running_ids)
             .await?;
         Ok(())
+    }
+
+    async fn load_local_running_agent_ids(
+        &self,
+        requested_ids: Option<&[String]>,
+    ) -> anyhow::Result<Vec<String>> {
+        if requested_ids.is_some_and(|ids| ids.is_empty()) {
+            return Ok(Vec::new());
+        }
+
+        let schema_caps = self.agent_schema_caps().await?;
+        let mut builder =
+            QueryBuilder::<Sqlite>::new("SELECT id FROM agents WHERE status = 'running'");
+        if schema_caps.has_target_node_id_column {
+            builder.push(
+                r#"
+                AND (
+                    target_node_id IS NULL
+                    OR trim(target_node_id) = ''
+                    OR trim(target_node_id) = 
+                "#,
+            );
+            builder.push_bind(AGENT_NODE_MAIN_ID);
+            builder.push(")");
+        }
+        if let Some(requested_ids) = requested_ids {
+            builder.push(" AND id IN (");
+            let mut separated = builder.separated(", ");
+            for agent_id in requested_ids {
+                separated.push_bind(agent_id.as_str());
+            }
+            separated.push_unseparated(")");
+        }
+        let rows = builder.build().fetch_all(&self.db).await?;
+        let matched_ids = rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("id"))
+            .collect::<HashSet<_>>();
+
+        if let Some(requested_ids) = requested_ids {
+            return Ok(requested_ids
+                .iter()
+                .filter(|agent_id| matched_ids.contains(agent_id.as_str()))
+                .cloned()
+                .collect());
+        }
+
+        Ok(matched_ids.into_iter().collect())
     }
 
     async fn reconcile_running_agents_without_runtime_handles(
@@ -1111,31 +1158,46 @@ impl AgentManager {
 
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
+        let mut session_builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            UPDATE agent_sessions
+            SET status = 'exited', ended_at = 
+            "#,
+        );
+        session_builder.push_bind(now);
+        session_builder.push(
+            r#"
+            WHERE status = 'running'
+              AND ended_at IS NULL
+              AND agent_id IN (
+            "#,
+        );
+        let mut session_ids = session_builder.separated(", ");
         for agent_id in &stale_ids {
-            sqlx::query(
-                r#"
-                UPDATE agent_sessions
-                SET status = 'exited', ended_at = ?1
-                WHERE agent_id = ?2 AND status = 'running' AND ended_at IS NULL
-                "#,
-            )
-            .bind(now)
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
-
-            sqlx::query(
-                r#"
-                UPDATE agents
-                SET status = 'exited', updated_at = ?1
-                WHERE id = ?2 AND status = 'running'
-                "#,
-            )
-            .bind(now)
-            .bind(agent_id)
-            .execute(&mut *tx)
-            .await?;
+            session_ids.push_bind(agent_id.as_str());
         }
+        session_ids.push_unseparated(")");
+        session_builder.build().execute(&mut *tx).await?;
+
+        let mut agent_builder = QueryBuilder::<Sqlite>::new(
+            r#"
+            UPDATE agents
+            SET status = 'exited', updated_at = 
+            "#,
+        );
+        agent_builder.push_bind(now);
+        agent_builder.push(
+            r#"
+            WHERE status = 'running'
+              AND id IN (
+            "#,
+        );
+        let mut agent_ids = agent_builder.separated(", ");
+        for agent_id in &stale_ids {
+            agent_ids.push_bind(agent_id.as_str());
+        }
+        agent_ids.push_unseparated(")");
+        agent_builder.build().execute(&mut *tx).await?;
         tx.commit().await?;
 
         tracing::warn!(
