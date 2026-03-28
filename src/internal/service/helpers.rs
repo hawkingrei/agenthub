@@ -141,37 +141,26 @@ pub(super) async fn load_team_context_for_actor(
     run_id: Option<&str>,
     actor_id: &str,
 ) -> Result<crate::team::TeamContextRecord, Status> {
-    reconcile_team_runtime_presence(agents, manager, team_id, run_id).await?;
+    let resolved_team_id = manager
+        .resolve_team_scope(team_id, run_id)
+        .await
+        .map_err(map_team_context_error)?;
+    ensure_team_member_access(manager, &resolved_team_id, actor_id).await?;
+    reconcile_team_runtime_presence(agents, manager, &resolved_team_id).await?;
     let context = manager
         .describe_team_context(team_id, run_id)
         .await
         .map_err(map_team_context_error)?;
-    ensure_team_member_access(manager, &context.team_id, actor_id).await?;
     Ok(context)
 }
 
 async fn reconcile_team_runtime_presence(
     agents: &crate::agent::AgentManager,
     manager: &TeamManager,
-    team_id: Option<&str>,
-    run_id: Option<&str>,
+    team_id: &str,
 ) -> Result<(), Status> {
-    let reconcile_team_id = if let Some(run_id) = run_id {
-        Some(
-            manager
-                .get_run(run_id)
-                .await
-                .map_err(map_team_context_error)?
-                .team_id,
-        )
-    } else {
-        team_id.map(str::to_string)
-    };
-    let Some(team_id) = reconcile_team_id else {
-        return Ok(());
-    };
     let team = manager
-        .get_team(&team_id)
+        .get_team(team_id)
         .await
         .map_err(map_team_context_error)?;
     let Some(members) = team.spec.get("members").and_then(Value::as_array) else {

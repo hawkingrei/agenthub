@@ -315,6 +315,96 @@ async fn internal_grpc_describe_team_context_reconciles_stale_running_member_ses
 }
 
 #[tokio::test]
+async fn internal_grpc_describe_team_context_rejects_non_member_before_reconcile() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        InternalRole::Worker,
+        Some("intruder"),
+        Some(&run.id),
+    );
+    let service = TeamInternalControlService::new(
+        state.clone(),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind("/tmp/internal-unauthorized-stale-planner")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for unauthorized stale planner");
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'running', ?6, ?7)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind("/tmp/internal-unauthorized-stale-planner")
+    .bind("agenthub-codex-acp")
+    .bind("[]")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert unauthorized stale planner agent");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind("internal-unauthorized-stale-planner-session")
+    .bind("planner")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert unauthorized stale planner session");
+
+    let err = TeamInternalControl::describe_team_context(
+        &service,
+        authenticated_request(
+            DescribeTeamContextRequest {
+                team_id: String::new(),
+                run_id: run.id,
+                actor_id: "intruder".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("non-member actor should be rejected before reconciliation");
+    assert_eq!(err.code(), Code::PermissionDenied);
+    assert_eq!(err.message(), "current actor is not a member of this team");
+
+    let agent_status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+        .bind("planner")
+        .fetch_one(&state.db)
+        .await
+        .expect("load planner status after unauthorized describe");
+    assert_eq!(agent_status, "running");
+
+    let session_status: String =
+        sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+            .bind("internal-unauthorized-stale-planner-session")
+            .fetch_one(&state.db)
+            .await
+            .expect("load planner session after unauthorized describe");
+    assert_eq!(session_status, "running");
+}
+
+#[tokio::test]
 async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
