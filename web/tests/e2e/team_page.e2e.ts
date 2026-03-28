@@ -501,7 +501,8 @@ async function selectPrimaryTeamEntryFromSidebar(
 
 async function openMainTeamAction(
   page: import("@playwright/test").Page,
-  label: string
+  label: string,
+  allowSidebarReset = true
 ): Promise<void> {
   const teamsMain = page.locator(".teams-main");
   const scope = (await teamsMain.count()) > 0 ? teamsMain : page.locator("body");
@@ -513,8 +514,40 @@ async function openMainTeamAction(
   }
 
   const button = scope.getByRole("button", { name: label, exact: true }).first();
-  await expect(button).toBeVisible();
-  await button.click();
+  if ((await button.count()) > 0) {
+    await expect(button).toBeVisible();
+    await button.click();
+    return;
+  }
+
+  const moreTrigger = page
+    .getByRole("button", { name: "Open more workspace actions" })
+    .first();
+  if ((await moreTrigger.count()) > 0) {
+    await expect(moreTrigger).toBeVisible();
+    await moreTrigger.click();
+    const menuItem = page.getByRole("menuitem", { name: label, exact: true });
+    if ((await menuItem.count()) > 0) {
+      await expect(menuItem).toBeVisible();
+      await menuItem.click();
+      return;
+    }
+  }
+
+  if (allowSidebarReset) {
+    const sidebarConversationEntry = page
+      .locator(".teams-sidebar")
+      .locator("button", { hasText: "# all" })
+      .first();
+    if ((await sidebarConversationEntry.count()) > 0) {
+      await expect(sidebarConversationEntry).toBeVisible();
+      await sidebarConversationEntry.click();
+      await openMainTeamAction(page, label, false);
+      return;
+    }
+  }
+
+  throw new Error(`Team action not found: ${label}`);
 }
 
 async function openAdvancedView(

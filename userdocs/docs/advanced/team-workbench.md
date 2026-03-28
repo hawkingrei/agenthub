@@ -14,6 +14,14 @@ Think about Team Workbench as three connected layers:
 - **Kanban**: the canonical task lane
 - **Runs and debug surfaces**: execution telemetry and deep inspection
 
+On smaller screens, Team Workbench switches between two panes instead of stacking
+everything into one page:
+
+- the Team rail
+- the active workspace
+
+Use the header toggle to move between them.
+
 The important distinction is that Team `runs` and `steps` are execution and
 debug artifacts. They are not the primary planning surface.
 
@@ -27,6 +35,7 @@ debug artifacts. They are not the primary planning surface.
 - **Kanban**:
   - task ownership and lifecycle
   - the durable place to see work status
+  - not the place for human operators to manually author canonical Team tasks
 - **Agents**:
   - member list and per-member entry into `Agent ACP`
 - **Runs**:
@@ -80,9 +89,17 @@ Team Workbench is now task-first:
 - `Kanban` is the durable coordination surface
 - `Conversation` (`# all`) is a separate stable shared thread, not a workspace task you need to
   recover manually from Kanban ordering
+- human requests and clarifications live in `Conversation`; leader/runtime turns agreed work into
+  canonical Kanban tasks
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model
+
+The workbench also refreshes more aggressively on resume:
+
+- runtime state rechecks on focus / reconnect
+- `Kanban` refreshes on resume instead of only waiting for the next poll
+- shared `Conversation` refreshes immediately on restore/reconnect in addition to SSE
 
 This keeps context attached to the task instead of fragmenting it across many
 small execution steps.

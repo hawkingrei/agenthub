@@ -80,10 +80,19 @@ terminology and operating expectations drift.
   - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
   - `Kanban` is the primary task lane.
+  - Human operators do not create canonical Team tasks from `Kanban`; they use `Conversation`
+    (`all`) to request work or clarify constraints, then leader planning / Team runtime materialize
+    tasks onto the board.
   - `Runs` is the execution-history/debug lane for explicit run browsing, `Start Team`, and
     active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
 - Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
+- Narrow-screen Team detail routes should behave as two panes instead of a long stacked page:
+  - Team rail pane (`# all`, `Kanban`, members)
+  - workspace pane (selected surface)
+  switched by the header toggle.
+- The workspace pane must expose direct primary workflow switches for `Conversation` and `Kanban`
+  even when the Team rail is hidden.
 
 ### 5) Cold-Start Workflow
 
@@ -236,6 +245,11 @@ Constraint:
 - Public clients should load and ensure the shared thread through a dedicated Team shared-thread
   contract; hiding it from workspace-task listings is a presentation choice, not a storage/query
   invariant.
+- Team surface refresh should tighten around resume/reconnect:
+  - selected Team runtime rechecks on focus, visibility restore, and network reconnect
+  - active `Kanban` refresh does the same
+  - shared `Conversation` re-refreshes immediately on focus, visibility restore, and reconnect in
+    addition to SSE and fallback polling
 - If legacy data contains multiple shared-thread tasks, backend canonicalization should prefer the
   thread with the newest persisted conversation message; when no shared-thread messages exist yet,
   it should fall back to the oldest created shared-thread record for stability.

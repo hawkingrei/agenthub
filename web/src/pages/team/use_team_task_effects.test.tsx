@@ -103,4 +103,33 @@ describe("useTeamTaskEffects", () => {
 
     expect(params.refreshTasks).toHaveBeenCalledTimes(2);
   });
+
+  it("refreshes immediately when the page regains focus, visibility, or network", async () => {
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+    expect(params.refreshTasks).toHaveBeenLastCalledWith("team-1");
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("online"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(3);
+  });
 });

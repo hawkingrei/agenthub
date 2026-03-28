@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } fr
 import type { TeamActorMessageRecord, TeamConversationMessageRecord } from "../../api";
 import type { SseConnectionState } from "../../connection_status";
 import type { TeamTab } from "./state";
+import { useResumeRefresh } from "./use_resume_refresh";
 
 type UseTeamConversationEffectsOptions = {
   token: string;
@@ -98,6 +99,20 @@ export function useTeamConversationEffects({
     updateSseState,
   ]);
 
+  const conversationRefreshEnabled = Boolean(
+    eventsAutoRefresh &&
+      tab === "conversation" &&
+      token.trim() &&
+      (selectedTeamId?.trim() ?? "") &&
+      (selectedConversationId?.trim() ?? "")
+  );
+
+  useResumeRefresh({
+    enabled: conversationRefreshEnabled,
+    intervalMs: 4000,
+    refresh: refreshSelectedConversation,
+  });
+
   useEffect(() => {
     const conversationId = selectedConversationId?.trim() ?? "";
     if (
@@ -193,29 +208,4 @@ export function useTeamConversationEffects({
     updateSseState,
   ]);
 
-  useEffect(() => {
-    const conversationId = selectedConversationId?.trim() ?? "";
-    if (
-      !eventsAutoRefresh ||
-      tab !== "conversation" ||
-      !token.trim() ||
-      !selectedTeamId ||
-      !conversationId
-    ) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      void refreshSelectedConversation().catch(() => undefined);
-    }, 4000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
-    eventsAutoRefresh,
-    refreshSelectedConversation,
-    selectedConversationId,
-    selectedTeamId,
-    tab,
-    token,
-  ]);
 }

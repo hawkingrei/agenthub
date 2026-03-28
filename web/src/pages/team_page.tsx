@@ -11,6 +11,7 @@ import {
   Textarea,
   Tooltip,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -61,6 +62,7 @@ import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
+import { TeamTabsBar } from "./team_tabs_bar";
 import {
   appendTeamMemberToSpec,
   buildTeamMemberDraftFromSpec,
@@ -261,6 +263,10 @@ function navigateTeamRoute(pathname: string): void {
 }
 
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>(["conversation", "tasks"]);
+const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
+  { value: "conversation", label: "# all" },
+  { value: "tasks", label: "Kanban" },
+];
 const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
   "mailbox",
@@ -271,6 +277,7 @@ const TEAM_AGENT_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
   TEAM_AGENT_ADVANCED_TABS.has(item.value)
 );
 const TEAM_UTILITY_ADVANCED_TABS = new Set<TeamTab>([
+  "runs",
   "overview",
   "events",
   "steps",
@@ -448,6 +455,7 @@ const teamWorkbenchInfoStripValueClassName =
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const isSelectorRoute = routeTeamId == null;
+  const isCompactWorkbench = useMediaQuery("(max-width: 1023px)");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -459,6 +467,8 @@ export function TeamPage(props: TeamPageProps) {
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
   const [conversationSseState, setConversationSseState] = useState<SseConnectionState>("idle");
+  const mobileRouteTeamIdRef = useRef<string | null>(null);
+  const previousCompactWorkbenchRef = useRef<boolean>(isCompactWorkbench);
   useEffect(() => {
     document.body.classList.add("teams-page");
     return () => {
@@ -480,6 +490,24 @@ export function TeamPage(props: TeamPageProps) {
       window.removeEventListener("offline", onOffline);
     };
   }, []);
+  useEffect(() => {
+    const enteredCompactWorkbench =
+      isCompactWorkbench && previousCompactWorkbenchRef.current !== isCompactWorkbench;
+    previousCompactWorkbenchRef.current = isCompactWorkbench;
+    if (!isCompactWorkbench || isSelectorRoute) {
+      mobileRouteTeamIdRef.current = routeTeamId;
+      return;
+    }
+    if (enteredCompactWorkbench) {
+      mobileRouteTeamIdRef.current = routeTeamId;
+      setTeamsSidebarCollapsed(true);
+      return;
+    }
+    if (mobileRouteTeamIdRef.current !== routeTeamId) {
+      mobileRouteTeamIdRef.current = routeTeamId;
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, isSelectorRoute, routeTeamId]);
   const navigateToTeamDetail = useCallback((teamId: string) => {
     navigateTeamRoute(buildTeamDetailPath(teamId));
   }, []);
@@ -742,7 +770,6 @@ export function TeamPage(props: TeamPageProps) {
   >([]);
   const [taskMessagesLoading, setTaskMessagesLoading] = useState(false);
   const [taskMessageDraft, setTaskMessageDraft] = useState("");
-  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamTaskRunCompilePreviewRecord | null>(null);
@@ -879,7 +906,6 @@ export function TeamPage(props: TeamPageProps) {
     setConversationMailboxMessages([]);
     setTaskMessagesLoading(false);
     setTaskMessageDraft("");
-    setNewTaskTitle("");
     setSelectedMemberId("");
     setFocusedAgentMemberId("");
   }, [selectedTeamId, setSelectedMemberId]);
@@ -2180,44 +2206,6 @@ export function TeamPage(props: TeamPageProps) {
     onSseStateChange: setConversationSseState,
   });
 
-  const onCreateTask = useCallback(async () => {
-    if (!selectedTeamId) {
-      setError("Select a team first");
-      return;
-    }
-    const title = newTaskTitle.trim();
-    if (!title) {
-      setError("Task title is required");
-      return;
-    }
-    setBusy("create-task");
-    setError(null);
-    try {
-      const created = await api.createTeamTask(props.token, selectedTeamId, {
-        title,
-        conversation_mode: "to_leader",
-        topic: title,
-        context: {
-          bootstrap_kind: "task_workspace",
-        },
-      });
-      setTaskList((prev) =>
-        sortTasksByActivity([created.task, ...prev.filter((task) => task.id !== created.task.id)])
-      );
-      setSelectedTaskId(created.task.id);
-      setCompiledRunPreview(null);
-      setNewTaskTitle("");
-      if (created.latest_run) {
-        applyCreatedRunState(created.latest_run, false);
-      }
-      setTab("tasks");
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [applyCreatedRunState, newTaskTitle, props.token, selectedTeamId, setBusy, setTab]);
-
   const onRefreshMemberConsole = useCallback(async () => {
     if (selectedAgentWorkspaceMemberId && selectedAgentWorkspaceSessionId) {
       await loadMemberEvents("replace");
@@ -2298,29 +2286,44 @@ export function TeamPage(props: TeamPageProps) {
     setSelectedMemberId(memberId);
     setFocusedAgentMemberId("");
     setTab("mailbox");
-  }, [setSelectedMemberId, setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setSelectedMemberId, setTab]);
   const onSelectConversationSubject = useCallback(() => {
     setFocusedAgentMemberId("");
     setTab("conversation");
-  }, [setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setTab]);
   const onSelectKanbanSubject = useCallback(() => {
     setFocusedAgentMemberId("");
     setTab("tasks");
-  }, [setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setTab]);
   const onSelectAgentWorkspace = useCallback(
     (memberId: string, nextTab: TeamTab = "agent_acp") => {
       setSelectedMemberId(memberId);
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
     },
-    [setSelectedMemberId, setTab]
+    [isCompactWorkbench, setSelectedMemberId, setTab]
   );
   const onSelectUtilityWorkspace = useCallback(
     (nextTab: TeamTab) => {
       setFocusedAgentMemberId("");
       setTab(nextTab);
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
     },
-    [setTab]
+    [isCompactWorkbench, setTab]
   );
 
   const onRefreshEventsPanel = useCallback(async () => {
@@ -2458,9 +2461,9 @@ export function TeamPage(props: TeamPageProps) {
     : isAgentWorkspace
       ? null
     : tab === "conversation"
-      ? null
+      ? "Shared channel for human requests, planning discussion, and team-visible progress updates."
     : tab === "tasks"
-        ? null
+        ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
       : tab === "mailbox"
         ? selectedMemberLiveState
           ? "Direct mailbox thread for the selected agent."
@@ -2617,10 +2620,6 @@ export function TeamPage(props: TeamPageProps) {
       ]),
     [selectedTeamMemberLiveStates]
   );
-  const onOpenRunsWorkspace = useCallback(() => {
-    setFocusedAgentMemberId("");
-    setTab("runs");
-  }, [setTab]);
   const onOpenTaskRun = useCallback(
     (runId: string) => {
       setActiveRunId(runId);
@@ -3089,15 +3088,14 @@ export function TeamPage(props: TeamPageProps) {
 
   const tasksPanel = (
     <TeamTasksPanel
+      compactMode={isCompactWorkbench}
       developerMode={props.developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
       selectedTaskId={selectedTaskId}
       onSelectedTaskIdChange={setSelectedTaskId}
       onRefreshTasks={onRefreshTasks}
-      newTaskTitle={newTaskTitle}
-      onNewTaskTitleChange={setNewTaskTitle}
-      onCreateTask={onCreateTask}
+      onOpenConversation={onSelectConversationSubject}
       busy={busy}
       runs={runs}
       onOpenRun={onOpenTaskRun}
@@ -3268,6 +3266,20 @@ export function TeamPage(props: TeamPageProps) {
     </div>
   );
   const warningNotice = resolveTeamPageNotice(warning);
+  const showSidebarPane = !isSelectorRoute && !teamsSidebarCollapsed;
+  const showWorkbenchPane = !isCompactWorkbench || teamsSidebarCollapsed;
+  const teamPanelToggleLabel = isCompactWorkbench
+    ? teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Show workbench"
+    : teamsSidebarCollapsed
+      ? "Show teams panel"
+      : "Hide teams panel";
+  const detailLayoutClassName = isCompactWorkbench
+    ? "teams-layout flex min-h-0 flex-1 flex-col"
+    : teamsSidebarCollapsed
+      ? teamWorkbenchDetailLayoutCollapsedClassName
+      : teamWorkbenchDetailLayoutExpandedClassName;
 
   return (
     <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)] px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0">
@@ -3277,8 +3289,8 @@ export function TeamPage(props: TeamPageProps) {
             <button
               className={teamWorkbenchHeaderIconButtonClassName}
               onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
-              title={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
-              aria-label={teamsSidebarCollapsed ? "Show teams panel" : "Hide teams panel"}
+              title={teamPanelToggleLabel}
+              aria-label={teamPanelToggleLabel}
             >
               <i
                 className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
@@ -3445,14 +3457,8 @@ export function TeamPage(props: TeamPageProps) {
           </section>
         </div>
       ) : (
-        <div
-          className={
-            teamsSidebarCollapsed
-              ? teamWorkbenchDetailLayoutCollapsedClassName
-              : teamWorkbenchDetailLayoutExpandedClassName
-          }
-        >
-          {!teamsSidebarCollapsed && (
+        <div className={detailLayoutClassName}>
+          {showSidebarPane && (
             <TeamSidebar
               showTeamSelector={false}
               developerMode={props.developerMode}
@@ -3489,7 +3495,8 @@ export function TeamPage(props: TeamPageProps) {
             />
           )}
 
-          <div className="teams-main flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
+          {showWorkbenchPane && (
+          <div className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-2 pr-1 [&>*]:shrink-0">
             {!selectedTeam && (
               <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
                 <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
@@ -3670,18 +3677,6 @@ export function TeamPage(props: TeamPageProps) {
                           </Tooltip>
                         ) : null}
                         <div className={workspaceToolbarClassName}>
-                          <button
-                            type="button"
-                            className={
-                              tab === "runs"
-                                ? workspaceToolbarButtonActiveClassName
-                                : workspaceToolbarButtonIdleClassName
-                            }
-                            onClick={onOpenRunsWorkspace}
-                          >
-                            <i className="bi bi-play-circle" aria-hidden="true" />
-                            <span>Runs</span>
-                          </button>
                           {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
                             <Menu withinPortal={false} position="bottom-end" shadow="md">
                               <Menu.Target>
@@ -3759,6 +3754,13 @@ export function TeamPage(props: TeamPageProps) {
                         </div>
                       </div>
                     </div>
+                    {!isAgentWorkspace && (
+                      <TeamTabsBar
+                        tab={tab}
+                        onTabChange={setTab}
+                        items={TEAM_WORKFLOW_TAB_ITEMS}
+                      />
+                    )}
                     {(workspaceNoticeText || props.developerMode) && (
                       <div className={workspaceNoticeClassName}>
                         {workspaceNoticeText && (
@@ -4282,6 +4284,7 @@ export function TeamPage(props: TeamPageProps) {
             </>
           )}
           </div>
+          )}
         </div>
       )}
 
