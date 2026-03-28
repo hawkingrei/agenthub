@@ -136,7 +136,14 @@ fn take_optional(value: Option<String>) -> Option<String> {
 }
 
 fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
-    take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id")
+    take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id").map_err(
+        |_| {
+            anyhow::anyhow!(
+                "run_id is required (use --run-id <run_id> or set {} in actor runtime env)",
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV
+            )
+        },
+    )
 }
 
 fn take_team_id(value: Option<String>) -> anyhow::Result<String> {
@@ -663,6 +670,13 @@ pub(super) fn parse_actor_command(
                         })?;
                         context_file = Some(parse_json_file(raw, "context_json")?);
                     }
+                    "--context-file" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--context-file requires a value"))?;
+                        context_file = Some(parse_json_file(raw, "context_json")?);
+                    }
                     "--context-merge-json" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
@@ -674,6 +688,13 @@ pub(super) fn parse_actor_command(
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-json-file requires a value")
+                        })?;
+                        context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
+                    }
+                    "--context-merge-file" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-merge-file requires a value")
                         })?;
                         context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
                     }
@@ -734,6 +755,7 @@ pub(super) fn parse_actor_command(
             let mut run_id = None;
             let mut actor_id = None;
             let mut task_id = None;
+            let mut shared_thread = false;
             let mut kind = TeamTaskNoteKind::Comment;
             let mut text = None;
             let mut idx = 1;
@@ -771,6 +793,9 @@ pub(super) fn parse_actor_command(
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
                         );
+                    }
+                    "--shared-thread" => {
+                        shared_thread = true;
                     }
                     "--kind" => {
                         idx += 1;
@@ -815,12 +840,17 @@ pub(super) fn parse_actor_command(
                     "team-task-note requires --team-id, --run-id, or actor runtime env fallback"
                 ));
             }
+            if shared_thread && task_id.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--shared-thread and --task-id cannot be used together"
+                ));
+            }
             Ok(ActorCommand::TeamTaskNote {
                 team_id,
                 run_id,
                 actor_id: take_actor_id(actor_id)?,
-                task_id: take_optional(task_id)
-                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
+                task_id: take_optional(task_id),
+                shared_thread,
                 kind,
                 text: take_optional(text).ok_or_else(|| anyhow::anyhow!("text is required"))?,
             })
@@ -912,6 +942,9 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--message-id requires a value"))?;
                         message_ids.push(parse_i64(raw, "message_id")?);
                     }
+                    raw if !raw.starts_with('-') => {
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
                     other => return Err(anyhow::anyhow!("unknown flag for ack: {}", other)),
                 }
                 idx += 1;
@@ -964,6 +997,14 @@ pub(super) fn parse_actor_command(
                                 anyhow::anyhow!("--from-agent-id requires a value")
                             })?);
                     }
+                    flag @ ("--to" | "--direct") => {
+                        idx += 1;
+                        to_actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
                     "--to-actor-id" => {
                         idx += 1;
                         to_actor_id =
@@ -993,6 +1034,9 @@ pub(super) fn parse_actor_command(
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--channel-id requires a value"))?,
                         );
+                    }
+                    "--shared" => {
+                        channel_id = Some("all".to_string());
                     }
                     "--transport" => {
                         idx += 1;
