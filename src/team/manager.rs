@@ -73,6 +73,7 @@ const MEMORY_FLUSH_ARTIFACT_KIND: &str = "memory_flush";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND: &str = "shared_thread_mailbox";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE: &str = "teams_all";
 const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
+pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct TeamConversationStreamEvent {
@@ -168,6 +169,24 @@ pub enum TeamTaskAssignmentUpdate {
     Unchanged,
     Unassigned,
     Assigned(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TeamTaskListQuery {
+    pub team_id: Option<String>,
+    pub run_id: Option<String>,
+    pub limit: i64,
+    pub status: Option<TeamTaskStatus>,
+    pub task_id: Option<String>,
+    pub assigned_member_id: Option<String>,
+    pub topic: Option<String>,
+    pub include_shared_thread: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum TeamTaskContextPatch {
+    Replace(Value),
+    Merge(Value),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -558,28 +577,66 @@ impl TeamManager {
         team_id: &str,
         limit: i64,
     ) -> anyhow::Result<Vec<TeamTaskRecord>> {
-        let rows = sqlx::query(
+        let rows = self
+            .list_tasks_with_query(TeamTaskListQuery {
+                team_id: Some(team_id.to_string()),
+                limit,
+                ..TeamTaskListQuery::default()
+            })
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_tasks_with_query(
+        &self,
+        query: TeamTaskListQuery,
+    ) -> anyhow::Result<Vec<TeamTaskRecord>> {
+        let team_id = self
+            .resolve_team_scope(query.team_id.as_deref(), query.run_id.as_deref())
+            .await?;
+        let mut builder = QueryBuilder::<Sqlite>::new(
             r#"
             SELECT
-                id,
-                team_id,
-                title,
-                status,
-                created_by_actor_id,
-                assigned_member_id,
-                context_json,
-                created_at,
-                updated_at
-            FROM team_tasks
-            WHERE team_id = ?1
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?2
-            "#,
-        )
-        .bind(team_id)
-        .bind(limit.max(1))
-        .fetch_all(&self.db)
-        .await?;
+                t.id,
+                t.team_id,
+                t.title,
+                t.status,
+                t.created_by_actor_id,
+                t.assigned_member_id,
+                t.context_json,
+                t.created_at,
+                t.updated_at
+            FROM team_tasks AS t
+            LEFT JOIN team_conversations AS c ON c.task_id = t.id
+            WHERE t.team_id = "#,
+        );
+        builder.push_bind(&team_id);
+        if let Some(status) = query.status {
+            builder.push(" AND t.status = ");
+            builder.push_bind(team_task_status_to_str(&status));
+        }
+        if let Some(task_id) = query.task_id.as_deref() {
+            builder.push(" AND t.id = ");
+            builder.push_bind(task_id);
+        }
+        if let Some(assigned_member_id) = query.assigned_member_id.as_deref() {
+            builder.push(" AND t.assigned_member_id = ");
+            builder.push_bind(assigned_member_id);
+        }
+        if let Some(topic) = query.topic.as_deref() {
+            builder.push(" AND trim(COALESCE(c.topic, '')) = ");
+            builder.push_bind(topic);
+        }
+        if !query.include_shared_thread {
+            builder.push(
+                " AND lower(trim(t.title)) != 'all' \
+                 AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) != ",
+            );
+            builder.push_bind("shared_thread");
+        }
+        builder.push(" ORDER BY t.updated_at DESC, t.id DESC LIMIT ");
+        builder.push_bind(query.limit.max(1));
+        let rows = builder.build().fetch_all(&self.db).await?;
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
             tasks.push(parse_team_task_row(&row)?);
@@ -610,6 +667,59 @@ impl TeamManager {
         parse_team_task_row(&row)
     }
 
+    pub async fn get_task_detail(
+        &self,
+        task_id: &str,
+        message_limit: i64,
+    ) -> anyhow::Result<super::TeamTaskDetailRecord> {
+        let task = self.get_task(task_id).await?;
+        let conversation = self.get_task_conversation(task_id).await?;
+        let latest_run = self.get_latest_run_for_task(&task.team_id, task_id).await?;
+        let recent_messages = self
+            .list_task_conversation_messages(
+                task_id,
+                message_limit.clamp(1, TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX),
+                None,
+            )
+            .await?;
+        Ok(super::TeamTaskDetailRecord {
+            task,
+            conversation,
+            latest_run,
+            recent_messages,
+        })
+    }
+
+    async fn resolve_team_scope(
+        &self,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let normalized_team_id = team_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let normalized_run_id = run_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(run_id) = normalized_run_id.as_deref() {
+            let run = self.get_run(run_id).await?;
+            if let Some(explicit_team_id) = normalized_team_id.as_deref()
+                && explicit_team_id != run.team_id
+            {
+                return Err(TeamContextLookupError::RunTeamMismatch {
+                    run_id: run_id.to_string(),
+                    actual_team_id: run.team_id,
+                    requested_team_id: explicit_team_id.to_string(),
+                }
+                .into());
+            }
+            return Ok(run.team_id);
+        }
+        normalized_team_id.ok_or(TeamContextLookupError::MissingSelector.into())
+    }
+
     pub async fn update_task_status(
         &self,
         task_id: &str,
@@ -624,6 +734,17 @@ impl TeamManager {
         task_id: &str,
         status: Option<TeamTaskStatus>,
         assignment: TeamTaskAssignmentUpdate,
+    ) -> anyhow::Result<TeamTaskRecord> {
+        self.update_task_with_context(task_id, status, assignment, None)
+            .await
+    }
+
+    pub async fn update_task_with_context(
+        &self,
+        task_id: &str,
+        status: Option<TeamTaskStatus>,
+        assignment: TeamTaskAssignmentUpdate,
+        context_patch: Option<TeamTaskContextPatch>,
     ) -> anyhow::Result<TeamTaskRecord> {
         let current = self.get_task(task_id).await?;
         let status_patch = status.filter(|candidate| *candidate != current.status);
@@ -644,57 +765,47 @@ impl TeamManager {
                 }
             }
         };
-        if status_patch.is_none() && assignment_patch.is_none() {
+        let context_patch =
+            context_patch.and_then(|patch| resolve_task_context_patch(&current.context, patch));
+        if status_patch.is_none() && assignment_patch.is_none() && context_patch.is_none() {
             return Ok(current);
         }
 
         let now = Utc::now().timestamp();
-        match (status_patch.as_ref(), assignment_patch.as_ref()) {
-            (Some(next_status), Some(next_assignment)) => {
-                sqlx::query(
-                    r#"
-                    UPDATE team_tasks
-                    SET status = ?2, assigned_member_id = ?3, updated_at = ?4
-                    WHERE id = ?1
-                    "#,
-                )
-                .bind(task_id)
-                .bind(team_task_status_to_str(next_status))
-                .bind(next_assignment)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
+        let mut builder = QueryBuilder::<Sqlite>::new("UPDATE team_tasks SET ");
+        let mut first = true;
+        if let Some(next_status) = status_patch.as_ref() {
+            if !first {
+                builder.push(", ");
             }
-            (Some(next_status), None) => {
-                sqlx::query(
-                    r#"
-                    UPDATE team_tasks
-                    SET status = ?2, updated_at = ?3
-                    WHERE id = ?1
-                    "#,
-                )
-                .bind(task_id)
-                .bind(team_task_status_to_str(next_status))
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            }
-            (None, Some(next_assignment)) => {
-                sqlx::query(
-                    r#"
-                    UPDATE team_tasks
-                    SET assigned_member_id = ?2, updated_at = ?3
-                    WHERE id = ?1
-                    "#,
-                )
-                .bind(task_id)
-                .bind(next_assignment)
-                .bind(now)
-                .execute(&self.db)
-                .await?;
-            }
-            (None, None) => unreachable!("no-op task patch should return early"),
+            first = false;
+            builder.push("status = ");
+            builder.push_bind(team_task_status_to_str(next_status));
         }
+        if let Some(next_assignment) = assignment_patch.as_ref() {
+            if !first {
+                builder.push(", ");
+            }
+            first = false;
+            builder.push("assigned_member_id = ");
+            builder.push_bind(next_assignment);
+        }
+        if let Some(next_context) = context_patch.as_ref() {
+            if !first {
+                builder.push(", ");
+            }
+            first = false;
+            builder.push("context_json = ");
+            builder.push_bind(next_context.to_string());
+        }
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("updated_at = ");
+        builder.push_bind(now);
+        builder.push(" WHERE id = ");
+        builder.push_bind(task_id);
+        builder.build().execute(&self.db).await?;
 
         self.get_task(task_id).await
     }
@@ -3801,6 +3912,34 @@ pub(super) fn redact_sensitive_json(value: &Value) -> Value {
         }
         Value::Array(items) => Value::Array(items.iter().map(redact_sensitive_json).collect()),
         _ => value.clone(),
+    }
+}
+
+fn resolve_task_context_patch(current: &Value, patch: TeamTaskContextPatch) -> Option<Value> {
+    let next = match patch {
+        TeamTaskContextPatch::Replace(value) => redact_sensitive_json(&value),
+        TeamTaskContextPatch::Merge(value) => {
+            let mut merged = current.clone();
+            merge_json_value(&mut merged, &value);
+            redact_sensitive_json(&merged)
+        }
+    };
+    (next != *current).then_some(next)
+}
+
+fn merge_json_value(target: &mut Value, patch: &Value) {
+    match (target, patch) {
+        (Value::Object(target_obj), Value::Object(patch_obj)) => {
+            for (key, patch_value) in patch_obj {
+                match target_obj.get_mut(key) {
+                    Some(target_value) => merge_json_value(target_value, patch_value),
+                    None => {
+                        target_obj.insert(key.clone(), patch_value.clone());
+                    }
+                }
+            }
+        }
+        (target, patch) => *target = patch.clone(),
     }
 }
 

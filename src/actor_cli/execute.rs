@@ -16,6 +16,7 @@ use anyhow::Context;
 use chrono::Utc;
 
 use crate::internal::auth::InternalAction;
+use crate::internal::client::InternalTeamTaskPatch;
 use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
@@ -72,29 +73,15 @@ pub(super) async fn run_actor_command(
                 .await?;
             write_actor_output(&team_context, output_mode, output_preference)?;
         }
-        ActorCommand::TeamTasks {
-            team_id,
-            actor_id,
-            limit,
-            status,
-            include_shared_thread,
-        } => {
+        ActorCommand::TeamTasks { query, actor_id } => {
             let client = init_actor_control_client(
                 &actor_id,
-                None,
+                query.run_id.as_deref(),
                 &[InternalAction::TeamRead],
                 "actor team task control",
             )
             .await?;
-            let tasks = client
-                .list_team_tasks(
-                    &team_id,
-                    &actor_id,
-                    limit,
-                    status.as_ref().map(TeamTaskStatus::as_str),
-                    include_shared_thread,
-                )
-                .await?;
+            let tasks = client.list_team_tasks(&actor_id, &query).await?;
             write_actor_output(&tasks, output_mode, output_preference)?;
         }
         ActorCommand::TeamTaskCreate {
@@ -124,13 +111,40 @@ pub(super) async fn run_actor_command(
                 .await?;
             write_actor_output(&output, output_mode, output_preference)?;
         }
+        ActorCommand::TeamTaskShow {
+            team_id,
+            run_id,
+            actor_id,
+            task_id,
+            message_limit,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                run_id.as_deref(),
+                &[InternalAction::TeamRead],
+                "actor team task control",
+            )
+            .await?;
+            let detail = client
+                .get_team_task(
+                    &actor_id,
+                    team_id.as_deref(),
+                    run_id.as_deref(),
+                    &task_id,
+                    message_limit,
+                )
+                .await?;
+            write_actor_output(&detail, output_mode, output_preference)?;
+        }
         ActorCommand::TeamTaskUpdate {
             team_id,
             actor_id,
-            task_id,
+            task_ids,
             status,
             assigned_member_id,
             clear_assigned_member_id,
+            context,
+            context_merge,
         } => {
             let client = init_actor_control_client(
                 &actor_id,
@@ -139,22 +153,67 @@ pub(super) async fn run_actor_command(
                 "actor team task control",
             )
             .await?;
-            if status.is_none() && assigned_member_id.is_none() && !clear_assigned_member_id {
+            if status.is_none()
+                && assigned_member_id.is_none()
+                && !clear_assigned_member_id
+                && context.is_none()
+                && context_merge.is_none()
+            {
                 return Err(anyhow::anyhow!(
-                    "team-task-update requires --status, --assigned-member-id, or --unassign"
+                    "team-task-update requires --status, --assigned-member-id, --unassign, --context-json, or --context-merge-json"
                 ));
             }
-            let task = client
-                .update_team_task(
-                    &team_id,
+            let mut tasks = Vec::with_capacity(task_ids.len());
+            for task_id in task_ids {
+                let task = client
+                    .update_team_task(
+                        &team_id,
+                        &actor_id,
+                        &task_id,
+                        InternalTeamTaskPatch {
+                            status: status.as_ref().map(TeamTaskStatus::as_str),
+                            assigned_member_id: assigned_member_id.as_deref(),
+                            clear_assigned_member_id,
+                            context_json: context.as_ref(),
+                            context_merge_json: context_merge.as_ref(),
+                        },
+                    )
+                    .await?;
+                tasks.push(task);
+            }
+            if tasks.len() == 1 {
+                let task = tasks.pop().expect("single task update result");
+                write_actor_output(&task, output_mode, output_preference)?;
+            } else {
+                write_actor_output(&tasks, output_mode, output_preference)?;
+            }
+        }
+        ActorCommand::TeamTaskNote {
+            team_id,
+            run_id,
+            actor_id,
+            task_id,
+            kind,
+            text,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                run_id.as_deref(),
+                &[InternalAction::TeamTaskWrite],
+                "actor team task control",
+            )
+            .await?;
+            let message = client
+                .append_team_task_note(
                     &actor_id,
+                    team_id.as_deref(),
+                    run_id.as_deref(),
                     &task_id,
-                    status.as_ref().map(TeamTaskStatus::as_str),
-                    assigned_member_id.as_deref(),
-                    clear_assigned_member_id,
+                    kind.as_str(),
+                    &text,
                 )
                 .await?;
-            write_actor_output(&task, output_mode, output_preference)?;
+            write_actor_output(&message, output_mode, output_preference)?;
         }
         ActorCommand::Inbox {
             run_id,

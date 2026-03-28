@@ -13,18 +13,19 @@ pub use agenthub_team_domain::{
     TEAM_TASK_STATUS_VALUES, TeamConversationMessageRecord, TeamConversationRecord,
     TeamDefinitionConfig, TeamDefinitionRecord, TeamMemberContinuityStateRecord,
     TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
-    TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+    TeamStepStatus, TeamTaskDetailRecord, TeamTaskRecord, TeamTaskStatus,
 };
 pub(crate) use mailbox_hint::{
     ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
     TeamMailboxUnreadHintWorkerSettings, build_actor_mailbox_immediate_hint_prompt,
     plan_actor_mailbox_immediate_hint,
 };
+pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
     TeamManager, TeamMemoryFlushRequest, TeamRemoteRelayWorkerSettings, TeamRuntimeRecord,
-    TeamRuntimeStatus, TeamTaskAssignmentUpdate,
+    TeamRuntimeStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery,
 };
 pub(crate) use permission_review::resolve_team_permission_review_target;
 pub use permission_review::{

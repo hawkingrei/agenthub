@@ -14,6 +14,8 @@ service TeamInternalControl {
   rpc ListTeamTasks(ListTeamTasksRequest) returns (ListTeamTasksResponse);
   rpc CreateTeamTask(CreateTeamTaskRequest) returns (CreateTeamTaskResponse);
   rpc UpdateTeamTask(UpdateTeamTaskRequest) returns (UpdateTeamTaskResponse);
+  rpc GetTeamTask(GetTeamTaskRequest) returns (GetTeamTaskResponse);
+  rpc AppendTeamTaskNote(AppendTeamTaskNoteRequest) returns (AppendTeamTaskNoteResponse);
   rpc CreateTimeTrigger(CreateTimeTriggerRequest) returns (CreateTimeTriggerResponse);
   rpc ListTimeTriggers(ListTimeTriggersRequest) returns (ListTimeTriggersResponse);
   rpc CancelTimeTrigger(CancelTimeTriggerRequest) returns (CancelTimeTriggerResponse);
@@ -89,6 +91,10 @@ message ListTeamTasksRequest {
   int64 limit = 3;
   string status = 4;
   bool include_shared_thread = 5;
+  string run_id = 6;
+  string task_id = 7;
+  string assigned_member_id = 8;
+  string topic = 9;
 }
 
 message ListTeamTasksResponse {
@@ -115,10 +121,37 @@ message UpdateTeamTaskRequest {
   optional string status = 4;
   optional string assigned_member_id = 5;
   bool clear_assigned_member_id = 6;
+  optional string context_json = 7;
+  optional string context_merge_json = 8;
 }
 
 message UpdateTeamTaskResponse {
   string task_json = 1;
+}
+
+message GetTeamTaskRequest {
+  string team_id = 1;
+  string run_id = 2;
+  string actor_id = 3;
+  string task_id = 4;
+  int64 message_limit = 5;
+}
+
+message GetTeamTaskResponse {
+  string detail_json = 1;
+}
+
+message AppendTeamTaskNoteRequest {
+  string team_id = 1;
+  string run_id = 2;
+  string actor_id = 3;
+  string task_id = 4;
+  string kind = 5;
+  string text = 6;
+}
+
+message AppendTeamTaskNoteResponse {
+  string message_json = 1;
 }
 
 message CreateTimeTriggerRequest {

@@ -1,7 +1,7 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
     ActorCommand, ActorOutputMode, ActorSendPayloadSource,
-    TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS,
+    TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
 };
 use std::fs;
 
@@ -9,7 +9,9 @@ use crate::actor_runtime_env::{
     ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_AGENT_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV,
     ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var,
 };
-use crate::team::{TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamTaskStatus};
+use crate::team::{
+    TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus,
+};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
     build_default_actor_message_idempotency_key, parse_actor_transport,
@@ -30,6 +32,12 @@ fn parse_i64(value: &str, field: &str) -> anyhow::Result<i64> {
 fn parse_json(value: &str, field: &str) -> anyhow::Result<Value> {
     serde_json::from_str::<Value>(value)
         .map_err(|err| anyhow::anyhow!("invalid {} JSON: {}", field, err))
+}
+
+fn parse_json_file(path: &str, field: &str) -> anyhow::Result<Value> {
+    let raw = fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("failed to read {} file {}: {}", field, path, err))?;
+    parse_json(&raw, field)
 }
 
 fn read_actor_send_file(path: &str, flag: &str) -> anyhow::Result<String> {
@@ -162,6 +170,18 @@ fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> 
     }
 }
 
+fn parse_team_task_note_kind(raw: &str) -> anyhow::Result<TeamTaskNoteKind> {
+    match raw.trim() {
+        "comment" => Ok(TeamTaskNoteKind::Comment),
+        "decision" => Ok(TeamTaskNoteKind::Decision),
+        "result" => Ok(TeamTaskNoteKind::Result),
+        other => Err(anyhow::anyhow!(
+            "invalid task note kind '{}', expected one of: comment, decision, result",
+            other
+        )),
+    }
+}
+
 pub(super) fn compute_time_trigger_fire_at(now_ts: i64, delay_seconds: i64) -> i64 {
     now_ts + delay_seconds + TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS
 }
@@ -283,9 +303,13 @@ pub(super) fn parse_actor_command(
         }
         "team-tasks" => {
             let mut team_id = None;
+            let mut run_id = None;
             let mut actor_id = None;
             let mut limit = 100_i64;
             let mut status = None;
+            let mut task_id = None;
+            let mut assigned_member_id = None;
+            let mut topic = None;
             let mut include_shared_thread = false;
             let mut idx = 1;
             while idx < args.len() {
@@ -297,6 +321,14 @@ pub(super) fn parse_actor_command(
                             args.get(idx)
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                        );
+                    }
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
                         );
                     }
                     flag @ ("--actor-id" | "--agent-id") => {
@@ -321,6 +353,28 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--status requires a value"))?;
                         status = Some(raw.clone());
                     }
+                    "--task-id" => {
+                        idx += 1;
+                        task_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
+                        );
+                    }
+                    "--assigned-member-id" => {
+                        idx += 1;
+                        assigned_member_id = Some(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("--assigned-member-id requires a value")
+                        })?);
+                    }
+                    "--topic" => {
+                        idx += 1;
+                        topic = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--topic requires a value"))?,
+                        );
+                    }
                     "--include-shared-thread" => include_shared_thread = true,
                     other => return Err(anyhow::anyhow!("unknown flag for team-tasks: {}", other)),
                 }
@@ -330,12 +384,37 @@ pub(super) fn parse_actor_command(
                 Some("all") | None => None,
                 Some(raw) => Some(parse_team_task_status_argument(raw)?),
             };
+            let explicit_team_id = take_optional(team_id);
+            let explicit_run_id = take_optional(run_id);
+            let team_id = explicit_team_id.clone().or_else(|| {
+                if explicit_run_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+            });
+            let run_id = explicit_run_id.or_else(|| {
+                if explicit_team_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+            });
+            if team_id.is_none() && run_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-tasks requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
             Ok(ActorCommand::TeamTasks {
-                team_id: take_team_id(team_id)?,
+                query: TeamTaskListQuery {
+                    team_id,
+                    run_id,
+                    limit: limit.clamp(1, 500),
+                    status,
+                    task_id: take_optional(task_id),
+                    assigned_member_id: take_optional(assigned_member_id),
+                    topic: take_optional(topic),
+                    include_shared_thread,
+                },
                 actor_id: take_actor_id(actor_id)?,
-                limit: limit.clamp(1, 500),
-                status,
-                include_shared_thread,
             })
         }
         "team-task-create" => {
@@ -345,6 +424,7 @@ pub(super) fn parse_actor_command(
             let mut status = TeamTaskStatus::Open;
             let mut topic = None;
             let mut context = None;
+            let mut context_file = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -395,6 +475,13 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--context-json requires a value"))?;
                         context = Some(parse_json(raw, "context_json")?);
                     }
+                    "--context-json-file" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-json-file requires a value")
+                        })?;
+                        context_file = Some(parse_json_file(raw, "context_json")?);
+                    }
                     other => {
                         return Err(anyhow::anyhow!(
                             "unknown flag for team-task-create: {}",
@@ -404,6 +491,11 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
+            if context.is_some() && context_file.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--context-json and --context-json-file cannot be used together"
+                ));
+            }
             let title = take_optional(title).ok_or_else(|| anyhow::anyhow!("title is required"))?;
             Ok(ActorCommand::TeamTaskCreate {
                 team_id: take_team_id(team_id)?,
@@ -411,16 +503,108 @@ pub(super) fn parse_actor_command(
                 title,
                 status,
                 topic: take_optional(topic),
-                context: context.unwrap_or_else(|| serde_json::json!({})),
+                context: context
+                    .or(context_file)
+                    .unwrap_or_else(|| serde_json::json!({})),
+            })
+        }
+        "team-task-show" | "team-task-get" => {
+            let mut team_id = None;
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut task_id = None;
+            let mut message_limit = 20_i64;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--team-id" => {
+                        idx += 1;
+                        team_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                        );
+                    }
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--task-id" => {
+                        idx += 1;
+                        task_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
+                        );
+                    }
+                    "--message-limit" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--message-limit requires a value"))?;
+                        message_limit = parse_i64(raw, "message_limit")?;
+                    }
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-show: {}",
+                            other
+                        ));
+                    }
+                }
+                idx += 1;
+            }
+            let explicit_team_id = take_optional(team_id);
+            let explicit_run_id = take_optional(run_id);
+            let team_id = explicit_team_id.clone().or_else(|| {
+                if explicit_run_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+            });
+            let run_id = explicit_run_id.or_else(|| {
+                if explicit_team_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+            });
+            if team_id.is_none() && run_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-task-show requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
+            Ok(ActorCommand::TeamTaskShow {
+                team_id,
+                run_id,
+                actor_id: take_actor_id(actor_id)?,
+                task_id: take_optional(task_id)
+                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
+                message_limit: message_limit.clamp(1, 200),
             })
         }
         "team-task-update" => {
             let mut team_id = None;
             let mut actor_id = None;
-            let mut task_id = None;
+            let mut task_ids = Vec::new();
             let mut status = None;
             let mut assigned_member_id = None;
             let mut clear_assigned_member_id = false;
+            let mut context = None;
+            let mut context_file = None;
+            let mut context_merge = None;
+            let mut context_merge_file = None;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -443,7 +627,7 @@ pub(super) fn parse_actor_command(
                     }
                     "--task-id" => {
                         idx += 1;
-                        task_id = Some(
+                        task_ids.push(
                             args.get(idx)
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
@@ -465,6 +649,34 @@ pub(super) fn parse_actor_command(
                     "--unassign" => {
                         clear_assigned_member_id = true;
                     }
+                    "--context-json" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--context-json requires a value"))?;
+                        context = Some(parse_json(raw, "context_json")?);
+                    }
+                    "--context-json-file" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-json-file requires a value")
+                        })?;
+                        context_file = Some(parse_json_file(raw, "context_json")?);
+                    }
+                    "--context-merge-json" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-merge-json requires a value")
+                        })?;
+                        context_merge = Some(parse_json(raw, "context_merge_json")?);
+                    }
+                    "--context-merge-json-file" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-merge-json-file requires a value")
+                        })?;
+                        context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
+                    }
                     other => {
                         return Err(anyhow::anyhow!(
                             "unknown flag for team-task-update: {}",
@@ -479,14 +691,138 @@ pub(super) fn parse_actor_command(
                     "--assigned-member-id and --unassign cannot be used together"
                 ));
             }
+            if task_ids.is_empty() {
+                return Err(anyhow::anyhow!("task_id is required"));
+            }
+            if context.is_some() && context_file.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--context-json and --context-json-file cannot be used together"
+                ));
+            }
+            if context_merge.is_some() && context_merge_file.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--context-merge-json and --context-merge-json-file cannot be used together"
+                ));
+            }
+            if (context.is_some() || context_file.is_some())
+                && (context_merge.is_some() || context_merge_file.is_some())
+            {
+                return Err(anyhow::anyhow!(
+                    "--context-json/--context-json-file and --context-merge-json/--context-merge-json-file cannot be used together"
+                ));
+            }
+            let task_ids = task_ids
+                .into_iter()
+                .filter_map(|task_id| take_optional(Some(task_id)))
+                .collect::<Vec<_>>();
+            if task_ids.is_empty() {
+                return Err(anyhow::anyhow!("task_id is required"));
+            }
             Ok(ActorCommand::TeamTaskUpdate {
                 team_id: take_team_id(team_id)?,
                 actor_id: take_actor_id(actor_id)?,
-                task_id: take_optional(task_id)
-                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
+                task_ids,
                 status,
                 assigned_member_id: take_optional(assigned_member_id),
                 clear_assigned_member_id,
+                context: context.or(context_file),
+                context_merge: context_merge.or(context_merge_file),
+            })
+        }
+        "team-task-note" => {
+            let mut team_id = None;
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut task_id = None;
+            let mut kind = TeamTaskNoteKind::Comment;
+            let mut text = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--team-id" => {
+                        idx += 1;
+                        team_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                        );
+                    }
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--task-id" => {
+                        idx += 1;
+                        task_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
+                        );
+                    }
+                    "--kind" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--kind requires a value"))?;
+                        kind = parse_team_task_note_kind(raw)?;
+                    }
+                    "--text" => {
+                        idx += 1;
+                        text = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--text requires a value"))?,
+                        );
+                    }
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-task-note: {}",
+                            other
+                        ));
+                    }
+                }
+                idx += 1;
+            }
+            let explicit_team_id = take_optional(team_id);
+            let explicit_run_id = take_optional(run_id);
+            let team_id = explicit_team_id.clone().or_else(|| {
+                if explicit_run_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+            });
+            let run_id = explicit_run_id.or_else(|| {
+                if explicit_team_id.is_some() {
+                    return None;
+                }
+                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+            });
+            if team_id.is_none() && run_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-task-note requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
+            Ok(ActorCommand::TeamTaskNote {
+                team_id,
+                run_id,
+                actor_id: take_actor_id(actor_id)?,
+                task_id: take_optional(task_id)
+                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
+                kind,
+                text: take_optional(text).ok_or_else(|| anyhow::anyhow!("text is required"))?,
             })
         }
         "inbox" => {

@@ -95,6 +95,14 @@ pub struct ListTeamTasksRequest {
     pub status: ::prost::alloc::string::String,
     #[prost(bool, tag = "5")]
     pub include_shared_thread: bool,
+    #[prost(string, tag = "6")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub assigned_member_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
+    pub topic: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListTeamTasksResponse {
@@ -135,11 +143,53 @@ pub struct UpdateTeamTaskRequest {
     pub assigned_member_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag = "6")]
     pub clear_assigned_member_id: bool,
+    #[prost(string, optional, tag = "7")]
+    pub context_json: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "8")]
+    pub context_merge_json: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UpdateTeamTaskResponse {
     #[prost(string, tag = "1")]
     pub task_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetTeamTaskRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "5")]
+    pub message_limit: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetTeamTaskResponse {
+    #[prost(string, tag = "1")]
+    pub detail_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AppendTeamTaskNoteRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub task_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub text: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AppendTeamTaskNoteResponse {
+    #[prost(string, tag = "1")]
+    pub message_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateTimeTriggerRequest {
@@ -706,6 +756,64 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_team_task(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTeamTaskResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/GetTeamTask",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "GetTeamTask",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn append_team_task_note(
+            &mut self,
+            request: impl tonic::IntoRequest<super::AppendTeamTaskNoteRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AppendTeamTaskNoteResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/AppendTeamTaskNote",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "AppendTeamTaskNote",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn create_time_trigger(
             &mut self,
             request: impl tonic::IntoRequest<super::CreateTimeTriggerRequest>,
@@ -1145,6 +1253,20 @@ pub mod team_internal_control_server {
             request: tonic::Request<super::UpdateTeamTaskRequest>,
         ) -> std::result::Result<
             tonic::Response<super::UpdateTeamTaskResponse>,
+            tonic::Status,
+        >;
+        async fn get_team_task(
+            &self,
+            request: tonic::Request<super::GetTeamTaskRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTeamTaskResponse>,
+            tonic::Status,
+        >;
+        async fn append_team_task_note(
+            &self,
+            request: tonic::Request<super::AppendTeamTaskNoteRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AppendTeamTaskNoteResponse>,
             tonic::Status,
         >;
         async fn create_time_trigger(
@@ -1640,6 +1762,101 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = UpdateTeamTaskSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/GetTeamTask" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetTeamTaskSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::GetTeamTaskRequest>
+                    for GetTeamTaskSvc<T> {
+                        type Response = super::GetTeamTaskResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetTeamTaskRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::get_team_task(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetTeamTaskSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/AppendTeamTaskNote" => {
+                    #[allow(non_camel_case_types)]
+                    struct AppendTeamTaskNoteSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::AppendTeamTaskNoteRequest>
+                    for AppendTeamTaskNoteSvc<T> {
+                        type Response = super::AppendTeamTaskNoteResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::AppendTeamTaskNoteRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::append_team_task_note(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = AppendTeamTaskNoteSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
