@@ -387,6 +387,10 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
         .route("/{id}/runtime", get(get_team_runtime))
+        .route(
+            "/{id}/shared_thread",
+            get(get_team_shared_thread).post(ensure_team_shared_thread),
+        )
         .route("/{id}/start", post(start_team))
         .route("/{id}/stop", post(stop_team))
         .route(
@@ -702,6 +706,47 @@ async fn create_team_task(
         task,
         conversation,
         latest_run: None,
+    }))
+}
+
+async fn get_team_shared_thread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let Some((task, conversation, latest_run)) = state
+        .teams
+        .get_shared_thread_detail_for_team(&team_id)
+        .await
+        .map_err(map_team_internal_error)?
+    else {
+        return Err(ApiError::not_found("shared thread not found"));
+    };
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run,
+    }))
+}
+
+async fn ensure_team_shared_thread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let (task, conversation, latest_run) = state
+        .teams
+        .ensure_shared_thread_detail_for_team(&team_id, &canonical_user_actor_id(&user))
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run,
     }))
 }
 
