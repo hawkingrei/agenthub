@@ -4,10 +4,8 @@ use agenthub_team_actor::{
 };
 use async_trait::async_trait;
 
-use crate::agent::AgentNodeRecord;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedNodeEndpoint {
+pub struct ResolvedNodeEndpoint {
     pub cluster_id: String,
     pub node_id: String,
     pub grpc_target: Option<String>,
@@ -15,26 +13,13 @@ pub(crate) struct ResolvedNodeEndpoint {
     pub is_main: bool,
 }
 
-impl ResolvedNodeEndpoint {
-    pub(crate) fn from_agent_node_record(cluster_id: &str, node: AgentNodeRecord) -> Self {
-        Self {
-            cluster_id: cluster_id.to_string(),
-            node_id: node.id,
-            grpc_target: node.grpc_target,
-            tls_server_name: node.tls_server_name,
-            is_main: node.is_main,
-        }
-    }
-}
-
 #[async_trait]
-pub(crate) trait MembershipView {
+pub trait MembershipView {
     async fn resolve_node(&self, node_id: &str) -> anyhow::Result<ResolvedNodeEndpoint>;
 }
 
-#[allow(dead_code)]
 #[async_trait]
-pub(crate) trait P2PTransport {
+pub trait P2PTransport {
     async fn send_p2p_message(
         &self,
         request: ActorSendRequest,

@@ -5,6 +5,7 @@ members = [
     "crates/agenthub-acp-core",
     "crates/agenthub-acp",
     "crates/agenthub-managed-skills",
+    "crates/agenthub-internal-p2p",
     "crates/agenthub-text",
     "crates/agenthub-team-actor",
     "crates/agenthub-team-domain",
@@ -64,6 +65,7 @@ sha2 = "0.11"
 zstd = "0.13"
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
+agenthub-internal-p2p = { path = "crates/agenthub-internal-p2p" }
 agenthub-text = { path = "crates/agenthub-text" }
 agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }

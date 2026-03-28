@@ -35,6 +35,7 @@ rust_library(
     aliases = aliases(),
     deps = all_crate_deps(normal = True) + [
         "//crates/agenthub-acp:agenthub_acp",
+        "//crates/agenthub-internal-p2p:agenthub_internal_p2p",
         "//crates/agenthub-text:agenthub_text",
         "//crates/agenthub-team-actor:agenthub_team_actor",
         "//crates/agenthub-team-domain:agenthub_team_domain",

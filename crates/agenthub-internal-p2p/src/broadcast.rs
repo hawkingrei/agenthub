@@ -2,26 +2,23 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::credentials::BroadcastIntent;
-use super::metadata::NodeTransportMetadata;
+use crate::credentials::BroadcastIntent;
+use crate::metadata::NodeTransportMetadata;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct BroadcastAudienceMember {
+pub struct BroadcastAudienceMember {
     pub member_id: String,
     pub target_node_id: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeBroadcastEnvelope {
+pub struct NodeBroadcastEnvelope {
     pub metadata: NodeTransportMetadata,
     pub member_ids: Vec<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeBroadcastAck {
+pub struct NodeBroadcastAck {
     pub broadcast_id: String,
     pub target_node_id: String,
     pub delivered_member_ids: Vec<String>,
@@ -29,8 +26,7 @@ pub(crate) struct NodeBroadcastAck {
     pub acked_at: i64,
 }
 
-#[allow(dead_code)]
-pub(crate) trait BroadcastPlanner {
+pub trait BroadcastPlanner {
     fn plan_node_broadcast(
         &self,
         intent: &BroadcastIntent,
@@ -38,9 +34,8 @@ pub(crate) trait BroadcastPlanner {
     ) -> anyhow::Result<Vec<NodeBroadcastEnvelope>>;
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct NodeScopedBroadcastPlanner;
+pub struct NodeScopedBroadcastPlanner;
 
 impl BroadcastPlanner for NodeScopedBroadcastPlanner {
     fn plan_node_broadcast(

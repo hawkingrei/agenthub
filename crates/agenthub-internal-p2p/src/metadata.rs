@@ -4,15 +4,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::agent::AGENT_NODE_MAIN_ID;
-use crate::team::TeamActorMessageRecord;
-
-use super::credentials::DEFAULT_CLUSTER_ID;
+use crate::credentials::DEFAULT_CLUSTER_ID;
 
 const DIRECT_NODE_SCOPE: &str = "node:p2p";
 const UNKNOWN_SHARED_KEY_ID: &str = "phase1-shared-key";
 
-pub(crate) fn payload_digest(payload: &Value) -> anyhow::Result<String> {
+pub fn payload_digest(payload: &Value) -> anyhow::Result<String> {
     let encoded = serde_json::to_vec(payload)?;
     let digest = Sha256::digest(&encoded);
     let mut out = String::with_capacity(64);
@@ -23,7 +20,7 @@ pub(crate) fn payload_digest(payload: &Value) -> anyhow::Result<String> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeTransportMetadata {
+pub struct NodeTransportMetadata {
     pub cluster_id: String,
     pub source_node_id: String,
     pub target_node_id: String,
@@ -45,12 +42,11 @@ pub(crate) struct NodeTransportMetadata {
 }
 
 impl NodeTransportMetadata {
-    pub(crate) fn from_route_value(route: &Value) -> Option<Self> {
+    pub fn from_route_value(route: &Value) -> Option<Self> {
         serde_json::from_value(route.clone()).ok()
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn apply_to_route(&self, route: &mut Map<String, Value>) {
+    pub fn apply_to_route(&self, route: &mut Map<String, Value>) {
         route.insert("cluster_id".to_string(), json!(self.cluster_id));
         route.insert("source_node_id".to_string(), json!(self.source_node_id));
         route.insert("target_node_id".to_string(), json!(self.target_node_id));
@@ -74,40 +70,33 @@ impl NodeTransportMetadata {
     }
 }
 
-pub(crate) fn build_message_metadata(message: &TeamActorMessageRecord) -> NodeTransportMetadata {
-    let route_metadata = message
-        .route
-        .as_ref()
-        .and_then(NodeTransportMetadata::from_route_value);
-    let payload_correlation_id = message
-        .payload
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let payload_broadcast_id = message
-        .payload
-        .get("broadcast_id")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+pub struct TransportMetadataInput<'a> {
+    pub route_metadata: Option<NodeTransportMetadata>,
+    pub payload_correlation_id: Option<String>,
+    pub payload_broadcast_id: Option<String>,
+    pub payload: &'a Value,
+    pub created_at: i64,
+    pub fallback_source_node_id: &'a str,
+    pub fallback_target_node_id: &'a str,
+    pub run_id: &'a str,
+    pub message_id: i64,
+}
+
+pub fn build_transport_metadata(input: TransportMetadataInput<'_>) -> NodeTransportMetadata {
+    let route_metadata = input.route_metadata;
+    let payload_correlation_id = input.payload_correlation_id;
+    let payload_broadcast_id = input.payload_broadcast_id;
     let payload_digest = route_metadata
         .as_ref()
         .and_then(|value| value.payload_digest.clone())
-        .or_else(|| payload_digest(&message.payload).ok());
-    let created_at = if message.created_at > 0 {
-        message.created_at
+        .or_else(|| payload_digest(input.payload).ok());
+    let created_at = if input.created_at > 0 {
+        input.created_at
     } else {
         chrono::Utc::now().timestamp()
     };
-    let fallback_target = if message.to_peer_id.trim().is_empty() {
-        AGENT_NODE_MAIN_ID
-    } else {
-        message.to_peer_id.trim()
-    };
-    let fallback_source = if message.from_peer_id.trim().is_empty() {
-        AGENT_NODE_MAIN_ID
-    } else {
-        message.from_peer_id.trim()
-    };
+    let fallback_target = input.fallback_target_node_id.trim();
+    let fallback_source = input.fallback_source_node_id.trim();
     let metadata = route_metadata.unwrap_or_else(|| NodeTransportMetadata {
         cluster_id: DEFAULT_CLUSTER_ID.to_string(),
         source_node_id: fallback_source.to_string(),
@@ -116,7 +105,7 @@ pub(crate) fn build_message_metadata(message: &TeamActorMessageRecord) -> NodeTr
         correlation_id: payload_correlation_id.clone(),
         idempotency_key: Some(format!(
             "remote-relay:{}:{}",
-            message.run_id, message.message_id
+            input.run_id, input.message_id
         )),
         scope: vec![DIRECT_NODE_SCOPE.to_string()],
         audience: Vec::new(),
@@ -142,7 +131,7 @@ pub(crate) fn build_message_metadata(message: &TeamActorMessageRecord) -> NodeTr
         idempotency_key: metadata.idempotency_key.or_else(|| {
             Some(format!(
                 "remote-relay:{}:{}",
-                message.run_id, message.message_id
+                input.run_id, input.message_id
             ))
         }),
         scope: if metadata.scope.is_empty() {

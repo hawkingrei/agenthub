@@ -171,6 +171,7 @@ dependencies = [
  "agenthub-acp",
  "agenthub-config",
  "agenthub-db",
+ "agenthub-internal-p2p",
  "agenthub-logging",
  "agenthub-managed-skills",
  "agenthub-pyroscope",
@@ -304,6 +305,19 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "agenthub-internal-p2p"
+version = "0.1.0"
+dependencies = [
+ "agenthub-team-actor",
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

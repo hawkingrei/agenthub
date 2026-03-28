@@ -4,10 +4,10 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub(crate) const DEFAULT_CLUSTER_ID: &str = "agenthub-cluster";
+pub const DEFAULT_CLUSTER_ID: &str = "agenthub-cluster";
 const DIRECT_NODE_SCOPE: &str = "node:p2p";
 
-pub(crate) fn derive_cluster_id(expected_issuer: Option<&str>) -> String {
+pub fn derive_cluster_id(expected_issuer: Option<&str>) -> String {
     expected_issuer
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -15,7 +15,7 @@ pub(crate) fn derive_cluster_id(expected_issuer: Option<&str>) -> String {
         .to_string()
 }
 
-pub(crate) fn shared_key_kid(shared_secret: &str) -> String {
+pub fn shared_key_kid(shared_secret: &str) -> String {
     let digest = Sha256::digest(shared_secret.as_bytes());
     let mut suffix = String::with_capacity(16);
     for byte in digest.iter().take(8) {
@@ -24,7 +24,7 @@ pub(crate) fn shared_key_kid(shared_secret: &str) -> String {
     format!("shared-hs256-{suffix}")
 }
 
-pub(crate) fn normalize_scope(scope: Vec<String>, permissions: &[String]) -> Vec<String> {
+pub fn normalize_scope(scope: Vec<String>, permissions: &[String]) -> Vec<String> {
     let mut values = scope
         .into_iter()
         .chain(permissions.iter().cloned())
@@ -35,7 +35,7 @@ pub(crate) fn normalize_scope(scope: Vec<String>, permissions: &[String]) -> Vec
     values.into_iter().collect()
 }
 
-pub(crate) fn normalize_audience(audience: Vec<String>, fallback: Option<&str>) -> Vec<String> {
+pub fn normalize_audience(audience: Vec<String>, fallback: Option<&str>) -> Vec<String> {
     let mut values = audience
         .into_iter()
         .map(|value| value.trim().to_string())
@@ -48,7 +48,7 @@ pub(crate) fn normalize_audience(audience: Vec<String>, fallback: Option<&str>) 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NodeCredentialRequest {
+pub struct NodeCredentialRequest {
     pub source_node_id: String,
     pub role: String,
     pub actor_id: Option<String>,
@@ -60,7 +60,7 @@ pub(crate) struct NodeCredentialRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IssuedNodeAccessToken {
+pub struct IssuedNodeAccessToken {
     pub source_node_id: String,
     pub role: String,
     pub access_token: String,
@@ -72,7 +72,7 @@ pub(crate) struct IssuedNodeAccessToken {
     pub expires_at: i64,
 }
 
-pub(crate) trait CredentialProvider {
+pub trait CredentialProvider {
     fn issue_node_access_token(
         &self,
         request: NodeCredentialRequest,
@@ -80,7 +80,7 @@ pub(crate) trait CredentialProvider {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct BroadcastIntent {
+pub struct BroadcastIntent {
     pub cluster_id: String,
     pub source_node_id: String,
     pub broadcast_id: String,
