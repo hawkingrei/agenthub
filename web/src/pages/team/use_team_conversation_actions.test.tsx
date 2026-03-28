@@ -20,8 +20,7 @@ vi.mock("../../api", async () => {
       listTeamTaskMessages: vi.fn(),
       getTeamTask: vi.fn(),
       getTeamRunSnapshot: vi.fn(),
-      listTeamTasks: vi.fn(),
-      createTeamTask: vi.fn(),
+      ensureTeamSharedThread: vi.fn(),
       sendTeamTaskMessage: vi.fn(),
     },
   };
@@ -98,14 +97,13 @@ function createOptions(
     token: "token-1",
     selectedTeamId: "team-1",
     selectedConversation: buildSharedThreadTask(),
-    taskList: [buildSharedThreadTask()],
     activeRunIdForSelectedTeam: "run-1",
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     refreshEvents: vi.fn().mockResolvedValue(undefined),
     setBusy: vi.fn(),
     setError: vi.fn(),
     setWarning: vi.fn(),
-    setTaskList: vi.fn(),
+    setSharedConversation: vi.fn(),
     setTaskMessages: taskMessages.setter,
     setTaskMessagesLoading: vi.fn(),
     setConversationMailboxMessages: mailboxMessages.setter,
@@ -350,7 +348,19 @@ describe("useTeamConversationActions", () => {
   });
 
   it("reuses the existing shared thread instead of creating a duplicate", async () => {
-    mockedApi.listTeamTasks.mockResolvedValue([buildSharedThreadTask()]);
+    mockedApi.ensureTeamSharedThread.mockResolvedValue({
+      task: buildSharedThreadTask(),
+      conversation: {
+        id: "conv-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
     mockedApi.listTeamTaskMessages.mockResolvedValue([]);
     mockedApi.sendTeamTaskMessage.mockResolvedValue({
       message_id: 77,
@@ -369,7 +379,6 @@ describe("useTeamConversationActions", () => {
     let captured: TeamConversationActions | null = null;
     const options = createOptions({
       selectedConversation: null,
-      taskList: [],
       activeRunIdForSelectedTeam: null,
     });
     const { root, container } = await mountHarness(options, (actions) => {
@@ -384,10 +393,7 @@ describe("useTeamConversationActions", () => {
         });
       });
 
-      expect(mockedApi.listTeamTasks).toHaveBeenCalledWith("token-1", "team-1", 100, {
-        include_shared_thread: true,
-      });
-      expect(mockedApi.createTeamTask).not.toHaveBeenCalled();
+      expect(mockedApi.ensureTeamSharedThread).toHaveBeenCalledWith("token-1", "team-1");
       expect(mockedApi.sendTeamTaskMessage).toHaveBeenCalledWith(
         "token-1",
         "team-1",

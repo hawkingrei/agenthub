@@ -3428,6 +3428,129 @@ async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_prefers_shared_thread_with_latest_message_when_duplicates_exist() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-canonical-shared-thread-team".to_string(),
+            description: Some("team for canonical shared thread selection".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-canonical-shared-thread"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let (preferred_task, _preferred_conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"test"
+            }),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create preferred shared thread");
+    let (older_task, _older_conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"test"
+            }),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create older shared thread");
+
+    manager
+        .append_task_conversation_message(
+            &older_task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"older duplicate thread"
+            }),
+        )
+        .await
+        .expect("append older duplicate thread message");
+    manager
+        .append_task_conversation_message(
+            &preferred_task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"newest canonical thread"
+            }),
+        )
+        .await
+        .expect("append newest canonical thread message");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"persist into canonical duplicate thread"
+            }),
+            idempotency_key: Some("msg-canonical-shared-thread-1".to_string()),
+        })
+        .await
+        .expect("send shared thread reply into canonical duplicate thread");
+
+    let message_task_id: String = sqlx::query_scalar(
+        r#"
+        SELECT task_id
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("load canonical duplicate shared thread message task id");
+    assert_eq!(message_task_id, preferred_task.id);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_validates_required_fields() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);

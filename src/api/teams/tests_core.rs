@@ -4417,6 +4417,191 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
 }
 
 #[tokio::test]
+async fn team_shared_thread_api_returns_not_found_when_missing() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-missing-team".to_string(),
+            description: Some("shared thread missing coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let err = get_team_shared_thread(State(state), headers, Path(team.id))
+        .await
+        .expect_err("shared thread should be missing");
+    assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn team_shared_thread_api_ensures_canonical_thread_and_is_idempotent() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-ensure-team".to_string(),
+            description: Some("shared thread ensure coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = ensure_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("ensure shared thread");
+
+    assert_eq!(created.task.title.to_lowercase(), "all");
+    assert_eq!(created.conversation.task_id, created.task.id);
+
+    let Json(found) = get_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("get ensured shared thread");
+    assert_eq!(found.task.id, created.task.id);
+
+    let Json(second) = ensure_team_shared_thread(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("ensure shared thread twice");
+    assert_eq!(second.task.id, created.task.id);
+
+    let shared_thread_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_tasks
+        WHERE team_id = ?1
+          AND (
+            lower(trim(title)) = 'all'
+            OR lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'shared_thread'
+          )
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&state.db)
+    .await
+    .expect("count shared thread tasks");
+    assert_eq!(shared_thread_count, 1);
+}
+
+#[tokio::test]
+async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-canonical-team".to_string(),
+            description: Some("shared thread canonical coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(first) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create first shared thread");
+
+    let Json(second) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create second shared thread");
+
+    let _ = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), second.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"older shared thread message"
+            }),
+        }),
+    )
+    .await
+    .expect("append older message");
+
+    let _ = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), first.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"latest shared thread message"
+            }),
+        }),
+    )
+    .await
+    .expect("append latest message");
+
+    let Json(found) = get_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("get canonical shared thread");
+    assert_eq!(found.task.id, first.task.id);
+
+    let Json(ensured) = ensure_team_shared_thread(State(state), headers, Path(team.id))
+        .await
+        .expect("ensure canonical shared thread");
+    assert_eq!(ensured.task.id, first.task.id);
+}
+
+#[tokio::test]
 async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active_run() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

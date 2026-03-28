@@ -22,6 +22,7 @@ import {
   AgentRecord,
   AgentEvent,
   api,
+  getApiErrorStatus,
   getTeamStepRuntimeHandleId,
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
@@ -110,7 +111,6 @@ import {
   formatTs,
   listTeamWorkspaceTasks,
   resolveAgentWorkspaceStatusView,
-  resolveTeamConversationTask,
   resolveTeamPageNotice,
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedTeamTask,
@@ -719,6 +719,7 @@ export function TeamPage(props: TeamPageProps) {
     Record<string, boolean>
   >({});
   const [taskList, setTaskList] = useState<TeamTaskRecord[]>([]);
+  const [sharedConversation, setSharedConversation] = useState<TeamTaskRecord | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
@@ -850,9 +851,11 @@ export function TeamPage(props: TeamPageProps) {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
     setTaskList([]);
+    setSharedConversation(null);
     setTasksLoading(false);
     setSelectedTaskId("");
     setTaskMessages([]);
+    setConversationMailboxMessages([]);
     setTaskMessagesLoading(false);
     setTaskMessageDraft("");
     setNewTaskTitle("");
@@ -2027,12 +2030,7 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
-  const selectedConversation = useMemo(() => {
-    if (!selectedTeamId) {
-      return null;
-    }
-    return resolveTeamConversationTask(taskList, selectedTeamId);
-  }, [selectedTeamId, taskList]);
+  const selectedConversation = sharedConversation;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
       tab === "conversation" &&
@@ -2066,9 +2064,7 @@ export function TeamPage(props: TeamPageProps) {
     async (teamId: string) => {
       setTasksLoading(true);
       try {
-        const list = await api.listTeamTasks(props.token, teamId, 100, {
-          include_shared_thread: true,
-        });
+        const list = await api.listTeamTasks(props.token, teamId, 100);
         const sorted = sortTasksByActivity(list);
         setTaskList(sorted);
         setSelectedTaskId((prev) => {
@@ -2083,6 +2079,24 @@ export function TeamPage(props: TeamPageProps) {
     [props.token]
   );
 
+  const refreshSharedConversation = useCallback(
+    async (teamId: string) => {
+      try {
+        const detail = await api.getTeamSharedThread(props.token, teamId);
+        setSharedConversation(detail.task);
+      } catch (err) {
+        if (getApiErrorStatus(err) === 404) {
+          setSharedConversation(null);
+          setTaskMessages([]);
+          setConversationMailboxMessages([]);
+          return;
+        }
+        setError(parseErrorMessage(err));
+      }
+    },
+    [props.token, setError, setConversationMailboxMessages, setTaskMessages]
+  );
+
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -2093,20 +2107,20 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     void refreshTasks(selectedTeamId);
-  }, [refreshTasks, selectedTeamId]);
+    void refreshSharedConversation(selectedTeamId);
+  }, [refreshSharedConversation, refreshTasks, selectedTeamId]);
 
   const { refreshTaskMessages, sendTaskMessage: onSendTaskMessage } = useTeamConversationActions({
     token: props.token,
     selectedTeamId,
     selectedConversation,
-    taskList,
     activeRunIdForSelectedTeam,
     refreshSnapshot,
     refreshEvents,
     setBusy,
     setError,
     setWarning,
-    setTaskList,
+    setSharedConversation,
     setTaskMessages,
     setTaskMessagesLoading,
     setConversationMailboxMessages,

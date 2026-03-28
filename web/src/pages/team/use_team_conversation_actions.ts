@@ -14,13 +14,9 @@ import {
 } from "../../api";
 import { buildMailboxChatPayload } from "./mailbox_helpers";
 import {
-  DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
-  DEFAULT_TEAM_THREAD_TITLE,
   isSharedThreadTask,
   mergeConversationMessages,
   refreshTeamConversationMailboxAfterSend,
-  resolveTeamConversationTask,
-  sortTasksByActivity,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 
@@ -29,18 +25,22 @@ const TEAM_CONVERSATION_EXTENDED_MESSAGE_LIMIT = 200;
 const TEAM_CONVERSATION_INITIAL_MAILBOX_LIMIT = 60;
 const TEAM_CONVERSATION_EXTENDED_MAILBOX_LIMIT = 200;
 
+type SharedConversationTarget = {
+  task: TeamTaskRecord;
+  latestRunId: string | null;
+};
+
 type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
   selectedConversation: TeamTaskRecord | null;
-  taskList: TeamTaskRecord[];
   activeRunIdForSelectedTeam: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   refreshEvents: (runId: string) => Promise<unknown>;
   setBusy: Dispatch<SetStateAction<string | null>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setWarning: Dispatch<SetStateAction<string | null>>;
-  setTaskList: Dispatch<SetStateAction<TeamTaskRecord[]>>;
+  setSharedConversation: Dispatch<SetStateAction<TeamTaskRecord | null>>;
   setTaskMessages: Dispatch<SetStateAction<TeamConversationMessageRecord[]>>;
   setTaskMessagesLoading: Dispatch<SetStateAction<boolean>>;
   setConversationMailboxMessages: Dispatch<SetStateAction<TeamActorMessageRecord[]>>;
@@ -56,12 +56,11 @@ export function useTeamConversationActions({
   setBusy,
   setConversationMailboxMessages,
   setError,
-  setTaskList,
+  setSharedConversation,
   setTaskMessageDraft,
   setTaskMessages,
   setTaskMessagesLoading,
   setWarning,
-  taskList,
   token,
 }: UseTeamConversationActionsOptions) {
   const taskMessageRequestSeqRef = useRef(0);
@@ -98,15 +97,13 @@ export function useTeamConversationActions({
       }
       setTaskMessagesLoading(true);
       try {
-        const taskRecord =
-          (selectedConversation?.id ?? "").trim() === taskId
-            ? selectedConversation
-            : taskList.find((task) => task.id === taskId) ?? null;
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
             limit: TEAM_CONVERSATION_INITIAL_MESSAGE_LIMIT,
           }),
-          taskRecord && isSharedThreadTask(taskRecord)
+          selectedConversation &&
+          selectedConversation.id === taskId &&
+          isSharedThreadTask(selectedConversation)
             ? api.getTeamTask(token, teamId, taskId)
             : Promise.resolve(null),
         ]);
@@ -191,19 +188,21 @@ export function useTeamConversationActions({
       setError,
       setTaskMessages,
       setTaskMessagesLoading,
-      taskList,
       token,
     ]
   );
 
-  const resolveConversationForMessage = useCallback(() => {
+  const resolveConversationForMessage = useCallback((): SharedConversationTarget | null => {
     if (!selectedTeamId || !selectedConversation) {
       return null;
     }
-    return selectedConversation;
+    return {
+      task: selectedConversation,
+      latestRunId: null,
+    };
   }, [selectedConversation, selectedTeamId]);
 
-  const ensureSharedConversation = useCallback(async () => {
+  const ensureSharedConversation = useCallback(async (): Promise<SharedConversationTarget | null> => {
     if (!selectedTeamId) {
       return null;
     }
@@ -211,32 +210,22 @@ export function useTeamConversationActions({
     if (existing) {
       return existing;
     }
-    const remoteTasks = sortTasksByActivity(
-      await api.listTeamTasks(token, selectedTeamId, 100, {
-        include_shared_thread: true,
-      })
-    );
-    const remoteConversation = resolveTeamConversationTask(remoteTasks, selectedTeamId);
-    if (remoteConversation) {
-      setTaskList(remoteTasks);
-      return remoteConversation;
-    }
-
-    const created = await api.createTeamTask(token, selectedTeamId, {
-      title: DEFAULT_TEAM_THREAD_TITLE,
-      conversation_mode: "group_chat",
-      topic: DEFAULT_TEAM_THREAD_TITLE,
-      context: {
-        bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
-        bootstrap_source: "teams_all",
-      },
-    });
-    setTaskList((prev) =>
-      sortTasksByActivity([created.task, ...prev.filter((task) => task.id !== created.task.id)])
-    );
+    const detail = await api.ensureTeamSharedThread(token, selectedTeamId);
+    setSharedConversation(detail.task);
     setTaskMessages([]);
-    return created.task;
-  }, [resolveConversationForMessage, selectedTeamId, setTaskList, setTaskMessages, token]);
+    setConversationMailboxMessages([]);
+    return {
+      task: detail.task,
+      latestRunId: detail.latest_run?.id?.trim() || null,
+    };
+  }, [
+    resolveConversationForMessage,
+    selectedTeamId,
+    setConversationMailboxMessages,
+    setSharedConversation,
+    setTaskMessages,
+    token,
+  ]);
 
   const sendTaskMessage = useCallback(
     async (payload: { text: string; mentionActorIds: string[] }) => {
@@ -254,7 +243,7 @@ export function useTeamConversationActions({
       setWarning(null);
       try {
         const conversation = await ensureSharedConversation();
-        const taskId = conversation?.id;
+        const taskId = conversation?.task.id;
         const chatPayload = buildMailboxChatPayload(text, {
           mention_actor_ids: payload.mentionActorIds,
         });
@@ -266,7 +255,7 @@ export function useTeamConversationActions({
             mergeConversationMessages(prev, [...prev, message].sort((left, right) => left.message_id - right.message_id))
           );
           await refreshTeamConversationMailboxAfterSend({
-            activeRunId: activeRunIdForSelectedTeam,
+            activeRunId: activeRunIdForSelectedTeam ?? conversation?.latestRunId,
             taskId,
             refreshSnapshot,
             refreshEvents,

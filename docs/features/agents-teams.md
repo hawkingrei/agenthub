@@ -231,8 +231,14 @@ Constraint:
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
-- The canonical `# all` shared-thread task must remain discoverable across refreshes; hiding it is
-  a workspace-task presentation choice, not a storage/query invariant.
+- The canonical `# all` shared-thread is a dedicated team-level conversation target, not just
+  another entry discovered from the paginated Kanban task list.
+- Public clients should load and ensure the shared thread through a dedicated Team shared-thread
+  contract; hiding it from workspace-task listings is a presentation choice, not a storage/query
+  invariant.
+- If legacy data contains multiple shared-thread tasks, backend canonicalization should prefer the
+  thread with the newest persisted conversation message; when no shared-thread messages exist yet,
+  it should fall back to the oldest created shared-thread record for stability.
 - Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
   `leader -> subordinate worker`) and fall back to human review in `Conversation` (`all`) when
   agent review cannot complete.
