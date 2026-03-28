@@ -484,13 +484,15 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Teams 2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).toContain("Channel");
+    expect(container.textContent).toContain("Workflow");
     expect(container.textContent).toContain("# all");
     const kanbanButton = findButtonByText(container, "Kanban");
     const channelButton = findButtonByText(container, "# all");
     expect(
-      Boolean(kanbanButton.compareDocumentPosition(channelButton) & Node.DOCUMENT_POSITION_FOLLOWING)
+      Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
+    expect(container.textContent).toContain("Human requests, planning, and team-visible progress.");
+    expect(container.textContent).toContain("Canonical system-managed tasks and execution state.");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");
@@ -2591,11 +2593,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("route");
   });
 
-  it("TeamTasksPanel supports task filters, creation, linked runs, and debug compile actions", () => {
+  it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", () => {
     const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
-    const onNewTaskTitleChange = vi.fn();
-    const onCreateTask = vi.fn();
+    const onOpenConversation = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
     const onCompileTaskRunPreview = vi.fn();
     const onUseCompiledRunPayload = vi.fn();
@@ -2633,9 +2634,7 @@ describe("team panels interactions", () => {
             selectedTaskId="task-2"
             onSelectedTaskIdChange={onSelectedTaskIdChange}
             onRefreshTasks={onRefreshTasks}
-            newTaskTitle="New task draft"
-            onNewTaskTitleChange={onNewTaskTitleChange}
-            onCreateTask={onCreateTask}
+            onOpenConversation={onOpenConversation}
             busy={null}
             runs={[
               buildRun({
@@ -2681,14 +2680,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="New task title"]') as HTMLInputElement | null,
-        "new task input missing"
-      ),
-      "Create changelog"
-    );
-    clickElement(findButtonByText(container, "New Task"));
+    clickElement(findButtonByText(container, "Open # all"));
     clickElement(findInteractiveByText(container, "Developer tools", "summary"));
     changeInputValue(
       required(
@@ -2706,8 +2698,7 @@ describe("team panels interactions", () => {
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
-    expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
-    expect(onCreateTask).toHaveBeenCalledTimes(1);
+    expect(onOpenConversation).toHaveBeenCalledTimes(1);
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -2720,8 +2711,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
     expect(container.textContent).toContain(
-      "Task status and ownership are agent-managed through Team runtime controls."
+      "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
+    expect(container.textContent).toContain("Open # all");
     expect(container.textContent).toContain("Latest run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
@@ -2744,9 +2736,7 @@ describe("team panels interactions", () => {
             selectedTaskId="task-progress"
             onSelectedTaskIdChange={vi.fn()}
             onRefreshTasks={vi.fn()}
-            newTaskTitle=""
-            onNewTaskTitleChange={vi.fn()}
-            onCreateTask={vi.fn()}
+            onOpenConversation={vi.fn()}
             busy={null}
             runs={[]}
             onOpenRun={vi.fn()}

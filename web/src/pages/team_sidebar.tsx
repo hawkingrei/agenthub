@@ -495,22 +495,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
       {selectedTeam && (
         <>
           <div className="mt-3 flex flex-col gap-1.5">
-            <button
-              type="button"
-              className={
-                tab === "tasks"
-                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
-              }
-              onClick={onSelectKanban}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
-                <i className="bi bi-kanban" aria-hidden="true" />
-                <span>Kanban</span>
-              </span>
-            </button>
             <div className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
-              Channel
+              Workflow
             </div>
             <button
               type="button"
@@ -524,6 +510,26 @@ export function TeamSidebar(props: TeamSidebarProps) {
               <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
                 <i className="bi bi-hash" aria-hidden="true" />
                 <span># all</span>
+              </span>
+              <span className="text-[11px] leading-4 text-ui-text-muted">
+                Human requests, planning, and team-visible progress.
+              </span>
+            </button>
+            <button
+              type="button"
+              className={
+                tab === "tasks"
+                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+              }
+              onClick={onSelectKanban}
+            >
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
+                <i className="bi bi-kanban" aria-hidden="true" />
+                <span>Kanban</span>
+              </span>
+              <span className="text-[11px] leading-4 text-ui-text-muted">
+                Canonical system-managed tasks and execution state.
               </span>
             </button>
           </div>

@@ -253,6 +253,41 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
+  it("refreshes the shared thread immediately when the page regains focus, visibility, or network", async () => {
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("online"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 3);
+  });
+
   it("queues a follow-up refresh when selection changes mid-flight", async () => {
     let resolveRefresh: (() => void) | null = null;
     const refreshTaskMessages = vi.fn().mockImplementation(

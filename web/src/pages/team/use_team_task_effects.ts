@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useCallback } from "react";
+import { useResumeRefresh } from "./use_resume_refresh";
 
 type UseTeamTaskEffectsOptions = {
   selectedTeamId: string | null;
@@ -15,22 +16,18 @@ export function useTeamTaskEffects({
   refreshTasks,
   onRefreshError,
 }: UseTeamTaskEffectsOptions) {
-  useEffect(() => {
-    const teamId = selectedTeamId?.trim() ?? "";
-    if (!enabled || !teamId) {
-      return;
-    }
+  const teamId = selectedTeamId?.trim() ?? "";
+  const taskRefreshEnabled = enabled && teamId.length > 0;
+  const refresh = useCallback(async () => {
+    await refreshTasks(teamId);
+  }, [refreshTasks, teamId]);
 
-    const timer = window.setInterval(() => {
-      void refreshTasks(teamId).catch((error) => {
-        onRefreshError?.(error);
-      });
-    }, TEAM_TASK_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [enabled, onRefreshError, refreshTasks, selectedTeamId]);
+  useResumeRefresh({
+    enabled: taskRefreshEnabled,
+    intervalMs: TEAM_TASK_REFRESH_INTERVAL_MS,
+    refresh,
+    onRefreshError,
+  });
 }
 
 export { TEAM_TASK_REFRESH_INTERVAL_MS };

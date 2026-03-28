@@ -32,9 +32,7 @@ type TeamTasksPanelProps = {
   selectedTaskId: string;
   onSelectedTaskIdChange: (taskId: string) => void;
   onRefreshTasks: () => Promise<void> | void;
-  newTaskTitle: string;
-  onNewTaskTitleChange: (value: string) => void;
-  onCreateTask: () => Promise<void> | void;
+  onOpenConversation: () => void;
   busy: string | null;
   runs: TeamRunRecord[];
   onOpenRun: (runId: string) => void;
@@ -194,9 +192,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     selectedTaskId,
     onSelectedTaskIdChange,
     onRefreshTasks,
-    newTaskTitle,
-    onNewTaskTitleChange,
-    onCreateTask,
+    onOpenConversation,
     busy,
     runs,
     onOpenRun,
@@ -244,7 +240,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     [selectedTaskId, visibleTasks]
   );
 
-  const canCreateTask = newTaskTitle.trim().length > 0 && busy !== "create-task";
   const assigneeLabelById = React.useMemo(
     () =>
       new Map(
@@ -283,30 +278,17 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <TextInput
-          className="min-w-[220px] flex-1"
-          placeholder="New task title"
-          aria-label="New task title"
-          value={newTaskTitle}
-          onChange={(event) => onNewTaskTitleChange(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCreateTask) {
-              event.preventDefault();
-              void onCreateTask();
-            }
-          }}
-          size="sm"
-          radius="md"
-        />
+        <div className="min-w-[220px] flex-1 rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-3 py-2.5 text-sm text-ui-text-muted">
+          Kanban is the canonical Team task surface. Human requests and clarifications should go
+          through <strong className="text-ui-text-primary"># all</strong>; leader planning and Team
+          runtime create and advance tasks here.
+        </div>
         <button
           type="button"
-          className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
-          onClick={() => {
-            void onCreateTask();
-          }}
-          disabled={!canCreateTask}
+          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+          onClick={onOpenConversation}
         >
-          New Task
+          Open # all
         </button>
       </div>
 
@@ -373,7 +355,8 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                       )}
                       {!tasksLoading && tasks.length === 0 && (
                         <div className={TASKS_BOARD_EMPTY_CLASS}>
-                          No tasks yet. Create one to plan work.
+                          No leader-planned tasks yet. Use # all to request work or clarify goals,
+                          then Kanban will reflect the planned tasks automatically.
                         </div>
                       )}
                       {!tasksLoading && tasks.length > 0 && laneTasks.length === 0 && (
@@ -435,8 +418,9 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                     {selectedTask.title}
                   </h4>
                   <p className="mt-1 text-sm text-ui-text-muted">
-                    Agents pick this task up automatically. Runs capture the execution timeline,
-                    and successful attempts move the task into review before final completion.
+                    Kanban is the canonical task board. The leader and Team runtime own task
+                    planning and lifecycle, while runs capture execution evidence for the selected
+                    task.
                   </p>
                 </div>
                 <StatusBadge
