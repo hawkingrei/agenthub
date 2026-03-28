@@ -760,6 +760,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_agents_skips_remote_target_running_status_without_local_handle() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "list-agents-remote-target").await;
+
+        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+            .execute(&state.db)
+            .await
+            .expect("add target_node_id column");
+        sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
+            .bind("node-east")
+            .bind(&agent_id)
+            .execute(&state.db)
+            .await
+            .expect("mark list-agents target as remote");
+
+        let agents = state.agents.list_agents().await.expect("list agents");
+        let agent = agents
+            .into_iter()
+            .find(|item| item.id == agent_id)
+            .expect("remote-target agent should exist");
+        assert_eq!(agent.status, crate::agent::AgentStatus::Running);
+
+        let session_row = sqlx::query(
+            r#"
+            SELECT status, ended_at
+            FROM agent_sessions
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&session_id)
+        .fetch_one(&state.db)
+        .await
+        .expect("load remote-target running session row");
+        assert_eq!(session_row.get::<String, _>("status"), "running");
+        assert!(session_row.get::<Option<i64>, _>("ended_at").is_none());
+    }
+
+    #[tokio::test]
     async fn list_agents_does_not_reconcile_running_status_while_agent_is_starting() {
         let state = crate::api::team_tests::build_test_state().await;
         let (agent_id, session_id) =
@@ -1036,6 +1075,91 @@ mod tests {
             .expect("fetch session row");
         assert_eq!(session_row.get::<String, _>("status"), "exited");
         assert!(session_row.get::<Option<i64>, _>("ended_at").is_some());
+    }
+
+    #[tokio::test]
+    async fn reconcile_runtime_absence_batch_reconciles_requested_agents_only() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (first_agent_id, first_session_id) =
+            insert_agent_and_session(&state.db, "reconcile-runtime-batch-first").await;
+        let (second_agent_id, second_session_id) =
+            insert_agent_and_session(&state.db, "reconcile-runtime-batch-second").await;
+
+        let reconciled = state
+            .agents
+            .reconcile_runtime_absence_batch(std::slice::from_ref(&first_agent_id))
+            .await
+            .expect("reconcile requested stale runtime absences");
+        assert_eq!(reconciled, vec![first_agent_id.clone()]);
+
+        let first_agent_status: String =
+            sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+                .bind(&first_agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load first agent status");
+        assert_eq!(first_agent_status, "exited");
+        let first_session_status: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&first_session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load first session status");
+        assert_eq!(first_session_status, "exited");
+
+        let second_agent_status: String =
+            sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+                .bind(&second_agent_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load second agent status");
+        assert_eq!(second_agent_status, "running");
+        let second_session_status: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&second_session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load second session status");
+        assert_eq!(second_session_status, "running");
+    }
+
+    #[tokio::test]
+    async fn reconcile_runtime_absence_batch_skips_remote_target_agents() {
+        let state = crate::api::team_tests::build_test_state().await;
+        let (agent_id, session_id) =
+            insert_agent_and_session(&state.db, "reconcile-runtime-batch-remote").await;
+
+        sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
+            .execute(&state.db)
+            .await
+            .expect("add target_node_id column");
+        sqlx::query("UPDATE agents SET target_node_id = ?1 WHERE id = ?2")
+            .bind("node-east")
+            .bind(&agent_id)
+            .execute(&state.db)
+            .await
+            .expect("mark batch target as remote");
+
+        let reconciled = state
+            .agents
+            .reconcile_runtime_absence_batch(std::slice::from_ref(&agent_id))
+            .await
+            .expect("reconcile remote-target stale runtime absences");
+        assert!(reconciled.is_empty());
+
+        let agent_status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+            .bind(&agent_id)
+            .fetch_one(&state.db)
+            .await
+            .expect("load remote-target agent status");
+        assert_eq!(agent_status, "running");
+        let session_status: String =
+            sqlx::query_scalar("SELECT status FROM agent_sessions WHERE id = ?1")
+                .bind(&session_id)
+                .fetch_one(&state.db)
+                .await
+                .expect("load remote-target session status");
+        assert_eq!(session_status, "running");
     }
 
     #[tokio::test]

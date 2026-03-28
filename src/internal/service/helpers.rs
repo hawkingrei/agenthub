@@ -135,17 +135,40 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
 }
 
 pub(super) async fn load_team_context_for_actor(
+    agents: &crate::agent::AgentManager,
     manager: &TeamManager,
     team_id: Option<&str>,
     run_id: Option<&str>,
     actor_id: &str,
 ) -> Result<crate::team::TeamContextRecord, Status> {
+    let resolved_team_id = manager
+        .resolve_team_scope(team_id, run_id)
+        .await
+        .map_err(map_team_context_error)?;
+    ensure_team_member_access(manager, &resolved_team_id, actor_id).await?;
+    reconcile_team_runtime_presence(agents, manager, &resolved_team_id).await?;
     let context = manager
         .describe_team_context(team_id, run_id)
         .await
         .map_err(map_team_context_error)?;
-    ensure_team_member_access(manager, &context.team_id, actor_id).await?;
     Ok(context)
+}
+
+async fn reconcile_team_runtime_presence(
+    agents: &crate::agent::AgentManager,
+    manager: &TeamManager,
+    team_id: &str,
+) -> Result<(), Status> {
+    let team = manager
+        .get_team(team_id)
+        .await
+        .map_err(map_team_context_error)?;
+    let member_ids = crate::team::collect_team_member_ids(&team.spec);
+    agents
+        .reconcile_runtime_absence_batch(&member_ids)
+        .await
+        .map_err(map_manager_error)?;
+    Ok(())
 }
 
 pub(super) async fn ensure_team_member_access(

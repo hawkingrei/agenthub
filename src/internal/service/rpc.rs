@@ -287,8 +287,14 @@ impl TeamInternalControl for TeamInternalControlService {
             self.authz.ensure_run_scope(&principal, request_run_id)?;
         }
 
-        let context =
-            load_team_context_for_actor(&self.state.teams, team_id, run_id, actor_id).await?;
+        let context = load_team_context_for_actor(
+            &self.state.agents,
+            &self.state.teams,
+            team_id,
+            run_id,
+            actor_id,
+        )
+        .await?;
         Ok(Response::new(DescribeTeamContextResponse {
             context_json: serde_json::to_string(&context).map_err(map_serde_status)?,
         }))
@@ -307,6 +313,7 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
+            &self.state.agents,
             &self.state.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),
@@ -394,6 +401,7 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
+            &self.state.agents,
             &self.state.teams,
             optional_trimmed(&payload.team_id),
             None,
@@ -484,6 +492,7 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
+            &self.state.agents,
             &self.state.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),
@@ -525,6 +534,7 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
+            &self.state.agents,
             &self.state.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),

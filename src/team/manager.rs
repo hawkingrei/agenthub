@@ -735,7 +735,7 @@ impl TeamManager {
         })
     }
 
-    async fn resolve_team_scope(
+    pub(crate) async fn resolve_team_scope(
         &self,
         team_id: Option<&str>,
         run_id: Option<&str>,
