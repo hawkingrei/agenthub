@@ -4234,11 +4234,12 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, 'all', 'open', ?3, NULL, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
         .bind(team_id)
+        .bind(TEAM_SHARED_THREAD_TITLE)
         .bind(created_by_actor_id)
         .bind(context_json)
         .bind(now)
@@ -4257,12 +4258,13 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, ?3, 'group_chat', 'all', ?4, ?5)
+            VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?6)
             "#,
         )
         .bind(&conversation_id)
         .bind(team_id)
         .bind(&task_id)
+        .bind(TEAM_SHARED_THREAD_TITLE)
         .bind(now)
         .bind(now)
         .execute(&mut *tx)

@@ -720,6 +720,8 @@ export function TeamPage(props: TeamPageProps) {
   >({});
   const [taskList, setTaskList] = useState<TeamTaskRecord[]>([]);
   const [sharedConversation, setSharedConversation] = useState<TeamTaskRecord | null>(null);
+  const [sharedConversationLatestRun, setSharedConversationLatestRun] =
+    useState<TeamRunRecord | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
@@ -852,6 +854,7 @@ export function TeamPage(props: TeamPageProps) {
     setCompilePreviewContextId("");
     setTaskList([]);
     setSharedConversation(null);
+    setSharedConversationLatestRun(null);
     setTasksLoading(false);
     setSelectedTaskId("");
     setTaskMessages([]);
@@ -2086,9 +2089,11 @@ export function TeamPage(props: TeamPageProps) {
       try {
         const detail = await api.getTeamSharedThread(props.token, teamId);
         setSharedConversation(detail.task);
+        setSharedConversationLatestRun(detail.latest_run ?? null);
       } catch (err) {
         if (getApiErrorStatus(err) === 404) {
           setSharedConversation(null);
+          setSharedConversationLatestRun(null);
           setTaskMessages([]);
           setConversationMailboxMessages([]);
           return;
@@ -2116,6 +2121,7 @@ export function TeamPage(props: TeamPageProps) {
     token: props.token,
     selectedTeamId,
     selectedConversation,
+    latestRunForSharedConversation: sharedConversationLatestRun,
     activeRunIdForSelectedTeam,
     refreshSnapshot,
     refreshEvents,
@@ -2123,6 +2129,7 @@ export function TeamPage(props: TeamPageProps) {
     setError,
     setWarning,
     setSharedConversation,
+    setSharedConversationLatestRun,
     setTaskMessages,
     setTaskMessagesLoading,
     setConversationMailboxMessages,

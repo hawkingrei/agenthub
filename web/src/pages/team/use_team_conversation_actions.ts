@@ -10,6 +10,7 @@ import {
   api,
   type TeamActorMessageRecord,
   type TeamConversationMessageRecord,
+  type TeamRunRecord,
   type TeamTaskRecord,
 } from "../../api";
 import { buildMailboxChatPayload } from "./mailbox_helpers";
@@ -34,6 +35,7 @@ type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
   selectedConversation: TeamTaskRecord | null;
+  latestRunForSharedConversation: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   refreshEvents: (runId: string) => Promise<unknown>;
@@ -41,6 +43,7 @@ type UseTeamConversationActionsOptions = {
   setError: Dispatch<SetStateAction<string | null>>;
   setWarning: Dispatch<SetStateAction<string | null>>;
   setSharedConversation: Dispatch<SetStateAction<TeamTaskRecord | null>>;
+  setSharedConversationLatestRun: Dispatch<SetStateAction<TeamRunRecord | null>>;
   setTaskMessages: Dispatch<SetStateAction<TeamConversationMessageRecord[]>>;
   setTaskMessagesLoading: Dispatch<SetStateAction<boolean>>;
   setConversationMailboxMessages: Dispatch<SetStateAction<TeamActorMessageRecord[]>>;
@@ -53,10 +56,12 @@ export function useTeamConversationActions({
   refreshSnapshot,
   selectedConversation,
   selectedTeamId,
+  latestRunForSharedConversation,
   setBusy,
   setConversationMailboxMessages,
   setError,
   setSharedConversation,
+  setSharedConversationLatestRun,
   setTaskMessageDraft,
   setTaskMessages,
   setTaskMessagesLoading,
@@ -198,9 +203,9 @@ export function useTeamConversationActions({
     }
     return {
       task: selectedConversation,
-      latestRunId: null,
+      latestRunId: latestRunForSharedConversation?.id?.trim() || null,
     };
-  }, [selectedConversation, selectedTeamId]);
+  }, [latestRunForSharedConversation, selectedConversation, selectedTeamId]);
 
   const ensureSharedConversation = useCallback(async (): Promise<SharedConversationTarget | null> => {
     if (!selectedTeamId) {
@@ -212,6 +217,7 @@ export function useTeamConversationActions({
     }
     const detail = await api.ensureTeamSharedThread(token, selectedTeamId);
     setSharedConversation(detail.task);
+    setSharedConversationLatestRun(detail.latest_run ?? null);
     setTaskMessages([]);
     setConversationMailboxMessages([]);
     return {
@@ -223,6 +229,7 @@ export function useTeamConversationActions({
     selectedTeamId,
     setConversationMailboxMessages,
     setSharedConversation,
+    setSharedConversationLatestRun,
     setTaskMessages,
     token,
   ]);

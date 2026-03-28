@@ -3,8 +3,8 @@
 Moved Team shared-thread discovery from a paginated task-list heuristic to a dedicated canonical
 backend target.
 
-This supersedes the earlier listing-only mitigation from
-`2026-03-28-team-shared-thread-listing.md`.
+This supersedes the earlier listing-only mitigation that kept shared-thread rows visible through the
+task-list path without introducing a canonical shared-thread target.
 
 ## Why
 
