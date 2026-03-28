@@ -49,7 +49,10 @@ use crate::acp::{
 };
 use crate::auth::AuthService;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalGrpcPeerClientConfig};
-use crate::internal::p2p::{MembershipView, ResolvedNodeEndpoint, derive_cluster_id};
+use crate::internal::p2p::{
+    MembershipView, ResolvedNodeEndpoint, derive_cluster_id,
+    resolved_node_endpoint_from_agent_node_record,
+};
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::push::PushService;
 use agenthub_db::{AgentEventDbRouter, AgentEventIdleGc};
@@ -508,13 +511,13 @@ impl MembershipView for AgentManagerMembershipView<'_> {
     async fn resolve_node(&self, node_id: &str) -> anyhow::Result<ResolvedNodeEndpoint> {
         let normalized = node_id.trim();
         if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
-            return Ok(ResolvedNodeEndpoint::from_agent_node_record(
+            return Ok(resolved_node_endpoint_from_agent_node_record(
                 &self.cluster_id,
                 build_main_agent_node_record(),
             ));
         }
         let record = self.manager.get_agent_node(normalized).await?;
-        Ok(ResolvedNodeEndpoint::from_agent_node_record(
+        Ok(resolved_node_endpoint_from_agent_node_record(
             &self.cluster_id,
             record,
         ))
