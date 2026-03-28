@@ -197,6 +197,7 @@ npm --prefix web run e2e
 # Bazel checks
 bazel build //...
 bazel test //...
+bazel coverage --combined_report=lcov --test_output=errors //crates/agenthub-text:agenthub_text_tests # Example for a single crate
 ```
 
 ### Recommended Pre-PR Checks
@@ -223,7 +224,8 @@ npm --prefix web run e2e -- tests/e2e/app.e2e.ts --project=chromium
 - `Clippy`: `cargo clippy --workspace --all-targets -- -D warnings`
 - `Web`: lint + unit coverage + build + Codecov upload
 - `Web E2E`: Playwright coverage + Codecov upload
-- `Bazel`: `bazel build //...` and `bazel test //...`
+- `Bazel`: split `Bazel Build`, `Bazel Test (Root)`, `Bazel Test (Crates)`, and `Bazel Coverage`
+  jobs, with `bazel.lcov` uploaded to Codecov and an aggregate `Bazel Build and Test` gate
 - `User Docs`: Docusaurus build validation
 
 ## License
