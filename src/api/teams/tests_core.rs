@@ -4256,7 +4256,10 @@ async fn team_task_api_creates_lists_and_redacts_context() {
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Query(ListTeamTasksQuery { limit: Some(20) }),
+        Query(ListTeamTasksQuery {
+            limit: Some(20),
+            include_shared_thread: false,
+        }),
     )
     .await
     .expect("list tasks");
@@ -4314,6 +4317,103 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
 
     assert_eq!(created.task.status, crate::team::TeamTaskStatus::Open);
     assert!(created.latest_run.is_none());
+}
+
+#[tokio::test]
+async fn team_task_list_api_can_include_shared_thread_when_requested() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-listing-team".to_string(),
+            description: Some("shared thread listing coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(shared_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        }),
+    )
+    .await
+    .expect("create shared thread task");
+
+    let Json(workspace_created) = create_team_task(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamTaskRequest {
+            title: "Investigate regression".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"task_workspace"
+            })),
+            conversation_mode: Some("to_leader".to_string()),
+            topic: Some("Investigate regression".to_string()),
+        }),
+    )
+    .await
+    .expect("create workspace task");
+
+    let Json(default_list) = list_team_tasks(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamTasksQuery {
+            limit: Some(100),
+            include_shared_thread: false,
+        }),
+    )
+    .await
+    .expect("list tasks without shared thread");
+    assert_eq!(default_list.len(), 1);
+    assert_eq!(default_list[0].id, workspace_created.task.id);
+
+    let Json(with_shared_thread) = list_team_tasks(
+        State(state),
+        headers,
+        Path(team.id),
+        Query(ListTeamTasksQuery {
+            limit: Some(100),
+            include_shared_thread: true,
+        }),
+    )
+    .await
+    .expect("list tasks with shared thread");
+    assert_eq!(with_shared_thread.len(), 2);
+    let listed_ids = with_shared_thread
+        .iter()
+        .map(|task| task.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        listed_ids,
+        std::collections::HashSet::from([
+            workspace_created.task.id.as_str(),
+            shared_created.task.id.as_str(),
+        ])
+    );
 }
 
 #[tokio::test]

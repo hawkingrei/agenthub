@@ -644,9 +644,19 @@ export const api = {
         body: JSON.stringify(payload),
       }
     ),
-  listTeamTasks: (token: string, teamId: string, limit?: number) => {
+  listTeamTasks: (
+    token: string,
+    teamId: string,
+    limit?: number,
+    payload?: {
+      include_shared_thread?: boolean;
+    }
+  ) => {
     const params = new URLSearchParams();
     if (limit != null) params.set("limit", String(limit));
+    if (payload?.include_shared_thread) {
+      params.set("include_shared_thread", "true");
+    }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     return apiFetch<TeamTaskRecord[]>(
       `/api/teams/${encodePathSegment(teamId)}/tasks${suffix}`,

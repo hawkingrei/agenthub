@@ -348,4 +348,60 @@ describe("useTeamConversationActions", () => {
       cleanupHarness(root, container);
     }
   });
+
+  it("reuses the existing shared thread instead of creating a duplicate", async () => {
+    mockedApi.listTeamTasks.mockResolvedValue([buildSharedThreadTask()]);
+    mockedApi.listTeamTaskMessages.mockResolvedValue([]);
+    mockedApi.sendTeamTaskMessage.mockResolvedValue({
+      message_id: 77,
+      conversation_id: "conv-all",
+      task_id: "task-all",
+      from_actor_id: "user:test",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "chat_message",
+        text: "hello shared thread",
+      },
+      created_at: 1_700_000_077,
+    });
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversation: null,
+      taskList: [],
+      activeRunIdForSelectedTeam: null,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.sendTaskMessage({
+          text: "hello shared thread",
+          mentionActorIds: [],
+        });
+      });
+
+      expect(mockedApi.listTeamTasks).toHaveBeenCalledWith("token-1", "team-1", 100, {
+        include_shared_thread: true,
+      });
+      expect(mockedApi.createTeamTask).not.toHaveBeenCalled();
+      expect(mockedApi.sendTeamTaskMessage).toHaveBeenCalledWith(
+        "token-1",
+        "team-1",
+        "task-all",
+        {
+          payload: {
+            type: "chat_message",
+            text: "hello shared thread",
+            source: "team_workbench",
+          },
+        }
+      );
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
 });

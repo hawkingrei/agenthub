@@ -211,7 +211,11 @@ export function useTeamConversationActions({
     if (existing) {
       return existing;
     }
-    const remoteTasks = sortTasksByActivity(await api.listTeamTasks(token, selectedTeamId, 100));
+    const remoteTasks = sortTasksByActivity(
+      await api.listTeamTasks(token, selectedTeamId, 100, {
+        include_shared_thread: true,
+      })
+    );
     const remoteConversation = resolveTeamConversationTask(remoteTasks, selectedTeamId);
     if (remoteConversation) {
       setTaskList(remoteTasks);

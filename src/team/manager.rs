@@ -572,21 +572,6 @@ impl TeamManager {
         Ok((task, conversation))
     }
 
-    pub async fn list_tasks(
-        &self,
-        team_id: &str,
-        limit: i64,
-    ) -> anyhow::Result<Vec<TeamTaskRecord>> {
-        let rows = self
-            .list_tasks_with_query(TeamTaskListQuery {
-                team_id: Some(team_id.to_string()),
-                limit,
-                ..TeamTaskListQuery::default()
-            })
-            .await?;
-        Ok(rows)
-    }
-
     pub async fn list_tasks_with_query(
         &self,
         query: TeamTaskListQuery,
