@@ -2607,6 +2607,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
+            compactMode={false}
             developerMode={true}
             tasks={[
               buildPanelTask("task-1", {
@@ -2724,6 +2725,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
+            compactMode={false}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -2758,6 +2760,72 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
+  });
+
+  it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {
+    function CompactTaskHarness() {
+      const [selectedTaskId, setSelectedTaskId] = React.useState("");
+      return (
+        <TeamTasksPanel
+          compactMode={true}
+          developerMode={false}
+          tasks={[
+            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+            buildPanelTask("task-progress", {
+              title: "Prepare rollout",
+              status: "in_progress",
+            }),
+          ]}
+          tasksLoading={false}
+          selectedTaskId={selectedTaskId}
+          onSelectedTaskIdChange={setSelectedTaskId}
+          onRefreshTasks={vi.fn()}
+          onOpenConversation={vi.fn()}
+          busy={null}
+          runs={[]}
+          onOpenRun={vi.fn()}
+          compilePreviewContextId=""
+          onCompilePreviewContextIdChange={vi.fn()}
+          onCompileTaskRunPreview={vi.fn()}
+          canCompileTask={false}
+          compiledRunPreview={null}
+          onUseCompiledRunPayload={vi.fn()}
+          onCreateRunFromCompiledPreview={vi.fn()}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          memberLiveStates={[]}
+        />
+      );
+    }
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <CompactTaskHarness />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).not.toContain("Task detail");
+    expect(container.querySelector('[aria-label="Back to Kanban"]')).toBeNull();
+
+    clickElement(findButtonByText(container, "Prepare rollout"));
+
+    expect(container.textContent).toContain("Task detail");
+    expect(container.textContent).toContain("Latest run");
+    expect(container.querySelector('[aria-label="Back to Kanban"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Board lanes");
+
+    clickElement(
+      required(
+        container.querySelector('[aria-label="Back to Kanban"]') as HTMLButtonElement | null,
+        "back to kanban button missing"
+      )
+    );
+
+    expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).not.toContain("Task detail");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {

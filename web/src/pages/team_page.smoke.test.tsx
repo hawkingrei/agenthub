@@ -470,4 +470,207 @@ describe("TeamPage smoke render", () => {
       container.remove();
     }
   });
+
+  it("collapses the compact sidebar after selecting # all", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    useMediaQueryMock.mockReturnValue(true);
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const showTeamsPanelButton = container.querySelector(
+        '[aria-label="Show teams panel"]'
+      ) as HTMLButtonElement | null;
+      expect(showTeamsPanelButton).not.toBeNull();
+
+      await act(async () => {
+        showTeamsPanelButton?.click();
+        await Promise.resolve();
+      });
+
+      const showWorkbenchButton = container.querySelector(
+        '[aria-label="Show workbench"]'
+      ) as HTMLButtonElement | null;
+      expect(showWorkbenchButton).not.toBeNull();
+
+      const allButtons = Array.from(container.querySelectorAll("button")).filter(
+        (button) => button.textContent?.includes("# all")
+      ) as HTMLButtonElement[];
+      expect(allButtons.length).toBeGreaterThan(0);
+
+      await act(async () => {
+        allButtons[0]?.click();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
+      expect(container.querySelector('[aria-label="Show workbench"]')).toBeNull();
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("collapses the compact sidebar after selecting Kanban", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    useMediaQueryMock.mockReturnValue(true);
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const showTeamsPanelButton = container.querySelector(
+        '[aria-label="Show teams panel"]'
+      ) as HTMLButtonElement | null;
+      expect(showTeamsPanelButton).not.toBeNull();
+
+      await act(async () => {
+        showTeamsPanelButton?.click();
+        await Promise.resolve();
+      });
+
+      const kanbanButtons = Array.from(container.querySelectorAll("button")).filter(
+        (button) => button.textContent?.includes("Kanban")
+      ) as HTMLButtonElement[];
+      expect(kanbanButtons.length).toBeGreaterThan(0);
+
+      await act(async () => {
+        kanbanButtons[0]?.click();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
+      expect(container.querySelector('[aria-label="Show workbench"]')).toBeNull();
+      expect(container.textContent).toContain("Canonical Kanban");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
 });

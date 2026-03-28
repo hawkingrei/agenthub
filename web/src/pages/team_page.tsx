@@ -2286,29 +2286,44 @@ export function TeamPage(props: TeamPageProps) {
     setSelectedMemberId(memberId);
     setFocusedAgentMemberId("");
     setTab("mailbox");
-  }, [setSelectedMemberId, setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setSelectedMemberId, setTab]);
   const onSelectConversationSubject = useCallback(() => {
     setFocusedAgentMemberId("");
     setTab("conversation");
-  }, [setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setTab]);
   const onSelectKanbanSubject = useCallback(() => {
     setFocusedAgentMemberId("");
     setTab("tasks");
-  }, [setTab]);
+    if (isCompactWorkbench) {
+      setTeamsSidebarCollapsed(true);
+    }
+  }, [isCompactWorkbench, setTab]);
   const onSelectAgentWorkspace = useCallback(
     (memberId: string, nextTab: TeamTab = "agent_acp") => {
       setSelectedMemberId(memberId);
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
     },
-    [setSelectedMemberId, setTab]
+    [isCompactWorkbench, setSelectedMemberId, setTab]
   );
   const onSelectUtilityWorkspace = useCallback(
     (nextTab: TeamTab) => {
       setFocusedAgentMemberId("");
       setTab(nextTab);
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
     },
-    [setTab]
+    [isCompactWorkbench, setTab]
   );
 
   const onRefreshEventsPanel = useCallback(async () => {
@@ -3073,6 +3088,7 @@ export function TeamPage(props: TeamPageProps) {
 
   const tasksPanel = (
     <TeamTasksPanel
+      compactMode={isCompactWorkbench}
       developerMode={props.developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
