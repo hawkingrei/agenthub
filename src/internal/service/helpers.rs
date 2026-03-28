@@ -182,9 +182,10 @@ pub(super) async fn ensure_leader_team_access(
 }
 
 pub(super) fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status> {
-    raw.trim().parse::<TeamTaskStatus>().map_err(|other| {
+    let trimmed = raw.trim();
+    trimmed.parse::<TeamTaskStatus>().map_err(|_| {
         Status::invalid_argument(format!(
-            "invalid task status '{other}', expected one of: open, in_progress, in_review, completed, canceled"
+            "invalid task status '{trimmed}', expected one of: open, in_progress, in_review, completed, canceled"
         ))
     })
 }

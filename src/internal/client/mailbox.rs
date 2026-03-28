@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use agenthub_team_actor::{
-    ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
-    ActorMessageRecord, ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
-    ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
+    ACTOR_MAIN_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse,
+    ActorMailboxService, ActorMessageRecord, ActorMessageStatus, ActorMessageTransport,
+    ActorSendRequest, ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
 };
 use async_trait::async_trait;
 use tonic::Code;
@@ -57,14 +57,14 @@ pub(super) fn parse_message(
         run_id: message.run_id,
         from_actor_id: message.from_actor_id,
         from_peer_id: if message.from_peer_id.trim().is_empty() {
-            "main".to_string()
+            ACTOR_MAIN_PEER_ID.to_string()
         } else {
             message.from_peer_id
         },
         from_actor_kind,
         to_actor_id: message.to_actor_id,
         to_peer_id: if message.to_peer_id.trim().is_empty() {
-            "main".to_string()
+            ACTOR_MAIN_PEER_ID.to_string()
         } else {
             message.to_peer_id
         },
@@ -156,10 +156,14 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 message_id: response.message_id,
                 run_id: request.run_id,
                 from_actor_id: request.from_actor_id,
-                from_peer_id: request.from_peer_id.unwrap_or_else(|| "main".to_string()),
+                from_peer_id: request
+                    .from_peer_id
+                    .unwrap_or_else(|| ACTOR_MAIN_PEER_ID.to_string()),
                 from_actor_kind,
                 to_actor_id,
-                to_peer_id: request.to_peer_id.unwrap_or_else(|| "main".to_string()),
+                to_peer_id: request
+                    .to_peer_id
+                    .unwrap_or_else(|| ACTOR_MAIN_PEER_ID.to_string()),
                 to_actor_kind,
                 channel: request_channel.unwrap_or_else(|| "default".to_string()),
                 transport: request_transport.unwrap_or(ActorMessageTransport::Local),

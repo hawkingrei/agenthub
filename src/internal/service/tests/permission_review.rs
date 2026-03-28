@@ -344,6 +344,62 @@ async fn internal_grpc_permission_review_respond_reports_timeout_before_reviewer
 }
 
 #[tokio::test]
+async fn internal_grpc_permission_review_respond_reports_persisted_reviewer_for_resolved_request() {
+    let fixture =
+        setup_permission_review_fixture("resolved-review", "validate resolved reviewer").await;
+    seed_permission_review_request(
+        &fixture.state,
+        &fixture.run,
+        PermissionReviewSeed {
+            request_id: "perm-resolved-review-1",
+            agent_id: "resolved-worker-agent",
+            session_id: "resolved-worker-session",
+            acp_session_id: "acp-session-resolved-1",
+            requester_actor_id: "planner",
+            requester_role: "leader",
+            review_target_actor_id: None,
+            tool_call_id: "tool-call-resolved-1",
+            status: "responded",
+        },
+        fixture.now,
+    )
+    .await;
+    sqlx::query(
+        r#"
+        UPDATE acp_permission_requests
+        SET reviewed_by_actor_id = ?2
+        WHERE id = ?1
+        "#,
+    )
+    .bind("perm-resolved-review-1")
+    .bind("reviewer")
+    .execute(&fixture.state.db)
+    .await
+    .expect("set resolved reviewer");
+
+    let response = TeamInternalControl::respond_permission_review(
+        &fixture.service,
+        authenticated_request(
+            RespondPermissionReviewRequest {
+                team_id: fixture.run.team_id.clone(),
+                actor_id: "observer".to_string(),
+                permission_id: "perm-resolved-review-1".to_string(),
+                option_id: "allow".to_string(),
+                outcome: String::new(),
+            },
+            &fixture.token,
+        ),
+    )
+    .await
+    .expect("resolved permission review should report persisted reviewer")
+    .into_inner();
+
+    assert_eq!(response.status, "already_resolved");
+    assert_eq!(response.request_status, "responded");
+    assert_eq!(response.reviewed_by_actor_id, "reviewer");
+}
+
+#[tokio::test]
 async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() {
     let fixture =
         setup_permission_review_fixture("pending-review", "validate pending reviewer guard").await;

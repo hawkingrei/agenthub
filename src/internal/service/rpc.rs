@@ -774,23 +774,42 @@ impl TeamInternalControl for TeamInternalControlService {
             )
             .await
             .map_err(map_manager_error)?;
-        let status = match respond_result {
-            AcpPermissionRespondResult::Applied => "ok",
-            AcpPermissionRespondResult::AlreadyResolved => "already_resolved",
-        };
-        let request_status = self
+        let permission = self
             .state
             .acp_permissions
             .get(permission_id)
             .await
-            .map_err(map_manager_error)?
-            .map(|current| current.status)
-            .unwrap_or_else(|| "resolved".to_string());
+            .map_err(map_manager_error)?;
+        let (status, request_status, reviewed_by_actor_id) = match respond_result {
+            AcpPermissionRespondResult::Applied => (
+                "ok".to_string(),
+                permission
+                    .as_ref()
+                    .map(|current| current.status.clone())
+                    .unwrap_or_else(|| "resolved".to_string()),
+                actor_id.to_string(),
+            ),
+            AcpPermissionRespondResult::AlreadyResolved => {
+                let (request_status, reviewed_by_actor_id) = if let Some(current) = permission {
+                    (
+                        current.status,
+                        current.reviewed_by_actor_id.unwrap_or_default(),
+                    )
+                } else {
+                    ("resolved".to_string(), String::new())
+                };
+                (
+                    "already_resolved".to_string(),
+                    request_status,
+                    reviewed_by_actor_id,
+                )
+            }
+        };
         Ok(Response::new(RespondPermissionReviewResponse {
-            status: status.to_string(),
+            status,
             permission_id: permission_id.to_string(),
             request_status,
-            reviewed_by_actor_id: actor_id.to_string(),
+            reviewed_by_actor_id,
         }))
     }
 

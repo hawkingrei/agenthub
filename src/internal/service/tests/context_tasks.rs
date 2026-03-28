@@ -166,7 +166,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
         authenticated_request(
             AppendTeamTaskNoteRequest {
                 team_id: String::new(),
-                run_id: detail.task.team_id.clone(),
+                run_id: "missing-run".to_string(),
                 actor_id: "planner".to_string(),
                 task_id: detail.task.id.clone(),
                 kind: "result".to_string(),
