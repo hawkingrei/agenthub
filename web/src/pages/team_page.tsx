@@ -277,6 +277,7 @@ const TEAM_AGENT_ADVANCED_TAB_ITEMS = TEAM_TAB_ITEMS.filter((item) =>
   TEAM_AGENT_ADVANCED_TABS.has(item.value)
 );
 const TEAM_UTILITY_ADVANCED_TABS = new Set<TeamTab>([
+  "runs",
   "overview",
   "events",
   "steps",
@@ -467,6 +468,7 @@ export function TeamPage(props: TeamPageProps) {
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
   const [conversationSseState, setConversationSseState] = useState<SseConnectionState>("idle");
   const mobileRouteTeamIdRef = useRef<string | null>(null);
+  const previousCompactWorkbenchRef = useRef<boolean>(isCompactWorkbench);
   useEffect(() => {
     document.body.classList.add("teams-page");
     return () => {
@@ -489,8 +491,16 @@ export function TeamPage(props: TeamPageProps) {
     };
   }, []);
   useEffect(() => {
+    const enteredCompactWorkbench =
+      isCompactWorkbench && previousCompactWorkbenchRef.current !== isCompactWorkbench;
+    previousCompactWorkbenchRef.current = isCompactWorkbench;
     if (!isCompactWorkbench || isSelectorRoute) {
       mobileRouteTeamIdRef.current = routeTeamId;
+      return;
+    }
+    if (enteredCompactWorkbench) {
+      mobileRouteTeamIdRef.current = routeTeamId;
+      setTeamsSidebarCollapsed(true);
       return;
     }
     if (mobileRouteTeamIdRef.current !== routeTeamId) {
@@ -2595,10 +2605,6 @@ export function TeamPage(props: TeamPageProps) {
       ]),
     [selectedTeamMemberLiveStates]
   );
-  const onOpenRunsWorkspace = useCallback(() => {
-    setFocusedAgentMemberId("");
-    setTab("runs");
-  }, [setTab]);
   const onOpenTaskRun = useCallback(
     (runId: string) => {
       setActiveRunId(runId);
@@ -3655,18 +3661,6 @@ export function TeamPage(props: TeamPageProps) {
                           </Tooltip>
                         ) : null}
                         <div className={workspaceToolbarClassName}>
-                          <button
-                            type="button"
-                            className={
-                              tab === "runs"
-                                ? workspaceToolbarButtonActiveClassName
-                                : workspaceToolbarButtonIdleClassName
-                            }
-                            onClick={onOpenRunsWorkspace}
-                          >
-                            <i className="bi bi-play-circle" aria-hidden="true" />
-                            <span>Runs</span>
-                          </button>
                           {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
                             <Menu withinPortal={false} position="bottom-end" shadow="md">
                               <Menu.Target>
