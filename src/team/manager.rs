@@ -73,6 +73,7 @@ const MEMORY_FLUSH_ARTIFACT_KIND: &str = "memory_flush";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND: &str = "shared_thread_mailbox";
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE: &str = "teams_all";
 const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
+pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct TeamConversationStreamEvent {
@@ -606,7 +607,7 @@ impl TeamManager {
                 t.created_at,
                 t.updated_at
             FROM team_tasks AS t
-            INNER JOIN team_conversations AS c ON c.task_id = t.id
+            LEFT JOIN team_conversations AS c ON c.task_id = t.id
             WHERE t.team_id = "#,
         );
         builder.push_bind(&team_id);
@@ -675,7 +676,11 @@ impl TeamManager {
         let conversation = self.get_task_conversation(task_id).await?;
         let latest_run = self.get_latest_run_for_task(&task.team_id, task_id).await?;
         let recent_messages = self
-            .list_task_conversation_messages(task_id, message_limit.max(1), None)
+            .list_task_conversation_messages(
+                task_id,
+                message_limit.clamp(1, TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX),
+                None,
+            )
             .await?;
         Ok(super::TeamTaskDetailRecord {
             task,

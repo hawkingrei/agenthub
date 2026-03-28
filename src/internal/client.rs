@@ -923,9 +923,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, map_grpc_status,
-        normalize_existing_path, parse_message, parse_output_stream, parse_status, parse_transport,
-        tls_path_if_exists,
+        InternalGrpcMailboxClient, InternalGrpcMailboxClientConfig, InternalTeamTaskPatch,
+        map_grpc_status, normalize_existing_path, parse_message, parse_output_stream, parse_status,
+        parse_transport, tls_path_if_exists,
     };
     use crate::api::team_tests::build_test_state;
     use crate::internal::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, InternalRole};
@@ -936,7 +936,10 @@ mod tests {
     use crate::internal::tls::{
         InternalGrpcSecurityMode, ensure_tls_material, install_rustls_crypto_provider,
     };
-    use crate::team::{SendActorMessageInput, TeamActorMessageTransport};
+    use crate::team::{
+        SendActorMessageInput, TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamActorMessageTransport,
+        TeamTaskDetailRecord, TeamTaskListQuery,
+    };
 
     const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-client-test-secret";
 
@@ -1502,6 +1505,191 @@ mod tests {
         assert_eq!(
             sent.message.payload["mention_actor_ids"],
             json!(["reviewer"])
+        );
+
+        server.handle.abort();
+    }
+
+    #[tokio::test]
+    async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
+        install_rustls_crypto_provider();
+        let state = build_test_state().await;
+        let team_id = format!("team-{}", Uuid::new_v4());
+        let team_name = format!("grpc-team-task-team-{}", Uuid::new_v4());
+        let run_id = format!("run-{}", Uuid::new_v4());
+        seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+        let cert_dir = test_cert_dir("grpc-team-task-control");
+        ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+            .expect("generate tls material")
+            .expect("tls material");
+        let authz = build_authz();
+        let token = issue_token(
+            &authz,
+            Some(&run_id),
+            vec![
+                InternalAction::TeamRead.as_str().to_string(),
+                InternalAction::TeamTaskWrite.as_str().to_string(),
+            ],
+        );
+        let server =
+            spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+        let client =
+            InternalGrpcMailboxClient::connect(mtls_client_config(server.addr, token, &cert_dir))
+                .await
+                .expect("connect grpc mailbox client");
+
+        let created = client
+            .create_team_task(
+                &team_id,
+                "planner",
+                "Investigate kanban actor cli",
+                "open",
+                Some("kanban"),
+                &json!({"source":"grpc-client"}),
+            )
+            .await
+            .expect("create grpc team task");
+        let task_id = created["task"]["id"]
+            .as_str()
+            .expect("created task id")
+            .to_string();
+
+        let orphan = client
+            .create_team_task(
+                &team_id,
+                "planner",
+                "Legacy orphan task",
+                "open",
+                Some("legacy"),
+                &json!({"source":"legacy"}),
+            )
+            .await
+            .expect("create orphan candidate task");
+        let orphan_task_id = orphan["task"]["id"]
+            .as_str()
+            .expect("orphan task id")
+            .to_string();
+        sqlx::query("DELETE FROM team_conversations WHERE task_id = ?1")
+            .bind(&orphan_task_id)
+            .execute(&state.db)
+            .await
+            .expect("delete orphan task conversation");
+
+        let listed = client
+            .list_team_tasks(
+                "planner",
+                &TeamTaskListQuery {
+                    team_id: None,
+                    run_id: Some(run_id.clone()),
+                    limit: 20,
+                    status: None,
+                    task_id: None,
+                    assigned_member_id: None,
+                    topic: None,
+                    include_shared_thread: false,
+                },
+            )
+            .await
+            .expect("list grpc team tasks");
+        assert!(listed.iter().any(|task| task.id == task_id));
+        assert!(listed.iter().any(|task| task.id == orphan_task_id));
+
+        let updated = client
+            .update_team_task(
+                &team_id,
+                "planner",
+                &task_id,
+                InternalTeamTaskPatch {
+                    status: Some("in_progress"),
+                    assigned_member_id: Some("reviewer"),
+                    clear_assigned_member_id: false,
+                    context_json: None,
+                    context_merge_json: Some(&json!({"issue":235})),
+                },
+            )
+            .await
+            .expect("update grpc team task");
+        assert_eq!(updated.status, crate::team::TeamTaskStatus::InProgress);
+        assert_eq!(updated.assigned_member_id.as_deref(), Some("reviewer"));
+        assert_eq!(updated.context["issue"], json!(235));
+
+        for idx in 0..(TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX + 25) {
+            state
+                .teams
+                .append_task_conversation_message(
+                    &task_id,
+                    "planner",
+                    None,
+                    "group_chat",
+                    json!({
+                        "kind":"comment",
+                        "text": format!("note-{idx}")
+                    }),
+                )
+                .await
+                .expect("append task conversation message");
+        }
+
+        let detail = client
+            .get_team_task(
+                "planner",
+                None,
+                Some(&run_id),
+                &task_id,
+                TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX + 100,
+            )
+            .await
+            .expect("get grpc team task detail");
+        assert_eq!(
+            detail.recent_messages.len() as i64,
+            TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX
+        );
+        assert_eq!(
+            detail
+                .recent_messages
+                .last()
+                .map(|message| &message.payload["text"]),
+            Some(&json!(format!(
+                "note-{}",
+                TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX + 24
+            )))
+        );
+
+        let note = client
+            .append_team_task_note(
+                "planner",
+                None,
+                Some(&run_id),
+                &task_id,
+                "result",
+                "implemented",
+            )
+            .await
+            .expect("append grpc team task note");
+        assert_eq!(note.payload["kind"], json!("result"));
+        assert_eq!(note.payload["text"], json!("implemented"));
+
+        let detail_after_note: TeamTaskDetailRecord = client
+            .get_team_task(
+                "planner",
+                Some(&team_id),
+                None,
+                &task_id,
+                TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX + 100,
+            )
+            .await
+            .expect("get grpc team task detail after note");
+        assert_eq!(
+            detail_after_note.recent_messages.len() as i64,
+            TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX
+        );
+        assert_eq!(
+            detail_after_note
+                .recent_messages
+                .last()
+                .map(|message| &message.payload["text"]),
+            Some(&json!("implemented"))
         );
 
         server.handle.abort();

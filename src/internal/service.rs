@@ -14,9 +14,9 @@ use crate::acp::AcpPermissionRespondResult;
 use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
 use crate::state::AppState;
 use crate::team::{
-    TeamContextLookupError, TeamManager, TeamStepRecord, TeamStepStatus, TeamTaskAssignmentUpdate,
-    TeamTaskContextPatch, TeamTaskListQuery, TeamTaskStatus,
-    build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
+    TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamContextLookupError, TeamManager, TeamStepRecord,
+    TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery,
+    TeamTaskStatus, build_actor_mailbox_immediate_hint_prompt, plan_actor_mailbox_immediate_hint,
     resolve_team_permission_review_target,
 };
 
@@ -467,7 +467,7 @@ impl TeamInternalControl for TeamInternalControlService {
         .await?;
         let query = TeamTaskListQuery {
             team_id: Some(context.team_id),
-            run_id: optional_trimmed(&payload.run_id).map(str::to_string),
+            run_id: None,
             limit: payload.limit.clamp(1, MAX_INTERNAL_TEAM_TASK_LIST_LIMIT),
             status: optional_trimmed(&payload.status)
                 .map(parse_team_task_status)
@@ -646,7 +646,12 @@ impl TeamInternalControl for TeamInternalControlService {
         let detail = self
             .state
             .teams
-            .get_task_detail(task_id, payload.message_limit.max(1))
+            .get_task_detail(
+                task_id,
+                payload
+                    .message_limit
+                    .clamp(1, TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX),
+            )
             .await
             .map_err(map_manager_error)?;
         if detail.task.team_id != context.team_id {

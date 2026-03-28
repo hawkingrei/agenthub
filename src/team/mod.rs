@@ -20,6 +20,7 @@ pub(crate) use mailbox_hint::{
     TeamMailboxUnreadHintWorkerSettings, build_actor_mailbox_immediate_hint_prompt,
     plan_actor_mailbox_immediate_hint,
 };
+pub(crate) use manager::TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX;
 #[allow(unused_imports)]
 pub use manager::{
     SendActorMessageInput, TeamContextLookupError, TeamContextRecord, TeamConversationStreamEvent,
