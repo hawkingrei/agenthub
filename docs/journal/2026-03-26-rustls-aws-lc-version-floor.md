@@ -4,7 +4,8 @@
 
 - raised the top-level `rustls` dependency floor from `0.23` to `0.23.37`
 - confirmed the workspace lockfile already resolves `rustls` to `0.23.37`
-- confirmed `aws-lc-rs` is still transitively selected through `rustls` and already resolves to `1.16.1`
+- confirmed `aws-lc-rs` is still transitively selected through `rustls` and now resolves to the
+  patched `1.16.2` line
 
 ## Scope
 
@@ -23,6 +24,7 @@
 
 ## Validation
 
-- verify the dependency graph still resolves one `rustls v0.23.37` and one `aws-lc-rs v1.16.1`
+- verify the dependency graph still resolves one `rustls v0.23.37`, `aws-lc-rs v1.16.2`, and
+  `aws-lc-sys v0.39.0`
 - run `cargo check`
 - run `bazel build //...`
