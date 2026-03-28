@@ -238,6 +238,9 @@ Constraint:
   agent review cannot complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- Team runtime reads should reconcile stale member `running` rows against live runtime handles
+  before reporting member/session status so crashed or already-exited members do not keep the Team
+  workbench stuck in a stale `running` state.
 - `Agent ACP -> Debug` may expose a member-scoped `Force New Session` recovery action:
   - it clears the selected member's persisted ACP session for the active provider
   - restarts only that member runtime

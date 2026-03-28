@@ -86,6 +86,8 @@ small execution steps.
 ## What To Watch Operationally
 
 - whether the Team runtime is started or stopped
+- whether a member that already exited has fallen back to `stopped` / `degraded` after refresh
+  instead of staying stuck on a stale `running` badge
 - whether Kanban ownership matches the real executing member
 - whether `Conversation` and `Kanban` stay in sync with the current plan
 - whether permission review requests route to the expected reviewer

@@ -239,6 +239,106 @@ async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
 }
 
 #[tokio::test]
+async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "stale-runtime-team".to_string(),
+            description: Some("stale runtime reconcile coverage".to_string()),
+            spec: json!({
+                "entrypoint": "planner",
+                "members": [
+                    {
+                        "member_id": "planner",
+                        "role": "leader",
+                    }
+                ],
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let _ = stop_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("stop team runtime before seeding stale rows");
+    assert!(
+        state.agents.running_session_id_for_agent("planner").await.is_none(),
+        "planner runtime should be stopped before stale-row reconciliation coverage"
+    );
+
+    let now = Utc::now().timestamp();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind("/tmp/team-runtime-stale")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for stale planner");
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'running', ?6, ?7)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner-agent")
+    .bind("/tmp/team-runtime-stale")
+    .bind("/usr/bin/env")
+    .bind("[]")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert stale planner agent");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind("stale-team-runtime-session")
+    .bind("planner")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert stale running session");
+
+    let Json(runtime) = get_team_runtime(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("describe reconciled team runtime");
+
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Stopped);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "planner");
+    assert_eq!(runtime.members[0].agent_status.as_deref(), Some("exited"));
+    assert!(runtime.members[0].session_id.is_none());
+    assert!(runtime.members[0].session_status.is_none());
+
+    let agent_status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+        .bind("planner")
+        .fetch_one(&state.db)
+        .await
+        .expect("load reconciled planner status");
+    assert_eq!(agent_status, "exited");
+    let (session_status, ended_at): (String, Option<i64>) = sqlx::query_as(
+        "SELECT status, ended_at FROM agent_sessions WHERE id = ?1",
+    )
+    .bind("stale-team-runtime-session")
+    .fetch_one(&state.db)
+    .await
+    .expect("load reconciled planner session");
+    assert_eq!(session_status, "exited");
+    assert!(ended_at.is_some());
+}
+
+#[tokio::test]
 async fn teams_api_rejects_execution_until_team_has_members() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
