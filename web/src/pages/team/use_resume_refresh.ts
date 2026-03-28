@@ -13,10 +13,15 @@ export function useResumeRefresh({
   refresh,
   onRefreshError,
 }: UseResumeRefreshOptions) {
+  const enabledRef = useRef(enabled);
   const refreshRef = useRef(refresh);
   const onRefreshErrorRef = useRef(onRefreshError);
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   useEffect(() => {
     refreshRef.current = refresh;
@@ -27,7 +32,7 @@ export function useResumeRefresh({
   }, [onRefreshError]);
 
   const requestRefresh = useCallback(() => {
-    if (!enabled) {
+    if (!enabledRef.current) {
       return;
     }
     if (refreshInFlightRef.current) {
@@ -36,25 +41,28 @@ export function useResumeRefresh({
     }
     refreshInFlightRef.current = true;
     void (async () => {
+      let shouldRestart = false;
       try {
-        for (;;) {
+        do {
           refreshQueuedRef.current = false;
           await refreshRef.current();
-          if (!refreshQueuedRef.current) {
-            return;
-          }
-        }
+        } while (enabledRef.current && refreshQueuedRef.current);
       } catch (error) {
         onRefreshErrorRef.current?.(error);
       } finally {
         refreshInFlightRef.current = false;
-        if (refreshQueuedRef.current) {
+        if (!enabledRef.current) {
           refreshQueuedRef.current = false;
-          requestRefresh();
+        } else if (refreshQueuedRef.current) {
+          refreshQueuedRef.current = false;
+          shouldRestart = true;
         }
       }
+      if (shouldRestart) {
+        requestRefresh();
+      }
     })();
-  }, [enabled]);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
