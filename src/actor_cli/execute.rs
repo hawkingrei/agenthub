@@ -21,26 +21,40 @@ use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskRecord, 
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
 
-fn is_shared_thread_task(task: &TeamTaskRecord) -> bool {
+fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
     task.title
         .trim()
         .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
-        || task
-            .context
-            .get("bootstrap_kind")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|value| {
-                value
-                    .trim()
-                    .eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
-            })
+}
+
+fn has_shared_thread_bootstrap_kind(task: &TeamTaskRecord) -> bool {
+    task.context
+        .get("bootstrap_kind")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| {
+            value
+                .trim()
+                .eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
+        })
+}
+
+fn shared_thread_sort_key(task: &TeamTaskRecord) -> (i64, i64, &str) {
+    (task.updated_at, task.created_at, task.id.as_str())
 }
 
 pub(super) fn resolve_shared_thread_task_id(tasks: &[TeamTaskRecord]) -> Option<&str> {
     tasks
         .iter()
-        .find(|task| is_shared_thread_task(task))
+        .filter(|task| has_shared_thread_bootstrap_kind(task))
+        .max_by_key(|task| shared_thread_sort_key(task))
+        .or_else(|| {
+            tasks
+                .iter()
+                .filter(|task| has_shared_thread_title(task))
+                .max_by_key(|task| shared_thread_sort_key(task))
+        })
         .map(|task| task.id.as_str())
 }
 
@@ -239,7 +253,7 @@ pub(super) async fn run_actor_command(
                         &TeamTaskListQuery {
                             team_id: Some(context.team_id.clone()),
                             run_id: None,
-                            limit: 100,
+                            limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
                             status: None,
                             task_id: None,
                             assigned_member_id: None,

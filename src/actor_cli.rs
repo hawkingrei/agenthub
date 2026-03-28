@@ -2006,6 +2006,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_task_note_requires_task_id_or_shared_thread() {
+        let args = vec![
+            "team-task-note".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--text".to_string(),
+            "missing target".to_string(),
+        ];
+        let err =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect_err("missing target");
+        assert!(
+            err.to_string()
+                .contains("team-task-note requires --task-id or --shared-thread")
+        );
+    }
+
+    #[test]
     fn resolve_shared_thread_task_id_prefers_canonical_shared_thread_task() {
         let tasks = vec![
             crate::team::TeamTaskRecord {
@@ -2032,6 +2051,97 @@ mod tests {
             },
         ];
         assert_eq!(resolve_shared_thread_task_id(&tasks), Some("shared-task"));
+    }
+
+    #[test]
+    fn resolve_shared_thread_task_id_prefers_bootstrap_kind_then_latest_update() {
+        let tasks = vec![
+            crate::team::TeamTaskRecord {
+                id: "title-only-newer".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({}),
+                created_at: 3,
+                updated_at: 30,
+            },
+            crate::team::TeamTaskRecord {
+                id: "bootstrap-older".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 2,
+                updated_at: 20,
+            },
+            crate::team::TeamTaskRecord {
+                id: "bootstrap-newer".to_string(),
+                team_id: "team-1".to_string(),
+                title: "random".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 4,
+                updated_at: 40,
+            },
+        ];
+        assert_eq!(
+            resolve_shared_thread_task_id(&tasks),
+            Some("bootstrap-newer")
+        );
+    }
+
+    #[test]
+    fn parse_team_task_update_rejects_duplicate_context_file_aliases() {
+        let path = std::env::temp_dir().join(format!(
+            "agenthub-context-alias-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, "{}").expect("write temp json fixture");
+        let args = vec![
+            "team-task-update".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--context-json-file".to_string(),
+            path.display().to_string(),
+            "--context-file".to_string(),
+            path.display().to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("duplicate context file aliases should conflict");
+        let _ = std::fs::remove_file(&path);
+        assert!(err.to_string().contains(
+            "--context-json, --context-json-file, and --context-file cannot be used together"
+        ));
+    }
+
+    #[test]
+    fn parse_ack_requires_message_id_from_flag_or_position() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-empty");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec!["ack".to_string()];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("missing ack ids should fail");
+        assert!(
+            err.to_string()
+                .contains("at least one message_id is required")
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]

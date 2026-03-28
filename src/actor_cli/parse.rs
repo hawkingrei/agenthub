@@ -40,6 +40,18 @@ fn parse_json_file(path: &str, field: &str) -> anyhow::Result<Value> {
     parse_json(&raw, field)
 }
 
+fn set_unique_json_value(
+    slot: &mut Option<Value>,
+    value: Value,
+    conflict_message: &'static str,
+) -> anyhow::Result<()> {
+    if slot.is_some() {
+        return Err(anyhow::anyhow!(conflict_message));
+    }
+    *slot = Some(value);
+    Ok(())
+}
+
 fn read_actor_send_file(path: &str, flag: &str) -> anyhow::Result<String> {
     let trimmed = path.trim();
     anyhow::ensure!(!trimmed.is_empty(), "{} requires a non-empty path", flag);
@@ -661,42 +673,66 @@ pub(super) fn parse_actor_command(
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--context-json requires a value"))?;
-                        context = Some(parse_json(raw, "context_json")?);
+                        set_unique_json_value(
+                            &mut context,
+                            parse_json(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
                     }
                     "--context-json-file" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-json-file requires a value")
                         })?;
-                        context_file = Some(parse_json_file(raw, "context_json")?);
+                        set_unique_json_value(
+                            &mut context_file,
+                            parse_json_file(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
                     }
                     "--context-file" => {
                         idx += 1;
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--context-file requires a value"))?;
-                        context_file = Some(parse_json_file(raw, "context_json")?);
+                        set_unique_json_value(
+                            &mut context_file,
+                            parse_json_file(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
                     }
                     "--context-merge-json" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-json requires a value")
                         })?;
-                        context_merge = Some(parse_json(raw, "context_merge_json")?);
+                        set_unique_json_value(
+                            &mut context_merge,
+                            parse_json(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
                     }
                     "--context-merge-json-file" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-json-file requires a value")
                         })?;
-                        context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
+                        set_unique_json_value(
+                            &mut context_merge_file,
+                            parse_json_file(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
                     }
                     "--context-merge-file" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-file requires a value")
                         })?;
-                        context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
+                        set_unique_json_value(
+                            &mut context_merge_file,
+                            parse_json_file(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
                     }
                     other => {
                         return Err(anyhow::anyhow!(
@@ -717,19 +753,19 @@ pub(super) fn parse_actor_command(
             }
             if context.is_some() && context_file.is_some() {
                 return Err(anyhow::anyhow!(
-                    "--context-json and --context-json-file cannot be used together"
+                    "--context-json, --context-json-file, and --context-file cannot be used together"
                 ));
             }
             if context_merge.is_some() && context_merge_file.is_some() {
                 return Err(anyhow::anyhow!(
-                    "--context-merge-json and --context-merge-json-file cannot be used together"
+                    "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together"
                 ));
             }
             if (context.is_some() || context_file.is_some())
                 && (context_merge.is_some() || context_merge_file.is_some())
             {
                 return Err(anyhow::anyhow!(
-                    "--context-json/--context-json-file and --context-merge-json/--context-merge-json-file cannot be used together"
+                    "--context-json/--context-json-file/--context-file and --context-merge-json/--context-merge-json-file/--context-merge-file cannot be used together"
                 ));
             }
             let task_ids = task_ids
@@ -845,11 +881,17 @@ pub(super) fn parse_actor_command(
                     "--shared-thread and --task-id cannot be used together"
                 ));
             }
+            let task_id = take_optional(task_id);
+            if !shared_thread && task_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-task-note requires --task-id or --shared-thread"
+                ));
+            }
             Ok(ActorCommand::TeamTaskNote {
                 team_id,
                 run_id,
                 actor_id: take_actor_id(actor_id)?,
-                task_id: take_optional(task_id),
+                task_id,
                 shared_thread,
                 kind,
                 text: take_optional(text).ok_or_else(|| anyhow::anyhow!("text is required"))?,
@@ -954,7 +996,7 @@ pub(super) fn parse_actor_command(
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
-                    .ok_or_else(|| anyhow::anyhow!("at least one --message-id is required"))?,
+                    .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
             })
         }
         "send" => {
