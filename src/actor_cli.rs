@@ -1,6 +1,10 @@
 use serde_json::Value;
 
 use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus};
+use agenthub_team_actor::{
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
+    build_default_actor_message_idempotency_key,
+};
 
 #[cfg(test)]
 use crate::actor_runtime_env::{
@@ -9,8 +13,8 @@ use crate::actor_runtime_env::{
 };
 #[cfg(test)]
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorServiceError, ActorServiceErrorCode,
+    ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorServiceError,
+    ActorServiceErrorCode,
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -66,6 +70,50 @@ enum ActorSendIdempotency {
     Disabled,
     Resolved(String),
     DeferredDefault,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorSendTargetRef<'a> {
+    Direct { to_actor_id: &'a str },
+    Channel { channel_id: &'a str },
+}
+
+fn build_actor_send_default_idempotency_key(
+    run_id: &str,
+    from_actor_id: &str,
+    target: ActorSendTargetRef<'_>,
+    channel: &str,
+    transport: &TeamActorMessageTransport,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    match target {
+        ActorSendTargetRef::Direct { to_actor_id } => build_default_actor_message_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            to_actor_id,
+            if *transport == TeamActorMessageTransport::Remote {
+                ACTOR_NODE_PEER_ID
+            } else {
+                ACTOR_MAIN_PEER_ID
+            },
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+        ActorSendTargetRef::Channel { channel_id } => build_default_actor_channel_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            channel_id,
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

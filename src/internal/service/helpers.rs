@@ -72,7 +72,7 @@ pub(super) async fn resolve_actor_run_scope(
     });
     let Some(team_id) = resolved_team_id else {
         return Err(Status::failed_precondition(
-            "run_id is required; no active actor runtime scope was found. Retry with --run-id <run_id> explicitly.",
+            "run_id is required; no current actor runtime run_id was found and no team_id was available to infer a unique active Team run. Retry with --run-id <run_id> explicitly.",
         ));
     };
 

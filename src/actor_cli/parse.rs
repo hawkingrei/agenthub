@@ -1,6 +1,7 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
+    ActorSendTargetRef, build_actor_send_default_idempotency_key,
     TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
 };
 use std::fs;
@@ -12,10 +13,7 @@ use crate::actor_runtime_env::{
 use crate::team::{
     TEAM_TASK_STATUS_VALUES, TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus,
 };
-use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
-    build_default_actor_message_idempotency_key, parse_actor_transport,
-};
+use agenthub_team_actor::parse_actor_transport;
 use serde_json::Value;
 
 pub(super) struct ParsedActorCommand {
@@ -1167,42 +1165,24 @@ pub(super) fn parse_actor_command(
                     "--allow-duplicate cannot be used with --idempotency-key"
                 ));
             }
-            let to_peer_id = if transport == TeamActorMessageTransport::Remote {
-                ACTOR_NODE_PEER_ID
-            } else {
-                ACTOR_MAIN_PEER_ID
-            };
             let idempotency = if allow_duplicate {
                 ActorSendIdempotency::Disabled
             } else if let Some(explicit_idempotency_key) = explicit_idempotency_key {
                 ActorSendIdempotency::Resolved(explicit_idempotency_key)
             } else if let Some(run_id) = run_id.as_deref() {
-                ActorSendIdempotency::Resolved(
+                ActorSendIdempotency::Resolved(build_actor_send_default_idempotency_key(
+                    run_id,
+                    &from_actor_id,
                     match (to_actor_id.as_deref(), channel_id.as_deref()) {
-                        (Some(to_actor_id), None) => build_default_actor_message_idempotency_key(
-                            run_id,
-                            &from_actor_id,
-                            ACTOR_MAIN_PEER_ID,
-                            to_actor_id,
-                            to_peer_id,
-                            &channel,
-                            transport.as_str(),
-                            route.as_ref(),
-                            &payload,
-                        ),
-                        (None, Some(channel_id)) => build_default_actor_channel_idempotency_key(
-                            run_id,
-                            &from_actor_id,
-                            ACTOR_MAIN_PEER_ID,
-                            channel_id,
-                            &channel,
-                            transport.as_str(),
-                            route.as_ref(),
-                            &payload,
-                        ),
+                        (Some(to_actor_id), None) => ActorSendTargetRef::Direct { to_actor_id },
+                        (None, Some(channel_id)) => ActorSendTargetRef::Channel { channel_id },
                         _ => unreachable!("actor send target already validated"),
                     },
-                )
+                    &channel,
+                    &transport,
+                    route.as_ref(),
+                    &payload,
+                ))
             } else {
                 ActorSendIdempotency::DeferredDefault
             };

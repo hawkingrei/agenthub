@@ -4334,10 +4334,18 @@ async fn list_active_runs_for_team_excludes_shared_thread_mailbox_runs() {
         .create_run(&team.id, Some("ctx-visible"), json!({"payload":"visible"}))
         .await
         .expect("create visible run");
-    let _shared_mailbox_run = manager
+    let shared_mailbox_run = manager
         .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
         .await
         .expect("create shared mailbox run");
+    sqlx::query(
+        "UPDATE team_runs SET status = 'working', started_at = COALESCE(started_at, ?1) WHERE id = ?2",
+    )
+        .bind(chrono::Utc::now().timestamp())
+        .bind(&shared_mailbox_run.id)
+        .execute(&db)
+        .await
+        .expect("promote shared mailbox run to active status");
 
     let active_runs = manager
         .list_active_runs_for_team(&team.id, 20)

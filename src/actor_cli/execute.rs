@@ -7,12 +7,12 @@ use super::runtime::{
 };
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
+    ActorSendTargetRef, build_actor_send_default_idempotency_key,
     MAX_TIME_TRIGGER_DELAY_SECONDS,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest,
-    ActorMailboxService, ActorMessageStatus, build_default_actor_channel_idempotency_key,
-    build_default_actor_message_idempotency_key,
+    ActorMailboxService, ActorMessageStatus,
 };
 use anyhow::Context;
 use chrono::Utc;
@@ -210,34 +210,19 @@ fn resolve_actor_send_idempotency_key(
     match idempotency {
         ActorSendIdempotency::Disabled => None,
         ActorSendIdempotency::Resolved(idempotency_key) => Some(idempotency_key),
-        ActorSendIdempotency::DeferredDefault => Some(match (to_actor_id, channel_id) {
-            (Some(to_actor_id), None) => build_default_actor_message_idempotency_key(
-                run_id,
-                from_actor_id,
-                ACTOR_MAIN_PEER_ID,
-                to_actor_id,
-                if *transport == TeamActorMessageTransport::Remote {
-                    ACTOR_NODE_PEER_ID
-                } else {
-                    ACTOR_MAIN_PEER_ID
-                },
-                channel,
-                transport.as_str(),
-                route,
-                payload,
-            ),
-            (None, Some(channel_id)) => build_default_actor_channel_idempotency_key(
-                run_id,
-                from_actor_id,
-                ACTOR_MAIN_PEER_ID,
-                channel_id,
-                channel,
-                transport.as_str(),
-                route,
-                payload,
-            ),
-            _ => unreachable!("actor send target already validated"),
-        }),
+        ActorSendIdempotency::DeferredDefault => Some(build_actor_send_default_idempotency_key(
+            run_id,
+            from_actor_id,
+            match (to_actor_id, channel_id) {
+                (Some(to_actor_id), None) => ActorSendTargetRef::Direct { to_actor_id },
+                (None, Some(channel_id)) => ActorSendTargetRef::Channel { channel_id },
+                _ => unreachable!("actor send target already validated"),
+            },
+            channel,
+            transport,
+            route,
+            payload,
+        )),
     }
 }
 
