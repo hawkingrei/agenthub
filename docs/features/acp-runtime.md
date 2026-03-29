@@ -149,6 +149,10 @@ ACP permission requests are first-class runtime records:
   `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
   file-backed skills through ACP `<skill>` wrappers so `agenthub-codex-acp` can translate them into
   native Codex `UserInput::Skill` items.
+- Global managed-skill paths should stay on the home-rooted forms only: canonical absolute paths,
+  with `~/...` accepted as a compatibility spelling before translation. Repo-local
+  `<workdir>/.agents/skills/**/SKILL.md` remains an independent discovery path and should not be
+  rewritten into the managed global namespace.
 - Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
   stay in a separate text prefix block injected before each prompt instead of being rewritten into
   the managed `SKILL.md` files.

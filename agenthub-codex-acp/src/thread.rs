@@ -3646,11 +3646,45 @@ fn parse_agenthub_skill_input(text: &str, trusted_root: Option<&Path>) -> Option
     let (name_line, rest) = split_first_line(body)?;
     let name = parse_skill_meta_line(name_line, "name")?;
     let (path_line, _) = split_first_line(rest)?;
-    let path = PathBuf::from(parse_skill_meta_line(path_line, "path")?);
+    let path =
+        normalize_agenthub_skill_path(&parse_skill_meta_line(path_line, "path")?, trusted_root)?;
     if !is_trusted_agenthub_skill_path(&path, trusted_root) {
         return None;
     }
     Some(UserInput::Skill { name, path })
+}
+
+fn normalize_agenthub_skill_path(raw_path: &str, trusted_root: Option<&Path>) -> Option<PathBuf> {
+    let path = PathBuf::from(raw_path);
+    if path.is_absolute() {
+        return Some(path);
+    }
+
+    let trusted_root = trusted_root?;
+    let home_dir = infer_home_dir_from_managed_skills_root(trusted_root)?;
+
+    if let Some(relative_path) = raw_path.strip_prefix("~/") {
+        return Some(home_dir.join(relative_path));
+    }
+
+    let legacy_managed_relative = Path::new(".agents").join("skills").join("agenthub-runtime");
+    if path.starts_with(&legacy_managed_relative) {
+        return Some(home_dir.join(path));
+    }
+
+    None
+}
+
+fn infer_home_dir_from_managed_skills_root(trusted_root: &Path) -> Option<PathBuf> {
+    let skills_dir = trusted_root.parent()?;
+    let agents_dir = skills_dir.parent()?;
+    let home_dir = agents_dir.parent()?;
+    if skills_dir.file_name() != Some(OsStr::new("skills"))
+        || agents_dir.file_name() != Some(OsStr::new(".agents"))
+    {
+        return None;
+    }
+    Some(home_dir.to_path_buf())
 }
 
 fn is_trusted_agenthub_skill_path(path: &Path, trusted_root: Option<&Path>) -> bool {
@@ -3660,10 +3694,13 @@ fn is_trusted_agenthub_skill_path(path: &Path, trusted_root: Option<&Path>) -> b
     let Some(trusted_root) = trusted_root else {
         return false;
     };
+    let Ok(canonical_root) = std::fs::canonicalize(trusted_root) else {
+        return false;
+    };
     let Ok(canonical_path) = std::fs::canonicalize(path) else {
         return false;
     };
-    canonical_path.starts_with(trusted_root)
+    canonical_path.starts_with(canonical_root)
 }
 
 fn split_first_line(input: &str) -> Option<(&str, &str)> {
@@ -3812,13 +3849,10 @@ mod tests {
 
     impl TempManagedSkillsHome {
         fn new() -> Self {
-            let nonce = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
             let home = std::env::temp_dir().join(format!(
-                "agenthub-codex-acp-managed-skills-{}-{nonce}",
-                std::process::id()
+                "agenthub-codex-acp-managed-skills-{}-{}",
+                std::process::id(),
+                Uuid::new_v4()
             ));
             std::fs::create_dir_all(&home).expect("create temp managed skills home");
             install_managed_skills(Some(home.as_path())).expect("install managed skills");
@@ -5494,6 +5528,79 @@ mod tests {
                     text_elements: vec![],
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_items_converts_tilde_managed_skill_block_to_native_skill_input() {
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamTaskLifecycle);
+        let relative_to_home = skill_path
+            .strip_prefix(managed_home.home.as_path())
+            .expect("skill path should live under temp home");
+        let skill_block = format!(
+            "<skill>\n<name>team-task-lifecycle</name>\n<path>~/{}\
+</path>\nUse tilde path.\n</skill>",
+            relative_to_home.display()
+        );
+        let items = build_prompt_items_with_trusted_root(
+            vec![ContentBlock::Text(TextContent::new(skill_block.as_str()))],
+            Some(trusted_root.as_path()),
+        );
+
+        assert_eq!(
+            items,
+            vec![UserInput::Skill {
+                name: "team-task-lifecycle".to_string(),
+                path: skill_path,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_items_converts_legacy_relative_managed_skill_block_to_native_skill_input()
+    {
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamLeaderOrchestrator);
+        let relative_to_home = skill_path
+            .strip_prefix(managed_home.home.as_path())
+            .expect("skill path should live under temp home");
+        let skill_block = format!(
+            "<skill>\n<name>team-leader-orchestrator</name>\n<path>{}</path>\nLegacy relative managed path.\n</skill>",
+            relative_to_home.display()
+        );
+        let items = build_prompt_items_with_trusted_root(
+            vec![ContentBlock::Text(TextContent::new(skill_block.as_str()))],
+            Some(trusted_root.as_path()),
+        );
+
+        assert_eq!(
+            items,
+            vec![UserInput::Skill {
+                name: "team-leader-orchestrator".to_string(),
+                path: skill_path,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_build_prompt_items_keeps_repo_local_relative_skill_block_as_text() {
+        let managed_home = TempManagedSkillsHome::new();
+        let trusted_root = managed_home.trusted_root();
+        let text = "<skill>\n<name>tidb-optimizer-bugfix</name>\n<path>.agents/skills/tidb-optimizer-bugfix/SKILL.md</path>\nRepo-local skill.\n</skill>";
+        let items = build_prompt_items_with_trusted_root(
+            vec![ContentBlock::Text(TextContent::new(text))],
+            Some(trusted_root.as_path()),
+        );
+
+        assert_eq!(
+            items,
+            vec![UserInput::Text {
+                text: text.to_string(),
+                text_elements: vec![],
+            }]
         );
     }
 
