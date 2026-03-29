@@ -89,7 +89,7 @@ enum ActorCommand {
         actor_id: String,
     },
     Inbox {
-        run_id: String,
+        run_id: Option<String>,
         actor_id: String,
         limit: i64,
         after_id: Option<i64>,
@@ -408,7 +408,7 @@ mod tests {
                 auto_ack,
                 ..
             } => {
-                assert_eq!(run_id, "run-x");
+                assert_eq!(run_id.as_deref(), Some("run-x"));
                 assert_eq!(actor_id, "planner");
                 assert_eq!(limit, 5);
                 assert!(!auto_ack);
@@ -436,7 +436,7 @@ mod tests {
         assert!(matches!(
             parsed.command,
             ActorCommand::Inbox { ref run_id, ref actor_id, .. }
-                if run_id == "run-x" && actor_id == "planner"
+                if run_id.as_deref() == Some("run-x") && actor_id == "planner"
         ));
     }
 
@@ -455,7 +455,7 @@ mod tests {
         assert!(matches!(
             parsed.command,
             ActorCommand::Inbox { ref run_id, ref actor_id, .. }
-                if run_id == "run-y" && actor_id == "planner"
+                if run_id.as_deref() == Some("run-y") && actor_id == "planner"
         ));
     }
 
@@ -475,6 +475,38 @@ mod tests {
             ActorCommand::Inbox { auto_ack, .. } => assert!(auto_ack),
             _ => panic!("expected inbox command"),
         }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_inbox_allows_team_scope_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec!["inbox".to_string(), "--limit".to_string(), "20".to_string()];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox {
+                run_id,
+                actor_id,
+                limit,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "planner");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -2438,7 +2470,7 @@ mod tests {
             ),
             (
                 ActorCommand::Inbox {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     actor_id: "worker".to_string(),
                     limit: 20,
                     after_id: None,
