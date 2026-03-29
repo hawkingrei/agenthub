@@ -4,7 +4,9 @@ mod mailbox;
 #[cfg(test)]
 mod tests;
 
+use std::future::Future;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::agent::{AgentEvent, OutputStream};
 use agenthub_team_actor::{ActorServiceError, ActorServiceErrorCode};
@@ -21,6 +23,9 @@ use super::proto::agenthub::internal::v1::team_internal_control_client::TeamInte
 use super::tls::{InternalGrpcSecurityMode, install_rustls_crypto_provider};
 
 pub use mailbox::normalize_existing_path;
+
+const INTERNAL_GRPC_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const INTERNAL_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub struct InternalGrpcMailboxClientConfig {
@@ -120,7 +125,9 @@ impl InternalGrpcMailboxClient {
     pub async fn connect(config: InternalGrpcMailboxClientConfig) -> anyhow::Result<Self> {
         install_rustls_crypto_provider();
         let target = config.target.trim().to_string();
-        let mut endpoint = Endpoint::from_shared(target.clone())?;
+        let mut endpoint = Endpoint::from_shared(target.clone())?
+            .connect_timeout(INTERNAL_GRPC_CONNECT_TIMEOUT)
+            .timeout(INTERNAL_GRPC_REQUEST_TIMEOUT);
         if target
             .get(..8)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
@@ -161,7 +168,7 @@ impl InternalGrpcMailboxClient {
             }
             endpoint = endpoint.tls_config(tls)?;
         }
-        let channel = endpoint.connect().await?;
+        let channel = timeout_internal_grpc_connect(endpoint.connect()).await?;
         Ok(Self {
             channel,
             access_token: config.access_token.trim().to_string(),
@@ -191,6 +198,52 @@ impl InternalGrpcMailboxClient {
     }
 }
 
+fn internal_grpc_timeout_message() -> String {
+    format!(
+        "internal gRPC request timed out after {}s",
+        INTERNAL_GRPC_REQUEST_TIMEOUT.as_secs()
+    )
+}
+
+fn internal_grpc_connect_timeout_message() -> String {
+    format!(
+        "internal gRPC connect timed out after {}s",
+        INTERNAL_GRPC_CONNECT_TIMEOUT.as_secs()
+    )
+}
+
+async fn timeout_internal_grpc_connect(
+    future: impl Future<Output = Result<Channel, tonic::transport::Error>>,
+) -> anyhow::Result<Channel> {
+    tokio::time::timeout(INTERNAL_GRPC_CONNECT_TIMEOUT, future)
+        .await
+        .map_err(|_| anyhow::anyhow!(internal_grpc_connect_timeout_message()))?
+        .map_err(anyhow::Error::from)
+}
+
+pub(super) async fn timeout_internal_grpc_call<T, F>(future: F) -> Result<T, tonic::Status>
+where
+    F: Future<Output = Result<T, tonic::Status>>,
+{
+    tokio::time::timeout(INTERNAL_GRPC_REQUEST_TIMEOUT, future)
+        .await
+        .map_err(|_| tonic::Status::deadline_exceeded(internal_grpc_timeout_message()))?
+}
+
+fn format_internal_grpc_status_message(status: &tonic::Status) -> String {
+    match status.code() {
+        tonic::Code::DeadlineExceeded => {
+            let detail = status.message().trim();
+            if detail.is_empty() {
+                internal_grpc_timeout_message()
+            } else {
+                format!("{}: {}", internal_grpc_timeout_message(), detail)
+            }
+        }
+        _ => status.message().to_string(),
+    }
+}
+
 fn parse_json_response<T>(raw: &str, field: &str) -> anyhow::Result<T>
 where
     T: serde::de::DeserializeOwned,
@@ -208,7 +261,11 @@ fn parse_output_stream(raw: &str) -> OutputStream {
 }
 
 fn map_grpc_status_anyhow(status: tonic::Status) -> anyhow::Error {
-    anyhow::anyhow!("internal gRPC {}: {}", status.code(), status.message())
+    anyhow::anyhow!(
+        "internal gRPC {}: {}",
+        status.code(),
+        format_internal_grpc_status_message(&status)
+    )
 }
 
 fn tls_path_if_exists(path: impl AsRef<Path>) -> Option<String> {

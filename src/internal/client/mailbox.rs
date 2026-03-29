@@ -14,7 +14,9 @@ use super::super::proto::agenthub::internal::v1::{
     ListActorInboxRequest as GrpcListActorInboxRequest,
     SendActorMessageRequest as GrpcSendActorMessageRequest,
 };
-use super::InternalGrpcMailboxClient;
+use super::{
+    InternalGrpcMailboxClient, format_internal_grpc_status_message, timeout_internal_grpc_call,
+};
 
 pub(super) fn parse_transport(raw: &str) -> ActorMessageTransport {
     match raw.trim() {
@@ -91,7 +93,7 @@ pub(super) fn map_grpc_status(status: tonic::Status) -> ActorServiceError {
         Code::Unavailable | Code::DeadlineExceeded => ActorServiceErrorCode::TooManyRequests,
         _ => ActorServiceErrorCode::Internal,
     };
-    ActorServiceError::new(code, status.message().to_string())
+    ActorServiceError::new(code, format_internal_grpc_status_message(&status))
 }
 
 #[async_trait]
@@ -134,8 +136,8 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             })?
             .unwrap_or_default();
         let mut client = self.client();
-        let response = client
-            .send_actor_message(self.request(GrpcSendActorMessageRequest {
+        let response = timeout_internal_grpc_call(client.send_actor_message(self.request(
+            GrpcSendActorMessageRequest {
                 run_id: request.run_id.clone(),
                 from_actor_id: request.from_actor_id.clone(),
                 to_actor_id: to_actor_id.clone(),
@@ -147,10 +149,11 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                 from_peer_id: request.from_peer_id.clone().unwrap_or_default(),
                 to_peer_id: request.to_peer_id.clone().unwrap_or_default(),
                 channel_id: request_channel_id.unwrap_or_default(),
-            })?)
-            .await
-            .map_err(map_grpc_status)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status)?
+        .into_inner();
         let message = if response.message_json.trim().is_empty() {
             ActorMessageRecord {
                 message_id: response.message_id,
@@ -196,8 +199,8 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
         request: ActorInboxRequest,
     ) -> Result<ActorInboxResponse, ActorServiceError> {
         let mut client = self.client();
-        let response = client
-            .list_actor_inbox(
+        let response = timeout_internal_grpc_call(
+            client.list_actor_inbox(
                 self.request(GrpcListActorInboxRequest {
                     run_id: request.run_id,
                     actor_id: request.actor_id,
@@ -208,10 +211,11 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
                         .as_ref()
                         .is_some_and(|states| states.contains(&ActorMessageStatus::Delivered)),
                 })?,
-            )
-            .await
-            .map_err(map_grpc_status)?
-            .into_inner();
+            ),
+        )
+        .await
+        .map_err(map_grpc_status)?
+        .into_inner();
         let mut messages = Vec::with_capacity(response.messages.len());
         for message in response.messages {
             messages.push(parse_message(message)?);
@@ -229,15 +233,16 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
         request: ActorAckRequest,
     ) -> Result<ActorAckResponse, ActorServiceError> {
         let mut client = self.client();
-        let response = client
-            .ack_actor_message(self.request(GrpcAckActorMessageRequest {
+        let response = timeout_internal_grpc_call(client.ack_actor_message(self.request(
+            GrpcAckActorMessageRequest {
                 run_id: request.run_id,
                 actor_id: request.actor_id,
                 message_id: request.message_id,
-            })?)
-            .await
-            .map_err(map_grpc_status)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status)?
+        .into_inner();
         let message = response.message.ok_or_else(|| {
             ActorServiceError::new(ActorServiceErrorCode::Internal, "missing ack message")
         })?;

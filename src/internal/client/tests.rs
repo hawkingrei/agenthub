@@ -180,6 +180,45 @@ fn map_grpc_status_maps_common_codes() {
         failed.code,
         agenthub_team_actor::ActorServiceErrorCode::Gone
     );
+
+    let deadline = map_grpc_status(tonic::Status::deadline_exceeded("request stalled"));
+    assert_eq!(
+        deadline.code,
+        agenthub_team_actor::ActorServiceErrorCode::TooManyRequests
+    );
+    assert!(deadline.message.contains("timed out"));
+    assert!(deadline.message.contains("request stalled"));
+}
+
+#[tokio::test]
+async fn connect_times_out_when_tls_peer_accepts_but_never_completes_handshake() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind stalled peer listener");
+    let addr = listener.local_addr().expect("listener addr");
+    let server = tokio::spawn(async move {
+        let (_socket, _) = listener.accept().await.expect("accept stalled client");
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    });
+
+    let start = tokio::time::Instant::now();
+    let err = match InternalGrpcMailboxClient::connect(InternalGrpcMailboxClientConfig {
+        target: format!("https://{addr}"),
+        access_token: "test-token".to_string(),
+        ca_cert_path: None,
+        tls_server_name: Some("localhost".to_string()),
+        client_cert_path: None,
+        client_key_path: None,
+    })
+    .await
+    {
+        Ok(_) => panic!("stalled handshake should time out"),
+        Err(err) => err,
+    };
+    assert!(err.to_string().contains("internal gRPC connect timed out"));
+    assert!(start.elapsed() < Duration::from_secs(10));
+
+    server.abort();
 }
 
 #[test]
