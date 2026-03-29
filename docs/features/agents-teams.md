@@ -41,6 +41,9 @@ terminology and operating expectations drift.
   mutate those fields directly.
 - Canonical task creation and lifecycle management belong to leader planning, not direct human task
   authoring.
+- The normal public Team HTTP surface intentionally exposes task reads, not direct canonical task
+  creation; leader/runtime task creation flows through internal actor controls instead of
+  `POST /api/teams/:id/tasks`.
 
 3. Execution telemetry layer
 - `run` and `step` are execution/debug artifacts, not the primary collaboration unit.
@@ -235,6 +238,8 @@ Constraint:
   and report progress/blockers promptly so task state remains current.
 - Human clients may read Team task state from `Kanban`, but canonical task `status` and
   `assigned_member_id` changes remain agent/runtime controls.
+- Public Team HTTP clients also do not create canonical tasks directly; they request work in
+  `Conversation` and let leader/runtime materialize Kanban tasks.
 - `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
   leader assigns a member explicitly.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for

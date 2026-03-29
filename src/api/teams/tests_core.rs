@@ -4304,7 +4304,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 }
 
 #[tokio::test]
-async fn team_task_api_creates_lists_and_redacts_context() {
+async fn team_task_api_lists_gets_and_redacts_context() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -4337,7 +4337,7 @@ async fn team_task_api_creates_lists_and_redacts_context() {
         }),
     )
     .await
-    .expect("create task");
+    .expect("seed task");
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
@@ -4986,7 +4986,7 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
 }
 
 #[tokio::test]
-async fn team_task_api_enforces_team_owner_access() {
+async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
     let state = build_test_state().await;
     let owner_headers = auth_headers(&state).await;
     let outsider_headers = auth_headers(&state).await;
@@ -5020,22 +5020,6 @@ async fn team_task_api_enforces_team_owner_access() {
     )
     .await
     .expect("create task");
-
-    let create_err = create_team_task(
-        State(state.clone()),
-        outsider_headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
-            title: "Outsider task".to_string(),
-            created_by_actor_id: Some("user".to_string()),
-            context: Some(json!({})),
-            conversation_mode: Some("group_chat".to_string()),
-            topic: None,
-        }),
-    )
-    .await
-    .expect_err("outsider should not create task");
-    assert_eq!(create_err.into_response().status(), StatusCode::NOT_FOUND);
 
     let send_err = send_team_task_message(
         State(state.clone()),

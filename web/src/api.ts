@@ -625,25 +625,6 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
-  createTeamTask: (
-    token: string,
-    teamId: string,
-    payload: {
-      title: string;
-      created_by_actor_id?: string;
-      context?: unknown;
-      conversation_mode?: "to_leader" | "to_member" | "group_chat";
-      topic?: string;
-    }
-  ) =>
-    apiFetch<TeamTaskDetailResponse>(
-      `/api/teams/${encodePathSegment(teamId)}/tasks`,
-      token,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }
-    ),
   getTeamSharedThread: (token: string, teamId: string) =>
     apiFetch<TeamTaskDetailResponse>(
       `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
