@@ -228,13 +228,6 @@ export function AcpConversation({
             style={{ height: virtualBottomSpacer }}
           />
         )}
-        {bottomClearance > 0 && (
-          <div
-            aria-hidden="true"
-            className="acp-conversation-spacer dock-clearance"
-            style={{ height: bottomClearance }}
-          />
-        )}
         {!stickToBottom && pendingCount > 0 && (
           <div
             className="acp-conversation-spacer"
