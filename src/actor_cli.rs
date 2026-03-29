@@ -1902,9 +1902,11 @@ mod tests {
     #[test]
     fn parse_team_task_note_accepts_kind_and_run_scope() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-note");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-note");
         }
@@ -1939,6 +1941,7 @@ mod tests {
             }
             _ => panic!("expected team-task-note command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
