@@ -896,7 +896,7 @@ mod tests {
             .expect_err("ack without message ids should fail");
         assert!(
             err.to_string()
-                .contains("at least one --message-id is required")
+                .contains("at least one message_id is required")
         );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);

@@ -52,6 +52,27 @@ fn set_unique_json_value(
     Ok(())
 }
 
+fn resolve_team_run_scope(
+    team_id: Option<String>,
+    run_id: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let explicit_team_id = take_optional(team_id);
+    let explicit_run_id = take_optional(run_id);
+    let resolved_team_id = explicit_team_id.clone().or_else(|| {
+        if explicit_run_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+    });
+    let resolved_run_id = explicit_run_id.or_else(|| {
+        if explicit_team_id.is_some() || resolved_team_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+    });
+    (resolved_team_id, resolved_run_id)
+}
+
 fn read_actor_send_file(path: &str, flag: &str) -> anyhow::Result<String> {
     let trimmed = path.trim();
     anyhow::ensure!(!trimmed.is_empty(), "{} requires a non-empty path", flag);
@@ -294,20 +315,7 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-members requires --team-id, --run-id, or actor runtime env fallback"
@@ -403,20 +411,7 @@ pub(super) fn parse_actor_command(
                 Some("all") | None => None,
                 Some(raw) => Some(parse_team_task_status_argument(raw)?),
             };
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-tasks requires --team-id, --run-id, or actor runtime env fallback"
@@ -585,20 +580,7 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-task-show requires --team-id, --run-id, or actor runtime env fallback"
@@ -857,20 +839,7 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-task-note requires --team-id, --run-id, or actor runtime env fallback"
