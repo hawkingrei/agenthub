@@ -26,6 +26,8 @@ use crate::team::{
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
+const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
+    "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
 
 fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
     task.title
@@ -107,13 +109,26 @@ async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow:
         actor_id,
         None,
         &[InternalAction::TeamRead],
-        "actor team task control",
+        "actor inbox run-id resolution",
     )
     .await?;
     let context = client
         .describe_team_context(Some(team_id.as_str()), None, actor_id)
-        .await?;
-    let detail = resolve_shared_thread_detail_for_team(&client, actor_id, &context.team_id).await?;
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from team scope for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                team_id
+            )
+        })?;
+    let detail = resolve_shared_thread_detail_for_team(&client, actor_id, &context.team_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from canonical shared thread for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                context.team_id
+            )
+        })?;
     detail
         .latest_run
         .map(|run| run.id)
@@ -306,7 +321,7 @@ pub(super) async fn run_actor_command(
             let client = init_actor_control_client(
                 &actor_id,
                 run_id.as_deref(),
-                &[InternalAction::TeamTaskWrite],
+                &[InternalAction::TeamRead, InternalAction::TeamTaskWrite],
                 "actor team task control",
             )
             .await?;
