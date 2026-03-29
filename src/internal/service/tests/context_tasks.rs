@@ -482,17 +482,48 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
         std::env::temp_dir(),
         "bootstrap-token".to_string(),
     );
-    let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
+    let workdir = std::env::temp_dir().join(format!(
+        "agenthub-run-scope-runtime-{}",
+        Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workdir).expect("create runtime-scope workdir");
+    let workdir_str = workdir.to_string_lossy().to_string();
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert runtime-scope safe path");
+    let agent = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: format!("runtime-scope-{}", Uuid::new_v4()),
+            workdir: workdir_str,
+            command: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), "sleep 30".to_string()],
+            target_node_id: None,
+            worktree_mode: crate::agent::WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
+        })
+        .await
+        .expect("create runtime-scope agent");
+    let token = issue_token(&authz, InternalRole::Worker, Some(&agent.id), None);
     let actor_cli_path = crate::acp::default_actor_cli_path().expect("resolve actor cli path");
 
     let session_id = state
         .agents
         .start_agent_with_actor_context(
-            "planner",
+            &agent.id,
             Some(AcpActorSkillContext {
                 team_id: Some("team-runtime-scope".to_string()),
                 current_run_id: Some("run-runtime-scope".to_string()),
-                actor_id: "planner".to_string(),
+                actor_id: agent.id.clone(),
                 default_channel: "default".to_string(),
                 actor_cli_path,
                 member_role: Some("leader".to_string()),
@@ -508,7 +539,7 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
         &service,
         authenticated_request(
             ResolveActorRunScopeRequest {
-                actor_id: "planner".to_string(),
+                actor_id: agent.id.clone(),
                 team_id: String::new(),
             },
             &token,
@@ -523,12 +554,12 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
 
     state
         .agents
-        .stop_agent("planner")
+        .stop_agent(&agent.id)
         .await
         .expect("stop scoped planner runtime");
     let stopped_session = state
         .agents
-        .live_session_id_for_agent("planner")
+        .live_session_id_for_agent(&agent.id)
         .await
         .expect("load live session after stop");
     assert_ne!(stopped_session.as_deref(), Some(session_id.as_str()));
