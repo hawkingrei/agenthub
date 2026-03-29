@@ -501,7 +501,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       )}
 
       {shouldRenderPanel && (
-        <div className="relative mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+        <div className="relative mt-2 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1.5">
           <div className={`${OUTPUT_HEADER_ROOT_CLASS} shrink-0`}>
             <div className={OUTPUT_HEADER_TITLE_CLASS}>
               <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>

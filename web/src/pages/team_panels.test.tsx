@@ -2963,9 +2963,9 @@ describe("team panels interactions", () => {
       acpRoot.parentElement as HTMLDivElement | null,
       "team member acp shell missing"
     );
-    expect(acpShell.className).toContain("min-h-0");
-    expect(acpShell.className).toContain("flex-1");
-    expect(acpShell.className).toContain("overflow-hidden");
+    expect(acpShell.classList.contains("min-h-0")).toBe(true);
+    expect(acpShell.classList.contains("flex-1")).toBe(true);
+    expect(acpShell.classList.contains("overflow-hidden")).toBe(true);
 
     const header = required(
       acpShell.previousElementSibling as HTMLDivElement | null,
