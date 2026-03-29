@@ -15,13 +15,19 @@ use agenthub_team_actor::{
 use anyhow::Context;
 use chrono::Utc;
 
+use crate::actor_runtime_env::{ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var};
 use crate::internal::auth::InternalAction;
-use crate::internal::client::InternalTeamTaskPatch;
-use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskRecord, TeamTaskStatus};
+use crate::internal::client::{InternalGrpcMailboxClient, InternalTeamTaskPatch};
+use crate::team::{
+    TeamActorMessageTransport, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord,
+    TeamTaskStatus,
+};
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
+const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
+    "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
 
 fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
     task.title
@@ -56,6 +62,97 @@ pub(super) fn resolve_shared_thread_task_id(tasks: &[TeamTaskRecord]) -> Option<
                 .max_by_key(|task| shared_thread_sort_key(task))
         })
         .map(|task| task.id.as_str())
+}
+
+pub(super) fn require_shared_thread_task_id<'a>(
+    team_id: &str,
+    tasks: &'a [TeamTaskRecord],
+) -> anyhow::Result<&'a str> {
+    resolve_shared_thread_task_id(tasks).ok_or_else(|| {
+        anyhow::anyhow!(
+            "shared thread is missing for team {}; create/open the shared thread first",
+            team_id
+        )
+    })
+}
+
+async fn list_shared_thread_tasks_for_team(
+    client: &InternalGrpcMailboxClient,
+    actor_id: &str,
+    team_id: &str,
+) -> anyhow::Result<Vec<TeamTaskRecord>> {
+    client
+        .list_team_tasks(
+            actor_id,
+            &TeamTaskListQuery {
+                team_id: Some(team_id.to_string()),
+                run_id: None,
+                limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
+                status: None,
+                task_id: None,
+                assigned_member_id: None,
+                topic: None,
+                include_shared_thread: true,
+            },
+        )
+        .await
+}
+
+async fn resolve_shared_thread_detail_for_team(
+    client: &InternalGrpcMailboxClient,
+    actor_id: &str,
+    team_id: &str,
+) -> anyhow::Result<TeamTaskDetailRecord> {
+    let tasks = list_shared_thread_tasks_for_team(client, actor_id, team_id).await?;
+    let task_id = require_shared_thread_task_id(team_id, &tasks)?;
+    client
+        .get_team_task(actor_id, Some(team_id), None, task_id, 1)
+        .await
+}
+
+async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow::Result<String> {
+    if let Some(run_id) = run_id {
+        return Ok(run_id);
+    }
+
+    let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV).ok_or_else(|| {
+        anyhow::anyhow!(
+            "run_id is required (use --run-id <run_id> or set {ACTOR_RUNTIME_TEAM_ID_ENV} so inbox can resolve the canonical shared-thread mailbox run)"
+        )
+    })?;
+    let client = init_actor_control_client(
+        actor_id,
+        None,
+        &[InternalAction::TeamRead],
+        "actor inbox run-id resolution",
+    )
+    .await?;
+    let context = client
+        .describe_team_context(Some(team_id.as_str()), None, actor_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from team scope for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                team_id
+            )
+        })?;
+    let detail = resolve_shared_thread_detail_for_team(&client, actor_id, &context.team_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from canonical shared thread for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                context.team_id
+            )
+        })?;
+    detail
+        .latest_run
+        .map(|run| run.id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "shared-thread mailbox run is missing for team {}; open # all or send one shared-thread message first, or pass --run-id explicitly",
+                context.team_id
+            )
+        })
 }
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
@@ -239,7 +336,7 @@ pub(super) async fn run_actor_command(
             let client = init_actor_control_client(
                 &actor_id,
                 run_id.as_deref(),
-                &[InternalAction::TeamTaskWrite],
+                &[InternalAction::TeamRead, InternalAction::TeamTaskWrite],
                 "actor team task control",
             )
             .await?;
@@ -247,29 +344,9 @@ pub(super) async fn run_actor_command(
                 let context = client
                     .describe_team_context(team_id.as_deref(), run_id.as_deref(), &actor_id)
                     .await?;
-                let tasks = client
-                    .list_team_tasks(
-                        &actor_id,
-                        &TeamTaskListQuery {
-                            team_id: Some(context.team_id.clone()),
-                            run_id: None,
-                            limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
-                            status: None,
-                            task_id: None,
-                            assigned_member_id: None,
-                            topic: None,
-                            include_shared_thread: true,
-                        },
-                    )
-                    .await?;
-                resolve_shared_thread_task_id(&tasks)
-                    .map(str::to_string)
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "shared thread is missing for team {}; create/open the shared thread first",
-                            context.team_id
-                        )
-                    })?
+                let tasks =
+                    list_shared_thread_tasks_for_team(&client, &actor_id, &context.team_id).await?;
+                require_shared_thread_task_id(&context.team_id, &tasks)?.to_string()
             } else {
                 task_id
                     .clone()
@@ -295,6 +372,7 @@ pub(super) async fn run_actor_command(
             include_delivered,
             auto_ack,
         } => {
+            let run_id = resolve_inbox_run_id(&actor_id, run_id).await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
             let states = if include_delivered {
                 Some(vec![

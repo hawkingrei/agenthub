@@ -935,7 +935,8 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Inbox {
-                run_id: take_run_id(run_id)?,
+                run_id: take_optional(run_id)
+                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 limit: limit.max(1),
                 after_id,
