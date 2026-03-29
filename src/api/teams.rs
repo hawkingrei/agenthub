@@ -41,6 +41,7 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
+#[cfg(test)]
 const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
@@ -147,6 +148,7 @@ pub struct CreateTeamRunRequest {
     pub input: Option<Value>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamTaskRequest {
     pub title: String,
@@ -397,7 +399,7 @@ pub fn router(state: AppState) -> Router {
             "/{id}/members/{member_id}/force_new_session",
             post(force_new_session_for_team_member),
         )
-        .route("/{id}/tasks", post(create_team_task).get(list_team_tasks))
+        .route("/{id}/tasks", get(list_team_tasks))
         .route(
             "/{id}/tasks/{task_id}",
             get(get_team_task).patch(update_team_task),
@@ -672,41 +674,6 @@ async fn delete_team(
         .await
         .map_err(|err| map_not_found_error(err, "team not found"))?;
     Ok(Json(sanitize_team_definition_for_response(team)))
-}
-
-async fn create_team_task(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(team_id): Path<String>,
-    Json(payload): Json<CreateTeamTaskRequest>,
-) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
-    let title = payload.title.trim().to_string();
-    if title.is_empty() {
-        return Err(ApiError::bad_request("title is required"));
-    }
-    let created_by_actor_id =
-        normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
-    let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
-    let raw_context = payload.context.unwrap_or_else(|| serde_json::json!({}));
-    let (task, conversation) = state
-        .teams
-        .create_task(
-            &team_id,
-            &title,
-            &created_by_actor_id,
-            raw_context,
-            &conversation_mode,
-            payload.topic.as_deref(),
-        )
-        .await
-        .map_err(map_team_internal_error)?;
-    Ok(Json(TeamTaskDetailResponse {
-        task,
-        conversation,
-        latest_run: None,
-    }))
 }
 
 async fn get_team_shared_thread(
@@ -2118,6 +2085,7 @@ fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, A
     }
 }
 
+#[cfg(test)]
 fn normalize_conversation_mode(value: Option<&str>) -> Result<String, ApiError> {
     normalize_enum_value(
         value,
@@ -2193,6 +2161,7 @@ fn normalize_task_actor_id(
     Ok(trimmed.to_string())
 }
 
+#[cfg(test)]
 fn normalize_task_created_by_actor_id(
     value: Option<&str>,
     user: &UserRecord,

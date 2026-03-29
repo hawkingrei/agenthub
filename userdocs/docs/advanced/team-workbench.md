@@ -91,6 +91,8 @@ Team Workbench is now task-first:
   recover manually from Kanban ordering
 - human requests and clarifications live in `Conversation`; leader/runtime turns agreed work into
   canonical Kanban tasks
+- the normal Team UI and public HTTP surface do not expose direct canonical task creation; requests
+  go through `Conversation` and leader/runtime materialize tasks onto `Kanban`
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model

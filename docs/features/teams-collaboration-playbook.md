@@ -259,6 +259,8 @@ Kind projections:
 - Internal task/run/step machinery is debug/operator detail and should not dominate primary flow.
 - `Start Team` is exposed as operator action; low-level controls remain in debug surfaces.
 - Human operations should target goals/constraints; internal task creation remains leader-owned.
+- The public Team HTTP surface does not expose direct canonical task creation; task materialization
+  stays on leader/runtime control paths.
 - Conversation message APIs should require `conversation_id` and support mention-only routing without requiring explicit `run_id`.
 
 ### 3) Error Surface Contract
