@@ -618,25 +618,31 @@ mod tests {
     #[test]
     fn parse_inbox_ignores_legacy_run_env_alias() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
             std::env::set_var("AGENTHUB_ACTOR_RUN_ID", "run-legacy-only");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
         }
         let args = vec!["inbox".to_string()];
-        let err = match parse_actor_command(&args, &mut ActorOutputMode::Default) {
-            Ok(_) => panic!("legacy run env alias should be ignored"),
-            Err(err) => err,
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox {
+                run_id, actor_id, ..
+            } => {
+                assert!(run_id.is_none(), "legacy run env alias should be ignored");
+                assert_eq!(actor_id, "planner");
+            }
+            other => panic!("expected inbox command, got {other:?}"),
         };
-        assert!(
-            err.to_string().contains("run_id is required"),
-            "unexpected error: {err}"
-        );
         unsafe {
             std::env::remove_var("AGENTHUB_ACTOR_RUN_ID");
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
