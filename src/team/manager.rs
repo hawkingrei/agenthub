@@ -1472,13 +1472,11 @@ impl TeamManager {
             FROM team_runs
             WHERE team_id = ?1
               AND status IN ('submitted', 'working', 'input_required')
-              AND trim(COALESCE(json_extract(input_json, '$.bootstrap_kind'), '')) != ?2
             ORDER BY created_at DESC, id DESC
-            LIMIT ?3
+            LIMIT ?2
             "#,
         )
         .bind(team_id)
-        .bind(TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND)
         .bind(limit.max(1))
         .fetch_all(&self.db)
         .await?;
