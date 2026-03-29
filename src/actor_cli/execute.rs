@@ -182,17 +182,31 @@ async fn resolve_direct_mailbox_run_id(
     Ok(resolved.run_id)
 }
 
+struct ActorSendIdempotencyContext<'a> {
+    run_id: &'a str,
+    from_actor_id: &'a str,
+    to_actor_id: Option<&'a str>,
+    channel_id: Option<&'a str>,
+    channel: &'a str,
+    transport: &'a TeamActorMessageTransport,
+    route: Option<&'a serde_json::Value>,
+    payload: &'a serde_json::Value,
+}
+
 fn resolve_actor_send_idempotency_key(
     idempotency: ActorSendIdempotency,
-    run_id: &str,
-    from_actor_id: &str,
-    to_actor_id: Option<&str>,
-    channel_id: Option<&str>,
-    channel: &str,
-    transport: &TeamActorMessageTransport,
-    route: Option<&serde_json::Value>,
-    payload: &serde_json::Value,
+    context: ActorSendIdempotencyContext<'_>,
 ) -> Option<String> {
+    let ActorSendIdempotencyContext {
+        run_id,
+        from_actor_id,
+        to_actor_id,
+        channel_id,
+        channel,
+        transport,
+        route,
+        payload,
+    } = context;
     match idempotency {
         ActorSendIdempotency::Disabled => None,
         ActorSendIdempotency::Resolved(idempotency_key) => Some(idempotency_key),
@@ -505,14 +519,16 @@ pub(super) async fn run_actor_command(
                 resolve_direct_mailbox_run_id(&from_actor_id, run_id, "actor send").await?;
             let idempotency_key = resolve_actor_send_idempotency_key(
                 idempotency,
-                &run_id,
-                &from_actor_id,
-                to_actor_id.as_deref(),
-                channel_id.as_deref(),
-                &channel,
-                &transport,
-                route.as_ref(),
-                payload.as_ref(),
+                ActorSendIdempotencyContext {
+                    run_id: &run_id,
+                    from_actor_id: &from_actor_id,
+                    to_actor_id: to_actor_id.as_deref(),
+                    channel_id: channel_id.as_deref(),
+                    channel: &channel,
+                    transport: &transport,
+                    route: route.as_ref(),
+                    payload: payload.as_ref(),
+                },
             );
             let service = init_actor_mailbox_service(&from_actor_id, &run_id).await?;
             let message = service
