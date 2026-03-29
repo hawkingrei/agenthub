@@ -17,7 +17,46 @@ use chrono::Utc;
 
 use crate::internal::auth::InternalAction;
 use crate::internal::client::InternalTeamTaskPatch;
-use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
+use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskRecord, TeamTaskStatus};
+
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
+
+fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
+    task.title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+}
+
+fn has_shared_thread_bootstrap_kind(task: &TeamTaskRecord) -> bool {
+    task.context
+        .get("bootstrap_kind")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| {
+            value
+                .trim()
+                .eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
+        })
+}
+
+fn shared_thread_sort_key(task: &TeamTaskRecord) -> (i64, i64, &str) {
+    (task.updated_at, task.created_at, task.id.as_str())
+}
+
+pub(super) fn resolve_shared_thread_task_id(tasks: &[TeamTaskRecord]) -> Option<&str> {
+    tasks
+        .iter()
+        .filter(|task| has_shared_thread_bootstrap_kind(task))
+        .max_by_key(|task| shared_thread_sort_key(task))
+        .or_else(|| {
+            tasks
+                .iter()
+                .filter(|task| has_shared_thread_title(task))
+                .max_by_key(|task| shared_thread_sort_key(task))
+        })
+        .map(|task| task.id.as_str())
+}
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
     service: &S,
@@ -193,6 +232,7 @@ pub(super) async fn run_actor_command(
             run_id,
             actor_id,
             task_id,
+            shared_thread,
             kind,
             text,
         } => {
@@ -203,12 +243,44 @@ pub(super) async fn run_actor_command(
                 "actor team task control",
             )
             .await?;
+            let resolved_task_id = if shared_thread {
+                let context = client
+                    .describe_team_context(team_id.as_deref(), run_id.as_deref(), &actor_id)
+                    .await?;
+                let tasks = client
+                    .list_team_tasks(
+                        &actor_id,
+                        &TeamTaskListQuery {
+                            team_id: Some(context.team_id.clone()),
+                            run_id: None,
+                            limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
+                            status: None,
+                            task_id: None,
+                            assigned_member_id: None,
+                            topic: None,
+                            include_shared_thread: true,
+                        },
+                    )
+                    .await?;
+                resolve_shared_thread_task_id(&tasks)
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "shared thread is missing for team {}; create/open the shared thread first",
+                            context.team_id
+                        )
+                    })?
+            } else {
+                task_id
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?
+            };
             let message = client
                 .append_team_task_note(
                     &actor_id,
                     team_id.as_deref(),
                     run_id.as_deref(),
-                    &task_id,
+                    &resolved_task_id,
                     kind.as_str(),
                     &text,
                 )

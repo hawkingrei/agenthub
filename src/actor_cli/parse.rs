@@ -40,6 +40,60 @@ fn parse_json_file(path: &str, field: &str) -> anyhow::Result<Value> {
     parse_json(&raw, field)
 }
 
+fn set_unique_json_value(
+    slot: &mut Option<Value>,
+    value: Value,
+    conflict_message: &'static str,
+) -> anyhow::Result<()> {
+    if slot.is_some() {
+        return Err(anyhow::anyhow!(conflict_message));
+    }
+    *slot = Some(value);
+    Ok(())
+}
+
+fn resolve_team_run_scope(
+    team_id: Option<String>,
+    run_id: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let explicit_team_id = take_optional(team_id);
+    let explicit_run_id = take_optional(run_id);
+    let resolved_team_id = explicit_team_id.clone().or_else(|| {
+        if explicit_run_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+    });
+    let resolved_run_id = explicit_run_id.or_else(|| {
+        if explicit_team_id.is_some() || resolved_team_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+    });
+    (resolved_team_id, resolved_run_id)
+}
+
+fn resolve_team_context_scope(
+    team_id: Option<String>,
+    run_id: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let explicit_team_id = take_optional(team_id);
+    let explicit_run_id = take_optional(run_id);
+    let resolved_team_id = explicit_team_id.clone().or_else(|| {
+        if explicit_run_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
+    });
+    let resolved_run_id = explicit_run_id.or_else(|| {
+        if explicit_team_id.is_some() {
+            return None;
+        }
+        normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
+    });
+    (resolved_team_id, resolved_run_id)
+}
+
 fn read_actor_send_file(path: &str, flag: &str) -> anyhow::Result<String> {
     let trimmed = path.trim();
     anyhow::ensure!(!trimmed.is_empty(), "{} requires a non-empty path", flag);
@@ -136,7 +190,14 @@ fn take_optional(value: Option<String>) -> Option<String> {
 }
 
 fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
-    take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id")
+    take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id").map_err(
+        |_| {
+            anyhow::anyhow!(
+                "run_id is required (use --run-id <run_id> or set {} in actor runtime env)",
+                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV
+            )
+        },
+    )
 }
 
 fn take_team_id(value: Option<String>) -> anyhow::Result<String> {
@@ -275,20 +336,7 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_context_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-members requires --team-id, --run-id, or actor runtime env fallback"
@@ -384,20 +432,7 @@ pub(super) fn parse_actor_command(
                 Some("all") | None => None,
                 Some(raw) => Some(parse_team_task_status_argument(raw)?),
             };
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-tasks requires --team-id, --run-id, or actor runtime env fallback"
@@ -566,20 +601,7 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-task-show requires --team-id, --run-id, or actor runtime env fallback"
@@ -654,28 +676,66 @@ pub(super) fn parse_actor_command(
                         let raw = args
                             .get(idx)
                             .ok_or_else(|| anyhow::anyhow!("--context-json requires a value"))?;
-                        context = Some(parse_json(raw, "context_json")?);
+                        set_unique_json_value(
+                            &mut context,
+                            parse_json(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
                     }
                     "--context-json-file" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-json-file requires a value")
                         })?;
-                        context_file = Some(parse_json_file(raw, "context_json")?);
+                        set_unique_json_value(
+                            &mut context_file,
+                            parse_json_file(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
+                    }
+                    "--context-file" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--context-file requires a value"))?;
+                        set_unique_json_value(
+                            &mut context_file,
+                            parse_json_file(raw, "context_json")?,
+                            "--context-json, --context-json-file, and --context-file cannot be used together",
+                        )?;
                     }
                     "--context-merge-json" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-json requires a value")
                         })?;
-                        context_merge = Some(parse_json(raw, "context_merge_json")?);
+                        set_unique_json_value(
+                            &mut context_merge,
+                            parse_json(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
                     }
                     "--context-merge-json-file" => {
                         idx += 1;
                         let raw = args.get(idx).ok_or_else(|| {
                             anyhow::anyhow!("--context-merge-json-file requires a value")
                         })?;
-                        context_merge_file = Some(parse_json_file(raw, "context_merge_json")?);
+                        set_unique_json_value(
+                            &mut context_merge_file,
+                            parse_json_file(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
+                    }
+                    "--context-merge-file" => {
+                        idx += 1;
+                        let raw = args.get(idx).ok_or_else(|| {
+                            anyhow::anyhow!("--context-merge-file requires a value")
+                        })?;
+                        set_unique_json_value(
+                            &mut context_merge_file,
+                            parse_json_file(raw, "context_merge_json")?,
+                            "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together",
+                        )?;
                     }
                     other => {
                         return Err(anyhow::anyhow!(
@@ -696,19 +756,19 @@ pub(super) fn parse_actor_command(
             }
             if context.is_some() && context_file.is_some() {
                 return Err(anyhow::anyhow!(
-                    "--context-json and --context-json-file cannot be used together"
+                    "--context-json, --context-json-file, and --context-file cannot be used together"
                 ));
             }
             if context_merge.is_some() && context_merge_file.is_some() {
                 return Err(anyhow::anyhow!(
-                    "--context-merge-json and --context-merge-json-file cannot be used together"
+                    "--context-merge-json, --context-merge-json-file, and --context-merge-file cannot be used together"
                 ));
             }
             if (context.is_some() || context_file.is_some())
                 && (context_merge.is_some() || context_merge_file.is_some())
             {
                 return Err(anyhow::anyhow!(
-                    "--context-json/--context-json-file and --context-merge-json/--context-merge-json-file cannot be used together"
+                    "--context-json/--context-json-file/--context-file and --context-merge-json/--context-merge-json-file/--context-merge-file cannot be used together"
                 ));
             }
             let task_ids = task_ids
@@ -734,6 +794,7 @@ pub(super) fn parse_actor_command(
             let mut run_id = None;
             let mut actor_id = None;
             let mut task_id = None;
+            let mut shared_thread = false;
             let mut kind = TeamTaskNoteKind::Comment;
             let mut text = None;
             let mut idx = 1;
@@ -772,6 +833,9 @@ pub(super) fn parse_actor_command(
                                 .ok_or_else(|| anyhow::anyhow!("--task-id requires a value"))?,
                         );
                     }
+                    "--shared-thread" => {
+                        shared_thread = true;
+                    }
                     "--kind" => {
                         idx += 1;
                         let raw = args
@@ -796,31 +860,29 @@ pub(super) fn parse_actor_command(
                 }
                 idx += 1;
             }
-            let explicit_team_id = take_optional(team_id);
-            let explicit_run_id = take_optional(run_id);
-            let team_id = explicit_team_id.clone().or_else(|| {
-                if explicit_run_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV)
-            });
-            let run_id = explicit_run_id.or_else(|| {
-                if explicit_team_id.is_some() {
-                    return None;
-                }
-                normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)
-            });
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
             if team_id.is_none() && run_id.is_none() {
                 return Err(anyhow::anyhow!(
                     "team-task-note requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
+            if shared_thread && task_id.is_some() {
+                return Err(anyhow::anyhow!(
+                    "--shared-thread and --task-id cannot be used together"
+                ));
+            }
+            let task_id = take_optional(task_id);
+            if !shared_thread && task_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-task-note requires --task-id or --shared-thread"
                 ));
             }
             Ok(ActorCommand::TeamTaskNote {
                 team_id,
                 run_id,
                 actor_id: take_actor_id(actor_id)?,
-                task_id: take_optional(task_id)
-                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?,
+                task_id,
+                shared_thread,
                 kind,
                 text: take_optional(text).ok_or_else(|| anyhow::anyhow!("text is required"))?,
             })
@@ -912,6 +974,9 @@ pub(super) fn parse_actor_command(
                             .ok_or_else(|| anyhow::anyhow!("--message-id requires a value"))?;
                         message_ids.push(parse_i64(raw, "message_id")?);
                     }
+                    raw if !raw.starts_with('-') => {
+                        message_ids.push(parse_i64(raw, "message_id")?);
+                    }
                     other => return Err(anyhow::anyhow!("unknown flag for ack: {}", other)),
                 }
                 idx += 1;
@@ -921,7 +986,7 @@ pub(super) fn parse_actor_command(
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
-                    .ok_or_else(|| anyhow::anyhow!("at least one --message-id is required"))?,
+                    .ok_or_else(|| anyhow::anyhow!("at least one message_id is required"))?,
             })
         }
         "send" => {
@@ -964,6 +1029,14 @@ pub(super) fn parse_actor_command(
                                 anyhow::anyhow!("--from-agent-id requires a value")
                             })?);
                     }
+                    flag @ ("--to" | "--direct") => {
+                        idx += 1;
+                        to_actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
                     "--to-actor-id" => {
                         idx += 1;
                         to_actor_id =
@@ -993,6 +1066,9 @@ pub(super) fn parse_actor_command(
                                 .cloned()
                                 .ok_or_else(|| anyhow::anyhow!("--channel-id requires a value"))?,
                         );
+                    }
+                    "--shared" => {
+                        channel_id = Some("all".to_string());
                     }
                     "--transport" => {
                         idx += 1;
