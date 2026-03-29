@@ -11,6 +11,15 @@ use crate::agent::AgentManager;
 
 use super::TeamManager;
 
+pub(crate) const DEFAULT_TEAM_MAILBOX_IDLE_AFTER_SECS: i64 = 180;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActorMailboxPriorityClass {
+    General,
+    Urgent,
+    PermissionReview,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActorMailboxImmediateHintReason {
     DirectAgentMessage,
@@ -33,7 +42,7 @@ impl Default for TeamMailboxUnreadHintWorkerSettings {
     fn default() -> Self {
         Self {
             poll_interval_secs: 30,
-            idle_after_secs: 180,
+            idle_after_secs: DEFAULT_TEAM_MAILBOX_IDLE_AFTER_SECS,
         }
     }
 }
@@ -68,10 +77,10 @@ pub trait TeamMailboxHintAgentNudger: Send + Sync {
         session_id: &str,
     ) -> anyhow::Result<Option<i64>>;
 
-    async fn nudge_mailbox_summary(
+    async fn nudge_mailbox_prompt(
         &self,
         actor_id: &str,
-        expected_session_id: &str,
+        expected_session_id: Option<&str>,
         prompt: &str,
     ) -> anyhow::Result<()>;
 }
@@ -98,13 +107,13 @@ impl TeamMailboxHintAgentNudger for AgentManager {
         self.mailbox_idle_anchor_ts(actor_id, session_id).await
     }
 
-    async fn nudge_mailbox_summary(
+    async fn nudge_mailbox_prompt(
         &self,
         actor_id: &str,
-        expected_session_id: &str,
+        expected_session_id: Option<&str>,
         prompt: &str,
     ) -> anyhow::Result<()> {
-        self.send_input(actor_id, prompt, None, Some(expected_session_id))
+        self.send_input(actor_id, prompt, None, expected_session_id)
             .await
     }
 }
@@ -206,9 +215,9 @@ impl TeamMailboxUnreadHintWorker {
                 build_actor_mailbox_unread_summary_prompt(&record.run_id, record.unread_count);
             match self
                 .agent_nudger
-                .nudge_mailbox_summary(
+                .nudge_mailbox_prompt(
                     record.actor_id.as_str(),
-                    runtime.session_id.as_str(),
+                    Some(runtime.session_id.as_str()),
                     prompt.as_str(),
                 )
                 .await
@@ -245,6 +254,39 @@ impl TeamMailboxUnreadHintWorker {
     }
 }
 
+pub(crate) async fn classify_actor_mailbox_priority(
+    manager: &TeamManager,
+    run_id: &str,
+    send_result: &ActorSendResponse,
+) -> anyhow::Result<ActorMailboxPriorityClass> {
+    let message = &send_result.message;
+    if message.to_actor_kind != ActorIdentityKind::Agent {
+        return Ok(ActorMailboxPriorityClass::General);
+    }
+    if is_channel_payload(&message.payload) {
+        let Some(role) = manager
+            .member_role_for_run(run_id, &message.from_actor_id)
+            .await?
+        else {
+            return Ok(ActorMailboxPriorityClass::General);
+        };
+        if !role.eq_ignore_ascii_case("leader") {
+            return Ok(ActorMailboxPriorityClass::General);
+        }
+        let mention_targets =
+            collect_channel_mention_actor_ids(&message.payload, &message.from_actor_id);
+        return Ok(if mention_targets.is_empty() {
+            ActorMailboxPriorityClass::General
+        } else {
+            ActorMailboxPriorityClass::Urgent
+        });
+    }
+    if message.from_actor_kind == ActorIdentityKind::Agent {
+        return Ok(ActorMailboxPriorityClass::Urgent);
+    }
+    Ok(ActorMailboxPriorityClass::General)
+}
+
 pub(crate) async fn plan_actor_mailbox_immediate_hint(
     manager: &TeamManager,
     run_id: &str,
@@ -253,11 +295,12 @@ pub(crate) async fn plan_actor_mailbox_immediate_hint(
     if send_result.deduped {
         return Ok(None);
     }
-    let message = &send_result.message;
-    if message.to_actor_kind != ActorIdentityKind::Agent {
+    if classify_actor_mailbox_priority(manager, run_id, send_result).await?
+        != ActorMailboxPriorityClass::Urgent
+    {
         return Ok(None);
     }
-
+    let message = &send_result.message;
     let immediate = if is_channel_payload(&message.payload) {
         let Some(role) = manager
             .member_role_for_run(run_id, &message.from_actor_id)
@@ -306,6 +349,16 @@ pub(crate) fn build_actor_mailbox_unread_summary_prompt(run_id: &str, unread_cou
     )
 }
 
+pub(crate) fn actor_mailbox_priority_label(
+    priority_class: ActorMailboxPriorityClass,
+) -> &'static str {
+    match priority_class {
+        ActorMailboxPriorityClass::General => "general",
+        ActorMailboxPriorityClass::Urgent => "urgent",
+        ActorMailboxPriorityClass::PermissionReview => "permission_review",
+    }
+}
+
 fn is_channel_payload(payload: &Value) -> bool {
     payload
         .as_object()
@@ -338,6 +391,10 @@ fn idle_unread_hint_key(run_id: &str, actor_id: &str) -> String {
     format!("{run_id}:{actor_id}")
 }
 
+pub(crate) fn actor_mailbox_is_idle(now: i64, idle_after_secs: i64, idle_anchor_ts: i64) -> bool {
+    now.saturating_sub(idle_anchor_ts) >= idle_after_secs.max(1)
+}
+
 fn decide_idle_unread_hint_action(
     now: i64,
     idle_after_secs: i64,
@@ -349,7 +406,7 @@ fn decide_idle_unread_hint_action(
     if unread_count <= 0 {
         return None;
     }
-    if now.saturating_sub(idle_anchor_ts) < idle_after_secs.max(1) {
+    if !actor_mailbox_is_idle(now, idle_after_secs, idle_anchor_ts) {
         return None;
     }
     if let Some(previous) = previous
@@ -387,7 +444,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        ActorMailboxImmediateHintPlan, ActorMailboxImmediateHintReason, IdleUnreadHintState,
+        ActorMailboxImmediateHintPlan, ActorMailboxImmediateHintReason, ActorMailboxPriorityClass,
+        IdleUnreadHintState, actor_mailbox_is_idle, actor_mailbox_priority_label,
         build_actor_mailbox_immediate_hint_prompt, build_actor_mailbox_unread_summary_prompt,
         collect_channel_mention_actor_ids, decide_idle_unread_hint_action, is_user_message_payload,
     };
@@ -450,6 +508,28 @@ mod tests {
         let prompt = build_actor_mailbox_unread_summary_prompt("run-7", 3);
         assert!(prompt.contains("3 unread"));
         assert!(prompt.contains("run-7"));
+    }
+
+    #[test]
+    fn actor_mailbox_priority_classes_are_stable() {
+        assert_eq!(
+            actor_mailbox_priority_label(ActorMailboxPriorityClass::General),
+            "general"
+        );
+        assert_eq!(
+            actor_mailbox_priority_label(ActorMailboxPriorityClass::Urgent),
+            "urgent"
+        );
+        assert_eq!(
+            actor_mailbox_priority_label(ActorMailboxPriorityClass::PermissionReview),
+            "permission_review"
+        );
+    }
+
+    #[test]
+    fn actor_mailbox_is_idle_respects_threshold() {
+        assert!(actor_mailbox_is_idle(400, 180, 200));
+        assert!(!actor_mailbox_is_idle(250, 180, 200));
     }
 
     #[test]

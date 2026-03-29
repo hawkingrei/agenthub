@@ -150,6 +150,8 @@ terminology and operating expectations drift.
 - Team ACP permission review is mailbox-first:
   - worker-originated ACP permission requests should prefer a non-requester agent reviewer first;
     if another worker is available, route there before falling back to leader
+  - when multiple non-requester agent reviewers are available, permission review should prefer an
+    idle reviewer (no recent non-user ACP output) before interrupting an actively producing agent
   - leader-originated ACP permission requests route to an automatically selected subordinate worker reviewer
   - requester must never review its own request; only the current automatically assigned reviewer should see the approval action
   - approval/rejection should be treated as ACP-side review control flow rather than normal peer mailbox work
@@ -259,8 +261,9 @@ Constraint:
   thread with the newest persisted conversation message; when no shared-thread messages exist yet,
   it should fall back to the oldest created shared-thread record for stability.
 - Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
-  `leader -> subordinate worker`) and fall back to human review in `Conversation` (`all`) when
-  agent review cannot complete.
+  `leader -> subordinate worker`), prefer an idle reviewer first when more than one agent candidate
+  is available, and fall back to human review in `Conversation` (`all`) when agent review cannot
+  complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
 - Team runtime reads should reconcile stale member `running` rows against live runtime handles

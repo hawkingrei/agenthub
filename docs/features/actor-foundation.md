@@ -146,10 +146,15 @@ Required visibility:
 ### 6) Mailbox Hint Policy
 
 - Mailbox nudges should be token-efficient by default.
-- Immediate ACP nudges are reserved for:
-  - direct `agent -> agent` mailbox sends;
-  - leader-authored channel messages that explicitly `@member_id` mention recipients.
-- Other mailbox traffic should not eagerly inject ACP prompts.
+- Mailbox traffic uses three priority classes:
+  - `general`: the default class for ordinary mailbox traffic; it must not eagerly interrupt active
+    ACP work.
+  - `urgent`: immediate ACP nudges are reserved for direct `agent -> agent` mailbox sends and
+    leader-authored channel messages that explicitly `@member_id` mention recipients.
+  - `permission_review`: ACP permission-review requests should first look for an idle reviewer
+    (defined by no recent non-user ACP output) before falling back to the normal non-self reviewer
+    order; once routed, the selected reviewer still receives an immediate mailbox hint.
+- `general` mailbox traffic should not eagerly inject ACP prompts.
   - when unread mailbox items remain and the target ACP session has produced no non-user output for
     roughly 3 minutes, AgentHub may send a compact unread-summary prompt instead;
   - if unread count is `0`, no reminder should be sent.
