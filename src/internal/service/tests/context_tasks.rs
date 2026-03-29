@@ -566,6 +566,92 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
 }
 
 #[tokio::test]
+async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team_id() {
+    let state = build_test_state().await;
+    let authz = build_authz();
+    let service = TeamInternalControlService::new(
+        state.clone(),
+        authz.clone(),
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+    let workdir = std::env::temp_dir().join(format!(
+        "agenthub-run-scope-unverified-team-{}",
+        Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workdir).expect("create runtime-scope workdir");
+    let workdir_str = workdir.to_string_lossy().to_string();
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query("INSERT INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir_str)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert runtime-scope safe path");
+    let agent = state
+        .agents
+        .create_agent(crate::agent::AgentConfig {
+            name: format!("runtime-scope-no-team-{}", Uuid::new_v4()),
+            workdir: workdir_str,
+            command: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), "sleep 30".to_string()],
+            target_node_id: None,
+            worktree_mode: crate::agent::WorktreeMode::UseExisting,
+            worktree_repo: None,
+            worktree_ref: None,
+            code_mode: true,
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: None,
+            agent_loop_prompt: None,
+        })
+        .await
+        .expect("create runtime-scope agent");
+    let token = issue_token(&authz, InternalRole::Worker, Some(&agent.id), None);
+    let actor_cli_path = crate::acp::default_actor_cli_path().expect("resolve actor cli path");
+
+    state
+        .agents
+        .start_agent_with_actor_context(
+            &agent.id,
+            Some(AcpActorSkillContext {
+                team_id: None,
+                current_run_id: Some("run-runtime-scope".to_string()),
+                actor_id: agent.id.clone(),
+                default_channel: "default".to_string(),
+                actor_cli_path,
+                member_role: Some("leader".to_string()),
+                member_skills: Vec::new(),
+                contract_version: None,
+                continuity: None,
+            }),
+        )
+        .await
+        .expect("start scoped planner runtime");
+
+    let err = TeamInternalControl::resolve_actor_run_scope(
+        &service,
+        authenticated_request(
+            ResolveActorRunScopeRequest {
+                actor_id: agent.id.clone(),
+                team_id: "team-runtime-scope".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("requested team_id should be rejected when runtime team is unknown");
+    assert_eq!(err.code(), Code::FailedPrecondition);
+    assert!(err.message().contains("did not provide a team_id"));
+
+    state
+        .agents
+        .stop_agent(&agent.id)
+        .await
+        .expect("stop scoped planner runtime");
+}
+
+#[tokio::test]
 async fn internal_grpc_resolve_actor_run_scope_falls_back_to_unique_active_team_run() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;

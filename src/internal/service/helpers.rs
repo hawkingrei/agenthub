@@ -48,8 +48,9 @@ pub(super) async fn resolve_actor_run_scope(
     if let Some(context) = runtime_context.as_ref()
         && let Some(run_id) = context.current_run_id.as_deref()
     {
+        let runtime_team_id = context.team_id.clone();
         if let (Some(expected_team_id), Some(context_team_id)) =
-            (requested_team_id.as_deref(), context.team_id.as_deref())
+            (requested_team_id.as_deref(), runtime_team_id.as_deref())
             && expected_team_id != context_team_id
         {
             return Err(Status::invalid_argument(format!(
@@ -57,9 +58,14 @@ pub(super) async fn resolve_actor_run_scope(
                 context_team_id, expected_team_id
             )));
         }
+        if requested_team_id.is_some() && runtime_team_id.is_none() {
+            return Err(Status::failed_precondition(
+                "actor runtime did not provide a team_id for the current run; retry with --run-id <run_id> explicitly or omit --team-id.",
+            ));
+        }
         return Ok(ResolvedActorRunScope {
             run_id: run_id.to_string(),
-            team_id: context.team_id.clone().or(requested_team_id),
+            team_id: runtime_team_id,
             source: "actor_runtime",
         });
     }
