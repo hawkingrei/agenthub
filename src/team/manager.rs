@@ -1461,6 +1461,34 @@ impl TeamManager {
         Ok(filter_visible_team_runs(runs))
     }
 
+    pub async fn list_active_runs_for_team(
+        &self,
+        team_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE team_id = ?1
+              AND status IN ('submitted', 'working', 'input_required')
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(team_id)
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut runs = Vec::with_capacity(rows.len());
+        for row in rows {
+            runs.push(parse_team_run_row(&row)?);
+        }
+        let runs = self.hydrate_run_summaries(runs).await?;
+        Ok(filter_visible_team_runs(runs))
+    }
+
     // Cancel all non-terminal runs left from a previous process lifetime.
     // This keeps startup deterministic and shifts resumption to explicit user action.
     pub async fn cancel_active_runs_on_startup(&self) -> anyhow::Result<usize> {

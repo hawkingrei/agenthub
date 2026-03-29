@@ -4317,6 +4317,45 @@ async fn list_active_runs_returns_non_terminal_runs_only() {
 }
 
 #[tokio::test]
+async fn list_active_runs_for_team_excludes_shared_thread_mailbox_runs() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "active-runs-team-filtered".to_string(),
+            description: Some("team to verify per-team active run listing".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let visible_run = manager
+        .create_run(&team.id, Some("ctx-visible"), json!({"payload":"visible"}))
+        .await
+        .expect("create visible run");
+    let shared_mailbox_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create shared mailbox run");
+    sqlx::query(
+        "UPDATE team_runs SET status = 'working', started_at = COALESCE(started_at, ?1) WHERE id = ?2",
+    )
+        .bind(chrono::Utc::now().timestamp())
+        .bind(&shared_mailbox_run.id)
+        .execute(&db)
+        .await
+        .expect("promote shared mailbox run to active status");
+
+    let active_runs = manager
+        .list_active_runs_for_team(&team.id, 20)
+        .await
+        .expect("list active runs for team");
+    let active_ids: Vec<&str> = active_runs.iter().map(|run| run.id.as_str()).collect();
+    assert_eq!(active_ids, vec![visible_run.id.as_str()]);
+}
+
+#[tokio::test]
 async fn cancel_active_runs_on_startup_requires_manual_restart() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

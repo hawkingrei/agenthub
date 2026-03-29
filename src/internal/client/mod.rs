@@ -56,6 +56,13 @@ pub struct InternalPermissionReviewResponse {
     pub reviewed_by_actor_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InternalActorRunScopeResolution {
+    pub run_id: String,
+    pub team_id: Option<String>,
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InternalTeamTaskPatch<'a> {
     pub status: Option<&'a str>,

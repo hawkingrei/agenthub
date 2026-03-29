@@ -1,6 +1,10 @@
 use serde_json::Value;
 
 use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus};
+use agenthub_team_actor::{
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
+    build_default_actor_message_idempotency_key,
+};
 
 #[cfg(test)]
 use crate::actor_runtime_env::{
@@ -9,8 +13,8 @@ use crate::actor_runtime_env::{
 };
 #[cfg(test)]
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorServiceError, ActorServiceErrorCode,
+    ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorServiceError,
+    ActorServiceErrorCode,
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -61,6 +65,57 @@ enum ActorSendPayloadSource {
     Payload,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ActorSendIdempotency {
+    Disabled,
+    Resolved(String),
+    DeferredDefault,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorSendTargetRef<'a> {
+    Direct { to_actor_id: &'a str },
+    Channel { channel_id: &'a str },
+}
+
+fn build_actor_send_default_idempotency_key(
+    run_id: &str,
+    from_actor_id: &str,
+    target: ActorSendTargetRef<'_>,
+    channel: &str,
+    transport: &TeamActorMessageTransport,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    match target {
+        ActorSendTargetRef::Direct { to_actor_id } => build_default_actor_message_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            to_actor_id,
+            if *transport == TeamActorMessageTransport::Remote {
+                ACTOR_NODE_PEER_ID
+            } else {
+                ACTOR_MAIN_PEER_ID
+            },
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+        ActorSendTargetRef::Channel { channel_id } => build_default_actor_channel_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            channel_id,
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TeamTaskNoteKind {
     Comment,
@@ -97,7 +152,7 @@ enum ActorCommand {
         auto_ack: bool,
     },
     Ack {
-        run_id: String,
+        run_id: Option<String>,
         actor_id: String,
         message_ids: Vec<i64>,
     },
@@ -160,7 +215,7 @@ enum ActorCommand {
         outcome: Option<String>,
     },
     Send {
-        run_id: String,
+        run_id: Option<String>,
         from_actor_id: String,
         to_actor_id: Option<String>,
         channel_id: Option<String>,
@@ -169,7 +224,7 @@ enum ActorCommand {
         route: Option<Value>,
         payload: Box<Value>,
         payload_source: ActorSendPayloadSource,
-        idempotency_key: Option<String>,
+        idempotency: ActorSendIdempotency,
     },
 }
 mod execute;
@@ -698,10 +753,11 @@ mod tests {
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
-            ActorCommand::Send {
-                idempotency_key, ..
-            } => {
-                let idempotency_key = idempotency_key.expect("default idempotency key");
+            ActorCommand::Send { idempotency, .. } => {
+                let idempotency_key = match idempotency {
+                    ActorSendIdempotency::Resolved(idempotency_key) => idempotency_key,
+                    other => panic!("expected resolved idempotency key, got {other:?}"),
+                };
                 assert!(idempotency_key.starts_with("auto:v1:"));
             }
             _ => panic!("expected send command"),
@@ -732,11 +788,9 @@ mod tests {
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
-            ActorCommand::Send {
-                idempotency_key, ..
-            } => {
+            ActorCommand::Send { idempotency, .. } => {
                 assert!(
-                    idempotency_key.is_none(),
+                    matches!(idempotency, ActorSendIdempotency::Disabled),
                     "allow duplicate should skip idempotency key"
                 );
             }
@@ -882,7 +936,7 @@ mod tests {
                 actor_id,
                 message_ids,
             } => {
-                assert_eq!(run_id, "run-ack-batch");
+                assert_eq!(run_id.as_deref(), Some("run-ack-batch"));
                 assert_eq!(actor_id, "worker");
                 assert_eq!(message_ids, vec![41, 42]);
             }
@@ -911,12 +965,79 @@ mod tests {
                 actor_id,
                 message_ids,
             } => {
-                assert_eq!(run_id, "run-ack-positional");
+                assert_eq!(run_id.as_deref(), Some("run-ack-positional"));
                 assert_eq!(actor_id, "worker");
                 assert_eq!(message_ids, vec![41, 42]);
             }
             _ => panic!("expected ack command"),
         }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_ack_allows_team_scope_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-ack-scope");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec!["ack".to_string(), "41".to_string()];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse ack without current run");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_send_defers_default_idempotency_key_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-send-scope");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse send without current run");
+        match parsed {
+            ActorCommand::Send {
+                run_id,
+                idempotency,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert!(matches!(idempotency, ActorSendIdempotency::DeferredDefault));
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -2545,7 +2666,7 @@ mod tests {
             ),
             (
                 ActorCommand::Ack {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     actor_id: "worker".to_string(),
                     message_ids: vec![42],
                 },
@@ -2553,7 +2674,7 @@ mod tests {
             ),
             (
                 ActorCommand::Send {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     from_actor_id: "leader".to_string(),
                     to_actor_id: Some("worker".to_string()),
                     channel_id: None,
@@ -2562,7 +2683,7 @@ mod tests {
                     route: None,
                     payload: Box::new(Value::String("hello".to_string())),
                     payload_source: ActorSendPayloadSource::Text,
-                    idempotency_key: None,
+                    idempotency: ActorSendIdempotency::Disabled,
                 },
                 ActorOutputPreference::JsonPreferred,
             ),
