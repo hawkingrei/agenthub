@@ -3595,12 +3595,15 @@ fn build_prompt_items_with_trusted_root(
     prompt: Vec<ContentBlock>,
     trusted_root: Option<&Path>,
 ) -> Vec<UserInput> {
+    let canonical_trusted_root = trusted_root.and_then(|root| std::fs::canonicalize(root).ok());
     prompt
         .into_iter()
         .filter_map(|block| match block {
-            ContentBlock::Text(text_block) => {
-                Some(build_text_or_skill_input(text_block.text, trusted_root))
-            }
+            ContentBlock::Text(text_block) => Some(build_text_or_skill_input(
+                text_block.text,
+                trusted_root,
+                canonical_trusted_root.as_deref(),
+            )),
             ContentBlock::Image(image_block) => Some(UserInput::Image {
                 image_url: format!("data:{};base64,{}", image_block.mime_type, image_block.data),
             }),
@@ -3629,14 +3632,24 @@ fn build_prompt_items_with_trusted_root(
         .collect()
 }
 
-fn build_text_or_skill_input(text: String, trusted_root: Option<&Path>) -> UserInput {
-    parse_agenthub_skill_input(&text, trusted_root).unwrap_or(UserInput::Text {
-        text,
-        text_elements: vec![],
-    })
+fn build_text_or_skill_input(
+    text: String,
+    trusted_root: Option<&Path>,
+    canonical_trusted_root: Option<&Path>,
+) -> UserInput {
+    parse_agenthub_skill_input(&text, trusted_root, canonical_trusted_root).unwrap_or(
+        UserInput::Text {
+            text,
+            text_elements: vec![],
+        },
+    )
 }
 
-fn parse_agenthub_skill_input(text: &str, trusted_root: Option<&Path>) -> Option<UserInput> {
+fn parse_agenthub_skill_input(
+    text: &str,
+    trusted_root: Option<&Path>,
+    canonical_trusted_root: Option<&Path>,
+) -> Option<UserInput> {
     let body = text
         .strip_prefix("<skill>\n")
         .or_else(|| text.strip_prefix("<skill>\r\n"))?;
@@ -3648,7 +3661,7 @@ fn parse_agenthub_skill_input(text: &str, trusted_root: Option<&Path>) -> Option
     let (path_line, _) = split_first_line(rest)?;
     let path =
         normalize_agenthub_skill_path(&parse_skill_meta_line(path_line, "path")?, trusted_root)?;
-    if !is_trusted_agenthub_skill_path(&path, trusted_root) {
+    if !is_trusted_agenthub_skill_path(&path, canonical_trusted_root) {
         return None;
     }
     Some(UserInput::Skill { name, path })
@@ -3694,13 +3707,10 @@ fn is_trusted_agenthub_skill_path(path: &Path, trusted_root: Option<&Path>) -> b
     let Some(trusted_root) = trusted_root else {
         return false;
     };
-    let Ok(canonical_root) = std::fs::canonicalize(trusted_root) else {
-        return false;
-    };
     let Ok(canonical_path) = std::fs::canonicalize(path) else {
         return false;
     };
-    canonical_path.starts_with(canonical_root)
+    canonical_path.starts_with(trusted_root)
 }
 
 fn split_first_line(input: &str) -> Option<(&str, &str)> {
