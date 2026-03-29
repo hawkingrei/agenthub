@@ -2920,6 +2920,61 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("session=task-77");
   });
 
+  it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[
+          {
+            event_id: 25,
+            agent_id: "worker-agent",
+            session_id: "task-77",
+            seq: "25",
+            ts: 1_700_000_205,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "Panel layout should keep the ACP body above the input dock.",
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    const acpRoot = required(
+      container.querySelector(".acp") as HTMLDivElement | null,
+      "team member acp root missing"
+    );
+    const acpShell = required(
+      acpRoot.parentElement as HTMLDivElement | null,
+      "team member acp shell missing"
+    );
+    expect(acpShell.className).toContain("min-h-0");
+    expect(acpShell.className).toContain("flex-1");
+    expect(acpShell.className).toContain("overflow-hidden");
+
+    const header = required(
+      acpShell.previousElementSibling as HTMLDivElement | null,
+      "team member header missing"
+    );
+    expect(header.className).toContain("output-header");
+    expect(container.querySelector("textarea")).not.toBeNull();
+  });
+
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
     const onForceNewSession = vi.fn();
 
