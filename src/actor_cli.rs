@@ -184,6 +184,8 @@ use self::parse::parse_actor_args;
 #[cfg(test)]
 use self::execute::ack_actor_messages;
 #[cfg(test)]
+use self::execute::require_shared_thread_task_id;
+#[cfg(test)]
 use self::execute::resolve_shared_thread_task_id;
 #[cfg(test)]
 use self::output::{actor_output_preference_for_command, encode_actor_output};
@@ -2134,6 +2136,62 @@ mod tests {
         assert_eq!(
             resolve_shared_thread_task_id(&tasks),
             Some("bootstrap-newer")
+        );
+    }
+
+    #[test]
+    fn require_shared_thread_task_id_returns_error_when_missing() {
+        let tasks = vec![crate::team::TeamTaskRecord {
+            id: "task-1".to_string(),
+            team_id: "team-1".to_string(),
+            title: "Investigate bug".to_string(),
+            status: TeamTaskStatus::Open,
+            created_by_actor_id: "leader".to_string(),
+            assigned_member_id: None,
+            context: serde_json::json!({}),
+            created_at: 1,
+            updated_at: 1,
+        }];
+
+        let err =
+            require_shared_thread_task_id("team-1", &tasks).expect_err("missing shared thread");
+        assert!(
+            err.to_string()
+                .contains("shared thread is missing for team team-1"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn require_shared_thread_task_id_reuses_canonical_selection() {
+        let tasks = vec![
+            crate::team::TeamTaskRecord {
+                id: "task-1".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({}),
+                created_at: 1,
+                updated_at: 10,
+            },
+            crate::team::TeamTaskRecord {
+                id: "shared-task".to_string(),
+                team_id: "team-1".to_string(),
+                title: "random".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 2,
+                updated_at: 2,
+            },
+        ];
+
+        assert_eq!(
+            require_shared_thread_task_id("team-1", &tasks).expect("resolve shared thread"),
+            "shared-task"
         );
     }
 

@@ -64,12 +64,24 @@ pub(super) fn resolve_shared_thread_task_id(tasks: &[TeamTaskRecord]) -> Option<
         .map(|task| task.id.as_str())
 }
 
-async fn resolve_shared_thread_detail_for_team(
+pub(super) fn require_shared_thread_task_id<'a>(
+    team_id: &str,
+    tasks: &'a [TeamTaskRecord],
+) -> anyhow::Result<&'a str> {
+    resolve_shared_thread_task_id(tasks).ok_or_else(|| {
+        anyhow::anyhow!(
+            "shared thread is missing for team {}; create/open the shared thread first",
+            team_id
+        )
+    })
+}
+
+async fn list_shared_thread_tasks_for_team(
     client: &InternalGrpcMailboxClient,
     actor_id: &str,
     team_id: &str,
-) -> anyhow::Result<TeamTaskDetailRecord> {
-    let tasks = client
+) -> anyhow::Result<Vec<TeamTaskRecord>> {
+    client
         .list_team_tasks(
             actor_id,
             &TeamTaskListQuery {
@@ -83,13 +95,16 @@ async fn resolve_shared_thread_detail_for_team(
                 include_shared_thread: true,
             },
         )
-        .await?;
-    let task_id = resolve_shared_thread_task_id(&tasks).ok_or_else(|| {
-        anyhow::anyhow!(
-            "shared thread is missing for team {}; create/open the shared thread first",
-            team_id
-        )
-    })?;
+        .await
+}
+
+async fn resolve_shared_thread_detail_for_team(
+    client: &InternalGrpcMailboxClient,
+    actor_id: &str,
+    team_id: &str,
+) -> anyhow::Result<TeamTaskDetailRecord> {
+    let tasks = list_shared_thread_tasks_for_team(client, actor_id, team_id).await?;
+    let task_id = require_shared_thread_task_id(team_id, &tasks)?;
     client
         .get_team_task(actor_id, Some(team_id), None, task_id, 1)
         .await
@@ -329,10 +344,9 @@ pub(super) async fn run_actor_command(
                 let context = client
                     .describe_team_context(team_id.as_deref(), run_id.as_deref(), &actor_id)
                     .await?;
-                resolve_shared_thread_detail_for_team(&client, &actor_id, &context.team_id)
-                    .await?
-                    .task
-                    .id
+                let tasks =
+                    list_shared_thread_tasks_for_team(&client, &actor_id, &context.team_id).await?;
+                require_shared_thread_task_id(&context.team_id, &tasks)?.to_string()
             } else {
                 task_id
                     .clone()
