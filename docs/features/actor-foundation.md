@@ -166,6 +166,12 @@ Required visibility:
 
 - Keep actor semantics stable even when topology evolves (`main`-only -> `main` + `node`).
 - Keep operator-facing docs explicit: `run_id` partitions mailbox, `actor_id` identifies sender/receiver.
+- In Team runtime, direct mailbox commands may infer `run_id` from current actor runtime scope or a
+  unique active Team run, but ambiguous Team scope must still fail loudly and require an explicit
+  `--run-id`.
+- Team shared-thread inbox reads may fall back to the canonical hidden shared-thread mailbox run
+  when only Team scope is available; human-visible shared updates should still go through
+  `team-task-note --shared-thread`.
 - Prefer compatibility aliasing (`agent_id`) over field renaming in storage/API internals.
 - For Team sessions, prefer the canonical actor CLI mailbox workflow (`agenthub actor ...`) and avoid ad-hoc bypass paths.
 - Keep conversation event-bus design aligned with `docs/features/team-conversation-event-bus.md`.

@@ -782,6 +782,43 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
     server.handle.abort();
 }
 
+#[tokio::test]
+async fn grpc_client_resolves_unique_actor_run_scope_from_team_context() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-run-scope-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+    let cert_dir = test_cert_dir("grpc-run-scope");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        None,
+        vec![InternalAction::TeamRead.as_str().to_string()],
+    );
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client =
+        InternalGrpcMailboxClient::connect(mtls_client_config(server.addr, token, &cert_dir))
+            .await
+            .expect("connect grpc mailbox client");
+
+    let resolved = client
+        .resolve_actor_run_scope("planner", Some(&team_id))
+        .await
+        .expect("resolve actor run scope");
+    assert_eq!(resolved.run_id, run_id);
+    assert_eq!(resolved.team_id.as_deref(), Some(team_id.as_str()));
+    assert_eq!(resolved.source, "team_active_run");
+
+    server.handle.abort();
+}
+
 // This is an in-process transport regression test. The blackbox multi-process
 // p2p pipeline lives in `tests/distributed_p2p_pipeline.rs`.
 #[tokio::test]

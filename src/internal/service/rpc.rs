@@ -300,6 +300,33 @@ impl TeamInternalControl for TeamInternalControlService {
         }))
     }
 
+    async fn resolve_actor_run_scope(
+        &self,
+        request: Request<ResolveActorRunScopeRequest>,
+    ) -> Result<Response<ResolveActorRunScopeResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamRead)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+
+        let resolved = resolve_actor_run_scope(
+            &self.state.agents,
+            &self.state.teams,
+            actor_id,
+            optional_trimmed(&payload.team_id),
+        )
+        .await?;
+        Ok(Response::new(ResolveActorRunScopeResponse {
+            run_id: resolved.run_id,
+            team_id: resolved.team_id.unwrap_or_default(),
+            source: resolved.source.to_string(),
+        }))
+    }
+
     async fn list_team_tasks(
         &self,
         request: Request<ListTeamTasksRequest>,

@@ -1,71 +1,76 @@
 # Summary
 
-Started the first CLI ergonomics slice for issue `#244` (`ux: reduce leader orchestration friction across mailbox and team-task workflows`).
+Finish the remaining `#244` mailbox run-scope ergonomics work for direct
+mailbox commands without changing the underlying mailbox storage model.
 
-This round keeps the storage/runtime model intact:
-
-- direct mailbox traffic remains run-scoped
-- human-visible shared updates move through Team task/shared-thread note paths instead of overloading mailbox sends
+This round keeps mailbox persistence run-scoped, but removes the need to pass
+`--run-id` on every `actor send` / `actor ack` when Team runtime context already
+identifies one unambiguous active run.
 
 ## Why
 
-Leader workflows were paying too much mechanical cost at the CLI boundary:
+The previous slice improved operator UX for inbox reads and shared-thread task
+notes, but direct mailbox commands still stopped too early at the CLI boundary:
 
-- `ack` required repeated flag-heavy message identifiers
-- `send` required remembering the older `--to-actor-id` / `--channel-id all` spelling
-- `team-task-update` context patch inputs were verbose
-- human-visible shared progress updates still looked like mailbox operations even though they map better to Team conversation/task history
+- `actor send` and `actor ack` required an explicit `run_id` even when the
+  actor runtime already exposed the current run;
+- Team members working in a Team-scoped shell could not reuse the unique active
+  Team run without manually looking it up first;
+- the fallback story between shared-thread conversation updates and run-scoped
+  mailbox sends remained uneven.
 
-At the same time, removing `run_id` from all mailbox commands would be incorrect because mailbox persistence, replay, and dedupe are still run-scoped.
+That friction was especially visible in leader/worker orchestration loops where
+the mailbox command itself was correct, but the operator still had to retype
+scope information that AgentHub already knew.
 
 ## What Changed
 
-### Mailbox command ergonomics
+### Direct mailbox commands now resolve run scope at execute time
 
-- `agenthub actor ack` now accepts positional message ids
-  - example: `agenthub actor ack 41 42`
-- `agenthub actor send` now accepts:
-  - `--to` and `--direct` as aliases for direct actor targets
-  - `--shared` as shorthand for `--channel-id all`
-- missing `run_id` errors now point operators at the current runtime-env fallback:
-  - `AGENTHUB_ACTOR_CURRENT_RUN_ID`
+- `agenthub actor ack` and `agenthub actor send` now accept missing `run_id`
+  during parsing.
+- Execution resolves the effective run scope in this order:
+  - use explicit `--run-id` when present;
+  - otherwise use `AGENTHUB_ACTOR_CURRENT_RUN_ID` from actor runtime env;
+  - otherwise ask internal gRPC to resolve actor/team scope.
 
-### Task workflow ergonomics
+### Added internal run-scope resolution RPC
 
-- `agenthub actor team-task-update` now also accepts:
-  - `--context-file`
-  - `--context-merge-file`
-- `agenthub actor team-task-note` now accepts:
-  - `--shared-thread`
-- `--shared-thread` resolves the canonical Team `all` thread through existing Team task metadata instead of forcing operators to look up a shared task id manually
+- Introduced `ResolveActorRunScope` on the internal Team control service.
+- Resolution policy:
+  - prefer the current actor runtime context when the agent is already running;
+  - otherwise, if Team scope is available, fall back to the unique active Team
+    run for that Team;
+  - reject ambiguous multi-run cases with concrete candidate hints instead of
+    guessing.
 
-### Help text
+### Shared-thread behavior stays separate
 
-- actor CLI help now documents:
-  - positional `ack`
-  - `send --to/--direct`
-  - `send --shared`
-  - `team-task-update --context-file`
-  - `team-task-note --shared-thread`
-- help text explicitly steers human-visible shared updates toward `team-task-note --shared-thread`
+- `actor inbox` keeps using the canonical Team shared-thread mailbox run fallback
+  from the earlier slice when only Team scope is available.
+- Human-visible shared progress updates still belong on
+  `agenthub actor team-task-note --shared-thread ...`, not on direct mailbox
+  send.
+
+### Parser / idempotency follow-up
+
+- `actor send` default idempotency keys are now finalized at execute time once
+  the effective `run_id` is known.
+- Explicit idempotency keys and `--allow-duplicate` semantics stay unchanged.
 
 ## Validation
 
-- `cargo test -p agenthub parse_ack_accepts_positional_message_ids -- --nocapture`
-- `cargo test -p agenthub parse_send_accepts_direct_alias_and_shared_flag -- --nocapture`
-- `cargo test -p agenthub parse_team_task_update_accepts_context_merge_file_alias -- --nocapture`
-- `cargo test -p agenthub parse_team_task_note_accepts_shared_thread_without_task_id -- --nocapture`
-- `cargo test -p agenthub resolve_shared_thread_task_id_prefers_canonical_shared_thread_task -- --nocapture`
+- `cargo test -p agenthub parse_ack_allows_team_scope_without_current_run_id -- --nocapture`
+- `cargo test -p agenthub parse_send_defers_default_idempotency_key_without_current_run_id -- --nocapture`
+- `cargo test -p agenthub actor_cli::tests -- --nocapture`
+- `cargo test -p agenthub list_active_runs_for_team_excludes_shared_thread_mailbox_runs -- --nocapture`
+- `cargo test -p agenthub internal_grpc_resolve_actor_run_scope_ -- --nocapture`
+- `cargo test -p agenthub grpc_client_resolves_unique_actor_run_scope_from_team_context -- --nocapture`
+- `make proto-check`
 - `cargo fmt --all`
-- `cargo clippy --locked -p agenthub --all-targets -- -D warnings`
 
 ## Follow-up
 
-This does **not** yet implement unique-active-run inference for direct mailbox commands.
-
-Current contract after this change:
-
-- human-visible shared updates: use `team-task-note --shared-thread`, `run_id` optional
-- direct mailbox traffic: still run-scoped, but now with better hints and shorter flags
-
-The remaining issue `#244` follow-up is to resolve `run_id` automatically when actor/team runtime context yields exactly one active candidate, while failing loudly when multiple active runs make the scope ambiguous.
+- Record push / `pull_request` CI run IDs here after merge verification.
+- Keep shared-thread mailbox fallback and direct-mailbox run inference documented
+  together with `docs/journal/2026-03-29-actor-inbox-shared-thread-run-fallback.md`.

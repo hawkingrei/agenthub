@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::AcpActorSkillContext;
 
 #[tokio::test]
 async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
@@ -468,4 +469,155 @@ async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
     .expect_err("mismatched team/run should fail");
     assert_eq!(mismatch_err.code(), Code::InvalidArgument);
     assert!(mismatch_err.message().contains("belongs to team"));
+}
+
+#[tokio::test]
+async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
+    let state = build_test_state().await;
+    let authz = build_authz();
+    let service = TeamInternalControlService::new(
+        state.clone(),
+        authz.clone(),
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+    let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
+    let actor_cli_path = crate::acp::default_actor_cli_path().expect("resolve actor cli path");
+
+    let session_id = state
+        .agents
+        .start_agent_with_actor_context(
+            "planner",
+            Some(AcpActorSkillContext {
+                team_id: Some("team-runtime-scope".to_string()),
+                current_run_id: Some("run-runtime-scope".to_string()),
+                actor_id: "planner".to_string(),
+                default_channel: "default".to_string(),
+                actor_cli_path,
+                member_role: Some("leader".to_string()),
+                member_skills: Vec::new(),
+                contract_version: None,
+                continuity: None,
+            }),
+        )
+        .await
+        .expect("start scoped planner runtime");
+
+    let response = TeamInternalControl::resolve_actor_run_scope(
+        &service,
+        authenticated_request(
+            ResolveActorRunScopeRequest {
+                actor_id: "planner".to_string(),
+                team_id: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("resolve actor run scope from runtime")
+    .into_inner();
+    assert_eq!(response.run_id, "run-runtime-scope");
+    assert_eq!(response.team_id, "team-runtime-scope");
+    assert_eq!(response.source, "actor_runtime");
+
+    state
+        .agents
+        .stop_agent("planner")
+        .await
+        .expect("stop scoped planner runtime");
+    let stopped_session = state
+        .agents
+        .live_session_id_for_agent("planner")
+        .await
+        .expect("load live session after stop");
+    assert_ne!(stopped_session.as_deref(), Some(session_id.as_str()));
+}
+
+#[tokio::test]
+async fn internal_grpc_resolve_actor_run_scope_falls_back_to_unique_active_team_run() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
+    let service = TeamInternalControlService::new(
+        state,
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let response = TeamInternalControl::resolve_actor_run_scope(
+        &service,
+        authenticated_request(
+            ResolveActorRunScopeRequest {
+                actor_id: "planner".to_string(),
+                team_id: run.team_id.clone(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("resolve unique team run scope")
+    .into_inner();
+    assert_eq!(response.run_id, run.id);
+    assert_eq!(response.team_id, run.team_id);
+    assert_eq!(response.source, "team_active_run");
+}
+
+#[tokio::test]
+async fn internal_grpc_resolve_actor_run_scope_rejects_ambiguous_active_team_runs() {
+    let state = build_test_state().await;
+    let team = state
+        .teams
+        .create_team(TeamDefinitionConfig {
+            name: format!("ambiguous-run-scope-{}", Uuid::new_v4()),
+            description: Some("team to verify ambiguous run scope hints".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "leader_member_id":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"reviewer","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create test team");
+    let first_run = state
+        .teams
+        .create_run(&team.id, Some("ctx-1"), json!({"prompt":"first"}))
+        .await
+        .expect("create first run");
+    let second_run = state
+        .teams
+        .create_run(&team.id, Some("ctx-2"), json!({"prompt":"second"}))
+        .await
+        .expect("create second run");
+    let authz = build_authz();
+    let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
+    let service = TeamInternalControlService::new(
+        state,
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let err = TeamInternalControl::resolve_actor_run_scope(
+        &service,
+        authenticated_request(
+            ResolveActorRunScopeRequest {
+                actor_id: "planner".to_string(),
+                team_id: team.id.clone(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("ambiguous team run scope should fail");
+    assert_eq!(err.code(), Code::FailedPrecondition);
+    assert!(err.message().contains(first_run.id.as_str()));
+    assert!(err.message().contains(second_run.id.as_str()));
 }

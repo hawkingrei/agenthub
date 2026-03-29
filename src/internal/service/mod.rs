@@ -39,11 +39,12 @@ pub(super) use super::proto::agenthub::internal::v1::{
     GetAgentRecordResponse, GetTeamTaskRequest, GetTeamTaskResponse, IssueNodeCredentialRequest,
     IssueNodeCredentialResponse, ListActorInboxRequest, ListActorInboxResponse,
     ListAgentEventsRequest, ListAgentEventsResponse, ListTeamTasksRequest, ListTeamTasksResponse,
-    ListTimeTriggersRequest, ListTimeTriggersResponse, RespondPermissionReviewRequest,
-    RespondPermissionReviewResponse, SendActorMessageRequest, SendActorMessageResponse,
-    SendAgentInputRequest, SendAgentInputResponse, StartManagedAgentRequest,
-    StartManagedAgentResponse, StopManagedAgentRequest, StopManagedAgentResponse,
-    TransitionStepRequest, TransitionStepResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
+    ListTimeTriggersRequest, ListTimeTriggersResponse, ResolveActorRunScopeRequest,
+    ResolveActorRunScopeResponse, RespondPermissionReviewRequest, RespondPermissionReviewResponse,
+    SendActorMessageRequest, SendActorMessageResponse, SendAgentInputRequest,
+    SendAgentInputResponse, StartManagedAgentRequest, StartManagedAgentResponse,
+    StopManagedAgentRequest, StopManagedAgentResponse, TransitionStepRequest,
+    TransitionStepResponse, UpdateTeamTaskRequest, UpdateTeamTaskResponse,
 };
 pub(super) use super::tls::{InternalGrpcSecurityMode, load_bootstrap_client_identity};
 

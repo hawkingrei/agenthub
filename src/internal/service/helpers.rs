@@ -1,5 +1,104 @@
 use super::*;
 
+const MAX_RESOLVE_ACTOR_RUN_SCOPE_CANDIDATES: i64 = 8;
+
+pub(super) struct ResolvedActorRunScope {
+    pub run_id: String,
+    pub team_id: Option<String>,
+    pub source: &'static str,
+}
+
+fn team_run_status_label(status: &crate::team::TeamRunStatus) -> &'static str {
+    match status {
+        crate::team::TeamRunStatus::Submitted => "submitted",
+        crate::team::TeamRunStatus::Working => "working",
+        crate::team::TeamRunStatus::InputRequired => "input_required",
+        crate::team::TeamRunStatus::Completed => "completed",
+        crate::team::TeamRunStatus::Failed => "failed",
+        crate::team::TeamRunStatus::Canceled => "canceled",
+    }
+}
+
+fn format_run_scope_candidates(candidates: &[crate::team::TeamRunRecord]) -> String {
+    candidates
+        .iter()
+        .map(|run| {
+            format!(
+                "{} (status={}, created_at={})",
+                run.id,
+                team_run_status_label(&run.status),
+                run.created_at
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub(super) async fn resolve_actor_run_scope(
+    agents: &crate::agent::AgentManager,
+    manager: &TeamManager,
+    actor_id: &str,
+    requested_team_id: Option<&str>,
+) -> Result<ResolvedActorRunScope, Status> {
+    let requested_team_id = requested_team_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let runtime_context = agents.running_actor_context_for_agent(actor_id).await;
+    if let Some(context) = runtime_context.as_ref()
+        && let Some(run_id) = context.current_run_id.as_deref()
+    {
+        if let (Some(expected_team_id), Some(context_team_id)) =
+            (requested_team_id.as_deref(), context.team_id.as_deref())
+            && expected_team_id != context_team_id
+        {
+            return Err(Status::invalid_argument(format!(
+                "actor runtime is scoped to team {}, not {}",
+                context_team_id, expected_team_id
+            )));
+        }
+        return Ok(ResolvedActorRunScope {
+            run_id: run_id.to_string(),
+            team_id: context.team_id.clone().or(requested_team_id),
+            source: "actor_runtime",
+        });
+    }
+
+    let resolved_team_id = requested_team_id.or_else(|| {
+        runtime_context
+            .as_ref()
+            .and_then(|context| context.team_id.as_deref())
+            .map(str::to_string)
+    });
+    let Some(team_id) = resolved_team_id else {
+        return Err(Status::failed_precondition(
+            "run_id is required; no active actor runtime scope was found. Retry with --run-id <run_id> explicitly.",
+        ));
+    };
+
+    ensure_team_member_access(manager, &team_id, actor_id).await?;
+    let candidates = manager
+        .list_active_runs_for_team(&team_id, MAX_RESOLVE_ACTOR_RUN_SCOPE_CANDIDATES)
+        .await
+        .map_err(map_manager_error)?;
+    match candidates.as_slice() {
+        [] => Err(Status::failed_precondition(format!(
+            "run_id is required; no active non-shared Team run was found for team {}. Retry with --run-id <run_id> explicitly.",
+            team_id
+        ))),
+        [run] => Ok(ResolvedActorRunScope {
+            run_id: run.id.clone(),
+            team_id: Some(team_id),
+            source: "team_active_run",
+        }),
+        _ => Err(Status::failed_precondition(format!(
+            "run_id is ambiguous for team {}; retry with --run-id <run_id> explicitly. Candidates: {}",
+            team_id,
+            format_run_scope_candidates(&candidates),
+        ))),
+    }
+}
+
 pub(super) fn step_to_transition_response(step: TeamStepRecord) -> TransitionStepResponse {
     TransitionStepResponse {
         step_id: step.id,

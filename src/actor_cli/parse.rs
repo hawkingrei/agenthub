@@ -1,6 +1,6 @@
 use super::help::{actor_usage, is_help_flag, is_help_subcommand, resolve_actor_help_topic};
 use super::{
-    ActorCommand, ActorOutputMode, ActorSendPayloadSource,
+    ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
     TIME_TRIGGER_FUTURE_SAFETY_MARGIN_SECONDS, TeamTaskNoteKind,
 };
 use std::fs;
@@ -187,17 +187,6 @@ fn take_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn take_run_id(value: Option<String>) -> anyhow::Result<String> {
-    take_required_with_env_keys(value, &[ACTOR_RUNTIME_CURRENT_RUN_ID_ENV], "run_id").map_err(
-        |_| {
-            anyhow::anyhow!(
-                "run_id is required (use --run-id <run_id> or set {} in actor runtime env)",
-                ACTOR_RUNTIME_CURRENT_RUN_ID_ENV
-            )
-        },
-    )
 }
 
 fn take_team_id(value: Option<String>) -> anyhow::Result<String> {
@@ -983,7 +972,8 @@ pub(super) fn parse_actor_command(
                 idx += 1;
             }
             Ok(ActorCommand::Ack {
-                run_id: take_run_id(run_id)?,
+                run_id: take_optional(run_id)
+                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
                 actor_id: take_mailbox_actor_id(actor_id)?,
                 message_ids: (!message_ids.is_empty())
                     .then_some(message_ids)
@@ -1144,7 +1134,8 @@ pub(super) fn parse_actor_command(
 
             let fallback_channel = normalized_env_var(ACTOR_RUNTIME_CHANNEL_ENV)
                 .unwrap_or_else(|| "default".to_string());
-            let run_id = take_run_id(run_id)?;
+            let run_id = take_optional(run_id)
+                .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV));
             let from_actor_id = take_required_with_env_keys(
                 from_actor_id,
                 &[ACTOR_RUNTIME_ACTOR_ID_ENV],
@@ -1181,13 +1172,15 @@ pub(super) fn parse_actor_command(
             } else {
                 ACTOR_MAIN_PEER_ID
             };
-            let resolved_idempotency_key = if allow_duplicate {
-                None
-            } else {
-                Some(explicit_idempotency_key.unwrap_or_else(|| {
+            let idempotency = if allow_duplicate {
+                ActorSendIdempotency::Disabled
+            } else if let Some(explicit_idempotency_key) = explicit_idempotency_key {
+                ActorSendIdempotency::Resolved(explicit_idempotency_key)
+            } else if let Some(run_id) = run_id.as_deref() {
+                ActorSendIdempotency::Resolved(
                     match (to_actor_id.as_deref(), channel_id.as_deref()) {
                         (Some(to_actor_id), None) => build_default_actor_message_idempotency_key(
-                            &run_id,
+                            run_id,
                             &from_actor_id,
                             ACTOR_MAIN_PEER_ID,
                             to_actor_id,
@@ -1198,7 +1191,7 @@ pub(super) fn parse_actor_command(
                             &payload,
                         ),
                         (None, Some(channel_id)) => build_default_actor_channel_idempotency_key(
-                            &run_id,
+                            run_id,
                             &from_actor_id,
                             ACTOR_MAIN_PEER_ID,
                             channel_id,
@@ -1208,8 +1201,10 @@ pub(super) fn parse_actor_command(
                             &payload,
                         ),
                         _ => unreachable!("actor send target already validated"),
-                    }
-                }))
+                    },
+                )
+            } else {
+                ActorSendIdempotency::DeferredDefault
             };
 
             Ok(ActorCommand::Send {
@@ -1222,7 +1217,7 @@ pub(super) fn parse_actor_command(
                 route,
                 payload: Box::new(payload),
                 payload_source,
-                idempotency_key: resolved_idempotency_key,
+                idempotency,
             })
         }
         "time-trigger-set" => {

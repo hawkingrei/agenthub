@@ -6,11 +6,13 @@ use super::runtime::{
     load_actor_inbox, map_actor_service_error,
 };
 use super::{
-    ActorCommand, ActorOutputMode, ActorSendPayloadSource, MAX_TIME_TRIGGER_DELAY_SECONDS,
+    ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
+    MAX_TIME_TRIGGER_DELAY_SECONDS,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest,
-    ActorMailboxService, ActorMessageStatus,
+    ActorMailboxService, ActorMessageStatus, build_default_actor_channel_idempotency_key,
+    build_default_actor_message_idempotency_key,
 };
 use anyhow::Context;
 use chrono::Utc;
@@ -28,6 +30,8 @@ const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
 const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
     "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
+const ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT: &str =
+    "retry with --run-id <run_id> explicitly when more than one active Team run could match";
 
 fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
     task.title
@@ -153,6 +157,74 @@ async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow:
                 context.team_id
             )
         })
+}
+
+async fn resolve_direct_mailbox_run_id(
+    actor_id: &str,
+    run_id: Option<String>,
+    operation: &str,
+) -> anyhow::Result<String> {
+    if let Some(run_id) = run_id {
+        return Ok(run_id);
+    }
+
+    let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV);
+    let client =
+        init_actor_control_client(actor_id, None, &[InternalAction::TeamRead], operation).await?;
+    let resolved = client
+        .resolve_actor_run_scope(actor_id, team_id.as_deref())
+        .await
+        .with_context(|| {
+            format!(
+                "{operation} could not infer run scope automatically; {ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT}"
+            )
+        })?;
+    Ok(resolved.run_id)
+}
+
+fn resolve_actor_send_idempotency_key(
+    idempotency: ActorSendIdempotency,
+    run_id: &str,
+    from_actor_id: &str,
+    to_actor_id: Option<&str>,
+    channel_id: Option<&str>,
+    channel: &str,
+    transport: &TeamActorMessageTransport,
+    route: Option<&serde_json::Value>,
+    payload: &serde_json::Value,
+) -> Option<String> {
+    match idempotency {
+        ActorSendIdempotency::Disabled => None,
+        ActorSendIdempotency::Resolved(idempotency_key) => Some(idempotency_key),
+        ActorSendIdempotency::DeferredDefault => Some(match (to_actor_id, channel_id) {
+            (Some(to_actor_id), None) => build_default_actor_message_idempotency_key(
+                run_id,
+                from_actor_id,
+                ACTOR_MAIN_PEER_ID,
+                to_actor_id,
+                if *transport == TeamActorMessageTransport::Remote {
+                    ACTOR_NODE_PEER_ID
+                } else {
+                    ACTOR_MAIN_PEER_ID
+                },
+                channel,
+                transport.as_str(),
+                route,
+                payload,
+            ),
+            (None, Some(channel_id)) => build_default_actor_channel_idempotency_key(
+                run_id,
+                from_actor_id,
+                ACTOR_MAIN_PEER_ID,
+                channel_id,
+                channel,
+                transport.as_str(),
+                route,
+                payload,
+            ),
+            _ => unreachable!("actor send target already validated"),
+        }),
+    }
 }
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
@@ -403,6 +475,7 @@ pub(super) async fn run_actor_command(
             actor_id,
             message_ids,
         } => {
+            let run_id = resolve_direct_mailbox_run_id(&actor_id, run_id, "actor ack").await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
             let messages =
                 ack_actor_messages(service.as_ref(), &run_id, &actor_id, &message_ids).await?;
@@ -426,8 +499,21 @@ pub(super) async fn run_actor_command(
             route,
             payload,
             payload_source,
-            idempotency_key,
+            idempotency,
         } => {
+            let run_id =
+                resolve_direct_mailbox_run_id(&from_actor_id, run_id, "actor send").await?;
+            let idempotency_key = resolve_actor_send_idempotency_key(
+                idempotency,
+                &run_id,
+                &from_actor_id,
+                to_actor_id.as_deref(),
+                channel_id.as_deref(),
+                &channel,
+                &transport,
+                route.as_ref(),
+                payload.as_ref(),
+            );
             let service = init_actor_mailbox_service(&from_actor_id, &run_id).await?;
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {

@@ -9,8 +9,8 @@ use super::super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AppendTeamTaskNoteRequest, CancelTimeTriggerRequest,
     CreateTeamTaskRequest, CreateTimeTriggerRequest, DescribeTeamContextRequest,
     GetTeamTaskRequest, IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
-    ListTimeTriggersRequest, RespondPermissionReviewRequest, SendActorMessageRequest,
-    UpdateTeamTaskRequest,
+    ListTimeTriggersRequest, ResolveActorRunScopeRequest, RespondPermissionReviewRequest,
+    SendActorMessageRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
 pub(super) use super::resolve_team_leader_member_id;

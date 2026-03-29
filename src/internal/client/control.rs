@@ -17,6 +17,7 @@ use super::super::proto::agenthub::internal::v1::{
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListTeamTasksRequest as GrpcListTeamTasksRequest,
     ListTimeTriggersRequest as GrpcListTimeTriggersRequest,
+    ResolveActorRunScopeRequest as GrpcResolveActorRunScopeRequest,
     RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
     RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
     SendAgentInputRequest as GrpcSendAgentInputRequest,
@@ -25,8 +26,8 @@ use super::super::proto::agenthub::internal::v1::{
     UpdateTeamTaskRequest as GrpcUpdateTeamTaskRequest,
 };
 use super::{
-    InternalGrpcMailboxClient, InternalPermissionReviewResponse, InternalTeamTaskPatch,
-    map_grpc_status_anyhow, parse_agent_events, parse_json_response,
+    InternalActorRunScopeResolution, InternalGrpcMailboxClient, InternalPermissionReviewResponse,
+    InternalTeamTaskPatch, map_grpc_status_anyhow, parse_agent_events, parse_json_response,
 };
 
 impl InternalGrpcMailboxClient {
@@ -173,6 +174,27 @@ impl InternalGrpcMailboxClient {
             .map_err(map_grpc_status_anyhow)?
             .into_inner();
         parse_json_response(&response.context_json, "context_json")
+    }
+
+    pub async fn resolve_actor_run_scope(
+        &self,
+        actor_id: &str,
+        team_id: Option<&str>,
+    ) -> anyhow::Result<InternalActorRunScopeResolution> {
+        let mut client = self.client();
+        let response = client
+            .resolve_actor_run_scope(self.control_request(GrpcResolveActorRunScopeRequest {
+                actor_id: actor_id.trim().to_string(),
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+            })?)
+            .await
+            .map_err(map_grpc_status_anyhow)?
+            .into_inner();
+        Ok(InternalActorRunScopeResolution {
+            run_id: response.run_id,
+            team_id: (!response.team_id.trim().is_empty()).then_some(response.team_id),
+            source: response.source,
+        })
     }
 
     pub async fn list_team_tasks(
