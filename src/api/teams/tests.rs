@@ -59,13 +59,13 @@ static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
 
 async fn create_team_task(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(team_id): Path<String>,
-    Json(payload): Json<CreateTeamTaskRequest>,
-) -> Result<Json<TeamTaskDetailResponse>, crate::api::error::ApiError> {
-    let user = require_user(&headers, &state).await?;
-    load_team_for_user(&state, &team_id, &user).await?;
+    state: &AppState,
+    headers: &HeaderMap,
+    team_id: &str,
+    payload: CreateTeamTaskRequest,
+) -> Result<TeamTaskDetailResponse, crate::api::error::ApiError> {
+    let user = require_user(headers, state).await?;
+    load_team_for_user(state, team_id, &user).await?;
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(crate::api::error::ApiError::bad_request(
@@ -79,7 +79,7 @@ async fn create_team_task(
     let (task, conversation) = state
         .teams
         .create_task(
-            &team_id,
+            team_id,
             &title,
             &created_by_actor_id,
             raw_context,
@@ -88,11 +88,11 @@ async fn create_team_task(
         )
         .await
         .map_err(map_team_internal_error)?;
-    Ok(Json(TeamTaskDetailResponse {
+    Ok(TeamTaskDetailResponse {
         task,
         conversation,
         latest_run: None,
-    }))
+    })
 }
 
 fn build_team_member_actor_context(

@@ -384,17 +384,17 @@ async fn teams_api_rejects_execution_until_team_has_members() {
         Value::from("team has no members configured; add at least one agent first")
     );
 
-    let Json(task_detail) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_detail = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Investigate".to_string(),
             created_by_actor_id: None,
             context: None,
             conversation_mode: None,
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task without members");
@@ -4320,11 +4320,11 @@ async fn team_task_api_lists_gets_and_redacts_context() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Kickoff migration".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4334,7 +4334,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("kickoff".to_string()),
-        }),
+        },
     )
     .await
     .expect("seed task");
@@ -4397,11 +4397,11 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4410,7 +4410,7 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create shared thread task");
@@ -4442,11 +4442,11 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
     .await
     .expect("create team");
 
-    let Json(shared_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let shared_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4455,16 +4455,16 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create shared thread task");
 
-    let Json(workspace_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let workspace_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Investigate regression".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4472,7 +4472,7 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
             })),
             conversation_mode: Some("to_leader".to_string()),
             topic: Some("Investigate regression".to_string()),
-        }),
+        },
     )
     .await
     .expect("create workspace task");
@@ -4616,11 +4616,11 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
     .await
     .expect("create team");
 
-    let Json(first) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let first = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4629,16 +4629,16 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create first shared thread");
 
-    let Json(second) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let second = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4647,7 +4647,7 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create second shared thread");
@@ -4725,11 +4725,11 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4738,7 +4738,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create shared thread task");
@@ -4927,17 +4927,17 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Promote kanban card".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({"source":"ui"})),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("status".to_string()),
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5006,17 +5006,17 @@ async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        owner_headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &owner_headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Owner only planning".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5070,17 +5070,17 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Discuss rollout".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5267,17 +5267,17 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Mailbox forwarding".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5454,17 +5454,17 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Direct by default".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5564,17 +5564,17 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Leader inference".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5620,17 +5620,17 @@ async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_l
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Object detail_ref normalization".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5696,17 +5696,17 @@ async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Invalid detail_ref object".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5764,11 +5764,11 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Implement chat-first compile".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -5777,7 +5777,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("planning".to_string()),
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5949,17 +5949,17 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Sanitize compile updates".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
