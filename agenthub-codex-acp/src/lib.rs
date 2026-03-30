@@ -48,8 +48,9 @@ where
                 .build()
                 .map_err(std::io::Error::other)
                 .and_then(|runtime| {
+                    let local_set = LocalSet::new();
                     runtime
-                        .block_on(io_task)
+                        .block_on(local_set.run_until(io_task))
                         .map_err(|err| std::io::Error::other(format!("ACP I/O error: {err}")))
                 });
             drop(tx.send(result));

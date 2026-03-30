@@ -475,8 +475,11 @@ mod tests {
         runtime.block_on(local_set.run_until(async move {
             let client = TestClient::new();
             let agent = TestAgent;
-            let root = std::env::temp_dir()
-                .join(format!("agenthub-codex-acp-deadlock-{}", std::process::id()));
+            let temp_dir = tempfile::Builder::new()
+                .prefix("agenthub-codex-acp-deadlock-")
+                .tempdir()
+                .expect("create temp dir");
+            let root = temp_dir.path().to_path_buf();
             let session_id = SessionId::new("test-session");
             let (client_to_agent_rx, client_to_agent_tx) = piper::pipe(1024);
             let (agent_to_client_rx, agent_to_client_tx) = piper::pipe(1024);
@@ -551,6 +554,7 @@ mod tests {
                 matches!(result, codex_apply_patch::MaybeApplyPatchVerified::Body(_)),
                 "expected verified patch body, got {result:?}"
             );
+            drop(temp_dir);
         }));
     }
 
