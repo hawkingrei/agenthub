@@ -160,6 +160,9 @@ Required visibility:
   - if unread count is `0`, no reminder should be sent.
 - `actor inbox` should surface the current unread snapshot directly (`pending_count`) so agents can
   decide whether a mailbox pull is needed without spending extra tokens on speculative prompts.
+- `actor ack` should surface whether the mailbox state actually changed (`status_changed`) so
+  callers can distinguish a real `pending -> delivered` transition from an idempotent/no-op ack.
+
 
 ## Validation Matrix
 

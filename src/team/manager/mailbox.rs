@@ -225,10 +225,10 @@ impl TeamManager {
         run_id: &str,
         actor_id: &str,
         message_id: i64,
-    ) -> anyhow::Result<TeamActorMessageRecord> {
+    ) -> anyhow::Result<AckActorMessageResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let message = mailbox
+        let result = mailbox
             .ack(AckActorMessageCommand {
                 run_id: run_id.to_string(),
                 actor_id: actor_id.to_string(),
@@ -238,7 +238,7 @@ impl TeamManager {
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
-        Ok(message)
+        Ok(result)
     }
 
     #[allow(dead_code)]
@@ -814,11 +814,12 @@ impl ActorMailboxService for TeamActorMailboxService {
             ));
         }
 
-        let message = self
+        let result = self
             .manager
             .ack_actor_message(run_id, actor_id, request.message_id)
             .await
             .map_err(map_actor_service_error)?;
+        let message = result.message;
         let state = message.status.clone();
         let acked_at = message.delivered_at.unwrap_or(message.created_at);
 
@@ -826,6 +827,7 @@ impl ActorMailboxService for TeamActorMailboxService {
             message_id: message.message_id,
             state,
             acked_at,
+            status_changed: result.status_changed,
             message,
         })
     }

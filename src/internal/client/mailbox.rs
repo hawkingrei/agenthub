@@ -251,6 +251,7 @@ impl ActorMailboxService for InternalGrpcMailboxClient {
             message_id: message.message_id,
             state: message.status.clone(),
             acked_at: message.delivered_at.unwrap_or(message.created_at),
+            status_changed: response.status_changed,
             message,
         })
     }

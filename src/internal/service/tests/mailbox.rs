@@ -197,6 +197,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     .await
     .expect("ack actor message")
     .into_inner();
+    assert!(acked.status_changed);
     let acked_message = acked.message.expect("acked message");
     assert_eq!(acked_message.message_id, send.message_id);
     assert_eq!(acked_message.status, "delivered");

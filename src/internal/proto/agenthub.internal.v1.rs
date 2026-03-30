@@ -68,6 +68,8 @@ pub struct AckActorMessageRequest {
 pub struct AckActorMessageResponse {
     #[prost(message, optional, tag = "1")]
     pub message: ::core::option::Option<ActorMessage>,
+    #[prost(bool, tag = "2")]
+    pub status_changed: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DescribeTeamContextRequest {

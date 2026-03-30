@@ -373,6 +373,7 @@ mod tests {
                 message_id: message.message_id,
                 state: ActorMessageStatus::Delivered,
                 acked_at: 100,
+                status_changed: true,
                 message: agenthub_team_actor::ActorMessageRecord {
                     status: ActorMessageStatus::Delivered,
                     delivered_at: Some(100),
@@ -412,6 +413,7 @@ mod tests {
                     message_id: request.message_id,
                     state: ActorMessageStatus::Delivered,
                     acked_at: 100,
+                    status_changed: true,
                     message: mock_inbox_message(request.message_id, ActorMessageStatus::Delivered),
                 })
             }
@@ -2572,6 +2574,23 @@ mod tests {
         .expect("encode inbox response");
         assert!(output.contains("next_cursor: 42"));
         assert!(output.contains("pending_count: 3"));
+    }
+
+    #[test]
+    fn encode_actor_output_keeps_ack_status_changed_visible() {
+        let output = encode_actor_output(
+            &ActorAckResponse {
+                message_id: 42,
+                state: ActorMessageStatus::Delivered,
+                acked_at: 100,
+                status_changed: false,
+                message: mock_inbox_message(42, ActorMessageStatus::Delivered),
+            },
+            ActorOutputMode::Default,
+            ActorOutputPreference::JsonPreferred,
+        )
+        .expect("encode ack response");
+        assert!(output.contains("\"status_changed\":false"));
     }
 
     #[test]
