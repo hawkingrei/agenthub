@@ -144,10 +144,13 @@ jobs:
       - name: Upload coverage reports to Codecov
         if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: codecov/codecov-action@v6
+        env:
+          AGENTHUB_CODECOV_UPLOAD_TAG: bazel
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: bazel.lcov
           flags: bazel
+          env_vars: AGENTHUB_CODECOV_UPLOAD_TAG
           name: bazel-coverage
           fail_ci_if_error: true
 
