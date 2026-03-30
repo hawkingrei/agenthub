@@ -254,37 +254,70 @@ impl TeamMailboxUnreadHintWorker {
     }
 }
 
-pub(crate) async fn classify_actor_mailbox_priority(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorMailboxPriorityPlan {
+    priority_class: ActorMailboxPriorityClass,
+    immediate_hint: Option<ActorMailboxImmediateHintPlan>,
+}
+
+async fn resolve_actor_mailbox_priority_plan(
     manager: &TeamManager,
     run_id: &str,
     send_result: &ActorSendResponse,
-) -> anyhow::Result<ActorMailboxPriorityClass> {
+) -> anyhow::Result<ActorMailboxPriorityPlan> {
     let message = &send_result.message;
     if message.to_actor_kind != ActorIdentityKind::Agent {
-        return Ok(ActorMailboxPriorityClass::General);
+        return Ok(ActorMailboxPriorityPlan {
+            priority_class: ActorMailboxPriorityClass::General,
+            immediate_hint: None,
+        });
     }
     if is_channel_payload(&message.payload) {
         let Some(role) = manager
             .member_role_for_run(run_id, &message.from_actor_id)
             .await?
         else {
-            return Ok(ActorMailboxPriorityClass::General);
+            return Ok(ActorMailboxPriorityPlan {
+                priority_class: ActorMailboxPriorityClass::General,
+                immediate_hint: None,
+            });
         };
         if !role.eq_ignore_ascii_case("leader") {
-            return Ok(ActorMailboxPriorityClass::General);
+            return Ok(ActorMailboxPriorityPlan {
+                priority_class: ActorMailboxPriorityClass::General,
+                immediate_hint: None,
+            });
         }
         let mention_targets =
             collect_channel_mention_actor_ids(&message.payload, &message.from_actor_id);
         return Ok(if mention_targets.is_empty() {
-            ActorMailboxPriorityClass::General
+            ActorMailboxPriorityPlan {
+                priority_class: ActorMailboxPriorityClass::General,
+                immediate_hint: None,
+            }
         } else {
-            ActorMailboxPriorityClass::Urgent
+            ActorMailboxPriorityPlan {
+                priority_class: ActorMailboxPriorityClass::Urgent,
+                immediate_hint: Some(ActorMailboxImmediateHintPlan {
+                    target_actor_ids: mention_targets,
+                    reason: ActorMailboxImmediateHintReason::LeaderChannelMention,
+                }),
+            }
         });
     }
     if message.from_actor_kind == ActorIdentityKind::Agent {
-        return Ok(ActorMailboxPriorityClass::Urgent);
+        return Ok(ActorMailboxPriorityPlan {
+            priority_class: ActorMailboxPriorityClass::Urgent,
+            immediate_hint: Some(ActorMailboxImmediateHintPlan {
+                target_actor_ids: vec![message.to_actor_id.clone()],
+                reason: ActorMailboxImmediateHintReason::DirectAgentMessage,
+            }),
+        });
     }
-    Ok(ActorMailboxPriorityClass::General)
+    Ok(ActorMailboxPriorityPlan {
+        priority_class: ActorMailboxPriorityClass::General,
+        immediate_hint: None,
+    })
 }
 
 pub(crate) async fn plan_actor_mailbox_immediate_hint(
@@ -295,41 +328,11 @@ pub(crate) async fn plan_actor_mailbox_immediate_hint(
     if send_result.deduped {
         return Ok(None);
     }
-    if classify_actor_mailbox_priority(manager, run_id, send_result).await?
-        != ActorMailboxPriorityClass::Urgent
-    {
-        return Ok(None);
-    }
-    let message = &send_result.message;
-    let immediate = if is_channel_payload(&message.payload) {
-        let Some(role) = manager
-            .member_role_for_run(run_id, &message.from_actor_id)
+    Ok(
+        resolve_actor_mailbox_priority_plan(manager, run_id, send_result)
             .await?
-        else {
-            return Ok(None);
-        };
-        if !role.eq_ignore_ascii_case("leader") {
-            return Ok(None);
-        }
-        let mention_targets =
-            collect_channel_mention_actor_ids(&message.payload, &message.from_actor_id);
-        if mention_targets.is_empty() {
-            return Ok(None);
-        }
-        ActorMailboxImmediateHintPlan {
-            target_actor_ids: mention_targets,
-            reason: ActorMailboxImmediateHintReason::LeaderChannelMention,
-        }
-    } else if message.from_actor_kind == ActorIdentityKind::Agent {
-        ActorMailboxImmediateHintPlan {
-            target_actor_ids: vec![message.to_actor_id.clone()],
-            reason: ActorMailboxImmediateHintReason::DirectAgentMessage,
-        }
-    } else {
-        return Ok(None);
-    };
-
-    Ok(Some(immediate))
+            .immediate_hint,
+    )
 }
 
 pub(crate) fn build_actor_mailbox_immediate_hint_prompt(

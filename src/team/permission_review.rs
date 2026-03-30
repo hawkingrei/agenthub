@@ -345,6 +345,31 @@ struct PermissionReviewCandidate {
     idle_dispatch_status: &'static str,
 }
 
+fn permission_review_candidate(
+    actor_id: impl Into<String>,
+    dispatch_status: &'static str,
+    idle_dispatch_status: &'static str,
+) -> PermissionReviewCandidate {
+    PermissionReviewCandidate {
+        actor_id: actor_id.into(),
+        dispatch_status,
+        idle_dispatch_status,
+    }
+}
+
+fn worker_permission_review_candidates(
+    spec: &Value,
+    leader_member_id: &str,
+    requester_actor_id: &str,
+) -> Vec<PermissionReviewCandidate> {
+    collect_subordinate_reviewers(spec, leader_member_id, requester_actor_id)
+        .into_iter()
+        .map(|actor_id| {
+            permission_review_candidate(actor_id, "worker_dispatched", "worker_idle_dispatched")
+        })
+        .collect()
+}
+
 fn collect_team_permission_review_candidates(
     spec: &Value,
     requester_actor_id: &str,
@@ -355,18 +380,10 @@ fn collect_team_permission_review_candidates(
         .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
     let requester_is_leader =
         requester_actor_id == leader_member_id || requester_role.eq_ignore_ascii_case("leader");
-    let mut candidates = Vec::new();
+    let mut candidates =
+        worker_permission_review_candidates(spec, leader_member_id, requester_actor_id);
 
     if requester_is_leader {
-        candidates.extend(
-            collect_subordinate_reviewers(spec, leader_member_id, requester_actor_id)
-                .into_iter()
-                .map(|actor_id| PermissionReviewCandidate {
-                    actor_id,
-                    dispatch_status: "worker_dispatched",
-                    idle_dispatch_status: "worker_idle_dispatched",
-                }),
-        );
         if candidates.is_empty() {
             return Err(anyhow::anyhow!(
                 "team has no subordinate reviewer configured"
@@ -375,21 +392,12 @@ fn collect_team_permission_review_candidates(
         return Ok(candidates);
     }
 
-    candidates.extend(
-        collect_subordinate_reviewers(spec, leader_member_id, requester_actor_id)
-            .into_iter()
-            .map(|actor_id| PermissionReviewCandidate {
-                actor_id,
-                dispatch_status: "worker_dispatched",
-                idle_dispatch_status: "worker_idle_dispatched",
-            }),
-    );
     if leader_member_id != requester_actor_id {
-        candidates.push(PermissionReviewCandidate {
-            actor_id: leader_member_id.to_string(),
-            dispatch_status: "leader_dispatched",
-            idle_dispatch_status: "leader_idle_dispatched",
-        });
+        candidates.push(permission_review_candidate(
+            leader_member_id,
+            "leader_dispatched",
+            "leader_idle_dispatched",
+        ));
     }
     if candidates.is_empty() {
         return Err(anyhow::anyhow!(
