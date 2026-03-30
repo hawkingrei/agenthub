@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use anyhow::Context;
 use tonic::transport::server::TcpIncoming;
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
 
@@ -37,18 +38,13 @@ pub mod proto {
 fn bind_internal_grpc_incoming(listen_addr: &str) -> anyhow::Result<(SocketAddr, TcpIncoming)> {
     let addr: SocketAddr = listen_addr
         .parse()
-        .map_err(anyhow::Error::from)
-        .map_err(|err| anyhow::anyhow!("parse internal gRPC listen addr '{listen_addr}': {err}"))?;
+        .with_context(|| format!("parse internal gRPC listen addr '{listen_addr}'"))?;
     let incoming = TcpIncoming::bind(addr)
-        .map_err(anyhow::Error::from)
-        .map_err(|err| anyhow::anyhow!("bind internal gRPC listen addr '{listen_addr}': {err}"))?
+        .with_context(|| format!("bind internal gRPC listen addr '{listen_addr}'"))?
         .with_nodelay(Some(true));
     let bound_addr = incoming
         .local_addr()
-        .map_err(anyhow::Error::from)
-        .map_err(|err| {
-            anyhow::anyhow!("resolve internal gRPC bound addr '{listen_addr}': {err}")
-        })?;
+        .with_context(|| format!("resolve internal gRPC bound addr '{listen_addr}'"))?;
     Ok((bound_addr, incoming))
 }
 
@@ -62,6 +58,8 @@ pub async fn maybe_spawn_internal_grpc(
     }
 
     install_rustls_crypto_provider();
+    let listen_addr = config.internal_grpc_listen_addr();
+    let (bound_addr, incoming) = bind_internal_grpc_incoming(&listen_addr)?;
     let mode = InternalGrpcSecurityMode::parse(&config.internal_grpc_security_mode())?;
     let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
     let shared_secret = ensure_shared_secret(&cert_dir, config.internal_grpc_auth_shared_secret())?;
@@ -77,7 +75,6 @@ pub async fn maybe_spawn_internal_grpc(
             .or_else(|| Some("agenthub-internal".to_string())),
     });
 
-    let listen_addr = config.internal_grpc_listen_addr();
     let mut server_builder = tonic::transport::Server::builder()
         .http2_keepalive_interval(Some(Duration::from_secs(20)))
         .http2_keepalive_timeout(Some(Duration::from_secs(10)));
@@ -110,7 +107,6 @@ pub async fn maybe_spawn_internal_grpc(
             TeamInternalControlService::new(state, authz, mode, cert_dir, bootstrap_token),
         );
 
-    let (bound_addr, incoming) = bind_internal_grpc_incoming(&listen_addr)?;
     let handle = tokio::spawn(async move {
         if let Err(err) = server_builder
             .add_service(service)
@@ -174,5 +170,9 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("bind internal gRPC listen addr"));
         assert!(message.contains(&listen_addr));
+        assert!(
+            !cert_dir.exists(),
+            "bind failure should not create internal gRPC cert dir"
+        );
     }
 }
