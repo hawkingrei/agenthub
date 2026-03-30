@@ -58,6 +58,7 @@ pub struct ActorAckResponse {
     pub message_id: i64,
     pub state: ActorMessageStatus,
     pub acked_at: i64,
+    pub status_changed: bool,
     pub message: ActorMessageRecord,
 }
 
@@ -214,6 +215,7 @@ mod tests {
                 message_id: message.message_id,
                 state: ActorMessageStatus::Delivered,
                 acked_at: 100,
+                status_changed: true,
                 message: ActorMessageRecord {
                     status: ActorMessageStatus::Delivered,
                     delivered_at: Some(100),

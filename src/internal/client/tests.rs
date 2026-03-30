@@ -563,6 +563,7 @@ async fn remote_actor_grpc_pipeline_delivers_and_acks_over_tls() {
         .await
         .expect("ack remote inbox message");
     assert_eq!(ack.state, ActorMessageStatus::Delivered);
+    assert!(ack.status_changed);
     assert!(ack.acked_at >= ack.message.created_at);
 
     let delivered_inbox = client
@@ -1076,6 +1077,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .await
         .expect("ack node-a seeded inbox message");
     assert_eq!(node_a_ack.state, ActorMessageStatus::Delivered);
+    assert!(node_a_ack.status_changed);
 
     let node_b_delivered = node_b_client
         .actor_inbox(ActorInboxRequest {

@@ -2248,8 +2248,9 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .ack_actor_message(&run.id, "reviewer", sent.message_id)
         .await
         .expect("ack message");
-    assert_eq!(delivered.status, TeamActorMessageStatus::Delivered);
-    assert!(delivered.delivered_at.is_some());
+    assert!(delivered.status_changed);
+    assert_eq!(delivered.message.status, TeamActorMessageStatus::Delivered);
+    assert!(delivered.message.delivered_at.is_some());
 
     let pending_after_ack = manager
         .list_actor_inbox(&run.id, "reviewer", 100, None, false)
@@ -2401,6 +2402,57 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .await
         .expect("check worker_status pending");
     assert!(has_worker_status_pending);
+}
+
+#[tokio::test]
+async fn actor_ack_reports_noop_when_message_is_already_delivered() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-ack-noop-team".to_string(),
+            description: Some("team for duplicate ack diagnostics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-ack-noop"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please review"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send message");
+
+    let first = manager
+        .ack_actor_message(&run.id, "reviewer", sent.message_id)
+        .await
+        .expect("first ack");
+    assert!(first.status_changed);
+    assert_eq!(first.message.status, TeamActorMessageStatus::Delivered);
+
+    let second = manager
+        .ack_actor_message(&run.id, "reviewer", sent.message_id)
+        .await
+        .expect("second ack");
+    assert!(!second.status_changed);
+    assert_eq!(second.message.status, TeamActorMessageStatus::Delivered);
 }
 
 #[tokio::test]

@@ -74,6 +74,7 @@ message AckActorMessageRequest {
 
 message AckActorMessageResponse {
   ActorMessage message = 1;
+  bool status_changed = 2;
 }
 
 message DescribeTeamContextRequest {

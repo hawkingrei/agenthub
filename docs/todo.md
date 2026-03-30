@@ -1,6 +1,7 @@
 # TODO
 
 Active backlog only. Keep this file small and current.
+- [ ] Verify `actor ack` status-change diagnostics after merge: repeated `agenthub actor ack` on the same message should keep succeeding, but the returned JSON must set `status_changed=false` after the first successful `pending -> delivered` transition. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-actor-ack-status-changed.md`.
 - [ ] Verify Bazel Codecov upload records `AGENTHUB_CODECOV_UPLOAD_TAG=bazel` on both `push` and `pull_request`, alongside the existing `flags: bazel` metadata. Record workflow run IDs in `docs/journal/2026-03-30-bazel-codecov-env-tag.md`.
 - [ ] Verify internal gRPC fail-fast startup after merge: when the configured `internal_grpc.listen` address cannot be bound, AgentHub should fail startup immediately instead of logging a misleading "internal gRPC listening" line and continuing into a partially broken runtime. Record focused notes plus push/PR CI run IDs in `docs/journal/2026-03-30-internal-grpc-fail-fast-startup.md`.
 - [ ] Verify the actor internal gRPC deadline guard after merge: `agenthub actor inbox`, `ack`, `send`, and related Team control commands should no longer hang indefinitely when the internal mailbox/control gRPC path stalls. Instead, the CLI should fail with a concrete timeout error after the configured deadline, and the process should exit cleanly without leaving long-lived stuck child processes behind. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-actor-internal-grpc-deadline.md`.

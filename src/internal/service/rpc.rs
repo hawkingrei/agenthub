@@ -259,6 +259,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 from_peer_id,
                 to_peer_id,
             }),
+            status_changed: message.status_changed,
         }))
     }
 
