@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tonic::transport::server::TcpIncoming;
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
 
 use crate::state::AppState;
@@ -31,6 +32,24 @@ pub mod proto {
             }
         }
     }
+}
+
+fn bind_internal_grpc_incoming(listen_addr: &str) -> anyhow::Result<(SocketAddr, TcpIncoming)> {
+    let addr: SocketAddr = listen_addr
+        .parse()
+        .map_err(anyhow::Error::from)
+        .map_err(|err| anyhow::anyhow!("parse internal gRPC listen addr '{listen_addr}': {err}"))?;
+    let incoming = TcpIncoming::bind(addr)
+        .map_err(anyhow::Error::from)
+        .map_err(|err| anyhow::anyhow!("bind internal gRPC listen addr '{listen_addr}': {err}"))?
+        .with_nodelay(Some(true));
+    let bound_addr = incoming
+        .local_addr()
+        .map_err(anyhow::Error::from)
+        .map_err(|err| {
+            anyhow::anyhow!("resolve internal gRPC bound addr '{listen_addr}': {err}")
+        })?;
+    Ok((bound_addr, incoming))
 }
 
 pub async fn maybe_spawn_internal_grpc(
@@ -59,11 +78,9 @@ pub async fn maybe_spawn_internal_grpc(
     });
 
     let listen_addr = config.internal_grpc_listen_addr();
-    let addr: SocketAddr = listen_addr.parse()?;
     let mut server_builder = tonic::transport::Server::builder()
         .http2_keepalive_interval(Some(Duration::from_secs(20)))
-        .http2_keepalive_timeout(Some(Duration::from_secs(10)))
-        .tcp_nodelay(true);
+        .http2_keepalive_timeout(Some(Duration::from_secs(10)));
     if let Some(material) = ensure_tls_material(&cert_dir, mode)? {
         let mut tls = ServerTlsConfig::new().identity(Identity::from_pem(
             material.server_cert_pem,
@@ -93,11 +110,69 @@ pub async fn maybe_spawn_internal_grpc(
             TeamInternalControlService::new(state, authz, mode, cert_dir, bootstrap_token),
         );
 
+    let (bound_addr, incoming) = bind_internal_grpc_incoming(&listen_addr)?;
     let handle = tokio::spawn(async move {
-        if let Err(err) = server_builder.add_service(service).serve(addr).await {
-            tracing::error!("internal gRPC server exited with error: {err}");
+        if let Err(err) = server_builder
+            .add_service(service)
+            .serve_with_incoming(incoming)
+            .await
+        {
+            tracing::error!(
+                error = %err,
+                error_debug = ?err,
+                "internal gRPC server exited with error"
+            );
         }
     });
-    tracing::info!("internal gRPC listening on {}", listen_addr);
+    tracing::info!("internal gRPC listening on {}", bound_addr);
     Ok(Some(handle))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use agenthub_config::{AppConfig, InternalGrpcConfig, InternalGrpcSecurityConfig};
+    use uuid::Uuid;
+
+    use super::maybe_spawn_internal_grpc;
+
+    fn test_internal_grpc_cert_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("agenthub-internal-grpc-{name}-{}", Uuid::new_v4()))
+    }
+
+    fn test_internal_grpc_config(listen_addr: String, cert_dir: &std::path::Path) -> AppConfig {
+        AppConfig {
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some(listen_addr),
+                security: Some(InternalGrpcSecurityConfig {
+                    mode: Some("disabled".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn maybe_spawn_internal_grpc_fails_fast_when_listen_addr_is_occupied() {
+        let occupied = std::net::TcpListener::bind("127.0.0.1:0").expect("bind occupied port");
+        let listen_addr = occupied
+            .local_addr()
+            .expect("occupied listener addr")
+            .to_string();
+        let cert_dir = test_internal_grpc_cert_dir("occupied");
+        let state = crate::api::team_tests::build_test_state().await;
+        let config = test_internal_grpc_config(listen_addr.clone(), &cert_dir);
+
+        let err = maybe_spawn_internal_grpc(state, &config)
+            .await
+            .expect_err("occupied listener should fail before startup continues");
+        let message = err.to_string();
+        assert!(message.contains("bind internal gRPC listen addr"));
+        assert!(message.contains(&listen_addr));
+    }
 }
