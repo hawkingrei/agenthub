@@ -153,6 +153,9 @@ ACP permission requests are first-class runtime records:
   with `~/...` accepted as a compatibility spelling before translation. Repo-local
   `<workdir>/.agents/skills/**/SKILL.md` remains an independent discovery path and should not be
   rewritten into the managed global namespace.
+- `agenthub-codex-acp` must keep ACP request/response I/O alive on a dedicated runtime thread so
+  ACP-backed filesystem reads can safely round-trip while tool handlers synchronously verify or
+  patch existing files.
 - Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
   stay in a separate text prefix block injected before each prompt instead of being rewritten into
   the managed `SKILL.md` files.
@@ -180,3 +183,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
 - `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`
 - `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
+- `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
