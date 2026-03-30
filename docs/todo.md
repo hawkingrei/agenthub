@@ -1,6 +1,7 @@
 # TODO
 
 Active backlog only. Keep this file small and current.
+- [ ] Verify the staged clap root CLI refactor after merge: `agenthub --help` should render root help and exit cleanly, `agenthub doctor` should route through clap-based parsing/help, `agenthub actor ...` should continue to preserve existing execution semantics through the new root parser, and unknown top-level subcommands should now fail fast instead of silently booting the server. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-clap-root-cli-refactor.md`.
 - [ ] Verify the codex-acp apply-patch deadlock fix after merge: when `agenthub-codex-acp` uses ACP-backed filesystem reads, `apply_patch` verification against an existing file should complete instead of hanging forever at the ACP tool boundary. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`.
 - [ ] Verify `actor ack` status-change diagnostics after merge: repeated `agenthub actor ack` on the same message should keep succeeding, but the returned JSON must set `status_changed=false` after the first successful `pending -> delivered` transition. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-actor-ack-status-changed.md`.
 - [ ] Verify Bazel Codecov upload records `AGENTHUB_CODECOV_UPLOAD_TAG=bazel` on both `push` and `pull_request`, alongside the existing `flags: bazel` metadata. Record workflow run IDs in `docs/journal/2026-03-30-bazel-codecov-env-tag.md`.

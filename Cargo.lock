@@ -185,6 +185,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
+ "clap",
  "futures",
  "hmac 0.13.0",
  "jwt-simple",
