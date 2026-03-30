@@ -12,6 +12,10 @@ use serde_json::{Value, json};
 use crate::agent::AgentManager;
 
 use super::TeamManager;
+use super::mailbox_hint::{
+    ActorMailboxPriorityClass, DEFAULT_TEAM_MAILBOX_IDLE_AFTER_SECS, TeamMailboxHintAgentNudger,
+    actor_mailbox_is_idle, actor_mailbox_priority_label,
+};
 
 const TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE: &str = "permission_review_request";
 const TEAM_HUMAN_PERMISSION_CARD_PAYLOAD_TYPE: &str = "permission_review_card";
@@ -33,7 +37,7 @@ impl Default for TeamPermissionReviewDispatcherSettings {
 #[derive(Clone)]
 pub struct TeamPermissionReviewDispatcher {
     teams: Arc<TeamManager>,
-    agents: Arc<AgentManager>,
+    agent_nudger: Arc<dyn TeamMailboxHintAgentNudger>,
     permissions: Arc<AcpPermissionService>,
     settings: TeamPermissionReviewDispatcherSettings,
 }
@@ -45,9 +49,18 @@ impl TeamPermissionReviewDispatcher {
         permissions: Arc<AcpPermissionService>,
         settings: TeamPermissionReviewDispatcherSettings,
     ) -> Self {
+        Self::with_agent_nudger(teams, agents, permissions, settings)
+    }
+
+    pub fn with_agent_nudger(
+        teams: Arc<TeamManager>,
+        agent_nudger: Arc<dyn TeamMailboxHintAgentNudger>,
+        permissions: Arc<AcpPermissionService>,
+        settings: TeamPermissionReviewDispatcherSettings,
+    ) -> Self {
         Self {
             teams,
-            agents,
+            agent_nudger,
             permissions,
             settings,
         }
@@ -74,8 +87,9 @@ impl TeamPermissionReviewDispatcher {
             .map(str::trim)
             .unwrap_or("");
         let team = self.teams.get_team(team_id).await?;
-        let (review_target_actor_id, dispatch_status) =
-            resolve_team_permission_review_target(&team.spec, requester_actor_id, requester_role)?;
+        let (review_target_actor_id, dispatch_status) = self
+            .resolve_review_target(&team.spec, requester_actor_id, requester_role)
+            .await?;
 
         let (task_id, conversation_id) = self
             .teams
@@ -151,10 +165,16 @@ impl TeamPermissionReviewDispatcher {
     }
 
     async fn nudge_actor(&self, actor_id: &str, run_id: &str, payload_type: &str) {
+        let priority_label =
+            actor_mailbox_priority_label(ActorMailboxPriorityClass::PermissionReview);
         let hint = format!(
-            "New mailbox message type '{payload_type}' is pending in run '{run_id}'. Use actor_inbox to inspect pending messages and batch-handle this type before ack."
+            "New {priority_label} mailbox message type '{payload_type}' is pending in run '{run_id}'. Use agenthub actor inbox --run-id \"{run_id}\" to inspect pending messages and batch-handle this type before ack."
         );
-        if let Err(err) = self.agents.send_input(actor_id, &hint, None, None).await {
+        if let Err(err) = self
+            .agent_nudger
+            .nudge_mailbox_prompt(actor_id, None, &hint)
+            .await
+        {
             tracing::debug!(
                 actor_id = %actor_id,
                 run_id = %run_id,
@@ -163,6 +183,45 @@ impl TeamPermissionReviewDispatcher {
                 err
             );
         }
+    }
+
+    async fn resolve_review_target(
+        &self,
+        spec: &Value,
+        requester_actor_id: &str,
+        requester_role: &str,
+    ) -> anyhow::Result<(String, &'static str)> {
+        let candidates =
+            collect_team_permission_review_candidates(spec, requester_actor_id, requester_role)?;
+        let now = chrono::Utc::now().timestamp();
+        for candidate in &candidates {
+            if self.actor_is_idle(candidate.actor_id.as_str(), now).await? {
+                return Ok((candidate.actor_id.clone(), candidate.idle_dispatch_status));
+            }
+        }
+        let fallback = candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("team has no non-requester reviewer configured"))?;
+        Ok((fallback.actor_id, fallback.dispatch_status))
+    }
+
+    async fn actor_is_idle(&self, actor_id: &str, now: i64) -> anyhow::Result<bool> {
+        let Some(runtime) = self.agent_nudger.running_actor_runtime(actor_id).await else {
+            return Ok(false);
+        };
+        let Some(idle_anchor_ts) = self
+            .agent_nudger
+            .mailbox_idle_anchor_ts(actor_id, runtime.session_id.as_str())
+            .await?
+        else {
+            return Ok(false);
+        };
+        Ok(actor_mailbox_is_idle(
+            now,
+            DEFAULT_TEAM_MAILBOX_IDLE_AFTER_SECS,
+            idle_anchor_ts,
+        ))
     }
 
     async fn notify_human_review_if_pending(
@@ -279,31 +338,86 @@ fn build_permission_review_payload(
     })
 }
 
-pub(crate) fn resolve_team_permission_review_target(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PermissionReviewCandidate {
+    actor_id: String,
+    dispatch_status: &'static str,
+    idle_dispatch_status: &'static str,
+}
+
+fn permission_review_candidate(
+    actor_id: impl Into<String>,
+    dispatch_status: &'static str,
+    idle_dispatch_status: &'static str,
+) -> PermissionReviewCandidate {
+    PermissionReviewCandidate {
+        actor_id: actor_id.into(),
+        dispatch_status,
+        idle_dispatch_status,
+    }
+}
+
+fn worker_permission_review_candidates(
+    spec: &Value,
+    leader_member_id: &str,
+    requester_actor_id: &str,
+) -> Vec<PermissionReviewCandidate> {
+    collect_subordinate_reviewers(spec, leader_member_id, requester_actor_id)
+        .into_iter()
+        .map(|actor_id| {
+            permission_review_candidate(actor_id, "worker_dispatched", "worker_idle_dispatched")
+        })
+        .collect()
+}
+
+fn collect_team_permission_review_candidates(
     spec: &Value,
     requester_actor_id: &str,
     requester_role: &str,
-) -> anyhow::Result<(String, &'static str)> {
+) -> anyhow::Result<Vec<PermissionReviewCandidate>> {
     let requester_role = requester_role.trim();
     let leader_member_id = team_leader_member_id(spec)
         .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
     let requester_is_leader =
         requester_actor_id == leader_member_id || requester_role.eq_ignore_ascii_case("leader");
+    let mut candidates =
+        worker_permission_review_candidates(spec, leader_member_id, requester_actor_id);
+
     if requester_is_leader {
-        let reviewer = select_subordinate_reviewer(spec, leader_member_id, requester_actor_id)
-            .ok_or_else(|| anyhow::anyhow!("team has no subordinate reviewer configured"))?;
-        return Ok((reviewer.to_string(), "worker_dispatched"));
+        if candidates.is_empty() {
+            return Err(anyhow::anyhow!(
+                "team has no subordinate reviewer configured"
+            ));
+        }
+        return Ok(candidates);
     }
-    if let Some(reviewer) = select_subordinate_reviewer(spec, leader_member_id, requester_actor_id)
-    {
-        return Ok((reviewer.to_string(), "worker_dispatched"));
-    }
+
     if leader_member_id != requester_actor_id {
-        return Ok((leader_member_id.to_string(), "leader_dispatched"));
+        candidates.push(permission_review_candidate(
+            leader_member_id,
+            "leader_dispatched",
+            "leader_idle_dispatched",
+        ));
     }
-    Err(anyhow::anyhow!(
-        "team has no non-requester reviewer configured"
-    ))
+    if candidates.is_empty() {
+        return Err(anyhow::anyhow!(
+            "team has no non-requester reviewer configured"
+        ));
+    }
+    Ok(candidates)
+}
+
+pub(crate) fn resolve_team_permission_review_target(
+    spec: &Value,
+    requester_actor_id: &str,
+    requester_role: &str,
+) -> anyhow::Result<(String, &'static str)> {
+    let candidate =
+        collect_team_permission_review_candidates(spec, requester_actor_id, requester_role)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("team has no non-requester reviewer configured"))?;
+    Ok((candidate.actor_id, candidate.dispatch_status))
 }
 
 fn team_leader_member_id(spec: &Value) -> Option<&str> {
@@ -339,13 +453,15 @@ fn team_leader_member_id(spec: &Value) -> Option<&str> {
         .or_else(|| member_ids.first().copied())
 }
 
-fn select_subordinate_reviewer<'a>(
-    spec: &'a Value,
+fn collect_subordinate_reviewers(
+    spec: &Value,
     leader_member_id: &str,
     requester_actor_id: &str,
-) -> Option<&'a str> {
-    let members = spec.get("members")?.as_array()?;
-    members
+) -> Vec<String> {
+    let Some(members) = spec.get("members").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let workers = members
         .iter()
         .filter_map(|member| {
             let member_id = member_id_from_spec(member)?;
@@ -357,24 +473,29 @@ fn select_subordinate_reviewer<'a>(
                 .map(str::to_ascii_lowercase);
             Some((member_id, role))
         })
-        .find_map(|(member_id, role)| {
+        .filter_map(|(member_id, role)| {
             if member_id == requester_actor_id || member_id == leader_member_id {
                 return None;
             }
             if role.as_deref() == Some("worker") {
-                return Some(member_id);
+                return Some(member_id.to_string());
             }
             None
         })
-        .or_else(|| {
-            members.iter().find_map(|member| {
-                let member_id = member_id_from_spec(member)?;
-                if member_id == requester_actor_id || member_id == leader_member_id {
-                    return None;
-                }
-                Some(member_id)
-            })
+        .collect::<Vec<_>>();
+    if !workers.is_empty() {
+        return workers;
+    }
+    members
+        .iter()
+        .filter_map(|member| {
+            let member_id = member_id_from_spec(member)?;
+            if member_id == requester_actor_id || member_id == leader_member_id {
+                return None;
+            }
+            Some(member_id.to_string())
         })
+        .collect()
 }
 
 fn member_id_from_spec(member: &Value) -> Option<&str> {
@@ -426,14 +547,53 @@ fn extract_tool_name(value: &Value) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     use crate::api::team_tests::build_test_state;
     use crate::team::TeamDefinitionConfig;
+    use crate::team::mailbox_hint::RunningActorRuntime;
     use agenthub_acp::AcpPermissionRoutingMetadata;
     use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService};
     use serde_json::json;
+    use tokio::sync::Mutex;
     use uuid::Uuid;
+
+    #[derive(Default)]
+    struct TestMailboxHintAgentNudger {
+        runtimes: HashMap<String, RunningActorRuntime>,
+        idle_anchor_by_actor: HashMap<String, Option<i64>>,
+        prompts: Mutex<Vec<(String, Option<String>, String)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl TeamMailboxHintAgentNudger for TestMailboxHintAgentNudger {
+        async fn running_actor_runtime(&self, actor_id: &str) -> Option<RunningActorRuntime> {
+            self.runtimes.get(actor_id).cloned()
+        }
+
+        async fn mailbox_idle_anchor_ts(
+            &self,
+            actor_id: &str,
+            _session_id: &str,
+        ) -> anyhow::Result<Option<i64>> {
+            Ok(self.idle_anchor_by_actor.get(actor_id).cloned().flatten())
+        }
+
+        async fn nudge_mailbox_prompt(
+            &self,
+            actor_id: &str,
+            expected_session_id: Option<&str>,
+            prompt: &str,
+        ) -> anyhow::Result<()> {
+            self.prompts.lock().await.push((
+                actor_id.to_string(),
+                expected_session_id.map(str::to_string),
+                prompt.to_string(),
+            ));
+            Ok(())
+        }
+    }
 
     #[test]
     fn permission_review_dispatcher_default_human_fallback_is_ten_minutes() {
@@ -503,6 +663,44 @@ mod tests {
 
         assert_eq!(reviewer, "reviewer");
         assert_eq!(dispatch_status, "worker_dispatched");
+    }
+
+    #[test]
+    fn collect_permission_review_candidates_keeps_leader_as_fallback_after_workers() {
+        let spec = json!({
+            "entrypoint":"leader",
+            "leader_member_id":"leader",
+            "members":[
+                {"member_id":"leader","role":"leader"},
+                {"member_id":"busy","role":"worker"},
+                {"member_id":"idle","role":"worker"},
+                {"member_id":"worker","role":"worker"}
+            ]
+        });
+
+        let candidates = collect_team_permission_review_candidates(&spec, "worker", "worker")
+            .expect("collect reviewer candidates");
+
+        assert_eq!(
+            candidates,
+            vec![
+                PermissionReviewCandidate {
+                    actor_id: "busy".to_string(),
+                    dispatch_status: "worker_dispatched",
+                    idle_dispatch_status: "worker_idle_dispatched",
+                },
+                PermissionReviewCandidate {
+                    actor_id: "idle".to_string(),
+                    dispatch_status: "worker_dispatched",
+                    idle_dispatch_status: "worker_idle_dispatched",
+                },
+                PermissionReviewCandidate {
+                    actor_id: "leader".to_string(),
+                    dispatch_status: "leader_dispatched",
+                    idle_dispatch_status: "leader_idle_dispatched",
+                },
+            ]
+        );
     }
 
     #[tokio::test]
@@ -712,6 +910,209 @@ mod tests {
             Some("review_timeout")
         );
         assert!(record_after_timeout.human_review_notified_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn dispatches_worker_permission_to_idle_peer_worker_before_busy_peer() {
+        let state = build_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: format!("permission-review-idle-first-{}", Uuid::new_v4()),
+                description: Some("idle-first permission review dispatch".to_string()),
+                spec: json!({
+                    "entrypoint":"leader",
+                    "leader_member_id":"leader",
+                    "members":[
+                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"busy","role":"worker"},
+                        {"member_id":"idle","role":"worker"},
+                        {"member_id":"worker","role":"worker"}
+                    ]
+                }),
+            })
+            .await
+            .expect("create team");
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
+            "#,
+        )
+        .bind("worker-agent")
+        .bind("worker-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker agent");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("worker-session")
+        .bind("worker-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert worker session");
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id,
+                agent_id,
+                session_id,
+                acp_session_id,
+                team_id,
+                requester_actor_id,
+                requester_role,
+                tool_call_id,
+                options_json,
+                tool_call_json,
+                status,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
+            "#,
+        )
+        .bind("perm-review-idle-first")
+        .bind("worker-agent")
+        .bind("worker-session")
+        .bind("acp-session-idle-first")
+        .bind(&team.id)
+        .bind("worker")
+        .bind("worker")
+        .bind("tool-call-idle-first")
+        .bind(
+            json!([
+                {
+                    "option_id": "allow",
+                    "name": "Allow once",
+                    "kind": "allow_once"
+                }
+            ])
+            .to_string(),
+        )
+        .bind(json!({"tool":{"name":"mcp__fs__read"}}).to_string())
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert permission request");
+
+        let nudger = Arc::new(TestMailboxHintAgentNudger {
+            runtimes: HashMap::from([
+                (
+                    "busy".to_string(),
+                    RunningActorRuntime {
+                        session_id: "session-busy".to_string(),
+                        current_run_id: Some("run-busy".to_string()),
+                    },
+                ),
+                (
+                    "idle".to_string(),
+                    RunningActorRuntime {
+                        session_id: "session-idle".to_string(),
+                        current_run_id: Some("run-idle".to_string()),
+                    },
+                ),
+            ]),
+            idle_anchor_by_actor: HashMap::from([
+                ("busy".to_string(), Some(now - 10)),
+                ("idle".to_string(), Some(now - 600)),
+            ]),
+            prompts: Mutex::new(Vec::new()),
+        });
+        let dispatcher = TeamPermissionReviewDispatcher::with_agent_nudger(
+            state.teams.clone(),
+            nudger.clone(),
+            Arc::new(AcpPermissionService::new(state.db.clone())),
+            TeamPermissionReviewDispatcherSettings {
+                human_fallback_delay: Duration::from_millis(10),
+            },
+        );
+        let request = AcpPermissionReviewRequest {
+            request_id: "perm-review-idle-first".to_string(),
+            agent_id: "worker-agent".to_string(),
+            agent_session_id: "worker-session".to_string(),
+            acp_session_id: "acp-session-idle-first".to_string(),
+            tool_call_id: Some("tool-call-idle-first".to_string()),
+            options: vec![agenthub_acp::AcpPermissionOption {
+                option_id: "allow".to_string(),
+                name: "Allow once".to_string(),
+                kind: agent_client_protocol::PermissionOptionKind::AllowOnce,
+            }],
+            tool_call: Some(json!({"tool":{"name":"mcp__fs__read"}})),
+            current_run_id: None,
+            routing: AcpPermissionRoutingMetadata {
+                team_id: Some(team.id.clone()),
+                requester_actor_id: Some("worker".to_string()),
+                requester_role: Some("worker".to_string()),
+            },
+        };
+
+        dispatcher
+            .dispatch_review(request)
+            .await
+            .expect("dispatch permission review");
+
+        let record = state
+            .acp_permissions
+            .get("perm-review-idle-first")
+            .await
+            .expect("load permission record")
+            .expect("permission record");
+        assert_eq!(record.review_target_actor_id.as_deref(), Some("idle"));
+        assert_eq!(
+            record.review_dispatch_status.as_deref(),
+            Some("worker_idle_dispatched")
+        );
+        let run_id = record
+            .review_delivery_run_id
+            .as_deref()
+            .expect("review run id")
+            .to_string();
+
+        let idle_inbox = state
+            .teams
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id: run_id.clone(),
+                actor_id: "idle".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("load idle reviewer inbox");
+        assert_eq!(idle_inbox.messages.len(), 1);
+
+        let busy_inbox = state
+            .teams
+            .actor_mailbox_service()
+            .actor_inbox(ActorInboxRequest {
+                run_id,
+                actor_id: "busy".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: None,
+            })
+            .await
+            .expect("load busy reviewer inbox");
+        assert!(busy_inbox.messages.is_empty());
+
+        let prompts = nudger.prompts.lock().await;
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0].0, "idle");
+        assert!(prompts[0].2.contains(TEAM_PERMISSION_REVIEW_PAYLOAD_TYPE));
     }
 
     #[tokio::test]
