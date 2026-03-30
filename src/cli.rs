@@ -22,7 +22,7 @@ enum AgentHubSubcommand {
     Doctor(PassthroughArgs),
     Actor(PassthroughArgs),
     #[command(name = "actor-mcp", hide = true)]
-    ActorMcp,
+    ActorMcp(PassthroughArgs),
 }
 
 #[derive(Debug, Default, Args)]
@@ -46,7 +46,7 @@ where
         None => RootCliCommand::Serve,
         Some(AgentHubSubcommand::Doctor(args)) => RootCliCommand::Doctor { args: args.args },
         Some(AgentHubSubcommand::Actor(args)) => RootCliCommand::Actor { args: args.args },
-        Some(AgentHubSubcommand::ActorMcp) => RootCliCommand::LegacyActorMcp,
+        Some(AgentHubSubcommand::ActorMcp(_)) => RootCliCommand::LegacyActorMcp,
     })
 }
 
@@ -103,6 +103,13 @@ mod tests {
     #[test]
     fn parse_root_maps_legacy_actor_mcp_command() {
         let parsed = parse_root_cli_from(["agenthub", "actor-mcp"]).expect("parse actor-mcp");
+        assert_eq!(parsed, RootCliCommand::LegacyActorMcp);
+    }
+
+    #[test]
+    fn parse_root_keeps_legacy_actor_mcp_help_on_removed_path() {
+        let parsed =
+            parse_root_cli_from(["agenthub", "actor-mcp", "--help"]).expect("parse actor-mcp");
         assert_eq!(parsed, RootCliCommand::LegacyActorMcp);
     }
 

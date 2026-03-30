@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use agenthub_managed_skills::install_managed_skills;
+use anyhow::Context;
 use clap::{CommandFactory, Parser, error::ErrorKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,13 +19,13 @@ enum DoctorCommand {
 )]
 struct DoctorCli;
 
-fn render_doctor_help() -> String {
+fn render_doctor_help_result() -> anyhow::Result<String> {
     let mut command = DoctorCli::command();
     let mut buffer = Vec::new();
     command
         .write_long_help(&mut buffer)
-        .expect("render doctor help");
-    String::from_utf8(buffer).expect("doctor help should be utf8")
+        .context("render doctor help")?;
+    String::from_utf8(buffer).context("doctor help output should be valid utf8")
 }
 
 fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
@@ -56,7 +57,7 @@ fn render_install_report(installed: &[PathBuf]) -> String {
 fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
     match command {
         DoctorCommand::Help => {
-            print!("{}", render_doctor_help());
+            print!("{}", render_doctor_help_result()?);
         }
         DoctorCommand::Run => {
             let installed = install_managed_skills(None)?;
@@ -73,7 +74,9 @@ pub async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DoctorCommand, parse_doctor_args, render_doctor_help, render_install_report};
+    use super::{
+        DoctorCommand, parse_doctor_args, render_doctor_help_result, render_install_report,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -114,6 +117,7 @@ mod tests {
 
     #[test]
     fn doctor_help_mentions_managed_skills() {
-        assert!(render_doctor_help().contains("managed AgentHub runtime skills"));
+        let help = render_doctor_help_result().expect("render doctor help");
+        assert!(help.contains("managed AgentHub runtime skills"));
     }
 }
