@@ -268,7 +268,7 @@ async fn spawn_mtls_internal_grpc_server(
     cert_dir: PathBuf,
 ) -> StartedInternalGrpcServer {
     let server = TeamInternalControlServer::new(TeamInternalControlService::new(
-        state,
+        crate::internal::team_internal_control_deps(&state),
         authz,
         InternalGrpcSecurityMode::Mtls,
         cert_dir.clone(),

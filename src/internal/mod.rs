@@ -14,7 +14,7 @@ use crate::state::AppState;
 use agenthub_config::AppConfig;
 
 use self::auth::{InternalAuthz, InternalAuthzConfig};
-use self::service::TeamInternalControlService;
+use self::service::{TeamInternalControlDeps, TeamInternalControlService};
 use self::tls::{
     InternalGrpcSecurityMode, ensure_bootstrap_token, ensure_shared_secret, ensure_tls_material,
     install_rustls_crypto_provider,
@@ -31,6 +31,15 @@ pub mod proto {
             }
         }
     }
+}
+
+pub(crate) fn team_internal_control_deps(state: &AppState) -> TeamInternalControlDeps {
+    TeamInternalControlDeps::new(
+        state.db.clone(),
+        state.agents.clone(),
+        state.teams.clone(),
+        state.acp_permissions.clone(),
+    )
 }
 
 pub async fn maybe_spawn_internal_grpc(
@@ -88,9 +97,10 @@ pub async fn maybe_spawn_internal_grpc(
         tracing::warn!("internal gRPC security mode: disabled (dev/testing only)");
     }
 
+    let deps = team_internal_control_deps(&state);
     let service =
         proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControlServer::new(
-            TeamInternalControlService::new(state, authz, mode, cert_dir, bootstrap_token),
+            TeamInternalControlService::new(deps, authz, mode, cert_dir, bootstrap_token),
         );
 
     let handle = tokio::spawn(async move {

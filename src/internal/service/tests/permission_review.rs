@@ -7,7 +7,7 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -452,7 +452,7 @@ async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fie
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),

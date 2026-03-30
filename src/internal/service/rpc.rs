@@ -36,7 +36,7 @@ impl TeamInternalControl for TeamInternalControlService {
         }
 
         let message = self
-            .state
+            .deps
             .teams
             .actor_mailbox_service()
             .actor_send(ActorSendRequest {
@@ -58,7 +58,7 @@ impl TeamInternalControl for TeamInternalControlService {
         if let (Some(replica), Some(source_node_id)) =
             (channel_replica, principal.source_node_id.as_deref())
         {
-            self.state
+            self.deps
                 .teams
                 .append_channel_replica_message(
                     replica.authority_message_id,
@@ -77,7 +77,7 @@ impl TeamInternalControl for TeamInternalControlService {
 
         match tokio::time::timeout(
             MAILBOX_HINT_NOTIFY_TIMEOUT,
-            maybe_notify_actor_new_mailbox_message_type(&self.state, run_id, &message),
+            maybe_notify_actor_new_mailbox_message_type(&self.deps, run_id, &message),
         )
         .await
         {
@@ -142,7 +142,7 @@ impl TeamInternalControl for TeamInternalControlService {
             None
         };
         let response = self
-            .state
+            .deps
             .teams
             .actor_mailbox_service()
             .actor_inbox(ActorInboxRequest {
@@ -208,7 +208,7 @@ impl TeamInternalControl for TeamInternalControlService {
             return Err(Status::invalid_argument("message_id must be positive"));
         }
         let message = self
-            .state
+            .deps
             .teams
             .actor_mailbox_service()
             .actor_ack(ActorAckRequest {
@@ -288,8 +288,8 @@ impl TeamInternalControl for TeamInternalControlService {
         }
 
         let context = load_team_context_for_actor(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             team_id,
             run_id,
             actor_id,
@@ -314,8 +314,8 @@ impl TeamInternalControl for TeamInternalControlService {
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
 
         let resolved = resolve_actor_run_scope(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             actor_id,
             optional_trimmed(&payload.team_id),
         )
@@ -340,8 +340,8 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),
             actor_id,
@@ -360,7 +360,7 @@ impl TeamInternalControl for TeamInternalControlService {
             include_shared_thread: payload.include_shared_thread,
         };
         let tasks = self
-            .state
+            .deps
             .teams
             .list_tasks_with_query(query)
             .await
@@ -384,7 +384,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let _team = ensure_leader_team_access(&self.state.teams, team_id, actor_id).await?;
+        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
 
         let title = required_field(&payload.title, "title")?;
         let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
@@ -392,7 +392,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let context = parse_json_required(&payload.context_json, "context_json")?;
 
         let (task, conversation) = self
-            .state
+            .deps
             .teams
             .create_task(team_id, title, actor_id, context, "group_chat", topic)
             .await
@@ -400,7 +400,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let task = if status == TeamTaskStatus::Open {
             task
         } else {
-            self.state
+            self.deps
                 .teams
                 .update_task_status(&task.id, status)
                 .await
@@ -428,18 +428,18 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             optional_trimmed(&payload.team_id),
             None,
             actor_id,
         )
         .await?;
-        let team = ensure_leader_team_access(&self.state.teams, &context.team_id, actor_id).await?;
+        let team = ensure_leader_team_access(&self.deps.teams, &context.team_id, actor_id).await?;
 
         let task_id = required_field(&payload.task_id, "task_id")?;
         let existing = self
-            .state
+            .deps
             .teams
             .get_task(task_id)
             .await
@@ -496,7 +496,7 @@ impl TeamInternalControl for TeamInternalControlService {
             ));
         }
         let task = self
-            .state
+            .deps
             .teams
             .update_task_with_context(task_id, status, assignment, context_patch)
             .await
@@ -519,8 +519,8 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),
             actor_id,
@@ -528,7 +528,7 @@ impl TeamInternalControl for TeamInternalControlService {
         .await?;
         let task_id = required_field(&payload.task_id, "task_id")?;
         let detail = self
-            .state
+            .deps
             .teams
             .get_task_detail(
                 task_id,
@@ -561,8 +561,8 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let context = load_team_context_for_actor(
-            &self.state.agents,
-            &self.state.teams,
+            &self.deps.agents,
+            &self.deps.teams,
             optional_trimmed(&payload.team_id),
             optional_trimmed(&payload.run_id),
             actor_id,
@@ -570,7 +570,7 @@ impl TeamInternalControl for TeamInternalControlService {
         .await?;
         let task_id = required_field(&payload.task_id, "task_id")?;
         let task = self
-            .state
+            .deps
             .teams
             .get_task(task_id)
             .await
@@ -583,7 +583,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let kind = parse_team_task_note_kind(required_field(&payload.kind, "kind")?)?;
         let text = required_field(&payload.text, "text")?;
         let message = self
-            .state
+            .deps
             .teams
             .append_task_conversation_message(
                 task_id,
@@ -618,12 +618,12 @@ impl TeamInternalControl for TeamInternalControlService {
         if payload.fire_at <= chrono::Utc::now().timestamp() {
             return Err(Status::invalid_argument("fire_at must be in the future"));
         }
-        self.state
+        self.deps
             .agents
             .get_agent(actor_id)
             .await
             .map_err(map_agent_lookup_error)?;
-        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let manager = AgentTimeTriggerManager::new(self.deps.db.clone());
         let trigger = manager
             .create_time_trigger(AgentTimeTriggerCreateInput {
                 agent_id: actor_id.to_string(),
@@ -650,7 +650,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let manager = AgentTimeTriggerManager::new(self.deps.db.clone());
         let triggers = manager
             .list_triggers_for_agent(actor_id, payload.limit)
             .await
@@ -673,7 +673,7 @@ impl TeamInternalControl for TeamInternalControlService {
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
         let trigger_id = required_field(&payload.trigger_id, "trigger_id")?;
-        let manager = AgentTimeTriggerManager::new(self.state.db.clone());
+        let manager = AgentTimeTriggerManager::new(self.deps.db.clone());
         let canceled = manager
             .cancel_trigger(actor_id, trigger_id)
             .await
@@ -706,7 +706,7 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let permission_id = required_field(&payload.permission_id, "permission_id")?;
         let Some(record) = self
-            .state
+            .deps
             .acp_permissions
             .get(permission_id)
             .await
@@ -720,7 +720,7 @@ impl TeamInternalControl for TeamInternalControlService {
             ));
         }
         if !self
-            .state
+            .deps
             .teams
             .team_has_member(team_id, actor_id)
             .await
@@ -744,7 +744,7 @@ impl TeamInternalControl for TeamInternalControlService {
             ));
         }
         let team = self
-            .state
+            .deps
             .teams
             .get_team(team_id)
             .await
@@ -801,7 +801,7 @@ impl TeamInternalControl for TeamInternalControlService {
         };
 
         let respond_result = self
-            .state
+            .deps
             .acp_permissions
             .respond(
                 permission_id,
@@ -812,7 +812,7 @@ impl TeamInternalControl for TeamInternalControlService {
             .await
             .map_err(map_manager_error)?;
         let permission = self
-            .state
+            .deps
             .acp_permissions
             .get(permission_id)
             .await
@@ -872,13 +872,13 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let step = match action {
             "start" => {
-                self.state
+                self.deps
                     .teams
                     .start_step(step_id, optional_trimmed(&payload.remote_task_id))
                     .await
             }
             "complete" => {
-                self.state
+                self.deps
                     .teams
                     .complete_step(
                         step_id,
@@ -891,10 +891,10 @@ impl TeamInternalControl for TeamInternalControlService {
             }
             "fail" => {
                 let err_text = required_field(&payload.error_text, "error_text")?;
-                self.state.teams.fail_step(step_id, err_text).await
+                self.deps.teams.fail_step(step_id, err_text).await
             }
             "input_required" => {
-                self.state
+                self.deps
                     .teams
                     .set_step_input_required(
                         step_id,
@@ -907,7 +907,7 @@ impl TeamInternalControl for TeamInternalControlService {
                     .await
             }
             "resume" => {
-                self.state
+                self.deps
                     .teams
                     .resume_step(
                         step_id,
@@ -1037,7 +1037,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let config = parse_json_as::<AgentConfig>(&payload.config_json, "config_json")?;
         let source = optional_trimmed(&payload.source).unwrap_or("manual");
         let agent = self
-            .state
+            .deps
             .agents
             .ensure_remote_managed_agent(agent_id, config, source)
             .await
@@ -1059,7 +1059,7 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let agent_id = required_field(&payload.agent_id, "agent_id")?;
         let agent = self
-            .state
+            .deps
             .agents
             .get_agent(agent_id)
             .await
@@ -1084,7 +1084,7 @@ impl TeamInternalControl for TeamInternalControlService {
             .map(|raw| parse_json_str_as::<AcpActorSkillContext>(raw, "actor_context_json"))
             .transpose()?;
         let session_id = self
-            .state
+            .deps
             .agents
             .start_agent_with_actor_context(agent_id, actor_context)
             .await
@@ -1102,7 +1102,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let payload = request.into_inner();
 
         let agent_id = required_field(&payload.agent_id, "agent_id")?;
-        self.state
+        self.deps
             .agents
             .stop_agent(agent_id)
             .await
@@ -1120,8 +1120,8 @@ impl TeamInternalControl for TeamInternalControlService {
         let payload = request.into_inner();
 
         let agent_id = required_field(&payload.agent_id, "agent_id")?;
-        let _ = self.state.agents.stop_agent(agent_id).await;
-        self.state
+        let _ = self.deps.agents.stop_agent(agent_id).await;
+        self.deps
             .agents
             .delete_agent(agent_id)
             .await
@@ -1140,7 +1140,7 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let agent_id = required_field(&payload.agent_id, "agent_id")?;
         let input = required_field(&payload.input, "input")?;
-        self.state
+        self.deps
             .agents
             .send_input(
                 agent_id,
@@ -1167,12 +1167,12 @@ impl TeamInternalControl for TeamInternalControlService {
         let before_event_id = (payload.before_event_id > 0).then_some(payload.before_event_id);
         let session_id = optional_trimmed(&payload.session_id);
         let events = if let Some(session_id) = session_id {
-            self.state
+            self.deps
                 .agents
                 .list_events_for_session(agent_id, session_id, limit, before_event_id)
                 .await
         } else {
-            self.state
+            self.deps
                 .agents
                 .list_events(agent_id, limit, before_event_id)
                 .await

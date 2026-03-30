@@ -27,7 +27,7 @@ async fn internal_grpc_time_trigger_rejects_past_fire_at() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -84,7 +84,7 @@ async fn internal_grpc_time_trigger_rejects_unknown_agent() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some(&missing_actor_id), None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -115,7 +115,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -254,7 +254,7 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -331,7 +331,7 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -383,7 +383,7 @@ async fn ack_actor_message_rejects_non_positive_message_id() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, None, None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
