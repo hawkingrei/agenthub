@@ -28,6 +28,7 @@ use super::super::proto::agenthub::internal::v1::{
 use super::{
     InternalActorRunScopeResolution, InternalGrpcMailboxClient, InternalPermissionReviewResponse,
     InternalTeamTaskPatch, map_grpc_status_anyhow, parse_agent_events, parse_json_response,
+    timeout_internal_grpc_call,
 };
 
 impl InternalGrpcMailboxClient {
@@ -38,28 +39,30 @@ impl InternalGrpcMailboxClient {
         source: &str,
     ) -> anyhow::Result<AgentRecord> {
         let mut client = self.client();
-        let response = client
-            .ensure_agent_record(self.control_request(GrpcEnsureAgentRecordRequest {
+        let response = timeout_internal_grpc_call(client.ensure_agent_record(
+            self.control_request(GrpcEnsureAgentRecordRequest {
                 agent_id: agent_id.trim().to_string(),
                 config_json: serde_json::to_string(config)?,
                 source: source.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         Ok(serde_json::from_str(&response.agent_json)?)
     }
 
     #[allow(dead_code)]
     pub async fn get_agent_record(&self, agent_id: &str) -> anyhow::Result<AgentRecord> {
         let mut client = self.client();
-        let response = client
-            .get_agent_record(self.control_request(GrpcGetAgentRecordRequest {
+        let response = timeout_internal_grpc_call(client.get_agent_record(self.control_request(
+            GrpcGetAgentRecordRequest {
                 agent_id: agent_id.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         Ok(serde_json::from_str(&response.agent_json)?)
     }
 
@@ -69,8 +72,8 @@ impl InternalGrpcMailboxClient {
         actor_context: Option<&AcpActorSkillContext>,
     ) -> anyhow::Result<String> {
         let mut client = self.client();
-        let response = client
-            .start_managed_agent(
+        let response = timeout_internal_grpc_call(
+            client.start_managed_agent(
                 self.control_request(GrpcStartManagedAgentRequest {
                     agent_id: agent_id.trim().to_string(),
                     actor_context_json: actor_context
@@ -78,32 +81,35 @@ impl InternalGrpcMailboxClient {
                         .transpose()?
                         .unwrap_or_default(),
                 })?,
-            )
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            ),
+        )
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         Ok(response.session_id)
     }
 
     pub async fn stop_managed_agent(&self, agent_id: &str) -> anyhow::Result<()> {
         let mut client = self.client();
-        client
-            .stop_managed_agent(self.control_request(GrpcStopManagedAgentRequest {
+        timeout_internal_grpc_call(client.stop_managed_agent(self.control_request(
+            GrpcStopManagedAgentRequest {
                 agent_id: agent_id.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?;
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?;
         Ok(())
     }
 
     pub async fn delete_managed_agent(&self, agent_id: &str) -> anyhow::Result<()> {
         let mut client = self.client();
-        client
-            .delete_managed_agent(self.control_request(GrpcDeleteManagedAgentRequest {
+        timeout_internal_grpc_call(client.delete_managed_agent(self.control_request(
+            GrpcDeleteManagedAgentRequest {
                 agent_id: agent_id.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?;
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?;
         Ok(())
     }
 
@@ -115,15 +121,16 @@ impl InternalGrpcMailboxClient {
         session_id: Option<&str>,
     ) -> anyhow::Result<()> {
         let mut client = self.client();
-        client
-            .send_agent_input(self.control_request(GrpcSendAgentInputRequest {
+        timeout_internal_grpc_call(client.send_agent_input(self.control_request(
+            GrpcSendAgentInputRequest {
                 agent_id: agent_id.trim().to_string(),
                 input: input.to_string(),
                 message_id: message_id.unwrap_or_default().to_string(),
                 session_id: session_id.unwrap_or_default().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?;
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?;
         Ok(())
     }
 
@@ -136,8 +143,8 @@ impl InternalGrpcMailboxClient {
         outcome: Option<&str>,
     ) -> anyhow::Result<InternalPermissionReviewResponse> {
         let mut client = self.client();
-        let response: GrpcRespondPermissionReviewResponse = client
-            .respond_permission_review(self.control_request(
+        let response: GrpcRespondPermissionReviewResponse =
+            timeout_internal_grpc_call(client.respond_permission_review(self.control_request(
                 GrpcRespondPermissionReviewRequest {
                     team_id: team_id.trim().to_string(),
                     actor_id: actor_id.trim().to_string(),
@@ -145,7 +152,7 @@ impl InternalGrpcMailboxClient {
                     option_id: option_id.unwrap_or_default().trim().to_string(),
                     outcome: outcome.unwrap_or_default().trim().to_string(),
                 },
-            )?)
+            )?))
             .await
             .map_err(map_grpc_status_anyhow)?
             .into_inner();
@@ -164,15 +171,16 @@ impl InternalGrpcMailboxClient {
         actor_id: &str,
     ) -> anyhow::Result<TeamContextRecord> {
         let mut client = self.client();
-        let response = client
-            .describe_team_context(self.control_request(GrpcDescribeTeamContextRequest {
+        let response = timeout_internal_grpc_call(client.describe_team_context(
+            self.control_request(GrpcDescribeTeamContextRequest {
                 team_id: team_id.unwrap_or_default().trim().to_string(),
                 run_id: run_id.unwrap_or_default().trim().to_string(),
                 actor_id: actor_id.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.context_json, "context_json")
     }
 
@@ -182,14 +190,15 @@ impl InternalGrpcMailboxClient {
         team_id: Option<&str>,
     ) -> anyhow::Result<InternalActorRunScopeResolution> {
         let mut client = self.client();
-        let response = client
-            .resolve_actor_run_scope(self.control_request(GrpcResolveActorRunScopeRequest {
+        let response = timeout_internal_grpc_call(client.resolve_actor_run_scope(
+            self.control_request(GrpcResolveActorRunScopeRequest {
                 actor_id: actor_id.trim().to_string(),
                 team_id: team_id.unwrap_or_default().trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         Ok(InternalActorRunScopeResolution {
             run_id: response.run_id,
             team_id: (!response.team_id.trim().is_empty()).then_some(response.team_id),
@@ -203,8 +212,8 @@ impl InternalGrpcMailboxClient {
         query: &TeamTaskListQuery,
     ) -> anyhow::Result<Vec<TeamTaskRecord>> {
         let mut client = self.client();
-        let response = client
-            .list_team_tasks(
+        let response = timeout_internal_grpc_call(
+            client.list_team_tasks(
                 self.control_request(GrpcListTeamTasksRequest {
                     team_id: query
                         .team_id
@@ -246,10 +255,11 @@ impl InternalGrpcMailboxClient {
                         .trim()
                         .to_string(),
                 })?,
-            )
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            ),
+        )
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.tasks_json, "tasks_json")
     }
 
@@ -263,18 +273,19 @@ impl InternalGrpcMailboxClient {
         context: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         let mut client = self.client();
-        let response = client
-            .create_team_task(self.control_request(GrpcCreateTeamTaskRequest {
+        let response = timeout_internal_grpc_call(client.create_team_task(self.control_request(
+            GrpcCreateTeamTaskRequest {
                 team_id: team_id.trim().to_string(),
                 actor_id: actor_id.trim().to_string(),
                 title: title.to_string(),
                 status: status.trim().to_string(),
                 topic: topic.unwrap_or_default().trim().to_string(),
                 context_json: serde_json::to_string(context)?,
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.output_json, "output_json")
     }
 
@@ -286,8 +297,8 @@ impl InternalGrpcMailboxClient {
         patch: InternalTeamTaskPatch<'_>,
     ) -> anyhow::Result<TeamTaskRecord> {
         let mut client = self.client();
-        let response = client
-            .update_team_task(
+        let response = timeout_internal_grpc_call(
+            client.update_team_task(
                 self.control_request(GrpcUpdateTeamTaskRequest {
                     team_id: team_id.trim().to_string(),
                     actor_id: actor_id.trim().to_string(),
@@ -309,10 +320,11 @@ impl InternalGrpcMailboxClient {
                         .map(serde_json::to_string)
                         .transpose()?,
                 })?,
-            )
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            ),
+        )
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.task_json, "task_json")
     }
 
@@ -325,17 +337,18 @@ impl InternalGrpcMailboxClient {
         message_limit: i64,
     ) -> anyhow::Result<TeamTaskDetailRecord> {
         let mut client = self.client();
-        let response = client
-            .get_team_task(self.control_request(GrpcGetTeamTaskRequest {
+        let response = timeout_internal_grpc_call(client.get_team_task(self.control_request(
+            GrpcGetTeamTaskRequest {
                 team_id: team_id.unwrap_or_default().trim().to_string(),
                 run_id: run_id.unwrap_or_default().trim().to_string(),
                 actor_id: actor_id.trim().to_string(),
                 task_id: task_id.trim().to_string(),
                 message_limit,
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.detail_json, "detail_json")
     }
 
@@ -349,18 +362,19 @@ impl InternalGrpcMailboxClient {
         text: &str,
     ) -> anyhow::Result<crate::team::TeamConversationMessageRecord> {
         let mut client = self.client();
-        let response = client
-            .append_team_task_note(self.control_request(GrpcAppendTeamTaskNoteRequest {
+        let response = timeout_internal_grpc_call(client.append_team_task_note(
+            self.control_request(GrpcAppendTeamTaskNoteRequest {
                 team_id: team_id.unwrap_or_default().trim().to_string(),
                 run_id: run_id.unwrap_or_default().trim().to_string(),
                 actor_id: actor_id.trim().to_string(),
                 task_id: task_id.trim().to_string(),
                 kind: kind.trim().to_string(),
                 text: text.to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.message_json, "message_json")
     }
 
@@ -371,15 +385,16 @@ impl InternalGrpcMailboxClient {
         fire_at: i64,
     ) -> anyhow::Result<AgentTimeTriggerRecord> {
         let mut client = self.client();
-        let response = client
-            .create_time_trigger(self.control_request(GrpcCreateTimeTriggerRequest {
+        let response = timeout_internal_grpc_call(client.create_time_trigger(
+            self.control_request(GrpcCreateTimeTriggerRequest {
                 actor_id: actor_id.trim().to_string(),
                 message_text: message_text.to_string(),
                 fire_at,
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.trigger_json, "trigger_json")
     }
 
@@ -389,14 +404,15 @@ impl InternalGrpcMailboxClient {
         limit: i64,
     ) -> anyhow::Result<Vec<AgentTimeTriggerRecord>> {
         let mut client = self.client();
-        let response = client
-            .list_time_triggers(self.control_request(GrpcListTimeTriggersRequest {
+        let response = timeout_internal_grpc_call(client.list_time_triggers(
+            self.control_request(GrpcListTimeTriggersRequest {
                 actor_id: actor_id.trim().to_string(),
                 limit,
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.triggers_json, "triggers_json")
     }
 
@@ -406,14 +422,15 @@ impl InternalGrpcMailboxClient {
         trigger_id: &str,
     ) -> anyhow::Result<serde_json::Value> {
         let mut client = self.client();
-        let response = client
-            .cancel_time_trigger(self.control_request(GrpcCancelTimeTriggerRequest {
+        let response = timeout_internal_grpc_call(client.cancel_time_trigger(
+            self.control_request(GrpcCancelTimeTriggerRequest {
                 actor_id: actor_id.trim().to_string(),
                 trigger_id: trigger_id.trim().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_json_response(&response.output_json, "output_json")
     }
 
@@ -425,16 +442,17 @@ impl InternalGrpcMailboxClient {
         before_event_id: Option<i64>,
     ) -> anyhow::Result<Vec<AgentEvent>> {
         let mut client = self.client();
-        let response = client
-            .list_agent_events(self.control_request(GrpcListAgentEventsRequest {
+        let response = timeout_internal_grpc_call(client.list_agent_events(self.control_request(
+            GrpcListAgentEventsRequest {
                 agent_id: agent_id.trim().to_string(),
                 limit,
                 before_event_id: before_event_id.unwrap_or_default(),
                 session_id: session_id.unwrap_or_default().to_string(),
-            })?)
-            .await
-            .map_err(map_grpc_status_anyhow)?
-            .into_inner();
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
         parse_agent_events(response)
     }
 }
