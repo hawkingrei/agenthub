@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use agenthub_managed_skills::install_managed_skills;
+use clap::{CommandFactory, Parser, error::ErrorKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DoctorCommand {
@@ -8,27 +9,34 @@ enum DoctorCommand {
     Help,
 }
 
-fn is_help_flag(arg: &str) -> bool {
-    matches!(arg.trim(), "--help" | "-h")
-}
+#[derive(Debug, Parser)]
+#[command(
+    name = "doctor",
+    bin_name = "agenthub doctor",
+    about = "Materialize managed AgentHub runtime skills under ~/.agents/skills/agenthub-runtime and exit.",
+    disable_help_subcommand = true
+)]
+struct DoctorCli;
 
-fn doctor_usage() -> &'static str {
-    "Usage:\n  agenthub doctor\n  agenthub doctor --help\n\nBehavior:\n  Materialize managed AgentHub runtime skills under ~/.agents/skills/agenthub-runtime and exit.\n"
+fn render_doctor_help() -> String {
+    let mut command = DoctorCli::command();
+    let mut buffer = Vec::new();
+    command
+        .write_long_help(&mut buffer)
+        .expect("render doctor help");
+    String::from_utf8(buffer).expect("doctor help should be utf8")
 }
 
 fn parse_doctor_args(args: &[String]) -> anyhow::Result<DoctorCommand> {
-    match args {
-        [] => Ok(DoctorCommand::Run),
-        [arg] if is_help_flag(arg) || arg.trim() == "help" => Ok(DoctorCommand::Help),
-        [arg] => Err(anyhow::anyhow!(
-            "unknown flag for doctor: {}\n{}",
-            arg,
-            doctor_usage()
-        )),
-        _ => Err(anyhow::anyhow!(
-            "doctor does not accept positional arguments\n{}",
-            doctor_usage()
-        )),
+    if matches!(args, [arg] if arg.trim() == "help") {
+        return Ok(DoctorCommand::Help);
+    }
+
+    let argv = std::iter::once("doctor".to_string()).chain(args.iter().cloned());
+    match DoctorCli::try_parse_from(argv) {
+        Ok(_) => Ok(DoctorCommand::Run),
+        Err(err) if err.kind() == ErrorKind::DisplayHelp => Ok(DoctorCommand::Help),
+        Err(err) => Err(err.into()),
     }
 }
 
@@ -48,7 +56,7 @@ fn render_install_report(installed: &[PathBuf]) -> String {
 fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
     match command {
         DoctorCommand::Help => {
-            println!("{}", doctor_usage());
+            print!("{}", render_doctor_help());
         }
         DoctorCommand::Run => {
             let installed = install_managed_skills(None)?;
@@ -58,21 +66,14 @@ fn run_doctor_command(command: DoctorCommand) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.first().map(String::as_str) != Some("doctor") {
-        return None;
-    }
-
-    Some(match parse_doctor_args(&args[1..]) {
-        Ok(command) => run_doctor_command(command),
-        Err(err) => Err(err),
-    })
+pub async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
+    let command = parse_doctor_args(args)?;
+    run_doctor_command(command)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DoctorCommand, doctor_usage, parse_doctor_args, render_install_report};
+    use super::{DoctorCommand, parse_doctor_args, render_doctor_help, render_install_report};
     use std::path::PathBuf;
 
     #[test]
@@ -90,7 +91,7 @@ mod tests {
     #[test]
     fn parse_doctor_rejects_unknown_flag() {
         let err = parse_doctor_args(&["--verbose".to_string()]).expect_err("reject unknown flag");
-        assert!(err.to_string().contains("unknown flag for doctor"));
+        assert!(err.to_string().contains("unexpected argument '--verbose'"));
         assert!(err.to_string().contains("agenthub doctor"));
     }
 
@@ -112,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn doctor_usage_mentions_managed_skills() {
-        assert!(doctor_usage().contains("managed AgentHub runtime skills"));
+    fn doctor_help_mentions_managed_skills() {
+        assert!(render_doctor_help().contains("managed AgentHub runtime skills"));
     }
 }

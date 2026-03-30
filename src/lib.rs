@@ -9,6 +9,7 @@ mod agenthub_binary;
 mod api;
 mod app;
 mod auth;
+mod cli;
 mod cli_error;
 mod doctor_cli;
 pub use agenthub_config as config;

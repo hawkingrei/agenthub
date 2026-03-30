@@ -16,6 +16,10 @@ pub fn write_cli_error<W: Write>(mut writer: W, err: &anyhow::Error) -> io::Resu
 }
 
 pub fn report_cli_error(err: &anyhow::Error) {
+    if let Some(clap_err) = err.downcast_ref::<clap::Error>() {
+        let _ = clap_err.print();
+        return;
+    }
     let stderr = io::stderr();
     let mut handle = stderr.lock();
     let _ = write_cli_error(&mut handle, err);

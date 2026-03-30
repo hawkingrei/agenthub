@@ -258,19 +258,12 @@ fn maybe_reject_legacy_actor_mcp_args(args: &[String]) -> Option<anyhow::Result<
     None
 }
 
-pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if let Some(result) = maybe_reject_legacy_actor_mcp_args(&args) {
-        return Some(result);
+pub async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
+    if let Some(result) = maybe_reject_legacy_actor_mcp_args(args) {
+        return result;
     }
-    if args.first().map(String::as_str) != Some("actor") {
-        return None;
-    }
-    let parsed = parse_actor_args(&args[1..]);
-    Some(match parsed {
-        Ok(parsed) => run_actor_command(parsed.command, parsed.output_mode).await,
-        Err(err) => Err(err),
-    })
+    let parsed = parse_actor_args(args)?;
+    run_actor_command(parsed.command, parsed.output_mode).await
 }
 
 #[cfg(test)]
