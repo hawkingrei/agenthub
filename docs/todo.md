@@ -1,6 +1,7 @@
 # TODO
 
 Active backlog only. Keep this file small and current.
+- [ ] Verify the codex-acp apply-patch deadlock fix after merge: when `agenthub-codex-acp` uses ACP-backed filesystem reads, `apply_patch` verification against an existing file should complete instead of hanging forever at the ACP tool boundary. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`.
 - [ ] Verify `actor ack` status-change diagnostics after merge: repeated `agenthub actor ack` on the same message should keep succeeding, but the returned JSON must set `status_changed=false` after the first successful `pending -> delivered` transition. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-30-actor-ack-status-changed.md`.
 - [ ] Verify Bazel Codecov upload records `AGENTHUB_CODECOV_UPLOAD_TAG=bazel` on both `push` and `pull_request`, alongside the existing `flags: bazel` metadata. Record workflow run IDs in `docs/journal/2026-03-30-bazel-codecov-env-tag.md`.
 - [ ] Verify internal gRPC fail-fast startup after merge: when the configured `internal_grpc.listen` address cannot be bound, AgentHub should fail startup immediately instead of logging a misleading "internal gRPC listening" line and continuing into a partially broken runtime. Record focused notes plus push/PR CI run IDs in `docs/journal/2026-03-30-internal-grpc-fail-fast-startup.md`.

@@ -271,6 +271,7 @@ dependencies = [
  "codex-utils-cli",
  "heck",
  "itertools 0.14.0",
+ "piper",
  "regex-lite",
  "serde",
  "serde_json",

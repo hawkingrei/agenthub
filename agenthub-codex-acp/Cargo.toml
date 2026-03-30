@@ -45,6 +45,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 unicode-segmentation = "1.13.2"
 uuid = { version = "1", features = ["v4"] }
 
+[dev-dependencies]
+piper = "0.2"
+
 [lints.rust]
 let-underscore = "warn"
 rust-2018-idioms = "warn"
