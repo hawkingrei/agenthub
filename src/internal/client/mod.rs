@@ -125,9 +125,7 @@ impl InternalGrpcMailboxClient {
     pub async fn connect(config: InternalGrpcMailboxClientConfig) -> anyhow::Result<Self> {
         install_rustls_crypto_provider();
         let target = config.target.trim().to_string();
-        let mut endpoint = Endpoint::from_shared(target.clone())?
-            .connect_timeout(INTERNAL_GRPC_CONNECT_TIMEOUT)
-            .timeout(INTERNAL_GRPC_REQUEST_TIMEOUT);
+        let mut endpoint = Endpoint::from_shared(target.clone())?;
         if target
             .get(..8)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
@@ -234,10 +232,13 @@ fn format_internal_grpc_status_message(status: &tonic::Status) -> String {
     match status.code() {
         tonic::Code::DeadlineExceeded => {
             let detail = status.message().trim();
+            let timeout_message = internal_grpc_timeout_message();
             if detail.is_empty() {
-                internal_grpc_timeout_message()
+                timeout_message
+            } else if detail.starts_with(&timeout_message) {
+                detail.to_string()
             } else {
-                format!("{}: {}", internal_grpc_timeout_message(), detail)
+                format!("{timeout_message}: {detail}")
             }
         }
         _ => status.message().to_string(),

@@ -188,6 +188,14 @@ fn map_grpc_status_maps_common_codes() {
     );
     assert!(deadline.message.contains("timed out"));
     assert!(deadline.message.contains("request stalled"));
+
+    let duplicated = map_grpc_status(tonic::Status::deadline_exceeded(
+        "internal gRPC request timed out after 15s",
+    ));
+    assert_eq!(
+        duplicated.message,
+        "internal gRPC request timed out after 15s"
+    );
 }
 
 #[tokio::test]
