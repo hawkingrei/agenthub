@@ -178,11 +178,11 @@ pub(super) fn resolve_channel_replica_request(payload: &Value) -> Option<Channel
 }
 
 pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
-    state: &AppState,
+    deps: &TeamInternalControlDeps,
     run_id: &str,
     send_result: &agenthub_team_actor::ActorSendResponse,
 ) -> anyhow::Result<()> {
-    let Some(plan) = plan_actor_mailbox_immediate_hint(&state.teams, run_id, send_result).await?
+    let Some(plan) = plan_actor_mailbox_immediate_hint(&deps.teams, run_id, send_result).await?
     else {
         return Ok(());
     };
@@ -196,7 +196,7 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
     let mut sent_targets = Vec::new();
     let mut failed_targets = Vec::new();
     for target_actor_id in &plan.target_actor_ids {
-        match state
+        match deps
             .agents
             .send_input(target_actor_id, &prompt, None, None)
             .await
@@ -214,7 +214,7 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
             }
         }
     }
-    if let Err(err) = state
+    if let Err(err) = deps
         .teams
         .append_run_event(
             run_id,

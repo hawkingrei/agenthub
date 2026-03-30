@@ -8,7 +8,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -234,7 +234,7 @@ async fn internal_grpc_describe_team_context_reconciles_stale_running_member_ses
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -327,7 +327,7 @@ async fn internal_grpc_describe_team_context_rejects_non_member_before_reconcile
         Some(&run.id),
     );
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -412,7 +412,7 @@ async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -476,16 +476,14 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
     let state = build_test_state().await;
     let authz = build_authz();
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz.clone(),
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
         "bootstrap-token".to_string(),
     );
-    let workdir = std::env::temp_dir().join(format!(
-        "agenthub-run-scope-runtime-{}",
-        Uuid::new_v4()
-    ));
+    let workdir =
+        std::env::temp_dir().join(format!("agenthub-run-scope-runtime-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&workdir).expect("create runtime-scope workdir");
     let workdir_str = workdir.to_string_lossy().to_string();
     let now = chrono::Utc::now().timestamp();
@@ -570,7 +568,7 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team
     let state = build_test_state().await;
     let authz = build_authz();
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz.clone(),
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -658,7 +656,7 @@ async fn internal_grpc_resolve_actor_run_scope_falls_back_to_unique_active_team_
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -715,7 +713,7 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_ambiguous_active_team_run
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some("planner"), None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),

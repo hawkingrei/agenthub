@@ -5,6 +5,7 @@ mod rpc;
 mod tests;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub(super) use agenthub_team_actor::{
@@ -16,9 +17,12 @@ pub(super) use serde_json::Value;
 pub(super) use sqlx::Row;
 pub(super) use tonic::{Request, Response, Status, metadata::MetadataMap};
 
-pub(super) use crate::acp::{AcpActorSkillContext, AcpPermissionRespondResult};
-pub(super) use crate::agent::{AgentConfig, AgentTimeTriggerCreateInput, AgentTimeTriggerManager};
-pub(super) use crate::state::AppState;
+pub(super) use crate::acp::{
+    AcpActorSkillContext, AcpPermissionRespondResult, AcpPermissionService,
+};
+pub(super) use crate::agent::{
+    AgentConfig, AgentManager, AgentTimeTriggerCreateInput, AgentTimeTriggerManager,
+};
 pub(super) use crate::team::{
     TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX, TeamContextLookupError, TeamManager, TeamStepRecord,
     TeamStepStatus, TeamTaskAssignmentUpdate, TeamTaskContextPatch, TeamTaskListQuery,
@@ -54,6 +58,30 @@ const MAX_INTERNAL_TEAM_TASK_LIST_LIMIT: i64 = 500;
 const DEFAULT_TOKEN_TTL_SECONDS: i64 = 3600;
 const MAX_TOKEN_TTL_SECONDS: i64 = 24 * 60 * 60;
 
+#[derive(Clone)]
+pub(crate) struct TeamInternalControlDeps {
+    pub db: sqlx::SqlitePool,
+    pub agents: Arc<AgentManager>,
+    pub teams: Arc<TeamManager>,
+    pub acp_permissions: Arc<AcpPermissionService>,
+}
+
+impl TeamInternalControlDeps {
+    pub fn new(
+        db: sqlx::SqlitePool,
+        agents: Arc<AgentManager>,
+        teams: Arc<TeamManager>,
+        acp_permissions: Arc<AcpPermissionService>,
+    ) -> Self {
+        Self {
+            db,
+            agents,
+            teams,
+            acp_permissions,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ChannelReplicaRequest {
     authority_message_id: i64,
@@ -64,8 +92,8 @@ pub(super) struct ChannelReplicaRequest {
 }
 
 #[derive(Clone)]
-pub struct TeamInternalControlService {
-    state: AppState,
+pub(crate) struct TeamInternalControlService {
+    deps: TeamInternalControlDeps,
     authz: InternalAuthz,
     security_mode: InternalGrpcSecurityMode,
     cert_dir: PathBuf,
@@ -74,14 +102,14 @@ pub struct TeamInternalControlService {
 
 impl TeamInternalControlService {
     pub fn new(
-        state: AppState,
+        deps: TeamInternalControlDeps,
         authz: InternalAuthz,
         security_mode: InternalGrpcSecurityMode,
         cert_dir: PathBuf,
         bootstrap_token: String,
     ) -> Self {
         Self {
-            state,
+            deps,
             authz,
             security_mode,
             cert_dir,
@@ -126,7 +154,7 @@ impl TeamInternalControlService {
         .bind(run_id)
         .bind(&replica.task_id)
         .bind(&replica.conversation_id)
-        .fetch_optional(&self.state.db)
+        .fetch_optional(&self.deps.db)
         .await
         .map_err(|err| map_manager_error(err.into()))?
         .ok_or_else(|| Status::not_found("run not found"))?;

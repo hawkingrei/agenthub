@@ -5,7 +5,7 @@ async fn issue_node_credential_returns_phase0_metadata() {
     let state = build_test_state().await;
     let authz = build_authz();
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -43,7 +43,7 @@ async fn issue_node_credential_rejects_bootstrap_token_mismatch() {
     let state = build_test_state().await;
     let authz = build_authz();
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -74,7 +74,7 @@ async fn issue_node_credential_requires_worker_actor_and_run() {
     let state = build_test_state().await;
     let authz = build_authz();
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),

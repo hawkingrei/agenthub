@@ -7,7 +7,7 @@ async fn internal_grpc_describe_team_context_defaults_to_scoped_run() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
@@ -61,7 +61,7 @@ async fn internal_grpc_time_trigger_controls_are_wire_compatible() {
     let authz = build_authz();
     let token = issue_token(&authz, InternalRole::Worker, Some("reviewer"), None);
     let service = TeamInternalControlService::new(
-        state,
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),

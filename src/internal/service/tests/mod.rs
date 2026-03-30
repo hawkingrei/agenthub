@@ -17,6 +17,7 @@ pub(super) use super::resolve_team_leader_member_id;
 use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
 use crate::agent::AgentTimeTriggerRecord;
 use crate::api::team_tests::build_test_state;
+pub(super) use crate::internal::team_internal_control_deps as control_deps;
 use crate::team::{TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord};
 use agenthub_team_actor::ActorMessageStatus;
 
@@ -159,7 +160,7 @@ async fn setup_permission_review_fixture_with_spec(
     let authz = build_authz();
     let token = issue_token(&authz, token_role, Some(token_actor_id), None);
     let service = TeamInternalControlService::new(
-        state.clone(),
+        control_deps(&state),
         authz,
         super::InternalGrpcSecurityMode::Disabled,
         std::env::temp_dir(),
