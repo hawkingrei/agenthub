@@ -59,7 +59,6 @@ Active backlog only. Keep this file small and current.
 
 - [ ] Verify the distributed node phase 0/1 rollout in CI and a real multi-node environment: remote agent start/input/events, mailbox relay plus ack, and node-local data isolation should all hold on both `push` and `pull_request` workflows (see `docs/features/agent-nodes.md`, `docs/features/distributed-node-architecture.md`, `docs/journal/2026-03-18-agent-node-grpc-control-plane.md`, `docs/journal/2026-03-19-distributed-node-architecture.md`).
 - [ ] Verify refreshed Agent Node docs against a real multi-node rollout so `configuration-basics`, `agent-nodes`, and `deployment/overview-and-topology` match the current `internal_grpc` contract and remote-node startup path (see `docs/features/agent-nodes.md`, `docs/journal/2026-03-21-agent-node-deployment-doc-refresh.md`).
-- [ ] Refactor `ensure_remote_managed_agent` in `src/agent/manager.rs` to remove duplicated legacy-schema `INSERT` / `UPDATE` SQL assembly while preserving schema-compat behavior (see `docs/journal/2026-03-18-agent-node-grpc-control-plane.md`).
 - [ ] Strengthen remote-node transport posture beyond the current baseline: validate relay dedupe and timestamp-window policy in staging, design same-port HTTP plus gRPC multiplexing, and define the production identity path (`SPIFFE` / `SPIRE` or equivalent) for long-term mTLS rollout (see `docs/features/distributed-node-architecture.md`).
 
 ## ACP And Adapter Hardening
