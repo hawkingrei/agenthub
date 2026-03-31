@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::agent::{AgentConfig, AgentNodeConfig, WorktreeMode};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMailboxService,
-    ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
+    ActorMessageStatus, ActorMessageTransport, ActorSendRequest, ActorServiceErrorCode,
 };
 use serde_json::{Value, json};
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
@@ -364,6 +364,29 @@ async fn seed_team_run(
     team_name: &str,
     run_id: &str,
 ) {
+    seed_team_run_with_spec(
+        state,
+        team_id,
+        team_name,
+        run_id,
+        &json!({
+            "entrypoint":"planner",
+            "members":[
+                {"member_id":"planner"},
+                {"member_id":"reviewer"}
+            ]
+        }),
+    )
+    .await;
+}
+
+async fn seed_team_run_with_spec(
+    state: &crate::state::AppState,
+    team_id: &str,
+    team_name: &str,
+    run_id: &str,
+    spec: &Value,
+) {
     let now = chrono::Utc::now().timestamp();
     sqlx::query(
         r#"
@@ -382,16 +405,7 @@ async fn seed_team_run(
     .bind(team_id)
     .bind(team_name)
     .bind("grpc relay pipeline test team")
-    .bind(
-        json!({
-            "entrypoint":"planner",
-            "members":[
-                {"member_id":"planner"},
-                {"member_id":"reviewer"}
-            ]
-        })
-        .to_string(),
-    )
+    .bind(spec.to_string())
     .bind(now)
     .bind(now)
     .execute(&state.db)
@@ -645,6 +659,127 @@ async fn grpc_actor_send_returns_server_message_for_channel_targets() {
 }
 
 #[tokio::test]
+async fn grpc_actor_send_rejects_role_alias_target_on_server() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-direct-send-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    let leader_member_id = "595d1ae8-fcbd-4111-b5c7-d446a12c044b";
+    let worker_member_id = "c319f933-1358-4418-a111-872304052422";
+    seed_team_run_with_spec(
+        &state,
+        &team_id,
+        &team_name,
+        &run_id,
+        &json!({
+            "entrypoint": leader_member_id,
+            "members": [
+                {"member_id": leader_member_id, "role": "leader"},
+                {"member_id": worker_member_id, "role": "worker"}
+            ]
+        }),
+    )
+    .await;
+
+    let cert_dir = test_cert_dir("grpc-direct-send-validation");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+        server.addr,
+        issue_mailbox_token(&authz, &run_id),
+        &cert_dir,
+    ))
+    .await
+    .expect("connect grpc mailbox client");
+
+    let err = client
+        .actor_send(ActorSendRequest {
+            run_id: run_id.clone(),
+            from_actor_id: worker_member_id.to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("leader".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(ActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"please review"
+            }),
+            idempotency_key: Some("grpc-direct-send-role-alias".to_string()),
+        })
+        .await
+        .expect_err("role alias target should be rejected by server");
+
+    assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+    assert!(err.message.contains("not a canonical team member_id"));
+    assert!(err.message.contains(leader_member_id));
+
+    server.handle.abort();
+}
+
+#[tokio::test]
+async fn grpc_actor_send_allows_remote_target_outside_team_spec() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-remote-send-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+    let cert_dir = test_cert_dir("grpc-remote-send-external-target");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+        server.addr,
+        issue_mailbox_token(&authz, &run_id),
+        &cert_dir,
+    ))
+    .await
+    .expect("connect grpc mailbox client");
+
+    let sent = client
+        .actor_send(ActorSendRequest {
+            run_id: run_id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("federation".to_string()),
+            transport: Some(ActorMessageTransport::Remote),
+            route: Some(json!({"endpoint":"https://remote.example/a2a"})),
+            payload: json!({
+                "type":"chat_message",
+                "text":"federated request"
+            }),
+            idempotency_key: Some("grpc-remote-send-external-target".to_string()),
+        })
+        .await
+        .expect("remote transport should allow external actor target");
+
+    assert_eq!(sent.state, ActorMessageStatus::Pending);
+    assert_eq!(sent.message.to_actor_id, "remote-reviewer");
+    assert_eq!(sent.message.transport, ActorMessageTransport::Remote);
+    assert_eq!(
+        sent.message.route,
+        Some(json!({"endpoint":"https://remote.example/a2a"}))
+    );
+
+    server.handle.abort();
+}
+
+#[tokio::test]
 async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
     install_rustls_crypto_provider();
     let state = build_test_state().await;
@@ -877,8 +1012,17 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let team_id = format!("team-{}", Uuid::new_v4());
     let team_name = format!("grpc-p2p-team-{}", Uuid::new_v4());
     let run_id = format!("run-{}", Uuid::new_v4());
-    seed_team_run(&node_a_state, &team_id, &team_name, &run_id).await;
-    seed_team_run(&node_b_state, &team_id, &team_name, &run_id).await;
+    let planner_member_id = "planner-a";
+    let reviewer_member_id = "reviewer-b";
+    let spec = json!({
+        "entrypoint": planner_member_id,
+        "members": [
+            {"member_id": planner_member_id},
+            {"member_id": reviewer_member_id}
+        ]
+    });
+    seed_team_run_with_spec(&node_a_state, &team_id, &team_name, &run_id, &spec).await;
+    seed_team_run_with_spec(&node_b_state, &team_id, &team_name, &run_id, &spec).await;
 
     let cert_dir = test_cert_dir("bidirectional-relay-pipeline");
     ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
@@ -903,9 +1047,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "planner-a",
+            from_actor_id: planner_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "reviewer-b",
+            to_actor_id: reviewer_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -924,9 +1068,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "planner-a",
+            from_actor_id: planner_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "reviewer-b",
+            to_actor_id: reviewer_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -945,9 +1089,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "reviewer-b",
+            from_actor_id: reviewer_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "planner-a",
+            to_actor_id: planner_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -1001,7 +1145,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_b_inbox = node_b_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "reviewer-b".to_string(),
+            actor_id: reviewer_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: None,
@@ -1034,7 +1178,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_inbox = node_a_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: None,
@@ -1056,7 +1200,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         let ack = node_b_client
             .actor_ack(agenthub_team_actor::ActorAckRequest {
                 run_id: run_id.clone(),
-                actor_id: "reviewer-b".to_string(),
+                actor_id: reviewer_member_id.to_string(),
                 message_id: message.message_id,
                 ack_token: None,
                 result: None,
@@ -1069,7 +1213,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_ack = node_a_client
         .actor_ack(agenthub_team_actor::ActorAckRequest {
             run_id: run_id.clone(),
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             message_id: node_a_inbox.messages[0].message_id,
             ack_token: None,
             result: None,
@@ -1082,7 +1226,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_b_delivered = node_b_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "reviewer-b".to_string(),
+            actor_id: reviewer_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: Some(vec![ActorMessageStatus::Delivered]),
@@ -1100,7 +1244,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_delivered = node_a_client
         .actor_inbox(ActorInboxRequest {
             run_id,
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: Some(vec![ActorMessageStatus::Delivered]),
