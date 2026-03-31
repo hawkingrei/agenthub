@@ -2356,7 +2356,7 @@ describe("team panels interactions", () => {
         value: 0,
       });
 
-      expect(findButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       renderWithMantine(
         root,
@@ -2396,34 +2396,23 @@ describe("team panels interactions", () => {
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
-
-      act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
-      });
-      expect(scrollNode.scrollTop).toBe(0);
-      act(() => {
-        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
-      });
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(13);
-      expect(container.querySelector("[data-team-channel-top-spacer='true']")).toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       act(() => {
         scrollNode.scrollTop = 80;
         scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
-      const jumpButton = queryButtonByText(container, "Jump to bottom");
+      const jumpButton = queryButtonByAriaLabel(container, "Jump to bottom");
       expect(jumpButton).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
       expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();

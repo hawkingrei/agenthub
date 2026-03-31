@@ -180,8 +180,7 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_JUMP_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.82] px-2 py-0.5 text-[11px] font-medium text-ui-text-muted backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
-const TEAM_TASK_TOP_JUMP_MIN_MESSAGES = 12;
+  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.86] text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.08)] backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong";
 const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
 
@@ -903,14 +902,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     node.scrollTop = node.scrollHeight;
     lastActivityScrollTopRef.current = node.scrollTop;
   }, []);
-  const scrollActivityToTop = React.useCallback(() => {
-    const node = activityListRef.current;
-    if (!node) {
-      return;
-    }
-    node.scrollTop = 0;
-    lastActivityScrollTopRef.current = node.scrollTop;
-  }, []);
 
   React.useEffect(() => {
     if (!token || permissionCardTargets.length === 0) {
@@ -976,14 +967,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS} data-team-surface="conversation">
-      <div
-        ref={activityListRef}
-        className={activityListClassName}
-        data-team-channel-scroll="true"
-        onScroll={handleActivityScroll}
-      >
-        <div className={TEAM_TASK_ACTIVITY_SHELL_CLASS}>
-          <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
+      <div className="relative">
+        <div
+          ref={activityListRef}
+          className={activityListClassName}
+          data-team-channel-scroll="true"
+          onScroll={handleActivityScroll}
+        >
+          <div className={TEAM_TASK_ACTIVITY_SHELL_CLASS}>
+            <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
           {hiddenWaterfallSpacerHeight > 0 && (
             <div
               aria-hidden="true"
@@ -1206,43 +1198,26 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               No channel messages yet.
             </div>
           )}
+            </div>
           </div>
         </div>
+        {activityJumpState.showJump && (
+          <button
+            type="button"
+            className={`${TEAM_TASK_JUMP_BUTTON_CLASS} absolute bottom-5 right-4 z-10`}
+            onClick={() => {
+              setStickToBottom(true);
+              scrollActivityToBottom();
+            }}
+            title="Jump to bottom"
+            aria-label="Jump to bottom"
+          >
+            <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {stickToBottom && orderedMessages.length >= TEAM_TASK_TOP_JUMP_MIN_MESSAGES && (
-            <button
-              type="button"
-              className={TEAM_TASK_JUMP_BUTTON_CLASS}
-              onClick={() => {
-                setStickToBottom(false);
-                scrollActivityToTop();
-              }}
-              title="Jump to top"
-              aria-label="Jump to top"
-            >
-              Jump to top
-            </button>
-          )}
-          {activityJumpState.showJump && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              className={TEAM_TASK_JUMP_BUTTON_CLASS}
-              onClick={() => {
-                setStickToBottom(true);
-                scrollActivityToBottom();
-              }}
-              title="Jump to bottom"
-              aria-label="Jump to bottom"
-            >
-              Jump to bottom
-            </button>
-          </div>
-          )}
-        </div>
         <textarea
           ref={messageTextareaRef}
           className={TEAM_PANEL_TEXTAREA_CLASS}
