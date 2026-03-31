@@ -22,15 +22,15 @@ agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-arg0 = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-core = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-mcp-server = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-protocol = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-login = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-shell-command = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-utils-approval-presets = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-utils-cli = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-apply-patch = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-arg0 = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-core = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-mcp-server = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-protocol = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-login = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-shell-command = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-utils-approval-presets = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
+codex-utils-cli = { git = "https://github.com/hawkingrei/codex", tag = "agenthub-rollout-recorder-shutdown-race-v1" }
 heck = "0.5.0"
 itertools = "0.14.0"
 regex-lite = "0.1"
