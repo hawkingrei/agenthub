@@ -481,7 +481,7 @@ export function useAcpConversation({
     return eventMeta[key] ?? null;
   }, [activeAgent, activeSessionId, eventMeta]);
 
-  const syncConversationViewport = useCallback(() => {
+  const syncConversationViewport = useCallback((includeWidth: boolean = false) => {
     const el = acpConversationRef.current;
     if (!el) return;
     setConversationViewport((prev) => {
@@ -489,6 +489,9 @@ export function useAcpConversation({
       const nextHeight = el.clientHeight;
       return nextThreadViewport(prev, nextTop, nextHeight);
     });
+    if (!includeWidth) {
+      return;
+    }
     setConversationViewportWidth((prev) => {
       const nextWidth = el.clientWidth;
       return prev === nextWidth ? prev : nextWidth;
@@ -498,12 +501,12 @@ export function useAcpConversation({
   useEffect(() => {
     const el = acpConversationRef.current;
     if (!el) return;
-    syncConversationViewport();
+    syncConversationViewport(true);
     if (typeof ResizeObserver !== "function") {
       return;
     }
     const observer = new ResizeObserver(() => {
-      syncConversationViewport();
+      syncConversationViewport(true);
     });
     observer.observe(el);
     return () => observer.disconnect();

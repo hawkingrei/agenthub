@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { prepare } from "@chenglou/pretext";
+import { layout, prepare } from "@chenglou/pretext";
 import type { ConversationItem } from "../conversation";
 
 vi.mock("@chenglou/pretext", () => ({
@@ -166,8 +166,40 @@ describe("conversation_height_estimate", () => {
     expect(narrow).toBe(wide);
   });
 
+  it("reuses measured heights when the fallback average changes", () => {
+    estimateConversationItemHeight(
+      makeMessage("cache me if you can", 8),
+      720,
+      48
+    );
+    const layoutMock = vi.mocked(layout);
+    const firstPassCalls = layoutMock.mock.calls.length;
+
+    estimateConversationItemHeight(
+      makeMessage("cache me if you can", 9),
+      720,
+      96
+    );
+
+    expect(layoutMock.mock.calls.length).toBe(firstPassCalls);
+  });
+
+  it("adds structure compensation for markdown headings and blockquotes", () => {
+    const plain = estimateConversationItemHeight(
+      makeMessage("Release notes\n\nImportant follow-up", 10),
+      720,
+      48
+    );
+    const structured = estimateConversationItemHeight(
+      makeMessage("# Release notes\n\n> Important follow-up", 11),
+      720,
+      48
+    );
+    expect(structured).toBeGreaterThan(plain);
+  });
+
   it("uses the ACP text font family when preparing rich text", () => {
-    estimateConversationItemHeight(makeMessage("font check", 7), 720, 48);
+    estimateConversationItemHeight(makeMessage("font check", 12), 720, 48);
     const prepareMock = vi.mocked(prepare);
     expect(
       prepareMock.mock.calls.some(([, font]) =>
