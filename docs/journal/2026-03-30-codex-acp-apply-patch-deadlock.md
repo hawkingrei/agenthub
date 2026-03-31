@@ -69,3 +69,26 @@ waiting for a future dependency refresh.
 
 That removes the deadlock class where ACP-backed filesystem verification waits on
 an ACP reply that the runtime is no longer able to drive.
+
+## Verified Evidence
+
+- Focused regression coverage stayed on:
+  - `cargo test -p agenthub-codex-acp apply_patch_verification_does_not_deadlock_over_acp_fs -- --nocapture`
+  - `cargo test -p agenthub-codex-acp --lib`
+  - `cargo clippy --locked -p agenthub-codex-acp --all-targets -- -D warnings`
+- `pull_request` CI for PR `#259`:
+  - Bazel: `23745923494`
+  - Rust: `23745923506`
+  - Clippy: `23745923527`
+  - Web: `23745923465`
+  - Web E2E: `23745923480`
+  - User Docs: `23745923469`
+  - Distributed P2P Pipeline: `23745923471`
+- Subsequent default-branch `push` verification on commit `4b871fca`:
+  - Bazel: `23775356172`
+  - Rust: `23775356140`
+  - Clippy: `23775356149`
+  - Web: `23775356151`
+  - Web E2E: `23775356147`
+  - User Docs: `23775356152`
+  - Distributed P2P Pipeline: `23775356155`

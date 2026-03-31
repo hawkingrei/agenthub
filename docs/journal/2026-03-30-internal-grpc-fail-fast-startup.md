@@ -31,3 +31,24 @@
     `internal gRPC server exited with error`
   - occupying the configured port makes AgentHub fail fast instead of continuing with the web
     server only
+
+## Verified Evidence
+
+- Focused regression coverage stayed on occupied-listener startup failure and the stalled-handshake
+  timeout path.
+- `pull_request` CI for PR `#255`:
+  - Bazel: `23726957698`
+  - Rust: `23726957707`
+  - Clippy: `23726957691`
+  - Web: `23726957711`
+  - Web E2E: `23726957727`
+  - User Docs: `23726957725`
+  - Distributed P2P Pipeline: `23726957741`
+- Subsequent default-branch `push` verification on commit `4b871fca`:
+  - Bazel: `23775356172`
+  - Rust: `23775356140`
+  - Clippy: `23775356149`
+  - Web: `23775356151`
+  - Web E2E: `23775356147`
+  - User Docs: `23775356152`
+  - Distributed P2P Pipeline: `23775356155`
