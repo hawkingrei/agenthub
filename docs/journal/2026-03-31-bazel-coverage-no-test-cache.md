@@ -8,7 +8,7 @@ Coverage runs should execute tests fresh instead of reusing cached test results.
 
 ## Change
 
-- Updated [`.github/workflows/bazel.yml`](/Users/weizhenwang/devel/opensource/agenthub/.github/workflows/bazel.yml) so `bazel coverage` runs with:
+- Updated [`.github/workflows/bazel.yml`](../../.github/workflows/bazel.yml) so `bazel coverage` runs with:
   - `--combined_report=lcov`
   - `--test_output=errors`
   - `--nocache_test_results`
