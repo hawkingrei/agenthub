@@ -427,10 +427,12 @@ export function useAcpConversation({
     ? conversationFrozenItems
     : conversationWindow.items;
   const conversationSourceOffset = isFrozenView ? 0 : conversationWindow.offset;
-  const shouldVirtualizeConversation = shouldUseConversationVirtualization(
-    conversationStickToBottom,
-    conversationSourceItems.length
-  );
+  const shouldVirtualizeConversation =
+    acpTab === "conversation" &&
+    shouldUseConversationVirtualization(
+      conversationStickToBottom,
+      conversationSourceItems.length
+    );
   const conversationHeightEstimateModel = useMemo(() => {
     if (
       !shouldVirtualizeConversation ||

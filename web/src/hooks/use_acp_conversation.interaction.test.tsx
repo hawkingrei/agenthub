@@ -228,25 +228,33 @@ describe("useAcpConversation jump interaction", () => {
 describe("useAcpConversation viewport observer lifecycle", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let snapshot: HookSnapshot | null = null;
   let observeSpy: ReturnType<typeof vi.fn>;
   let disconnectSpy: ReturnType<typeof vi.fn>;
   let resizeCallback: ResizeObserverCallback | null = null;
   let rafCallbacks: FrameRequestCallback[] = [];
   let requestAnimationFrameSpy: ReturnType<typeof vi.fn>;
   let cancelAnimationFrameSpy: ReturnType<typeof vi.fn>;
-  let originalRequestAnimationFrame: typeof window.requestAnimationFrame | undefined;
-  let originalCancelAnimationFrame: typeof window.cancelAnimationFrame | undefined;
+  let originalRequestAnimationFrameDescriptor: PropertyDescriptor | undefined;
+  let originalCancelAnimationFrameDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    snapshot = null;
     observeSpy = vi.fn();
     disconnectSpy = vi.fn();
     resizeCallback = null;
     rafCallbacks = [];
-    originalRequestAnimationFrame = window.requestAnimationFrame;
-    originalCancelAnimationFrame = window.cancelAnimationFrame;
+    originalRequestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "requestAnimationFrame"
+    );
+    originalCancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "cancelAnimationFrame"
+    );
     requestAnimationFrameSpy = vi.fn((cb: FrameRequestCallback) => {
       rafCallbacks.push(cb);
       return rafCallbacks.length;
@@ -276,18 +284,16 @@ describe("useAcpConversation viewport observer lifecycle", () => {
       root.unmount();
     });
     container.remove();
-    if (originalRequestAnimationFrame) {
-      Object.defineProperty(window, "requestAnimationFrame", {
-        configurable: true,
-        value: originalRequestAnimationFrame,
-      });
-    }
-    if (originalCancelAnimationFrame) {
-      Object.defineProperty(window, "cancelAnimationFrame", {
-        configurable: true,
-        value: originalCancelAnimationFrame,
-      });
-    }
+    restoreDescriptor(
+      window,
+      "requestAnimationFrame",
+      originalRequestAnimationFrameDescriptor
+    );
+    restoreDescriptor(
+      window,
+      "cancelAnimationFrame",
+      originalCancelAnimationFrameDescriptor
+    );
     vi.unstubAllGlobals();
   });
 
@@ -337,6 +343,33 @@ describe("useAcpConversation viewport observer lifecycle", () => {
       resizeCallback?.([], {} as ResizeObserver);
     });
     expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not keep conversation virtualization active while another ACP tab is selected", () => {
+    const acpView = buildManyMessageView(220);
+    const captureSnapshot = (next: HookSnapshot) => {
+      snapshot = next;
+    };
+
+    act(() => {
+      root.render(
+        <HookHarness
+          onSnapshot={captureSnapshot}
+          acpTab="conversation"
+          acpView={acpView}
+        />
+      );
+    });
+    act(() => {
+      root.render(
+        <HookHarness onSnapshot={captureSnapshot} acpTab="plan" acpView={acpView} />
+      );
+    });
+
+    expect(snapshot?.conversationVirtualized).toBe(false);
+    expect(snapshot?.conversationRenderedItems).toBe(snapshot?.conversationSourceItems);
+    expect(snapshot?.conversationVirtualTopSpacer).toBe(0);
+    expect(snapshot?.conversationVirtualBottomSpacer).toBe(0);
   });
 });
 
