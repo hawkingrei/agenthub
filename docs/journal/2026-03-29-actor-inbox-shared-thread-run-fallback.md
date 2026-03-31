@@ -36,3 +36,24 @@ Suggested validation:
 - `ack` / `send` still need the broader issue `#244` run-scope inference work so
   all direct mailbox commands can reuse the same Team/runtime candidate
   resolution.
+
+## Verified Evidence
+
+- Focused validation covered parser fallback, canonical shared-thread task resolution, and gRPC
+  client behavior around task detail and limit handling.
+- `pull_request` CI for PR `#248`:
+  - Bazel: `23710644844`
+  - Rust: `23710644848`
+  - Clippy: `23710644837`
+  - Web: `23710644826`
+  - Web E2E: `23710644842`
+  - User Docs: `23710644841`
+  - Distributed P2P Pipeline: `23710644840`
+- default-branch `push` CI after merge commit `8af43bad`:
+  - Bazel: `23710817588`
+  - Rust: `23710817598`
+  - Clippy: `23710817606`
+  - Web: `23710817604`
+  - Web E2E: `23710817594`
+  - User Docs: `23710817603`
+  - Distributed P2P Pipeline: `23710817599`
