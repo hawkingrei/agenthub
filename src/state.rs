@@ -145,6 +145,7 @@ impl AppState {
             config.proxy_env(),
             config.codex_acp_binary(),
             config.codex_acp_default_mode(),
+            config.codex_acp_multi_agent_enabled(),
             acp_permissions.clone(),
             auth.clone(),
             internal_peer_client.clone(),

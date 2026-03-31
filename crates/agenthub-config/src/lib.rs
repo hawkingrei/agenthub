@@ -60,6 +60,7 @@ pub struct WorktreeConfig {
 pub struct CodexAcpConfig {
     pub binary: Option<String>,
     pub default_mode: Option<String>,
+    pub multi_agent_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -221,6 +222,13 @@ impl AppConfig {
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string());
         Some(configured.unwrap_or_else(|| DEFAULT_CODEX_ACP_MODE.to_string()))
+    }
+
+    pub fn codex_acp_multi_agent_enabled(&self) -> bool {
+        self.codex_acp
+            .as_ref()
+            .and_then(|c| c.multi_agent_enabled)
+            .unwrap_or(true)
     }
 
     pub fn history_event_retention_days(&self) -> Option<u32> {
@@ -528,6 +536,7 @@ mod tests {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
                 default_mode: Some(" code ".to_string()),
+                multi_agent_enabled: None,
             }),
             ..Default::default()
         };
@@ -540,9 +549,29 @@ mod tests {
             codex_acp: Some(CodexAcpConfig {
                 binary: None,
                 default_mode: Some("   ".to_string()),
+                multi_agent_enabled: None,
             }),
             ..Default::default()
         };
         assert_eq!(config.codex_acp_default_mode().as_deref(), Some("auto"));
+    }
+
+    #[test]
+    fn codex_acp_multi_agent_enabled_defaults_to_true() {
+        let config = AppConfig::default();
+        assert!(config.codex_acp_multi_agent_enabled());
+    }
+
+    #[test]
+    fn codex_acp_multi_agent_enabled_preserves_false_override() {
+        let config = AppConfig {
+            codex_acp: Some(CodexAcpConfig {
+                binary: None,
+                default_mode: None,
+                multi_agent_enabled: Some(false),
+            }),
+            ..Default::default()
+        };
+        assert!(!config.codex_acp_multi_agent_enabled());
     }
 }

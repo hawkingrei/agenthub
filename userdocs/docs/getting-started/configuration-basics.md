@@ -86,6 +86,7 @@ ACP (Agent Control Protocol) provider settings.
 |--------|------|---------|-------------|
 | `binary` | string | `"agenthub-codex-acp"` | ACP binary name or path |
 | `default_mode` | string | `"auto"` | Default ACP mode (`auto`, `full`, `suggest`) |
+| `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
 ### `[history]` Section
 

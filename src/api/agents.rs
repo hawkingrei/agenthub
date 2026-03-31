@@ -1589,6 +1589,7 @@ mod tests {
             Vec::new(),
             "agenthub-codex-acp".to_string(),
             None,
+            true,
             permissions.clone(),
             auth.clone(),
             internal_peer_client,

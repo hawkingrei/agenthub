@@ -68,6 +68,10 @@ fn log_config_details(
             .as_deref()
             .unwrap_or("<unset>")
     );
+    tracing::info!(
+        "config codex_acp_multi_agent_enabled: {}",
+        config.codex_acp_multi_agent_enabled()
+    );
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
     tracing::info!(
         "config vapid_keys_path: {}",
