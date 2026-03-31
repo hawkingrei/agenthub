@@ -957,8 +957,17 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let team_id = format!("team-{}", Uuid::new_v4());
     let team_name = format!("grpc-p2p-team-{}", Uuid::new_v4());
     let run_id = format!("run-{}", Uuid::new_v4());
-    seed_team_run(&node_a_state, &team_id, &team_name, &run_id).await;
-    seed_team_run(&node_b_state, &team_id, &team_name, &run_id).await;
+    let planner_member_id = "planner-a";
+    let reviewer_member_id = "reviewer-b";
+    let spec = json!({
+        "entrypoint": planner_member_id,
+        "members": [
+            {"member_id": planner_member_id},
+            {"member_id": reviewer_member_id}
+        ]
+    });
+    seed_team_run_with_spec(&node_a_state, &team_id, &team_name, &run_id, &spec).await;
+    seed_team_run_with_spec(&node_b_state, &team_id, &team_name, &run_id, &spec).await;
 
     let cert_dir = test_cert_dir("bidirectional-relay-pipeline");
     ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
@@ -983,9 +992,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "planner-a",
+            from_actor_id: planner_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "reviewer-b",
+            to_actor_id: reviewer_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -1004,9 +1013,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "planner-a",
+            from_actor_id: planner_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "reviewer-b",
+            to_actor_id: reviewer_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -1025,9 +1034,9 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         .teams
         .send_actor_message(SendActorMessageInput {
             run_id: &run_id,
-            from_actor_id: "reviewer-b",
+            from_actor_id: reviewer_member_id,
             from_peer_id: ACTOR_MAIN_PEER_ID,
-            to_actor_id: "planner-a",
+            to_actor_id: planner_member_id,
             to_peer_id: ACTOR_NODE_PEER_ID,
             channel: "coordination",
             transport: TeamActorMessageTransport::Remote,
@@ -1081,7 +1090,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_b_inbox = node_b_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "reviewer-b".to_string(),
+            actor_id: reviewer_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: None,
@@ -1114,7 +1123,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_inbox = node_a_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: None,
@@ -1136,7 +1145,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
         let ack = node_b_client
             .actor_ack(agenthub_team_actor::ActorAckRequest {
                 run_id: run_id.clone(),
-                actor_id: "reviewer-b".to_string(),
+                actor_id: reviewer_member_id.to_string(),
                 message_id: message.message_id,
                 ack_token: None,
                 result: None,
@@ -1149,7 +1158,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_ack = node_a_client
         .actor_ack(agenthub_team_actor::ActorAckRequest {
             run_id: run_id.clone(),
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             message_id: node_a_inbox.messages[0].message_id,
             ack_token: None,
             result: None,
@@ -1162,7 +1171,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_b_delivered = node_b_client
         .actor_inbox(ActorInboxRequest {
             run_id: run_id.clone(),
-            actor_id: "reviewer-b".to_string(),
+            actor_id: reviewer_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: Some(vec![ActorMessageStatus::Delivered]),
@@ -1180,7 +1189,7 @@ async fn bidirectional_actor_grpc_pipeline_relays_seeded_messages_between_in_pro
     let node_a_delivered = node_a_client
         .actor_inbox(ActorInboxRequest {
             run_id,
-            actor_id: "planner-a".to_string(),
+            actor_id: planner_member_id.to_string(),
             cursor: None,
             limit: Some(20),
             states: Some(vec![ActorMessageStatus::Delivered]),
