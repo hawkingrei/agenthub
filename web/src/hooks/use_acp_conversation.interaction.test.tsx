@@ -231,6 +231,11 @@ describe("useAcpConversation viewport observer lifecycle", () => {
   let observeSpy: ReturnType<typeof vi.fn>;
   let disconnectSpy: ReturnType<typeof vi.fn>;
   let resizeCallback: ResizeObserverCallback | null = null;
+  let rafCallbacks: FrameRequestCallback[] = [];
+  let requestAnimationFrameSpy: ReturnType<typeof vi.fn>;
+  let cancelAnimationFrameSpy: ReturnType<typeof vi.fn>;
+  let originalRequestAnimationFrame: typeof window.requestAnimationFrame | undefined;
+  let originalCancelAnimationFrame: typeof window.cancelAnimationFrame | undefined;
 
   beforeEach(() => {
     container = document.createElement("div");
@@ -239,6 +244,22 @@ describe("useAcpConversation viewport observer lifecycle", () => {
     observeSpy = vi.fn();
     disconnectSpy = vi.fn();
     resizeCallback = null;
+    rafCallbacks = [];
+    originalRequestAnimationFrame = window.requestAnimationFrame;
+    originalCancelAnimationFrame = window.cancelAnimationFrame;
+    requestAnimationFrameSpy = vi.fn((cb: FrameRequestCallback) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    cancelAnimationFrameSpy = vi.fn();
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: requestAnimationFrameSpy,
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: cancelAnimationFrameSpy,
+    });
     class ResizeObserverMock {
       constructor(callback: ResizeObserverCallback) {
         resizeCallback = callback;
@@ -255,6 +276,18 @@ describe("useAcpConversation viewport observer lifecycle", () => {
       root.unmount();
     });
     container.remove();
+    if (originalRequestAnimationFrame) {
+      Object.defineProperty(window, "requestAnimationFrame", {
+        configurable: true,
+        value: originalRequestAnimationFrame,
+      });
+    }
+    if (originalCancelAnimationFrame) {
+      Object.defineProperty(window, "cancelAnimationFrame", {
+        configurable: true,
+        value: originalCancelAnimationFrame,
+      });
+    }
     vi.unstubAllGlobals();
   });
 
@@ -274,6 +307,36 @@ describe("useAcpConversation viewport observer lifecycle", () => {
       root.render(<HookHarness onSnapshot={() => {}} acpTab="conversation" />);
     });
     expect(observeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("throttles resize-driven viewport sync to one animation frame", () => {
+    act(() => {
+      root.render(<HookHarness onSnapshot={() => {}} acpTab="conversation" />);
+    });
+    expect(resizeCallback).not.toBeNull();
+    act(() => {
+      while (rafCallbacks.length > 0) {
+        const callback = rafCallbacks.shift();
+        callback?.(0);
+      }
+    });
+    requestAnimationFrameSpy.mockClear();
+
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+      resizeCallback?.([], {} as ResizeObserver);
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      const callback = rafCallbacks.shift();
+      callback?.(16);
+    });
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
   });
 });
 

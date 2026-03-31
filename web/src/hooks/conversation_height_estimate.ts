@@ -7,6 +7,21 @@ export type ConversationHeightEstimateModel = {
   totalHeight: number;
 };
 
+type HeadingBlock = {
+  level: 1 | 2 | 3 | 4;
+  text: string;
+};
+
+type HeightEstimateInput = {
+  normalizedText: string;
+  codeBlockCount: number;
+  codeBlockLineCount: number;
+  blockquoteBlockCount: number;
+  headingBlocks: HeadingBlock[];
+  imageCount: number;
+  structureCacheKey: string;
+};
+
 const DEFAULT_VIEWPORT_WIDTH = 720;
 const MIN_CONTENT_WIDTH = 180;
 const DEFAULT_ITEM_HEIGHT = 48;
@@ -27,6 +42,7 @@ const BLOCKQUOTE_BLOCK_VERTICAL_CHROME = 12;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
 const STRUCTURE_HEIGHT_CACHE_LIMIT = 32;
+const ESTIMATE_INPUT_CACHE_LIMIT = 1024;
 const H1_FONT = '600 18px "Space Grotesk", system-ui, sans-serif';
 const H1_LINE_HEIGHT = 22.5;
 const H2_FONT = '600 16px "Space Grotesk", system-ui, sans-serif';
@@ -44,13 +60,29 @@ const markdownDecorationPattern = /[*_~]+/g;
 const preparedTextCache = new Map<string, PreparedText>();
 const fallbackHeightCache = new Map<string, number>();
 const measuredHeightCache = new Map<string, Map<string, number>>();
+const estimateInputCache = new Map<string, HeightEstimateInput>();
 let canMeasureRichText: boolean | null = null;
 
 export function resetConversationHeightEstimateCaches(): void {
   preparedTextCache.clear();
   fallbackHeightCache.clear();
   measuredHeightCache.clear();
+  estimateInputCache.clear();
   canMeasureRichText = null;
+}
+
+export function getConversationHeightEstimateCacheSizesForTests(): {
+  preparedText: number;
+  fallbackHeight: number;
+  measuredHeight: number;
+  estimateInput: number;
+} {
+  return {
+    preparedText: preparedTextCache.size,
+    fallbackHeight: fallbackHeightCache.size,
+    measuredHeight: measuredHeightCache.size,
+    estimateInput: estimateInputCache.size,
+  };
 }
 
 export function buildConversationHeightEstimateModel(
@@ -94,7 +126,7 @@ export function estimateMarkdownBubbleHeight(
   viewportWidth: number,
   fallbackHeight: number
 ): number {
-  const estimateInput = buildHeightEstimateInput(text);
+  const estimateInput = getHeightEstimateInputCached(text);
   const {
     normalizedText,
     codeBlockCount,
@@ -102,6 +134,7 @@ export function estimateMarkdownBubbleHeight(
     blockquoteBlockCount,
     headingBlocks,
     imageCount,
+    structureCacheKey,
   } = estimateInput;
   const contentWidth = resolveMessageContentWidth(viewportWidth);
   if (!canUseRichTextMeasurement()) {
@@ -123,14 +156,7 @@ export function estimateMarkdownBubbleHeight(
     return fallback;
   }
 
-  const structureKey = [
-    contentWidth,
-    codeBlockCount,
-    codeBlockLineCount,
-    blockquoteBlockCount,
-    imageCount,
-    ...headingBlocks.flatMap((heading) => [heading.level, heading.text]),
-  ].join(":");
+  const structureKey = `${contentWidth}:${structureCacheKey}`;
   const cached = getMeasuredHeightCache(
     normalizedText,
     structureKey
@@ -239,14 +265,23 @@ function normalizeTextForHeightEstimate(text: string): string {
   return normalized;
 }
 
-function buildHeightEstimateInput(text: string): {
-  normalizedText: string;
-  codeBlockCount: number;
-  codeBlockLineCount: number;
-  blockquoteBlockCount: number;
-  headingBlocks: { level: 1 | 2 | 3 | 4; text: string }[];
-  imageCount: number;
-} {
+function getHeightEstimateInputCached(text: string): HeightEstimateInput {
+  const cached = estimateInputCache.get(text);
+  if (cached) {
+    refreshCacheRecency(estimateInputCache, text);
+    return cached;
+  }
+  const input = buildHeightEstimateInput(text);
+  cacheWithLimit(
+    estimateInputCache,
+    text,
+    input,
+    ESTIMATE_INPUT_CACHE_LIMIT
+  );
+  return input;
+}
+
+function buildHeightEstimateInput(text: string): HeightEstimateInput {
   let imageCount = 0;
   const withoutImages = text.replace(markdownImagePattern, (_full, altText: string) => {
     imageCount += 1;
@@ -267,7 +302,7 @@ function buildHeightEstimateInput(text: string): {
   );
   let blockquoteBlockCount = 0;
   let inBlockquote = false;
-  const headingBlocks: { level: 1 | 2 | 3 | 4; text: string }[] = [];
+  const headingBlocks: HeadingBlock[] = [];
   const proseLines: string[] = [];
   for (const rawLine of withoutCodeBlocks.split("\n")) {
     const trimmedLine = rawLine.trim();
@@ -295,6 +330,13 @@ function buildHeightEstimateInput(text: string): {
     blockquoteBlockCount,
     headingBlocks,
     imageCount,
+    structureCacheKey: [
+      codeBlockCount,
+      codeBlockLineCount,
+      blockquoteBlockCount,
+      imageCount,
+      ...headingBlocks.flatMap((heading) => [heading.level, heading.text]),
+    ].join(":"),
   };
 }
 
@@ -358,7 +400,7 @@ function estimateCodeBlockHeight(
 }
 
 function estimateHeadingBlockHeight(
-  headingBlocks: readonly { level: 1 | 2 | 3 | 4; text: string }[],
+  headingBlocks: readonly HeadingBlock[],
   contentWidth: number
 ): number {
   if (headingBlocks.length === 0) {

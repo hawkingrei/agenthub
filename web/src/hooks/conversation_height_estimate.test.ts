@@ -34,6 +34,7 @@ vi.mock("@chenglou/pretext", () => ({
 import {
   buildConversationHeightEstimateModel,
   buildVirtualConversationSliceWithHeightModel,
+  getConversationHeightEstimateCacheSizesForTests,
   estimateConversationItemHeight,
   resetConversationHeightEstimateCaches,
 } from "./conversation_height_estimate";
@@ -182,6 +183,27 @@ describe("conversation_height_estimate", () => {
     );
 
     expect(layoutMock.mock.calls.length).toBe(firstPassCalls);
+  });
+
+  it("caches parsed markdown structure inputs by raw text", () => {
+    const message = makeMessage(
+      [
+        "# Heading",
+        "",
+        "> quoted context",
+        "",
+        "```ts",
+        "const value = 1;",
+        "```",
+      ].join("\n"),
+      14
+    );
+
+    estimateConversationItemHeight(message, 720, 48);
+    estimateConversationItemHeight(message, 540, 48);
+    estimateConversationItemHeight(message, 360, 48);
+
+    expect(getConversationHeightEstimateCacheSizesForTests().estimateInput).toBe(1);
   });
 
   it("evicts old per-text structure variants when width churn exceeds the inner cache bound", () => {

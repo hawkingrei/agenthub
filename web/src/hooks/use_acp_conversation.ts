@@ -527,11 +527,26 @@ export function useAcpConversation({
     if (typeof ResizeObserver !== "function") {
       return;
     }
+    const throttle = createRafThrottle(() => syncConversationViewport(true), {
+      requestAnimationFrame:
+        typeof window !== "undefined" &&
+        typeof window.requestAnimationFrame === "function"
+          ? window.requestAnimationFrame.bind(window)
+          : undefined,
+      cancelAnimationFrame:
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+          ? window.cancelAnimationFrame.bind(window)
+          : undefined,
+    });
     const observer = new ResizeObserver(() => {
-      syncConversationViewport(true);
+      throttle.schedule();
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      throttle.cancel();
+    };
   }, [acpTab, conversationViewportNode, syncConversationViewport]);
 
   const prepareForLoadOlder = () => {
