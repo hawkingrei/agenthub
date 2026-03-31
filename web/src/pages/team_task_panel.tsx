@@ -6,7 +6,7 @@ import {
   TeamConversationMessageRecord,
   api,
 } from "../api";
-import { ThreadRichText } from "../components/thread_rich_text";
+import { preloadThreadMarkdownAssets, ThreadRichText } from "../components/thread_rich_text";
 import { windowConversation } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
 import { TeamMemberLiveState } from "./team/member_helpers";
@@ -135,7 +135,7 @@ const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
 const TEAM_TASK_ACTIVITY_TIME_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 overflow-hidden text-ui-text-primary";
+  "mt-2 min-w-0 break-words text-ui-text-primary";
 const TEAM_TASK_PERMISSION_CARD_CLASS =
   "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-3 py-3";
 const TEAM_TASK_PERMISSION_CARD_HEADER_CLASS =
@@ -583,6 +583,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     formatTs,
     toPrettyJson,
   } = props;
+
+  React.useEffect(() => {
+    void preloadThreadMarkdownAssets();
+  }, []);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
