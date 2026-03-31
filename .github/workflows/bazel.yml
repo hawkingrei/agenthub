@@ -136,7 +136,7 @@ jobs:
         run: bazel build $BAZEL_ROOT_RUNTIME_PREREQ_TARGETS
       - name: Bazel coverage
         run: |
-          bazel coverage --combined_report=lcov --test_output=errors \
+          bazel coverage --combined_report=lcov --test_output=errors --nocache_test_results \
             $BAZEL_COVERAGE_TARGETS
           cp "$(bazel info output_path)/_coverage/_coverage_report.dat" bazel.lcov
           test -s bazel.lcov
