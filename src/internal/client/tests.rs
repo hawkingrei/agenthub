@@ -725,6 +725,61 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
 }
 
 #[tokio::test]
+async fn grpc_actor_send_allows_remote_target_outside_team_spec() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-remote-send-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+    let cert_dir = test_cert_dir("grpc-remote-send-external-target");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+        server.addr,
+        issue_mailbox_token(&authz, &run_id),
+        &cert_dir,
+    ))
+    .await
+    .expect("connect grpc mailbox client");
+
+    let sent = client
+        .actor_send(ActorSendRequest {
+            run_id: run_id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("federation".to_string()),
+            transport: Some(ActorMessageTransport::Remote),
+            route: Some(json!({"endpoint":"https://remote.example/a2a"})),
+            payload: json!({
+                "type":"chat_message",
+                "text":"federated request"
+            }),
+            idempotency_key: Some("grpc-remote-send-external-target".to_string()),
+        })
+        .await
+        .expect("remote transport should allow external actor target");
+
+    assert_eq!(sent.state, ActorMessageStatus::Pending);
+    assert_eq!(sent.message.to_actor_id, "remote-reviewer");
+    assert_eq!(sent.message.transport, ActorMessageTransport::Remote);
+    assert_eq!(
+        sent.message.route,
+        Some(json!({"endpoint":"https://remote.example/a2a"}))
+    );
+
+    server.handle.abort();
+}
+
+#[tokio::test]
 async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
     install_rustls_crypto_provider();
     let state = build_test_state().await;

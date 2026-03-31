@@ -755,8 +755,10 @@ impl ActorMailboxService for TeamActorMailboxService {
                 .map_err(map_actor_service_error);
         }
         let to_actor_id = to_actor_id.expect("validated actor target");
-        self.validate_direct_send_target(run_id, to_actor_id)
-            .await?;
+        if transport == TeamActorMessageTransport::Local {
+            self.validate_direct_send_target(run_id, to_actor_id)
+                .await?;
+        }
 
         let (message, created) = self
             .manager
