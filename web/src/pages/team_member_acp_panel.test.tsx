@@ -18,7 +18,7 @@ vi.mock("../hooks/use_acp_conversation", () => ({
 
 installReactDomTestGlobals();
 
-function buildAcpEvents(): AgentEvent[] {
+function buildAcpEvents(extraMessages: Record<string, unknown>[] = []): AgentEvent[] {
   return [
     {
       event_id: 1,
@@ -32,6 +32,15 @@ function buildAcpEvents(): AgentEvent[] {
         text: "Runtime conversation is active.",
       }),
     },
+    ...extraMessages.map((message, index) => ({
+      event_id: index + 2,
+      agent_id: "worker-agent",
+      session_id: "runtime-session-1",
+      seq: String(index + 2),
+      ts: 1_700_000_001 + index + 1,
+      stream: "acp",
+      message: JSON.stringify(message),
+    })),
   ];
 }
 
@@ -127,5 +136,42 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.querySelector(".jump-bottom")).not.toBeNull();
     expect(container.querySelector(".acp-jump-bottom")).toBeNull();
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+  });
+
+  it("shows an interrupt action for a running team member ACP session", () => {
+    const onInterrupt = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "running" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        canInterrupt={true}
+        onInterrupt={onInterrupt}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    const interruptButton = required(
+      container.querySelector('button[aria-label="Interrupt current run"]'),
+      "interrupt button missing"
+    ) as HTMLButtonElement;
+    expect(interruptButton.disabled).toBe(false);
+
+    act(() => {
+      interruptButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 });

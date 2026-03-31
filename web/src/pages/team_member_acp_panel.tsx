@@ -38,6 +38,8 @@ type TeamMemberAcpPanelProps = {
   eventsLoading: boolean;
   oldestMemberEventId: number | null;
   onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  canInterrupt?: boolean;
+  onInterrupt?: () => Promise<void> | void;
   onForceNewSession?: () => Promise<void> | void;
   onRefresh: () => Promise<void> | void;
   onLoadOlder: () => Promise<void> | void;
@@ -60,6 +62,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     eventsLoading,
     oldestMemberEventId,
     onSendInput,
+    canInterrupt,
+    onInterrupt,
     onForceNewSession,
     onRefresh,
     onLoadOlder,
@@ -161,6 +165,12 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     memberEventsHasMore &&
     oldestMemberEventId != null;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
+  const hasInProgressToolCall = acpView.toolCalls.some(
+    (call) => call.status === "in_progress"
+  );
+  const canInterruptAcpRun =
+    Boolean(canInterrupt) &&
+    (acpView.runStatus?.status === "running" || hasInProgressToolCall);
   const memberTitle = selectedMemberId.trim() || "No team member selected";
   const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
   const memberRoleLabel =
@@ -410,11 +420,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpModelIdChange: setAcpModelId,
         onAcpConfigIdChange: setAcpConfigId,
         onAcpConfigValueChange: setAcpConfigValue,
-        canControlAcp: false,
+        canControlAcp: Boolean(onInterrupt) && canInterruptAcpRun,
         onAcpSetMode: NOOP,
         onAcpSetModel: NOOP,
         onAcpSetConfig: NOOP,
-        onAcpCancel: NOOP,
+        onAcpCancel: () => {
+          void onInterrupt?.();
+        },
         onAcpClearSession: () => {
           void onForceNewSession?.();
         },
@@ -435,11 +447,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpRuntimeMetrics,
       acpView,
       ansi,
+      canInterruptAcpRun,
       developerMode,
       effectiveAcpTab,
       handleTerminalScroll,
       jumpToTerminalBottom,
       onForceNewSession,
+      onInterrupt,
       panelSubtitle,
       hasVisibleInputDock,
       terminalOutputs,
@@ -551,14 +565,16 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
           <InputDock
             input={input}
             historyCommands={inputHistory}
-            showInterrupt={false}
-            canInterrupt={false}
+            showInterrupt={Boolean(onInterrupt) && acpView.hasAcp}
+            canInterrupt={canInterruptAcpRun}
             sendDisabled={!canSendInput || sendingInput}
             onInputChange={handleInputChange}
             onSendInput={() => {
               void handleSendInput();
             }}
-            onInterrupt={() => {}}
+            onInterrupt={() => {
+              void onInterrupt?.();
+            }}
             onNavigateHistory={handleNavigateHistory}
             onSelectHistoryCommand={handleSelectHistoryCommand}
             onJumpToBottom={inputDockJumpMode.onJumpToBottom}

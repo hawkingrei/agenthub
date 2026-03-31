@@ -36,7 +36,7 @@ import {
   TeamRunSnapshotRecord,
   TeamStepRecord,
 } from "../api";
-import { AGENT_NOT_RUNNING_ERROR } from "../agent_ws";
+import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import {
   DEFAULT_AGENT_PRESET_ID,
   getAgentPreset,
@@ -2694,6 +2694,29 @@ export function TeamPage(props: TeamPageProps) {
       setError,
     ]
   );
+  const onCancelTeamMemberAcp = useCallback(async () => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    setError(null);
+    try {
+      await api.cancelAcp(props.token, selectedAgentWorkspaceAgent.id);
+      if (selectedTeamId) {
+        void refreshTeamRuntime(selectedTeamId).catch(() => undefined);
+      }
+      void refreshAgents().catch(() => undefined);
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [
+    loadMemberEvents,
+    props.token,
+    refreshAgents,
+    refreshTeamRuntime,
+    selectedAgentWorkspaceAgent,
+    selectedTeamId,
+  ]);
   const onForceNewTeamMemberSession = useCallback(async () => {
     if (!props.token || !selectedTeamId || !selectedAgentWorkspaceMemberId) {
       return;
@@ -3934,6 +3957,8 @@ export function TeamPage(props: TeamPageProps) {
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
                       onSendInput={onSendAgentAcpInput}
+                      canInterrupt={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
+                      onInterrupt={onCancelTeamMemberAcp}
                       onForceNewSession={onForceNewTeamMemberSession}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}
