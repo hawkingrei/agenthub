@@ -94,25 +94,25 @@ export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | n
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[30px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.36),rgba(248,244,236,0.22))] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]";
+  "rounded-[30px] border border-ui-border/70 bg-white/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[20px] border border-black/[0.05] bg-white/[0.44] p-2 backdrop-blur-sm";
+  "rounded-[20px] border border-ui-border/70 bg-white/55 p-2 backdrop-blur-sm";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
   "px-1.5 py-1";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-black/[0.08] bg-white/[0.84] px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[14px] border border-black/[0.08] bg-white/[0.84] text-ui-text-primary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(239,234,225,0.94))] px-3 py-2 text-left text-ui-text-primary shadow-[0_10px_22px_rgba(15,23,42,0.05)]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-white/[0.58]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-white/70";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
   "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(239,234,225,0.94))] px-3 py-2.5 text-left text-ui-text-primary shadow-[0_10px_22px_rgba(15,23,42,0.05)] transition";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2.5 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-white/[0.58]";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-white/70";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
 

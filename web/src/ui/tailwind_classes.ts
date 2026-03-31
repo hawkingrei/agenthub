@@ -18,25 +18,25 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-primary transition hover:border-ui-border-emphasis";
 
 export const TEAM_PANEL_CARD_CLASS =
-  "card team-panel-card min-h-0 rounded-[24px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,244,236,0.97))] shadow-[0_16px_40px_rgba(15,23,42,0.07)] backdrop-blur-sm";
+  "card team-panel-card min-h-0 rounded-[24px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm";
 
 export const TEAM_PANEL_TOOLBAR_CLASS =
-  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-black/[0.06] bg-white/[0.68] px-3 py-2";
+  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-ui-border/80 bg-white/75 px-3 py-2";
 
 export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
   "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
 
 export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-[#203b2d] bg-[#203b2d] px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-inverse shadow-[0_10px_18px_rgba(32,59,45,0.18)] transition hover:border-[#182c22] hover:bg-[#182c22] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[14px] border border-brand-primary bg-brand-primary px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-inverse shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition hover:border-brand-primary-hover hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-black/[0.08] bg-white/[0.82] px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/85 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_GHOST_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-black/[0.08] bg-white/[0.82] px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/85 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_REFRESH_BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[14px] border border-black/[0.08] bg-white/[0.82] px-2.5 py-ctrl-y-sm text-ui-sm font-semibold text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border";
+  "inline-flex items-center gap-1.5 rounded-[14px] border border-ui-border-strong bg-white/85 px-2.5 py-ctrl-y-sm text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border";
 
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border";
@@ -50,25 +50,25 @@ export const TEAM_PANEL_PRE_CLASS =
   "mono max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-ui-border bg-ui-surface-soft p-2";
 
 export const TEAM_TAB_BAR_CLASS =
-  "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-[22px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(244,239,231,0.92))] p-1.5 shadow-[0_12px_28px_rgba(15,23,42,0.05)]";
+  "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-[22px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.92))] p-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)]";
 
 const TEAM_TAB_BUTTON_BASE_CLASS =
   "tab shrink-0 rounded-[14px] px-3 py-2 text-ui-sm font-semibold transition";
 
 export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} active bg-[#203b2d] text-ui-text-inverse shadow-[0_10px_18px_rgba(32,59,45,0.18)]`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} active border border-ui-border-strong bg-white text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]`;
 
 export const TEAM_TAB_BUTTON_IDLE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-white/[0.78] hover:text-ui-text-primary`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
 
 export const TEAM_LIST_ITEM_BASE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-black/[0.06] bg-white/[0.72] px-ctrl-x py-ctrl-y text-left text-ui-text-primary shadow-[0_6px_18px_rgba(15,23,42,0.04)] transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border/90 bg-white/82 px-ctrl-x py-ctrl-y text-left text-ui-text-primary shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition";
 
 export const TEAM_LIST_ITEM_ACTIVE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(240,236,227,0.95))] ring-1 ring-black/[0.05]`;
+  `${TEAM_LIST_ITEM_BASE_CLASS} border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] ring-1 ring-ui-border/70`;
 
 export const TEAM_LIST_ITEM_IDLE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} hover:border-black/[0.1] hover:bg-ui-surface-soft`;
+  `${TEAM_LIST_ITEM_BASE_CLASS} hover:border-ui-border-strong hover:bg-ui-surface-soft`;
 
 export const TEAM_LIST_ITEM_TITLE_CLASS =
   "team-name w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold";
@@ -211,7 +211,7 @@ export const ACP_TOOL_STATUS_GROUP_RUNNING_CLASS =
 export const TEAM_MUTED_TEXT_CLASS = "muted text-ui-sm text-ui-text-muted";
 
 export const TEAM_SIDEBAR_ROOT_CLASS =
-  "teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto rounded-[28px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(252,251,247,0.84),rgba(242,238,230,0.96))] p-4 shadow-[0_18px_44px_rgba(15,23,42,0.08)] backdrop-blur-sm";
+  "teams-sidebar flex min-h-0 min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto rounded-[28px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(248,250,252,0.95))] p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur-sm";
 
 export const TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS =
   "flex w-full items-center justify-between gap-2 rounded-md border border-transparent bg-transparent px-1.5 py-1.5 text-left transition hover:bg-ui-surface-soft/70";
@@ -222,7 +222,7 @@ export const TEAM_SIDEBAR_SWITCHER_PANEL_CLASS =
 export const TEAM_SIDEBAR_SWITCHER_ACTIONS_CLASS = "mt-3 flex flex-wrap gap-2";
 
 export const TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-black/[0.08] bg-white/[0.82] text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-ui-border-strong bg-white/88 text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:text-ui-text-primary";
 
 export const TEAM_SIDEBAR_SCOPE_SWITCH_CLASS =
   "flex items-center gap-1.5 border-b border-ui-border/70 pb-2";
@@ -242,7 +242,7 @@ export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
   "appearance-none border-0 bg-transparent shadow-none flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.22em] text-ui-text-muted transition hover:text-ui-text-primary";
 
 export const TEAM_SIDEBAR_NAV_LIST_CLASS =
-  "flex min-w-0 flex-col gap-1.5 rounded-[18px] border border-black/[0.05] bg-white/[0.34] p-1.5";
+  "flex min-w-0 flex-col gap-1.5 rounded-[18px] border border-ui-border/70 bg-white/52 p-1.5";
 
 const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
   "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-transparent px-2.5 py-2 text-left transition";
