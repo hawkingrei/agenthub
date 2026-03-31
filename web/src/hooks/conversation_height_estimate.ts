@@ -11,7 +11,7 @@ const DEFAULT_VIEWPORT_WIDTH = 720;
 const MIN_CONTENT_WIDTH = 180;
 const DEFAULT_ITEM_HEIGHT = 48;
 const MIN_ITEM_HEIGHT = 24;
-const MAX_ITEM_HEIGHT = 220;
+const MAX_ITEM_HEIGHT = 3000;
 const MESSAGE_FONT =
   "400 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 const MESSAGE_LINE_HEIGHT = 24;
@@ -20,6 +20,10 @@ const MESSAGE_HORIZONTAL_CHROME = 26;
 const MESSAGE_VERTICAL_CHROME = 18;
 const MESSAGE_MIN_HEIGHT = 42;
 const MESSAGE_PARAGRAPH_GAP = 8;
+const CODE_BLOCK_VERTICAL_CHROME = 28;
+const CODE_BLOCK_LINE_HEIGHT = 22;
+const CODE_BLOCK_MAX_WIDTH_RATIO = 0.98;
+const CODE_BLOCK_HORIZONTAL_CHROME = 20;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
 
@@ -85,7 +89,8 @@ export function estimateMarkdownBubbleHeight(
     return normalizeEstimatedHeight(Math.max(MESSAGE_MIN_HEIGHT, fallbackHeight));
   }
   const contentWidth = resolveMessageContentWidth(viewportWidth);
-  const cacheKey = `${contentWidth}:${fallbackHeight}:${normalizedText}`;
+  const codeBlockLineCount = countFencedCodeBlockLines(text);
+  const cacheKey = `${contentWidth}:${fallbackHeight}:${codeBlockLineCount}:${normalizedText}`;
   const cached = estimatedHeightCache.get(cacheKey);
   if (cached != null) {
     refreshCacheRecency(estimatedHeightCache, cacheKey);
@@ -93,20 +98,17 @@ export function estimateMarkdownBubbleHeight(
   }
 
   const measured = canUseRichTextMeasurement()
-    ? measureRichTextHeight(normalizedText, contentWidth)
+    ? measureRichTextHeight(normalizedText, contentWidth) +
+        estimateCodeBlockAdjustment(codeBlockLineCount, viewportWidth)
     : fallbackHeight;
   const height = normalizeEstimatedHeight(
-    Math.max(
-      MESSAGE_MIN_HEIGHT,
-      measured + MESSAGE_VERTICAL_CHROME
-    )
+    Math.max(MESSAGE_MIN_HEIGHT, measured)
   );
   cacheWithLimit(estimatedHeightCache, cacheKey, height, HEIGHT_CACHE_LIMIT);
   return height;
 }
 
 export function buildVirtualConversationSliceWithHeightModel(
-  totalItems: number,
   viewportTop: number,
   viewportHeight: number,
   model: ConversationHeightEstimateModel,
@@ -117,6 +119,7 @@ export function buildVirtualConversationSliceWithHeightModel(
   topSpacer: number;
   bottomSpacer: number;
 } {
+  const totalItems = Math.max(0, model.offsets.length - 1);
   if (totalItems === 0) {
     return {
       start: 0,
@@ -164,6 +167,27 @@ function normalizeTextForHeightEstimate(text: string): string {
     .trim();
 }
 
+function countFencedCodeBlockLines(text: string): number {
+  const matches = text.match(/```[\w-]*\n([\s\S]*?)```/g);
+  if (!matches) {
+    return 0;
+  }
+  let total = 0;
+  for (const match of matches) {
+    const normalized = match
+      .replace(/^```[\w-]*\n?/, "")
+      .replace(/```$/, "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
+    if (!normalized) {
+      total += 1;
+      continue;
+    }
+    total += normalized.split("\n").length;
+  }
+  return total;
+}
+
 function canUseRichTextMeasurement(): boolean {
   if (canMeasureRichText != null) {
     return canMeasureRichText;
@@ -184,7 +208,7 @@ function measureRichTextHeight(text: string, maxWidth: number): number {
   const result = layout(prepared, maxWidth, MESSAGE_LINE_HEIGHT);
   const paragraphGap =
     paragraphCount > 1 ? (paragraphCount - 1) * MESSAGE_PARAGRAPH_GAP : 0;
-  return result.height + paragraphGap;
+  return result.height + paragraphGap + MESSAGE_VERTICAL_CHROME;
 }
 
 function getPreparedTextCached(text: string): PreparedText {
@@ -207,6 +231,26 @@ function resolveMessageContentWidth(viewportWidth: number): number {
     MIN_CONTENT_WIDTH,
     Math.floor(containerWidth * MESSAGE_MAX_WIDTH_RATIO) - MESSAGE_HORIZONTAL_CHROME
   );
+}
+
+function estimateCodeBlockAdjustment(
+  codeBlockLineCount: number,
+  viewportWidth: number
+): number {
+  if (codeBlockLineCount <= 0) {
+    return 0;
+  }
+  const width = Math.max(
+    MIN_CONTENT_WIDTH,
+    Math.floor(
+      (Number.isFinite(viewportWidth) && viewportWidth > 0
+        ? viewportWidth
+        : DEFAULT_VIEWPORT_WIDTH) * CODE_BLOCK_MAX_WIDTH_RATIO
+    ) - CODE_BLOCK_HORIZONTAL_CHROME
+  );
+  const averageCharsPerLine = Math.max(12, Math.floor(width / 8));
+  const wrappedLines = Math.ceil(codeBlockLineCount * (80 / averageCharsPerLine));
+  return wrappedLines * CODE_BLOCK_LINE_HEIGHT + CODE_BLOCK_VERTICAL_CHROME;
 }
 
 function normalizeFallbackHeight(height: number): number {

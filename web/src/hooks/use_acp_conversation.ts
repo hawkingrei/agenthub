@@ -415,6 +415,21 @@ export function useAcpConversation({
     conversationStickToBottom,
     conversationSourceItems.length
   );
+  const conversationHeightEstimateModel = useMemo(() => {
+    if (!shouldVirtualizeConversation) {
+      return null;
+    }
+    return buildConversationHeightEstimateModel(
+      conversationSourceItems,
+      conversationViewportWidth,
+      conversationAvgHeight
+    );
+  }, [
+    shouldVirtualizeConversation,
+    conversationSourceItems,
+    conversationViewportWidth,
+    conversationAvgHeight,
+  ]);
   const conversationVirtualSlice = useMemo(() => {
     if (!shouldVirtualizeConversation) {
       return {
@@ -424,13 +439,16 @@ export function useAcpConversation({
         bottomSpacer: 0,
       };
     }
-    const model = buildConversationHeightEstimateModel(
-      conversationSourceItems,
-      conversationViewportWidth,
-      conversationAvgHeight
-    );
+    const model = conversationHeightEstimateModel;
+    if (!model) {
+      return {
+        items: conversationSourceItems,
+        offset: conversationSourceOffset,
+        topSpacer: 0,
+        bottomSpacer: 0,
+      };
+    }
     const slice = buildVirtualConversationSliceWithHeightModel(
-      conversationSourceItems.length,
       conversationViewport.top,
       conversationViewport.height,
       model,
@@ -446,10 +464,9 @@ export function useAcpConversation({
     shouldVirtualizeConversation,
     conversationSourceItems,
     conversationSourceOffset,
+    conversationHeightEstimateModel,
     conversationViewport.top,
     conversationViewport.height,
-    conversationViewportWidth,
-    conversationAvgHeight,
   ]);
   const conversationRenderItems = conversationVirtualSlice.items;
   const collapseCutoff = Math.max(0, conversationMessages.length - 50);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { prepare } from "@chenglou/pretext";
 import type { ConversationItem } from "../conversation";
 
 vi.mock("@chenglou/pretext", () => ({
@@ -78,6 +79,26 @@ describe("conversation_height_estimate", () => {
     expect(height).toBe(64);
   });
 
+  it("does not add extra chrome when pretext measurement is unavailable", () => {
+    const prepareMock = vi.mocked(prepare);
+    resetConversationHeightEstimateCaches();
+    try {
+      prepareMock.mockImplementationOnce(() => {
+        throw new Error("measurement unavailable");
+      });
+      const height = estimateConversationItemHeight(
+        makeMessage("plain text", 3),
+        720,
+        48
+      );
+      expect(height).toBe(48);
+    } finally {
+      prepareMock.mockReset();
+      prepareMock.mockImplementation((text: string) => ({ text }) as never);
+      resetConversationHeightEstimateCaches();
+    }
+  });
+
   it("produces larger total height when the viewport narrows", () => {
     const items = [
       makeMessage("word ".repeat(120), 1),
@@ -94,7 +115,6 @@ describe("conversation_height_estimate", () => {
     );
     const model = buildConversationHeightEstimateModel(items, 640, 48);
     const slice = buildVirtualConversationSliceWithHeightModel(
-      items.length,
       3200,
       480,
       model,
@@ -105,5 +125,29 @@ describe("conversation_height_estimate", () => {
     expect(slice.topSpacer).toBeGreaterThan(0);
     expect(slice.bottomSpacer).toBeGreaterThan(0);
     expect(slice.topSpacer + slice.bottomSpacer).toBeLessThan(model.totalHeight);
+  });
+
+  it("adds extra room for fenced code blocks", () => {
+    const plain = estimateConversationItemHeight(
+      makeMessage("explain the fix briefly", 4),
+      720,
+      48
+    );
+    const withCode = estimateConversationItemHeight(
+      makeMessage(
+        [
+          "explain the fix briefly",
+          "",
+          "```ts",
+          "const value = veryLongIdentifierName + anotherLongIdentifierName;",
+          "console.log(value);",
+          "```",
+        ].join("\n"),
+        5
+      ),
+      720,
+      48
+    );
+    expect(withCode).toBeGreaterThan(plain);
   });
 });
