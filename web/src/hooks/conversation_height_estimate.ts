@@ -26,6 +26,7 @@ const CODE_BLOCK_LINE_HEIGHT = 20;
 const BLOCKQUOTE_BLOCK_VERTICAL_CHROME = 12;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
+const STRUCTURE_HEIGHT_CACHE_LIMIT = 32;
 const H1_FONT = '600 18px "Space Grotesk", system-ui, sans-serif';
 const H1_LINE_HEIGHT = 22.5;
 const H2_FONT = '600 16px "Space Grotesk", system-ui, sans-serif';
@@ -421,10 +422,12 @@ function setMeasuredHeightCache(
   } else {
     refreshCacheRecency(measuredHeightCache, normalizedText);
   }
-  if (byStructure.has(structureKey)) {
-    byStructure.delete(structureKey);
-  }
-  byStructure.set(structureKey, height);
+  cacheWithLimit(
+    byStructure,
+    structureKey,
+    height,
+    STRUCTURE_HEIGHT_CACHE_LIMIT
+  );
 }
 
 function headingFontForLevel(level: 1 | 2 | 3 | 4): string {

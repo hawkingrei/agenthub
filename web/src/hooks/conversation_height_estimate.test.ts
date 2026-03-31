@@ -184,6 +184,24 @@ describe("conversation_height_estimate", () => {
     expect(layoutMock.mock.calls.length).toBe(firstPassCalls);
   });
 
+  it("evicts old per-text structure variants when width churn exceeds the inner cache bound", () => {
+    const layoutMock = vi.mocked(layout);
+    layoutMock.mockClear();
+    const message = makeMessage("width-sensitive cached text", 90);
+    const widths = Array.from({ length: 40 }, (_, idx) => 400 + idx * 2);
+
+    for (const width of widths) {
+      estimateConversationItemHeight(message, width, 48);
+    }
+
+    const afterWarmupCalls = layoutMock.mock.calls.length;
+    estimateConversationItemHeight(message, widths[widths.length - 1]!, 48);
+    expect(layoutMock.mock.calls.length).toBe(afterWarmupCalls);
+
+    estimateConversationItemHeight(message, widths[0]!, 48);
+    expect(layoutMock.mock.calls.length).toBe(afterWarmupCalls + 1);
+  });
+
   it("adds structure compensation for markdown blockquotes", () => {
     const plain = estimateConversationItemHeight(
       makeMessage("Important follow-up", 10),

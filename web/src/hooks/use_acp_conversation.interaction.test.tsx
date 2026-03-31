@@ -31,6 +31,20 @@ const baseAcpView: AcpView = {
   thinkingStartTs: null,
 };
 
+function buildManyMessageView(count: number): AcpView {
+  return {
+    ...baseAcpView,
+    messages: Array.from({ length: count }, (_, idx) => ({
+      kind: "agent_message" as const,
+      text: `message-${idx}`,
+      session_id: "session-1",
+      event_id: idx + 1,
+      seq: String(idx + 1),
+      chunk: false,
+    })),
+  };
+}
+
 function HookHarness({
   acpView = baseAcpView,
   acpTab = "conversation",
@@ -56,7 +70,7 @@ function HookHarness({
     return <div data-mode={acpTab} />;
   }
   return (
-    <div ref={snapshot.acpConversationRef}>
+    <div data-testid="conversation-viewport" ref={snapshot.acpConversationRef}>
       {snapshot.conversationRenderItems.map((item, idx) => (
         item.kind === "tool_call_group" ? (
           <div key={`${item.kind}-${idx}`}>
@@ -262,3 +276,138 @@ describe("useAcpConversation viewport observer lifecycle", () => {
     expect(observeSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("useAcpConversation viewport width initialization", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let snapshot: HookSnapshot | null = null;
+  let scrollTop = 0;
+  let originalClientWidth: PropertyDescriptor | undefined;
+  let originalClientHeight: PropertyDescriptor | undefined;
+  let originalScrollHeight: PropertyDescriptor | undefined;
+  let originalScrollTop: PropertyDescriptor | undefined;
+  let originalRequestAnimationFrame: typeof window.requestAnimationFrame | undefined;
+
+  const onSnapshot = (next: HookSnapshot) => {
+    snapshot = next;
+  };
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    snapshot = null;
+    scrollTop = 0;
+    originalRequestAnimationFrame = window.requestAnimationFrame;
+    Reflect.deleteProperty(window, "requestAnimationFrame");
+    originalClientWidth = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientWidth"
+    );
+    originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight"
+    );
+    originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    originalScrollTop = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTop"
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 640,
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 420,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 12_000,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    snapshot = null;
+    if (originalRequestAnimationFrame) {
+      Object.defineProperty(window, "requestAnimationFrame", {
+        configurable: true,
+        value: originalRequestAnimationFrame,
+      });
+    }
+    restoreDescriptor(HTMLElement.prototype, "clientWidth", originalClientWidth);
+    restoreDescriptor(HTMLElement.prototype, "clientHeight", originalClientHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollTop", originalScrollTop);
+  });
+
+  it("keeps virtualization active when switching back to conversation while scrolled up", () => {
+    const acpView = buildManyMessageView(220);
+    act(() => {
+      root.render(<HookHarness onSnapshot={onSnapshot} acpView={acpView} />);
+    });
+
+    scrollTop = 11_580;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+
+    scrollTop = 0;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+
+    expect(snapshot?.conversationVirtualized).toBe(true);
+    expect(snapshot?.conversationRenderedItems ?? 0).toBeLessThan(
+      snapshot?.conversationSourceItems ?? 0
+    );
+    expect(snapshot?.conversationVirtualBottomSpacer ?? 0).toBeGreaterThan(0);
+
+    act(() => {
+      root.render(
+        <HookHarness onSnapshot={onSnapshot} acpView={acpView} acpTab="plan" />
+      );
+    });
+    act(() => {
+      root.render(
+        <HookHarness
+          onSnapshot={onSnapshot}
+          acpView={acpView}
+          acpTab="conversation"
+        />
+      );
+    });
+
+    expect(snapshot?.conversationVirtualized).toBe(true);
+    expect(snapshot?.conversationRenderedItems ?? 0).toBeLessThan(
+      snapshot?.conversationSourceItems ?? 0
+    );
+    expect(snapshot?.conversationVirtualBottomSpacer ?? 0).toBeGreaterThan(0);
+  });
+});
+
+function restoreDescriptor(
+  target: object,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor | undefined
+): void {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+    return;
+  }
+  Reflect.deleteProperty(target, key);
+}

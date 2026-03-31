@@ -353,6 +353,16 @@ export function useAcpConversation({
   const acpConversationRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     acpConversationElementRef.current = node;
     setConversationViewportNode((prev) => (prev === node ? prev : node));
+    if (!node) {
+      return;
+    }
+    setConversationViewport((prev) =>
+      nextThreadViewport(prev, node.scrollTop, node.clientHeight)
+    );
+    setConversationViewportWidth((prev) => {
+      const nextWidth = node.clientWidth;
+      return prev === nextWidth ? prev : nextWidth;
+    });
   }, []);
   const conversationScrollThrottleRef = useRef<ReturnType<
     typeof createRafThrottle
@@ -422,7 +432,10 @@ export function useAcpConversation({
     conversationSourceItems.length
   );
   const conversationHeightEstimateModel = useMemo(() => {
-    if (!shouldVirtualizeConversation) {
+    if (
+      !shouldVirtualizeConversation ||
+      conversationViewportWidth <= 0
+    ) {
       return null;
     }
     return buildConversationHeightEstimateModel(
