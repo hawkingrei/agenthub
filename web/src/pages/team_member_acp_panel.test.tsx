@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
-import { createRoot, Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
-import { AgentEvent } from "../api";
+import type { AgentEvent } from "../api";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 
