@@ -29,7 +29,7 @@ use super::{
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
-    TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
+    TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport, TeamContextRecord,
     TeamConversationMessageRecord,
 };
 
@@ -551,6 +551,19 @@ impl TeamActorMailboxService {
         Self { manager }
     }
 
+    async fn validate_direct_send_target(
+        &self,
+        run_id: &str,
+        to_actor_id: &str,
+    ) -> Result<(), ActorServiceError> {
+        let context = self
+            .manager
+            .describe_team_context(None, Some(run_id))
+            .await
+            .map_err(map_actor_service_error)?;
+        validate_direct_mailbox_target_for_context(&context, to_actor_id)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn send_channel_message(
         &self,
@@ -730,6 +743,8 @@ impl ActorMailboxService for TeamActorMailboxService {
                 .map_err(map_actor_service_error);
         }
         let to_actor_id = to_actor_id.expect("validated actor target");
+        self.validate_direct_send_target(run_id, to_actor_id)
+            .await?;
 
         let (message, created) = self
             .manager
@@ -1827,6 +1842,54 @@ fn optional_trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|raw| !raw.is_empty())
 }
 
+fn is_human_mailbox_target(actor_id: &str) -> bool {
+    let trimmed = actor_id.trim();
+    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+}
+
+fn validate_direct_mailbox_target_for_context(
+    context: &TeamContextRecord,
+    to_actor_id: &str,
+) -> Result<(), ActorServiceError> {
+    let trimmed_target = to_actor_id.trim();
+    if trimmed_target.is_empty() || is_human_mailbox_target(trimmed_target) {
+        return Ok(());
+    }
+    if context
+        .members
+        .iter()
+        .any(|member| member.member_id == trimmed_target)
+    {
+        return Ok(());
+    }
+    if let Some(role_match) = context
+        .members
+        .iter()
+        .find(|member| member.role.eq_ignore_ascii_case(trimmed_target))
+    {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            format!(
+                "actor send target `{}` is not a canonical team member_id; use `{}` instead",
+                trimmed_target, role_match.member_id
+            ),
+        ));
+    }
+    let valid_member_ids = context
+        .members
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(ActorServiceError::new(
+        ActorServiceErrorCode::BadRequest,
+        format!(
+            "actor send target `{}` must reference spec.members[].member_id or human mailbox `user` / `user:<id>`; valid member_ids: {}",
+            trimmed_target, valid_member_ids
+        ),
+    ))
+}
+
 fn is_row_not_found(err: &anyhow::Error) -> bool {
     matches!(
         err.downcast_ref::<SqlxError>(),
@@ -1889,6 +1952,42 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn mock_team_context(member_specs: &[(&str, &str)]) -> TeamContextRecord {
+        serde_json::from_value(serde_json::json!({
+            "team_id": "team-1",
+            "team_name": "team",
+            "runtime": {
+                "status": "running",
+                "online_count": member_specs.len(),
+                "member_count": member_specs.len(),
+            },
+            "members": member_specs
+                .iter()
+                .map(|(member_id, role)| serde_json::json!({
+                    "member_id": member_id,
+                    "display_name": member_id,
+                    "role": role,
+                    "description": null,
+                    "pending_inbox_count": 0,
+                    "agent_status": "running",
+                    "session_id": null,
+                    "session_status": null,
+                    "card": {
+                        "card_id": format!("card-{member_id}"),
+                        "schema_version": "1",
+                        "description": format!("{member_id} description"),
+                        "role": role,
+                        "skills": [],
+                        "capability_tags": [],
+                    },
+                    "steps": [],
+                }))
+                .collect::<Vec<_>>(),
+            "run": null,
+        }))
+        .expect("build team context fixture")
+    }
 
     #[test]
     fn normalize_channel_message_payload_wraps_non_object_inputs() {
@@ -2050,5 +2149,35 @@ mod tests {
 
         assert_eq!(reply.text, "hello");
         assert_eq!(reply.correlation_id.as_deref(), Some("corr-9"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_role_alias() {
+        let context = mock_team_context(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_context(&context, "leader")
+            .expect_err("role alias should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("not a canonical team member_id"));
+        assert!(err.message.contains("595d1ae8-fcbd-4111-b5c7-d446a12c044b"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_allows_member_id_and_human_mailbox() {
+        let context = mock_team_context(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        validate_direct_mailbox_target_for_context(
+            &context,
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
+        )
+        .expect("member id should be accepted");
+        validate_direct_mailbox_target_for_context(&context, "user")
+            .expect("human alias should be accepted");
+        validate_direct_mailbox_target_for_context(&context, "user:test")
+            .expect("human actor target should be accepted");
     }
 }

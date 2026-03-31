@@ -20,15 +20,13 @@ use crate::actor_runtime_env::{ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var};
 use crate::internal::auth::InternalAction;
 use crate::internal::client::{InternalGrpcMailboxClient, InternalTeamTaskPatch};
 use crate::team::{
-    TeamActorMessageTransport, TeamContextRecord, TeamTaskDetailRecord, TeamTaskListQuery,
-    TeamTaskRecord, TeamTaskStatus,
+    TeamActorMessageTransport, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord,
+    TeamTaskStatus,
 };
 
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
-const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
-const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
 const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
     "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
 const ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT: &str =
@@ -225,69 +223,6 @@ fn resolve_actor_send_idempotency_key(
             payload,
         )),
     }
-}
-
-fn is_human_mailbox_target(actor_id: &str) -> bool {
-    let trimmed = actor_id.trim();
-    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
-}
-
-pub(super) fn validate_direct_mailbox_target_for_context(
-    context: &TeamContextRecord,
-    to_actor_id: &str,
-) -> anyhow::Result<()> {
-    let trimmed_target = to_actor_id.trim();
-    if trimmed_target.is_empty() || is_human_mailbox_target(trimmed_target) {
-        return Ok(());
-    }
-    if context
-        .members
-        .iter()
-        .any(|member| member.member_id == trimmed_target)
-    {
-        return Ok(());
-    }
-    if let Some(role_match) = context
-        .members
-        .iter()
-        .find(|member| member.role.eq_ignore_ascii_case(trimmed_target))
-    {
-        anyhow::bail!(
-            "actor send target `{}` is not a canonical team member_id; use `{}` instead",
-            trimmed_target,
-            role_match.member_id
-        );
-    }
-    let valid_member_ids = context
-        .members
-        .iter()
-        .map(|member| member.member_id.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    anyhow::bail!(
-        "actor send target `{}` must reference spec.members[].member_id or human mailbox `user` / `user:<id>`; valid member_ids: {}",
-        trimmed_target,
-        valid_member_ids
-    );
-}
-
-async fn validate_direct_mailbox_send_target(
-    actor_id: &str,
-    run_id: &str,
-    to_actor_id: &str,
-) -> anyhow::Result<()> {
-    let client = init_actor_control_client(
-        actor_id,
-        Some(run_id),
-        &[InternalAction::TeamRead],
-        "actor send target validation",
-    )
-    .await?;
-    let context = client
-        .describe_team_context(None, Some(run_id), actor_id)
-        .await
-        .with_context(|| format!("failed to validate actor send target `{to_actor_id}`"))?;
-    validate_direct_mailbox_target_for_context(&context, to_actor_id)
 }
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
@@ -566,9 +501,6 @@ pub(super) async fn run_actor_command(
         } => {
             let run_id =
                 resolve_direct_mailbox_run_id(&from_actor_id, run_id, "actor send").await?;
-            if let Some(to_actor_id) = to_actor_id.as_deref() {
-                validate_direct_mailbox_send_target(&from_actor_id, &run_id, to_actor_id).await?;
-            }
             let idempotency_key = resolve_actor_send_idempotency_key(
                 idempotency,
                 ActorSendIdempotencyContext {

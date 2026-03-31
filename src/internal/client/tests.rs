@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::agent::{AgentConfig, AgentNodeConfig, WorktreeMode};
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorInboxRequest, ActorMailboxService,
-    ActorMessageStatus, ActorMessageTransport, ActorSendRequest,
+    ActorMessageStatus, ActorMessageTransport, ActorSendRequest, ActorServiceErrorCode,
 };
 use serde_json::{Value, json};
 use tonic::transport::{Certificate, Identity, ServerTlsConfig};
@@ -364,6 +364,29 @@ async fn seed_team_run(
     team_name: &str,
     run_id: &str,
 ) {
+    seed_team_run_with_spec(
+        state,
+        team_id,
+        team_name,
+        run_id,
+        &json!({
+            "entrypoint":"planner",
+            "members":[
+                {"member_id":"planner"},
+                {"member_id":"reviewer"}
+            ]
+        }),
+    )
+    .await;
+}
+
+async fn seed_team_run_with_spec(
+    state: &crate::state::AppState,
+    team_id: &str,
+    team_name: &str,
+    run_id: &str,
+    spec: &Value,
+) {
     let now = chrono::Utc::now().timestamp();
     sqlx::query(
         r#"
@@ -382,16 +405,7 @@ async fn seed_team_run(
     .bind(team_id)
     .bind(team_name)
     .bind("grpc relay pipeline test team")
-    .bind(
-        json!({
-            "entrypoint":"planner",
-            "members":[
-                {"member_id":"planner"},
-                {"member_id":"reviewer"}
-            ]
-        })
-        .to_string(),
-    )
+    .bind(spec.to_string())
     .bind(now)
     .bind(now)
     .execute(&state.db)
@@ -640,6 +654,72 @@ async fn grpc_actor_send_returns_server_message_for_channel_targets() {
         sent.message.payload["mention_actor_ids"],
         json!(["reviewer"])
     );
+
+    server.handle.abort();
+}
+
+#[tokio::test]
+async fn grpc_actor_send_rejects_role_alias_target_on_server() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-direct-send-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    let leader_member_id = "595d1ae8-fcbd-4111-b5c7-d446a12c044b";
+    let worker_member_id = "c319f933-1358-4418-a111-872304052422";
+    seed_team_run_with_spec(
+        &state,
+        &team_id,
+        &team_name,
+        &run_id,
+        &json!({
+            "entrypoint": leader_member_id,
+            "members": [
+                {"member_id": leader_member_id, "role": "leader"},
+                {"member_id": worker_member_id, "role": "worker"}
+            ]
+        }),
+    )
+    .await;
+
+    let cert_dir = test_cert_dir("grpc-direct-send-validation");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client = InternalGrpcMailboxClient::connect(mtls_client_config(
+        server.addr,
+        issue_mailbox_token(&authz, &run_id),
+        &cert_dir,
+    ))
+    .await
+    .expect("connect grpc mailbox client");
+
+    let err = client
+        .actor_send(ActorSendRequest {
+            run_id: run_id.clone(),
+            from_actor_id: worker_member_id.to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("leader".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(ActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"please review"
+            }),
+            idempotency_key: Some("grpc-direct-send-role-alias".to_string()),
+        })
+        .await
+        .expect_err("role alias target should be rejected by server");
+
+    assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+    assert!(err.message.contains("not a canonical team member_id"));
+    assert!(err.message.contains(leader_member_id));
 
     server.handle.abort();
 }

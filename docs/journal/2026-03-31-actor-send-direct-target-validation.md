@@ -2,7 +2,7 @@
 
 ## Summary
 
-- reject direct `agenthub actor send --to-actor-id ...` targets that are not canonical Team `spec.members[].member_id` values
+- reject direct `actor send --to-actor-id ...` targets at the mailbox service boundary unless they use canonical Team `spec.members[].member_id` values
 - keep human mailbox targets (`user`, `user:<id>`) valid
 - fail fast on role aliases such as `leader` before they are persisted into `team_actor_messages`
 
@@ -18,15 +18,17 @@ The same Team definition uses `595d1ae8-fcbd-4111-b5c7-d446a12c044b` as the cano
 
 ## Implementation
 
-- add direct mailbox target validation in `src/actor_cli/execute.rs`
-- load Team context for the resolved run before direct `actor send`
+- add direct mailbox target validation in `src/team/manager/mailbox.rs`
+- validate direct `actor_send` requests against Team context resolved from `run_id`
 - accept only:
   - Team `spec.members[].member_id`
   - human mailbox aliases `user` / `user:<id>`
 - reject role aliases with a targeted hint to the canonical `member_id`
+- remove the earlier CLI-side preflight check so the constraint now lives in one place
 
 ## Validation
 
 - `cargo test -p agenthub validate_direct_mailbox_target_ -- --nocapture`
+- `cargo test -p agenthub grpc_actor_send_rejects_role_alias_target_on_server -- --nocapture`
 - `cargo test -p agenthub parse_send_generates_default_idempotency_key -- --nocapture`
 - `git diff --check`
