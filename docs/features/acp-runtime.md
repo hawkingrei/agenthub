@@ -95,6 +95,9 @@ ACP permission requests are first-class runtime records:
 - Auto-stick should follow new tail updates when user is near bottom.
 - Manual scroll-up should disable forced jump until explicit return.
 - Long sessions should use bounded rendering/virtualization to control DOM/CPU cost.
+- Text-dominant conversation rows may use a text-aware height estimator to reduce spacer drift, but
+  non-text/tool rows may still fall back to coarse estimates and must never block rendering on DOM
+  measurement.
 
 ### 3) Permission Scope Contract
 
@@ -186,3 +189,4 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`
 - `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
 - `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
+- `docs/journal/2026-03-31-pretext-acp-conversation-virtualization.md`

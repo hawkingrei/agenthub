@@ -19,6 +19,10 @@ import type { SeqComparable } from "../seq_order";
 import { createRafThrottle } from "../raf_throttle";
 import { isNearBottom } from "../scroll";
 import {
+  buildConversationHeightEstimateModel,
+  buildVirtualConversationSliceWithHeightModel,
+} from "./conversation_height_estimate";
+import {
   deriveThreadJumpState,
   deriveThreadStickToBottom,
   nextThreadViewport,
@@ -369,6 +373,7 @@ export function useAcpConversation({
     top: 0,
     height: 0,
   });
+  const [conversationViewportWidth, setConversationViewportWidth] = useState(0);
   const didAutoAlignConversationRef = useRef(false);
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const [conversationFrozen, setConversationFrozen] = useState(false);
@@ -419,19 +424,31 @@ export function useAcpConversation({
         bottomSpacer: 0,
       };
     }
-    return buildVirtualConversationSlice(
+    const model = buildConversationHeightEstimateModel(
       conversationSourceItems,
-      conversationSourceOffset,
-      conversationViewport.top,
-      conversationViewport.height,
+      conversationViewportWidth,
       conversationAvgHeight
     );
+    const slice = buildVirtualConversationSliceWithHeightModel(
+      conversationSourceItems.length,
+      conversationViewport.top,
+      conversationViewport.height,
+      model,
+      VIRTUALIZATION_OVERSCAN
+    );
+    return {
+      items: conversationSourceItems.slice(slice.start, slice.end),
+      offset: conversationSourceOffset + slice.start,
+      topSpacer: slice.topSpacer,
+      bottomSpacer: slice.bottomSpacer,
+    };
   }, [
     shouldVirtualizeConversation,
     conversationSourceItems,
     conversationSourceOffset,
     conversationViewport.top,
     conversationViewport.height,
+    conversationViewportWidth,
     conversationAvgHeight,
   ]);
   const conversationRenderItems = conversationVirtualSlice.items;
@@ -455,7 +472,25 @@ export function useAcpConversation({
       const nextHeight = el.clientHeight;
       return nextThreadViewport(prev, nextTop, nextHeight);
     });
+    setConversationViewportWidth((prev) => {
+      const nextWidth = el.clientWidth;
+      return prev === nextWidth ? prev : nextWidth;
+    });
   }, []);
+
+  useEffect(() => {
+    const el = acpConversationRef.current;
+    if (!el) return;
+    syncConversationViewport();
+    if (typeof ResizeObserver !== "function") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      syncConversationViewport();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [syncConversationViewport]);
 
   const prepareForLoadOlder = () => {
     const el = acpConversationRef.current;
