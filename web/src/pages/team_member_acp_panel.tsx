@@ -372,6 +372,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const canShowThreadOptions =
     hasSelectedMember || memberEventsLoading || memberEvents.length > 0;
   const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
+  const hasVisibleInputDock = canSendInput && showInputDock;
   const acpPanelProps = React.useMemo(
     () => ({
       acpView,
@@ -379,12 +380,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
-      conversationBottomClearance:
-        canSendInput && showInputDock ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX : 0,
+      conversationBottomClearance: hasVisibleInputDock
+        ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX
+        : 0,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
-      showFloatingConversationJump: !showInputDock,
+      showFloatingConversationJump: !hasVisibleInputDock,
       onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
       conversation: acpConversationProps,
       plan: {
@@ -424,7 +426,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     [
       acpConfigId,
       acpConfigValue,
-      canSendInput,
       acpConversation.jumpToConversationBottom,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
@@ -440,7 +441,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       jumpToTerminalBottom,
       onForceNewSession,
       panelSubtitle,
-      showInputDock,
+      hasVisibleInputDock,
       terminalOutputs,
       terminalShowJump,
     ]
@@ -545,7 +546,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         </div>
       )}
 
-      {canSendInput && showInputDock && (
+      {hasVisibleInputDock && (
         <div className="mt-1.5 shrink-0">
           <InputDock
             input={input}
