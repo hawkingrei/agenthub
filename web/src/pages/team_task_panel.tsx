@@ -584,7 +584,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   } = props;
 
   React.useEffect(() => {
-    void preloadThreadMarkdownAssets();
+    void preloadThreadMarkdownAssets().catch(() => {});
   }, []);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);

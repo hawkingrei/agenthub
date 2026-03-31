@@ -2,7 +2,6 @@
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MantineProvider } from "@mantine/core";
 import {
   api,
   AgentEvent,
@@ -28,38 +27,13 @@ import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
-
-if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
-  window.matchMedia = ((query: string) =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList) as typeof window.matchMedia;
-}
-
-if (typeof globalThis.ResizeObserver !== "function") {
-  globalThis.ResizeObserver = class ResizeObserver {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  } as typeof ResizeObserver;
-}
-
-function required<T>(value: T | null | undefined, message: string): T {
-  if (value == null) {
-    throw new Error(message);
-  }
-  return value;
-}
+installReactDomTestGlobals();
 
 function clickElement(element: Element | null): void {
   const node = required(element, "element not found");
@@ -168,12 +142,6 @@ async function waitForCondition(
     });
   }
   throw new Error("condition not met before timeout");
-}
-
-function renderWithMantine(root: Root, node: React.ReactNode): void {
-  act(() => {
-    root.render(<MantineProvider>{node}</MantineProvider>);
-  });
 }
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
@@ -2461,8 +2429,29 @@ describe("team panels interactions", () => {
       expect(initialTexts).toContain("message 4");
       expect(initialTexts).toContain("message 13");
 
+      const scrollNode = required(
+        container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+        "team channel scroll container missing"
+      );
+      Object.defineProperty(scrollNode, "scrollHeight", {
+        configurable: true,
+        value: 640,
+      });
+      Object.defineProperty(scrollNode, "clientHeight", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(scrollNode, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: 640,
+      });
       act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      act(() => {
+        scrollNode.scrollTop = 0;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
       const expandedTexts = markdownSpy.mock.calls.map((call) => call[0]);
