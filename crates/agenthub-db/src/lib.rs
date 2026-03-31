@@ -2786,19 +2786,23 @@ mod tests {
         expected: i64,
         timeout: Duration,
     ) -> i64 {
-        let deadline = tokio::time::Instant::now() + timeout;
+        let started_at = tokio::time::Instant::now();
+        let deadline = started_at + timeout;
         loop {
             let remaining: i64 =
                 sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
-                .bind(cutoff_ts)
-                .fetch_one(pool)
-                .await
-                .expect("count old events");
+                    .bind(cutoff_ts)
+                    .fetch_one(pool)
+                    .await
+                    .expect("count old events");
             if remaining == expected {
                 return remaining;
             }
             if tokio::time::Instant::now() >= deadline {
-                return remaining;
+                panic!(
+                    "timed out waiting for old event count: cutoff_ts={cutoff_ts}, expected={expected}, last_remaining={remaining}, timeout_ms={}",
+                    timeout.as_millis()
+                );
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }

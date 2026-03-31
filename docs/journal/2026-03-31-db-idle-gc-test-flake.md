@@ -9,6 +9,7 @@ The test previously assumed that a fixed `sleep(180ms)` was always long enough f
 ## Change
 
 - Replaced the fixed post-activity sleep used for the cleanup assertions with a small polling helper that waits until the expected old-event count is observed or a bounded timeout expires.
+- Made timeout failures explicit so CI surfaces a clear cutoff/expected/last-observed mismatch instead of silently returning the final count.
 - Kept the "should not re-run without new activity" assertion on the existing short idle window so the test still validates the generation-gating behavior rather than masking it behind long unconditional waits.
 
 ## Validation
