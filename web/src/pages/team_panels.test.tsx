@@ -448,6 +448,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findInteractiveByText(document.body, "Create Team"));
@@ -955,6 +956,7 @@ describe("team panels interactions", () => {
       root.render(<TeamTabsBar tab="runs" onTabChange={onTabChange} />);
     });
 
+    expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
     expect(container.textContent).toContain("Runs");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Agent ACP");
@@ -1634,6 +1636,7 @@ describe("team panels interactions", () => {
 
     renderWithMantine(root, <TeamTaskPanelHarness />);
 
+    expect(container.querySelector('[data-team-surface="conversation"]')).not.toBeNull();
     expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
     expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
     expect(queryButtonByText(container, "Refresh Thread")).toBeNull();
@@ -2678,6 +2681,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));

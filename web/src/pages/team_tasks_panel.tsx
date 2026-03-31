@@ -50,36 +50,36 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-0.5";
-const TASKS_WORKSPACE_STACK_CLASS = "mt-3.5 flex flex-col gap-3.5";
+  "rounded-[20px] border border-black/[0.06] bg-[rgba(246,242,234,0.88)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]";
+const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
 const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-1";
 const TASKS_BOARD_LANES_CLASS =
-  "grid min-w-full auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3";
+  "grid min-w-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-4";
 const TASKS_BOARD_COLUMN_CLASS =
-  "flex min-h-[300px] flex-col rounded-[16px] border border-ui-border bg-ui-surface-soft/55 p-2.5";
+  "flex min-h-[320px] flex-col rounded-[22px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(250,247,241,0.94),rgba(241,236,227,0.98))] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]";
 const TASKS_BOARD_COLUMN_HEADER_CLASS =
-  "flex items-start justify-between gap-2.5 border-b border-ui-border/80 pb-2";
+  "flex items-start justify-between gap-2.5 border-b border-black/[0.08] pb-2.5";
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
-const TASKS_BOARD_STACK_CLASS = "mt-2.5 flex min-h-0 flex-1 flex-col gap-2";
+const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2.5";
 const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-[14px] border border-dashed border-ui-border-strong bg-ui-surface px-2.5 py-2.5 text-sm text-ui-text-muted";
+  "rounded-[16px] border border-dashed border-black/[0.12] bg-white/[0.68] px-2.5 py-2.5 text-sm text-ui-text-muted";
 const TASKS_BOARD_CARD_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-ui-border-strong bg-ui-surface px-2.5 py-2.5 text-left text-ui-text-primary shadow-sm transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[18px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,236,227,0.95))] px-3 py-3 text-left text-ui-text-primary shadow-[0_12px_28px_rgba(15,23,42,0.05)] transition";
 const TASKS_BOARD_CARD_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-ui-border bg-ui-surface px-2.5 py-2.5 text-left text-ui-text-primary shadow-sm transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[18px] border border-black/[0.06] bg-white/[0.84] px-3 py-3 text-left text-ui-text-primary shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-white/[0.96]";
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
   "flex w-full min-w-0 flex-col items-start gap-1.5 text-left";
 const TASKS_DETAIL_PANEL_CLASS =
-  "rounded-[18px] border border-ui-border bg-ui-surface p-3.5 shadow-sm";
+  "rounded-[24px] border border-black/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,244,236,0.97))] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)]";
 const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
   "rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-2.5 py-2";
 const TASKS_RUN_CARD_CLASS =
-  "rounded-[16px] border border-ui-border bg-ui-surface-soft/60 px-2.5 py-2.5";
+  "rounded-[18px] border border-black/[0.06] bg-white/[0.72] px-3 py-3";
 const TASKS_RUN_LIST_CLASS = "mt-3.5 space-y-2";
 const TASKS_DEBUG_DISCLOSURE_CLASS =
   "mt-3.5 rounded-[16px] border border-dashed border-ui-border bg-ui-surface-soft/55 px-2.5 py-2.5";
@@ -673,7 +673,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS} data-team-surface="kanban">
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>

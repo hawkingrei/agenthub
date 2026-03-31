@@ -106,7 +106,7 @@ type TeamTaskPanelAudioWindow = Window &
   };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-2.5 flex flex-col gap-2 rounded-[12px] border border-black/[0.06] bg-white/[0.72] px-2.5 py-2";
+  "mt-3 flex flex-col gap-2 rounded-[20px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(246,241,232,0.92))] px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
@@ -117,15 +117,15 @@ const TEAM_TASK_ACTIVITY_LIST_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
   "mt-2 min-h-[120px] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[12px] border border-black/[0.06] bg-[rgba(255,255,255,0.68)] px-2.5 py-2";
+  "rounded-[20px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(246,241,232,0.9))] px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
   "flex w-full flex-col gap-2";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
   "acp-bubble relative rounded-[12px] border px-2.5 py-2";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(31,122,61,0.12)] bg-[rgba(31,122,61,0.04)] text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(31,122,61,0.12)] bg-[linear-gradient(180deg,rgba(236,247,239,0.98),rgba(227,241,232,0.92))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-black/[0.06] bg-white/[0.74] text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(246,241,232,0.92))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "flex items-start justify-between gap-3";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
@@ -971,7 +971,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [stickToBottom]);
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS} data-team-surface="conversation">
       <div
         ref={activityListRef}
         className={activityListClassName}
