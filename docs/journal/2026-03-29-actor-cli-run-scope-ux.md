@@ -74,3 +74,24 @@ scope information that AgentHub already knew.
 - Record push / `pull_request` CI run IDs here after merge verification.
 - Keep shared-thread mailbox fallback and direct-mailbox run inference documented
   together with `docs/journal/2026-03-29-actor-inbox-shared-thread-run-fallback.md`.
+
+## Verified Evidence
+
+- Focused validation covered actor parser changes, active Team run filtering, internal
+  `ResolveActorRunScope`, and gRPC client fallback behavior.
+- `pull_request` CI for PR `#250`:
+  - Bazel: `23712489012`
+  - Rust: `23712489002`
+  - Clippy: `23712489027`
+  - Web: `23712489001`
+  - Web E2E: `23712489031`
+  - User Docs: `23712489011`
+  - Distributed P2P Pipeline: `23712489021`
+- default-branch `push` CI after merge commit `bd7dd87a`:
+  - Bazel: `23712748183`
+  - Rust: `23712748186`
+  - Clippy: `23712748202`
+  - Web: `23712748189`
+  - Web E2E: `23712748190`
+  - User Docs: `23712748204`
+  - Distributed P2P Pipeline: `23712748195`

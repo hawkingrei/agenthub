@@ -31,3 +31,24 @@
 
 - Confirm the deployed server now returns timeout failures instead of hanging indefinitely for `agenthub actor inbox` / `ack` / `send`.
 - Continue root-cause analysis on the underlying internal gRPC stall if it still reproduces after the deadline guard is in place.
+
+## Verified Evidence
+
+- Focused validation covered status mapping, stalled TLS handshake timeout, and a real mailbox
+  command that now fails fast instead of hanging.
+- `pull_request` CI for PR `#253`:
+  - Bazel: `23723899703`
+  - Rust: `23723899684`
+  - Clippy: `23723899679`
+  - Web: `23723899675`
+  - Web E2E: `23723899706`
+  - User Docs: `23723899695`
+  - Distributed P2P Pipeline: `23723899677`
+- default-branch `push` CI after merge commit `d9a9036c`:
+  - Bazel: `23724117808`
+  - Rust: `23724117810`
+  - Clippy: `23724117803`
+  - Web: `23724117802`
+  - Web E2E: `23724117797`
+  - User Docs: `23724117829`
+  - Distributed P2P Pipeline: `23724117816`
