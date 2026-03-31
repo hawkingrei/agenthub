@@ -150,4 +150,29 @@ describe("conversation_height_estimate", () => {
     );
     expect(withCode).toBeGreaterThan(plain);
   });
+
+  it("does not make fenced code height depend on viewport width", () => {
+    const codeOnly = makeMessage(
+      [
+        "```ts",
+        "const value = veryLongIdentifierName + anotherLongIdentifierName;",
+        "console.log(value);",
+        "```",
+      ].join("\n"),
+      6
+    );
+    const wide = estimateConversationItemHeight(codeOnly, 720, 48);
+    const narrow = estimateConversationItemHeight(codeOnly, 320, 48);
+    expect(narrow).toBe(wide);
+  });
+
+  it("uses the ACP text font family when preparing rich text", () => {
+    estimateConversationItemHeight(makeMessage("font check", 7), 720, 48);
+    const prepareMock = vi.mocked(prepare);
+    expect(
+      prepareMock.mock.calls.some(([, font]) =>
+        String(font).includes("Space Grotesk")
+      )
+    ).toBe(true);
+  });
 });

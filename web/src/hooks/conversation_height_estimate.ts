@@ -13,23 +13,20 @@ const DEFAULT_ITEM_HEIGHT = 48;
 const MIN_ITEM_HEIGHT = 24;
 const MAX_ITEM_HEIGHT = 3000;
 const MESSAGE_FONT =
-  "400 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  '400 14px "Space Grotesk", system-ui, sans-serif';
 const MESSAGE_LINE_HEIGHT = 24;
 const MESSAGE_MAX_WIDTH_RATIO = 0.95;
 const MESSAGE_HORIZONTAL_CHROME = 26;
 const MESSAGE_VERTICAL_CHROME = 18;
 const MESSAGE_MIN_HEIGHT = 42;
-const MESSAGE_PARAGRAPH_GAP = 8;
-const CODE_BLOCK_VERTICAL_CHROME = 28;
-const CODE_BLOCK_LINE_HEIGHT = 22;
-const CODE_BLOCK_MAX_WIDTH_RATIO = 0.98;
-const CODE_BLOCK_HORIZONTAL_CHROME = 20;
+const MESSAGE_PARAGRAPH_GAP = 10;
+const CODE_BLOCK_VERTICAL_CHROME = 36;
+const CODE_BLOCK_LINE_HEIGHT = 20;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
 
 const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
 const markdownImagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
-const markdownFencePattern = /```[\w-]*\n?|```/g;
 const markdownInlineCodePattern = /`([^`]+)`/g;
 const markdownDecorationPattern = /[*_~>#]+/g;
 
@@ -84,23 +81,35 @@ export function estimateMarkdownBubbleHeight(
   viewportWidth: number,
   fallbackHeight: number
 ): number {
-  const normalizedText = normalizeTextForHeightEstimate(text);
-  if (!normalizedText) {
-    return normalizeEstimatedHeight(Math.max(MESSAGE_MIN_HEIGHT, fallbackHeight));
-  }
+  const estimateInput = buildHeightEstimateInput(text);
+  const { normalizedText, codeBlockCount, codeBlockLineCount } = estimateInput;
   const contentWidth = resolveMessageContentWidth(viewportWidth);
-  const codeBlockLineCount = countFencedCodeBlockLines(text);
-  const cacheKey = `${contentWidth}:${fallbackHeight}:${codeBlockLineCount}:${normalizedText}`;
+  const cacheKey = `${contentWidth}:${fallbackHeight}:${codeBlockCount}:${codeBlockLineCount}:${normalizedText}`;
   const cached = estimatedHeightCache.get(cacheKey);
   if (cached != null) {
     refreshCacheRecency(estimatedHeightCache, cacheKey);
     return cached;
   }
 
-  const measured = canUseRichTextMeasurement()
-    ? measureRichTextHeight(normalizedText, contentWidth) +
-        estimateCodeBlockAdjustment(codeBlockLineCount, viewportWidth)
-    : fallbackHeight;
+  if (!canUseRichTextMeasurement()) {
+    const fallback = normalizeEstimatedHeight(
+      Math.max(MESSAGE_MIN_HEIGHT, fallbackHeight)
+    );
+    cacheWithLimit(estimatedHeightCache, cacheKey, fallback, HEIGHT_CACHE_LIMIT);
+    return fallback;
+  }
+
+  const textHeight = normalizedText
+    ? measureRichTextHeight(normalizedText, contentWidth)
+    : 0;
+  const codeBlockHeight = estimateCodeBlockHeight(
+    codeBlockCount,
+    codeBlockLineCount
+  );
+  const measured =
+    textHeight > 0 || codeBlockHeight > 0
+      ? MESSAGE_VERTICAL_CHROME + textHeight + codeBlockHeight
+      : fallbackHeight;
   const height = normalizeEstimatedHeight(
     Math.max(MESSAGE_MIN_HEIGHT, measured)
   );
@@ -161,31 +170,34 @@ function normalizeTextForHeightEstimate(text: string): string {
     .replace(/\r\n?/g, "\n")
     .replace(markdownImagePattern, "$1")
     .replace(markdownLinkPattern, "$1")
-    .replace(markdownFencePattern, "")
     .replace(markdownInlineCodePattern, "$1")
     .replace(markdownDecorationPattern, "")
     .trim();
 }
 
-function countFencedCodeBlockLines(text: string): number {
-  const matches = text.match(/```[\w-]*\n([\s\S]*?)```/g);
-  if (!matches) {
-    return 0;
-  }
-  let total = 0;
-  for (const match of matches) {
-    const normalized = match
-      .replace(/^```[\w-]*\n?/, "")
-      .replace(/```$/, "")
-      .replace(/\r\n?/g, "\n")
-      .trim();
-    if (!normalized) {
-      total += 1;
-      continue;
+function buildHeightEstimateInput(text: string): {
+  normalizedText: string;
+  codeBlockCount: number;
+  codeBlockLineCount: number;
+} {
+  let codeBlockCount = 0;
+  let codeBlockLineCount = 0;
+  const withoutCodeBlocks = text.replace(
+    /```[\w-]*\n?([\s\S]*?)```/g,
+    (_, rawBody: string) => {
+      codeBlockCount += 1;
+      const normalizedBody = rawBody.replace(/\r\n?/g, "\n").trim();
+      codeBlockLineCount += normalizedBody
+        ? normalizedBody.split("\n").length
+        : 1;
+      return "\n\n";
     }
-    total += normalized.split("\n").length;
-  }
-  return total;
+  );
+  return {
+    normalizedText: normalizeTextForHeightEstimate(withoutCodeBlocks),
+    codeBlockCount,
+    codeBlockLineCount,
+  };
 }
 
 function canUseRichTextMeasurement(): boolean {
@@ -208,7 +220,7 @@ function measureRichTextHeight(text: string, maxWidth: number): number {
   const result = layout(prepared, maxWidth, MESSAGE_LINE_HEIGHT);
   const paragraphGap =
     paragraphCount > 1 ? (paragraphCount - 1) * MESSAGE_PARAGRAPH_GAP : 0;
-  return result.height + paragraphGap + MESSAGE_VERTICAL_CHROME;
+  return result.height + paragraphGap;
 }
 
 function getPreparedTextCached(text: string): PreparedText {
@@ -233,24 +245,17 @@ function resolveMessageContentWidth(viewportWidth: number): number {
   );
 }
 
-function estimateCodeBlockAdjustment(
-  codeBlockLineCount: number,
-  viewportWidth: number
+function estimateCodeBlockHeight(
+  codeBlockCount: number,
+  codeBlockLineCount: number
 ): number {
-  if (codeBlockLineCount <= 0) {
+  if (codeBlockCount <= 0 || codeBlockLineCount <= 0) {
     return 0;
   }
-  const width = Math.max(
-    MIN_CONTENT_WIDTH,
-    Math.floor(
-      (Number.isFinite(viewportWidth) && viewportWidth > 0
-        ? viewportWidth
-        : DEFAULT_VIEWPORT_WIDTH) * CODE_BLOCK_MAX_WIDTH_RATIO
-    ) - CODE_BLOCK_HORIZONTAL_CHROME
+  return (
+    codeBlockLineCount * CODE_BLOCK_LINE_HEIGHT +
+    codeBlockCount * CODE_BLOCK_VERTICAL_CHROME
   );
-  const averageCharsPerLine = Math.max(12, Math.floor(width / 8));
-  const wrappedLines = Math.ceil(codeBlockLineCount * (80 / averageCharsPerLine));
-  return wrappedLines * CODE_BLOCK_LINE_HEIGHT + CODE_BLOCK_VERTICAL_CHROME;
 }
 
 function normalizeFallbackHeight(height: number): number {
