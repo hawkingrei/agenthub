@@ -53,7 +53,7 @@ type AcpConversationProps = {
   focusedToolCallId?: string | null;
   bottomClearancePx?: number;
   onScroll: () => void;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.Ref<HTMLDivElement>;
   ansi: (input: string) => string;
 };
 

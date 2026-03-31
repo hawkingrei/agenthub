@@ -184,14 +184,14 @@ describe("conversation_height_estimate", () => {
     expect(layoutMock.mock.calls.length).toBe(firstPassCalls);
   });
 
-  it("adds structure compensation for markdown headings and blockquotes", () => {
+  it("adds structure compensation for markdown blockquotes", () => {
     const plain = estimateConversationItemHeight(
-      makeMessage("Release notes\n\nImportant follow-up", 10),
+      makeMessage("Important follow-up", 10),
       720,
       48
     );
     const structured = estimateConversationItemHeight(
-      makeMessage("# Release notes\n\n> Important follow-up", 11),
+      makeMessage("> Important follow-up", 11),
       720,
       48
     );
@@ -212,22 +212,41 @@ describe("conversation_height_estimate", () => {
     ).toBe(true);
   });
 
-  it("adds structure compensation for h4 headings", () => {
+  it("measures markdown headings with heading-specific fonts", () => {
+    estimateConversationItemHeight(
+      makeMessage("# Release notes\n\n#### subsection", 13),
+      720,
+      48
+    );
+    const prepareMock = vi.mocked(prepare);
+    expect(
+      prepareMock.mock.calls.some(([, font]) =>
+        String(font).includes('600 18px "Space Grotesk"')
+      )
+    ).toBe(true);
+    expect(
+      prepareMock.mock.calls.some(([, font]) =>
+        String(font).includes('600 14px "Space Grotesk"')
+      )
+    ).toBe(true);
+  });
+
+  it("adds conservative height for markdown images", () => {
     const plain = estimateConversationItemHeight(
-      makeMessage("subsection\n\nfollow-up", 13),
+      makeMessage("status update", 16),
       720,
       48
     );
-    const structured = estimateConversationItemHeight(
-      makeMessage("#### subsection\n\nfollow-up", 14),
+    const withImage = estimateConversationItemHeight(
+      makeMessage("![diagram](https://example.com/diagram.png)", 17),
       720,
       48
     );
-    expect(structured).toBeGreaterThan(plain);
+    expect(withImage).toBeGreaterThan(plain);
   });
 
   it("uses the ACP text font family when preparing rich text", () => {
-    estimateConversationItemHeight(makeMessage("font check", 15), 720, 48);
+    estimateConversationItemHeight(makeMessage("font check", 18), 720, 48);
     const prepareMock = vi.mocked(prepare);
     expect(
       prepareMock.mock.calls.some(([, font]) =>

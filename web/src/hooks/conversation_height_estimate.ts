@@ -20,15 +20,20 @@ const MESSAGE_HORIZONTAL_CHROME = 26;
 const MESSAGE_VERTICAL_CHROME = 18;
 const MESSAGE_MIN_HEIGHT = 42;
 const MESSAGE_PARAGRAPH_GAP = 10;
+const IMAGE_BLOCK_ESTIMATE = 160;
 const CODE_BLOCK_VERTICAL_CHROME = 36;
 const CODE_BLOCK_LINE_HEIGHT = 20;
 const BLOCKQUOTE_BLOCK_VERTICAL_CHROME = 12;
-const H1_VERTICAL_DELTA = 4;
-const H2_VERTICAL_DELTA = 2;
-const H3_VERTICAL_DELTA = 1;
-const H4_VERTICAL_DELTA = 1;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
+const H1_FONT = '600 18px "Space Grotesk", system-ui, sans-serif';
+const H1_LINE_HEIGHT = 22.5;
+const H2_FONT = '600 16px "Space Grotesk", system-ui, sans-serif';
+const H2_LINE_HEIGHT = 20.8;
+const H3_FONT = '600 15px "Space Grotesk", system-ui, sans-serif';
+const H3_LINE_HEIGHT = 20.25;
+const H4_FONT = '600 14px "Space Grotesk", system-ui, sans-serif';
+const H4_LINE_HEIGHT = 19.6;
 
 const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
 const markdownImagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -94,7 +99,8 @@ export function estimateMarkdownBubbleHeight(
     codeBlockCount,
     codeBlockLineCount,
     blockquoteBlockCount,
-    headingCounts,
+    headingBlocks,
+    imageCount,
   } = estimateInput;
   const contentWidth = resolveMessageContentWidth(viewportWidth);
   if (!canUseRichTextMeasurement()) {
@@ -121,7 +127,8 @@ export function estimateMarkdownBubbleHeight(
     codeBlockCount,
     codeBlockLineCount,
     blockquoteBlockCount,
-    ...headingCounts,
+    imageCount,
+    ...headingBlocks.flatMap((heading) => [heading.level, heading.text]),
   ].join(":");
   const cached = getMeasuredHeightCache(
     normalizedText,
@@ -138,15 +145,20 @@ export function estimateMarkdownBubbleHeight(
     codeBlockCount,
     codeBlockLineCount
   );
+  const headingHeight = estimateHeadingBlockHeight(headingBlocks, contentWidth);
   const markdownStructureHeight = estimateMarkdownStructureHeight(
     blockquoteBlockCount,
-    headingCounts
+    imageCount
   );
   const measured =
-    textHeight > 0 || codeBlockHeight > 0 || markdownStructureHeight > 0
+    textHeight > 0 ||
+    codeBlockHeight > 0 ||
+    headingHeight > 0 ||
+    markdownStructureHeight > 0
       ? MESSAGE_VERTICAL_CHROME +
         textHeight +
         codeBlockHeight +
+        headingHeight +
         markdownStructureHeight
       : fallbackHeight;
   const height = normalizeEstimatedHeight(
@@ -231,11 +243,17 @@ function buildHeightEstimateInput(text: string): {
   codeBlockCount: number;
   codeBlockLineCount: number;
   blockquoteBlockCount: number;
-  headingCounts: [number, number, number, number];
+  headingBlocks: { level: 1 | 2 | 3 | 4; text: string }[];
+  imageCount: number;
 } {
+  let imageCount = 0;
+  const withoutImages = text.replace(markdownImagePattern, (_full, altText: string) => {
+    imageCount += 1;
+    return altText ? `${altText}\n\n` : "\n\n";
+  });
   let codeBlockCount = 0;
   let codeBlockLineCount = 0;
-  const withoutCodeBlocks = text.replace(
+  const withoutCodeBlocks = withoutImages.replace(
     /```[\w-]*\n?([\s\S]*?)```/g,
     (_, rawBody: string) => {
       codeBlockCount += 1;
@@ -248,7 +266,8 @@ function buildHeightEstimateInput(text: string): {
   );
   let blockquoteBlockCount = 0;
   let inBlockquote = false;
-  const headingCounts: [number, number, number, number] = [0, 0, 0, 0];
+  const headingBlocks: { level: 1 | 2 | 3 | 4; text: string }[] = [];
+  const proseLines: string[] = [];
   for (const rawLine of withoutCodeBlocks.split("\n")) {
     const trimmedLine = rawLine.trim();
     const isBlockquote = /^\s*> ?/.test(rawLine);
@@ -259,15 +278,22 @@ function buildHeightEstimateInput(text: string): {
     const headingMatch = trimmedLine.match(/^(#{1,4})\s+\S/);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      headingCounts[level - 1] += 1;
+      headingBlocks.push({
+        level: level as 1 | 2 | 3 | 4,
+        text: trimmedLine.slice(level).trim(),
+      });
+      proseLines.push("");
+      continue;
     }
+    proseLines.push(rawLine);
   }
   return {
-    normalizedText: normalizeTextForHeightEstimate(withoutCodeBlocks),
+    normalizedText: normalizeTextForHeightEstimate(proseLines.join("\n")),
     codeBlockCount,
     codeBlockLineCount,
     blockquoteBlockCount,
-    headingCounts,
+    headingBlocks,
+    imageCount,
   };
 }
 
@@ -286,7 +312,7 @@ function canUseRichTextMeasurement(): boolean {
 }
 
 function measureRichTextHeight(text: string, maxWidth: number): number {
-  const prepared = getPreparedTextCached(text);
+  const prepared = getPreparedTextCached(text, MESSAGE_FONT);
   const paragraphCount = text.split(/\n\s*\n/).filter(Boolean).length;
   const result = layout(prepared, maxWidth, MESSAGE_LINE_HEIGHT);
   const paragraphGap =
@@ -294,14 +320,15 @@ function measureRichTextHeight(text: string, maxWidth: number): number {
   return result.height + paragraphGap;
 }
 
-function getPreparedTextCached(text: string): PreparedText {
-  const cached = preparedTextCache.get(text);
+function getPreparedTextCached(text: string, font: string): PreparedText {
+  const cacheKey = `${font}:${text}`;
+  const cached = preparedTextCache.get(cacheKey);
   if (cached != null) {
-    refreshCacheRecency(preparedTextCache, text);
+    refreshCacheRecency(preparedTextCache, cacheKey);
     return cached;
   }
-  const prepared = prepare(text, MESSAGE_FONT);
-  cacheWithLimit(preparedTextCache, text, prepared, PREPARED_CACHE_LIMIT);
+  const prepared = prepare(text, font);
+  cacheWithLimit(preparedTextCache, cacheKey, prepared, PREPARED_CACHE_LIMIT);
   return prepared;
 }
 
@@ -329,17 +356,34 @@ function estimateCodeBlockHeight(
   );
 }
 
+function estimateHeadingBlockHeight(
+  headingBlocks: readonly { level: 1 | 2 | 3 | 4; text: string }[],
+  contentWidth: number
+): number {
+  if (headingBlocks.length === 0) {
+    return 0;
+  }
+  return headingBlocks.reduce((total, heading) => {
+    const prepared = getPreparedTextCached(
+      heading.text,
+      headingFontForLevel(heading.level)
+    );
+    const result = layout(
+      prepared,
+      contentWidth,
+      headingLineHeightForLevel(heading.level)
+    );
+    return total + result.height + MESSAGE_PARAGRAPH_GAP;
+  }, 0);
+}
+
 function estimateMarkdownStructureHeight(
   blockquoteBlockCount: number,
-  headingCounts: readonly [number, number, number, number]
+  imageCount: number
 ): number {
-  const [h1Count, h2Count, h3Count, h4Count] = headingCounts;
   return (
     blockquoteBlockCount * BLOCKQUOTE_BLOCK_VERTICAL_CHROME +
-    h1Count * H1_VERTICAL_DELTA +
-    h2Count * H2_VERTICAL_DELTA +
-    h3Count * H3_VERTICAL_DELTA +
-    h4Count * H4_VERTICAL_DELTA
+    imageCount * (IMAGE_BLOCK_ESTIMATE + MESSAGE_PARAGRAPH_GAP)
   );
 }
 
@@ -381,6 +425,32 @@ function setMeasuredHeightCache(
     byStructure.delete(structureKey);
   }
   byStructure.set(structureKey, height);
+}
+
+function headingFontForLevel(level: 1 | 2 | 3 | 4): string {
+  switch (level) {
+    case 1:
+      return H1_FONT;
+    case 2:
+      return H2_FONT;
+    case 3:
+      return H3_FONT;
+    case 4:
+      return H4_FONT;
+  }
+}
+
+function headingLineHeightForLevel(level: 1 | 2 | 3 | 4): number {
+  switch (level) {
+    case 1:
+      return H1_LINE_HEIGHT;
+    case 2:
+      return H2_LINE_HEIGHT;
+    case 3:
+      return H3_LINE_HEIGHT;
+    case 4:
+      return H4_LINE_HEIGHT;
+  }
 }
 
 function normalizeFallbackHeight(height: number): number {
