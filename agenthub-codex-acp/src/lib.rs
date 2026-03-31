@@ -64,6 +64,8 @@ where
 const MISLEADING_MODELS_REFRESH_TIMEOUT_MESSAGE: &str =
     "failed to refresh available models: timeout waiting for child process to exit";
 const REWRITTEN_MODELS_REFRESH_TIMEOUT_MESSAGE: &str = "failed to refresh available models: timed out fetching remote model list (/models, 5s timeout)";
+const ROLLOUT_CHANNEL_CLOSED_MESSAGE_PREFIX: &str =
+    "failed to record rollout items: failed to queue rollout items: channel closed";
 
 #[derive(Default)]
 struct EventMessageVisitor {
@@ -107,6 +109,12 @@ fn rewrite_misleading_timeout_message(
     }
 }
 
+fn should_suppress_rollout_channel_closed_log(target: &str, level: &Level, message: &str) -> bool {
+    *level == Level::ERROR
+        && target == "codex_core::codex"
+        && message.starts_with(ROLLOUT_CHANNEL_CLOSED_MESSAGE_PREFIX)
+}
+
 #[derive(Default)]
 struct AgenthubEventFormat {
     timer: SystemTime,
@@ -143,6 +151,16 @@ where
                 rewritten_message
             )?;
             writeln!(&mut writer)?;
+            return Ok(());
+        }
+
+        if let Some(message) = visitor.message.as_deref()
+            && should_suppress_rollout_channel_closed_log(
+                event.metadata().target(),
+                event.metadata().level(),
+                message,
+            )
+        {
             return Ok(());
         }
 
@@ -349,7 +367,7 @@ mod tests {
         AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, apply_agenthub_multi_agent_override,
         parse_agenthub_multi_agent_enabled_env, resolve_agenthub_multi_agent_enabled_override,
         responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
-        should_disable_implicit_responses_websockets,
+        should_disable_implicit_responses_websockets, should_suppress_rollout_channel_closed_log,
     };
     use codex_core::features::{Feature, Features};
     use std::sync::{Mutex, MutexGuard};
@@ -551,5 +569,38 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn suppresses_rollout_channel_closed_shutdown_noise() {
+        assert!(should_suppress_rollout_channel_closed_log(
+            "codex_core::codex",
+            &Level::ERROR,
+            "failed to record rollout items: failed to queue rollout items: channel closed"
+        ));
+        assert!(should_suppress_rollout_channel_closed_log(
+            "codex_core::codex",
+            &Level::ERROR,
+            "failed to record rollout items: failed to queue rollout items: channel closed: sending into a closed channel"
+        ));
+    }
+
+    #[test]
+    fn does_not_suppress_non_matching_rollout_errors() {
+        assert!(!should_suppress_rollout_channel_closed_log(
+            "codex_core::other",
+            &Level::ERROR,
+            "failed to record rollout items: failed to queue rollout items: channel closed"
+        ));
+        assert!(!should_suppress_rollout_channel_closed_log(
+            "codex_core::codex",
+            &Level::WARN,
+            "failed to record rollout items: failed to queue rollout items: channel closed"
+        ));
+        assert!(!should_suppress_rollout_channel_closed_log(
+            "codex_core::codex",
+            &Level::ERROR,
+            "failed to record rollout items: failed to flush rollout file"
+        ));
     }
 }
