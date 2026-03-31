@@ -30,9 +30,9 @@ session teardown.
 
 ## Fix
 
-Backport a narrow `codex-core` fix on top of the pinned Codex revision via
-`hawkingrei/codex@agenthub-rollout-recorder-shutdown-race-v1`
-(`18eaa6b8cdefd89a7a8ad8a0e1b0791fc33267bf`):
+Backport a narrow `codex-core` fix on top of the pinned Codex revision via the
+AgentHub-maintained patch branch `hawkingrei/codex:agenthub/patches` at
+`18eaa6b8cdefd89a7a8ad8a0e1b0791fc33267bf`:
 
 - `RolloutRecorder` clones now share `shutdown_started`.
 - `shutdown()` sets that flag before sending the writer shutdown command.
@@ -44,5 +44,5 @@ logging layer.
 
 ## Validation
 
-- upstream backport branch: `hawkingrei/codex:fix/rollout-recorder-shutdown-race`
+- upstream patch branch: `hawkingrei/codex:agenthub/patches`
 - AgentHub follow-up should record PR/push CI run IDs before the TODO is closed
