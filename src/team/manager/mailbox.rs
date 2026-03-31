@@ -24,12 +24,12 @@ use super::codec::{
 };
 use super::{
     TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
-    TeamManager, fetch_canonical_shared_thread_target, parse_team_member_specs,
+    TeamManager, TeamMemberSpecView, fetch_canonical_shared_thread_target, parse_team_member_specs,
     redact_sensitive_json,
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
-    TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport, TeamContextRecord,
+    TeamActorMessageRecord, TeamActorMessageStatus, TeamActorMessageTransport,
     TeamConversationMessageRecord,
 };
 
@@ -556,12 +556,24 @@ impl TeamActorMailboxService {
         run_id: &str,
         to_actor_id: &str,
     ) -> Result<(), ActorServiceError> {
-        let context = self
-            .manager
-            .describe_team_context(None, Some(run_id))
+        let member_specs = self
+            .load_member_specs_for_run(run_id)
             .await
             .map_err(map_actor_service_error)?;
-        validate_direct_mailbox_target_for_context(&context, to_actor_id)
+        validate_direct_mailbox_target_for_member_specs(&member_specs, to_actor_id)
+    }
+
+    async fn load_member_specs_for_run(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<Vec<TeamMemberSpecView>> {
+        let team_id = sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+            .bind(run_id)
+            .fetch_optional(&self.manager.db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+        let team = self.manager.get_team(&team_id).await?;
+        parse_team_member_specs(&team.spec)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1392,7 +1404,13 @@ pub(super) fn should_persist_human_visible_chat_reply_for_payload(
 
 fn is_human_actor_id(actor_id: &str) -> bool {
     let trimmed = actor_id.trim();
-    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+    if trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS {
+        return true;
+    }
+    if let Some(suffix) = trimmed.strip_prefix(TEAM_SPECIAL_USER_ACTOR_PREFIX) {
+        return !suffix.trim().is_empty();
+    }
+    false
 }
 
 fn normalize_channel_message_payload(payload: Value) -> Value {
@@ -1842,41 +1860,52 @@ fn optional_trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|raw| !raw.is_empty())
 }
 
-fn is_human_mailbox_target(actor_id: &str) -> bool {
-    let trimmed = actor_id.trim();
-    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
-}
-
-fn validate_direct_mailbox_target_for_context(
-    context: &TeamContextRecord,
+fn validate_direct_mailbox_target_for_member_specs(
+    member_specs: &[TeamMemberSpecView],
     to_actor_id: &str,
 ) -> Result<(), ActorServiceError> {
     let trimmed_target = to_actor_id.trim();
-    if trimmed_target.is_empty() || is_human_mailbox_target(trimmed_target) {
+    if trimmed_target.is_empty() {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "actor send target is required",
+        ));
+    }
+    if is_human_actor_id(trimmed_target) {
         return Ok(());
     }
-    if context
-        .members
+    if member_specs
         .iter()
         .any(|member| member.member_id == trimmed_target)
     {
         return Ok(());
     }
-    if let Some(role_match) = context
-        .members
+    let matching_role_member_ids = member_specs
         .iter()
-        .find(|member| member.role.eq_ignore_ascii_case(trimmed_target))
-    {
+        .filter(|member| member.role.eq_ignore_ascii_case(trimmed_target))
+        .map(|member| member.member_id.as_str())
+        .collect::<Vec<_>>();
+    if matching_role_member_ids.len() == 1 {
         return Err(ActorServiceError::new(
             ActorServiceErrorCode::BadRequest,
             format!(
                 "actor send target `{}` is not a canonical team member_id; use `{}` instead",
-                trimmed_target, role_match.member_id
+                trimmed_target, matching_role_member_ids[0]
             ),
         ));
     }
-    let valid_member_ids = context
-        .members
+    if !matching_role_member_ids.is_empty() {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            format!(
+                "actor send target `{}` matches multiple team members with role `{}`; matching member_ids: {}",
+                trimmed_target,
+                trimmed_target,
+                matching_role_member_ids.join(", ")
+            ),
+        ));
+    }
+    let valid_member_ids = member_specs
         .iter()
         .map(|member| member.member_id.as_str())
         .collect::<Vec<_>>()
@@ -1953,40 +1982,15 @@ mod tests {
 
     use super::*;
 
-    fn mock_team_context(member_specs: &[(&str, &str)]) -> TeamContextRecord {
-        serde_json::from_value(serde_json::json!({
-            "team_id": "team-1",
-            "team_name": "team",
-            "runtime": {
-                "status": "running",
-                "online_count": member_specs.len(),
-                "member_count": member_specs.len(),
-            },
-            "members": member_specs
-                .iter()
-                .map(|(member_id, role)| serde_json::json!({
-                    "member_id": member_id,
-                    "display_name": member_id,
-                    "role": role,
-                    "description": null,
-                    "pending_inbox_count": 0,
-                    "agent_status": "running",
-                    "session_id": null,
-                    "session_status": null,
-                    "card": {
-                        "card_id": format!("card-{member_id}"),
-                        "schema_version": "1",
-                        "description": format!("{member_id} description"),
-                        "role": role,
-                        "skills": [],
-                        "capability_tags": [],
-                    },
-                    "steps": [],
-                }))
-                .collect::<Vec<_>>(),
-            "run": null,
-        }))
-        .expect("build team context fixture")
+    fn mock_member_specs(member_specs: &[(&str, &str)]) -> Vec<TeamMemberSpecView> {
+        member_specs
+            .iter()
+            .map(|(member_id, role)| TeamMemberSpecView {
+                member_id: (*member_id).to_string(),
+                role: (*role).to_string(),
+                description: None,
+            })
+            .collect()
     }
 
     #[test]
@@ -2153,11 +2157,11 @@ mod tests {
 
     #[test]
     fn validate_direct_mailbox_target_rejects_role_alias() {
-        let context = mock_team_context(&[
+        let member_specs = mock_member_specs(&[
             ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
             ("c319f933-1358-4418-a111-872304052422", "worker"),
         ]);
-        let err = validate_direct_mailbox_target_for_context(&context, "leader")
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "leader")
             .expect_err("role alias should be rejected");
         assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
         assert!(err.message.contains("not a canonical team member_id"));
@@ -2166,18 +2170,45 @@ mod tests {
 
     #[test]
     fn validate_direct_mailbox_target_allows_member_id_and_human_mailbox() {
-        let context = mock_team_context(&[
+        let member_specs = mock_member_specs(&[
             ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
             ("c319f933-1358-4418-a111-872304052422", "worker"),
         ]);
-        validate_direct_mailbox_target_for_context(
-            &context,
+        validate_direct_mailbox_target_for_member_specs(
+            &member_specs,
             "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
         )
         .expect("member id should be accepted");
-        validate_direct_mailbox_target_for_context(&context, "user")
+        validate_direct_mailbox_target_for_member_specs(&member_specs, "user")
             .expect("human alias should be accepted");
-        validate_direct_mailbox_target_for_context(&context, "user:test")
+        validate_direct_mailbox_target_for_member_specs(&member_specs, "user:test")
             .expect("human actor target should be accepted");
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_empty_human_mailbox_suffix() {
+        let member_specs = mock_member_specs(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "user:")
+            .expect_err("human mailbox target with empty suffix should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("must reference spec.members[].member_id"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_ambiguous_role_alias() {
+        let member_specs = mock_member_specs(&[
+            ("planner", "leader"),
+            ("worker-a", "worker"),
+            ("worker-b", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "worker")
+            .expect_err("ambiguous role alias should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("matches multiple team members"));
+        assert!(err.message.contains("worker-a"));
+        assert!(err.message.contains("worker-b"));
     }
 }
