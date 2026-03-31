@@ -499,6 +499,9 @@ export function useAcpConversation({
   }, []);
 
   useEffect(() => {
+    if (acpTab !== "conversation") {
+      return;
+    }
     const el = acpConversationRef.current;
     if (!el) return;
     syncConversationViewport(true);
@@ -510,7 +513,7 @@ export function useAcpConversation({
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [syncConversationViewport]);
+  }, [acpTab, syncConversationViewport]);
 
   const prepareForLoadOlder = () => {
     const el = acpConversationRef.current;

@@ -52,6 +52,9 @@ function HookHarness({
     onLoadOlder: () => {},
   });
   onSnapshot(snapshot);
+  if (acpTab !== "conversation") {
+    return <div data-mode={acpTab} />;
+  }
   return (
     <div ref={snapshot.acpConversationRef}>
       {snapshot.conversationRenderItems.map((item, idx) => (
@@ -205,5 +208,57 @@ describe("useAcpConversation jump interaction", () => {
       snapshot?.jumpToConversationBottom();
     });
     expect(snapshot?.focusedConversationToolCallId).toBeNull();
+  });
+});
+
+describe("useAcpConversation viewport observer lifecycle", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let observeSpy: ReturnType<typeof vi.fn>;
+  let disconnectSpy: ReturnType<typeof vi.fn>;
+  let resizeCallback: ResizeObserverCallback | null = null;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    observeSpy = vi.fn();
+    disconnectSpy = vi.fn();
+    resizeCallback = null;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe = observeSpy;
+      disconnect = disconnectSpy;
+      unobserve = vi.fn();
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("re-attaches the viewport observer when switching back to the conversation tab", () => {
+    act(() => {
+      root.render(<HookHarness onSnapshot={() => {}} acpTab="conversation" />);
+    });
+    expect(observeSpy).toHaveBeenCalledTimes(1);
+    expect(resizeCallback).not.toBeNull();
+
+    act(() => {
+      root.render(<HookHarness onSnapshot={() => {}} acpTab="plan" />);
+    });
+    expect(disconnectSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      root.render(<HookHarness onSnapshot={() => {}} acpTab="conversation" />);
+    });
+    expect(observeSpy).toHaveBeenCalledTimes(2);
   });
 });

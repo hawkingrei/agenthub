@@ -26,21 +26,24 @@ const BLOCKQUOTE_BLOCK_VERTICAL_CHROME = 12;
 const H1_VERTICAL_DELTA = 4;
 const H2_VERTICAL_DELTA = 2;
 const H3_VERTICAL_DELTA = 1;
+const H4_VERTICAL_DELTA = 1;
 const PREPARED_CACHE_LIMIT = 512;
 const HEIGHT_CACHE_LIMIT = 1024;
 
 const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
 const markdownImagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
 const markdownInlineCodePattern = /`([^`]+)`/g;
-const markdownDecorationPattern = /[*_~>#]+/g;
+const markdownDecorationPattern = /[*_~]+/g;
 
 const preparedTextCache = new Map<string, PreparedText>();
-const estimatedHeightCache = new Map<string, number>();
+const fallbackHeightCache = new Map<string, number>();
+const measuredHeightCache = new Map<string, Map<string, number>>();
 let canMeasureRichText: boolean | null = null;
 
 export function resetConversationHeightEstimateCaches(): void {
   preparedTextCache.clear();
-  estimatedHeightCache.clear();
+  fallbackHeightCache.clear();
+  measuredHeightCache.clear();
   canMeasureRichText = null;
 }
 
@@ -96,16 +99,16 @@ export function estimateMarkdownBubbleHeight(
   const contentWidth = resolveMessageContentWidth(viewportWidth);
   if (!canUseRichTextMeasurement()) {
     const fallbackCacheKey = `fallback:${fallbackHeight}`;
-    const cachedFallback = estimatedHeightCache.get(fallbackCacheKey);
+    const cachedFallback = fallbackHeightCache.get(fallbackCacheKey);
     if (cachedFallback != null) {
-      refreshCacheRecency(estimatedHeightCache, fallbackCacheKey);
+      refreshCacheRecency(fallbackHeightCache, fallbackCacheKey);
       return cachedFallback;
     }
     const fallback = normalizeEstimatedHeight(
       Math.max(MESSAGE_MIN_HEIGHT, fallbackHeight)
     );
     cacheWithLimit(
-      estimatedHeightCache,
+      fallbackHeightCache,
       fallbackCacheKey,
       fallback,
       HEIGHT_CACHE_LIMIT
@@ -113,17 +116,18 @@ export function estimateMarkdownBubbleHeight(
     return fallback;
   }
 
-  const cacheKey = [
+  const structureKey = [
     contentWidth,
     codeBlockCount,
     codeBlockLineCount,
     blockquoteBlockCount,
     ...headingCounts,
-    normalizedText,
   ].join(":");
-  const cached = estimatedHeightCache.get(cacheKey);
+  const cached = getMeasuredHeightCache(
+    normalizedText,
+    structureKey
+  );
   if (cached != null) {
-    refreshCacheRecency(estimatedHeightCache, cacheKey);
     return cached;
   }
 
@@ -148,7 +152,11 @@ export function estimateMarkdownBubbleHeight(
   const height = normalizeEstimatedHeight(
     Math.max(MESSAGE_MIN_HEIGHT, measured)
   );
-  cacheWithLimit(estimatedHeightCache, cacheKey, height, HEIGHT_CACHE_LIMIT);
+  setMeasuredHeightCache(
+    normalizedText,
+    structureKey,
+    height
+  );
   return height;
 }
 
@@ -201,13 +209,21 @@ export function buildVirtualConversationSliceWithHeightModel(
 }
 
 function normalizeTextForHeightEstimate(text: string): string {
-  return text
+  const normalized = text
     .replace(/\r\n?/g, "\n")
     .replace(markdownImagePattern, "$1")
     .replace(markdownLinkPattern, "$1")
     .replace(markdownInlineCodePattern, "$1")
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        .replace(/^\s*>+\s?/, "")
+    )
+    .join("\n")
     .replace(markdownDecorationPattern, "")
     .trim();
+  return normalized;
 }
 
 function buildHeightEstimateInput(text: string): {
@@ -317,13 +333,54 @@ function estimateMarkdownStructureHeight(
   blockquoteBlockCount: number,
   headingCounts: readonly [number, number, number, number]
 ): number {
-  const [h1Count, h2Count, h3Count] = headingCounts;
+  const [h1Count, h2Count, h3Count, h4Count] = headingCounts;
   return (
     blockquoteBlockCount * BLOCKQUOTE_BLOCK_VERTICAL_CHROME +
     h1Count * H1_VERTICAL_DELTA +
     h2Count * H2_VERTICAL_DELTA +
-    h3Count * H3_VERTICAL_DELTA
+    h3Count * H3_VERTICAL_DELTA +
+    h4Count * H4_VERTICAL_DELTA
   );
+}
+
+function getMeasuredHeightCache(
+  normalizedText: string,
+  structureKey: string
+): number | undefined {
+  const byStructure = measuredHeightCache.get(normalizedText);
+  if (!byStructure) {
+    return undefined;
+  }
+  refreshCacheRecency(measuredHeightCache, normalizedText);
+  const cached = byStructure.get(structureKey);
+  if (cached == null) {
+    return undefined;
+  }
+  refreshCacheRecency(byStructure, structureKey);
+  return cached;
+}
+
+function setMeasuredHeightCache(
+  normalizedText: string,
+  structureKey: string,
+  height: number
+): void {
+  let byStructure = measuredHeightCache.get(normalizedText);
+  if (!byStructure) {
+    byStructure = new Map<string, number>();
+    cacheWithLimit(
+      measuredHeightCache,
+      normalizedText,
+      byStructure,
+      HEIGHT_CACHE_LIMIT
+    );
+  } else {
+    refreshCacheRecency(measuredHeightCache, normalizedText);
+  }
+  if (byStructure.has(structureKey)) {
+    byStructure.delete(structureKey);
+  }
+  byStructure.set(structureKey, height);
 }
 
 function normalizeFallbackHeight(height: number): number {

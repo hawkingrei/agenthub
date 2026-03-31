@@ -198,8 +198,36 @@ describe("conversation_height_estimate", () => {
     expect(structured).toBeGreaterThan(plain);
   });
 
+  it("preserves inline hash and comparison characters in measured text", () => {
+    estimateConversationItemHeight(
+      makeMessage("Issue #123 checks whether a > b", 12),
+      720,
+      48
+    );
+    const prepareMock = vi.mocked(prepare);
+    expect(
+      prepareMock.mock.calls.some(([text]) =>
+        String(text).includes("#123") && String(text).includes("a > b")
+      )
+    ).toBe(true);
+  });
+
+  it("adds structure compensation for h4 headings", () => {
+    const plain = estimateConversationItemHeight(
+      makeMessage("subsection\n\nfollow-up", 13),
+      720,
+      48
+    );
+    const structured = estimateConversationItemHeight(
+      makeMessage("#### subsection\n\nfollow-up", 14),
+      720,
+      48
+    );
+    expect(structured).toBeGreaterThan(plain);
+  });
+
   it("uses the ACP text font family when preparing rich text", () => {
-    estimateConversationItemHeight(makeMessage("font check", 12), 720, 48);
+    estimateConversationItemHeight(makeMessage("font check", 15), 720, 48);
     const prepareMock = vi.mocked(prepare);
     expect(
       prepareMock.mock.calls.some(([, font]) =>
