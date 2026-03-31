@@ -1822,6 +1822,7 @@ mod tests {
         init_db_at_path, try_connect,
     };
     use agenthub_config::path_utils::expand_tilde;
+    use sqlx::SqlitePool;
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::Duration;
@@ -2738,14 +2739,9 @@ mod tests {
         .expect("insert first old event");
 
         idle_gc.record_activity("agent-idle-gc").await;
-        tokio::time::sleep(Duration::from_millis(180)).await;
 
-        let remaining_after_first_check: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
-                .bind(old_ts + 1)
-                .fetch_one(&pool)
-                .await
-                .expect("count after first idle gc");
+        let remaining_after_first_check =
+            wait_for_old_event_count(&pool, old_ts + 1, 0, Duration::from_millis(500)).await;
         assert_eq!(remaining_after_first_check, 0);
 
         sqlx::query(
@@ -2776,17 +2772,40 @@ mod tests {
         );
 
         idle_gc.record_activity("agent-idle-gc").await;
-        tokio::time::sleep(Duration::from_millis(180)).await;
-        let remaining_after_second_idle_window: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
-                .bind(old_ts + 1)
-                .fetch_one(&pool)
-                .await
-                .expect("count after second idle window");
+        let remaining_after_second_idle_window =
+            wait_for_old_event_count(&pool, old_ts + 1, 0, Duration::from_millis(500)).await;
         assert_eq!(remaining_after_second_idle_window, 0);
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    async fn wait_for_old_event_count(
+        pool: &SqlitePool,
+        cutoff_ts: i64,
+        expected: i64,
+        timeout: Duration,
+    ) -> i64 {
+        let started_at = tokio::time::Instant::now();
+        let deadline = started_at + timeout;
+        loop {
+            let remaining: i64 =
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_events WHERE ts < ?1")
+                    .bind(cutoff_ts)
+                    .fetch_one(pool)
+                    .await
+                    .expect("count old events");
+            if remaining == expected {
+                return remaining;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for old event count: cutoff_ts={cutoff_ts}, expected={expected}, last_remaining={remaining}, timeout_ms={}",
+                    timeout.as_millis()
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 
     #[tokio::test]
