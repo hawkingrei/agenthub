@@ -243,11 +243,15 @@ use self::execute::require_shared_thread_task_id;
 #[cfg(test)]
 use self::execute::resolve_shared_thread_task_id;
 #[cfg(test)]
+use self::execute::validate_direct_mailbox_target_for_context;
+#[cfg(test)]
 use self::output::{actor_output_preference_for_command, encode_actor_output};
 #[cfg(test)]
 use self::parse::{compute_time_trigger_fire_at, parse_actor_command};
 #[cfg(test)]
 use self::runtime::load_actor_inbox;
+#[cfg(test)]
+use crate::team::TeamContextRecord;
 
 fn maybe_reject_legacy_actor_mcp_args(args: &[String]) -> Option<anyhow::Result<()>> {
     if args.first().map(String::as_str) == Some("actor-mcp") {
@@ -760,6 +764,72 @@ mod tests {
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    fn mock_team_context(member_specs: &[(&str, &str)]) -> TeamContextRecord {
+        serde_json::from_value(serde_json::json!({
+            "team_id": "team-1",
+            "team_name": "team",
+            "runtime": {
+                "status": "running",
+                "online_count": member_specs.len(),
+                "member_count": member_specs.len(),
+            },
+            "members": member_specs
+                .iter()
+                .map(|(member_id, role)| serde_json::json!({
+                    "member_id": member_id,
+                    "display_name": member_id,
+                    "role": role,
+                    "description": null,
+                    "pending_inbox_count": 0,
+                    "agent_status": "running",
+                    "session_id": null,
+                    "session_status": null,
+                    "card": {
+                        "card_id": format!("card-{member_id}"),
+                        "schema_version": "1",
+                        "description": format!("{member_id} description"),
+                        "role": role,
+                        "skills": [],
+                        "capability_tags": [],
+                    },
+                    "steps": [],
+                }))
+                .collect::<Vec<_>>(),
+            "run": null,
+        }))
+        .expect("build team context fixture")
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_role_alias() {
+        let context = mock_team_context(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_context(&context, "leader")
+            .expect_err("role alias should be rejected");
+        let message = err.to_string();
+        assert!(message.contains("not a canonical team member_id"));
+        assert!(message.contains("595d1ae8-fcbd-4111-b5c7-d446a12c044b"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_allows_member_id_and_human_mailbox() {
+        let context = mock_team_context(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        validate_direct_mailbox_target_for_context(
+            &context,
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
+        )
+        .expect("member id should be accepted");
+        validate_direct_mailbox_target_for_context(&context, "user")
+            .expect("human alias should be accepted");
+        validate_direct_mailbox_target_for_context(&context, "user:test")
+            .expect("human actor target should be accepted");
     }
 
     #[test]
