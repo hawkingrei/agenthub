@@ -3,6 +3,10 @@
 Enable Codex subagent tools by default in `agenthub-codex-acp` so AgentHub ACP sessions do not
 depend on each user's `~/.codex/config.toml` setting `features.multi_agent = true`.
 
+> Superseded by `docs/journal/2026-03-31-codex-acp-multi-agent-config-knob.md`.
+> AgentHub now owns this behavior through the explicit `codex_acp.multi_agent_enabled` config
+> knob instead of leaving the default inside the adapter.
+
 ## Why
 
 AgentHub relies on Codex ACP as an adapter layer. Requiring every machine to opt into

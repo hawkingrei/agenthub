@@ -142,9 +142,11 @@ ACP permission requests are first-class runtime records:
 
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
-- `agenthub-codex-acp` should enable Codex `multi_agent` / `Feature::Collab` by default so
-  AgentHub ACP sessions expose subagent tools without requiring per-user `~/.codex/config.toml`
-  toggles; retain a follow-up to surface this as an explicit AgentHub-owned config knob later.
+- AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
+  `true`). When launching `agenthub-codex-acp`, AgentHub should pass an explicit
+  `AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED=1|0` child-process env override so ACP sessions expose
+  Codex `Feature::Collab` deterministically without depending on per-user
+  `~/.codex/config.toml` toggles.
 - `agenthub-acp` should materialize AgentHub-managed Codex skills under
   `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
   file-backed skills through ACP `<skill>` wrappers so `agenthub-codex-acp` can translate them into

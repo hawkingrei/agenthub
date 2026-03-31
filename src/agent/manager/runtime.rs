@@ -567,6 +567,7 @@ mod tests {
             Vec::new(),
             "agenthub-codex-acp".to_string(),
             None,
+            true,
             state.acp_permissions.clone(),
             state.auth.clone(),
         ));
