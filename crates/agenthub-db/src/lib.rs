@@ -357,6 +357,17 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS system_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS login_audit (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,

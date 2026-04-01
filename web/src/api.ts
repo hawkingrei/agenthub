@@ -142,6 +142,10 @@ export type AuthStatusResponse = {
   passkey_enabled: boolean;
 };
 
+export type AdminSettingsResponse = {
+  passkey_enabled: boolean;
+};
+
 export type JoinStartResponse = {
   challenge_id?: string | null;
   options?: unknown;
@@ -511,6 +515,38 @@ async function apiFetch<T>(
 function encodePathSegment(value: string | number): string {
   return encodeURIComponent(String(value));
 }
+
+export type SafePath = {
+  path: string;
+  created_at: number;
+};
+
+export type DeviceRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  user_agent: string;
+  status: string;
+  created_at: number;
+  last_login_at: number | null;
+};
+
+export type AuditRecord = {
+  id: number;
+  user_id: string | null;
+  device_id: string | null;
+  event: string;
+  ip: string | null;
+  user_agent: string | null;
+  detail: string | null;
+  ts: number;
+};
+
+export type JoinStartResponseAdmin = {
+  token: string;
+  pin: string;
+  expires_at: number;
+};
 
 export const api = {
   registerStart: (
@@ -1072,6 +1108,42 @@ export const api = {
       token,
       { method: "POST", body: JSON.stringify(payload) }
     ),
+  adminGetSafePaths: (token: string) =>
+    apiFetch<SafePath[]>(
+      "/api/admin/safe_paths",
+      token
+    ),
+  adminAddSafePath: (token: string, path: string) =>
+    apiFetch<{ status: string }>("/api/admin/safe_paths", token, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  adminDeleteSafePath: (token: string, path: string) =>
+    apiFetch<{ status: string }>("/api/admin/safe_paths", token, {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
+    }),
+  adminGetSettings: (token: string) =>
+    apiFetch<AdminSettingsResponse>("/api/admin/settings", token),
+  adminSetPasskeyEnabled: (token: string, enabled: boolean) =>
+    apiFetch<{ status: string }>("/api/admin/settings/passkey", token, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
+  adminListDevices: (token: string) =>
+    apiFetch<DeviceRecord[]>("/api/admin/devices", token),
+  adminRevokeDevice: (token: string, id: string) =>
+    apiFetch<{ status: string }>(`/api/admin/devices/${encodePathSegment(id)}/revoke`, token, {
+      method: "POST",
+    }),
+  adminListAudits: (token: string, limit?: number) => {
+    const query = limit ? `?limit=${limit}` : "";
+    return apiFetch<AuditRecord[]>(`/api/admin/audits${query}`, token);
+  },
+  adminJoinStart: (token: string) =>
+    apiFetch<JoinStartResponseAdmin>("/api/admin/join/start", token, {
+      method: "POST",
+    }),
   getVapidPublicKey: () =>
     apiFetch<{ public_key: string }>("/api/push/vapid_public", null),
   getVapidInfo: (token: string) =>

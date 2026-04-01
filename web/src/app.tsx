@@ -2881,6 +2881,24 @@ export function App() {
     }
   };
 
+  useEffect(() => {
+    if (auth?.role === "root") {
+      api.adminGetSettings(auth.token).then(res => {
+        setPasskeyEnabled(res.passkey_enabled);
+      }).catch(() => {});
+    }
+  }, [auth]);
+
+  const onPasskeyEnabledChange = async (enabled: boolean) => {
+    if (!auth || auth.role !== "root") return;
+    try {
+      await api.adminSetPasskeyEnabled(auth.token, enabled);
+      setPasskeyEnabled(enabled);
+    } catch (err) {
+      setError(parseApiErrorMessage(err) ?? String(err));
+    }
+  };
+
   const onAddSafePath = async () => {
     if (!token) return;
     try {
@@ -3257,6 +3275,8 @@ export function App() {
           setSafePathInput={setSafePathInput}
           developerMode={developerMode}
           onDeveloperModeChange={handleDeveloperModeChange}
+          passkeyEnabled={passkeyEnabled ?? false}
+          onPasskeyEnabledChange={onPasskeyEnabledChange}
         />
       </Suspense>
     );
@@ -3376,7 +3396,7 @@ export function App() {
               disabled={authBusy !== null}
               onClick={onLogin}
             >
-              {authBusy === "login" ? "Logging in..." : passkeyEnabled ? "Login with Passkey" : "Login"}
+              {authBusy === "login" ? "Logging in..." : "Login"}
             </button>
           </div>
         </section>

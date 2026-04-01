@@ -26,6 +26,16 @@ pub struct AddSafePathRequest {
     pub path: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct SetPasskeyEnabledRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AdminSettingsResponse {
+    pub passkey_enabled: bool,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct DeviceRecord {
     pub id: String,
@@ -51,6 +61,8 @@ pub fn router(state: AppState) -> Router {
         .route("/devices", get(list_devices))
         .route("/devices/{id}/revoke", post(revoke_device))
         .route("/audits", get(list_audits))
+        .route("/settings", get(get_settings))
+        .route("/settings/passkey", post(set_passkey_enabled))
         .route("/join/start", post(join_start))
         .with_state(state)
 }
@@ -352,4 +364,47 @@ fn hash_pin(pin: &str) -> anyhow::Result<String> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?
         .to_string();
     Ok(hash)
+}
+
+async fn get_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AdminSettingsResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    if user.role != "root" {
+        return Err(ApiError::unauthorized("root required"));
+    }
+    let passkey_enabled = state.auth.is_passkey_enabled().await;
+    Ok(Json(AdminSettingsResponse { passkey_enabled }))
+}
+
+async fn set_passkey_enabled(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SetPasskeyEnabledRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    if user.role != "root" {
+        return Err(ApiError::unauthorized("root required"));
+    }
+    state
+        .auth
+        .set_passkey_enabled(payload.enabled)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    let detail = format!("enabled={}", payload.enabled);
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "passkey_config_updated",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({ "status": "ok" })))
 }

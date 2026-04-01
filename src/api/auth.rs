@@ -73,7 +73,7 @@ pub struct AuthStatusResponse {
 
 async fn status(State(state): State<AppState>) -> Result<Json<AuthStatusResponse>, ApiError> {
     let root_initialized = state.auth.root_has_passkeys().await?;
-    let passkey_enabled = state.auth.is_passkey_enabled();
+    let passkey_enabled = state.auth.is_passkey_enabled().await;
     Ok(Json(AuthStatusResponse {
         root_initialized,
         passkey_enabled,
