@@ -1,4 +1,10 @@
-import { AcpMessage, AcpPlanEntry, AcpPlanView, AcpToolCall } from "./acp";
+import {
+  AcpMessage,
+  AcpPlanEntry,
+  AcpPlanView,
+  AcpTerminalActivity,
+  AcpToolCall,
+} from "./acp";
 import { compareEventOrder, type SeqComparable } from "./seq_order";
 
 export type PlanEntryView = Pick<AcpPlanEntry, "content" | "status" | "priority">;
@@ -22,6 +28,7 @@ export type ToolCallConversationItem = {
   raw_input?: unknown;
   raw_output?: unknown;
   terminal_output?: string;
+  terminal_activities?: AcpTerminalActivity[];
   seq?: string;
   event_id?: number;
   ts?: number;
@@ -279,6 +286,7 @@ export function buildConversationMessages(
       raw_input: call.raw_input,
       raw_output: call.raw_output,
       terminal_output: call.terminal_output,
+      terminal_activities: call.terminal_activities,
       seq: call.seq,
       event_id: call.event_id,
       ts: call.ts,

@@ -206,6 +206,47 @@ describe("buildAcpView", () => {
     expect(view.toolCalls[0].content).toBe("{\"command\": \"grep\"}");
   });
 
+  it("tracks terminal background activity on tool call updates", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call_update",
+          id: "tool-1",
+          meta: {
+            terminal_activity: {
+              kind: "waited",
+              command: "Run cargo test -p codex-core",
+            },
+          },
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "tool_call_update",
+          id: "tool-1",
+          meta: {
+            terminal_activity: {
+              kind: "interacted",
+              command: "Run cargo test -p codex-core",
+            },
+          },
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.toolCalls).toHaveLength(1);
+    expect(view.toolCalls[0].terminal_activities).toEqual([
+      { kind: "waited", command: "Run cargo test -p codex-core" },
+      { kind: "interacted", command: "Run cargo test -p codex-core" },
+    ]);
+  });
+
   it("tracks thinking timestamps while in thought and clears after message", () => {
     const thinkingEvents = [
       {

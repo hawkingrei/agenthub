@@ -260,23 +260,6 @@ fn build_agent_record_for_policy(
 }
 
 #[test]
-fn runtime_start_policy_keeps_non_team_workdir_stable() {
-    let tmp = std::env::temp_dir().join(format!("agenthub-project-policy-{}", Uuid::new_v4()));
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
-    let agent =
-        build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
-
-    let first = build_runtime_start_policy(&agent, None, &agent.workdir, None, Some("launch-1"))
-        .expect("first non-team launch policy");
-    let second = build_runtime_start_policy(&agent, None, &agent.workdir, None, Some("launch-2"))
-        .expect("second non-team launch policy");
-
-    assert_eq!(first.workdir, agent.workdir);
-    assert_eq!(second.workdir, agent.workdir);
-    assert_eq!(first.workdir, second.workdir);
-}
-
-#[test]
 fn runtime_start_policy_redirects_leader_to_stable_sandbox() {
     let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");

@@ -10,7 +10,7 @@ type TeamTabsBarProps = {
 export function TeamTabsBar(props: TeamTabsBarProps) {
   const { tab, onTabChange, items = TEAM_TAB_ITEMS } = props;
   return (
-    <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`}>
+    <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`} data-team-surface="workflow-tabs">
       {items.map((item) => (
         <button
           key={item.value}

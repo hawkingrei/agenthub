@@ -61,6 +61,33 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
+  it("renders terminal background activity as a dedicated ACP section", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-terminal-activity",
+        title: "Run cargo test -p codex-core",
+        status: "in_progress",
+        terminal_activities: [
+          {
+            kind: "waited",
+            command: "Run cargo test -p codex-core",
+          },
+          {
+            kind: "interacted",
+            command: "Run cargo test -p codex-core",
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain("Activity");
+    expect(html).toContain("Waited for background terminal · Run cargo test -p codex-core");
+    expect(html).toContain(
+      "Interacted with background terminal · Run cargo test -p codex-core"
+    );
+  });
+
   it("renders grouped tool calls with a shared fold and nested tool entries", () => {
     const html = renderConversation([
       {

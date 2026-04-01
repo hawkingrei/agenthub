@@ -9,10 +9,16 @@ export type AcpToolCall = {
   raw_input?: unknown;
   raw_output?: unknown;
   terminal_output?: string;
+  terminal_activities?: AcpTerminalActivity[];
   session_id?: string | null;
   seq?: string;
   event_id?: number;
   ts?: number;
+};
+
+export type AcpTerminalActivity = {
+  kind: "waiting" | "waited" | "interacted";
+  command?: string;
 };
 
 export type AcpMessage = {
@@ -279,6 +285,18 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
           (call.terminal_output ?? "") +
           String(parsed.meta.terminal_output.data);
       }
+      const terminalActivity = parseAcpTerminalActivity(parsed.meta?.terminal_activity);
+      if (terminalActivity) {
+        const prev = call.terminal_activities ?? [];
+        const last = prev[prev.length - 1];
+        if (
+          !last ||
+          last.kind !== terminalActivity.kind ||
+          last.command !== terminalActivity.command
+        ) {
+          call.terminal_activities = [...prev, terminalActivity];
+        }
+      }
     }
     if (parsed.type === "plan" && parsed.plan) {
       if (inThinking) {
@@ -341,6 +359,21 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
     currentMode,
     runStatus,
     thinkingStartTs,
+  };
+}
+
+function parseAcpTerminalActivity(value: unknown): AcpTerminalActivity | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const kind = typeof record.kind === "string" ? record.kind : "";
+  if (kind !== "waiting" && kind !== "waited" && kind !== "interacted") {
+    return null;
+  }
+  return {
+    kind,
+    command: typeof record.command === "string" ? record.command : undefined,
   };
 }
 

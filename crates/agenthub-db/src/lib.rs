@@ -1833,8 +1833,8 @@ mod tests {
         init_db_at_path, try_connect,
     };
     use agenthub_config::path_utils::expand_tilde;
-    use sqlx::SqlitePool;
     use sqlx::Row;
+    use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::time::Duration;
     use uuid::Uuid;
