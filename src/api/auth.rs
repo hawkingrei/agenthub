@@ -74,7 +74,7 @@ pub struct AuthStatusResponse {
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<AuthStatusResponse>, ApiError> {
-    let root_initialized = state.auth.root_has_passkeys().await?;
+    let root_initialized = state.auth.root_exists().await?;
     let passkey_enabled = state.auth.is_passkey_enabled().await?;
     Ok(Json(AuthStatusResponse {
         root_initialized,
@@ -89,7 +89,7 @@ async fn register_start(
 ) -> Result<Json<RegisterStartResponse>, ApiError> {
     let role = payload.role.as_deref().unwrap_or("device");
     let ua = extract_ua(&headers);
-    if role == "root" && state.auth.root_has_passkeys().await? {
+    if role == "root" && state.auth.root_exists().await? {
         return Err(ApiError::unauthorized("root already initialized"));
     }
     if role == "root" && payload.password.is_none() {

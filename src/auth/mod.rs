@@ -584,16 +584,24 @@ impl AuthService {
     pub async fn root_has_passkeys(&self) -> anyhow::Result<bool> {
         let row = sqlx::query(
             r#"
-            SELECT u.id
+            SELECT COUNT(*)
             FROM users u
             JOIN user_passkeys p ON u.id = p.user_id
             WHERE u.role = 'root'
-            LIMIT 1
             "#,
         )
-        .fetch_optional(&self.db)
+        .fetch_one(&self.db)
         .await?;
-        Ok(row.is_some())
+        let count: i64 = row.get(0);
+        Ok(count > 0)
+    }
+
+    pub async fn root_exists(&self) -> anyhow::Result<bool> {
+        let row = sqlx::query("SELECT COUNT(*) FROM users WHERE role = 'root'")
+            .fetch_one(&self.db)
+            .await?;
+        let count: i64 = row.get(0);
+        Ok(count > 0)
     }
 
     async fn save_passkeys(&self, user_id: &str, passkeys: &[Passkey]) -> anyhow::Result<()> {
