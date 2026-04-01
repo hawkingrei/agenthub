@@ -5767,6 +5767,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_exec_command_end_emits_waited_meta_for_terminal_output() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let client_capabilities =
+                    Arc::new(std::sync::Mutex::new(ClientCapabilities::default()));
+                client_capabilities.lock().unwrap().meta =
+                    serde_json::json!({ "terminal_output": true })
+                        .as_object()
+                        .cloned();
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), client_capabilities);
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new("submission-id".to_string(), thread, message_tx, response_tx);
+
+                prompt_state.active_commands.insert(
+                    "call-1".to_string(),
+                    ActiveCommand {
+                        tool_call_id: ToolCallId::new("call-1"),
+                        title: "Run cargo test -p codex-core".to_string(),
+                        terminal_output: true,
+                        output: String::new(),
+                        file_extension: None,
+                        background_terminal_waiting: true,
+                    },
+                );
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ExecCommandEnd(ExecCommandEndEvent {
+                            call_id: "call-1".to_string(),
+                            process_id: None,
+                            turn_id: "turn-1".to_string(),
+                            command: vec!["cargo".to_string(), "test".to_string()],
+                            cwd: std::path::PathBuf::from("."),
+                            parsed_cmd: vec![],
+                            source: Default::default(),
+                            interaction_input: None,
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            aggregated_output: String::new(),
+                            exit_code: 0,
+                            duration: std::time::Duration::from_millis(10),
+                            formatted_output: String::new(),
+                            status: ExecCommandStatus::Completed,
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                let updates: Vec<_> = notifications
+                    .iter()
+                    .filter_map(|notification| match &notification.update {
+                        SessionUpdate::ToolCallUpdate(update) => Some(update.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(updates.len(), 1, "updates don't match {updates:?}");
+                let meta = updates[0].meta.as_ref().expect("terminal meta missing");
+                assert_eq!(
+                    meta.get("terminal_activity")
+                        .and_then(|value| value.get("kind"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("waited")
+                );
+                assert_eq!(
+                    meta.get("terminal_activity")
+                        .and_then(|value| value.get("command"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("Run cargo test -p codex-core")
+                );
+                assert_eq!(
+                    meta.get("terminal_exit")
+                        .and_then(|value| value.get("terminal_id"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("call-1")
+                );
+                assert_eq!(updates[0].fields.status, Some(ToolCallStatus::Completed));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_thread_shutdown_bypasses_blocked_permission_request() -> anyhow::Result<()> {
         let session_id = SessionId::new("test");
         let client = Arc::new(StubClient::with_blocked_permission_requests(
