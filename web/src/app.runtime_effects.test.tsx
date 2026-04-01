@@ -14,6 +14,7 @@ const {
   listAuditsMock,
   getVapidInfoMock,
   getRuntimeDefaultsMock,
+  getAdminSettingsMock,
 } = vi.hoisted(() => ({
   authStatusMock: vi.fn(),
   loginStartMock: vi.fn(),
@@ -24,6 +25,7 @@ const {
   listAuditsMock: vi.fn(),
   getVapidInfoMock: vi.fn(),
   getRuntimeDefaultsMock: vi.fn(),
+  getAdminSettingsMock: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -37,6 +39,7 @@ vi.mock("./api", () => ({
     listAudits: listAuditsMock,
     getVapidInfo: getVapidInfoMock,
     getRuntimeDefaults: getRuntimeDefaultsMock,
+    getAdminSettings: getAdminSettingsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
 }));
@@ -113,6 +116,8 @@ describe("App runtime viewport effects", () => {
     getRuntimeDefaultsMock.mockResolvedValue({
       default_worktree_root: "~/.agenthub/worktrees",
     });
+    getAdminSettingsMock.mockReset();
+    getAdminSettingsMock.mockResolvedValue({ passkey_enabled: false });
     const storage = new Map<string, string>();
     originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
       globalThis,
@@ -307,7 +312,7 @@ describe("App runtime viewport effects", () => {
     });
 
     expect(container.textContent).toContain("AgentHub");
-    expect(container.textContent).toContain("Password + Passkey Login");
+    expect(container.textContent).toContain("Login");
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vh")
     ).toBe("700px");

@@ -516,22 +516,17 @@ function encodePathSegment(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
-export type JoinStartResponseAdmin = {
-  token: string;
-  pin: string;
-  expires_at: number;
-};
-
 export const api = {
   registerStart: (
     username: string,
     display_name: string,
     role?: string,
-    password?: string
+    password?: string,
+    device_name?: string
   ) =>
     apiFetch<AuthStartResponse>("/api/auth/register/start", null, {
       method: "POST",
-      body: JSON.stringify({ username, display_name, role, password }),
+      body: JSON.stringify({ username, display_name, role, password, device_name }),
     }),
   registerFinish: (challenge_id: string, credential: unknown) =>
     apiFetch<AuthFinishResponse>("/api/auth/register/finish", null, {

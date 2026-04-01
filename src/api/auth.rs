@@ -20,6 +20,7 @@ pub struct RegisterStartRequest {
     pub display_name: String,
     pub role: Option<String>,
     pub password: Option<String>,
+    pub device_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,9 +83,11 @@ async fn status(State(state): State<AppState>) -> Result<Json<AuthStatusResponse
 
 async fn register_start(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<RegisterStartRequest>,
 ) -> Result<Json<RegisterStartResponse>, ApiError> {
     let role = payload.role.as_deref().unwrap_or("device");
+    let ua = extract_ua(&headers);
     if role == "root" && state.auth.root_has_passkeys().await? {
         return Err(ApiError::unauthorized("root already initialized"));
     }
@@ -98,8 +101,8 @@ async fn register_start(
             &payload.display_name,
             role,
             payload.password.as_deref(),
-            None,
-            None,
+            payload.device_name,
+            ua,
         )
         .await?;
 
@@ -188,6 +191,31 @@ async fn login_start(
         })),
         crate::auth::LoginStartResult::Complete { user_id, role } => {
             let token = state.auth.create_session(&user_id).await?;
+            if role == "device" {
+                let _ = state.auth.touch_device_login(&user_id).await;
+            }
+            let device_id = if role == "device" {
+                state
+                    .auth
+                    .get_device_id_for_user(&user_id)
+                    .await
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let _ = state
+                .auth
+                .record_audit(
+                    Some(&user_id),
+                    device_id.as_deref(),
+                    "login_success",
+                    None,
+                    ip.as_deref(),
+                    ua.as_deref(),
+                )
+                .await;
+
             Ok(Json(LoginStartResponse {
                 challenge_id: None,
                 options: None,

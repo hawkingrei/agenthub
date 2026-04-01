@@ -308,10 +308,7 @@ impl AuthService {
             .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let passkeys = self.load_passkeys(&user.id).await?;
         if passkeys.is_empty() {
-            return Ok(LoginStartResult::Complete {
-                user_id: user.id,
-                role: user.role,
-            });
+            anyhow::bail!("no passkeys registered");
         }
 
         let (rcr, state) = webauthn.start_passkey_authentication(&passkeys)?;

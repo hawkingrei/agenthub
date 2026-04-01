@@ -387,10 +387,7 @@ async fn set_passkey_enabled(
     if user.role != "root" {
         return Err(ApiError::unauthorized("root required"));
     }
-    state
-        .auth
-        .set_passkey_enabled(payload.enabled)
-        .await?;
+    state.auth.set_passkey_enabled(payload.enabled).await?;
 
     let detail = format!("enabled={}", payload.enabled);
     let _ = state
