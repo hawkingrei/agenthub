@@ -101,12 +101,9 @@ jobs:
         run: |
           TAG_VERSION="${{ github.event.inputs.version || github.ref_name }}"
           ASSET_VERSION="${TAG_VERSION#v}"
-          
-          BINARY_NAME="agenthub"
           TARGET="${{ matrix.target }}"
           ARCH="${{ matrix.arch }}"
-          
-          # Determine OS name
+
           if [[ "${{ matrix.os }}" == ubuntu* ]]; then
             OS_NAME="linux"
           elif [[ "${{ matrix.os }}" == macos* ]]; then
@@ -114,38 +111,31 @@ jobs:
           else
             OS_NAME="unknown"
           fi
-          
-          PACKAGE_NAME="${BINARY_NAME}-${ASSET_VERSION}-${OS_NAME}-${ARCH}"
-          
-          # Create package directory
-          mkdir -p "dist/${PACKAGE_NAME}"
-          
-          # Copy binaries
-          cp "target/${TARGET}/release/${BINARY_NAME}" "dist/${PACKAGE_NAME}/"
-          cp "target/${TARGET}/release/agenthub-codex-acp" "dist/${PACKAGE_NAME}/"
-          
-          # Copy additional files
-          cp README.md LICENSE "dist/${PACKAGE_NAME}/" 2>/dev/null || true
-          
-          # Create archive
-          cd dist
-          if [[ "${{ matrix.os }}" == windows* ]]; then
-            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
-            echo "ASSET=${PACKAGE_NAME}.zip" >> $GITHUB_ENV
-          else
-            tar -czf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
-            echo "ASSET=${PACKAGE_NAME}.tar.gz" >> $GITHUB_ENV
-          fi
-          
-          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
-          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_ENV
-          echo "ASSET_VERSION=${ASSET_VERSION}" >> $GITHUB_ENV
+
+          mkdir -p dist
+
+          package_binary() {
+            local binary_name="$1"
+            local package_name="${binary_name}-${ASSET_VERSION}-${OS_NAME}-${ARCH}"
+            local package_dir="dist/${package_name}"
+            mkdir -p "${package_dir}"
+            cp "target/${TARGET}/release/${binary_name}" "${package_dir}/"
+            cp README.md "${package_dir}/"
+            if [[ -f LICENSE ]]; then
+              cp LICENSE "${package_dir}/"
+            fi
+            tar -C dist -czf "dist/${package_name}.tar.gz" "${package_name}"
+            rm -rf "${package_dir}"
+          }
+
+          package_binary "agenthub"
+          package_binary "agenthub-codex-acp"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.PACKAGE_NAME }}
-          path: dist/${{ env.ASSET }}
+          name: release-${{ matrix.target }}
+          path: dist/*.tar.gz
           retention-days: 1
 
   release:
@@ -160,7 +150,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: dist
-          merge-multiple: false
+          merge-multiple: true
 
       - name: Prepare release metadata
         id: release_meta
@@ -194,6 +184,25 @@ jobs:
       - name: Display structure
         run: ls -R dist
 
+      - name: Create source archive
+        shell: bash
+        run: |
+          SOURCE_NAME="agenthub-${{ steps.release_meta.outputs.asset_version }}-source"
+          git archive \
+            --format=tar.gz \
+            --prefix="${SOURCE_NAME}/" \
+            --output="dist/${SOURCE_NAME}.tar.gz" \
+            HEAD
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz | sed 's# \./# #g' > SHA256SUMS.txt
+
+      - name: Display final release assets
+        run: ls -R dist
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
@@ -208,41 +217,45 @@ jobs:
           body: |
             ## Installation
 
-            Each archive contains two binaries:
-            - `agenthub` - Main AgentHub server
-            - `agenthub-codex-acp` - ACP adapter for Codex integration
+            Release assets are split by binary and platform:
 
-            ### Linux x86_64
+            - `agenthub-<version>-linux-amd64.tar.gz`
+            - `agenthub-<version>-linux-arm64.tar.gz`
+            - `agenthub-<version>-darwin-arm64.tar.gz`
+            - `agenthub-codex-acp-<version>-linux-amd64.tar.gz`
+            - `agenthub-codex-acp-<version>-linux-arm64.tar.gz`
+            - `agenthub-codex-acp-<version>-darwin-arm64.tar.gz`
+            - `agenthub-<version>-source.tar.gz`
+            - `SHA256SUMS.txt`
+
+            Each binary archive contains one release binary plus the bundled `README.md`
+            and `LICENSE` file when present.
+
+            ### Download `agenthub` (Linux x86_64)
             ```bash
-            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
-            tar -xzf agenthub.tar.gz
-            sudo mv agenthub-*/agenthub /usr/local/bin/
-            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
+            tar -xzf "agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
+            sudo mv "agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64/agenthub" /usr/local/bin/
             ```
 
-            ### Linux ARM64
+            ### Download `agenthub-codex-acp` (Linux x86_64)
             ```bash
-            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-arm64.tar.gz"
-            tar -xzf agenthub.tar.gz
-            sudo mv agenthub-*/agenthub /usr/local/bin/
-            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
+            tar -xzf "agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
+            sudo mv "agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64/agenthub-codex-acp" /usr/local/bin/
             ```
 
-            ### macOS ARM64 (Apple Silicon)
+            ### Verify checksums
             ```bash
-            curl -L -o agenthub.tar.gz "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-darwin-arm64.tar.gz"
-            tar -xzf agenthub.tar.gz
-            sudo mv agenthub-*/agenthub /usr/local/bin/
-            sudo mv agenthub-*/agenthub-codex-acp /usr/local/bin/
+            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/SHA256SUMS.txt"
+            grep " agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz$" SHA256SUMS.txt | sha256sum -c -
             ```
 
-            ## Verification
+            Supported binary targets:
 
-            Verify the binaries:
-            ```bash
-            agenthub --version
-            agenthub-codex-acp --version
-            ```
+            - `linux-amd64`
+            - `linux-arm64`
+            - `darwin-arm64`
 
             ## Documentation
 
