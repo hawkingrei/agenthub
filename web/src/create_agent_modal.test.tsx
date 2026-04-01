@@ -89,7 +89,7 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("Preset");
     expect(html).toContain("Gemini CLI");
     expect(html).toContain("Command");
-    expect(html).toContain("gemini --experimental-acp");
+    expect(html).toContain("gemini --acp");
     expect(html).toContain("Mode");
     expect(html).toContain("Chat");
   });

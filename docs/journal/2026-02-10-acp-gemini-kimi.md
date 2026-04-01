@@ -42,6 +42,13 @@ session persistence and clear-session behavior correct.
 - Keep the preset and provider-detection logic flexible so remote ACP runtimes
   can be added without refactoring the session persistence model.
 
+## Superseded Note
+
+- Gemini CLI later moved its documented ACP entrypoint from
+  `gemini --experimental-acp` to `gemini --acp`. See
+  `docs/journal/2026-04-02-gemini-acp-bootstrap-and-auth-required.md` for the
+  current bootstrap/authentication contract.
+
 ## Validation
 
 - [ ] Install Gemini CLI and start an agent with the Gemini preset; verify ACP

@@ -126,6 +126,8 @@ ACP permission requests are first-class runtime records:
 - ACP protocol mapping must stay aligned with upstream provider schemas.
 - Codex ACP sync changes should preserve session listing, tool-call payload decode, and event handling contracts.
 - Gemini/Kimi ACP presets should preserve session clear and provider-specific defaults without regressing core ACP flow.
+- Gemini CLI bootstrap should track the current upstream ACP contract (`gemini --acp`) while continuing to tolerate the legacy `--experimental-acp` flag in provider detection for backward compatibility.
+- When an ACP provider returns `auth_required`, AgentHub should surface an explicit setup error instead of silently retrying interactive auth flows on behalf of a remote user.
 
 ### 7) Placement And Proxy Contract
 

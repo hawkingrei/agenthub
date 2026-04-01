@@ -76,6 +76,10 @@ fn acp_provider_for_agent_requires_expected_args() {
         None
     );
     assert_eq!(
+        acp_provider_for_agent_with_binary(codex_bin, "gemini", &["--acp".to_string()]),
+        Some(ACP_PROVIDER_GEMINI)
+    );
+    assert_eq!(
         acp_provider_for_agent_with_binary(
             codex_bin,
             "gemini",
@@ -100,12 +104,9 @@ fn acp_provider_for_agent_requires_expected_args() {
         Some(ACP_PROVIDER_CODEX)
     );
 
-    let gemini = acp_provider_spec_for_agent_with_binary(
-        codex_bin,
-        "gemini",
-        &["--experimental-acp".to_string()],
-    )
-    .expect("resolve gemini acp provider");
+    let gemini =
+        acp_provider_spec_for_agent_with_binary(codex_bin, "gemini", &["--acp".to_string()])
+            .expect("resolve gemini acp provider");
     assert_eq!(gemini.id, ACP_PROVIDER_GEMINI);
     assert_eq!(
         gemini.prompt_delivery_policy,
