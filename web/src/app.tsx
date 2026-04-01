@@ -3372,7 +3372,7 @@ export function App() {
       {!auth && (
         <section className={AUTH_FORM_CARD_CLASS}>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-            {passkeyEnabled ? "Password + Passkey Login" : "Login"}
+            Login
           </h2>
           <input
             className={AUTH_INPUT_CLASS}
