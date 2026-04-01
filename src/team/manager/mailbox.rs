@@ -567,11 +567,12 @@ impl TeamActorMailboxService {
         &self,
         run_id: &str,
     ) -> anyhow::Result<Vec<TeamMemberSpecView>> {
-        let team_id = sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
-            .bind(run_id)
-            .fetch_optional(&self.manager.db)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+        let team_id =
+            sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+                .bind(run_id)
+                .fetch_optional(&self.manager.db)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("run not found"))?;
         let team = self.manager.get_team(&team_id).await?;
         parse_team_member_specs(&team.spec)
     }
@@ -2196,7 +2197,10 @@ mod tests {
         let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "user:")
             .expect_err("human mailbox target with empty suffix should be rejected");
         assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
-        assert!(err.message.contains("must reference spec.members[].member_id"));
+        assert!(
+            err.message
+                .contains("must reference spec.members[].member_id")
+        );
     }
 
     #[test]
