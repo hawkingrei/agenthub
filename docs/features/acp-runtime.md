@@ -109,6 +109,12 @@ ACP permission requests are first-class runtime records:
 
 - Input/send paths must validate session alignment to avoid stale session writes.
 - Session mismatch and unavailable gateway states should surface deterministic, non-leaky errors.
+- `agent_sessions.id` is AgentHub's per-launch runtime/audit identifier and is expected to change on
+  each real restart.
+- `agent_persistent_sessions.session_id` stores provider continuity identity separately so ACP/Codex
+  memory can survive across multiple AgentHub launches until an explicit reset path clears it.
+- Stable project workdirs must not be keyed by the per-launch runtime session id; workspace identity
+  and provider continuity are separate concerns.
 - Resumed Codex sessions must tolerate dirty rollout history:
   - if a stored `CustomToolCall`, `FunctionCall`, or shell-call item is missing its matching output
     item, the adapter should repair the history with a synthetic aborted output before resume

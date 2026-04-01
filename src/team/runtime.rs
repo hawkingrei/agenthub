@@ -517,6 +517,8 @@ pub async fn force_team_member_new_session(
     let provider = agents
         .acp_provider_for_agent(&agent.command, &agent.args)
         .unwrap_or("codex");
+    // `Force New Session` is the explicit continuity-reset path: it clears the persisted ACP
+    // provider session before the member runtime is restarted with a fresh provider-side thread.
     agents
         .clear_persistent_session(member.member_id.as_str(), provider)
         .await
