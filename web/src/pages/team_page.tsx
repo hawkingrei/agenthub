@@ -1176,6 +1176,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
+  const selectedAgentWorkspaceAgentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) return null;
@@ -1421,8 +1422,7 @@ export function TeamPage(props: TeamPageProps) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberId: selectedAgentWorkspaceMemberId,
-    selectedMemberAgentId: selectedAgentWorkspaceAgent?.id ?? null,
+    selectedMemberAgentId: selectedAgentWorkspaceAgentId || null,
     selectedMemberSessionId: selectedAgentWorkspaceSessionId,
     selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
     activeRunIdRef,
@@ -2645,7 +2645,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
     async (text: string, sessionId: string) => {
-      const agentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
+      const agentId = selectedAgentWorkspaceAgentId;
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
         return;
@@ -2690,7 +2690,7 @@ export function TeamPage(props: TeamPageProps) {
       props.token,
       refreshAgents,
       refreshTeamRuntime,
-      selectedAgentWorkspaceAgent,
+      selectedAgentWorkspaceAgentId,
       selectedTeamId,
       setError,
     ]

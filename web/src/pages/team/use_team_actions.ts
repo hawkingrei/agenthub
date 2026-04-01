@@ -55,7 +55,6 @@ type UseTeamActionsOptions = {
   inboxLimit: string;
   inboxAfterId: string;
   inboxIncludeDelivered: boolean;
-  selectedMemberId: string;
   selectedMemberAgentId: string | null;
   selectedMemberSessionId: string | null;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
