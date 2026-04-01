@@ -124,8 +124,11 @@ export type AcpPermissionRecord = {
 };
 
 export type AuthStartResponse = {
-  challenge_id: string;
-  options: unknown;
+  challenge_id?: string | null;
+  options?: unknown;
+  user_id?: string | null;
+  token?: string | null;
+  role?: string | null;
 };
 
 export type AuthFinishResponse = {
@@ -136,11 +139,14 @@ export type AuthFinishResponse = {
 
 export type AuthStatusResponse = {
   root_initialized: boolean;
+  passkey_enabled: boolean;
 };
 
 export type JoinStartResponse = {
-  challenge_id: string;
-  options: unknown;
+  challenge_id?: string | null;
+  options?: unknown;
+  user_id?: string | null;
+  token?: string | null;
 };
 
 export type JoinFinishResponse = {

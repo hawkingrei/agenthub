@@ -905,6 +905,7 @@ export function App() {
     loadAgentsPanelWidthPreference()
   );
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
+  const [passkeyEnabled, setPasskeyEnabled] = useState<boolean | null>(null);
   const [authBusy, setAuthBusy] = useState<"login" | "register" | null>(null);
   const [developerMode, setDeveloperMode] = useState<boolean>(() =>
     loadDeveloperModePreference()
@@ -1383,7 +1384,13 @@ export function App() {
   }, [agents, activeAgent, agentSessions]);
 
   useEffect(() => {
-    api.authStatus().then((res) => setRootInitialized(res.root_initialized)).catch(() => {});
+    api
+      .authStatus()
+      .then((res) => {
+        setRootInitialized(res.root_initialized);
+        setPasskeyEnabled(res.passkey_enabled);
+      })
+      .catch(() => {});
   }, []);
 
   const loadAgentEvents = useCallback(async (
@@ -2183,20 +2190,35 @@ export function App() {
         role,
         role === "root" ? password : undefined
       );
-      const options = publicKeyCredentialCreationOptionsFromJson(start.options);
-      const cred = await navigator.credentials.create({ publicKey: options });
-      if (!cred) throw new Error("registration cancelled");
-      const payload = registerCredentialToJson(cred as PublicKeyCredential);
-      const finish = await api.registerFinish(start.challenge_id, payload);
-      const next = {
-        token: finish.token,
-        userId: finish.user_id,
-        username,
-        role: finish.role,
-      };
+
+      let next: AuthState;
+      if (start.token && start.user_id) {
+        next = {
+          token: start.token,
+          userId: start.user_id,
+          username,
+          role: start.role ?? role ?? "device",
+        };
+      } else {
+        if (!start.challenge_id || !start.options) {
+          throw new Error("invalid registration response: missing challenge");
+        }
+        const options = publicKeyCredentialCreationOptionsFromJson(start.options);
+        const cred = await navigator.credentials.create({ publicKey: options });
+        if (!cred) throw new Error("registration cancelled");
+        const payload = registerCredentialToJson(cred as PublicKeyCredential);
+        const finish = await api.registerFinish(start.challenge_id, payload);
+        next = {
+          token: finish.token,
+          userId: finish.user_id,
+          username,
+          role: finish.role,
+        };
+      }
+
       setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
-      await ensurePushSubscription(finish.token);
+      await ensurePushSubscription(next.token);
     } catch (err) {
       setError(formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err));
     } finally {
@@ -2212,20 +2234,35 @@ export function App() {
     setError(null);
     try {
       const start = await api.loginStart(username, password);
-      const options = publicKeyCredentialRequestOptionsFromJson(start.options);
-      const cred = await navigator.credentials.get({ publicKey: options });
-      if (!cred) throw new Error("login cancelled");
-      const payload = loginCredentialToJson(cred as PublicKeyCredential);
-      const finish = await api.loginFinish(start.challenge_id, payload);
-      const next = {
-        token: finish.token,
-        userId: finish.user_id,
-        username,
-        role: finish.role,
-      };
+
+      let next: AuthState;
+      if (start.token && start.user_id) {
+        next = {
+          token: start.token,
+          userId: start.user_id,
+          username,
+          role: start.role ?? "unknown",
+        };
+      } else {
+        if (!start.challenge_id || !start.options) {
+          throw new Error("invalid login response: missing challenge");
+        }
+        const options = publicKeyCredentialRequestOptionsFromJson(start.options);
+        const cred = await navigator.credentials.get({ publicKey: options });
+        if (!cred) throw new Error("login cancelled");
+        const payload = loginCredentialToJson(cred as PublicKeyCredential);
+        const finish = await api.loginFinish(start.challenge_id, payload);
+        next = {
+          token: finish.token,
+          userId: finish.user_id,
+          username,
+          role: finish.role,
+        };
+      }
+
       setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
       setAuth(next);
-      await ensurePushSubscription(finish.token);
+      await ensurePushSubscription(next.token);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     } finally {
@@ -3298,7 +3335,7 @@ export function App() {
       {!auth && (
         <section className={AUTH_FORM_CARD_CLASS}>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-            Password + Passkey Login
+            {passkeyEnabled ? "Password + Passkey Login" : "Login"}
           </h2>
           <input
             className={AUTH_INPUT_CLASS}
@@ -3339,7 +3376,7 @@ export function App() {
               disabled={authBusy !== null}
               onClick={onLogin}
             >
-              {authBusy === "login" ? "Logging in..." : "Login"}
+              {authBusy === "login" ? "Logging in..." : passkeyEnabled ? "Login with Passkey" : "Login"}
             </button>
           </div>
         </section>

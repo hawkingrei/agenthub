@@ -10,11 +10,36 @@ use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
+#[derive(Debug)]
+pub enum RegisterStartResult {
+    Challenge {
+        challenge_id: String,
+        options: CreationChallengeResponse,
+    },
+    Complete {
+        user_id: String,
+        role: String,
+    },
+}
+
+#[derive(Debug)]
+pub enum LoginStartResult {
+    Challenge {
+        challenge_id: String,
+        options: RequestChallengeResponse,
+    },
+    Complete {
+        user_id: String,
+        role: String,
+    },
+}
+
 #[derive(Clone)]
 pub struct AuthService {
     db: SqlitePool,
-    webauthn: Arc<Webauthn>,
+    webauthn: Option<Arc<Webauthn>>,
     pending: Arc<RwLock<HashMap<String, PendingChallenge>>>,
+    passkey_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -46,17 +71,28 @@ impl AuthService {
         let rp_id = config.rp_id();
         let rp_origin = config.rp_origin();
         let rp_name = config.rp_name();
-        let rp_origin = Url::parse(&rp_origin)?;
+        let passkey_enabled = config.passkey_enabled();
 
-        let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
-        let builder = builder.rp_name(&rp_name);
-        let webauthn = builder.build()?;
+        let webauthn = if passkey_enabled {
+            let rp_origin = Url::parse(&rp_origin)?;
+            let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
+            let builder = builder.rp_name(&rp_name);
+            let webauthn = builder.build()?;
+            Some(Arc::new(webauthn))
+        } else {
+            None
+        };
 
         Ok(Self {
             db,
-            webauthn: Arc::new(webauthn),
+            webauthn,
             pending: Arc::new(RwLock::new(HashMap::new())),
+            passkey_enabled,
         })
+    }
+
+    pub fn is_passkey_enabled(&self) -> bool {
+        self.passkey_enabled
     }
 
     pub async fn register_start(
@@ -67,7 +103,7 @@ impl AuthService {
         password: Option<&str>,
         device_name: Option<String>,
         user_agent: Option<String>,
-    ) -> anyhow::Result<(String, CreationChallengeResponse)> {
+    ) -> anyhow::Result<RegisterStartResult> {
         if let Some(existing) = self.get_user_by_username(username).await? {
             if existing.role != role {
                 anyhow::bail!("username already exists");
@@ -139,11 +175,23 @@ impl AuthService {
         role: &str,
         device_name: Option<String>,
         user_agent: Option<String>,
-    ) -> anyhow::Result<(String, CreationChallengeResponse)> {
+    ) -> anyhow::Result<RegisterStartResult> {
+        if !self.passkey_enabled {
+            if role == "device" && let Some(name) = device_name {
+                let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
+                self.insert_device(user_id, &name, &user_agent).await?;
+            }
+            return Ok(RegisterStartResult::Complete {
+                user_id: user_id.to_string(),
+                role: role.to_string(),
+            });
+        }
+        let webauthn = self
+            .webauthn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let user_uuid = Uuid::parse_str(user_id)?;
-        let (ccr, state) =
-            self.webauthn
-                .start_passkey_registration(user_uuid, username, display_name, None)?;
+        let (ccr, state) = webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
@@ -158,7 +206,10 @@ impl AuthService {
             },
         );
 
-        Ok((challenge_id, ccr))
+        Ok(RegisterStartResult::Challenge {
+            challenge_id,
+            options: ccr,
+        })
     }
 
     pub async fn register_finish(
@@ -183,7 +234,11 @@ impl AuthService {
             anyhow::bail!("invalid challenge type");
         };
 
-        let passkey = self.webauthn.finish_passkey_registration(&cred, &state)?;
+        let webauthn = self
+            .webauthn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
+        let passkey = webauthn.finish_passkey_registration(&cred, &state)?;
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
         passkeys.push(passkey);
@@ -203,7 +258,7 @@ impl AuthService {
         &self,
         username: &str,
         password: &str,
-    ) -> anyhow::Result<(String, RequestChallengeResponse)> {
+    ) -> anyhow::Result<LoginStartResult> {
         let user = self
             .get_user_by_username(username)
             .await?
@@ -215,12 +270,27 @@ impl AuthService {
         } else {
             anyhow::bail!("password not set");
         }
-        let passkeys = self.load_passkeys(&user.id).await?;
-        if passkeys.is_empty() {
-            anyhow::bail!("no passkeys registered");
+
+        if !self.passkey_enabled {
+            return Ok(LoginStartResult::Complete {
+                user_id: user.id,
+                role: user.role,
+            });
         }
 
-        let (rcr, state) = self.webauthn.start_passkey_authentication(&passkeys)?;
+        let webauthn = self
+            .webauthn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
+        let passkeys = self.load_passkeys(&user.id).await?;
+        if passkeys.is_empty() {
+            return Ok(LoginStartResult::Complete {
+                user_id: user.id,
+                role: user.role,
+            });
+        }
+
+        let (rcr, state) = webauthn.start_passkey_authentication(&passkeys)?;
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
         pending.insert(
@@ -231,7 +301,10 @@ impl AuthService {
             },
         );
 
-        Ok((challenge_id, rcr))
+        Ok(LoginStartResult::Challenge {
+            challenge_id,
+            options: rcr,
+        })
     }
 
     pub async fn login_finish(
@@ -249,8 +322,13 @@ impl AuthService {
             anyhow::bail!("invalid challenge type");
         };
 
+        let webauthn = self
+            .webauthn
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
+
         let mut passkeys = self.load_passkeys(&user_id).await?;
-        let result = self.webauthn.finish_passkey_authentication(&cred, &state)?;
+        let result = webauthn.finish_passkey_authentication(&cred, &state)?;
         let mut changed = false;
         for passkey in &mut passkeys {
             if let Some(updated) = passkey.update_credential(&result) {

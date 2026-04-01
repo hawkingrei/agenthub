@@ -24,8 +24,11 @@ pub struct RegisterStartRequest {
 
 #[derive(Debug, Serialize)]
 pub struct RegisterStartResponse {
-    pub challenge_id: String,
-    pub options: serde_json::Value,
+    pub challenge_id: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub user_id: Option<String>,
+    pub token: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,8 +45,11 @@ pub struct LoginStartRequest {
 
 #[derive(Debug, Serialize)]
 pub struct LoginStartResponse {
-    pub challenge_id: String,
-    pub options: serde_json::Value,
+    pub challenge_id: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub user_id: Option<String>,
+    pub token: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,11 +68,16 @@ pub struct AuthFinishResponse {
 #[derive(Debug, Serialize)]
 pub struct AuthStatusResponse {
     pub root_initialized: bool,
+    pub passkey_enabled: bool,
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<AuthStatusResponse>, ApiError> {
     let root_initialized = state.auth.root_has_passkeys().await?;
-    Ok(Json(AuthStatusResponse { root_initialized }))
+    let passkey_enabled = state.auth.is_passkey_enabled();
+    Ok(Json(AuthStatusResponse {
+        root_initialized,
+        passkey_enabled,
+    }))
 }
 
 async fn register_start(
@@ -80,7 +91,7 @@ async fn register_start(
     if role == "root" && payload.password.is_none() {
         return Err(ApiError::unauthorized("root requires password"));
     }
-    let (challenge_id, options) = state
+    let result = state
         .auth
         .register_start(
             &payload.username,
@@ -91,10 +102,29 @@ async fn register_start(
             None,
         )
         .await?;
-    Ok(Json(RegisterStartResponse {
-        challenge_id,
-        options: serde_json::to_value(options)?,
-    }))
+
+    match result {
+        crate::auth::RegisterStartResult::Challenge {
+            challenge_id,
+            options,
+        } => Ok(Json(RegisterStartResponse {
+            challenge_id: Some(challenge_id),
+            options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+            role: None,
+        })),
+        crate::auth::RegisterStartResult::Complete { user_id, role } => {
+            let token = state.auth.create_session(&user_id).await?;
+            Ok(Json(RegisterStartResponse {
+                challenge_id: None,
+                options: None,
+                user_id: Some(user_id),
+                token: Some(token),
+                role: Some(role),
+            }))
+        }
+    }
 }
 
 async fn register_finish(
@@ -126,7 +156,7 @@ async fn login_start(
         .auth
         .login_start(&payload.username, &payload.password)
         .await;
-    let (challenge_id, options) = match result {
+    let auth_result = match result {
         Ok(value) => value,
         Err(err) => {
             let detail = format!("user={}, error={}", payload.username, err);
@@ -144,10 +174,29 @@ async fn login_start(
             return Err(err.into());
         }
     };
-    Ok(Json(LoginStartResponse {
-        challenge_id,
-        options: serde_json::to_value(options)?,
-    }))
+
+    match auth_result {
+        crate::auth::LoginStartResult::Challenge {
+            challenge_id,
+            options,
+        } => Ok(Json(LoginStartResponse {
+            challenge_id: Some(challenge_id),
+            options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+            role: None,
+        })),
+        crate::auth::LoginStartResult::Complete { user_id, role } => {
+            let token = state.auth.create_session(&user_id).await?;
+            Ok(Json(LoginStartResponse {
+                challenge_id: None,
+                options: None,
+                user_id: Some(user_id),
+                token: Some(token),
+                role: Some(role),
+            }))
+        }
+    }
 }
 
 async fn login_finish(

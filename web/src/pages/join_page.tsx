@@ -38,19 +38,34 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
         password,
         device_name: deviceName || "Device",
       });
-      const options = publicKeyCredentialCreationOptionsFromJson(start.options);
-      const cred = await navigator.credentials.create({ publicKey: options });
-      if (!cred) throw new Error("registration cancelled");
-      const payload = registerCredentialToJson(cred as PublicKeyCredential);
-      const finish = await api.joinFinish(start.challenge_id, payload);
-      const next = {
-        token: finish.token,
-        userId: finish.user_id,
-        username,
-        role: "device",
-      };
+
+      let next: AuthState;
+      if (start.token && start.user_id) {
+        next = {
+          token: start.token,
+          userId: start.user_id,
+          username,
+          role: "device",
+        };
+      } else {
+        if (!start.challenge_id || !start.options) {
+          throw new Error("invalid join response: missing challenge");
+        }
+        const options = publicKeyCredentialCreationOptionsFromJson(start.options);
+        const cred = await navigator.credentials.create({ publicKey: options });
+        if (!cred) throw new Error("registration cancelled");
+        const payload = registerCredentialToJson(cred as PublicKeyCredential);
+        const finish = await api.joinFinish(start.challenge_id, payload);
+        next = {
+          token: finish.token,
+          userId: finish.user_id,
+          username,
+          role: "device",
+        };
+      }
+
       setLocalStorageItemSafe("agenthub_auth", JSON.stringify(next));
-      await ensurePushSubscription(finish.token);
+      await ensurePushSubscription(next.token);
       onComplete(next);
       location.href = "/";
     } catch (err) {
