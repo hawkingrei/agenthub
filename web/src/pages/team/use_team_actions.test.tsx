@@ -51,6 +51,7 @@ function createBaseOptions(overrides: Partial<TeamActionsInput> = {}): TeamActio
     inboxAfterId: "",
     inboxIncludeDelivered: false,
     selectedMemberId: "",
+    selectedMemberAgentId: null,
     selectedMemberSessionId: null,
     selectedMemberSnapshot: null,
     activeRunIdRef: { current: null },
@@ -314,6 +315,48 @@ describe("useTeamActions", () => {
       expect(setMemberEventsLoading).toHaveBeenCalledWith(true);
       expect(setMemberEventsHasMore).toHaveBeenCalledWith(false);
       expect(setMemberEvents).toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("prefers the resolved member agent id when loading detached ACP events", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 9,
+        agent_id: "agent-123",
+        session_id: "runtime-session-1",
+        seq: "9",
+        ts: 123,
+        stream: "acp",
+        message: "event",
+      },
+    ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberId: "worker-member-id",
+      selectedMemberAgentId: "agent-123",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "agent-123",
+        300,
+        "runtime-session-1",
+        undefined
+      );
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);

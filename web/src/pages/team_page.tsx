@@ -1169,6 +1169,13 @@ export function TeamPage(props: TeamPageProps) {
     const runtimeSessionId = selectedAgentWorkspaceRuntimeMember?.session_id?.trim();
     return runtimeSessionId && runtimeSessionId.length > 0 ? runtimeSessionId : null;
   }, [selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
+  const selectedAgentWorkspaceAgent = useMemo(() => {
+    const memberId = selectedAgentWorkspaceMemberId.trim();
+    if (!memberId) {
+      return null;
+    }
+    return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
+  }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) return null;
@@ -1415,6 +1422,7 @@ export function TeamPage(props: TeamPageProps) {
     inboxAfterId,
     inboxIncludeDelivered,
     selectedMemberId: selectedAgentWorkspaceMemberId,
+    selectedMemberAgentId: selectedAgentWorkspaceAgent?.id ?? null,
     selectedMemberSessionId: selectedAgentWorkspaceSessionId,
     selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
     activeRunIdRef,
@@ -2410,13 +2418,6 @@ export function TeamPage(props: TeamPageProps) {
       ),
     [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
   );
-  const selectedAgentWorkspaceAgent = useMemo(() => {
-    const memberId = selectedAgentWorkspaceMemberId.trim();
-    if (!memberId) {
-      return null;
-    }
-    return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
-  }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
   const selectedAgentSpecDraft = useMemo(() => {
     if (!selectedTeam) {
       return null;
@@ -2644,7 +2645,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
     async (text: string, sessionId: string) => {
-      const agentId = selectedAgentWorkspaceMemberId;
+      const agentId = selectedAgentWorkspaceAgent?.id ?? selectedAgentWorkspaceMemberId;
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
         return;
@@ -2689,6 +2690,7 @@ export function TeamPage(props: TeamPageProps) {
       props.token,
       refreshAgents,
       refreshTeamRuntime,
+      selectedAgentWorkspaceAgent,
       selectedAgentWorkspaceMemberId,
       selectedTeamId,
       setError,
