@@ -73,36 +73,29 @@ impl AuthService {
         let rp_name = config.rp_name();
         let passkey_enabled = config.passkey_enabled();
 
-        let webauthn = if passkey_enabled {
-            let rp_origin = Url::parse(&rp_origin)?;
-            let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
-            let builder = builder.rp_name(&rp_name);
-            let webauthn = builder.build()?;
-            Some(Arc::new(webauthn))
-        } else {
-            None
-        };
+        let rp_origin = Url::parse(&rp_origin)?;
+        let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
+        let builder = builder.rp_name(&rp_name);
+        let webauthn = builder.build()?;
 
         Ok(Self {
             db,
-            webauthn,
+            webauthn: Some(Arc::new(webauthn)),
             pending: Arc::new(RwLock::new(HashMap::new())),
             passkey_enabled,
         })
     }
 
-    pub async fn is_passkey_enabled(&self) -> bool {
+    pub async fn is_passkey_enabled(&self) -> anyhow::Result<bool> {
         let row = sqlx::query("SELECT value FROM system_config WHERE key = 'passkey_enabled'")
             .fetch_optional(&self.db)
-            .await
-            .ok()
-            .flatten();
+            .await?;
 
         if let Some(row) = row {
             let val: String = row.get("value");
-            val == "true"
+            Ok(val == "true")
         } else {
-            self.passkey_enabled
+            Ok(self.passkey_enabled)
         }
     }
 
@@ -191,7 +184,6 @@ impl AuthService {
         )
         .await
     }
-
     async fn start_registration_for_user(
         &self,
         user_id: &str,
@@ -201,7 +193,7 @@ impl AuthService {
         device_name: Option<String>,
         user_agent: Option<String>,
     ) -> anyhow::Result<RegisterStartResult> {
-        if !self.is_passkey_enabled().await {
+        if !self.is_passkey_enabled().await? {
             if role == "device" && let Some(name) = device_name {
                 let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
                 self.insert_device(user_id, &name, &user_agent).await?;
@@ -259,13 +251,14 @@ impl AuthService {
             anyhow::bail!("invalid challenge type");
         };
 
+        if !self.is_passkey_enabled().await? {
+            anyhow::bail!("passkey registration is disabled");
+        }
+
         let webauthn = self
             .webauthn
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
-        if !self.is_passkey_enabled().await {
-            anyhow::bail!("passkey registration is disabled");
-        }
         let passkey = webauthn.finish_passkey_registration(&cred, &state)?;
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
@@ -299,7 +292,7 @@ impl AuthService {
             anyhow::bail!("password not set");
         }
 
-        if !self.is_passkey_enabled().await {
+        if !self.is_passkey_enabled().await? {
             return Ok(LoginStartResult::Complete {
                 user_id: user.id,
                 role: user.role,
@@ -350,13 +343,14 @@ impl AuthService {
             anyhow::bail!("invalid challenge type");
         };
 
+        if !self.is_passkey_enabled().await? {
+            anyhow::bail!("passkey authentication is disabled");
+        }
+
         let webauthn = self
             .webauthn
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
-        if !self.is_passkey_enabled().await {
-            anyhow::bail!("passkey authentication is disabled");
-        }
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
         let result = webauthn.finish_passkey_authentication(&cred, &state)?;

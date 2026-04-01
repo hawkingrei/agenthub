@@ -374,7 +374,7 @@ async fn get_settings(
     if user.role != "root" {
         return Err(ApiError::unauthorized("root required"));
     }
-    let passkey_enabled = state.auth.is_passkey_enabled().await;
+    let passkey_enabled = state.auth.is_passkey_enabled().await?;
     Ok(Json(AdminSettingsResponse { passkey_enabled }))
 }
 
@@ -390,8 +390,7 @@ async fn set_passkey_enabled(
     state
         .auth
         .set_passkey_enabled(payload.enabled)
-        .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+        .await?;
 
     let detail = format!("enabled={}", payload.enabled);
     let _ = state

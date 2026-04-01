@@ -2883,7 +2883,7 @@ export function App() {
 
   useEffect(() => {
     if (auth?.role === "root") {
-      api.adminGetSettings(auth.token).then(res => {
+      api.getAdminSettings(auth.token).then(res => {
         setPasskeyEnabled(res.passkey_enabled);
       }).catch(() => {});
     }
@@ -2892,7 +2892,7 @@ export function App() {
   const onPasskeyEnabledChange = async (enabled: boolean) => {
     if (!auth || auth.role !== "root") return;
     try {
-      await api.adminSetPasskeyEnabled(auth.token, enabled);
+      await api.setPasskeyEnabled(auth.token, enabled);
       setPasskeyEnabled(enabled);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
