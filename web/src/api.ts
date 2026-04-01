@@ -126,6 +126,7 @@ export type AcpPermissionRecord = {
 export type AuthStartResponse = {
   challenge_id?: string | null;
   options?: unknown;
+  registration_options?: unknown;
   user_id?: string | null;
   token?: string | null;
   role?: string | null;

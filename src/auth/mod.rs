@@ -28,6 +28,11 @@ pub enum LoginStartResult {
         challenge_id: String,
         options: Box<RequestChallengeResponse>,
     },
+    Registration {
+        challenge_id: String,
+        options: Box<CreationChallengeResponse>,
+        role: String,
+    },
     Complete {
         user_id: String,
         role: String,
@@ -308,7 +313,31 @@ impl AuthService {
             .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let passkeys = self.load_passkeys(&user.id).await?;
         if passkeys.is_empty() {
-            anyhow::bail!("no passkeys registered");
+            // No passkeys registered, but passkeys are enabled globally.
+            // Let the user "join" by providing a registration challenge.
+            return self
+                .start_registration_for_user(
+                    &user.id,
+                    &user.username,
+                    &user.display_name,
+                    &user.role,
+                    None,
+                    None,
+                )
+                .await
+                .map(|res| match res {
+                    RegisterStartResult::Challenge {
+                        challenge_id,
+                        options,
+                    } => LoginStartResult::Registration {
+                        challenge_id,
+                        options,
+                        role: user.role,
+                    },
+                    RegisterStartResult::Complete { user_id, role } => {
+                        LoginStartResult::Complete { user_id, role }
+                    }
+                });
         }
 
         let (rcr, state) = webauthn.start_passkey_authentication(&passkeys)?;

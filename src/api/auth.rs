@@ -48,6 +48,7 @@ pub struct LoginStartRequest {
 pub struct LoginStartResponse {
     pub challenge_id: Option<String>,
     pub options: Option<serde_json::Value>,
+    pub registration_options: Option<serde_json::Value>,
     pub user_id: Option<String>,
     pub token: Option<String>,
     pub role: Option<String>,
@@ -185,9 +186,22 @@ async fn login_start(
         } => Ok(Json(LoginStartResponse {
             challenge_id: Some(challenge_id),
             options: Some(serde_json::to_value(options)?),
+            registration_options: None,
             user_id: None,
             token: None,
             role: None,
+        })),
+        crate::auth::LoginStartResult::Registration {
+            challenge_id,
+            options,
+            role,
+        } => Ok(Json(LoginStartResponse {
+            challenge_id: Some(challenge_id),
+            options: None,
+            registration_options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+            role: Some(role),
         })),
         crate::auth::LoginStartResult::Complete { user_id, role } => {
             let token = state.auth.create_session(&user_id).await?;
@@ -219,6 +233,7 @@ async fn login_start(
             Ok(Json(LoginStartResponse {
                 challenge_id: None,
                 options: None,
+                registration_options: None,
                 user_id: Some(user_id),
                 token: Some(token),
                 role: Some(role),

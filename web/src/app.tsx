@@ -2245,6 +2245,21 @@ export function App() {
           username,
           role: start.role ?? "unknown",
         };
+      } else if (start.registration_options) {
+        if (!start.challenge_id) {
+          throw new Error("invalid login response: missing challenge for registration");
+        }
+        const options = publicKeyCredentialCreationOptionsFromJson(start.registration_options);
+        const cred = await navigator.credentials.create({ publicKey: options });
+        if (!cred) throw new Error("registration cancelled");
+        const payload = registerCredentialToJson(cred as PublicKeyCredential);
+        const finish = await api.registerFinish(start.challenge_id, payload);
+        next = {
+          token: finish.token,
+          userId: finish.user_id,
+          username,
+          role: finish.role,
+        };
       } else {
         if (!start.challenge_id || !start.options) {
           throw new Error("invalid login response: missing challenge");
