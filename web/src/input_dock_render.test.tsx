@@ -72,11 +72,16 @@ describe("InputDock interrupt placement", () => {
 
   it("keeps jump-to-bottom control outside the editor grid flow", () => {
     const html = renderDock({ showConversationJump: true });
+    const shellPos = html.indexOf('class="input-dock-shell');
+    const dockRootPos = html.indexOf('class="input docked');
     const jumpPos = html.indexOf('class="jump-bottom"');
     const editorRowPos = html.indexOf('class="input-editor-row"');
     const textareaPos = html.indexOf("<textarea", editorRowPos);
+    expect(shellPos).toBeGreaterThanOrEqual(0);
+    expect(dockRootPos).toBeGreaterThanOrEqual(0);
     expect(jumpPos).toBeGreaterThanOrEqual(0);
     expect(editorRowPos).toBeGreaterThanOrEqual(0);
+    expect(jumpPos).toBeLessThan(dockRootPos);
     expect(jumpPos).toBeLessThan(editorRowPos);
     expect(textareaPos).toBeGreaterThan(editorRowPos);
   });
