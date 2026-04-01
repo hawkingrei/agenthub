@@ -1,0 +1,177 @@
+// @vitest-environment jsdom
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentEvent } from "../api";
+import { TeamMemberAcpPanel } from "./team_member_acp_panel";
+import { useAcpConversation } from "../hooks/use_acp_conversation";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
+
+vi.mock("../hooks/use_acp_conversation", () => ({
+  useAcpConversation: vi.fn(),
+}));
+
+installReactDomTestGlobals();
+
+function buildAcpEvents(extraMessages: Record<string, unknown>[] = []): AgentEvent[] {
+  return [
+    {
+      event_id: 1,
+      agent_id: "worker-agent",
+      session_id: "runtime-session-1",
+      seq: "1",
+      ts: 1_700_000_001,
+      stream: "acp",
+      message: JSON.stringify({
+        type: "agent_message",
+        text: "Runtime conversation is active.",
+      }),
+    },
+    ...extraMessages.map((message, index) => ({
+      event_id: index + 2,
+      agent_id: "worker-agent",
+      session_id: "runtime-session-1",
+      seq: String(index + 2),
+      ts: 1_700_000_001 + index + 1,
+      stream: "acp",
+      message: JSON.stringify(message),
+    })),
+  ];
+}
+
+function buildConversationHookState(overrides: Record<string, unknown> = {}) {
+  return {
+    acpConversationRef: React.createRef<HTMLDivElement>(),
+    collapseCutoff: 80,
+    conversationAvgHeight: 72,
+    conversationPendingCount: 0,
+    conversationRenderItems: [],
+    conversationSourceItems: 0,
+    conversationRenderedItems: 0,
+    conversationTotalItems: 0,
+    conversationVirtualBottomSpacer: 0,
+    conversationVirtualTopSpacer: 0,
+    conversationWindowOffset: 0,
+    conversationStickToBottom: false,
+    conversationVirtualized: false,
+    focusedConversationToolCallId: null,
+    handleConversationScroll: vi.fn(),
+    isFrozenView: false,
+    jumpToConversationBottom: vi.fn(),
+    shouldAutoCollapse: false,
+    showConversationBadge: false,
+    showConversationJump: true,
+    showConversationTopReachedHint: false,
+    ...overrides,
+  };
+}
+
+describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  it("falls back to the floating ACP jump when the team member input dock is unavailable", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector(".jump-bottom")).toBeNull();
+    expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
+  });
+
+  it("keeps the dock jump and hides the floating ACP jump when input is available", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.querySelector(".jump-bottom")).not.toBeNull();
+    expect(container.querySelector(".acp-jump-bottom")).toBeNull();
+    expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+  });
+
+  it("shows an interrupt action for a running team member ACP session", () => {
+    const onInterrupt = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "running" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        canInterrupt={true}
+        onInterrupt={onInterrupt}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    const interruptButton = required(
+      container.querySelector('button[aria-label="Interrupt current run"]'),
+      "interrupt button missing"
+    ) as HTMLButtonElement;
+    expect(interruptButton.disabled).toBe(false);
+
+    act(() => {
+      interruptButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
+  });
+});
