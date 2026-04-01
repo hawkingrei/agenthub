@@ -14,7 +14,7 @@ use webauthn_rs::prelude::*;
 pub enum RegisterStartResult {
     Challenge {
         challenge_id: String,
-        options: CreationChallengeResponse,
+        options: Box<CreationChallengeResponse>,
     },
     Complete {
         user_id: String,
@@ -26,7 +26,7 @@ pub enum RegisterStartResult {
 pub enum LoginStartResult {
     Challenge {
         challenge_id: String,
-        options: RequestChallengeResponse,
+        options: Box<RequestChallengeResponse>,
     },
     Complete {
         user_id: String,
@@ -194,7 +194,9 @@ impl AuthService {
         user_agent: Option<String>,
     ) -> anyhow::Result<RegisterStartResult> {
         if !self.is_passkey_enabled().await? {
-            if role == "device" && let Some(name) = device_name {
+            if role == "device"
+                && let Some(name) = device_name
+            {
                 let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
                 self.insert_device(user_id, &name, &user_agent).await?;
             }
@@ -208,7 +210,8 @@ impl AuthService {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let user_uuid = Uuid::parse_str(user_id)?;
-        let (ccr, state) = webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
+        let (ccr, state) =
+            webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
@@ -225,7 +228,7 @@ impl AuthService {
 
         Ok(RegisterStartResult::Challenge {
             challenge_id,
-            options: ccr,
+            options: Box::new(ccr),
         })
     }
 
@@ -324,7 +327,7 @@ impl AuthService {
 
         Ok(LoginStartResult::Challenge {
             challenge_id,
-            options: rcr,
+            options: Box::new(rcr),
         })
     }
 
