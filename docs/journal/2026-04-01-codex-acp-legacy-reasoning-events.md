@@ -34,11 +34,15 @@ variants `AgentReasoningDelta`, `AgentReasoningRawContentDelta`, and
   turn after deltas or after a prior final reasoning event
 - updated Team ACP direct-control routing so detached ACP event loading and input sending require a
   resolved `agent_id` instead of falling back to `member_id`
+- mapped background terminal waits into structured ACP `tool_call_update` metadata so Team ACP can
+  render `Waiting/Waited/Interacted with background terminal` activity inside the owning exec tool
+  call instead of relying on raw terminal output gaps or Codex TUI-only phrasing
 - added focused regression tests covering:
   - legacy reasoning delta -> `AgentThoughtChunk`
   - legacy raw reasoning without deltas -> `AgentThoughtChunk`
   - dual final legacy reasoning events deduplicate to a single thought chunk
   - detached ACP event loading clears state when no runtime `agent_id` is available
+  - empty `TerminalInteractionEvent` polling produces ACP background terminal activity
 
 ## Validation
 

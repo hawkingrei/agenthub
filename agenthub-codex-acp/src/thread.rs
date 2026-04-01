@@ -47,11 +47,11 @@ use codex_protocol::{
         AgentReasoningSectionBreakEvent, ApplyPatchApprovalRequestEvent,
         DynamicToolCallResponseEvent, ElicitationAction, ErrorEvent, Event, EventMsg,
         ExecApprovalRequestEvent, ExecCommandBeginEvent, ExecCommandEndEvent,
-        ExecCommandOutputDeltaEvent, ExecCommandStatus, ExitedReviewModeEvent, FileChange,
-        ItemCompletedEvent, ItemStartedEvent, ListCustomPromptsResponseEvent, McpInvocation,
-        McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent,
-        ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
-        PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, ReasoningContentDeltaEvent,
+        ExecCommandOutputDeltaEvent, ExecCommandStatus, ExitedReviewModeEvent,
+        FileChange, ItemCompletedEvent, ItemStartedEvent, ListCustomPromptsResponseEvent,
+        McpInvocation, McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent,
+        McpToolCallEndEvent, ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction,
+        Op, PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, ReasoningContentDeltaEvent,
         ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
         ReviewTarget, RolloutItem, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent,
         TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
@@ -455,9 +455,11 @@ impl CustomPromptsState {
 
 struct ActiveCommand {
     tool_call_id: ToolCallId,
+    title: String,
     terminal_output: bool,
     output: String,
     file_extension: Option<String>,
+    background_terminal_waiting: bool,
 }
 
 struct PromptState {
@@ -1450,10 +1452,12 @@ impl PromptState {
         self.active_commands.insert(
             call_id.clone(),
             ActiveCommand {
+                title: title.clone(),
                 terminal_output,
                 tool_call_id: tool_call_id.clone(),
                 output: String::new(),
                 file_extension,
+                background_terminal_waiting: false,
             },
         );
 
@@ -1582,9 +1586,11 @@ impl PromptState {
 
         let active_command = ActiveCommand {
             tool_call_id: tool_call_id.clone(),
+            title: title.clone(),
             output: String::new(),
             file_extension,
             terminal_output,
+            background_terminal_waiting: false,
         };
         let (content, meta) = if client.supports_terminal_output(&active_command) {
             let content = vec![ToolCallContent::Terminal(Terminal::new(call_id.clone()))];
@@ -1628,6 +1634,21 @@ impl PromptState {
         // Stream output bytes to the display-only terminal via ToolCallUpdate meta.
         if let Some(active_command) = self.active_commands.get_mut(&call_id) {
             let data_str = String::from_utf8_lossy(&chunk).to_string();
+            if active_command.background_terminal_waiting {
+                active_command.background_terminal_waiting = false;
+                client
+                    .send_tool_call_update(
+                        ToolCallUpdate::new(
+                            active_command.tool_call_id.clone(),
+                            ToolCallUpdateFields::new(),
+                        )
+                        .meta(background_terminal_activity_meta(
+                            "waited",
+                            &active_command.title,
+                        )),
+                    )
+                    .await;
+            }
 
             let update = if client.supports_terminal_output(active_command) {
                 ToolCallUpdate::new(
@@ -1692,6 +1713,42 @@ impl PromptState {
                 ExecCommandStatus::Failed | ExecCommandStatus::Declined => ToolCallStatus::Failed,
             };
 
+            let meta = match (
+                client.supports_terminal_output(&active_command),
+                active_command.background_terminal_waiting,
+            ) {
+                (true, true) => Some(Meta::from_iter([
+                    (
+                        "terminal_exit".into(),
+                        serde_json::json!({
+                            "terminal_id": call_id,
+                            "exit_code": exit_code,
+                            "signal": null
+                        }),
+                    ),
+                    (
+                        "terminal_activity".to_owned(),
+                        serde_json::json!({
+                            "kind": "waited",
+                            "command": active_command.title,
+                        }),
+                    ),
+                ])),
+                (true, false) => Some(Meta::from_iter([(
+                    "terminal_exit".into(),
+                    serde_json::json!({
+                        "terminal_id": call_id,
+                        "exit_code": exit_code,
+                        "signal": null
+                    }),
+                )])),
+                (false, true) => Some(background_terminal_activity_meta(
+                    "waited",
+                    &active_command.title,
+                )),
+                (false, false) => None,
+            };
+
             client
                 .send_tool_call_update(
                     ToolCallUpdate::new(
@@ -1700,18 +1757,7 @@ impl PromptState {
                             .status(status)
                             .raw_output(raw_output),
                     )
-                    .meta(
-                        client.supports_terminal_output(&active_command).then(|| {
-                            Meta::from_iter([(
-                                "terminal_exit".into(),
-                                serde_json::json!({
-                                    "terminal_id": call_id,
-                                    "exit_code": exit_code,
-                                    "signal": null
-                                }),
-                            )])
-                        }),
-                    ),
+                    .meta(meta),
                 )
                 .await;
         }
@@ -1728,21 +1774,65 @@ impl PromptState {
             stdin,
         } = event;
 
-        let stdin = format!("\n{stdin}\n");
-        // Stream output bytes to the display-only terminal via ToolCallUpdate meta.
         if let Some(active_command) = self.active_commands.get_mut(&call_id) {
+            if stdin.is_empty() {
+                if active_command.background_terminal_waiting {
+                    return;
+                }
+                active_command.background_terminal_waiting = true;
+                client
+                    .send_tool_call_update(
+                        ToolCallUpdate::new(
+                            active_command.tool_call_id.clone(),
+                            ToolCallUpdateFields::new(),
+                        )
+                        .meta(background_terminal_activity_meta(
+                            "waiting",
+                            &active_command.title,
+                        )),
+                    )
+                    .await;
+                return;
+            }
+
+            if active_command.background_terminal_waiting {
+                active_command.background_terminal_waiting = false;
+                client
+                    .send_tool_call_update(
+                        ToolCallUpdate::new(
+                            active_command.tool_call_id.clone(),
+                            ToolCallUpdateFields::new(),
+                        )
+                        .meta(background_terminal_activity_meta(
+                            "waited",
+                            &active_command.title,
+                        )),
+                    )
+                    .await;
+            }
+
+            let stdin = format!("\n{stdin}\n");
             let update = if client.supports_terminal_output(active_command) {
                 ToolCallUpdate::new(
                     active_command.tool_call_id.clone(),
                     ToolCallUpdateFields::new(),
                 )
-                .meta(Meta::from_iter([(
-                    "terminal_output".to_owned(),
-                    serde_json::json!({
-                        "terminal_id": call_id,
-                        "data": stdin
-                    }),
-                )]))
+                .meta(Meta::from_iter([
+                    (
+                        "terminal_activity".to_owned(),
+                        serde_json::json!({
+                            "kind": "interacted",
+                            "command": &active_command.title,
+                        }),
+                    ),
+                    (
+                        "terminal_output".to_owned(),
+                        serde_json::json!({
+                            "terminal_id": call_id,
+                            "data": stdin
+                        }),
+                    ),
+                ]))
             } else {
                 active_command.output.push_str(&stdin);
                 let content = match active_command.file_extension.as_deref() {
@@ -1760,6 +1850,10 @@ impl PromptState {
                     active_command.tool_call_id.clone(),
                     ToolCallUpdateFields::new().content(vec![content.into()]),
                 )
+                .meta(background_terminal_activity_meta(
+                    "interacted",
+                    &active_command.title,
+                ))
             };
 
             client.send_tool_call_update(update).await;
@@ -2320,6 +2414,16 @@ fn parse_command_tool_call(parsed_cmd: Vec<ParsedCommand>, cwd: &Path) -> ParseC
         locations,
         kind,
     }
+}
+
+fn background_terminal_activity_meta(kind: &str, command: &str) -> Meta {
+    Meta::from_iter([(
+        "terminal_activity".to_owned(),
+        serde_json::json!({
+            "kind": kind,
+            "command": command,
+        }),
+    )])
 }
 
 #[derive(Clone)]
@@ -5569,6 +5673,91 @@ mod tests {
                         ..
                     }) if text == "final reasoning"
                 ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_background_terminal_wait_activity_emits_terminal_activity_updates()
+    -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new("submission-id".to_string(), thread, message_tx, response_tx);
+
+                prompt_state.active_commands.insert(
+                    "call-1".to_string(),
+                    ActiveCommand {
+                        tool_call_id: ToolCallId::new("call-1"),
+                        title: "Run cargo test -p codex-core".to_string(),
+                        terminal_output: false,
+                        output: String::new(),
+                        file_extension: None,
+                        background_terminal_waiting: false,
+                    },
+                );
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::TerminalInteraction(TerminalInteractionEvent {
+                            call_id: "call-1".to_string(),
+                            process_id: "proc-1".to_string(),
+                            stdin: String::new(),
+                        }),
+                    )
+                    .await;
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::ExecCommandOutputDelta(ExecCommandOutputDeltaEvent {
+                            call_id: "call-1".to_string(),
+                            chunk: b"stdout\n".to_vec(),
+                            stream: codex_protocol::protocol::ExecOutputStream::Stdout,
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                let updates: Vec<_> = notifications
+                    .iter()
+                    .filter_map(|notification| match &notification.update {
+                        SessionUpdate::ToolCallUpdate(update) => Some(update.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(updates.len(), 3, "updates don't match {updates:?}");
+                assert_eq!(
+                    updates[0]
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.get("terminal_activity"))
+                        .and_then(|value| value.get("kind"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("waiting")
+                );
+                assert_eq!(
+                    updates[1]
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.get("terminal_activity"))
+                        .and_then(|value| value.get("kind"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("waited")
+                );
+                assert!(updates[2].fields.content.is_some());
 
                 anyhow::Ok(())
             })
