@@ -2691,7 +2691,6 @@ export function TeamPage(props: TeamPageProps) {
       refreshAgents,
       refreshTeamRuntime,
       selectedAgentWorkspaceAgent,
-      selectedAgentWorkspaceMemberId,
       selectedTeamId,
       setError,
     ]

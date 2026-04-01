@@ -185,7 +185,6 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberId,
     selectedMemberAgentId,
     selectedMemberSessionId,
     selectedMemberSnapshot,

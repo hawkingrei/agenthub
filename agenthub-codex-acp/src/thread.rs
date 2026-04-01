@@ -1730,7 +1730,7 @@ impl PromptState {
                         "terminal_activity".to_owned(),
                         serde_json::json!({
                             "kind": "waited",
-                            "command": active_command.title,
+                            "command": &active_command.title,
                         }),
                     ),
                 ])),
