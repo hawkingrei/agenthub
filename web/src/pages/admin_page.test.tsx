@@ -75,6 +75,8 @@ describe("AdminPage", () => {
             setSafePathInput={() => {}}
             developerMode={false}
             onDeveloperModeChange={onDeveloperModeChange}
+            passkeyEnabled={false}
+            onPasskeyEnabledChange={() => {}}
           />
         </MantineProvider>
       );

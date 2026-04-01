@@ -544,6 +544,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ challenge_id, credential }),
     }),
+  loginRegisterFinish: (challenge_id: string, credential: unknown) =>
+    apiFetch<AuthFinishResponse>("/api/auth/login/register_finish", null, {
+      method: "POST",
+      body: JSON.stringify({ challenge_id, credential }),
+    }),
   authStatus: () => apiFetch<AuthStatusResponse>("/api/auth/status", null),
   joinStart: (payload: {
     token: string;

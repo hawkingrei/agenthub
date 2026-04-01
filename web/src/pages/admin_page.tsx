@@ -28,7 +28,7 @@ type AdminProps = {
   setSafePathInput: (value: string) => void;
   developerMode: boolean;
   onDeveloperModeChange: (value: boolean) => void;
-  passkeyEnabled: boolean;
+  passkeyEnabled: boolean | null;
   onPasskeyEnabledChange: (value: boolean) => void;
 };
 
@@ -328,12 +328,17 @@ export function AdminPage(props: AdminProps) {
               <h3 className={ADMIN_CARD_TITLE_CLASS}>System Configuration</h3>
               <div className="flex flex-col gap-3">
                 <Switch
-                  checked={props.passkeyEnabled}
+                  checked={props.passkeyEnabled ?? false}
+                  disabled={props.passkeyEnabled === null}
                   onChange={(event) =>
                     props.onPasskeyEnabledChange(event.currentTarget.checked)
                   }
                   label="Enable Passkey"
-                  description="Global setting. When disabled, only password login/registration is allowed."
+                  description={
+                    props.passkeyEnabled === null
+                      ? "Loading configuration..."
+                      : "Global setting. When disabled, only password login/registration is allowed."
+                  }
                 />
               </div>
             </div>

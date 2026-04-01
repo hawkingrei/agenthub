@@ -2253,7 +2253,7 @@ export function App() {
         const cred = await navigator.credentials.create({ publicKey: options });
         if (!cred) throw new Error("registration cancelled");
         const payload = registerCredentialToJson(cred as PublicKeyCredential);
-        const finish = await api.registerFinish(start.challenge_id, payload);
+        const finish = await api.loginRegisterFinish(start.challenge_id, payload);
         next = {
           token: finish.token,
           userId: finish.user_id,
@@ -3292,7 +3292,7 @@ export function App() {
           setSafePathInput={setSafePathInput}
           developerMode={developerMode}
           onDeveloperModeChange={handleDeveloperModeChange}
-          passkeyEnabled={passkeyEnabled ?? false}
+          passkeyEnabled={passkeyEnabled}
           onPasskeyEnabledChange={onPasskeyEnabledChange}
         />
       </Suspense>
