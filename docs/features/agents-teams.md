@@ -110,6 +110,12 @@ terminology and operating expectations drift.
   - `.agenthubmemory/journal/` for chronological work logs
   - `.agenthubmemory/note/` for reusable lessons and heuristics
 - Leader usually starts from an empty coordination workspace and can skip `.agenthubmemory/`.
+- Project workdirs are stable workspace identities; ordinary restarts must not move an agent to a
+  new project directory just because AgentHub generated a new runtime launch id.
+- AgentHub runtime launch ids and ACP provider continuity ids are separate:
+  - `agent_sessions.id` tracks one concrete local launch
+  - `agent_persistent_sessions.session_id` tracks resumable provider continuity
+  - `Force New Session` clears the provider continuity id on purpose; ordinary restart should not
 - Team skills are system-managed from role, not configured per member:
   - leader effective system skills:
     - `agenthub-actor-runtime`

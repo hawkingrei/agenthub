@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
+import { MantineProvider } from "@mantine/core";
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MantineProvider } from "@mantine/core";
 import {
   api,
   AgentEvent,
@@ -28,38 +28,13 @@ import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
-
-if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
-  window.matchMedia = ((query: string) =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList) as typeof window.matchMedia;
-}
-
-if (typeof globalThis.ResizeObserver !== "function") {
-  globalThis.ResizeObserver = class ResizeObserver {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  } as typeof ResizeObserver;
-}
-
-function required<T>(value: T | null | undefined, message: string): T {
-  if (value == null) {
-    throw new Error(message);
-  }
-  return value;
-}
+installReactDomTestGlobals();
 
 function clickElement(element: Element | null): void {
   const node = required(element, "element not found");
@@ -168,12 +143,6 @@ async function waitForCondition(
     });
   }
   throw new Error("condition not met before timeout");
-}
-
-function renderWithMantine(root: Root, node: React.ReactNode): void {
-  act(() => {
-    root.render(<MantineProvider>{node}</MantineProvider>);
-  });
 }
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
@@ -448,6 +417,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findInteractiveByText(document.body, "Create Team"));
@@ -955,6 +925,7 @@ describe("team panels interactions", () => {
       root.render(<TeamTabsBar tab="runs" onTabChange={onTabChange} />);
     });
 
+    expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
     expect(container.textContent).toContain("Runs");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Agent ACP");
@@ -1634,6 +1605,7 @@ describe("team panels interactions", () => {
 
     renderWithMantine(root, <TeamTaskPanelHarness />);
 
+    expect(container.querySelector('[data-team-surface="conversation"]')).not.toBeNull();
     expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
     expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
     expect(queryButtonByText(container, "Refresh Thread")).toBeNull();
@@ -2353,7 +2325,7 @@ describe("team panels interactions", () => {
         value: 0,
       });
 
-      expect(findButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       renderWithMantine(
         root,
@@ -2393,34 +2365,23 @@ describe("team panels interactions", () => {
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
-
-      act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
-      });
-      expect(scrollNode.scrollTop).toBe(0);
-      act(() => {
-        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
-      });
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(13);
-      expect(container.querySelector("[data-team-channel-top-spacer='true']")).toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       act(() => {
         scrollNode.scrollTop = 80;
         scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
-      const jumpButton = queryButtonByText(container, "Jump to bottom");
+      const jumpButton = queryButtonByAriaLabel(container, "Jump to bottom");
       expect(jumpButton).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
       expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();
@@ -2469,8 +2430,29 @@ describe("team panels interactions", () => {
       expect(initialTexts).toContain("message 4");
       expect(initialTexts).toContain("message 13");
 
+      const scrollNode = required(
+        container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+        "team channel scroll container missing"
+      );
+      Object.defineProperty(scrollNode, "scrollHeight", {
+        configurable: true,
+        value: 640,
+      });
+      Object.defineProperty(scrollNode, "clientHeight", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(scrollNode, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: 640,
+      });
       act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      act(() => {
+        scrollNode.scrollTop = 0;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
       const expandedTexts = markdownSpy.mock.calls.map((call) => call[0]);
@@ -2678,6 +2660,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));

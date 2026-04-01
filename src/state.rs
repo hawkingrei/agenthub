@@ -550,6 +550,7 @@ mod tests {
                 rp_id: Some("localhost".to_string()),
                 rp_origin: Some("http://localhost:8080".to_string()),
                 rp_name: Some("AgentHub Test".to_string()),
+                passkey_enabled: None,
             }),
             push: Some(PushConfig {
                 subject: Some("mailto:test@example.com".to_string()),

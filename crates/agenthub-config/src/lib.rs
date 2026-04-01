@@ -42,6 +42,7 @@ pub struct WebConfig {
     pub rp_id: Option<String>,
     pub rp_origin: Option<String>,
     pub rp_name: Option<String>,
+    pub passkey_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +178,13 @@ impl AppConfig {
             .as_ref()
             .and_then(|w| w.rp_name.clone())
             .unwrap_or_else(|| "AgentHub".to_string())
+    }
+
+    pub fn passkey_enabled(&self) -> bool {
+        self.web
+            .as_ref()
+            .and_then(|w| w.passkey_enabled)
+            .unwrap_or(false)
     }
 
     pub fn safe_paths(&self) -> Vec<String> {
@@ -387,6 +395,7 @@ fn detect_env_overrides() -> Vec<String> {
         "AGENTHUB_RP_ID",
         "AGENTHUB_RP_ORIGIN",
         "AGENTHUB_RP_NAME",
+        "AGENTHUB_PASSKEY_ENABLED",
         "AGENTHUB_SAFE_PATHS",
         "AGENTHUB_WEB_DIR",
         "AGENTHUB_LOG_PATH",
@@ -573,5 +582,11 @@ mod tests {
             ..Default::default()
         };
         assert!(!config.codex_acp_multi_agent_enabled());
+    }
+
+    #[test]
+    fn passkey_enabled_defaults_to_false() {
+        let config = AppConfig::default();
+        assert!(!config.passkey_enabled());
     }
 }

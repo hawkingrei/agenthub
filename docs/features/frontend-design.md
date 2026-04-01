@@ -28,6 +28,21 @@ state labels, and panel behaviors diverged.
   - reusable class presets in `web/src/ui/tailwind_classes.ts`;
   - avoid new handcrafted global CSS blocks.
 
+### 1.1) Workbench Shell Language
+
+- Team, ACP, and Agents workbenches should read as intentionally separated boxes instead of one
+  continuous canvas.
+- Prefer Bento-style composition for multi-panel screens:
+  - one dominant primary box for the current task lane;
+  - smaller secondary boxes for navigation, runtime context, or debug affordances;
+  - visible spacing between boxes so hierarchy stays legible at a glance.
+- Prefer Neo-Minimalist surface treatment:
+  - low-saturation backgrounds;
+  - restrained borders and shadows;
+  - typography and spacing should carry hierarchy before color does.
+- Keep the visual language operational rather than decorative: panels should feel like a calm
+  control surface, not a marketing layout.
+
 ### 2) Primary Team UX
 
 - Team surface is conversation-first for human interaction.
