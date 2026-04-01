@@ -581,21 +581,6 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn root_has_passkeys(&self) -> anyhow::Result<bool> {
-        let row = sqlx::query(
-            r#"
-            SELECT COUNT(*)
-            FROM users u
-            JOIN user_passkeys p ON u.id = p.user_id
-            WHERE u.role = 'root'
-            "#,
-        )
-        .fetch_one(&self.db)
-        .await?;
-        let count: i64 = row.get(0);
-        Ok(count > 0)
-    }
-
     pub async fn root_exists(&self) -> anyhow::Result<bool> {
         let row = sqlx::query("SELECT COUNT(*) FROM users WHERE role = 'root'")
             .fetch_one(&self.db)
