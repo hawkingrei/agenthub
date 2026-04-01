@@ -6,7 +6,8 @@ use super::runtime::{
     load_actor_inbox, map_actor_service_error,
 };
 use super::{
-    ActorCommand, ActorOutputMode, ActorSendPayloadSource, MAX_TIME_TRIGGER_DELAY_SECONDS,
+    ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
+    ActorSendTargetRef, MAX_TIME_TRIGGER_DELAY_SECONDS, build_actor_send_default_idempotency_key,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorAckResponse, ActorInboxRequest,
@@ -15,9 +16,214 @@ use agenthub_team_actor::{
 use anyhow::Context;
 use chrono::Utc;
 
+use crate::actor_runtime_env::{ACTOR_RUNTIME_TEAM_ID_ENV, normalized_env_var};
 use crate::internal::auth::InternalAction;
-use crate::internal::client::InternalTeamTaskPatch;
-use crate::team::{TeamActorMessageTransport, TeamTaskStatus};
+use crate::internal::client::{InternalGrpcMailboxClient, InternalTeamTaskPatch};
+use crate::team::{
+    TeamActorMessageTransport, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord,
+    TeamTaskStatus,
+};
+
+const TEAM_SHARED_THREAD_TITLE: &str = "all";
+const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
+const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
+    "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
+const ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT: &str =
+    "retry with --run-id <run_id> explicitly when more than one active Team run could match";
+
+fn has_shared_thread_title(task: &TeamTaskRecord) -> bool {
+    task.title
+        .trim()
+        .eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE)
+}
+
+fn has_shared_thread_bootstrap_kind(task: &TeamTaskRecord) -> bool {
+    task.context
+        .get("bootstrap_kind")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| {
+            value
+                .trim()
+                .eq_ignore_ascii_case(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
+        })
+}
+
+fn shared_thread_sort_key(task: &TeamTaskRecord) -> (i64, i64, &str) {
+    (task.updated_at, task.created_at, task.id.as_str())
+}
+
+pub(super) fn resolve_shared_thread_task_id(tasks: &[TeamTaskRecord]) -> Option<&str> {
+    tasks
+        .iter()
+        .filter(|task| has_shared_thread_bootstrap_kind(task))
+        .max_by_key(|task| shared_thread_sort_key(task))
+        .or_else(|| {
+            tasks
+                .iter()
+                .filter(|task| has_shared_thread_title(task))
+                .max_by_key(|task| shared_thread_sort_key(task))
+        })
+        .map(|task| task.id.as_str())
+}
+
+pub(super) fn require_shared_thread_task_id<'a>(
+    team_id: &str,
+    tasks: &'a [TeamTaskRecord],
+) -> anyhow::Result<&'a str> {
+    resolve_shared_thread_task_id(tasks).ok_or_else(|| {
+        anyhow::anyhow!(
+            "shared thread is missing for team {}; create/open the shared thread first",
+            team_id
+        )
+    })
+}
+
+async fn list_shared_thread_tasks_for_team(
+    client: &InternalGrpcMailboxClient,
+    actor_id: &str,
+    team_id: &str,
+) -> anyhow::Result<Vec<TeamTaskRecord>> {
+    client
+        .list_team_tasks(
+            actor_id,
+            &TeamTaskListQuery {
+                team_id: Some(team_id.to_string()),
+                run_id: None,
+                limit: TEAM_SHARED_THREAD_LOOKUP_LIMIT,
+                status: None,
+                task_id: None,
+                assigned_member_id: None,
+                topic: None,
+                include_shared_thread: true,
+            },
+        )
+        .await
+}
+
+async fn resolve_shared_thread_detail_for_team(
+    client: &InternalGrpcMailboxClient,
+    actor_id: &str,
+    team_id: &str,
+) -> anyhow::Result<TeamTaskDetailRecord> {
+    let tasks = list_shared_thread_tasks_for_team(client, actor_id, team_id).await?;
+    let task_id = require_shared_thread_task_id(team_id, &tasks)?;
+    client
+        .get_team_task(actor_id, Some(team_id), None, task_id, 1)
+        .await
+}
+
+async fn resolve_inbox_run_id(actor_id: &str, run_id: Option<String>) -> anyhow::Result<String> {
+    if let Some(run_id) = run_id {
+        return Ok(run_id);
+    }
+
+    let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV).ok_or_else(|| {
+        anyhow::anyhow!(
+            "run_id is required (use --run-id <run_id> or set {ACTOR_RUNTIME_TEAM_ID_ENV} so inbox can resolve the canonical shared-thread mailbox run)"
+        )
+    })?;
+    let client = init_actor_control_client(
+        actor_id,
+        None,
+        &[InternalAction::TeamRead],
+        "actor inbox run-id resolution",
+    )
+    .await?;
+    let context = client
+        .describe_team_context(Some(team_id.as_str()), None, actor_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from team scope for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                team_id
+            )
+        })?;
+    let detail = resolve_shared_thread_detail_for_team(&client, actor_id, &context.team_id)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to infer inbox run_id from canonical shared thread for team {}; {ACTOR_INBOX_RUN_ID_RESOLUTION_HINT}",
+                context.team_id
+            )
+        })?;
+    detail
+        .latest_run
+        .map(|run| run.id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "shared-thread mailbox run is missing for team {}; open # all or send one shared-thread message first, or pass --run-id explicitly",
+                context.team_id
+            )
+        })
+}
+
+async fn resolve_direct_mailbox_run_id(
+    actor_id: &str,
+    run_id: Option<String>,
+    operation: &str,
+) -> anyhow::Result<String> {
+    if let Some(run_id) = run_id {
+        return Ok(run_id);
+    }
+
+    let team_id = normalized_env_var(ACTOR_RUNTIME_TEAM_ID_ENV);
+    let client =
+        init_actor_control_client(actor_id, None, &[InternalAction::TeamRead], operation).await?;
+    let resolved = client
+        .resolve_actor_run_scope(actor_id, team_id.as_deref())
+        .await
+        .with_context(|| {
+            format!(
+                "{operation} could not infer run scope automatically; {ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT}"
+            )
+        })?;
+    Ok(resolved.run_id)
+}
+
+struct ActorSendIdempotencyContext<'a> {
+    run_id: &'a str,
+    from_actor_id: &'a str,
+    to_actor_id: Option<&'a str>,
+    channel_id: Option<&'a str>,
+    channel: &'a str,
+    transport: &'a TeamActorMessageTransport,
+    route: Option<&'a serde_json::Value>,
+    payload: &'a serde_json::Value,
+}
+
+fn resolve_actor_send_idempotency_key(
+    idempotency: ActorSendIdempotency,
+    context: ActorSendIdempotencyContext<'_>,
+) -> Option<String> {
+    let ActorSendIdempotencyContext {
+        run_id,
+        from_actor_id,
+        to_actor_id,
+        channel_id,
+        channel,
+        transport,
+        route,
+        payload,
+    } = context;
+    match idempotency {
+        ActorSendIdempotency::Disabled => None,
+        ActorSendIdempotency::Resolved(idempotency_key) => Some(idempotency_key),
+        ActorSendIdempotency::DeferredDefault => Some(build_actor_send_default_idempotency_key(
+            run_id,
+            from_actor_id,
+            match (to_actor_id, channel_id) {
+                (Some(to_actor_id), None) => ActorSendTargetRef::Direct { to_actor_id },
+                (None, Some(channel_id)) => ActorSendTargetRef::Channel { channel_id },
+                _ => unreachable!("actor send target already validated"),
+            },
+            channel,
+            transport,
+            route,
+            payload,
+        )),
+    }
+}
 
 pub(super) async fn ack_actor_messages<S: ActorMailboxService + ?Sized>(
     service: &S,
@@ -193,22 +399,35 @@ pub(super) async fn run_actor_command(
             run_id,
             actor_id,
             task_id,
+            shared_thread,
             kind,
             text,
         } => {
             let client = init_actor_control_client(
                 &actor_id,
                 run_id.as_deref(),
-                &[InternalAction::TeamTaskWrite],
+                &[InternalAction::TeamRead, InternalAction::TeamTaskWrite],
                 "actor team task control",
             )
             .await?;
+            let resolved_task_id = if shared_thread {
+                let context = client
+                    .describe_team_context(team_id.as_deref(), run_id.as_deref(), &actor_id)
+                    .await?;
+                let tasks =
+                    list_shared_thread_tasks_for_team(&client, &actor_id, &context.team_id).await?;
+                require_shared_thread_task_id(&context.team_id, &tasks)?.to_string()
+            } else {
+                task_id
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("task_id is required"))?
+            };
             let message = client
                 .append_team_task_note(
                     &actor_id,
                     team_id.as_deref(),
                     run_id.as_deref(),
-                    &task_id,
+                    &resolved_task_id,
                     kind.as_str(),
                     &text,
                 )
@@ -223,6 +442,7 @@ pub(super) async fn run_actor_command(
             include_delivered,
             auto_ack,
         } => {
+            let run_id = resolve_inbox_run_id(&actor_id, run_id).await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
             let states = if include_delivered {
                 Some(vec![
@@ -253,6 +473,7 @@ pub(super) async fn run_actor_command(
             actor_id,
             message_ids,
         } => {
+            let run_id = resolve_direct_mailbox_run_id(&actor_id, run_id, "actor ack").await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
             let messages =
                 ack_actor_messages(service.as_ref(), &run_id, &actor_id, &message_ids).await?;
@@ -276,8 +497,23 @@ pub(super) async fn run_actor_command(
             route,
             payload,
             payload_source,
-            idempotency_key,
+            idempotency,
         } => {
+            let run_id =
+                resolve_direct_mailbox_run_id(&from_actor_id, run_id, "actor send").await?;
+            let idempotency_key = resolve_actor_send_idempotency_key(
+                idempotency,
+                ActorSendIdempotencyContext {
+                    run_id: &run_id,
+                    from_actor_id: &from_actor_id,
+                    to_actor_id: to_actor_id.as_deref(),
+                    channel_id: channel_id.as_deref(),
+                    channel: &channel,
+                    transport: &transport,
+                    route: route.as_ref(),
+                    payload: payload.as_ref(),
+                },
+            );
             let service = init_actor_mailbox_service(&from_actor_id, &run_id).await?;
             let message = service
                 .actor_send(agenthub_team_actor::ActorSendRequest {

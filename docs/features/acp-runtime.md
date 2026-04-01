@@ -95,6 +95,9 @@ ACP permission requests are first-class runtime records:
 - Auto-stick should follow new tail updates when user is near bottom.
 - Manual scroll-up should disable forced jump until explicit return.
 - Long sessions should use bounded rendering/virtualization to control DOM/CPU cost.
+- Text-dominant conversation rows may use a text-aware height estimator to reduce spacer drift, but
+  non-text/tool rows may still fall back to coarse estimates and must never block rendering on DOM
+  measurement.
 
 ### 3) Permission Scope Contract
 
@@ -142,13 +145,22 @@ ACP permission requests are first-class runtime records:
 
 - Keep ACP contracts provider-agnostic at system boundary; isolate provider drift in adapter modules.
 - Prefer additive compatibility changes when protocol evolves.
-- `agenthub-codex-acp` should enable Codex `multi_agent` / `Feature::Collab` by default so
-  AgentHub ACP sessions expose subagent tools without requiring per-user `~/.codex/config.toml`
-  toggles; retain a follow-up to surface this as an explicit AgentHub-owned config knob later.
+- AgentHub owns Codex subagent enablement through `codex_acp.multi_agent_enabled` (default
+  `true`). When launching `agenthub-codex-acp`, AgentHub should pass an explicit
+  `AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED=1|0` child-process env override so ACP sessions expose
+  Codex `Feature::Collab` deterministically without depending on per-user
+  `~/.codex/config.toml` toggles.
 - `agenthub-acp` should materialize AgentHub-managed Codex skills under
   `~/.agents/skills/agenthub-runtime/.../SKILL.md` during ACP session bootstrap, then inject those
   file-backed skills through ACP `<skill>` wrappers so `agenthub-codex-acp` can translate them into
   native Codex `UserInput::Skill` items.
+- Global managed-skill paths should stay on the home-rooted forms only: canonical absolute paths,
+  with `~/...` accepted as a compatibility spelling before translation. Repo-local
+  `<workdir>/.agents/skills/**/SKILL.md` remains an independent discovery path and should not be
+  rewritten into the managed global namespace.
+- `agenthub-codex-acp` must keep ACP request/response I/O alive on a dedicated runtime thread so
+  ACP-backed filesystem reads can safely round-trip while tool handlers synchronously verify or
+  patch existing files.
 - Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
   stay in a separate text prefix block injected before each prompt instead of being rewritten into
   the managed `SKILL.md` files.
@@ -176,3 +188,5 @@ ACP permission requests are first-class runtime records:
 - `docs/journal/2026-03-08-sse-stale-running-agent-reconciliation.md`
 - `docs/journal/2026-03-22-acp-provider-runtime-abstraction.md`
 - `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`
+- `docs/journal/2026-03-30-codex-acp-apply-patch-deadlock.md`
+- `docs/journal/2026-03-31-pretext-acp-conversation-virtualization.md`

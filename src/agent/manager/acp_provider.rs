@@ -7,6 +7,8 @@ use super::AgentManager;
 pub(super) const ACP_PROVIDER_CODEX: &str = "codex";
 pub(super) const ACP_PROVIDER_GEMINI: &str = "gemini";
 pub(super) const ACP_PROVIDER_KIMI: &str = "kimi";
+pub(super) const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str =
+    "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum AcpDefaultModeBehavior {
@@ -117,14 +119,25 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
 
 pub(super) fn default_env_for_acp_provider(
     provider: Option<AcpProviderSpec>,
+    codex_acp_multi_agent_enabled: bool,
 ) -> Vec<(String, String)> {
-    if provider.map(|spec| spec.id) == Some(ACP_PROVIDER_CODEX)
-        && std::env::var_os("RUST_BACKTRACE").is_none()
-    {
-        vec![("RUST_BACKTRACE".to_string(), "1".to_string())]
-    } else {
-        Vec::new()
+    if provider.map(|spec| spec.id) != Some(ACP_PROVIDER_CODEX) {
+        return Vec::new();
     }
+
+    let mut env = vec![(
+        AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
+        if codex_acp_multi_agent_enabled {
+            "1"
+        } else {
+            "0"
+        }
+        .to_string(),
+    )];
+    if std::env::var_os("RUST_BACKTRACE").is_none() {
+        env.push(("RUST_BACKTRACE".to_string(), "1".to_string()));
+    }
+    env
 }
 
 fn acp_provider_for_command_with_binary(
@@ -157,8 +170,8 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     use super::{
-        ACP_PROVIDER_CODEX, AcpProviderSpec, acp_provider_spec_for_agent_with_binary,
-        default_env_for_acp_provider,
+        ACP_PROVIDER_CODEX, AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, AcpProviderSpec,
+        acp_provider_spec_for_agent_with_binary, default_env_for_acp_provider,
     };
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -174,8 +187,17 @@ mod tests {
         unsafe {
             std::env::remove_var("RUST_BACKTRACE");
         }
-        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX));
-        assert_eq!(env, vec![("RUST_BACKTRACE".to_string(), "1".to_string())]);
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), true);
+        assert_eq!(
+            env,
+            vec![
+                (
+                    AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
+                    "1".to_string()
+                ),
+                ("RUST_BACKTRACE".to_string(), "1".to_string())
+            ]
+        );
     }
 
     #[test]
@@ -186,7 +208,7 @@ mod tests {
             &["--experimental-acp".to_string()],
         );
         assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
-        assert!(default_env_for_acp_provider(provider).is_empty());
+        assert!(default_env_for_acp_provider(provider, true).is_empty());
     }
 
     #[test]
@@ -196,8 +218,14 @@ mod tests {
         unsafe {
             std::env::set_var("RUST_BACKTRACE", "full");
         }
-        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX));
-        assert!(env.is_empty());
+        let env = default_env_for_acp_provider(Some(AcpProviderSpec::CODEX), false);
+        assert_eq!(
+            env,
+            vec![(
+                AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV.to_string(),
+                "0".to_string()
+            )]
+        );
         // SAFETY: tests serialize environment mutation and restore state before exit.
         unsafe {
             std::env::remove_var("RUST_BACKTRACE");

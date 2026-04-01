@@ -23,7 +23,9 @@ use super::codec::{
     team_actor_message_transport_to_str,
 };
 use super::{
-    TeamConversationStreamEvent, TeamManager, parse_team_member_specs, redact_sensitive_json,
+    TEAM_SHARED_THREAD_BOOTSTRAP_KIND, TEAM_SHARED_THREAD_TITLE, TeamConversationStreamEvent,
+    TeamManager, TeamMemberSpecView, fetch_canonical_shared_thread_target, parse_team_member_specs,
+    redact_sensitive_json,
 };
 use crate::agent::normalize_target_node_id;
 use crate::team::{
@@ -31,8 +33,6 @@ use crate::team::{
     TeamConversationMessageRecord,
 };
 
-const TEAM_SHARED_THREAD_TITLE: &str = "all";
-const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_BOOTSTRAP_SOURCE: &str = "server_canonical_reply";
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
@@ -225,10 +225,10 @@ impl TeamManager {
         run_id: &str,
         actor_id: &str,
         message_id: i64,
-    ) -> anyhow::Result<TeamActorMessageRecord> {
+    ) -> anyhow::Result<AckActorMessageResult> {
         let now = Utc::now().timestamp();
         let mailbox = self.actor_mailbox();
-        let message = mailbox
+        let result = mailbox
             .ack(AckActorMessageCommand {
                 run_id: run_id.to_string(),
                 actor_id: actor_id.to_string(),
@@ -238,7 +238,7 @@ impl TeamManager {
             })
             .await
             .map_err(map_actor_mailbox_store_error)?;
-        Ok(message)
+        Ok(result)
     }
 
     #[allow(dead_code)]
@@ -551,6 +551,31 @@ impl TeamActorMailboxService {
         Self { manager }
     }
 
+    async fn validate_direct_send_target(
+        &self,
+        run_id: &str,
+        to_actor_id: &str,
+    ) -> Result<(), ActorServiceError> {
+        let member_specs = self
+            .load_member_specs_for_run(run_id)
+            .await
+            .map_err(map_actor_service_error)?;
+        validate_direct_mailbox_target_for_member_specs(&member_specs, to_actor_id)
+    }
+
+    async fn load_member_specs_for_run(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<Vec<TeamMemberSpecView>> {
+        let team_id = sqlx::query_scalar::<_, String>("SELECT team_id FROM team_runs WHERE id = ?1")
+            .bind(run_id)
+            .fetch_optional(&self.manager.db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("run not found"))?;
+        let team = self.manager.get_team(&team_id).await?;
+        parse_team_member_specs(&team.spec)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn send_channel_message(
         &self,
@@ -730,6 +755,10 @@ impl ActorMailboxService for TeamActorMailboxService {
                 .map_err(map_actor_service_error);
         }
         let to_actor_id = to_actor_id.expect("validated actor target");
+        if transport == TeamActorMessageTransport::Local {
+            self.validate_direct_send_target(run_id, to_actor_id)
+                .await?;
+        }
 
         let (message, created) = self
             .manager
@@ -814,11 +843,12 @@ impl ActorMailboxService for TeamActorMailboxService {
             ));
         }
 
-        let message = self
+        let result = self
             .manager
             .ack_actor_message(run_id, actor_id, request.message_id)
             .await
             .map_err(map_actor_service_error)?;
+        let message = result.message;
         let state = message.status.clone();
         let acked_at = message.delivered_at.unwrap_or(message.created_at);
 
@@ -826,6 +856,7 @@ impl ActorMailboxService for TeamActorMailboxService {
             message_id: message.message_id,
             state,
             acked_at,
+            status_changed: result.status_changed,
             message,
         })
     }
@@ -1375,7 +1406,13 @@ pub(super) fn should_persist_human_visible_chat_reply_for_payload(
 
 fn is_human_actor_id(actor_id: &str) -> bool {
     let trimmed = actor_id.trim();
-    trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS || trimmed.starts_with(TEAM_SPECIAL_USER_ACTOR_PREFIX)
+    if trimmed == TEAM_SPECIAL_USER_ACTOR_ALIAS {
+        return true;
+    }
+    if let Some(suffix) = trimmed.strip_prefix(TEAM_SPECIAL_USER_ACTOR_PREFIX) {
+        return !suffix.trim().is_empty();
+    }
+    false
 }
 
 fn normalize_channel_message_payload(payload: Value) -> Value {
@@ -1700,32 +1737,12 @@ async fn fetch_shared_thread_for_team(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     team_id: &str,
 ) -> Result<Option<SharedThreadTarget>, sqlx::Error> {
-    let row = sqlx::query(
-        r#"
-        SELECT
-            t.id AS task_id,
-            c.id AS conversation_id
-        FROM team_tasks t
-        INNER JOIN team_conversations c ON c.task_id = t.id
-        WHERE t.team_id = ?1
-          AND (
-            lower(trim(t.title)) = ?2
-            OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = ?3
-          )
-        ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
-        LIMIT 1
-        "#,
-    )
-    .bind(team_id)
-    .bind(TEAM_SHARED_THREAD_TITLE)
-    .bind(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
-    .fetch_optional(&mut **tx)
-    .await?;
-
-    Ok(row.map(|row| SharedThreadTarget {
-        task_id: row.get("task_id"),
-        conversation_id: row.get("conversation_id"),
-    }))
+    Ok(fetch_canonical_shared_thread_target(&mut **tx, team_id)
+        .await?
+        .map(|target| SharedThreadTarget {
+            task_id: target.task_id,
+            conversation_id: target.conversation_id,
+        }))
 }
 
 async fn fetch_message_by_id(
@@ -1845,6 +1862,65 @@ fn optional_trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|raw| !raw.is_empty())
 }
 
+fn validate_direct_mailbox_target_for_member_specs(
+    member_specs: &[TeamMemberSpecView],
+    to_actor_id: &str,
+) -> Result<(), ActorServiceError> {
+    let trimmed_target = to_actor_id.trim();
+    if trimmed_target.is_empty() {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            "actor send target is required",
+        ));
+    }
+    if is_human_actor_id(trimmed_target) {
+        return Ok(());
+    }
+    if member_specs
+        .iter()
+        .any(|member| member.member_id == trimmed_target)
+    {
+        return Ok(());
+    }
+    let matching_role_member_ids = member_specs
+        .iter()
+        .filter(|member| member.role.eq_ignore_ascii_case(trimmed_target))
+        .map(|member| member.member_id.as_str())
+        .collect::<Vec<_>>();
+    if matching_role_member_ids.len() == 1 {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            format!(
+                "actor send target `{}` is not a canonical team member_id; use `{}` instead",
+                trimmed_target, matching_role_member_ids[0]
+            ),
+        ));
+    }
+    if !matching_role_member_ids.is_empty() {
+        return Err(ActorServiceError::new(
+            ActorServiceErrorCode::BadRequest,
+            format!(
+                "actor send target `{}` matches multiple team members with role `{}`; matching member_ids: {}",
+                trimmed_target,
+                trimmed_target,
+                matching_role_member_ids.join(", ")
+            ),
+        ));
+    }
+    let valid_member_ids = member_specs
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(ActorServiceError::new(
+        ActorServiceErrorCode::BadRequest,
+        format!(
+            "actor send target `{}` must reference spec.members[].member_id or human mailbox `user` / `user:<id>`; valid member_ids: {}",
+            trimmed_target, valid_member_ids
+        ),
+    ))
+}
+
 fn is_row_not_found(err: &anyhow::Error) -> bool {
     matches!(
         err.downcast_ref::<SqlxError>(),
@@ -1907,6 +1983,17 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn mock_member_specs(member_specs: &[(&str, &str)]) -> Vec<TeamMemberSpecView> {
+        member_specs
+            .iter()
+            .map(|(member_id, role)| TeamMemberSpecView {
+                member_id: (*member_id).to_string(),
+                role: (*role).to_string(),
+                description: None,
+            })
+            .collect()
+    }
 
     #[test]
     fn normalize_channel_message_payload_wraps_non_object_inputs() {
@@ -2068,5 +2155,62 @@ mod tests {
 
         assert_eq!(reply.text, "hello");
         assert_eq!(reply.correlation_id.as_deref(), Some("corr-9"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_role_alias() {
+        let member_specs = mock_member_specs(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "leader")
+            .expect_err("role alias should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("not a canonical team member_id"));
+        assert!(err.message.contains("595d1ae8-fcbd-4111-b5c7-d446a12c044b"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_allows_member_id_and_human_mailbox() {
+        let member_specs = mock_member_specs(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        validate_direct_mailbox_target_for_member_specs(
+            &member_specs,
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b",
+        )
+        .expect("member id should be accepted");
+        validate_direct_mailbox_target_for_member_specs(&member_specs, "user")
+            .expect("human alias should be accepted");
+        validate_direct_mailbox_target_for_member_specs(&member_specs, "user:test")
+            .expect("human actor target should be accepted");
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_empty_human_mailbox_suffix() {
+        let member_specs = mock_member_specs(&[
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("c319f933-1358-4418-a111-872304052422", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "user:")
+            .expect_err("human mailbox target with empty suffix should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("must reference spec.members[].member_id"));
+    }
+
+    #[test]
+    fn validate_direct_mailbox_target_rejects_ambiguous_role_alias() {
+        let member_specs = mock_member_specs(&[
+            ("planner", "leader"),
+            ("worker-a", "worker"),
+            ("worker-b", "worker"),
+        ]);
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "worker")
+            .expect_err("ambiguous role alias should be rejected");
+        assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
+        assert!(err.message.contains("matches multiple team members"));
+        assert!(err.message.contains("worker-a"));
+        assert!(err.message.contains("worker-b"));
     }
 }

@@ -625,28 +625,30 @@ export const api = {
     apiFetch<TeamDefinitionRecord>(`/api/teams/${encodePathSegment(id)}`, token, {
       method: "DELETE",
     }),
-  createTeamTask: (
+  getTeamSharedThread: (token: string, teamId: string) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
+      token
+    ),
+  ensureTeamSharedThread: (token: string, teamId: string) =>
+    apiFetch<TeamTaskDetailResponse>(
+      `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
+      token,
+      { method: "POST" }
+    ),
+  listTeamTasks: (
     token: string,
     teamId: string,
-    payload: {
-      title: string;
-      created_by_actor_id?: string;
-      context?: unknown;
-      conversation_mode?: "to_leader" | "to_member" | "group_chat";
-      topic?: string;
+    limit?: number,
+    payload?: {
+      include_shared_thread?: boolean;
     }
-  ) =>
-    apiFetch<TeamTaskDetailResponse>(
-      `/api/teams/${encodePathSegment(teamId)}/tasks`,
-      token,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }
-    ),
-  listTeamTasks: (token: string, teamId: string, limit?: number) => {
+  ) => {
     const params = new URLSearchParams();
     if (limit != null) params.set("limit", String(limit));
+    if (payload?.include_shared_thread) {
+      params.set("include_shared_thread", "true");
+    }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     return apiFetch<TeamTaskRecord[]>(
       `/api/teams/${encodePathSegment(teamId)}/tasks${suffix}`,

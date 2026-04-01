@@ -4,6 +4,8 @@ mod permission_review;
 mod role_skills;
 mod runtime;
 
+use std::collections::HashSet;
+
 pub use agenthub_team_actor::{
     ActorMessageRecord as TeamActorMessageRecord, ActorMessageStatus as TeamActorMessageStatus,
     ActorMessageTransport as TeamActorMessageTransport,
@@ -36,3 +38,27 @@ pub use runtime::{
     TeamRuntimeControlRecord, TeamRuntimeStartError, ensure_team_runtime_started,
     force_team_member_new_session, stop_team_runtime,
 };
+use serde_json::Value;
+
+pub(crate) fn collect_team_member_ids(spec: &Value) -> Vec<String> {
+    let Some(members) = spec.get("members").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    let mut member_ids = Vec::with_capacity(members.len());
+    let mut seen = HashSet::with_capacity(members.len());
+    for member in members {
+        let Some(member_id) = member
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if seen.insert(member_id) {
+            member_ids.push(member_id.to_string());
+        }
+    }
+    member_ids
+}

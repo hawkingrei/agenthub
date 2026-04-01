@@ -284,116 +284,126 @@ pub(super) struct RemoteManagedAgentUpsert<'a> {
     pub(super) now: i64,
 }
 
+struct RemoteManagedAgentPersisted<'a> {
+    agent_id: &'a str,
+    name: &'a str,
+    workdir: &'a str,
+    command: &'a str,
+    args_json: &'a str,
+    worktree_mode: &'static str,
+    worktree_repo: Option<&'a str>,
+    worktree_ref: Option<&'a str>,
+    code_mode: i64,
+    source: &'a str,
+    now: i64,
+}
+
+impl<'a> RemoteManagedAgentPersisted<'a> {
+    fn from_upsert(record: &'a RemoteManagedAgentUpsert<'_>) -> Self {
+        Self {
+            agent_id: record.agent_id,
+            name: &record.config.name,
+            workdir: record.workdir,
+            command: &record.config.command,
+            args_json: record.args_json,
+            worktree_mode: worktree_mode_to_str(&record.config.worktree_mode),
+            worktree_repo: record.worktree_repo,
+            worktree_ref: record.config.worktree_ref.as_deref(),
+            code_mode: if record.config.code_mode { 1 } else { 0 },
+            source: record.source,
+            now: record.now,
+        }
+    }
+
+    fn push_insert_columns(&self, builder: &mut QueryBuilder<'_, Sqlite>, caps: AgentSchemaCaps) {
+        let mut first = true;
+        push_insert_column(builder, &mut first, "id");
+        push_insert_column(builder, &mut first, "name");
+        push_insert_column(builder, &mut first, "workdir");
+        push_insert_column(builder, &mut first, "command");
+        push_insert_column(builder, &mut first, "args");
+        if caps.has_target_node_id_column {
+            push_insert_column(builder, &mut first, "target_node_id");
+        }
+        push_insert_column(builder, &mut first, "worktree_mode");
+        push_insert_column(builder, &mut first, "worktree_repo");
+        push_insert_column(builder, &mut first, "worktree_ref");
+        push_insert_column(builder, &mut first, "code_mode");
+        if caps.has_source_column {
+            push_insert_column(builder, &mut first, "source");
+        }
+        push_insert_column(builder, &mut first, "status");
+        push_insert_column(builder, &mut first, "created_at");
+        push_insert_column(builder, &mut first, "updated_at");
+    }
+
+    fn push_insert_values(&self, builder: &mut QueryBuilder<'a, Sqlite>, caps: AgentSchemaCaps) {
+        let mut first = true;
+        push_bound_value(builder, &mut first, self.agent_id);
+        push_bound_value(builder, &mut first, self.name);
+        push_bound_value(builder, &mut first, self.workdir);
+        push_bound_value(builder, &mut first, self.command);
+        push_bound_value(builder, &mut first, self.args_json);
+        if caps.has_target_node_id_column {
+            push_bound_value(builder, &mut first, Option::<&str>::None);
+        }
+        push_bound_value(builder, &mut first, self.worktree_mode);
+        push_bound_value(builder, &mut first, self.worktree_repo);
+        push_bound_value(builder, &mut first, self.worktree_ref);
+        push_bound_value(builder, &mut first, self.code_mode);
+        if caps.has_source_column {
+            push_bound_value(builder, &mut first, self.source);
+        }
+        push_bound_value(builder, &mut first, status_to_str(&AgentStatus::Created));
+        push_bound_value(builder, &mut first, self.now);
+        push_bound_value(builder, &mut first, self.now);
+    }
+
+    fn push_update_assignments(
+        &self,
+        builder: &mut QueryBuilder<'a, Sqlite>,
+        caps: AgentSchemaCaps,
+    ) {
+        let mut first = true;
+        push_assignment(builder, &mut first, "name", self.name);
+        push_assignment(builder, &mut first, "workdir", self.workdir);
+        push_assignment(builder, &mut first, "command", self.command);
+        push_assignment(builder, &mut first, "args", self.args_json);
+        if caps.has_target_node_id_column {
+            push_assignment(builder, &mut first, "target_node_id", Option::<&str>::None);
+        }
+        push_assignment(builder, &mut first, "worktree_mode", self.worktree_mode);
+        push_assignment(builder, &mut first, "worktree_repo", self.worktree_repo);
+        push_assignment(builder, &mut first, "worktree_ref", self.worktree_ref);
+        push_assignment(builder, &mut first, "code_mode", self.code_mode);
+        if caps.has_source_column {
+            push_assignment(builder, &mut first, "source", self.source);
+        }
+        push_assignment(builder, &mut first, "updated_at", self.now);
+    }
+}
+
 pub(super) async fn upsert_remote_managed_agent_record(
     db: &SqlitePool,
     caps: AgentSchemaCaps,
     record: RemoteManagedAgentUpsert<'_>,
 ) -> anyhow::Result<()> {
     debug_assert!(record.source == AGENT_SOURCE_MANUAL || record.source == AGENT_SOURCE_TEAM_FORGE);
+    let persisted = RemoteManagedAgentPersisted::from_upsert(&record);
 
     if record.exists {
         let mut builder = QueryBuilder::<Sqlite>::new("UPDATE agents SET ");
-        let mut first = true;
-        push_assignment(&mut builder, &mut first, "name", &record.config.name);
-        push_assignment(&mut builder, &mut first, "workdir", record.workdir);
-        push_assignment(&mut builder, &mut first, "command", &record.config.command);
-        push_assignment(&mut builder, &mut first, "args", record.args_json);
-        if caps.has_target_node_id_column {
-            push_assignment(
-                &mut builder,
-                &mut first,
-                "target_node_id",
-                Option::<&str>::None,
-            );
-        }
-        push_assignment(
-            &mut builder,
-            &mut first,
-            "worktree_mode",
-            worktree_mode_to_str(&record.config.worktree_mode),
-        );
-        push_assignment(
-            &mut builder,
-            &mut first,
-            "worktree_repo",
-            record.worktree_repo,
-        );
-        push_assignment(
-            &mut builder,
-            &mut first,
-            "worktree_ref",
-            record.config.worktree_ref.as_deref(),
-        );
-        push_assignment(
-            &mut builder,
-            &mut first,
-            "code_mode",
-            if record.config.code_mode { 1 } else { 0 },
-        );
-        if caps.has_source_column {
-            push_assignment(&mut builder, &mut first, "source", record.source);
-        }
-        push_assignment(&mut builder, &mut first, "updated_at", record.now);
+        persisted.push_update_assignments(&mut builder, caps);
         builder.push(" WHERE id = ");
-        builder.push_bind(record.agent_id);
+        builder.push_bind(persisted.agent_id);
         builder.build().execute(db).await?;
         return Ok(());
     }
 
-    let status = AgentStatus::Created;
     let mut builder = QueryBuilder::<Sqlite>::new("INSERT INTO agents (");
-    let mut first = true;
-    push_insert_column(&mut builder, &mut first, "id");
-    push_insert_column(&mut builder, &mut first, "name");
-    push_insert_column(&mut builder, &mut first, "workdir");
-    push_insert_column(&mut builder, &mut first, "command");
-    push_insert_column(&mut builder, &mut first, "args");
-    if caps.has_target_node_id_column {
-        push_insert_column(&mut builder, &mut first, "target_node_id");
-    }
-    push_insert_column(&mut builder, &mut first, "worktree_mode");
-    push_insert_column(&mut builder, &mut first, "worktree_repo");
-    push_insert_column(&mut builder, &mut first, "worktree_ref");
-    push_insert_column(&mut builder, &mut first, "code_mode");
-    if caps.has_source_column {
-        push_insert_column(&mut builder, &mut first, "source");
-    }
-    push_insert_column(&mut builder, &mut first, "status");
-    push_insert_column(&mut builder, &mut first, "created_at");
-    push_insert_column(&mut builder, &mut first, "updated_at");
+    persisted.push_insert_columns(&mut builder, caps);
     builder.push(") VALUES (");
-
-    let mut first = true;
-    push_bound_value(&mut builder, &mut first, record.agent_id);
-    push_bound_value(&mut builder, &mut first, &record.config.name);
-    push_bound_value(&mut builder, &mut first, record.workdir);
-    push_bound_value(&mut builder, &mut first, &record.config.command);
-    push_bound_value(&mut builder, &mut first, record.args_json);
-    if caps.has_target_node_id_column {
-        push_bound_value(&mut builder, &mut first, Option::<&str>::None);
-    }
-    push_bound_value(
-        &mut builder,
-        &mut first,
-        worktree_mode_to_str(&record.config.worktree_mode),
-    );
-    push_bound_value(&mut builder, &mut first, record.worktree_repo);
-    push_bound_value(
-        &mut builder,
-        &mut first,
-        record.config.worktree_ref.as_deref(),
-    );
-    push_bound_value(
-        &mut builder,
-        &mut first,
-        if record.config.code_mode { 1 } else { 0 },
-    );
-    if caps.has_source_column {
-        push_bound_value(&mut builder, &mut first, record.source);
-    }
-    push_bound_value(&mut builder, &mut first, status_to_str(&status));
-    push_bound_value(&mut builder, &mut first, record.now);
-    push_bound_value(&mut builder, &mut first, record.now);
+    persisted.push_insert_values(&mut builder, caps);
     builder.push(")");
 
     builder.build().execute(db).await?;
@@ -437,7 +447,12 @@ fn push_assignment<'args, T>(
 
 #[cfg(test)]
 mod tests {
-    use super::AgentSchemaCaps;
+    use sqlx::{Row, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
+
+    use super::{
+        AgentConfig, AgentSchemaCaps, RemoteManagedAgentUpsert, upsert_remote_managed_agent_record,
+    };
+    use crate::agent::WorktreeMode;
 
     #[test]
     fn agent_schema_caps_detects_supported_columns() {
@@ -451,5 +466,222 @@ mod tests {
         let caps = AgentSchemaCaps::from_column_names(["id", "name", "status"]);
         assert!(!caps.has_source_column);
         assert!(!caps.has_target_node_id_column);
+    }
+
+    async fn create_test_db() -> sqlx::SqlitePool {
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(":memory:")
+                    .create_if_missing(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .expect("connect sqlite")
+    }
+
+    async fn create_agents_table(db: &sqlx::SqlitePool, caps: AgentSchemaCaps) {
+        let mut builder = String::from(
+            r#"
+            CREATE TABLE agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                workdir TEXT NOT NULL,
+                command TEXT NOT NULL,
+                args TEXT NOT NULL,
+            "#,
+        );
+        if caps.has_target_node_id_column {
+            builder.push_str("target_node_id TEXT,\n");
+        }
+        builder.push_str(
+            r#"
+                worktree_mode TEXT NOT NULL,
+                worktree_repo TEXT,
+                worktree_ref TEXT,
+                code_mode INTEGER NOT NULL DEFAULT 0,
+                agent_loop_enabled INTEGER NOT NULL DEFAULT 0,
+                agent_loop_idle_seconds INTEGER,
+                agent_loop_prompt TEXT,
+            "#,
+        );
+        if caps.has_source_column {
+            builder.push_str("source TEXT NOT NULL DEFAULT 'manual',\n");
+        }
+        builder.push_str(
+            r#"
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        );
+        sqlx::query(&builder)
+            .execute(db)
+            .await
+            .expect("create agents");
+    }
+
+    fn build_remote_managed_config() -> AgentConfig {
+        AgentConfig {
+            name: "remote-agent".to_string(),
+            workdir: "/tmp/agent".to_string(),
+            command: "codex".to_string(),
+            args: vec!["--model".to_string(), "gpt-5.4".to_string()],
+            target_node_id: None,
+            worktree_mode: WorktreeMode::CreateWorktree,
+            worktree_repo: Some("/tmp/repo".to_string()),
+            worktree_ref: Some("HEAD".to_string()),
+            code_mode: true,
+            agent_loop_enabled: true,
+            agent_loop_idle_seconds: Some(900),
+            agent_loop_prompt: Some("follow up".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_managed_upsert_insert_respects_full_schema() {
+        let caps = AgentSchemaCaps {
+            has_source_column: true,
+            has_target_node_id_column: true,
+        };
+        let db = create_test_db().await;
+        create_agents_table(&db, caps).await;
+        let config = build_remote_managed_config();
+        let args_json = serde_json::to_string(&config.args).expect("serialize args");
+
+        upsert_remote_managed_agent_record(
+            &db,
+            caps,
+            RemoteManagedAgentUpsert {
+                agent_id: "agent-1",
+                config: &config,
+                workdir: "/srv/agent-1",
+                args_json: &args_json,
+                worktree_repo: Some("/srv/repo"),
+                source: "team_forge",
+                exists: false,
+                now: 123,
+            },
+        )
+        .await
+        .expect("insert remote managed agent");
+
+        let row = sqlx::query("SELECT * FROM agents WHERE id = ?1")
+            .bind("agent-1")
+            .fetch_one(&db)
+            .await
+            .expect("load inserted agent");
+        assert_eq!(row.get::<String, _>("name"), "remote-agent");
+        assert_eq!(row.get::<String, _>("workdir"), "/srv/agent-1");
+        assert_eq!(row.get::<String, _>("command"), "codex");
+        assert_eq!(row.get::<String, _>("args"), args_json);
+        assert_eq!(row.get::<Option<String>, _>("target_node_id"), None);
+        assert_eq!(row.get::<String, _>("worktree_mode"), "create_worktree");
+        assert_eq!(
+            row.get::<Option<String>, _>("worktree_repo"),
+            Some("/srv/repo".to_string())
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("worktree_ref"),
+            Some("HEAD".to_string())
+        );
+        assert_eq!(row.get::<i64, _>("code_mode"), 1);
+        assert_eq!(row.get::<String, _>("source"), "team_forge");
+        assert_eq!(row.get::<String, _>("status"), "created");
+        assert_eq!(row.get::<i64, _>("created_at"), 123);
+        assert_eq!(row.get::<i64, _>("updated_at"), 123);
+        assert_eq!(row.get::<i64, _>("agent_loop_enabled"), 0);
+        assert_eq!(row.get::<Option<i64>, _>("agent_loop_idle_seconds"), None);
+        assert_eq!(row.get::<Option<String>, _>("agent_loop_prompt"), None);
+    }
+
+    #[tokio::test]
+    async fn remote_managed_upsert_update_respects_legacy_schema() {
+        let caps = AgentSchemaCaps {
+            has_source_column: false,
+            has_target_node_id_column: false,
+        };
+        let db = create_test_db().await;
+        create_agents_table(&db, caps).await;
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, agent_loop_enabled, agent_loop_idle_seconds, agent_loop_prompt,
+                status, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+        )
+        .bind("agent-1")
+        .bind("old-name")
+        .bind("/old/workdir")
+        .bind("old-command")
+        .bind("[\"--old\"]")
+        .bind("use_existing")
+        .bind(Option::<String>::None)
+        .bind(Option::<String>::None)
+        .bind(0)
+        .bind(1)
+        .bind(600)
+        .bind("keep-me")
+        .bind("running")
+        .bind(100)
+        .bind(100)
+        .execute(&db)
+        .await
+        .expect("seed legacy row");
+
+        let config = build_remote_managed_config();
+        let args_json = serde_json::to_string(&config.args).expect("serialize args");
+        upsert_remote_managed_agent_record(
+            &db,
+            caps,
+            RemoteManagedAgentUpsert {
+                agent_id: "agent-1",
+                config: &config,
+                workdir: "/srv/agent-1",
+                args_json: &args_json,
+                worktree_repo: Some("/srv/repo"),
+                source: "manual",
+                exists: true,
+                now: 456,
+            },
+        )
+        .await
+        .expect("update legacy remote managed agent");
+
+        let row = sqlx::query("SELECT * FROM agents WHERE id = ?1")
+            .bind("agent-1")
+            .fetch_one(&db)
+            .await
+            .expect("load updated agent");
+        assert_eq!(row.get::<String, _>("name"), "remote-agent");
+        assert_eq!(row.get::<String, _>("workdir"), "/srv/agent-1");
+        assert_eq!(row.get::<String, _>("command"), "codex");
+        assert_eq!(row.get::<String, _>("args"), args_json);
+        assert_eq!(row.get::<String, _>("worktree_mode"), "create_worktree");
+        assert_eq!(
+            row.get::<Option<String>, _>("worktree_repo"),
+            Some("/srv/repo".to_string())
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("worktree_ref"),
+            Some("HEAD".to_string())
+        );
+        assert_eq!(row.get::<i64, _>("code_mode"), 1);
+        assert_eq!(row.get::<String, _>("status"), "running");
+        assert_eq!(row.get::<i64, _>("created_at"), 100);
+        assert_eq!(row.get::<i64, _>("updated_at"), 456);
+        assert_eq!(row.get::<i64, _>("agent_loop_enabled"), 1);
+        assert_eq!(
+            row.get::<Option<i64>, _>("agent_loop_idle_seconds"),
+            Some(600)
+        );
+        assert_eq!(
+            row.get::<Option<String>, _>("agent_loop_prompt"),
+            Some("keep-me".to_string())
+        );
     }
 }

@@ -26,7 +26,7 @@ fn hex_encode(data: &[u8]) -> String {
     }
     result
 }
-use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
+use sqlx::{Error as SqlxError, Executor, QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -74,6 +74,15 @@ const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_KIND: &str = "shared_thread_mailb
 const TEAM_SHARED_THREAD_MAILBOX_RUN_BOOTSTRAP_SOURCE: &str = "teams_all";
 const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
 pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
+pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
+pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+
+fn is_row_not_found(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<SqlxError>(),
+        Some(SqlxError::RowNotFound)
+    )
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct TeamConversationStreamEvent {
@@ -112,6 +121,57 @@ pub struct TeamPendingActorUnreadRecord {
     pub run_id: String,
     pub actor_id: String,
     pub unread_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SharedThreadTargetRecord {
+    pub task_id: String,
+    pub conversation_id: String,
+}
+
+pub(crate) async fn fetch_canonical_shared_thread_target<'e, E>(
+    executor: E,
+    team_id: &str,
+) -> Result<Option<SharedThreadTargetRecord>, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let row = sqlx::query(
+        r#"
+        SELECT
+            t.id AS task_id,
+            c.id AS conversation_id,
+            (
+                SELECT MAX(m.id)
+                FROM team_conversation_messages m
+                WHERE m.conversation_id = c.id
+            ) AS latest_message_id
+        FROM team_tasks t
+        INNER JOIN team_conversations c ON c.task_id = t.id
+        WHERE t.team_id = ?1
+          AND (
+            lower(trim(t.title)) = ?2
+            OR lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?3
+          )
+        ORDER BY
+            CASE WHEN latest_message_id IS NULL THEN 1 ELSE 0 END ASC,
+            latest_message_id DESC,
+            c.created_at ASC,
+            t.created_at ASC,
+            t.id ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(team_id)
+    .bind(TEAM_SHARED_THREAD_TITLE)
+    .bind(TEAM_SHARED_THREAD_BOOTSTRAP_KIND)
+    .fetch_optional(executor)
+    .await?;
+
+    Ok(row.map(|row| SharedThreadTargetRecord {
+        task_id: row.get("task_id"),
+        conversation_id: row.get("conversation_id"),
+    }))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -572,21 +632,6 @@ impl TeamManager {
         Ok((task, conversation))
     }
 
-    pub async fn list_tasks(
-        &self,
-        team_id: &str,
-        limit: i64,
-    ) -> anyhow::Result<Vec<TeamTaskRecord>> {
-        let rows = self
-            .list_tasks_with_query(TeamTaskListQuery {
-                team_id: Some(team_id.to_string()),
-                limit,
-                ..TeamTaskListQuery::default()
-            })
-            .await?;
-        Ok(rows)
-    }
-
     pub async fn list_tasks_with_query(
         &self,
         query: TeamTaskListQuery,
@@ -690,7 +735,7 @@ impl TeamManager {
         })
     }
 
-    async fn resolve_team_scope(
+    pub(crate) async fn resolve_team_scope(
         &self,
         team_id: Option<&str>,
         run_id: Option<&str>,
@@ -1404,6 +1449,34 @@ impl TeamManager {
             LIMIT ?1
             "#,
         )
+        .bind(limit.max(1))
+        .fetch_all(&self.db)
+        .await?;
+
+        let mut runs = Vec::with_capacity(rows.len());
+        for row in rows {
+            runs.push(parse_team_run_row(&row)?);
+        }
+        let runs = self.hydrate_run_summaries(runs).await?;
+        Ok(filter_visible_team_runs(runs))
+    }
+
+    pub async fn list_active_runs_for_team(
+        &self,
+        team_id: &str,
+        limit: i64,
+    ) -> anyhow::Result<Vec<TeamRunRecord>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, team_id, context_id, status, input_json, created_at, started_at, ended_at
+            FROM team_runs
+            WHERE team_id = ?1
+              AND status IN ('submitted', 'working', 'input_required')
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(team_id)
         .bind(limit.max(1))
         .fetch_all(&self.db)
         .await?;
@@ -4111,44 +4184,78 @@ async fn load_running_session_rows_by_agent(
 }
 
 impl TeamManager {
+    async fn load_task_detail_for_team(
+        &self,
+        team_id: &str,
+        task_id: &str,
+    ) -> anyhow::Result<(
+        TeamTaskRecord,
+        TeamConversationRecord,
+        Option<TeamRunRecord>,
+    )> {
+        let task = self.get_task(task_id).await?;
+        if task.team_id != team_id {
+            anyhow::bail!("task not found for team");
+        }
+        let conversation = self.get_task_conversation(task_id).await?;
+        let latest_run = self.get_latest_run_for_task(team_id, task_id).await?;
+        Ok((task, conversation, latest_run))
+    }
+
+    pub async fn get_shared_thread_detail_for_team(
+        &self,
+        team_id: &str,
+    ) -> anyhow::Result<
+        Option<(
+            TeamTaskRecord,
+            TeamConversationRecord,
+            Option<TeamRunRecord>,
+        )>,
+    > {
+        let Some(target) = fetch_canonical_shared_thread_target(&self.db, team_id).await? else {
+            return Ok(None);
+        };
+        match self
+            .load_task_detail_for_team(team_id, &target.task_id)
+            .await
+        {
+            Ok(detail) => Ok(Some(detail)),
+            Err(err) if is_row_not_found(&err) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub async fn ensure_shared_thread_detail_for_team(
+        &self,
+        team_id: &str,
+        created_by_actor_id: &str,
+    ) -> anyhow::Result<(
+        TeamTaskRecord,
+        TeamConversationRecord,
+        Option<TeamRunRecord>,
+    )> {
+        let (task_id, _) = self
+            .ensure_shared_thread_target_for_team(team_id, created_by_actor_id)
+            .await?;
+        self.load_task_detail_for_team(team_id, &task_id).await
+    }
+
     pub async fn ensure_shared_thread_target_for_team(
         &self,
         team_id: &str,
         created_by_actor_id: &str,
     ) -> anyhow::Result<(String, String)> {
         let mut tx = self.db.begin().await?;
-        let existing = sqlx::query(
-            r#"
-            SELECT
-                t.id AS task_id,
-                c.id AS conversation_id
-            FROM team_tasks t
-            INNER JOIN team_conversations c ON c.task_id = t.id
-            WHERE t.team_id = ?1
-              AND (
-                lower(trim(t.title)) = 'all'
-                OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = 'shared_thread'
-              )
-            ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(team_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if let Some(row) = existing {
+        if let Some(existing) = fetch_canonical_shared_thread_target(&mut *tx, team_id).await? {
             tx.commit().await?;
-            return Ok((
-                row.get::<String, _>("task_id"),
-                row.get::<String, _>("conversation_id"),
-            ));
+            return Ok((existing.task_id, existing.conversation_id));
         }
 
         let now = Utc::now().timestamp();
         let task_id = Uuid::new_v4().to_string();
         let conversation_id = Uuid::new_v4().to_string();
         let context_json = serde_json::json!({
-            "bootstrap_kind": "shared_thread",
+            "bootstrap_kind": TEAM_SHARED_THREAD_BOOTSTRAP_KIND,
             "bootstrap_source": "server_canonical_reply",
         })
         .to_string();
@@ -4166,11 +4273,12 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, 'all', 'open', ?3, NULL, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?7)
             "#,
         )
         .bind(&task_id)
         .bind(team_id)
+        .bind(TEAM_SHARED_THREAD_TITLE)
         .bind(created_by_actor_id)
         .bind(context_json)
         .bind(now)
@@ -4189,12 +4297,13 @@ impl TeamManager {
                 created_at,
                 updated_at
             )
-            VALUES (?1, ?2, ?3, 'group_chat', 'all', ?4, ?5)
+            VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?6)
             "#,
         )
         .bind(&conversation_id)
         .bind(team_id)
         .bind(&task_id)
+        .bind(TEAM_SHARED_THREAD_TITLE)
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
@@ -4232,32 +4341,8 @@ impl TeamManager {
         let Some(team_id) = team_id else {
             return Ok(None);
         };
-        let row = sqlx::query(
-            r#"
-            SELECT
-                t.id AS task_id,
-                c.id AS conversation_id
-            FROM team_tasks t
-            INNER JOIN team_conversations c ON c.task_id = t.id
-            WHERE t.team_id = ?1
-              AND (
-                lower(trim(t.title)) = 'all'
-                OR trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), '')) = 'shared_thread'
-              )
-            ORDER BY t.updated_at DESC, t.created_at DESC, t.id DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(&team_id)
-        .fetch_optional(&self.db)
-        .await?;
-        Ok(row.map(|row| {
-            (
-                team_id,
-                row.get::<String, _>("task_id"),
-                row.get::<String, _>("conversation_id"),
-            )
-        }))
+        let target = fetch_canonical_shared_thread_target(&self.db, &team_id).await?;
+        Ok(target.map(|target| (team_id, target.task_id, target.conversation_id)))
     }
 
     pub(crate) fn emit_conversation_event(&self, event: TeamConversationStreamEvent) {

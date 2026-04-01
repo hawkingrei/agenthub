@@ -388,8 +388,9 @@ async fn send_and_ack_emit_expected_events() {
         })
         .await
         .expect("first ack");
-    assert_eq!(first_ack.status, ActorMessageStatus::Delivered);
-    assert_eq!(first_ack.delivered_at, Some(20));
+    assert!(first_ack.status_changed);
+    assert_eq!(first_ack.message.status, ActorMessageStatus::Delivered);
+    assert_eq!(first_ack.message.delivered_at, Some(20));
 
     let second_ack = mailbox
         .ack(AckActorMessageCommand {
@@ -401,8 +402,9 @@ async fn send_and_ack_emit_expected_events() {
         })
         .await
         .expect("second ack should be idempotent");
-    assert_eq!(second_ack.status, ActorMessageStatus::Delivered);
-    assert_eq!(second_ack.delivered_at, Some(20));
+    assert!(!second_ack.status_changed);
+    assert_eq!(second_ack.message.status, ActorMessageStatus::Delivered);
+    assert_eq!(second_ack.message.delivered_at, Some(20));
 
     let pending_inbox = mailbox
         .list_inbox(ListActorInboxQuery {

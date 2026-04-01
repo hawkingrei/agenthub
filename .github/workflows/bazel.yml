@@ -5,9 +5,48 @@ on:
     branches: ["main"]
   pull_request:
 
+env:
+  BAZEL_BUILD_TARGETS: >-
+    //:agenthub
+    //agenthub-codex-acp:agenthub_codex_acp_bin
+  BAZEL_ROOT_RUNTIME_PREREQ_TARGETS: >-
+    //:agenthub
+  BAZEL_ROOT_TEST_TARGETS: >-
+    //:agenthub_unit_tests
+    //:web_assets_test
+  BAZEL_CRATE_TEST_TARGETS: >-
+    //agenthub-codex-acp:agenthub_codex_acp_tests
+    //crates/agenthub-acp-core:agenthub_acp_core_tests
+    //crates/agenthub-acp:agenthub_acp_tests
+    //crates/agenthub-config:agenthub_config_tests
+    //crates/agenthub-db:agenthub_db_tests
+    //crates/agenthub-internal-p2p:agenthub_internal_p2p_tests
+    //crates/agenthub-logging:agenthub_logging_tests
+    //crates/agenthub-managed-skills:agenthub_managed_skills_tests
+    //crates/agenthub-pyroscope:agenthub_pyroscope_tests
+    //crates/agenthub-team-actor:agenthub_team_actor_tests
+    //crates/agenthub-team-domain:agenthub_team_domain_tests
+    //crates/agenthub-team-prompts:agenthub_team_prompts_tests
+    //crates/agenthub-text:agenthub_text_tests
+  BAZEL_COVERAGE_TARGETS: >-
+    //:agenthub_unit_tests
+    //agenthub-codex-acp:agenthub_codex_acp_tests
+    //crates/agenthub-acp-core:agenthub_acp_core_tests
+    //crates/agenthub-acp:agenthub_acp_tests
+    //crates/agenthub-config:agenthub_config_tests
+    //crates/agenthub-db:agenthub_db_tests
+    //crates/agenthub-internal-p2p:agenthub_internal_p2p_tests
+    //crates/agenthub-logging:agenthub_logging_tests
+    //crates/agenthub-managed-skills:agenthub_managed_skills_tests
+    //crates/agenthub-pyroscope:agenthub_pyroscope_tests
+    //crates/agenthub-team-actor:agenthub_team_actor_tests
+    //crates/agenthub-team-domain:agenthub_team_domain_tests
+    //crates/agenthub-team-prompts:agenthub_team_prompts_tests
+    //crates/agenthub-text:agenthub_text_tests
+
 jobs:
-  bazel:
-    name: Bazel Build and Test
+  bazel_build:
+    name: Bazel Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,8 +63,118 @@ jobs:
           bazelisk-cache: true
           repository-cache: true
           external-cache: false
-          disk-cache: ${{ github.workflow }}
+          disk-cache: bazel-build
       - name: Bazel build
-        run: bazel build //...
-      - name: Bazel test
-        run: bazel test --test_output=errors //...
+        run: bazel build $BAZEL_BUILD_TARGETS
+
+  bazel_test_root:
+    name: Bazel Test (Root)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          external-cache: false
+          disk-cache: bazel-test-root
+      - name: Build runtime prereqs for root tests
+        run: bazel build $BAZEL_ROOT_RUNTIME_PREREQ_TARGETS
+      - name: Bazel test (root targets)
+        run: bazel test --test_output=errors $BAZEL_ROOT_TEST_TARGETS
+
+  bazel_test_crates:
+    name: Bazel Test (Crates)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          external-cache: false
+          disk-cache: bazel-test-crates
+      - name: Bazel test (crate targets)
+        run: bazel test --test_output=errors $BAZEL_CRATE_TEST_TARGETS
+
+  bazel_coverage:
+    name: Bazel Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          external-cache: false
+          disk-cache: bazel-coverage
+      - name: Build runtime prereqs for coverage
+        run: bazel build $BAZEL_ROOT_RUNTIME_PREREQ_TARGETS
+      - name: Bazel coverage
+        run: |
+          bazel coverage --combined_report=lcov --test_output=errors --nocache_test_results \
+            $BAZEL_COVERAGE_TARGETS
+          cp "$(bazel info output_path)/_coverage/_coverage_report.dat" bazel.lcov
+          test -s bazel.lcov
+          wc -l bazel.lcov
+      - name: Upload coverage reports to Codecov
+        if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: codecov/codecov-action@v6
+        env:
+          AGENTHUB_CODECOV_UPLOAD_TAG: bazel
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: bazel.lcov
+          flags: bazel
+          env_vars: AGENTHUB_CODECOV_UPLOAD_TAG
+          name: bazel-coverage
+          fail_ci_if_error: true
+
+  bazel:
+    name: Bazel Build and Test
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - bazel_build
+      - bazel_test_root
+      - bazel_test_crates
+      - bazel_coverage
+    steps:
+      - name: Check Bazel job results
+        run: |
+          results=(
+            "${{ needs.bazel_build.result }}"
+            "${{ needs.bazel_test_root.result }}"
+            "${{ needs.bazel_test_crates.result }}"
+            "${{ needs.bazel_coverage.result }}"
+          )
+          for result in "${results[@]}"; do
+            if [ "$result" != "success" ]; then
+              echo "Bazel sub-job failed with result: $result"
+              exit 1
+            fi
+          done

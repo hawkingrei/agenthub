@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type TeamActorMessageRecord,
   type TeamConversationMessageRecord,
+  type TeamRunRecord,
   type TeamTaskRecord,
   api,
 } from "../../api";
@@ -20,8 +21,7 @@ vi.mock("../../api", async () => {
       listTeamTaskMessages: vi.fn(),
       getTeamTask: vi.fn(),
       getTeamRunSnapshot: vi.fn(),
-      listTeamTasks: vi.fn(),
-      createTeamTask: vi.fn(),
+      ensureTeamSharedThread: vi.fn(),
       sendTeamTaskMessage: vi.fn(),
     },
   };
@@ -78,6 +78,19 @@ function buildSharedThreadTask(): TeamTaskRecord {
   };
 }
 
+function buildRun(id: string): TeamRunRecord {
+  return {
+    id,
+    team_id: "team-1",
+    context_id: `ctx-${id}`,
+    status: "working",
+    input: {},
+    created_at: 1,
+    started_at: null,
+    ended_at: null,
+  };
+}
+
 function createStateSetter<T>(initial: T) {
   const state = { current: initial };
   const setter = vi.fn((update: React.SetStateAction<T>) => {
@@ -98,14 +111,15 @@ function createOptions(
     token: "token-1",
     selectedTeamId: "team-1",
     selectedConversation: buildSharedThreadTask(),
-    taskList: [buildSharedThreadTask()],
+    latestRunForSharedConversation: null,
     activeRunIdForSelectedTeam: "run-1",
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     refreshEvents: vi.fn().mockResolvedValue(undefined),
     setBusy: vi.fn(),
     setError: vi.fn(),
     setWarning: vi.fn(),
-    setTaskList: vi.fn(),
+    setSharedConversation: vi.fn(),
+    setSharedConversationLatestRun: vi.fn(),
     setTaskMessages: taskMessages.setter,
     setTaskMessagesLoading: vi.fn(),
     setConversationMailboxMessages: mailboxMessages.setter,
@@ -344,6 +358,112 @@ describe("useTeamConversationActions", () => {
       expect(options.setTaskMessageDraft).toHaveBeenCalledWith("");
       expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
       expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("reuses the stored shared-thread latest run when the conversation is already loaded", async () => {
+    mockedApi.sendTeamTaskMessage.mockResolvedValue({
+      message_id: 63,
+      conversation_id: "conv-all",
+      task_id: "task-all",
+      from_actor_id: "user:test",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "chat_message",
+        text: "follow up on current thread",
+      },
+      created_at: 1_700_000_063,
+    });
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      activeRunIdForSelectedTeam: null,
+      latestRunForSharedConversation: buildRun("run-shared"),
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.sendTaskMessage({
+          text: "follow up on current thread",
+          mentionActorIds: [],
+        });
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.ensureTeamSharedThread).not.toHaveBeenCalled();
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-shared");
+      expect(options.refreshEvents).toHaveBeenCalledWith("run-shared");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("reuses the existing shared thread instead of creating a duplicate", async () => {
+    mockedApi.ensureTeamSharedThread.mockResolvedValue({
+      task: buildSharedThreadTask(),
+      conversation: {
+        id: "conv-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: buildRun("run-new-shared"),
+    });
+    mockedApi.listTeamTaskMessages.mockResolvedValue([]);
+    mockedApi.sendTeamTaskMessage.mockResolvedValue({
+      message_id: 77,
+      conversation_id: "conv-all",
+      task_id: "task-all",
+      from_actor_id: "user:test",
+      to_actor_id: null,
+      route: "group_chat",
+      payload: {
+        type: "chat_message",
+        text: "hello shared thread",
+      },
+      created_at: 1_700_000_077,
+    });
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversation: null,
+      activeRunIdForSelectedTeam: null,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.sendTaskMessage({
+          text: "hello shared thread",
+          mentionActorIds: [],
+        });
+      });
+
+      expect(mockedApi.ensureTeamSharedThread).toHaveBeenCalledWith("token-1", "team-1");
+      expect(mockedApi.sendTeamTaskMessage).toHaveBeenCalledWith(
+        "token-1",
+        "team-1",
+        "task-all",
+        {
+          payload: {
+            type: "chat_message",
+            text: "hello shared thread",
+            source: "team_workbench",
+          },
+        }
+      );
+      expect(options.setSharedConversationLatestRun).toHaveBeenCalledWith(buildRun("run-new-shared"));
     } finally {
       cleanupHarness(root, container);
     }

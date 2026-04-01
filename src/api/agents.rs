@@ -220,14 +220,41 @@ async fn create_agent(
     Json(payload): Json<CreateAgentRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
-    let source = parse_agent_source(payload.source.as_deref())?;
-    let target_node_id = normalize_target_node_id(payload.target_node_id.as_deref());
+    let CreateAgentRequest {
+        name,
+        workdir,
+        command,
+        args,
+        target_node_id,
+        source,
+        worktree_mode,
+        worktree_repo,
+        worktree_ref,
+        code_mode,
+        agent_loop_enabled,
+        agent_loop_idle_seconds,
+        agent_loop_prompt,
+    } = payload;
+    let name = normalize_required_create_agent_field("name", name)?;
+    let command = normalize_required_create_agent_field("command", command)?;
+    let worktree_mode = parse_worktree_mode(worktree_mode.as_deref())?;
+    let worktree_repo = normalize_optional_request_field("worktree_repo", worktree_repo)?;
+    let worktree_ref = normalize_optional_request_field("worktree_ref", worktree_ref)?;
+    let agent_loop_enabled = agent_loop_enabled.unwrap_or(false);
+    let agent_loop_prompt =
+        normalize_optional_request_field("agent_loop.prompt", agent_loop_prompt)?;
+    validate_create_agent_loop_config(
+        agent_loop_enabled,
+        agent_loop_idle_seconds,
+        agent_loop_prompt.as_deref(),
+    )?;
+    let source = parse_agent_source(source.as_deref())?;
+    let target_node_id = normalize_target_node_id(target_node_id.as_deref());
     if target_node_id.is_some() && user.role != "root" {
         return Err(ApiError::unauthorized(
             "root required for remote target node",
         ));
     }
-    let worktree_mode = parse_worktree_mode(payload.worktree_mode.as_deref());
     let default_worktree_root = resolve_create_agent_default_worktree_root(
         &state,
         target_node_id.as_deref(),
@@ -235,24 +262,24 @@ async fn create_agent(
     )
     .await?;
     let workdir = resolve_create_agent_workdir(
-        &payload.workdir,
-        &payload.name,
+        &workdir,
+        &name,
         &worktree_mode,
         default_worktree_root.as_deref(),
     )?;
     let config = AgentConfig {
-        name: payload.name,
+        name,
         workdir,
-        command: payload.command,
-        args: payload.args,
+        command,
+        args,
         target_node_id,
         worktree_mode,
-        worktree_repo: payload.worktree_repo,
-        worktree_ref: payload.worktree_ref,
-        code_mode: payload.code_mode.unwrap_or(true),
-        agent_loop_enabled: payload.agent_loop_enabled.unwrap_or(false),
-        agent_loop_idle_seconds: payload.agent_loop_idle_seconds,
-        agent_loop_prompt: payload.agent_loop_prompt,
+        worktree_repo,
+        worktree_ref,
+        code_mode: code_mode.unwrap_or(true),
+        agent_loop_enabled,
+        agent_loop_idle_seconds,
+        agent_loop_prompt,
     };
     let agent = if source == AGENT_SOURCE_MANUAL {
         state
@@ -360,13 +387,19 @@ async fn send_input(
     Json(payload): Json<SendInputRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
+    let input = payload.input;
+    if input.trim().is_empty() {
+        return Err(ApiError::bad_request("input is required"));
+    }
+    let message_id = normalize_optional_request_field("message_id", payload.message_id)?;
+    let session_id = normalize_optional_request_field("session_id", payload.session_id)?;
     match state
         .agents
         .send_input(
             &agent_id,
-            &payload.input,
-            payload.message_id.as_deref(),
-            payload.session_id.as_deref(),
+            &input,
+            message_id.as_deref(),
+            session_id.as_deref(),
         )
         .await
     {
@@ -674,11 +707,66 @@ async fn respond_permission(
     Ok(Json(serde_json::json!({ "status": status })))
 }
 
-fn parse_worktree_mode(value: Option<&str>) -> WorktreeMode {
+fn normalize_required_create_agent_field(
+    field_name: &'static str,
+    value: String,
+) -> Result<String, ApiError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::bad_request(&format!("{field_name} is required")));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalize_optional_request_field(
+    field_name: &'static str,
+    value: Option<String>,
+) -> Result<Option<String>, ApiError> {
     match value {
-        Some("create_worktree") => WorktreeMode::CreateWorktree,
-        Some("reuse_worktree") => WorktreeMode::ReuseWorktree,
-        _ => WorktreeMode::UseExisting,
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return Err(ApiError::bad_request(&format!(
+                    "{field_name} must not be blank"
+                )));
+            }
+            Ok(Some(trimmed.to_string()))
+        }
+        None => Ok(None),
+    }
+}
+
+fn validate_create_agent_loop_config(
+    enabled: bool,
+    idle_seconds: Option<i64>,
+    prompt: Option<&str>,
+) -> Result<(), ApiError> {
+    if enabled && prompt.is_none() {
+        return Err(ApiError::bad_request(
+            "agent_loop.prompt is required when enabling agent loop",
+        ));
+    }
+    if enabled && !idle_seconds.is_some_and(|value| (10..=86_400).contains(&value)) {
+        return Err(ApiError::bad_request(
+            "agent_loop.idle_seconds must be between 10 and 86400 when enabling agent loop",
+        ));
+    }
+    Ok(())
+}
+
+fn parse_worktree_mode(value: Option<&str>) -> Result<WorktreeMode, ApiError> {
+    match value
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        None | Some("use_existing") => Ok(WorktreeMode::UseExisting),
+        Some("create_worktree") => Ok(WorktreeMode::CreateWorktree),
+        Some("reuse_worktree") => Ok(WorktreeMode::ReuseWorktree),
+        Some(_) => Err(ApiError::bad_request(
+            "worktree_mode must be one of: use_existing, create_worktree, reuse_worktree",
+        )),
     }
 }
 
@@ -1017,11 +1105,11 @@ mod tests {
     #[test]
     fn parse_worktree_mode_defaults() {
         assert!(matches!(
-            parse_worktree_mode(None),
+            parse_worktree_mode(None).expect("default worktree mode"),
             WorktreeMode::UseExisting
         ));
         assert!(matches!(
-            parse_worktree_mode(Some("unknown")),
+            parse_worktree_mode(Some("use_existing")).expect("explicit use_existing"),
             WorktreeMode::UseExisting
         ));
     }
@@ -1029,13 +1117,22 @@ mod tests {
     #[test]
     fn parse_worktree_mode_explicit() {
         assert!(matches!(
-            parse_worktree_mode(Some("create_worktree")),
+            parse_worktree_mode(Some("create_worktree")).expect("create_worktree"),
             WorktreeMode::CreateWorktree
         ));
         assert!(matches!(
-            parse_worktree_mode(Some("reuse_worktree")),
+            parse_worktree_mode(Some("reuse_worktree")).expect("reuse_worktree"),
             WorktreeMode::ReuseWorktree
         ));
+    }
+
+    #[test]
+    fn parse_worktree_mode_rejects_invalid_value() {
+        let err = parse_worktree_mode(Some("invalid")).expect_err("invalid worktree mode");
+        assert_eq!(
+            err.into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]
@@ -1589,6 +1686,7 @@ mod tests {
             Vec::new(),
             "agenthub-codex-acp".to_string(),
             None,
+            true,
             permissions.clone(),
             auth.clone(),
             internal_peer_client,
@@ -2061,6 +2159,149 @@ mod tests {
             body["workdir"].as_str().is_some_and(|value| value
                 .starts_with("~/.agenthub/worktrees/node-east/remote-default-worktree-")),
             "unexpected response body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_blank_name() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "   ",
+                    "workdir": "/tmp/ignored",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent with blank name");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("name is required"));
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_blank_command() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "blank-command",
+                    "workdir": "/tmp/ignored",
+                    "command": "   ",
+                    "args": ["-lc", "sleep 10"],
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent with blank command");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], Value::from("command is required"));
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_rejects_invalid_worktree_mode() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "invalid-worktree-mode",
+                    "workdir": "/tmp/ignored",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "worktree_mode": "invalid_mode",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent with invalid worktree mode");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = decode_json_body(response).await;
+        assert_eq!(
+            body["error"],
+            Value::from(
+                "worktree_mode must be one of: use_existing, create_worktree, reuse_worktree"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_route_validates_agent_loop_when_enabled() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let missing_prompt = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "agent-loop-no-prompt",
+                    "workdir": "/tmp/ignored",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "agent_loop_enabled": true,
+                    "agent_loop_idle_seconds": 900,
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent without loop prompt");
+        assert_eq!(missing_prompt.status(), StatusCode::BAD_REQUEST);
+        let missing_prompt_body = decode_json_body(missing_prompt).await;
+        assert_eq!(
+            missing_prompt_body["error"],
+            Value::from("agent_loop.prompt is required when enabling agent loop")
+        );
+
+        let invalid_idle = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/",
+                Some(&token),
+                Some(json!({
+                    "name": "agent-loop-invalid-idle",
+                    "workdir": "/tmp/ignored",
+                    "command": "/bin/sh",
+                    "args": ["-lc", "sleep 10"],
+                    "agent_loop_enabled": true,
+                    "agent_loop_idle_seconds": 1,
+                    "agent_loop_prompt": "Resume work",
+                    "code_mode": true
+                })),
+            ))
+            .await
+            .expect("create agent with invalid loop idle");
+        assert_eq!(invalid_idle.status(), StatusCode::BAD_REQUEST);
+        let invalid_idle_body = decode_json_body(invalid_idle).await;
+        assert_eq!(
+            invalid_idle_body["error"],
+            Value::from(
+                "agent_loop.idle_seconds must be between 10 and 86400 when enabling agent loop"
+            )
         );
     }
 
@@ -2695,6 +2936,68 @@ mod tests {
         assert_eq!(stop_resp.status(), StatusCode::OK);
 
         remove_dir_best_effort(&workdir);
+    }
+
+    #[tokio::test]
+    async fn send_input_route_rejects_blank_input_and_identifiers() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let blank_input = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-123/input",
+                Some(&token),
+                Some(json!({
+                    "input": "   ",
+                })),
+            ))
+            .await
+            .expect("send blank input");
+        assert_eq!(blank_input.status(), StatusCode::BAD_REQUEST);
+        let blank_input_body = decode_json_body(blank_input).await;
+        assert_eq!(blank_input_body["error"], Value::from("input is required"));
+
+        let blank_message_id = app
+            .clone()
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-123/input",
+                Some(&token),
+                Some(json!({
+                    "input": "hello",
+                    "message_id": "   ",
+                })),
+            ))
+            .await
+            .expect("send blank message_id");
+        assert_eq!(blank_message_id.status(), StatusCode::BAD_REQUEST);
+        let blank_message_id_body = decode_json_body(blank_message_id).await;
+        assert_eq!(
+            blank_message_id_body["error"],
+            Value::from("message_id must not be blank")
+        );
+
+        let blank_session_id = app
+            .oneshot(build_json_request(
+                Method::POST,
+                "/agent-123/input",
+                Some(&token),
+                Some(json!({
+                    "input": "hello",
+                    "session_id": "   ",
+                })),
+            ))
+            .await
+            .expect("send blank session_id");
+        assert_eq!(blank_session_id.status(), StatusCode::BAD_REQUEST);
+        let blank_session_id_body = decode_json_body(blank_session_id).await;
+        assert_eq!(
+            blank_session_id_body["error"],
+            Value::from("session_id must not be blank")
+        );
     }
 
     #[tokio::test]

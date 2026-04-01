@@ -53,7 +53,7 @@ type AcpConversationProps = {
   focusedToolCallId?: string | null;
   bottomClearancePx?: number;
   onScroll: () => void;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.Ref<HTMLDivElement>;
   ansi: (input: string) => string;
 };
 
@@ -226,13 +226,6 @@ export function AcpConversation({
           <div
             className="acp-conversation-spacer virtual-bottom"
             style={{ height: virtualBottomSpacer }}
-          />
-        )}
-        {bottomClearance > 0 && (
-          <div
-            aria-hidden="true"
-            className="acp-conversation-spacer dock-clearance"
-            style={{ height: bottomClearance }}
           />
         )}
         {!stickToBottom && pendingCount > 0 && (

@@ -17,8 +17,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mantine/core": "8.3.18",
-    "@mantine/hooks": "8.3.18",
+    "@chenglou/pretext": "^0.0.3",
+    "@mantine/core": "9.0.0",
+    "@mantine/hooks": "9.0.0",
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
@@ -29,13 +30,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.0",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.2",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.2",
     "autoprefixer": "^10.4.27",

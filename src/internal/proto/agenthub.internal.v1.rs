@@ -68,6 +68,8 @@ pub struct AckActorMessageRequest {
 pub struct AckActorMessageResponse {
     #[prost(message, optional, tag = "1")]
     pub message: ::core::option::Option<ActorMessage>,
+    #[prost(bool, tag = "2")]
+    pub status_changed: bool,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DescribeTeamContextRequest {
@@ -82,6 +84,22 @@ pub struct DescribeTeamContextRequest {
 pub struct DescribeTeamContextResponse {
     #[prost(string, tag = "1")]
     pub context_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveActorRunScopeRequest {
+    #[prost(string, tag = "1")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub team_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ResolveActorRunScopeResponse {
+    #[prost(string, tag = "1")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub source: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListTeamTasksRequest {
@@ -669,6 +687,35 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn resolve_actor_run_scope(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ResolveActorRunScopeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ResolveActorRunScopeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/ResolveActorRunScope",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ResolveActorRunScope",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn list_team_tasks(
             &mut self,
             request: impl tonic::IntoRequest<super::ListTeamTasksRequest>,
@@ -1234,6 +1281,13 @@ pub mod team_internal_control_server {
             tonic::Response<super::DescribeTeamContextResponse>,
             tonic::Status,
         >;
+        async fn resolve_actor_run_scope(
+            &self,
+            request: tonic::Request<super::ResolveActorRunScopeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ResolveActorRunScopeResponse>,
+            tonic::Status,
+        >;
         async fn list_team_tasks(
             &self,
             request: tonic::Request<super::ListTeamTasksRequest>,
@@ -1618,6 +1672,55 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = DescribeTeamContextSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/ResolveActorRunScope" => {
+                    #[allow(non_camel_case_types)]
+                    struct ResolveActorRunScopeSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ResolveActorRunScopeRequest>
+                    for ResolveActorRunScopeSvc<T> {
+                        type Response = super::ResolveActorRunScopeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ResolveActorRunScopeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::resolve_actor_run_scope(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ResolveActorRunScopeSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

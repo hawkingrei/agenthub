@@ -325,50 +325,7 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className={INPUT_DOCK_ROOT_CLASS} ref={inputDockRef}>
-      <div className="input-row" role="group" aria-label="Input actions">
-        {showInterrupt && (
-          <button
-            className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
-            onClick={onInterrupt}
-            disabled={!canInterrupt}
-            title="Interrupt current run"
-            aria-label="Interrupt current run"
-          >
-            Interrupt
-          </button>
-        )}
-        {historyCommands.length > 0 && (
-          <div className="input-history" ref={historyContainerRef}>
-            <button
-              className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
-              onClick={() => setShowHistory((prev) => !prev)}
-              title="Show sent command history"
-              aria-label="Show sent command history"
-              aria-expanded={showHistory}
-            >
-              History
-            </button>
-            {showHistory && (
-              <div className={INPUT_DOCK_HISTORY_MENU_CLASS}>
-                {visibleHistory.map((item, idx) => (
-                  <button
-                    key={`${idx}-${item}`}
-                    className={INPUT_DOCK_HISTORY_ITEM_CLASS}
-                    title={item}
-                    onClick={() => {
-                      onSelectHistoryCommand(item);
-                      setShowHistory(false);
-                    }}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+    <div className="input-dock-shell flex flex-col gap-1.5" ref={inputDockRef}>
       {showConversationJump && (
         <button
           className="jump-bottom"
@@ -379,80 +336,125 @@ export function InputDock({
           <i className="bi bi-chevron-down" aria-hidden="true" />
         </button>
       )}
-      <div className="input-editor-row">
-        <textarea
-          className={INPUT_DOCK_TEXTAREA_CLASS}
-          ref={textareaRef}
-          placeholder={inputPlaceholder}
-          value={input}
-          onFocus={() => {
-            setInputFocused(true);
-            ensureInputVisible();
-          }}
-          onBlur={() => {
-            setInputFocused(false);
-          }}
-          onChange={(e) => {
-            setShowHistory(false);
-            onInputChange(e.target.value);
-            ensureInputVisible();
-          }}
-          onCompositionStart={() => {
-            isComposingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            isComposingRef.current = false;
-          }}
-          onKeyDown={(e) => {
-            const nativeEvent = e.nativeEvent as KeyboardEvent;
-            const composing = isImeComposing(
-              isComposingRef.current,
-              nativeEvent.isComposing === true,
-              nativeEvent.keyCode
-            );
-            const target = e.currentTarget;
-            const action = deriveInputDockKeyAction({
-              key: e.key,
-              shiftKey: e.shiftKey,
-              altKey: e.altKey,
-              metaKey: e.metaKey,
-              ctrlKey: e.ctrlKey,
-              sendOnEnter: !mobileInputViewport,
-              showHistory,
-              composing,
-              value: target.value,
-              selectionStart: target.selectionStart,
-              selectionEnd: target.selectionEnd,
-            });
-            if (action.type === "close_history") {
+      <div className={INPUT_DOCK_ROOT_CLASS}>
+        <div className="input-row" role="group" aria-label="Input actions">
+          {showInterrupt && (
+            <button
+              className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
+              onClick={onInterrupt}
+              disabled={!canInterrupt}
+              title="Interrupt current run"
+              aria-label="Interrupt current run"
+            >
+              Interrupt
+            </button>
+          )}
+          {historyCommands.length > 0 && (
+            <div className="input-history" ref={historyContainerRef}>
+              <button
+                className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
+                onClick={() => setShowHistory((prev) => !prev)}
+                title="Show sent command history"
+                aria-label="Show sent command history"
+                aria-expanded={showHistory}
+              >
+                History
+              </button>
+              {showHistory && (
+                <div className={INPUT_DOCK_HISTORY_MENU_CLASS}>
+                  {visibleHistory.map((item, idx) => (
+                    <button
+                      key={`${idx}-${item}`}
+                      className={INPUT_DOCK_HISTORY_ITEM_CLASS}
+                      title={item}
+                      onClick={() => {
+                        onSelectHistoryCommand(item);
+                        setShowHistory(false);
+                      }}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="input-editor-row">
+          <textarea
+            className={INPUT_DOCK_TEXTAREA_CLASS}
+            ref={textareaRef}
+            placeholder={inputPlaceholder}
+            value={input}
+            onFocus={() => {
+              setInputFocused(true);
+              ensureInputVisible();
+            }}
+            onBlur={() => {
+              setInputFocused(false);
+            }}
+            onChange={(e) => {
               setShowHistory(false);
-              return;
-            }
-            if (action.type === "send") {
-              if (sendDisabled) {
+              onInputChange(e.target.value);
+              ensureInputVisible();
+            }}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+            }}
+            onKeyDown={(e) => {
+              const nativeEvent = e.nativeEvent as KeyboardEvent;
+              const composing = isImeComposing(
+                isComposingRef.current,
+                nativeEvent.isComposing === true,
+                nativeEvent.keyCode
+              );
+              const target = e.currentTarget;
+              const action = deriveInputDockKeyAction({
+                key: e.key,
+                shiftKey: e.shiftKey,
+                altKey: e.altKey,
+                metaKey: e.metaKey,
+                ctrlKey: e.ctrlKey,
+                sendOnEnter: !mobileInputViewport,
+                showHistory,
+                composing,
+                value: target.value,
+                selectionStart: target.selectionStart,
+                selectionEnd: target.selectionEnd,
+              });
+              if (action.type === "close_history") {
+                setShowHistory(false);
                 return;
               }
-              e.preventDefault();
-              onSendInput();
-              setShowHistory(false);
-              return;
-            }
-            if (action.type === "navigate_history") {
-              e.preventDefault();
-              setShowHistory(false);
-              onNavigateHistory(action.direction);
-            }
-          }}
-          rows={2}
-        />
-        <button
-          className="input-send-button"
-          onClick={onSendInput}
-          disabled={sendDisabled}
-          aria-label="Send input"
-        >
-          Send
-        </button>
+              if (action.type === "send") {
+                if (sendDisabled) {
+                  return;
+                }
+                e.preventDefault();
+                onSendInput();
+                setShowHistory(false);
+                return;
+              }
+              if (action.type === "navigate_history") {
+                e.preventDefault();
+                setShowHistory(false);
+                onNavigateHistory(action.direction);
+              }
+            }}
+            rows={2}
+          />
+          <button
+            className="input-send-button"
+            onClick={onSendInput}
+            disabled={sendDisabled}
+            aria-label="Send input"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

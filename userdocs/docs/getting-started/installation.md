@@ -69,6 +69,8 @@ For Codex-backed ACP sessions, AgentHub also materializes its managed Team and
 runtime skills under `~/.agents/skills/agenthub-runtime/...`.
 
 - No manual `~/.codex/config.toml` skill configuration is required.
+- Global managed skills should be referenced through an absolute path or
+  `~/...`; do not treat them as current-workdir-relative `.agents/...` paths.
 - Repo-local `.agents/skills` continue to work independently alongside the
   managed AgentHub skill set.
 

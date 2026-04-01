@@ -146,15 +146,23 @@ Required visibility:
 ### 6) Mailbox Hint Policy
 
 - Mailbox nudges should be token-efficient by default.
-- Immediate ACP nudges are reserved for:
-  - direct `agent -> agent` mailbox sends;
-  - leader-authored channel messages that explicitly `@member_id` mention recipients.
-- Other mailbox traffic should not eagerly inject ACP prompts.
+- Mailbox traffic uses three priority classes:
+  - `general`: the default class for ordinary mailbox traffic; it must not eagerly interrupt active
+    ACP work.
+  - `urgent`: immediate ACP nudges are reserved for direct `agent -> agent` mailbox sends and
+    leader-authored channel messages that explicitly `@member_id` mention recipients.
+  - `permission_review`: ACP permission-review requests should first look for an idle reviewer
+    (defined by no recent non-user ACP output) before falling back to the normal non-self reviewer
+    order; once routed, the selected reviewer still receives an immediate mailbox hint.
+- `general` mailbox traffic should not eagerly inject ACP prompts.
   - when unread mailbox items remain and the target ACP session has produced no non-user output for
     roughly 3 minutes, AgentHub may send a compact unread-summary prompt instead;
   - if unread count is `0`, no reminder should be sent.
 - `actor inbox` should surface the current unread snapshot directly (`pending_count`) so agents can
   decide whether a mailbox pull is needed without spending extra tokens on speculative prompts.
+- `actor ack` should surface whether the mailbox state actually changed (`status_changed`) so
+  callers can distinguish a real `pending -> delivered` transition from an idempotent/no-op ack.
+
 
 ## Validation Matrix
 
@@ -166,6 +174,12 @@ Required visibility:
 
 - Keep actor semantics stable even when topology evolves (`main`-only -> `main` + `node`).
 - Keep operator-facing docs explicit: `run_id` partitions mailbox, `actor_id` identifies sender/receiver.
+- In Team runtime, direct mailbox commands may infer `run_id` from current actor runtime scope or a
+  unique active Team run, but ambiguous Team scope must still fail loudly and require an explicit
+  `--run-id`.
+- Team shared-thread inbox reads may fall back to the canonical hidden shared-thread mailbox run
+  when only Team scope is available; human-visible shared updates should still go through
+  `team-task-note --shared-thread`.
 - Prefer compatibility aliasing (`agent_id`) over field renaming in storage/API internals.
 - For Team sessions, prefer the canonical actor CLI mailbox workflow (`agenthub actor ...`) and avoid ad-hoc bypass paths.
 - Keep conversation event-bus design aligned with `docs/features/team-conversation-event-bus.md`.

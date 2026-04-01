@@ -11,6 +11,7 @@ service TeamInternalControl {
   rpc ListActorInbox(ListActorInboxRequest) returns (ListActorInboxResponse);
   rpc AckActorMessage(AckActorMessageRequest) returns (AckActorMessageResponse);
   rpc DescribeTeamContext(DescribeTeamContextRequest) returns (DescribeTeamContextResponse);
+  rpc ResolveActorRunScope(ResolveActorRunScopeRequest) returns (ResolveActorRunScopeResponse);
   rpc ListTeamTasks(ListTeamTasksRequest) returns (ListTeamTasksResponse);
   rpc CreateTeamTask(CreateTeamTaskRequest) returns (CreateTeamTaskResponse);
   rpc UpdateTeamTask(UpdateTeamTaskRequest) returns (UpdateTeamTaskResponse);
@@ -73,6 +74,7 @@ message AckActorMessageRequest {
 
 message AckActorMessageResponse {
   ActorMessage message = 1;
+  bool status_changed = 2;
 }
 
 message DescribeTeamContextRequest {
@@ -83,6 +85,17 @@ message DescribeTeamContextRequest {
 
 message DescribeTeamContextResponse {
   string context_json = 1;
+}
+
+message ResolveActorRunScopeRequest {
+  string actor_id = 1;
+  string team_id = 2;
+}
+
+message ResolveActorRunScopeResponse {
+  string run_id = 1;
+  string team_id = 2;
+  string source = 3;
 }
 
 message ListTeamTasksRequest {

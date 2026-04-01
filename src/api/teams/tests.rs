@@ -42,19 +42,58 @@ use super::{
     ListTeamTaskMessagesQuery, ListTeamTasksQuery, ResumeTeamRunStepRequest,
     SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
     StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery,
-    UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run,
-    compile_team_task_run_preview, complete_team_run_step, create_team, create_team_run,
-    create_team_task, delete_team, fail_team_run_step, flush_team_run_context,
-    force_new_session_for_team_member, get_team, get_team_run, get_team_run_snapshot,
-    get_team_runtime, get_team_task, list_team_run_events, list_team_run_inbox,
-    list_team_run_steps, list_team_runs, list_team_task_messages, list_team_tasks, list_teams,
-    restart_team_run, resume_team_run, resume_team_run_step, send_team_run_message,
+    TeamTaskDetailResponse, UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message,
+    cancel_team_run, compile_team_task_run_preview, complete_team_run_step, create_team,
+    create_team_run, delete_team, ensure_team_shared_thread, fail_team_run_step,
+    flush_team_run_context, force_new_session_for_team_member, get_team, get_team_run,
+    get_team_run_snapshot, get_team_runtime, get_team_shared_thread, get_team_task,
+    list_team_run_events, list_team_run_inbox, list_team_run_steps, list_team_runs,
+    list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
+    map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
+    require_user, restart_team_run, resume_team_run, resume_team_run_step, send_team_run_message,
     send_team_task_message, set_team_run_step_input_required, start_team, start_team_run_step,
     stop_team, submit_team_run_step, update_team_spec, update_team_task,
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
+
+async fn create_team_task(
+    state: &AppState,
+    headers: &HeaderMap,
+    team_id: &str,
+    payload: CreateTeamTaskRequest,
+) -> Result<TeamTaskDetailResponse, crate::api::error::ApiError> {
+    let user = require_user(headers, state).await?;
+    load_team_for_user(state, team_id, &user).await?;
+    let title = payload.title.trim().to_string();
+    if title.is_empty() {
+        return Err(crate::api::error::ApiError::bad_request(
+            "title is required",
+        ));
+    }
+    let created_by_actor_id =
+        normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
+    let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
+    let raw_context = payload.context.unwrap_or_else(|| json!({}));
+    let (task, conversation) = state
+        .teams
+        .create_task(
+            team_id,
+            &title,
+            &created_by_actor_id,
+            raw_context,
+            &conversation_mode,
+            payload.topic.as_deref(),
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run: None,
+    })
+}
 
 fn build_team_member_actor_context(
     team_id: &str,
@@ -161,6 +200,7 @@ async fn build_test_state_with_db_source(
         Vec::new(),
         "agenthub-codex-acp".to_string(),
         None,
+        true,
         permissions.clone(),
         auth.clone(),
     ));

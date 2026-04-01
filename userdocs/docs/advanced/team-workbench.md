@@ -14,6 +14,14 @@ Think about Team Workbench as three connected layers:
 - **Kanban**: the canonical task lane
 - **Runs and debug surfaces**: execution telemetry and deep inspection
 
+On smaller screens, Team Workbench switches between two panes instead of stacking
+everything into one page:
+
+- the Team rail
+- the active workspace
+
+Use the header toggle to move between them.
+
 The important distinction is that Team `runs` and `steps` are execution and
 debug artifacts. They are not the primary planning surface.
 
@@ -21,10 +29,13 @@ debug artifacts. They are not the primary planning surface.
 
 - **Channel**:
   - shared conversation thread, usually `# all`
+  - `# all` is a stable Team-level conversation target resolved by the backend, not whichever task
+    happens to be visible first in the Kanban list
   - human goals, constraints, approvals, and `@member_id` coordination requests
 - **Kanban**:
   - task ownership and lifecycle
   - the durable place to see work status
+  - not the place for human operators to manually author canonical Team tasks
 - **Agents**:
   - member list and per-member entry into `Agent ACP`
 - **Runs**:
@@ -76,9 +87,21 @@ In practice:
 Team Workbench is now task-first:
 
 - `Kanban` is the durable coordination surface
+- `Conversation` (`# all`) is a separate stable shared thread, not a workspace task you need to
+  recover manually from Kanban ordering
+- human requests and clarifications live in `Conversation`; leader/runtime turns agreed work into
+  canonical Kanban tasks
+- the normal Team UI and public HTTP surface do not expose direct canonical task creation; requests
+  go through `Conversation` and leader/runtime materialize tasks onto `Kanban`
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model
+
+The workbench also refreshes more aggressively on resume:
+
+- runtime state rechecks on focus / reconnect
+- `Kanban` refreshes on resume instead of only waiting for the next poll
+- shared `Conversation` refreshes immediately on restore/reconnect in addition to SSE
 
 This keeps context attached to the task instead of fragmenting it across many
 small execution steps.
@@ -86,6 +109,8 @@ small execution steps.
 ## What To Watch Operationally
 
 - whether the Team runtime is started or stopped
+- whether the Team runtime has correctly fallen back to `stopped` / `degraded` after members exit
+- whether a member that already exited no longer shows a stale `running` badge after refresh
 - whether Kanban ownership matches the real executing member
 - whether `Conversation` and `Kanban` stay in sync with the current plan
 - whether permission review requests route to the expected reviewer
@@ -106,9 +131,9 @@ still live in `Conversation` and `Kanban`.
 Permission review follows the Team routing model rather than a generic tool
 prompt:
 
-- worker-originated requests route to the leader
-- leader-originated requests route to a subordinate worker
-- nobody should review their own request
+- the system automatically assigns a non-requester reviewer
+- reviewers see the approval action in their Team workflow when they are the active reviewer
+- the requester never self-reviews
 - if agent review does not complete in time, the shared Team surface falls back
   to a human-visible review card
 

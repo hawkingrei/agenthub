@@ -193,7 +193,7 @@ where
     pub async fn ack(
         &self,
         cmd: AckActorMessageCommand,
-    ) -> Result<ActorMessageRecord, ActorMailboxError<S::Error>> {
+    ) -> Result<AckActorMessageResult, ActorMailboxError<S::Error>> {
         let result = self.store.ack_message(&cmd).await?;
         if result.status_changed {
             let event_payload = serde_json::json!({
@@ -215,7 +215,7 @@ where
                 )
                 .await?;
         }
-        Ok(result.message)
+        Ok(result)
     }
 
     pub async fn relay_remote_pending<R>(
@@ -253,7 +253,7 @@ where
                             delivered_at: cmd.now,
                         })
                         .await?;
-                    if delivered.status == ActorMessageStatus::Delivered {
+                    if delivered.message.status == ActorMessageStatus::Delivered {
                         result.delivered += 1;
                     }
                 }

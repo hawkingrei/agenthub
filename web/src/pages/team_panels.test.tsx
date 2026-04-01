@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
+import { MantineProvider } from "@mantine/core";
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MantineProvider } from "@mantine/core";
 import {
   api,
   AgentEvent,
@@ -28,38 +28,13 @@ import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
-
-if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
-  window.matchMedia = ((query: string) =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList) as typeof window.matchMedia;
-}
-
-if (typeof globalThis.ResizeObserver !== "function") {
-  globalThis.ResizeObserver = class ResizeObserver {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
-  } as typeof ResizeObserver;
-}
-
-function required<T>(value: T | null | undefined, message: string): T {
-  if (value == null) {
-    throw new Error(message);
-  }
-  return value;
-}
+installReactDomTestGlobals();
 
 function clickElement(element: Element | null): void {
   const node = required(element, "element not found");
@@ -168,12 +143,6 @@ async function waitForCondition(
     });
   }
   throw new Error("condition not met before timeout");
-}
-
-function renderWithMantine(root: Root, node: React.ReactNode): void {
-  act(() => {
-    root.render(<MantineProvider>{node}</MantineProvider>);
-  });
 }
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
@@ -448,6 +417,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findInteractiveByText(document.body, "Create Team"));
@@ -484,13 +454,15 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Teams 2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents");
-    expect(container.textContent).toContain("Channel");
+    expect(container.textContent).toContain("Workflow");
     expect(container.textContent).toContain("# all");
     const kanbanButton = findButtonByText(container, "Kanban");
     const channelButton = findButtonByText(container, "# all");
     expect(
-      Boolean(kanbanButton.compareDocumentPosition(channelButton) & Node.DOCUMENT_POSITION_FOLLOWING)
+      Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
+    expect(container.textContent).toContain("Human requests, planning, and team-visible progress.");
+    expect(container.textContent).toContain("Canonical system-managed tasks and execution state.");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("leader · working");
@@ -953,6 +925,7 @@ describe("team panels interactions", () => {
       root.render(<TeamTabsBar tab="runs" onTabChange={onTabChange} />);
     });
 
+    expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
     expect(container.textContent).toContain("Runs");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Agent ACP");
@@ -1632,6 +1605,7 @@ describe("team panels interactions", () => {
 
     renderWithMantine(root, <TeamTaskPanelHarness />);
 
+    expect(container.querySelector('[data-team-surface="conversation"]')).not.toBeNull();
     expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
     expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
     expect(queryButtonByText(container, "Refresh Thread")).toBeNull();
@@ -2351,7 +2325,7 @@ describe("team panels interactions", () => {
         value: 0,
       });
 
-      expect(findButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       renderWithMantine(
         root,
@@ -2391,34 +2365,23 @@ describe("team panels interactions", () => {
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
-
-      act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
-      });
-      expect(scrollNode.scrollTop).toBe(0);
-      act(() => {
-        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
-      });
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(13);
-      expect(container.querySelector("[data-team-channel-top-spacer='true']")).toBeNull();
-      expect(queryButtonByText(container, "Jump to bottom")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       act(() => {
         scrollNode.scrollTop = 80;
         scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
-      const jumpButton = queryButtonByText(container, "Jump to bottom");
+      const jumpButton = queryButtonByAriaLabel(container, "Jump to bottom");
       expect(jumpButton).not.toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
       expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
-      expect(queryButtonByText(container, "Jump to bottom")).toBeNull();
-      expect(queryButtonByText(container, "Jump to top")).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();
@@ -2467,8 +2430,29 @@ describe("team panels interactions", () => {
       expect(initialTexts).toContain("message 4");
       expect(initialTexts).toContain("message 13");
 
+      const scrollNode = required(
+        container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+        "team channel scroll container missing"
+      );
+      Object.defineProperty(scrollNode, "scrollHeight", {
+        configurable: true,
+        value: 640,
+      });
+      Object.defineProperty(scrollNode, "clientHeight", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(scrollNode, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: 640,
+      });
       act(() => {
-        clickElement(findButtonByText(container, "Jump to top"));
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+      act(() => {
+        scrollNode.scrollTop = 0;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
 
       const expandedTexts = markdownSpy.mock.calls.map((call) => call[0]);
@@ -2591,11 +2575,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("route");
   });
 
-  it("TeamTasksPanel supports task filters, creation, linked runs, and debug compile actions", () => {
+  it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", () => {
     const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();
-    const onNewTaskTitleChange = vi.fn();
-    const onCreateTask = vi.fn();
+    const onOpenConversation = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
     const onCompileTaskRunPreview = vi.fn();
     const onUseCompiledRunPayload = vi.fn();
@@ -2606,6 +2589,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
+            compactMode={false}
             developerMode={true}
             tasks={[
               buildPanelTask("task-1", {
@@ -2633,9 +2617,7 @@ describe("team panels interactions", () => {
             selectedTaskId="task-2"
             onSelectedTaskIdChange={onSelectedTaskIdChange}
             onRefreshTasks={onRefreshTasks}
-            newTaskTitle="New task draft"
-            onNewTaskTitleChange={onNewTaskTitleChange}
-            onCreateTask={onCreateTask}
+            onOpenConversation={onOpenConversation}
             busy={null}
             runs={[
               buildRun({
@@ -2678,17 +2660,11 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
-    changeInputValue(
-      required(
-        container.querySelector('input[placeholder="New task title"]') as HTMLInputElement | null,
-        "new task input missing"
-      ),
-      "Create changelog"
-    );
-    clickElement(findButtonByText(container, "New Task"));
+    clickElement(findButtonByText(container, "Open # all"));
     clickElement(findInteractiveByText(container, "Developer tools", "summary"));
     changeInputValue(
       required(
@@ -2706,8 +2682,7 @@ describe("team panels interactions", () => {
 
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
-    expect(onNewTaskTitleChange).toHaveBeenCalledWith("Create changelog");
-    expect(onCreateTask).toHaveBeenCalledTimes(1);
+    expect(onOpenConversation).toHaveBeenCalledTimes(1);
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -2720,8 +2695,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
     expect(container.textContent).toContain(
-      "Task status and ownership are agent-managed through Team runtime controls."
+      "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
+    expect(container.textContent).toContain("Open # all");
     expect(container.textContent).toContain("Latest run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
@@ -2732,6 +2708,7 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamTasksPanel
+            compactMode={false}
             developerMode={false}
             tasks={[
               buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
@@ -2744,9 +2721,7 @@ describe("team panels interactions", () => {
             selectedTaskId="task-progress"
             onSelectedTaskIdChange={vi.fn()}
             onRefreshTasks={vi.fn()}
-            newTaskTitle=""
-            onNewTaskTitleChange={vi.fn()}
-            onCreateTask={vi.fn()}
+            onOpenConversation={vi.fn()}
             busy={null}
             runs={[]}
             onOpenRun={vi.fn()}
@@ -2768,6 +2743,72 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
+  });
+
+  it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {
+    function CompactTaskHarness() {
+      const [selectedTaskId, setSelectedTaskId] = React.useState("");
+      return (
+        <TeamTasksPanel
+          compactMode={true}
+          developerMode={false}
+          tasks={[
+            buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+            buildPanelTask("task-progress", {
+              title: "Prepare rollout",
+              status: "in_progress",
+            }),
+          ]}
+          tasksLoading={false}
+          selectedTaskId={selectedTaskId}
+          onSelectedTaskIdChange={setSelectedTaskId}
+          onRefreshTasks={vi.fn()}
+          onOpenConversation={vi.fn()}
+          busy={null}
+          runs={[]}
+          onOpenRun={vi.fn()}
+          compilePreviewContextId=""
+          onCompilePreviewContextIdChange={vi.fn()}
+          onCompileTaskRunPreview={vi.fn()}
+          canCompileTask={false}
+          compiledRunPreview={null}
+          onUseCompiledRunPayload={vi.fn()}
+          onCreateRunFromCompiledPreview={vi.fn()}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          memberLiveStates={[]}
+        />
+      );
+    }
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <CompactTaskHarness />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).not.toContain("Task detail");
+    expect(container.querySelector('[aria-label="Back to Kanban"]')).toBeNull();
+
+    clickElement(findButtonByText(container, "Prepare rollout"));
+
+    expect(container.textContent).toContain("Task detail");
+    expect(container.textContent).toContain("Latest run");
+    expect(container.querySelector('[aria-label="Back to Kanban"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Board lanes");
+
+    clickElement(
+      required(
+        container.querySelector('[aria-label="Back to Kanban"]') as HTMLButtonElement | null,
+        "back to kanban button missing"
+      )
+    );
+
+    expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).not.toContain("Task detail");
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
@@ -2860,6 +2901,61 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("member=worker-agent");
     expect(container.textContent).toContain("role=worker");
     expect(container.textContent).toContain("session=task-77");
+  });
+
+  it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[
+          {
+            event_id: 25,
+            agent_id: "worker-agent",
+            session_id: "task-77",
+            seq: "25",
+            ts: 1_700_000_205,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "Panel layout should keep the ACP body above the input dock.",
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    const acpRoot = required(
+      container.querySelector(".acp") as HTMLDivElement | null,
+      "team member acp root missing"
+    );
+    const acpShell = required(
+      acpRoot.parentElement as HTMLDivElement | null,
+      "team member acp shell missing"
+    );
+    expect(acpShell.classList.contains("min-h-0")).toBe(true);
+    expect(acpShell.classList.contains("flex-1")).toBe(true);
+    expect(acpShell.classList.contains("overflow-hidden")).toBe(true);
+
+    const header = required(
+      acpShell.previousElementSibling as HTMLDivElement | null,
+      "team member header missing"
+    );
+    expect(header.className).toContain("output-header");
+    expect(container.querySelector("textarea")).not.toBeNull();
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {

@@ -2,9 +2,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  type RefCallback,
   useRef,
   useState,
-  type RefObject,
 } from "react";
 import { AcpView } from "../acp";
 import {
@@ -18,6 +18,10 @@ import {
 import type { SeqComparable } from "../seq_order";
 import { createRafThrottle } from "../raf_throttle";
 import { isNearBottom } from "../scroll";
+import {
+  buildConversationHeightEstimateModel,
+  buildVirtualConversationSliceWithHeightModel,
+} from "./conversation_height_estimate";
 import {
   deriveThreadJumpState,
   deriveThreadStickToBottom,
@@ -44,7 +48,7 @@ type UseAcpConversationArgs = {
 };
 
 type UseAcpConversationResult = {
-  acpConversationRef: RefObject<HTMLDivElement>;
+  acpConversationRef: RefCallback<HTMLDivElement>;
   conversationRenderItems: ConversationItem[];
   conversationWindowOffset: number;
   conversationVirtualTopSpacer: number;
@@ -343,7 +347,23 @@ export function useAcpConversation({
   isAgentActive,
   onLoadOlder,
 }: UseAcpConversationArgs): UseAcpConversationResult {
-  const acpConversationRef = useRef<HTMLDivElement | null>(null);
+  const acpConversationElementRef = useRef<HTMLDivElement | null>(null);
+  const [conversationViewportNode, setConversationViewportNode] =
+    useState<HTMLDivElement | null>(null);
+  const acpConversationRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
+    acpConversationElementRef.current = node;
+    setConversationViewportNode((prev) => (prev === node ? prev : node));
+    if (!node) {
+      return;
+    }
+    setConversationViewport((prev) =>
+      nextThreadViewport(prev, node.scrollTop, node.clientHeight)
+    );
+    setConversationViewportWidth((prev) => {
+      const nextWidth = node.clientWidth;
+      return prev === nextWidth ? prev : nextWidth;
+    });
+  }, []);
   const conversationScrollThrottleRef = useRef<ReturnType<
     typeof createRafThrottle
   > | null>(null);
@@ -369,6 +389,7 @@ export function useAcpConversation({
     top: 0,
     height: 0,
   });
+  const [conversationViewportWidth, setConversationViewportWidth] = useState(0);
   const didAutoAlignConversationRef = useRef(false);
   const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
   const [conversationFrozen, setConversationFrozen] = useState(false);
@@ -406,10 +427,30 @@ export function useAcpConversation({
     ? conversationFrozenItems
     : conversationWindow.items;
   const conversationSourceOffset = isFrozenView ? 0 : conversationWindow.offset;
-  const shouldVirtualizeConversation = shouldUseConversationVirtualization(
-    conversationStickToBottom,
-    conversationSourceItems.length
-  );
+  const shouldVirtualizeConversation =
+    acpTab === "conversation" &&
+    shouldUseConversationVirtualization(
+      conversationStickToBottom,
+      conversationSourceItems.length
+    );
+  const conversationHeightEstimateModel = useMemo(() => {
+    if (
+      !shouldVirtualizeConversation ||
+      conversationViewportWidth <= 0
+    ) {
+      return null;
+    }
+    return buildConversationHeightEstimateModel(
+      conversationSourceItems,
+      conversationViewportWidth,
+      conversationAvgHeight
+    );
+  }, [
+    shouldVirtualizeConversation,
+    conversationSourceItems,
+    conversationViewportWidth,
+    conversationAvgHeight,
+  ]);
   const conversationVirtualSlice = useMemo(() => {
     if (!shouldVirtualizeConversation) {
       return {
@@ -419,20 +460,34 @@ export function useAcpConversation({
         bottomSpacer: 0,
       };
     }
-    return buildVirtualConversationSlice(
-      conversationSourceItems,
-      conversationSourceOffset,
+    const model = conversationHeightEstimateModel;
+    if (!model) {
+      return {
+        items: conversationSourceItems,
+        offset: conversationSourceOffset,
+        topSpacer: 0,
+        bottomSpacer: 0,
+      };
+    }
+    const slice = buildVirtualConversationSliceWithHeightModel(
       conversationViewport.top,
       conversationViewport.height,
-      conversationAvgHeight
+      model,
+      VIRTUALIZATION_OVERSCAN
     );
+    return {
+      items: conversationSourceItems.slice(slice.start, slice.end),
+      offset: conversationSourceOffset + slice.start,
+      topSpacer: slice.topSpacer,
+      bottomSpacer: slice.bottomSpacer,
+    };
   }, [
     shouldVirtualizeConversation,
     conversationSourceItems,
     conversationSourceOffset,
+    conversationHeightEstimateModel,
     conversationViewport.top,
     conversationViewport.height,
-    conversationAvgHeight,
   ]);
   const conversationRenderItems = conversationVirtualSlice.items;
   const collapseCutoff = Math.max(0, conversationMessages.length - 50);
@@ -447,18 +502,57 @@ export function useAcpConversation({
     return eventMeta[key] ?? null;
   }, [activeAgent, activeSessionId, eventMeta]);
 
-  const syncConversationViewport = useCallback(() => {
-    const el = acpConversationRef.current;
+  const syncConversationViewport = useCallback((includeWidth: boolean = false) => {
+    const el = acpConversationElementRef.current;
     if (!el) return;
     setConversationViewport((prev) => {
       const nextTop = el.scrollTop;
       const nextHeight = el.clientHeight;
       return nextThreadViewport(prev, nextTop, nextHeight);
     });
+    if (!includeWidth) {
+      return;
+    }
+    setConversationViewportWidth((prev) => {
+      const nextWidth = el.clientWidth;
+      return prev === nextWidth ? prev : nextWidth;
+    });
   }, []);
 
+  useEffect(() => {
+    if (acpTab !== "conversation") {
+      return;
+    }
+    const el = conversationViewportNode;
+    if (!el) return;
+    syncConversationViewport(true);
+    if (typeof ResizeObserver !== "function") {
+      return;
+    }
+    const throttle = createRafThrottle(() => syncConversationViewport(true), {
+      requestAnimationFrame:
+        typeof window !== "undefined" &&
+        typeof window.requestAnimationFrame === "function"
+          ? window.requestAnimationFrame.bind(window)
+          : undefined,
+      cancelAnimationFrame:
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+          ? window.cancelAnimationFrame.bind(window)
+          : undefined,
+    });
+    const observer = new ResizeObserver(() => {
+      throttle.schedule();
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      throttle.cancel();
+    };
+  }, [acpTab, conversationViewportNode, syncConversationViewport]);
+
   const prepareForLoadOlder = () => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     pendingScrollAdjustRef.current = {
       prevHeight: el.scrollHeight,
@@ -485,7 +579,7 @@ export function useAcpConversation({
   }, []);
 
   const jumpToConversationBottom = useCallback(() => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
     lastConversationScrollTopRef.current = el.scrollTop;
@@ -509,7 +603,7 @@ export function useAcpConversation({
         targetId
       );
       if (targetIndex < 0) return false;
-      const el = acpConversationRef.current;
+      const el = acpConversationElementRef.current;
       if (!el) return false;
 
       const estimatedTop = estimateToolCallJumpTop(
@@ -530,8 +624,9 @@ export function useAcpConversation({
       const scrollNodeToCenter = (node: Element | null) => {
         if (!node || !(node instanceof HTMLElement)) return;
         node.scrollIntoView({ block: "center", inline: "nearest" });
-        if (acpConversationRef.current) {
-          lastConversationScrollTopRef.current = acpConversationRef.current.scrollTop;
+        if (acpConversationElementRef.current) {
+          lastConversationScrollTopRef.current =
+            acpConversationElementRef.current.scrollTop;
         }
         syncConversationViewport();
       };
@@ -551,7 +646,7 @@ export function useAcpConversation({
   );
 
   const alignConversationBottomNow = useCallback(() => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     if (acpTab !== "conversation") return;
     if (!conversationStickToBottom && !acpStickToBottomRef.current) return;
@@ -568,7 +663,7 @@ export function useAcpConversation({
       return;
     }
     window.requestAnimationFrame(() => {
-      const node = acpConversationRef.current;
+      const node = acpConversationElementRef.current;
       if (!node) return;
       node.scrollTop = node.scrollHeight;
       lastConversationScrollTopRef.current = node.scrollTop;
@@ -584,7 +679,7 @@ export function useAcpConversation({
         return;
       }
       window.requestAnimationFrame(() => {
-        const latest = acpConversationRef.current;
+        const latest = acpConversationElementRef.current;
         if (!latest) return;
         latest.scrollTop = latest.scrollHeight;
         lastConversationScrollTopRef.current = latest.scrollTop;
@@ -607,7 +702,7 @@ export function useAcpConversation({
   }, []);
 
   const handleConversationScrollNow = useCallback(() => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     syncConversationViewport();
     const previousTop = lastConversationScrollTopRef.current;
@@ -775,7 +870,7 @@ export function useAcpConversation({
       setShowConversationTopReachedHint(false);
       return;
     }
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     const canLoadOlder = shouldLoadOlder();
     const next = shouldShowConversationTopReachedHint(
@@ -806,7 +901,7 @@ export function useAcpConversation({
   }, [acpTab, conversationTailKey, shouldVirtualizeConversation, syncConversationViewport]);
 
   useEffect(() => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     if (acpTab !== "conversation") {
       conversationScrollRef.current = {
@@ -836,7 +931,7 @@ export function useAcpConversation({
   useEffect(() => {
     if (acpTab !== "conversation") return;
     if (!conversationStickToBottom) return;
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     if (!el) return;
     setConversationAvgHeight((prev) =>
       normalizeThreadAvgHeightEstimate(
@@ -848,7 +943,7 @@ export function useAcpConversation({
   }, [conversationMessages.length, acpTab, conversationStickToBottom]);
 
   useEffect(() => {
-    const el = acpConversationRef.current;
+    const el = acpConversationElementRef.current;
     const pending = pendingScrollAdjustRef.current;
     if (!el || !pending) return;
     const nextHeight = el.scrollHeight;

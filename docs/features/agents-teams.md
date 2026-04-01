@@ -41,6 +41,9 @@ terminology and operating expectations drift.
   mutate those fields directly.
 - Canonical task creation and lifecycle management belong to leader planning, not direct human task
   authoring.
+- The normal public Team HTTP surface intentionally exposes task reads, not direct canonical task
+  creation; leader/runtime task creation flows through internal actor controls instead of
+  `POST /api/teams/:id/tasks`.
 
 3. Execution telemetry layer
 - `run` and `step` are execution/debug artifacts, not the primary collaboration unit.
@@ -80,10 +83,19 @@ terminology and operating expectations drift.
   - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
   - `Kanban` is the primary task lane.
+  - Human operators do not create canonical Team tasks from `Kanban`; they use `Conversation`
+    (`all`) to request work or clarify constraints, then leader planning / Team runtime materialize
+    tasks onto the board.
   - `Runs` is the execution-history/debug lane for explicit run browsing, `Start Team`, and
     active-run selection.
   - `Agent ACP`, `Overview`, `Events`, `Steps`, `Mailbox`, `Member Console`, and `Debug` are run-scoped lanes.
 - Run-scoped lanes should not block conversation; when no run is active they show explicit guidance to return to `Runs`.
+- Narrow-screen Team detail routes should behave as two panes instead of a long stacked page:
+  - Team rail pane (`# all`, `Kanban`, members)
+  - workspace pane (selected surface)
+  switched by the header toggle.
+- The workspace pane must expose direct primary workflow switches for `Conversation` and `Kanban`
+  even when the Team rail is hidden.
 
 ### 5) Cold-Start Workflow
 
@@ -138,6 +150,8 @@ terminology and operating expectations drift.
 - Team ACP permission review is mailbox-first:
   - worker-originated ACP permission requests should prefer a non-requester agent reviewer first;
     if another worker is available, route there before falling back to leader
+  - when multiple non-requester agent reviewers are available, permission review should prefer an
+    idle reviewer (no recent non-user ACP output) before interrupting an actively producing agent
   - leader-originated ACP permission requests route to an automatically selected subordinate worker reviewer
   - requester must never review its own request; only the current automatically assigned reviewer should see the approval action
   - approval/rejection should be treated as ACP-side review control flow rather than normal peer mailbox work
@@ -226,16 +240,35 @@ Constraint:
   and report progress/blockers promptly so task state remains current.
 - Human clients may read Team task state from `Kanban`, but canonical task `status` and
   `assigned_member_id` changes remain agent/runtime controls.
+- Public Team HTTP clients also do not create canonical tasks directly; they request work in
+  `Conversation` and let leader/runtime materialize Kanban tasks.
 - `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
   leader assigns a member explicitly.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
+- The canonical `# all` shared-thread is a dedicated team-level conversation target, not just
+  another entry discovered from the paginated Kanban task list.
+- Public clients should load and ensure the shared thread through a dedicated Team shared-thread
+  contract; hiding it from workspace-task listings is a presentation choice, not a storage/query
+  invariant.
+- Team surface refresh should tighten around resume/reconnect:
+  - selected Team runtime rechecks on focus, visibility restore, and network reconnect
+  - active `Kanban` refresh does the same
+  - shared `Conversation` re-refreshes immediately on focus, visibility restore, and reconnect in
+    addition to SSE and fallback polling
+- If legacy data contains multiple shared-thread tasks, backend canonicalization should prefer the
+  thread with the newest persisted conversation message; when no shared-thread messages exist yet,
+  it should fall back to the oldest created shared-thread record for stability.
 - Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
-  `leader -> subordinate worker`) and fall back to human review in `Conversation` (`all`) when
-  agent review cannot complete.
+  `leader -> subordinate worker`), prefer an idle reviewer first when more than one agent candidate
+  is available, and fall back to human review in `Conversation` (`all`) when agent review cannot
+  complete.
 - `Runs` tab is the only primary entry for run selection/start.
 - Run-scoped tabs must use one shared active-run gate policy and one shared fallback guidance pattern.
+- Team runtime reads should reconcile stale member `running` rows against live runtime handles
+  before reporting member/session status so crashed or already-exited members do not keep the Team
+  workbench stuck in a stale `running` state.
 - `Agent ACP -> Debug` may expose a member-scoped `Force New Session` recovery action:
   - it clears the selected member's persisted ACP session for the active provider
   - restarts only that member runtime

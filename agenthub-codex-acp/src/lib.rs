@@ -7,6 +7,7 @@ use codex_core::config::{Config, ConfigOverrides};
 use codex_core::features::{Feature, Features};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::{io::Result as IoResult, rc::Rc};
@@ -28,6 +29,37 @@ mod prompt_args;
 mod thread;
 
 pub static ACP_CLIENT: OnceLock<Arc<AgentSideConnection>> = OnceLock::new();
+const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
+
+pub(crate) fn spawn_acp_io_task<F>(
+    thread_name: &str,
+    io_task: F,
+) -> IoResult<tokio::sync::oneshot::Receiver<IoResult<()>>>
+where
+    F: Future<Output = agent_client_protocol::Result<()>> + Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let thread_name = thread_name.to_string();
+
+    std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(std::io::Error::other)
+                .and_then(|runtime| {
+                    let local_set = LocalSet::new();
+                    runtime
+                        .block_on(local_set.run_until(io_task))
+                        .map_err(|err| std::io::Error::other(format!("ACP I/O error: {err}")))
+                });
+            drop(tx.send(result));
+        })
+        .map_err(std::io::Error::other)?;
+
+    Ok(rx)
+}
 
 const MISLEADING_MODELS_REFRESH_TIMEOUT_MESSAGE: &str =
     "failed to refresh available models: timeout waiting for child process to exit";
@@ -179,6 +211,41 @@ fn enable_default_multi_agent_collab<T: CollabFeatureState>(
     Ok(true)
 }
 
+fn parse_agenthub_multi_agent_enabled_env(raw: &str) -> Result<bool, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        value => Err(format!(
+            "invalid {} value '{}'; expected one of 1/0/true/false/on/off/yes/no",
+            AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, value
+        )),
+    }
+}
+
+fn resolve_agenthub_multi_agent_enabled_override() -> Result<Option<bool>, String> {
+    let Some(raw) = std::env::var_os(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV) else {
+        return Ok(None);
+    };
+    let raw = raw.to_string_lossy();
+    if raw.trim().is_empty() {
+        return Err(format!(
+            "{} must not be empty",
+            AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV
+        ));
+    }
+    parse_agenthub_multi_agent_enabled_env(&raw).map(Some)
+}
+
+fn apply_agenthub_multi_agent_override<T: CollabFeatureState>(
+    features: &mut T,
+    enabled: Option<bool>,
+) -> Result<bool, String> {
+    match enabled {
+        Some(true) => enable_default_multi_agent_collab(features),
+        Some(false) | None => Ok(false),
+    }
+}
+
 /// Run the Codex ACP agent.
 ///
 /// This sets up an ACP agent that communicates over stdio, bridging
@@ -224,11 +291,21 @@ pub async fn run_main(
                     format!("error loading config: {e}"),
                 )
             })?;
-    if let Err(err) = enable_default_multi_agent_collab(&mut config.features) {
-        tracing::warn!(
-            error = %err,
-            "failed to enable multi_agent feature by default for agenthub-codex-acp",
-        );
+    match resolve_agenthub_multi_agent_enabled_override() {
+        Ok(enabled) => {
+            if let Err(err) = apply_agenthub_multi_agent_override(&mut config.features, enabled) {
+                tracing::warn!(
+                    error = %err,
+                    "failed to apply AgentHub multi_agent feature override for agenthub-codex-acp",
+                );
+            }
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "ignoring invalid AgentHub multi_agent feature override for agenthub-codex-acp",
+            );
+        }
     }
     normalize_responses_websocket_support(&mut config);
 
@@ -250,9 +327,10 @@ pub async fn run_main(
                 return Err(std::io::Error::other("ACP client already set"));
             }
 
-            io_task
-                .await
-                .map_err(|e| std::io::Error::other(format!("ACP I/O error: {e}")))
+            let io_task = spawn_acp_io_task("agenthub-codex-acp-io", io_task)?;
+            io_task.await.map_err(|_| {
+                std::io::Error::other("ACP I/O thread shut down before reporting a result")
+            })?
         })
         .await?;
 
@@ -268,11 +346,16 @@ pub use codex_mcp_server::{
 #[cfg(test)]
 mod tests {
     use super::{
-        enable_default_multi_agent_collab, responses_websocket_feature_opt_in_enabled,
-        rewrite_misleading_timeout_message, should_disable_implicit_responses_websockets,
+        AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, apply_agenthub_multi_agent_override,
+        parse_agenthub_multi_agent_enabled_env, resolve_agenthub_multi_agent_enabled_override,
+        responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
+        should_disable_implicit_responses_websockets,
     };
     use codex_core::features::{Feature, Features};
+    use std::sync::{Mutex, MutexGuard};
     use tracing::Level;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct FailingCollabFeatureState {
         enabled: bool,
@@ -288,12 +371,16 @@ mod tests {
         }
     }
 
+    fn lock_env() -> MutexGuard<'static, ()> {
+        ENV_LOCK.lock().expect("lock env")
+    }
+
     #[test]
-    fn agenthub_codex_acp_enables_multi_agent_by_default() {
+    fn agenthub_codex_acp_enables_multi_agent_when_override_is_true() {
         let mut features = Features::with_defaults();
 
-        let changed =
-            enable_default_multi_agent_collab(&mut features).expect("enable collab succeeds");
+        let changed = apply_agenthub_multi_agent_override(&mut features, Some(true))
+            .expect("enable collab succeeds");
 
         assert!(changed);
         assert!(features.enabled(Feature::Collab));
@@ -304,21 +391,97 @@ mod tests {
         let mut features = Features::with_defaults();
         features.enable(Feature::Collab);
 
-        let changed =
-            enable_default_multi_agent_collab(&mut features).expect("no-op enable succeeds");
+        let changed = apply_agenthub_multi_agent_override(&mut features, Some(true))
+            .expect("no-op enable succeeds");
 
         assert!(!changed);
         assert!(features.enabled(Feature::Collab));
     }
 
     #[test]
+    fn agenthub_codex_acp_skips_multi_agent_enable_when_override_is_false() {
+        let mut features = Features::with_defaults();
+
+        let changed = apply_agenthub_multi_agent_override(&mut features, Some(false))
+            .expect("disable override is a no-op");
+
+        assert!(!changed);
+        assert!(!features.enabled(Feature::Collab));
+    }
+
+    #[test]
+    fn agenthub_codex_acp_skips_multi_agent_enable_without_override() {
+        let mut features = Features::with_defaults();
+
+        let changed = apply_agenthub_multi_agent_override(&mut features, None)
+            .expect("missing override is a no-op");
+
+        assert!(!changed);
+        assert!(!features.enabled(Feature::Collab));
+    }
+
+    #[test]
     fn agenthub_codex_acp_surfaces_collab_enable_failures() {
         let mut features = FailingCollabFeatureState { enabled: false };
 
-        let err = enable_default_multi_agent_collab(&mut features)
+        let err = apply_agenthub_multi_agent_override(&mut features, Some(true))
             .expect_err("failing feature gate should be surfaced");
 
         assert!(err.contains("pinned by test"));
+    }
+
+    #[test]
+    fn parse_agenthub_multi_agent_enabled_env_accepts_common_true_values() {
+        for raw in ["1", "true", "TRUE", " yes ", "on"] {
+            assert!(parse_agenthub_multi_agent_enabled_env(raw).expect("parse true"));
+        }
+    }
+
+    #[test]
+    fn parse_agenthub_multi_agent_enabled_env_accepts_common_false_values() {
+        for raw in ["0", "false", "FALSE", " no ", "off"] {
+            assert!(!parse_agenthub_multi_agent_enabled_env(raw).expect("parse false"));
+        }
+    }
+
+    #[test]
+    fn parse_agenthub_multi_agent_enabled_env_rejects_invalid_values() {
+        let err = parse_agenthub_multi_agent_enabled_env("maybe")
+            .expect_err("invalid values should be rejected");
+        assert!(err.contains(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV));
+    }
+
+    #[test]
+    fn resolve_agenthub_multi_agent_enabled_override_reads_env() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, "true");
+        }
+        assert_eq!(
+            resolve_agenthub_multi_agent_enabled_override().expect("resolve env"),
+            Some(true)
+        );
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV);
+        }
+    }
+
+    #[test]
+    fn resolve_agenthub_multi_agent_enabled_override_rejects_blank_env() {
+        let _guard = lock_env();
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::set_var(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV, "   ");
+        }
+        let err = resolve_agenthub_multi_agent_enabled_override()
+            .expect_err("blank env should be rejected");
+        assert!(err.contains("must not be empty"));
+        // SAFETY: tests serialize environment mutation and restore state before exit.
+        unsafe {
+            std::env::remove_var(AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV);
+        }
     }
 
     #[test]

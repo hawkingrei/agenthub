@@ -552,7 +552,14 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["secret"], json!("[redacted]"));
 
-    let listed = manager.list_tasks(&team.id, 20).await.expect("list tasks");
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, task.id);
 
@@ -2241,8 +2248,9 @@ async fn actor_messages_support_inbox_and_ack_flow() {
         .ack_actor_message(&run.id, "reviewer", sent.message_id)
         .await
         .expect("ack message");
-    assert_eq!(delivered.status, TeamActorMessageStatus::Delivered);
-    assert!(delivered.delivered_at.is_some());
+    assert!(delivered.status_changed);
+    assert_eq!(delivered.message.status, TeamActorMessageStatus::Delivered);
+    assert!(delivered.message.delivered_at.is_some());
 
     let pending_after_ack = manager
         .list_actor_inbox(&run.id, "reviewer", 100, None, false)
@@ -2394,6 +2402,57 @@ async fn actor_messages_detect_pending_payload_type_by_actor_inbox() {
         .await
         .expect("check worker_status pending");
     assert!(has_worker_status_pending);
+}
+
+#[tokio::test]
+async fn actor_ack_reports_noop_when_message_is_already_delivered() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-ack-noop-team".to_string(),
+            description: Some("team for duplicate ack diagnostics".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"},{"member_id":"reviewer"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-ack-noop"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let sent = manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &run.id,
+            from_actor_id: "planner",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "reviewer",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "coordination",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({"type":"chat_message","text":"please review"}),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send message");
+
+    let first = manager
+        .ack_actor_message(&run.id, "reviewer", sent.message_id)
+        .await
+        .expect("first ack");
+    assert!(first.status_changed);
+    assert_eq!(first.message.status, TeamActorMessageStatus::Delivered);
+
+    let second = manager
+        .ack_actor_message(&run.id, "reviewer", sent.message_id)
+        .await
+        .expect("second ack");
+    assert!(!second.status_changed);
+    assert_eq!(second.message.status, TeamActorMessageStatus::Delivered);
 }
 
 #[tokio::test]
@@ -3421,6 +3480,129 @@ async fn actor_mailbox_service_reuses_existing_shared_thread_for_canonical_reply
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_prefers_shared_thread_with_latest_message_when_duplicates_exist() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-canonical-shared-thread-team".to_string(),
+            description: Some("team for canonical shared thread selection".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-canonical-shared-thread"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let (preferred_task, _preferred_conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"test"
+            }),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create preferred shared thread");
+    let (older_task, _older_conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"test"
+            }),
+            "group_chat",
+            Some("shared"),
+        )
+        .await
+        .expect("create older shared thread");
+
+    manager
+        .append_task_conversation_message(
+            &older_task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"older duplicate thread"
+            }),
+        )
+        .await
+        .expect("append older duplicate thread message");
+    manager
+        .append_task_conversation_message(
+            &preferred_task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"newest canonical thread"
+            }),
+        )
+        .await
+        .expect("append newest canonical thread message");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: Some("user".to_string()),
+            channel_id: None,
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"persist into canonical duplicate thread"
+            }),
+            idempotency_key: Some("msg-canonical-shared-thread-1".to_string()),
+        })
+        .await
+        .expect("send shared thread reply into canonical duplicate thread");
+
+    let message_task_id: String = sqlx::query_scalar(
+        r#"
+        SELECT task_id
+        FROM team_conversation_messages
+        WHERE task_id IN (
+            SELECT id
+            FROM team_tasks
+            WHERE team_id = ?1
+              AND (title = 'all' OR trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), '')) = 'shared_thread')
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("load canonical duplicate shared thread message task id");
+    assert_eq!(message_task_id, preferred_task.id);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_validates_required_fields() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db);
@@ -4184,6 +4366,45 @@ async fn list_active_runs_returns_non_terminal_runs_only() {
     assert!(active_ids.contains(&submitted_run.id.as_str()));
     assert!(active_ids.contains(&working_run.id.as_str()));
     assert!(!active_ids.contains(&canceled_run.id.as_str()));
+}
+
+#[tokio::test]
+async fn list_active_runs_for_team_excludes_shared_thread_mailbox_runs() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "active-runs-team-filtered".to_string(),
+            description: Some("team to verify per-team active run listing".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let visible_run = manager
+        .create_run(&team.id, Some("ctx-visible"), json!({"payload":"visible"}))
+        .await
+        .expect("create visible run");
+    let shared_mailbox_run = manager
+        .ensure_shared_thread_mailbox_run(&team.id, "shared-thread-task", "conversation-all")
+        .await
+        .expect("create shared mailbox run");
+    sqlx::query(
+        "UPDATE team_runs SET status = 'working', started_at = COALESCE(started_at, ?1) WHERE id = ?2",
+    )
+        .bind(chrono::Utc::now().timestamp())
+        .bind(&shared_mailbox_run.id)
+        .execute(&db)
+        .await
+        .expect("promote shared mailbox run to active status");
+
+    let active_runs = manager
+        .list_active_runs_for_team(&team.id, 20)
+        .await
+        .expect("list active runs for team");
+    let active_ids: Vec<&str> = active_runs.iter().map(|run| run.id.as_str()).collect();
+    assert_eq!(active_ids, vec![visible_run.id.as_str()]);
 }
 
 #[tokio::test]

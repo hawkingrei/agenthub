@@ -248,8 +248,7 @@ describe("AcpPanel layout", () => {
       />
     );
     expect(html).toContain('scroll-padding-bottom:104px');
-    expect(html).toContain('class="acp-conversation-spacer dock-clearance"');
-    expect(html).toContain('height:104px');
+    expect(html).not.toContain('class="acp-conversation-spacer dock-clearance"');
   });
 
   it("hides conversation jump button when debug tab is active", () => {

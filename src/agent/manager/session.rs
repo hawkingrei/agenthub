@@ -463,7 +463,10 @@ impl AgentManager {
             args: agent.args.clone(),
             workdir: start_policy.workdir.clone(),
             actor_context: actor_context.clone(),
-            extra_env: default_env_for_acp_provider(acp_provider),
+            extra_env: default_env_for_acp_provider(
+                acp_provider,
+                self.codex_acp_multi_agent_enabled,
+            ),
         };
         let local_execution = match self
             .local_executor

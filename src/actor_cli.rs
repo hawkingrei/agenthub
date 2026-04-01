@@ -1,6 +1,10 @@
 use serde_json::Value;
 
 use crate::team::{TeamActorMessageTransport, TeamTaskListQuery, TeamTaskStatus};
+use agenthub_team_actor::{
+    ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, build_default_actor_channel_idempotency_key,
+    build_default_actor_message_idempotency_key,
+};
 
 #[cfg(test)]
 use crate::actor_runtime_env::{
@@ -9,8 +13,8 @@ use crate::actor_runtime_env::{
 };
 #[cfg(test)]
 use agenthub_team_actor::{
-    ACTOR_MAIN_PEER_ID, ActorInboxRequest, ActorMailboxService, ActorMessageStatus,
-    ActorServiceError, ActorServiceErrorCode,
+    ActorInboxRequest, ActorMailboxService, ActorMessageStatus, ActorServiceError,
+    ActorServiceErrorCode,
 };
 
 const MAX_TIME_TRIGGER_DELAY_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -61,6 +65,57 @@ enum ActorSendPayloadSource {
     Payload,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ActorSendIdempotency {
+    Disabled,
+    Resolved(String),
+    DeferredDefault,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorSendTargetRef<'a> {
+    Direct { to_actor_id: &'a str },
+    Channel { channel_id: &'a str },
+}
+
+fn build_actor_send_default_idempotency_key(
+    run_id: &str,
+    from_actor_id: &str,
+    target: ActorSendTargetRef<'_>,
+    channel: &str,
+    transport: &TeamActorMessageTransport,
+    route: Option<&Value>,
+    payload: &Value,
+) -> String {
+    match target {
+        ActorSendTargetRef::Direct { to_actor_id } => build_default_actor_message_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            to_actor_id,
+            if *transport == TeamActorMessageTransport::Remote {
+                ACTOR_NODE_PEER_ID
+            } else {
+                ACTOR_MAIN_PEER_ID
+            },
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+        ActorSendTargetRef::Channel { channel_id } => build_default_actor_channel_idempotency_key(
+            run_id,
+            from_actor_id,
+            ACTOR_MAIN_PEER_ID,
+            channel_id,
+            channel,
+            transport.as_str(),
+            route,
+            payload,
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TeamTaskNoteKind {
     Comment,
@@ -89,7 +144,7 @@ enum ActorCommand {
         actor_id: String,
     },
     Inbox {
-        run_id: String,
+        run_id: Option<String>,
         actor_id: String,
         limit: i64,
         after_id: Option<i64>,
@@ -97,7 +152,7 @@ enum ActorCommand {
         auto_ack: bool,
     },
     Ack {
-        run_id: String,
+        run_id: Option<String>,
         actor_id: String,
         message_ids: Vec<i64>,
     },
@@ -134,7 +189,8 @@ enum ActorCommand {
         team_id: Option<String>,
         run_id: Option<String>,
         actor_id: String,
-        task_id: String,
+        task_id: Option<String>,
+        shared_thread: bool,
         kind: TeamTaskNoteKind,
         text: String,
     },
@@ -159,7 +215,7 @@ enum ActorCommand {
         outcome: Option<String>,
     },
     Send {
-        run_id: String,
+        run_id: Option<String>,
         from_actor_id: String,
         to_actor_id: Option<String>,
         channel_id: Option<String>,
@@ -168,7 +224,7 @@ enum ActorCommand {
         route: Option<Value>,
         payload: Box<Value>,
         payload_source: ActorSendPayloadSource,
-        idempotency_key: Option<String>,
+        idempotency: ActorSendIdempotency,
     },
 }
 mod execute;
@@ -182,6 +238,10 @@ use self::parse::parse_actor_args;
 
 #[cfg(test)]
 use self::execute::ack_actor_messages;
+#[cfg(test)]
+use self::execute::require_shared_thread_task_id;
+#[cfg(test)]
+use self::execute::resolve_shared_thread_task_id;
 #[cfg(test)]
 use self::output::{actor_output_preference_for_command, encode_actor_output};
 #[cfg(test)]
@@ -198,19 +258,12 @@ fn maybe_reject_legacy_actor_mcp_args(args: &[String]) -> Option<anyhow::Result<
     None
 }
 
-pub async fn maybe_run_from_args() -> Option<anyhow::Result<()>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if let Some(result) = maybe_reject_legacy_actor_mcp_args(&args) {
-        return Some(result);
+pub async fn run_from_args(args: &[String]) -> anyhow::Result<()> {
+    if let Some(result) = maybe_reject_legacy_actor_mcp_args(args) {
+        return result;
     }
-    if args.first().map(String::as_str) != Some("actor") {
-        return None;
-    }
-    let parsed = parse_actor_args(&args[1..]);
-    Some(match parsed {
-        Ok(parsed) => run_actor_command(parsed.command, parsed.output_mode).await,
-        Err(err) => Err(err),
-    })
+    let parsed = parse_actor_args(args)?;
+    run_actor_command(parsed.command, parsed.output_mode).await
 }
 
 #[cfg(test)]
@@ -313,6 +366,7 @@ mod tests {
                 message_id: message.message_id,
                 state: ActorMessageStatus::Delivered,
                 acked_at: 100,
+                status_changed: true,
                 message: agenthub_team_actor::ActorMessageRecord {
                     status: ActorMessageStatus::Delivered,
                     delivered_at: Some(100),
@@ -352,6 +406,7 @@ mod tests {
                     message_id: request.message_id,
                     state: ActorMessageStatus::Delivered,
                     acked_at: 100,
+                    status_changed: true,
                     message: mock_inbox_message(request.message_id, ActorMessageStatus::Delivered),
                 })
             }
@@ -405,7 +460,7 @@ mod tests {
                 auto_ack,
                 ..
             } => {
-                assert_eq!(run_id, "run-x");
+                assert_eq!(run_id.as_deref(), Some("run-x"));
                 assert_eq!(actor_id, "planner");
                 assert_eq!(limit, 5);
                 assert!(!auto_ack);
@@ -433,7 +488,7 @@ mod tests {
         assert!(matches!(
             parsed.command,
             ActorCommand::Inbox { ref run_id, ref actor_id, .. }
-                if run_id == "run-x" && actor_id == "planner"
+                if run_id.as_deref() == Some("run-x") && actor_id == "planner"
         ));
     }
 
@@ -452,7 +507,7 @@ mod tests {
         assert!(matches!(
             parsed.command,
             ActorCommand::Inbox { ref run_id, ref actor_id, .. }
-                if run_id == "run-y" && actor_id == "planner"
+                if run_id.as_deref() == Some("run-y") && actor_id == "planner"
         ));
     }
 
@@ -472,6 +527,38 @@ mod tests {
             ActorCommand::Inbox { auto_ack, .. } => assert!(auto_ack),
             _ => panic!("expected inbox command"),
         }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_inbox_allows_team_scope_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
+        }
+        let args = vec!["inbox".to_string(), "--limit".to_string(), "20".to_string()];
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox {
+                run_id,
+                actor_id,
+                limit,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "planner");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("expected inbox command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -583,25 +670,31 @@ mod tests {
     #[test]
     fn parse_inbox_ignores_legacy_run_env_alias() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
             std::env::set_var("AGENTHUB_ACTOR_RUN_ID", "run-legacy-only");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "planner");
         }
         let args = vec!["inbox".to_string()];
-        let err = match parse_actor_command(&args, &mut ActorOutputMode::Default) {
-            Ok(_) => panic!("legacy run env alias should be ignored"),
-            Err(err) => err,
+        let parsed =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse inbox");
+        match parsed {
+            ActorCommand::Inbox {
+                run_id, actor_id, ..
+            } => {
+                assert!(run_id.is_none(), "legacy run env alias should be ignored");
+                assert_eq!(actor_id, "planner");
+            }
+            other => panic!("expected inbox command, got {other:?}"),
         };
-        assert!(
-            err.to_string().contains("run_id is required"),
-            "unexpected error: {err}"
-        );
         unsafe {
             std::env::remove_var("AGENTHUB_ACTOR_RUN_ID");
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
@@ -655,10 +748,11 @@ mod tests {
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
-            ActorCommand::Send {
-                idempotency_key, ..
-            } => {
-                let idempotency_key = idempotency_key.expect("default idempotency key");
+            ActorCommand::Send { idempotency, .. } => {
+                let idempotency_key = match idempotency {
+                    ActorSendIdempotency::Resolved(idempotency_key) => idempotency_key,
+                    other => panic!("expected resolved idempotency key, got {other:?}"),
+                };
                 assert!(idempotency_key.starts_with("auto:v1:"));
             }
             _ => panic!("expected send command"),
@@ -689,11 +783,9 @@ mod tests {
         ];
         let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default).expect("parse send");
         match parsed {
-            ActorCommand::Send {
-                idempotency_key, ..
-            } => {
+            ActorCommand::Send { idempotency, .. } => {
                 assert!(
-                    idempotency_key.is_none(),
+                    matches!(idempotency, ActorSendIdempotency::Disabled),
                     "allow duplicate should skip idempotency key"
                 );
             }
@@ -839,7 +931,7 @@ mod tests {
                 actor_id,
                 message_ids,
             } => {
-                assert_eq!(run_id, "run-ack-batch");
+                assert_eq!(run_id.as_deref(), Some("run-ack-batch"));
                 assert_eq!(actor_id, "worker");
                 assert_eq!(message_ids, vec![41, 42]);
             }
@@ -848,6 +940,101 @@ mod tests {
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_ack_accepts_positional_message_ids() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-positional");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec!["ack".to_string(), "41".to_string(), "42".to_string()];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse positional ack message ids");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert_eq!(run_id.as_deref(), Some("run-ack-positional"));
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41, 42]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_ack_allows_team_scope_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-ack-scope");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker");
+        }
+        let args = vec!["ack".to_string(), "41".to_string()];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse ack without current run");
+        match parsed {
+            ActorCommand::Ack {
+                run_id,
+                actor_id,
+                message_ids,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker");
+                assert_eq!(message_ids, vec![41]);
+            }
+            _ => panic!("expected ack command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_send_defers_default_idempotency_key_without_current_run_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-send-scope");
+            std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec![
+            "send".to_string(),
+            "--to-actor-id".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "hello".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse send without current run");
+        match parsed {
+            ActorCommand::Send {
+                run_id,
+                idempotency,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert!(matches!(idempotency, ActorSendIdempotency::DeferredDefault));
+            }
+            _ => panic!("expected send command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[test]
@@ -865,7 +1052,7 @@ mod tests {
             .expect_err("ack without message ids should fail");
         assert!(
             err.to_string()
-                .contains("at least one --message-id is required")
+                .contains("at least one message_id is required")
         );
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
@@ -1245,6 +1432,61 @@ mod tests {
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
         restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_send_accepts_direct_alias_and_shared_flag() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-aliases");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+
+        let direct_args = vec![
+            "send".to_string(),
+            "--direct".to_string(),
+            "worker-a".to_string(),
+            "--text".to_string(),
+            "please verify".to_string(),
+        ];
+        let direct = parse_actor_command(&direct_args, &mut ActorOutputMode::Default)
+            .expect("parse direct alias send");
+        match direct {
+            ActorCommand::Send {
+                to_actor_id,
+                channel_id,
+                ..
+            } => {
+                assert_eq!(to_actor_id.as_deref(), Some("worker-a"));
+                assert!(channel_id.is_none());
+            }
+            _ => panic!("expected send command"),
+        }
+
+        let shared_args = vec![
+            "send".to_string(),
+            "--shared".to_string(),
+            "--text".to_string(),
+            "status update".to_string(),
+        ];
+        let shared = parse_actor_command(&shared_args, &mut ActorOutputMode::Default)
+            .expect("parse shared alias send");
+        match shared {
+            ActorCommand::Send {
+                to_actor_id,
+                channel_id,
+                ..
+            } => {
+                assert!(to_actor_id.is_none());
+                assert_eq!(channel_id.as_deref(), Some("all"));
+            }
+            _ => panic!("expected send command"),
+        }
+
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
     #[tokio::test]
@@ -1743,6 +1985,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_task_update_accepts_context_merge_file_alias() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update-file");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let temp = write_temp_actor_cli_test_file("team-task-merge", r#"{"repo":"tidb"}"#);
+        let args = vec![
+            "team-task-update".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--context-merge-file".to_string(),
+            temp.path().display().to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-task-update merge file alias");
+        match parsed {
+            ActorCommand::TeamTaskUpdate { context_merge, .. } => {
+                assert_eq!(
+                    context_merge
+                        .as_ref()
+                        .and_then(|value| value.get("repo"))
+                        .and_then(Value::as_str),
+                    Some("tidb")
+                );
+            }
+            _ => panic!("expected team-task-update command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
     fn parse_team_task_update_rejects_assign_and_unassign_together() {
         let args = vec![
             "team-task-update".to_string(),
@@ -1781,9 +2058,11 @@ mod tests {
     #[test]
     fn parse_team_task_note_accepts_kind_and_run_scope() {
         let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
         let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
+            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-note");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-note");
         }
@@ -1804,19 +2083,279 @@ mod tests {
                 run_id,
                 actor_id,
                 task_id,
+                shared_thread,
                 kind,
                 text,
             } => {
                 assert!(team_id.is_none());
                 assert_eq!(run_id.as_deref(), Some("run-note"));
                 assert_eq!(actor_id, "leader-note");
-                assert_eq!(task_id, "task-note-1");
+                assert_eq!(task_id.as_deref(), Some("task-note-1"));
+                assert!(!shared_thread);
                 assert_eq!(kind.as_str(), "result");
                 assert_eq!(text, "done");
             }
             _ => panic!("expected team-task-note command"),
         }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_task_note_accepts_shared_thread_without_task_id() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-shared");
+        }
+        let args = vec![
+            "team-task-note".to_string(),
+            "--shared-thread".to_string(),
+            "--kind".to_string(),
+            "result".to_string(),
+            "--text".to_string(),
+            "shared update".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse shared-thread team-task-note");
+        match parsed {
+            ActorCommand::TeamTaskNote {
+                team_id,
+                run_id,
+                actor_id,
+                task_id,
+                shared_thread,
+                ..
+            } => {
+                assert_eq!(team_id.as_deref(), Some("team-shared"));
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "leader-shared");
+                assert!(task_id.is_none());
+                assert!(shared_thread);
+            }
+            _ => panic!("expected team-task-note command"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_task_note_rejects_shared_thread_with_explicit_task_id() {
+        let args = vec![
+            "team-task-note".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--shared-thread".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--text".to_string(),
+            "oops".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("shared-thread and task-id should conflict");
+        assert!(
+            err.to_string()
+                .contains("--shared-thread and --task-id cannot be used together")
+        );
+    }
+
+    #[test]
+    fn parse_team_task_note_requires_task_id_or_shared_thread() {
+        let args = vec![
+            "team-task-note".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--text".to_string(),
+            "missing target".to_string(),
+        ];
+        let err =
+            parse_actor_command(&args, &mut ActorOutputMode::Default).expect_err("missing target");
+        assert!(
+            err.to_string()
+                .contains("team-task-note requires --task-id or --shared-thread")
+        );
+    }
+
+    #[test]
+    fn resolve_shared_thread_task_id_prefers_canonical_shared_thread_task() {
+        let tasks = vec![
+            crate::team::TeamTaskRecord {
+                id: "task-1".to_string(),
+                team_id: "team-1".to_string(),
+                title: "Investigate bug".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({}),
+                created_at: 1,
+                updated_at: 1,
+            },
+            crate::team::TeamTaskRecord {
+                id: "shared-task".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 2,
+                updated_at: 2,
+            },
+        ];
+        assert_eq!(resolve_shared_thread_task_id(&tasks), Some("shared-task"));
+    }
+
+    #[test]
+    fn resolve_shared_thread_task_id_prefers_bootstrap_kind_then_latest_update() {
+        let tasks = vec![
+            crate::team::TeamTaskRecord {
+                id: "title-only-newer".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({}),
+                created_at: 3,
+                updated_at: 30,
+            },
+            crate::team::TeamTaskRecord {
+                id: "bootstrap-older".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 2,
+                updated_at: 20,
+            },
+            crate::team::TeamTaskRecord {
+                id: "bootstrap-newer".to_string(),
+                team_id: "team-1".to_string(),
+                title: "random".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 4,
+                updated_at: 40,
+            },
+        ];
+        assert_eq!(
+            resolve_shared_thread_task_id(&tasks),
+            Some("bootstrap-newer")
+        );
+    }
+
+    #[test]
+    fn require_shared_thread_task_id_returns_error_when_missing() {
+        let tasks = vec![crate::team::TeamTaskRecord {
+            id: "task-1".to_string(),
+            team_id: "team-1".to_string(),
+            title: "Investigate bug".to_string(),
+            status: TeamTaskStatus::Open,
+            created_by_actor_id: "leader".to_string(),
+            assigned_member_id: None,
+            context: serde_json::json!({}),
+            created_at: 1,
+            updated_at: 1,
+        }];
+
+        let err =
+            require_shared_thread_task_id("team-1", &tasks).expect_err("missing shared thread");
+        assert!(
+            err.to_string()
+                .contains("shared thread is missing for team team-1"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn require_shared_thread_task_id_reuses_canonical_selection() {
+        let tasks = vec![
+            crate::team::TeamTaskRecord {
+                id: "task-1".to_string(),
+                team_id: "team-1".to_string(),
+                title: "all".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({}),
+                created_at: 1,
+                updated_at: 10,
+            },
+            crate::team::TeamTaskRecord {
+                id: "shared-task".to_string(),
+                team_id: "team-1".to_string(),
+                title: "random".to_string(),
+                status: TeamTaskStatus::Open,
+                created_by_actor_id: "leader".to_string(),
+                assigned_member_id: None,
+                context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
+                created_at: 2,
+                updated_at: 2,
+            },
+        ];
+
+        assert_eq!(
+            require_shared_thread_task_id("team-1", &tasks).expect("resolve shared thread"),
+            "shared-task"
+        );
+    }
+
+    #[test]
+    fn parse_team_task_update_rejects_duplicate_context_file_aliases() {
+        let path = std::env::temp_dir().join(format!(
+            "agenthub-context-alias-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, "{}").expect("write temp json fixture");
+        let args = vec![
+            "team-task-update".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--task-id".to_string(),
+            "task-1".to_string(),
+            "--context-json-file".to_string(),
+            path.display().to_string(),
+            "--context-file".to_string(),
+            path.display().to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("duplicate context file aliases should conflict");
+        let _ = std::fs::remove_file(&path);
+        assert!(err.to_string().contains(
+            "--context-json, --context-json-file, and --context-file cannot be used together"
+        ));
+    }
+
+    #[test]
+    fn parse_ack_requires_message_id_from_flag_or_position() {
+        let _guard = env_lock().blocking_lock();
+        let prev_current_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-empty");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+        }
+        let args = vec!["ack".to_string()];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("missing ack ids should fail");
+        assert!(
+            err.to_string()
+                .contains("at least one message_id is required")
+        );
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_current_run);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
     }
 
@@ -2031,6 +2570,23 @@ mod tests {
     }
 
     #[test]
+    fn encode_actor_output_keeps_ack_status_changed_visible() {
+        let output = encode_actor_output(
+            &ActorAckResponse {
+                message_id: 42,
+                state: ActorMessageStatus::Delivered,
+                acked_at: 100,
+                status_changed: false,
+                message: mock_inbox_message(42, ActorMessageStatus::Delivered),
+            },
+            ActorOutputMode::Default,
+            ActorOutputPreference::JsonPreferred,
+        )
+        .expect("encode ack response");
+        assert!(output.contains("\"status_changed\":false"));
+    }
+
+    #[test]
     fn actor_output_preference_contract_covers_all_command_variants() {
         let cases = vec![
             (
@@ -2102,7 +2658,8 @@ mod tests {
                     team_id: Some("team-1".to_string()),
                     run_id: None,
                     actor_id: "leader".to_string(),
-                    task_id: "task-1".to_string(),
+                    task_id: Some("task-1".to_string()),
+                    shared_thread: false,
                     kind: TeamTaskNoteKind::Comment,
                     text: "progress".to_string(),
                 },
@@ -2110,7 +2667,7 @@ mod tests {
             ),
             (
                 ActorCommand::Inbox {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     actor_id: "worker".to_string(),
                     limit: 20,
                     after_id: None,
@@ -2121,7 +2678,7 @@ mod tests {
             ),
             (
                 ActorCommand::Ack {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     actor_id: "worker".to_string(),
                     message_ids: vec![42],
                 },
@@ -2129,7 +2686,7 @@ mod tests {
             ),
             (
                 ActorCommand::Send {
-                    run_id: "run-1".to_string(),
+                    run_id: Some("run-1".to_string()),
                     from_actor_id: "leader".to_string(),
                     to_actor_id: Some("worker".to_string()),
                     channel_id: None,
@@ -2138,7 +2695,7 @@ mod tests {
                     route: None,
                     payload: Box::new(Value::String("hello".to_string())),
                     payload_source: ActorSendPayloadSource::Text,
-                    idempotency_key: None,
+                    idempotency: ActorSendIdempotency::Disabled,
                 },
                 ActorOutputPreference::JsonPreferred,
             ),

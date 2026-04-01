@@ -17,7 +17,7 @@ name = "agenthub_codex_acp"
 path = "src/lib.rs"
 
 [dependencies]
-agent-client-protocol = { version = "=0.10.3", features = ["unstable"] }
+agent-client-protocol = { version = "=0.10.4", features = ["unstable"] }
 agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
@@ -44,6 +44,10 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 unicode-segmentation = "1.13.2"
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+piper = "0.2"
+tempfile = "3"
 
 [lints.rust]
 let-underscore = "warn"

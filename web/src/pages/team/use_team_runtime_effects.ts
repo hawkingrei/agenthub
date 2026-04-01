@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useCallback } from "react";
+import { useResumeRefresh } from "./use_resume_refresh";
 
 type UseTeamRuntimeEffectsOptions = {
   selectedTeamId: string | null;
@@ -15,22 +16,18 @@ export function useTeamRuntimeEffects({
   refreshTeamRuntime,
   onRefreshError,
 }: UseTeamRuntimeEffectsOptions) {
-  useEffect(() => {
-    const teamId = selectedTeamId?.trim() ?? "";
-    if (!enabled || !teamId) {
-      return;
-    }
+  const teamId = selectedTeamId?.trim() ?? "";
+  const runtimeRefreshEnabled = enabled && teamId.length > 0;
+  const refresh = useCallback(async () => {
+    await refreshTeamRuntime(teamId);
+  }, [refreshTeamRuntime, teamId]);
 
-    const timer = window.setInterval(() => {
-      void refreshTeamRuntime(teamId).catch((error) => {
-        onRefreshError?.(error);
-      });
-    }, TEAM_RUNTIME_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [enabled, onRefreshError, refreshTeamRuntime, selectedTeamId]);
+  useResumeRefresh({
+    enabled: runtimeRefreshEnabled,
+    intervalMs: TEAM_RUNTIME_REFRESH_INTERVAL_MS,
+    refresh,
+    onRefreshError,
+  });
 }
 
 export { TEAM_RUNTIME_REFRESH_INTERVAL_MS };

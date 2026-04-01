@@ -239,6 +239,106 @@ async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
 }
 
 #[tokio::test]
+async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "stale-runtime-team".to_string(),
+            description: Some("stale runtime reconcile coverage".to_string()),
+            spec: json!({
+                "entrypoint": "planner",
+                "members": [
+                    {
+                        "member_id": "planner",
+                        "role": "leader",
+                    }
+                ],
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let _ = stop_team(State(state.clone()), headers.clone(), Path(team.id.clone()))
+        .await
+        .expect("stop team runtime before seeding stale rows");
+    assert!(
+        state.agents.running_session_id_for_agent("planner").await.is_none(),
+        "planner runtime should be stopped before stale-row reconciliation coverage"
+    );
+
+    let now = Utc::now().timestamp();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind("/tmp/team-runtime-stale")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert safe path for stale planner");
+    sqlx::query(
+        r#"
+        INSERT OR REPLACE INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+            code_mode, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'running', ?6, ?7)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner-agent")
+    .bind("/tmp/team-runtime-stale")
+    .bind("/usr/bin/env")
+    .bind("[]")
+    .bind(now)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert stale planner agent");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+        VALUES (?1, ?2, 'running', ?3, NULL)
+        "#,
+    )
+    .bind("stale-team-runtime-session")
+    .bind("planner")
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("insert stale running session");
+
+    let Json(runtime) = get_team_runtime(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("describe reconciled team runtime");
+
+    assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Stopped);
+    assert_eq!(runtime.members.len(), 1);
+    assert_eq!(runtime.members[0].member_id, "planner");
+    assert_eq!(runtime.members[0].agent_status.as_deref(), Some("exited"));
+    assert!(runtime.members[0].session_id.is_none());
+    assert!(runtime.members[0].session_status.is_none());
+
+    let agent_status: String = sqlx::query_scalar("SELECT status FROM agents WHERE id = ?1")
+        .bind("planner")
+        .fetch_one(&state.db)
+        .await
+        .expect("load reconciled planner status");
+    assert_eq!(agent_status, "exited");
+    let (session_status, ended_at): (String, Option<i64>) = sqlx::query_as(
+        "SELECT status, ended_at FROM agent_sessions WHERE id = ?1",
+    )
+    .bind("stale-team-runtime-session")
+    .fetch_one(&state.db)
+    .await
+    .expect("load reconciled planner session");
+    assert_eq!(session_status, "exited");
+    assert!(ended_at.is_some());
+}
+
+#[tokio::test]
 async fn teams_api_rejects_execution_until_team_has_members() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -284,17 +384,17 @@ async fn teams_api_rejects_execution_until_team_has_members() {
         Value::from("team has no members configured; add at least one agent first")
     );
 
-    let Json(task_detail) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_detail = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Investigate".to_string(),
             created_by_actor_id: None,
             context: None,
             conversation_mode: None,
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task without members");
@@ -4204,7 +4304,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 }
 
 #[tokio::test]
-async fn team_task_api_creates_lists_and_redacts_context() {
+async fn team_task_api_lists_gets_and_redacts_context() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -4220,11 +4320,11 @@ async fn team_task_api_creates_lists_and_redacts_context() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Kickoff migration".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4234,10 +4334,10 @@ async fn team_task_api_creates_lists_and_redacts_context() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("kickoff".to_string()),
-        }),
+        },
     )
     .await
-    .expect("create task");
+    .expect("seed task");
     assert_eq!(created.task.team_id, team.id);
     assert_eq!(created.task.title, "Kickoff migration");
     assert!(created.task.created_by_actor_id.starts_with("user:"));
@@ -4256,7 +4356,10 @@ async fn team_task_api_creates_lists_and_redacts_context() {
         State(state.clone()),
         headers.clone(),
         Path(team.id.clone()),
-        Query(ListTeamTasksQuery { limit: Some(20) }),
+        Query(ListTeamTasksQuery {
+            limit: Some(20),
+            include_shared_thread: false,
+        }),
     )
     .await
     .expect("list tasks");
@@ -4294,11 +4397,11 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4307,13 +4410,295 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create shared thread task");
 
     assert_eq!(created.task.status, crate::team::TeamTaskStatus::Open);
     assert!(created.latest_run.is_none());
+}
+
+#[tokio::test]
+async fn team_task_list_api_can_include_shared_thread_when_requested() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-listing-team".to_string(),
+            description: Some("shared thread listing coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let shared_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        },
+    )
+    .await
+    .expect("create shared thread task");
+
+    let workspace_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Investigate regression".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"task_workspace"
+            })),
+            conversation_mode: Some("to_leader".to_string()),
+            topic: Some("Investigate regression".to_string()),
+        },
+    )
+    .await
+    .expect("create workspace task");
+
+    let Json(default_list) = list_team_tasks(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Query(ListTeamTasksQuery {
+            limit: Some(100),
+            include_shared_thread: false,
+        }),
+    )
+    .await
+    .expect("list tasks without shared thread");
+    assert_eq!(default_list.len(), 1);
+    assert_eq!(default_list[0].id, workspace_created.task.id);
+
+    let Json(with_shared_thread) = list_team_tasks(
+        State(state),
+        headers,
+        Path(team.id),
+        Query(ListTeamTasksQuery {
+            limit: Some(100),
+            include_shared_thread: true,
+        }),
+    )
+    .await
+    .expect("list tasks with shared thread");
+    assert_eq!(with_shared_thread.len(), 2);
+    let listed_ids = with_shared_thread
+        .iter()
+        .map(|task| task.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        listed_ids,
+        std::collections::HashSet::from([
+            workspace_created.task.id.as_str(),
+            shared_created.task.id.as_str(),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn team_shared_thread_api_returns_not_found_when_missing() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-missing-team".to_string(),
+            description: Some("shared thread missing coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let err = get_team_shared_thread(State(state), headers, Path(team.id))
+        .await
+        .expect_err("shared thread should be missing");
+    assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn team_shared_thread_api_ensures_canonical_thread_and_is_idempotent() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-ensure-team".to_string(),
+            description: Some("shared thread ensure coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(created) = ensure_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("ensure shared thread");
+
+    assert_eq!(created.task.title.to_lowercase(), "all");
+    assert_eq!(created.conversation.task_id, created.task.id);
+
+    let Json(found) = get_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("get ensured shared thread");
+    assert_eq!(found.task.id, created.task.id);
+
+    let Json(second) = ensure_team_shared_thread(State(state.clone()), headers, Path(team.id.clone()))
+        .await
+        .expect("ensure shared thread twice");
+    assert_eq!(second.task.id, created.task.id);
+
+    let shared_thread_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_tasks
+        WHERE team_id = ?1
+          AND (
+            lower(trim(title)) = 'all'
+            OR lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'shared_thread'
+          )
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&state.db)
+    .await
+    .expect("count shared thread tasks");
+    assert_eq!(shared_thread_count, 1);
+}
+
+#[tokio::test]
+async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "shared-thread-canonical-team".to_string(),
+            description: Some("shared thread canonical coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let first = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        },
+    )
+    .await
+    .expect("create first shared thread");
+
+    let second = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "All".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "bootstrap_kind":"shared_thread",
+                "bootstrap_source":"teams_all"
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("all".to_string()),
+        },
+    )
+    .await
+    .expect("create second shared thread");
+
+    let _ = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), second.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"older shared thread message"
+            }),
+        }),
+    )
+    .await
+    .expect("append older message");
+
+    let _ = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), first.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: Some("user".to_string()),
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"latest shared thread message"
+            }),
+        }),
+    )
+    .await
+    .expect("append latest message");
+
+    let Json(found) = get_team_shared_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+    )
+    .await
+    .expect("get canonical shared thread");
+    assert_eq!(found.task.id, first.task.id);
+
+    let Json(ensured) = ensure_team_shared_thread(State(state), headers, Path(team.id))
+        .await
+        .expect("ensure canonical shared thread");
+    assert_eq!(ensured.task.id, first.task.id);
 }
 
 #[tokio::test]
@@ -4340,11 +4725,11 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "All".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -4353,7 +4738,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("all".to_string()),
-        }),
+        },
     )
     .await
     .expect("create shared thread task");
@@ -4542,17 +4927,17 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Promote kanban card".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({"source":"ui"})),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("status".to_string()),
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -4601,7 +4986,7 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
 }
 
 #[tokio::test]
-async fn team_task_api_enforces_team_owner_access() {
+async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
     let state = build_test_state().await;
     let owner_headers = auth_headers(&state).await;
     let outsider_headers = auth_headers(&state).await;
@@ -4621,36 +5006,20 @@ async fn team_task_api_enforces_team_owner_access() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        owner_headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &owner_headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Owner only planning".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
-
-    let create_err = create_team_task(
-        State(state.clone()),
-        outsider_headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
-            title: "Outsider task".to_string(),
-            created_by_actor_id: Some("user".to_string()),
-            context: Some(json!({})),
-            conversation_mode: Some("group_chat".to_string()),
-            topic: None,
-        }),
-    )
-    .await
-    .expect_err("outsider should not create task");
-    assert_eq!(create_err.into_response().status(), StatusCode::NOT_FOUND);
 
     let send_err = send_team_task_message(
         State(state.clone()),
@@ -4701,17 +5070,17 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Discuss rollout".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -4898,17 +5267,17 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Mailbox forwarding".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5085,17 +5454,17 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
     .await
     .expect("create team");
 
-    let Json(task_created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let task_created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Direct by default".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5195,17 +5564,17 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Leader inference".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5251,17 +5620,17 @@ async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_l
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Object detail_ref normalization".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5327,17 +5696,17 @@ async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Invalid detail_ref object".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5395,11 +5764,11 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Implement chat-first compile".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
@@ -5408,7 +5777,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
             })),
             conversation_mode: Some("group_chat".to_string()),
             topic: Some("planning".to_string()),
-        }),
+        },
     )
     .await
     .expect("create task");
@@ -5580,17 +5949,17 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
     .await
     .expect("create team");
 
-    let Json(created) = create_team_task(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-        Json(CreateTeamTaskRequest {
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
             title: "Sanitize compile updates".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
             topic: None,
-        }),
+        },
     )
     .await
     .expect("create task");

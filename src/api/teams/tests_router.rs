@@ -3,7 +3,7 @@ async fn teams_router_http_contract() {
     let state = build_test_state().await;
     let token = create_auth_token(&state).await;
     let outsider_token = create_auth_token(&state).await;
-    let app = super::router(state);
+    let app = super::router(state.clone());
 
     let unauthorized = app
         .clone()
@@ -167,42 +167,23 @@ async fn teams_router_http_contract() {
         ))
         .await
         .expect("create task via router");
-    assert_eq!(create_task_resp.status(), StatusCode::OK);
-    let created_task = decode_json_body(create_task_resp).await;
-    let task_id = created_task["task"]["id"]
-        .as_str()
-        .expect("task id")
-        .to_string();
-    assert_eq!(
-        created_task["task"]["context"]["token"],
-        Value::from("[redacted]")
-    );
-    assert_eq!(created_task["task"]["status"], Value::from("open"));
-    assert_eq!(created_task["task"]["assigned_member_id"], Value::Null);
-    assert_eq!(created_task["latest_run"], Value::Null);
-    assert!(
-        created_task["task"]["created_by_actor_id"]
-            .as_str()
-            .map(|value| value.starts_with("user:"))
-            .unwrap_or(false)
-    );
+    assert_eq!(create_task_resp.status(), StatusCode::METHOD_NOT_ALLOWED);
 
-    let outsider_create_task_resp = app
-        .clone()
-        .oneshot(build_json_request(
-            Method::POST,
-            &format!("/{team_id}/tasks"),
-            Some(&outsider_token),
-            Some(json!({
-                "title": "outsider task",
-                "created_by_actor_id": "user",
-                "context": {},
-                "conversation_mode": "group_chat"
-            })),
-        ))
+    let (seeded_task, _) = state
+        .teams
+        .create_task(
+            &team_id,
+            "router task",
+            "user:test",
+            json!({
+                "token":"should-redact"
+            }),
+            "group_chat",
+            Some("kickoff"),
+        )
         .await
-        .expect("outsider create task via router");
-    assert_eq!(outsider_create_task_resp.status(), StatusCode::NOT_FOUND);
+        .expect("seed task for router contract");
+    let task_id = seeded_task.id.clone();
 
     let list_tasks_resp = app
         .clone()
@@ -228,6 +209,20 @@ async fn teams_router_http_contract() {
         .await
         .expect("get task via router");
     assert_eq!(get_task_resp.status(), StatusCode::OK);
+    let get_task_body = decode_json_body(get_task_resp).await;
+    assert_eq!(
+        get_task_body["task"]["context"]["token"],
+        Value::from("[redacted]")
+    );
+    assert_eq!(get_task_body["task"]["status"], Value::from("open"));
+    assert_eq!(get_task_body["task"]["assigned_member_id"], Value::Null);
+    assert_eq!(get_task_body["latest_run"], Value::Null);
+    assert!(
+        get_task_body["task"]["created_by_actor_id"]
+            .as_str()
+            .map(|value| value.starts_with("user:"))
+            .unwrap_or(false)
+    );
 
     let update_task_resp = app
         .clone()

@@ -68,6 +68,10 @@ fn log_config_details(
             .as_deref()
             .unwrap_or("<unset>")
     );
+    tracing::info!(
+        "config codex_acp_multi_agent_enabled: {}",
+        config.codex_acp_multi_agent_enabled()
+    );
     tracing::info!("config vapid_subject: {}", config.vapid_subject());
     tracing::info!(
         "config vapid_keys_path: {}",
@@ -179,11 +183,26 @@ where
 }
 
 pub async fn run() -> anyhow::Result<()> {
-    if let Some(result) = crate::doctor_cli::maybe_run_from_args().await {
-        return result;
-    }
-    if let Some(result) = crate::actor_cli::maybe_run_from_args().await {
-        return result;
+    match crate::cli::parse_root_cli_from_env() {
+        Ok(crate::cli::RootCliCommand::Serve) => {}
+        Ok(crate::cli::RootCliCommand::Doctor { args }) => {
+            return crate::doctor_cli::run_from_args(&args).await;
+        }
+        Ok(crate::cli::RootCliCommand::Actor { args }) => {
+            return crate::actor_cli::run_from_args(&args).await;
+        }
+        Ok(crate::cli::RootCliCommand::LegacyActorMcp) => {
+            return Err(anyhow::anyhow!(
+                "`agenthub actor-mcp` has been removed. Use `agenthub actor ...` instead."
+            ));
+        }
+        Err(err) if crate::cli::is_non_error_clap_exit(&err) => {
+            err.print()?;
+            return Ok(());
+        }
+        Err(err) => {
+            return Err(err.into());
+        }
     }
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));

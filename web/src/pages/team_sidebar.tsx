@@ -94,25 +94,25 @@ export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | n
 }
 
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.68)] p-1.5 shadow-none";
+  "rounded-[30px] border border-ui-border/70 bg-white/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[10px] bg-ui-surface/[0.34] p-1";
+  "rounded-[20px] border border-ui-border/70 bg-white/55 p-2 backdrop-blur-sm";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "px-1 py-1";
+  "px-1.5 py-1";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
-  "inline-flex items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-ui-border bg-ui-surface text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-[rgba(55,53,47,0.08)] px-2 py-1.5 text-left text-ui-text-primary";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-transparent px-2 py-1.5 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-white/70";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
   "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-[rgba(55,53,47,0.08)] px-2 py-1.5 text-left text-ui-text-primary transition";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2.5 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[8px] border border-transparent bg-transparent px-2 py-1.5 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-white/70";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
 
@@ -196,7 +196,10 @@ export function TeamSidebar(props: TeamSidebarProps) {
   }, []);
 
   return (
-    <aside className={`${TEAM_SIDEBAR_ROOT_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS}`}>
+    <aside
+      className={`${TEAM_SIDEBAR_ROOT_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS}`}
+      data-team-surface="sidebar"
+    >
       <div className={TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -495,22 +498,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
       {selectedTeam && (
         <>
           <div className="mt-3 flex flex-col gap-1.5">
-            <button
-              type="button"
-              className={
-                tab === "tasks"
-                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
-              }
-              onClick={onSelectKanban}
-            >
-              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
-                <i className="bi bi-kanban" aria-hidden="true" />
-                <span>Kanban</span>
-              </span>
-            </button>
             <div className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
-              Channel
+              Workflow
             </div>
             <button
               type="button"
@@ -524,6 +513,26 @@ export function TeamSidebar(props: TeamSidebarProps) {
               <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
                 <i className="bi bi-hash" aria-hidden="true" />
                 <span># all</span>
+              </span>
+              <span className="text-[11px] leading-4 text-ui-text-muted">
+                Human requests, planning, and team-visible progress.
+              </span>
+            </button>
+            <button
+              type="button"
+              className={
+                tab === "tasks"
+                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+              }
+              onClick={onSelectKanban}
+            >
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
+                <i className="bi bi-kanban" aria-hidden="true" />
+                <span>Kanban</span>
+              </span>
+              <span className="text-[11px] leading-4 text-ui-text-muted">
+                Canonical system-managed tasks and execution state.
               </span>
             </button>
           </div>

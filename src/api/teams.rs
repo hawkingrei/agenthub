@@ -41,6 +41,7 @@ const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
 const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
 const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
+#[cfg(test)]
 const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
@@ -147,6 +148,7 @@ pub struct CreateTeamRunRequest {
     pub input: Option<Value>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamTaskRequest {
     pub title: String,
@@ -159,6 +161,8 @@ pub struct CreateTeamTaskRequest {
 #[derive(Debug, Deserialize)]
 pub struct ListTeamTasksQuery {
     pub limit: Option<i64>,
+    #[serde(default)]
+    pub include_shared_thread: bool,
 }
 
 // Keep deserialization compatibility for existing human clients even though
@@ -385,13 +389,17 @@ pub fn router(state: AppState) -> Router {
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
         .route("/{id}/runtime", get(get_team_runtime))
+        .route(
+            "/{id}/shared_thread",
+            get(get_team_shared_thread).post(ensure_team_shared_thread),
+        )
         .route("/{id}/start", post(start_team))
         .route("/{id}/stop", post(stop_team))
         .route(
             "/{id}/members/{member_id}/force_new_session",
             post(force_new_session_for_team_member),
         )
-        .route("/{id}/tasks", post(create_team_task).get(list_team_tasks))
+        .route("/{id}/tasks", get(list_team_tasks))
         .route(
             "/{id}/tasks/{task_id}",
             get(get_team_task).patch(update_team_task),
@@ -628,6 +636,7 @@ async fn get_team_runtime(
 ) -> Result<Json<TeamRuntimeRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    reconcile_team_member_runtime_absence(&state, &team).await?;
     let runtime = state
         .teams
         .describe_team_runtime(team.id.as_str())
@@ -667,38 +676,44 @@ async fn delete_team(
     Ok(Json(sanitize_team_definition_for_response(team)))
 }
 
-async fn create_team_task(
+async fn get_team_shared_thread(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(team_id): Path<String>,
-    Json(payload): Json<CreateTeamTaskRequest>,
 ) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     load_team_for_user(&state, &team_id, &user).await?;
-    let title = payload.title.trim().to_string();
-    if title.is_empty() {
-        return Err(ApiError::bad_request("title is required"));
-    }
-    let created_by_actor_id =
-        normalize_task_created_by_actor_id(payload.created_by_actor_id.as_deref(), &user)?;
-    let conversation_mode = normalize_conversation_mode(payload.conversation_mode.as_deref())?;
-    let raw_context = payload.context.unwrap_or_else(|| serde_json::json!({}));
-    let (task, conversation) = state
+    let Some((task, conversation, latest_run)) = state
         .teams
-        .create_task(
-            &team_id,
-            &title,
-            &created_by_actor_id,
-            raw_context,
-            &conversation_mode,
-            payload.topic.as_deref(),
-        )
+        .get_shared_thread_detail_for_team(&team_id)
+        .await
+        .map_err(map_team_internal_error)?
+    else {
+        return Err(ApiError::not_found("shared thread not found"));
+    };
+    Ok(Json(TeamTaskDetailResponse {
+        task,
+        conversation,
+        latest_run,
+    }))
+}
+
+async fn ensure_team_shared_thread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<TeamTaskDetailResponse>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let (task, conversation, latest_run) = state
+        .teams
+        .ensure_shared_thread_detail_for_team(&team_id, &canonical_user_actor_id(&user))
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(TeamTaskDetailResponse {
         task,
         conversation,
-        latest_run: None,
+        latest_run,
     }))
 }
 
@@ -712,7 +727,12 @@ async fn list_team_tasks(
     load_team_for_user(&state, &team_id, &user).await?;
     let tasks = state
         .teams
-        .list_tasks(&team_id, query.limit.unwrap_or(100).clamp(1, 500))
+        .list_tasks_with_query(crate::team::TeamTaskListQuery {
+            team_id: Some(team_id),
+            limit: query.limit.unwrap_or(100).clamp(1, 500),
+            include_shared_thread: query.include_shared_thread,
+            ..crate::team::TeamTaskListQuery::default()
+        })
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(tasks))
@@ -2065,6 +2085,7 @@ fn normalize_memory_flush_trigger(value: Option<&str>) -> Result<&'static str, A
     }
 }
 
+#[cfg(test)]
 fn normalize_conversation_mode(value: Option<&str>) -> Result<String, ApiError> {
     normalize_enum_value(
         value,
@@ -2140,6 +2161,7 @@ fn normalize_task_actor_id(
     Ok(trimmed.to_string())
 }
 
+#[cfg(test)]
 fn normalize_task_created_by_actor_id(
     value: Option<&str>,
     user: &UserRecord,
@@ -3709,6 +3731,19 @@ fn parse_member_ids(members_value: Option<&Value>) -> Result<HashSet<String>, Ap
         .into_iter()
         .map(|member| member.member_id)
         .collect())
+}
+
+async fn reconcile_team_member_runtime_absence(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+) -> Result<(), ApiError> {
+    let member_ids = crate::team::collect_team_member_ids(&team.spec);
+    state
+        .agents
+        .reconcile_runtime_absence_batch(&member_ids)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(())
 }
 
 fn parse_member_specs(members_value: Option<&Value>) -> Result<Vec<TeamMemberSpec>, ApiError> {
