@@ -212,6 +212,8 @@ fn derive_leader_runtime_workdir(
     actor_context: &AcpActorSkillContext,
     session_id: &str,
 ) -> String {
+    // `session_id` here is the AgentHub runtime launch id for this specific process start.
+    // ACP providers may independently resume a persisted continuity session across launches.
     let actor_token = compact_token(&actor_context.actor_id, "leader", 24);
     let scope_token = actor_context
         .current_run_id
