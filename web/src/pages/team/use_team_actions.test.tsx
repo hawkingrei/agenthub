@@ -50,7 +50,6 @@ function createBaseOptions(overrides: Partial<TeamActionsInput> = {}): TeamActio
     inboxLimit: "100",
     inboxAfterId: "",
     inboxIncludeDelivered: false,
-    selectedMemberId: "",
     selectedMemberAgentId: null,
     selectedMemberSessionId: null,
     selectedMemberSnapshot: null,
@@ -291,7 +290,6 @@ describe("useTeamActions", () => {
       captures.push(actions);
     };
     const options = createBaseOptions({
-      selectedMemberId: "worker-member-id",
       selectedMemberAgentId: "worker-agent",
       selectedMemberSessionId: "runtime-session-1",
       setMemberEvents,
@@ -339,7 +337,6 @@ describe("useTeamActions", () => {
       captures.push(actions);
     };
     const options = createBaseOptions({
-      selectedMemberId: "worker-member-id",
       selectedMemberAgentId: "agent-123",
       selectedMemberSessionId: "runtime-session-1",
     });
@@ -373,7 +370,6 @@ describe("useTeamActions", () => {
       captures.push(actions);
     };
     const options = createBaseOptions({
-      selectedMemberId: "worker-member-id",
       selectedMemberAgentId: null,
       selectedMemberSessionId: "runtime-session-1",
       setMemberEvents,
@@ -444,7 +440,6 @@ describe("useTeamActions", () => {
       },
     ];
     const options = createBaseOptions({
-      selectedMemberId: "worker-member-id",
       selectedMemberAgentId: "worker-agent",
       selectedMemberSessionId: "runtime-session-1",
       memberEventsRef: { current: existingHistory },
