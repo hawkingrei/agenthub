@@ -28,6 +28,8 @@ type AdminProps = {
   setSafePathInput: (value: string) => void;
   developerMode: boolean;
   onDeveloperModeChange: (value: boolean) => void;
+  passkeyEnabled: boolean | null;
+  onPasskeyEnabledChange: (value: boolean) => void;
 };
 
 const ADMIN_APP_CLASS =
@@ -74,7 +76,7 @@ const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-slate-500";
 
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
-    "safe" | "devices" | "audits" | "join" | "vapid" | "ui"
+    "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"
   >("safe");
   return (
     <div className={ADMIN_APP_CLASS}>
@@ -138,6 +140,12 @@ export function AdminPage(props: AdminProps) {
             onClick={() => setTab("ui")}
           >
             UI
+          </button>
+          <button
+            className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "system" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
+            onClick={() => setTab("system")}
+          >
+            System
           </button>
         </div>
 
@@ -312,6 +320,26 @@ export function AdminPage(props: AdminProps) {
                   Default behavior: enabled in development and tests, disabled in
                   production builds.
                 </p>
+              </div>
+            </div>
+          )}
+          {tab === "system" && (
+            <div className={ADMIN_CARD_CLASS}>
+              <h3 className={ADMIN_CARD_TITLE_CLASS}>System Configuration</h3>
+              <div className="flex flex-col gap-3">
+                <Switch
+                  checked={props.passkeyEnabled ?? false}
+                  disabled={props.passkeyEnabled === null}
+                  onChange={(event) =>
+                    props.onPasskeyEnabledChange(event.currentTarget.checked)
+                  }
+                  label="Enable Passkey"
+                  description={
+                    props.passkeyEnabled === null
+                      ? "Loading configuration..."
+                      : "Global setting. When disabled, only password login/registration is allowed."
+                  }
+                />
               </div>
             </div>
           )}

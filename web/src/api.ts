@@ -124,8 +124,12 @@ export type AcpPermissionRecord = {
 };
 
 export type AuthStartResponse = {
-  challenge_id: string;
-  options: unknown;
+  challenge_id?: string | null;
+  options?: unknown;
+  registration_options?: unknown;
+  user_id?: string | null;
+  token?: string | null;
+  role?: string | null;
 };
 
 export type AuthFinishResponse = {
@@ -136,11 +140,18 @@ export type AuthFinishResponse = {
 
 export type AuthStatusResponse = {
   root_initialized: boolean;
+  passkey_enabled: boolean;
+};
+
+export type AdminSettingsResponse = {
+  passkey_enabled: boolean;
 };
 
 export type JoinStartResponse = {
-  challenge_id: string;
-  options: unknown;
+  challenge_id?: string | null;
+  options?: unknown;
+  user_id?: string | null;
+  token?: string | null;
 };
 
 export type JoinFinishResponse = {
@@ -160,17 +171,17 @@ export type DeviceRecord = {
   user_agent: string;
   status: string;
   created_at: number;
-  last_login_at?: number;
+  last_login_at: number | null;
 };
 
 export type AuditRecord = {
   id: number;
-  user_id?: string;
-  device_id?: string;
+  user_id: string | null;
+  device_id: string | null;
   event: string;
-  ip?: string;
-  user_agent?: string;
-  detail?: string;
+  ip: string | null;
+  user_agent: string | null;
+  detail: string | null;
   ts: number;
 };
 
@@ -511,11 +522,12 @@ export const api = {
     username: string,
     display_name: string,
     role?: string,
-    password?: string
+    password?: string,
+    device_name?: string
   ) =>
     apiFetch<AuthStartResponse>("/api/auth/register/start", null, {
       method: "POST",
-      body: JSON.stringify({ username, display_name, role, password }),
+      body: JSON.stringify({ username, display_name, role, password, device_name }),
     }),
   registerFinish: (challenge_id: string, credential: unknown) =>
     apiFetch<AuthFinishResponse>("/api/auth/register/finish", null, {
@@ -529,6 +541,11 @@ export const api = {
     }),
   loginFinish: (challenge_id: string, credential: unknown) =>
     apiFetch<AuthFinishResponse>("/api/auth/login/finish", null, {
+      method: "POST",
+      body: JSON.stringify({ challenge_id, credential }),
+    }),
+  loginRegisterFinish: (challenge_id: string, credential: unknown) =>
+    apiFetch<AuthFinishResponse>("/api/auth/login/register_finish", null, {
       method: "POST",
       body: JSON.stringify({ challenge_id, credential }),
     }),
@@ -580,6 +597,13 @@ export const api = {
       token,
       { method: "POST" }
     ),
+  getAdminSettings: (token: string) =>
+    apiFetch<AdminSettingsResponse>("/api/admin/settings", token),
+  setPasskeyEnabled: (token: string, enabled: boolean) =>
+    apiFetch<{ status: string }>("/api/admin/settings/passkey", token, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
   createTeam: (
     token: string,
     payload: { name: string; description?: string; spec: unknown }

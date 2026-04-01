@@ -10,11 +10,41 @@ use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
+#[derive(Debug)]
+pub enum RegisterStartResult {
+    Challenge {
+        challenge_id: String,
+        options: Box<CreationChallengeResponse>,
+    },
+    Complete {
+        user_id: String,
+        role: String,
+    },
+}
+
+#[derive(Debug)]
+pub enum LoginStartResult {
+    Challenge {
+        challenge_id: String,
+        options: Box<RequestChallengeResponse>,
+    },
+    Registration {
+        challenge_id: String,
+        options: Box<CreationChallengeResponse>,
+        role: String,
+    },
+    Complete {
+        user_id: String,
+        role: String,
+    },
+}
+
 #[derive(Clone)]
 pub struct AuthService {
     db: SqlitePool,
     webauthn: Arc<Webauthn>,
     pending: Arc<RwLock<HashMap<String, PendingChallenge>>>,
+    passkey_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -46,8 +76,9 @@ impl AuthService {
         let rp_id = config.rp_id();
         let rp_origin = config.rp_origin();
         let rp_name = config.rp_name();
-        let rp_origin = Url::parse(&rp_origin)?;
+        let passkey_enabled = config.passkey_enabled();
 
+        let rp_origin = Url::parse(&rp_origin)?;
         let builder = WebauthnBuilder::new(&rp_id, &rp_origin)?;
         let builder = builder.rp_name(&rp_name);
         let webauthn = builder.build()?;
@@ -56,7 +87,35 @@ impl AuthService {
             db,
             webauthn: Arc::new(webauthn),
             pending: Arc::new(RwLock::new(HashMap::new())),
+            passkey_enabled,
         })
+    }
+
+    pub async fn is_passkey_enabled(&self) -> anyhow::Result<bool> {
+        let row = sqlx::query("SELECT value FROM system_config WHERE key = 'passkey_enabled'")
+            .fetch_optional(&self.db)
+            .await?;
+
+        if let Some(row) = row {
+            let val: String = row.get("value");
+            Ok(val == "true")
+        } else {
+            Ok(self.passkey_enabled)
+        }
+    }
+
+    pub async fn set_passkey_enabled(&self, enabled: bool) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO system_config (key, value)
+            VALUES ('passkey_enabled', ?1)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            "#,
+        )
+        .bind(if enabled { "true" } else { "false" })
+        .execute(&self.db)
+        .await?;
+        Ok(())
     }
 
     pub async fn register_start(
@@ -67,7 +126,22 @@ impl AuthService {
         password: Option<&str>,
         device_name: Option<String>,
         user_agent: Option<String>,
-    ) -> anyhow::Result<(String, CreationChallengeResponse)> {
+    ) -> anyhow::Result<RegisterStartResult> {
+        let username = username.trim();
+        let display_name = display_name.trim();
+        if username.is_empty() {
+            anyhow::bail!("username cannot be empty");
+        }
+        if username.contains('@') {
+            anyhow::bail!("username cannot contain @ (reserved for mentions)");
+        }
+        if display_name.is_empty() {
+            anyhow::bail!("display name cannot be empty");
+        }
+        if role == "root" && password.unwrap_or("").trim().is_empty() {
+            anyhow::bail!("root user requires a password");
+        }
+
         if let Some(existing) = self.get_user_by_username(username).await? {
             if existing.role != role {
                 anyhow::bail!("username already exists");
@@ -130,7 +204,6 @@ impl AuthService {
         )
         .await
     }
-
     async fn start_registration_for_user(
         &self,
         user_id: &str,
@@ -139,11 +212,21 @@ impl AuthService {
         role: &str,
         device_name: Option<String>,
         user_agent: Option<String>,
-    ) -> anyhow::Result<(String, CreationChallengeResponse)> {
+    ) -> anyhow::Result<RegisterStartResult> {
+        if !self.is_passkey_enabled().await? {
+            if role == "device"
+                && let Some(name) = device_name
+            {
+                let user_agent = user_agent.unwrap_or_else(|| "unknown".to_string());
+                self.insert_device(user_id, &name, &user_agent).await?;
+            }
+            return Ok(RegisterStartResult::Complete {
+                user_id: user_id.to_string(),
+                role: role.to_string(),
+            });
+        }
         let user_uuid = Uuid::parse_str(user_id)?;
-        let (ccr, state) =
-            self.webauthn
-                .start_passkey_registration(user_uuid, username, display_name, None)?;
+        let (ccr, state) = self.webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
@@ -158,7 +241,10 @@ impl AuthService {
             },
         );
 
-        Ok((challenge_id, ccr))
+        Ok(RegisterStartResult::Challenge {
+            challenge_id,
+            options: Box::new(ccr),
+        })
     }
 
     pub async fn register_finish(
@@ -183,6 +269,10 @@ impl AuthService {
             anyhow::bail!("invalid challenge type");
         };
 
+        if !self.is_passkey_enabled().await? {
+            anyhow::bail!("passkey registration is disabled");
+        }
+
         let passkey = self.webauthn.finish_passkey_registration(&cred, &state)?;
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
@@ -203,7 +293,16 @@ impl AuthService {
         &self,
         username: &str,
         password: &str,
-    ) -> anyhow::Result<(String, RequestChallengeResponse)> {
+    ) -> anyhow::Result<LoginStartResult> {
+        let username = username.trim();
+        let password = password.trim();
+        if username.is_empty() {
+            anyhow::bail!("username cannot be empty");
+        }
+        if password.is_empty() {
+            anyhow::bail!("password cannot be empty");
+        }
+
         let user = self
             .get_user_by_username(username)
             .await?
@@ -215,9 +314,41 @@ impl AuthService {
         } else {
             anyhow::bail!("password not set");
         }
+
+        if !self.is_passkey_enabled().await? {
+            return Ok(LoginStartResult::Complete {
+                user_id: user.id,
+                role: user.role,
+            });
+        }
+
         let passkeys = self.load_passkeys(&user.id).await?;
         if passkeys.is_empty() {
-            anyhow::bail!("no passkeys registered");
+            // No passkeys registered, but passkeys are enabled globally.
+            // Let the user "join" by providing a registration challenge.
+            return self
+                .start_registration_for_user(
+                    &user.id,
+                    &user.username,
+                    &user.display_name,
+                    &user.role,
+                    None,
+                    None,
+                )
+                .await
+                .map(|res| match res {
+                    RegisterStartResult::Challenge {
+                        challenge_id,
+                        options,
+                    } => LoginStartResult::Registration {
+                        challenge_id,
+                        options,
+                        role: user.role,
+                    },
+                    RegisterStartResult::Complete { user_id, role } => {
+                        LoginStartResult::Complete { user_id, role }
+                    }
+                });
         }
 
         let (rcr, state) = self.webauthn.start_passkey_authentication(&passkeys)?;
@@ -231,7 +362,10 @@ impl AuthService {
             },
         );
 
-        Ok((challenge_id, rcr))
+        Ok(LoginStartResult::Challenge {
+            challenge_id,
+            options: Box::new(rcr),
+        })
     }
 
     pub async fn login_finish(
@@ -248,6 +382,10 @@ impl AuthService {
         let PendingChallenge::Authentication { user_id, state } = pending else {
             anyhow::bail!("invalid challenge type");
         };
+
+        if !self.is_passkey_enabled().await? {
+            anyhow::bail!("passkey authentication is disabled");
+        }
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
         let result = self.webauthn.finish_passkey_authentication(&cred, &state)?;
@@ -449,19 +587,12 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn root_has_passkeys(&self) -> anyhow::Result<bool> {
-        let row = sqlx::query(
-            r#"
-            SELECT u.id
-            FROM users u
-            JOIN user_passkeys p ON u.id = p.user_id
-            WHERE u.role = 'root'
-            LIMIT 1
-            "#,
-        )
-        .fetch_optional(&self.db)
-        .await?;
-        Ok(row.is_some())
+    pub async fn root_exists(&self) -> anyhow::Result<bool> {
+        let row = sqlx::query("SELECT COUNT(*) FROM users WHERE role = 'root'")
+            .fetch_one(&self.db)
+            .await?;
+        let count: i64 = row.get(0);
+        Ok(count > 0)
     }
 
     async fn save_passkeys(&self, user_id: &str, passkeys: &[Passkey]) -> anyhow::Result<()> {

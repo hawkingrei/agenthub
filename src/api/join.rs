@@ -18,8 +18,10 @@ pub struct JoinStartRequest {
 
 #[derive(Debug, serde::Serialize)]
 pub struct JoinStartResponse {
-    pub challenge_id: String,
-    pub options: serde_json::Value,
+    pub challenge_id: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub user_id: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -79,7 +81,7 @@ async fn join_start(
         .unwrap_or("unknown")
         .to_string();
 
-    let (challenge_id, options) = state
+    let result = state
         .auth
         .register_start(
             &payload.username,
@@ -91,10 +93,26 @@ async fn join_start(
         )
         .await?;
 
-    Ok(Json(JoinStartResponse {
-        challenge_id,
-        options: serde_json::to_value(options)?,
-    }))
+    match result {
+        crate::auth::RegisterStartResult::Challenge {
+            challenge_id,
+            options,
+        } => Ok(Json(JoinStartResponse {
+            challenge_id: Some(challenge_id),
+            options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+        })),
+        crate::auth::RegisterStartResult::Complete { user_id, .. } => {
+            let token = state.auth.create_session(&user_id).await?;
+            Ok(Json(JoinStartResponse {
+                challenge_id: None,
+                options: None,
+                user_id: Some(user_id),
+                token: Some(token),
+            }))
+        }
+    }
 }
 
 async fn join_finish(

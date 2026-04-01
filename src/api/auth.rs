@@ -11,6 +11,7 @@ pub fn router(state: AppState) -> Router {
         .route("/register/finish", post(register_finish))
         .route("/login/start", post(login_start))
         .route("/login/finish", post(login_finish))
+        .route("/login/register_finish", post(login_register_finish))
         .with_state(state)
 }
 
@@ -20,12 +21,16 @@ pub struct RegisterStartRequest {
     pub display_name: String,
     pub role: Option<String>,
     pub password: Option<String>,
+    pub device_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RegisterStartResponse {
-    pub challenge_id: String,
-    pub options: serde_json::Value,
+    pub challenge_id: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub user_id: Option<String>,
+    pub token: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,8 +47,12 @@ pub struct LoginStartRequest {
 
 #[derive(Debug, Serialize)]
 pub struct LoginStartResponse {
-    pub challenge_id: String,
-    pub options: serde_json::Value,
+    pub challenge_id: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub registration_options: Option<serde_json::Value>,
+    pub user_id: Option<String>,
+    pub token: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,45 +71,86 @@ pub struct AuthFinishResponse {
 #[derive(Debug, Serialize)]
 pub struct AuthStatusResponse {
     pub root_initialized: bool,
+    pub passkey_enabled: bool,
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<AuthStatusResponse>, ApiError> {
-    let root_initialized = state.auth.root_has_passkeys().await?;
-    Ok(Json(AuthStatusResponse { root_initialized }))
+    let root_initialized = state.auth.root_exists().await?;
+    let passkey_enabled = state.auth.is_passkey_enabled().await?;
+    Ok(Json(AuthStatusResponse {
+        root_initialized,
+        passkey_enabled,
+    }))
 }
 
 async fn register_start(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<RegisterStartRequest>,
 ) -> Result<Json<RegisterStartResponse>, ApiError> {
+    let username = payload.username.trim();
+    let display_name = payload.display_name.trim();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("username cannot be empty"));
+    }
+    if username.contains('@') {
+        return Err(ApiError::bad_request("username cannot contain @ (reserved for mentions)"));
+    }
+    if display_name.is_empty() {
+        return Err(ApiError::bad_request("display name cannot be empty"));
+    }
+
     let role = payload.role.as_deref().unwrap_or("device");
-    if role == "root" && state.auth.root_has_passkeys().await? {
+    let ua = extract_ua(&headers);
+    if role == "root" && state.auth.root_exists().await? {
         return Err(ApiError::unauthorized("root already initialized"));
     }
-    if role == "root" && payload.password.is_none() {
-        return Err(ApiError::unauthorized("root requires password"));
+    if role == "root" && payload.password.as_deref().unwrap_or("").trim().is_empty() {
+        return Err(ApiError::unauthorized("root user requires a password"));
     }
-    let (challenge_id, options) = state
+    let result = state
         .auth
         .register_start(
-            &payload.username,
-            &payload.display_name,
+            username,
+            display_name,
             role,
             payload.password.as_deref(),
-            None,
-            None,
+            payload.device_name,
+            ua,
         )
         .await?;
-    Ok(Json(RegisterStartResponse {
-        challenge_id,
-        options: serde_json::to_value(options)?,
-    }))
+
+    match result {
+        crate::auth::RegisterStartResult::Challenge {
+            challenge_id,
+            options,
+        } => Ok(Json(RegisterStartResponse {
+            challenge_id: Some(challenge_id),
+            options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+            role: None,
+        })),
+        crate::auth::RegisterStartResult::Complete { user_id, role } => {
+            let token = state.auth.create_session(&user_id).await?;
+            Ok(Json(RegisterStartResponse {
+                challenge_id: None,
+                options: None,
+                user_id: Some(user_id),
+                token: Some(token),
+                role: Some(role),
+            }))
+        }
+    }
 }
 
 async fn register_finish(
     State(state): State<AppState>,
     Json(payload): Json<RegisterFinishRequest>,
 ) -> Result<Json<AuthFinishResponse>, ApiError> {
+    if payload.challenge_id.trim().is_empty() {
+        return Err(ApiError::bad_request("challenge_id cannot be empty"));
+    }
     let credential = serde_json::from_value(payload.credential)?;
     let user_id = state
         .auth
@@ -120,13 +170,22 @@ async fn login_start(
     headers: HeaderMap,
     Json(payload): Json<LoginStartRequest>,
 ) -> Result<Json<LoginStartResponse>, ApiError> {
+    let username = payload.username.trim();
+    let password = payload.password.trim();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("username cannot be empty"));
+    }
+    if password.is_empty() {
+        return Err(ApiError::bad_request("password cannot be empty"));
+    }
+
     let ip = extract_ip(&headers);
     let ua = extract_ua(&headers);
     let result = state
         .auth
-        .login_start(&payload.username, &payload.password)
+        .login_start(username, password)
         .await;
-    let (challenge_id, options) = match result {
+    let auth_result = match result {
         Ok(value) => value,
         Err(err) => {
             let detail = format!("user={}, error={}", payload.username, err);
@@ -144,10 +203,68 @@ async fn login_start(
             return Err(err.into());
         }
     };
-    Ok(Json(LoginStartResponse {
-        challenge_id,
-        options: serde_json::to_value(options)?,
-    }))
+
+    match auth_result {
+        crate::auth::LoginStartResult::Challenge {
+            challenge_id,
+            options,
+        } => Ok(Json(LoginStartResponse {
+            challenge_id: Some(challenge_id),
+            options: Some(serde_json::to_value(options)?),
+            registration_options: None,
+            user_id: None,
+            token: None,
+            role: None,
+        })),
+        crate::auth::LoginStartResult::Registration {
+            challenge_id,
+            options,
+            role,
+        } => Ok(Json(LoginStartResponse {
+            challenge_id: Some(challenge_id),
+            options: None,
+            registration_options: Some(serde_json::to_value(options)?),
+            user_id: None,
+            token: None,
+            role: Some(role),
+        })),
+        crate::auth::LoginStartResult::Complete { user_id, role } => {
+            let token = state.auth.create_session(&user_id).await?;
+            if role == "device" {
+                let _ = state.auth.touch_device_login(&user_id).await;
+            }
+            let device_id = if role == "device" {
+                state
+                    .auth
+                    .get_device_id_for_user(&user_id)
+                    .await
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let _ = state
+                .auth
+                .record_audit(
+                    Some(&user_id),
+                    device_id.as_deref(),
+                    "login_success",
+                    None,
+                    ip.as_deref(),
+                    ua.as_deref(),
+                )
+                .await;
+
+            Ok(Json(LoginStartResponse {
+                challenge_id: None,
+                options: None,
+                registration_options: None,
+                user_id: Some(user_id),
+                token: Some(token),
+                role: Some(role),
+            }))
+        }
+    }
 }
 
 async fn login_finish(
@@ -155,13 +272,17 @@ async fn login_finish(
     headers: HeaderMap,
     Json(payload): Json<LoginFinishRequest>,
 ) -> Result<Json<AuthFinishResponse>, ApiError> {
-    let credential = serde_json::from_value(payload.credential)?;
+    if payload.challenge_id.trim().is_empty() {
+        return Err(ApiError::bad_request("challenge_id cannot be empty"));
+    }
     let ip = extract_ip(&headers);
     let ua = extract_ua(&headers);
+    let credential = serde_json::from_value(payload.credential)?;
     let result = state
         .auth
         .login_finish(&payload.challenge_id, credential)
         .await;
+
     let user_id = match result {
         Ok(uid) => uid,
         Err(err) => {
@@ -180,8 +301,10 @@ async fn login_finish(
             return Err(err.into());
         }
     };
+
     let token = state.auth.create_session(&user_id).await?;
     let user = state.auth.get_user_by_id(&user_id).await?;
+
     if user.role == "device" {
         let _ = state.auth.touch_device_login(&user_id).await;
     }
@@ -206,6 +329,77 @@ async fn login_finish(
             ua.as_deref(),
         )
         .await;
+
+    Ok(Json(AuthFinishResponse {
+        user_id,
+        token,
+        role: user.role,
+    }))
+}
+
+async fn login_register_finish(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<LoginFinishRequest>,
+) -> Result<Json<AuthFinishResponse>, ApiError> {
+    if payload.challenge_id.trim().is_empty() {
+        return Err(ApiError::bad_request("challenge_id cannot be empty"));
+    }
+    let ip = extract_ip(&headers);
+    let ua = extract_ua(&headers);
+    let credential = serde_json::from_value(payload.credential)?;
+    let result = state
+        .auth
+        .register_finish(&payload.challenge_id, credential)
+        .await;
+
+    let user_id = match result {
+        Ok(uid) => uid,
+        Err(err) => {
+            let detail = format!("challenge={}, error={}", payload.challenge_id, err);
+            let _ = state
+                .auth
+                .record_audit(
+                    None,
+                    None,
+                    "login_register_finish_failed",
+                    Some(&detail),
+                    ip.as_deref(),
+                    ua.as_deref(),
+                )
+                .await;
+            return Err(err.into());
+        }
+    };
+
+    let token = state.auth.create_session(&user_id).await?;
+    let user = state.auth.get_user_by_id(&user_id).await?;
+
+    if user.role == "device" {
+        let _ = state.auth.touch_device_login(&user_id).await;
+    }
+    let device_id = if user.role == "device" {
+        state
+            .auth
+            .get_device_id_for_user(&user_id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user_id),
+            device_id.as_deref(),
+            "login_success",
+            Some("passkey_registered_during_login"),
+            ip.as_deref(),
+            ua.as_deref(),
+        )
+        .await;
+
     Ok(Json(AuthFinishResponse {
         user_id,
         token,
