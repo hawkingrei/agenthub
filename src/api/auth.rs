@@ -88,19 +88,31 @@ async fn register_start(
     headers: HeaderMap,
     Json(payload): Json<RegisterStartRequest>,
 ) -> Result<Json<RegisterStartResponse>, ApiError> {
+    let username = payload.username.trim();
+    let display_name = payload.display_name.trim();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("username cannot be empty"));
+    }
+    if username.contains('@') {
+        return Err(ApiError::bad_request("username cannot contain @ (reserved for mentions)"));
+    }
+    if display_name.is_empty() {
+        return Err(ApiError::bad_request("display name cannot be empty"));
+    }
+
     let role = payload.role.as_deref().unwrap_or("device");
     let ua = extract_ua(&headers);
     if role == "root" && state.auth.root_exists().await? {
         return Err(ApiError::unauthorized("root already initialized"));
     }
-    if role == "root" && payload.password.is_none() {
-        return Err(ApiError::unauthorized("root requires password"));
+    if role == "root" && payload.password.as_deref().unwrap_or("").trim().is_empty() {
+        return Err(ApiError::unauthorized("root user requires a password"));
     }
     let result = state
         .auth
         .register_start(
-            &payload.username,
-            &payload.display_name,
+            username,
+            display_name,
             role,
             payload.password.as_deref(),
             payload.device_name,
@@ -158,11 +170,20 @@ async fn login_start(
     headers: HeaderMap,
     Json(payload): Json<LoginStartRequest>,
 ) -> Result<Json<LoginStartResponse>, ApiError> {
+    let username = payload.username.trim();
+    let password = payload.password.trim();
+    if username.is_empty() {
+        return Err(ApiError::bad_request("username cannot be empty"));
+    }
+    if password.is_empty() {
+        return Err(ApiError::bad_request("password cannot be empty"));
+    }
+
     let ip = extract_ip(&headers);
     let ua = extract_ua(&headers);
     let result = state
         .auth
-        .login_start(&payload.username, &payload.password)
+        .login_start(username, password)
         .await;
     let auth_result = match result {
         Ok(value) => value,
