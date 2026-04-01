@@ -2313,11 +2313,8 @@ mod tests {
 
     #[test]
     fn parse_team_task_update_rejects_duplicate_context_file_aliases() {
-        let path = std::env::temp_dir().join(format!(
-            "agenthub-context-alias-{}.json",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::write(&path, "{}").expect("write temp json fixture");
+        let temp_file = write_temp_actor_cli_test_file("context-alias", "{}");
+        let path = temp_file.path();
         let args = vec![
             "team-task-update".to_string(),
             "--team-id".to_string(),
@@ -2333,7 +2330,6 @@ mod tests {
         ];
         let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
             .expect_err("duplicate context file aliases should conflict");
-        let _ = std::fs::remove_file(&path);
         assert!(err.to_string().contains(
             "--context-json, --context-json-file, and --context-file cannot be used together"
         ));
