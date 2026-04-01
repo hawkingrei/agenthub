@@ -409,7 +409,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
 
   const loadMemberEvents = useCallback(
     async (mode: "replace" | "prepend" = "replace") => {
-      const agentId = selectedMemberAgentId?.trim() || selectedMemberId.trim();
+      const agentId = selectedMemberAgentId?.trim() ?? "";
       if (!agentId) {
         setMemberEvents([]);
         setMemberEventsHasMore(false);
@@ -456,7 +456,6 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     [
       memberEventsRef,
       selectedMemberAgentId,
-      selectedMemberId,
       selectedMemberSessionId,
       selectedMemberSnapshot,
       setMemberEvents,

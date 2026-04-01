@@ -2645,7 +2645,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [activeRunIdForSelectedTeam, refreshRun, setError]);
   const onSendAgentAcpInput = useCallback(
     async (text: string, sessionId: string) => {
-      const agentId = selectedAgentWorkspaceAgent?.id ?? selectedAgentWorkspaceMemberId;
+      const agentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
       const normalizedText = text.trim();
       if (!props.token || !agentId || !normalizedText || !sessionId) {
         return;
@@ -3932,7 +3932,7 @@ export function TeamPage(props: TeamPageProps) {
                       memberEventsLoading={memberEventsLoading}
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
-                      onSendInput={onSendAgentAcpInput}
+                      onSendInput={selectedAgentWorkspaceAgent?.id ? onSendAgentAcpInput : undefined}
                       onForceNewSession={onForceNewTeamMemberSession}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}

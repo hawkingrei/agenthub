@@ -29,15 +29,22 @@ variants `AgentReasoningDelta`, `AgentReasoningRawContentDelta`, and
   - `AgentReasoningDelta`
   - `AgentReasoningRawContentDelta`
   - `AgentReasoningRawContent`
-- kept the existing deduplication behavior so a later non-delta raw reasoning event does not
-  duplicate already-streamed thought chunks
+- tightened final reasoning deduplication so `AgentReasoning` and
+  `AgentReasoningRawContent` cannot both emit duplicate `AgentThoughtChunk` updates for the same
+  turn after deltas or after a prior final reasoning event
+- updated Team ACP direct-control routing so detached ACP event loading and input sending require a
+  resolved `agent_id` instead of falling back to `member_id`
 - added focused regression tests covering:
   - legacy reasoning delta -> `AgentThoughtChunk`
   - legacy raw reasoning without deltas -> `AgentThoughtChunk`
+  - dual final legacy reasoning events deduplicate to a single thought chunk
+  - detached ACP event loading clears state when no runtime `agent_id` is available
 
 ## Validation
 
 - `cargo test -p agenthub-codex-acp legacy_reasoning -- --nocapture`
 - `cargo test -p agenthub-codex-acp raw_reasoning -- --nocapture`
+- `cargo test -p agenthub-codex-acp final_reasoning -- --nocapture`
+- `cd web && npx vitest run src/pages/team/use_team_actions.test.tsx`
 - `cargo fmt --manifest-path agenthub-codex-acp/Cargo.toml --all`
-- `git diff --check -- agenthub-codex-acp/src/thread.rs`
+- `git diff --check -- agenthub-codex-acp/src/thread.rs web/src/pages/team/use_team_actions.ts web/src/pages/team/use_team_actions.test.tsx web/src/pages/team_page.tsx`

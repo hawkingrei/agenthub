@@ -472,6 +472,7 @@ struct PromptState {
     response_tx: Option<oneshot::Sender<Result<StopReason, Error>>>,
     seen_message_deltas: bool,
     seen_reasoning_deltas: bool,
+    seen_reasoning_final: bool,
 }
 
 impl PromptState {
@@ -509,6 +510,7 @@ impl PromptState {
             response_tx: Some(response_tx),
             seen_message_deltas: false,
             seen_reasoning_deltas: false,
+            seen_reasoning_final: false,
         }
     }
 
@@ -517,6 +519,19 @@ impl PromptState {
             return false;
         };
         !response_tx.is_closed()
+    }
+
+    fn should_emit_final_reasoning(&mut self) -> bool {
+        if self.seen_reasoning_deltas {
+            self.seen_reasoning_deltas = false;
+            self.seen_reasoning_final = true;
+            return false;
+        }
+        if self.seen_reasoning_final {
+            return false;
+        }
+        self.seen_reasoning_final = true;
+        true
     }
 
     fn abort_pending_interactions(&mut self) {
@@ -780,14 +795,13 @@ impl PromptState {
             }
             EventMsg::AgentReasoning(AgentReasoningEvent { text }) => {
                 info!("Agent reasoning (non-delta) received: {text:?}");
-                // We didn't receive this message via streaming
-                if !std::mem::take(&mut self.seen_reasoning_deltas) {
+                if self.should_emit_final_reasoning() {
                     client.send_agent_thought(text).await;
                 }
             }
             EventMsg::AgentReasoningRawContent(AgentReasoningRawContentEvent { text }) => {
                 info!("Agent raw reasoning (non-delta) received: {text:?}");
-                if !std::mem::take(&mut self.seen_reasoning_deltas) {
+                if self.should_emit_final_reasoning() {
                     client.send_agent_thought(text).await;
                 }
             }
@@ -5501,6 +5515,59 @@ mod tests {
                         content: ContentBlock::Text(TextContent { text, .. }),
                         ..
                     }) if text == "raw reasoning only"
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_legacy_final_reasoning_events_are_deduplicated() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new("submission-id".to_string(), thread, message_tx, response_tx);
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::AgentReasoning(AgentReasoningEvent {
+                            text: "final reasoning".to_string(),
+                        }),
+                    )
+                    .await;
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::AgentReasoningRawContent(AgentReasoningRawContentEvent {
+                            text: "duplicate raw reasoning".to_string(),
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                assert_eq!(
+                    notifications.len(),
+                    1,
+                    "notifications don't match {notifications:?}"
+                );
+                assert!(matches!(
+                    &notifications[0].update,
+                    SessionUpdate::AgentThoughtChunk(ContentChunk {
+                        content: ContentBlock::Text(TextContent { text, .. }),
+                        ..
+                    }) if text == "final reasoning"
                 ));
 
                 anyhow::Ok(())

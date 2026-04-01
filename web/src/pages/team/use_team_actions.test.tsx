@@ -291,7 +291,8 @@ describe("useTeamActions", () => {
       captures.push(actions);
     };
     const options = createBaseOptions({
-      selectedMemberId: "worker-agent",
+      selectedMemberId: "worker-member-id",
+      selectedMemberAgentId: "worker-agent",
       selectedMemberSessionId: "runtime-session-1",
       setMemberEvents,
       setMemberEventsHasMore,
@@ -363,6 +364,38 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("clears detached ACP events when the resolved member agent id is missing", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents");
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberId: "worker-member-id",
+      selectedMemberAgentId: null,
+      selectedMemberSessionId: "runtime-session-1",
+      setMemberEvents,
+      setMemberEventsHasMore,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).not.toHaveBeenCalled();
+      expect(setMemberEvents).toHaveBeenCalledWith([]);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(false);
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("keeps older same-session ACP history on replace refresh", async () => {
     const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
       {
@@ -411,7 +444,8 @@ describe("useTeamActions", () => {
       },
     ];
     const options = createBaseOptions({
-      selectedMemberId: "worker-agent",
+      selectedMemberId: "worker-member-id",
+      selectedMemberAgentId: "worker-agent",
       selectedMemberSessionId: "runtime-session-1",
       memberEventsRef: { current: existingHistory },
       setMemberEvents,
