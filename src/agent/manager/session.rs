@@ -313,6 +313,8 @@ impl AgentManager {
         actor_context: Option<AcpActorSkillContext>,
         allow_resume_retry: bool,
     ) -> anyhow::Result<String> {
+        // This UUID tracks the current AgentHub runtime launch only. ACP/Codex continuity
+        // can still resume a previously persisted provider session later in this method.
         let session_id = Uuid::new_v4().to_string();
         let actor_context = actor_context.map(normalize_actor_context).transpose()?;
         let persisted_workdir = super::expand_tilde(&agent.workdir);
@@ -567,6 +569,8 @@ impl AgentManager {
         let mut resumed_persistent_session_id = None::<String>;
         let mut active_acp_session_id = None::<String>;
         let input = if let Some(provider) = acp_provider {
+            // Provider continuity is stored separately from the AgentHub runtime launch id
+            // above so restarts can keep ACP memory while still recording a new local start.
             let resume_session_id = self.get_persistent_session(&agent.id, provider.id).await?;
             resumed_provider_id = Some(provider.id.to_string());
             let stdout = match stdout.take() {

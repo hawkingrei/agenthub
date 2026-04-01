@@ -260,7 +260,7 @@ fn build_agent_record_for_policy(
 }
 
 #[test]
-fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() {
+fn runtime_start_policy_redirects_leader_to_stable_sandbox() {
     let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
@@ -277,11 +277,9 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
         contract_version: None,
         continuity: None,
     };
-    let session_id = "session-leader-1";
 
-    let policy =
-        build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, Some(session_id))
-            .expect("leader should derive a session-isolated workdir");
+    let policy = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
+        .expect("leader should derive a stable coordination workdir");
     assert!(
         policy.workdir.starts_with(&agent.workdir),
         "workdir={} base={}",
@@ -291,8 +289,13 @@ fn runtime_start_policy_redirects_non_empty_leader_workdir_to_session_sandbox() 
     assert!(
         policy
             .workdir
-            .contains(".agenthub-team-leader/leader-1-run-leader-session-leader-1"),
+            .contains(".agenthub-team-leader/leader-1-run-leader"),
         "workdir={}",
+        policy.workdir
+    );
+    assert!(
+        !policy.workdir.contains("session-leader"),
+        "leader sandbox should not depend on launch session id: workdir={}",
         policy.workdir
     );
 }
@@ -365,10 +368,9 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
 }
 
 #[test]
-fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
+fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
     let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
-    std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
@@ -383,12 +385,23 @@ fn runtime_start_policy_rejects_non_empty_leader_workdir_without_session_id() {
         continuity: None,
     };
 
-    let err = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
-        .expect_err("leader should require a start session id for non-empty workdir");
-    assert!(
-        err.to_string()
-            .contains("leader role policy requires start session id")
-    );
+    let first = build_runtime_start_policy(
+        &agent,
+        Some(&ctx),
+        &agent.workdir,
+        None,
+        Some("session-leader-1"),
+    )
+    .expect("first leader launch policy");
+    let second = build_runtime_start_policy(
+        &agent,
+        Some(&ctx),
+        &agent.workdir,
+        None,
+        Some("session-leader-2"),
+    )
+    .expect("second leader launch policy");
+    assert_eq!(first.workdir, second.workdir);
 }
 
 #[test]

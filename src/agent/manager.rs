@@ -148,18 +148,6 @@ impl ProxyPolicy {
     }
 }
 
-fn is_empty_or_missing_dir(path: &str) -> anyhow::Result<bool> {
-    let dir = Path::new(path);
-    if !dir.exists() {
-        return Ok(true);
-    }
-    if !dir.is_dir() {
-        return Ok(false);
-    }
-    let mut entries = std::fs::read_dir(dir)?;
-    Ok(entries.next().is_none())
-}
-
 fn compact_token(raw: &str, fallback: &str, max_len: usize) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut prev_sep = false;
@@ -210,8 +198,10 @@ fn derive_worker_runtime_root(workdir: &str) -> String {
 fn derive_leader_runtime_workdir(
     workdir: &str,
     actor_context: &AcpActorSkillContext,
-    session_id: &str,
 ) -> String {
+    // Team leader continuity should survive ordinary runtime restarts, so the derived
+    // coordination workspace is keyed by actor + scope and intentionally excludes the
+    // per-launch AgentHub runtime session id.
     let actor_token = compact_token(&actor_context.actor_id, "leader", 24);
     let scope_token = actor_context
         .current_run_id
@@ -219,10 +209,9 @@ fn derive_leader_runtime_workdir(
         .or(actor_context.team_id.as_deref())
         .map(|value| compact_token(value, "scope", 24))
         .unwrap_or_else(|| "scope".to_string());
-    let session_token = compact_token(session_id, "session", 24);
     Path::new(workdir)
         .join(".agenthub-team-leader")
-        .join(format!("{actor_token}-{scope_token}-{session_token}"))
+        .join(format!("{actor_token}-{scope_token}"))
         .to_string_lossy()
         .to_string()
 }
@@ -232,7 +221,7 @@ fn build_runtime_start_policy(
     actor_context: Option<&AcpActorSkillContext>,
     expanded_workdir: &str,
     expanded_worktree_repo: Option<&str>,
-    start_session_id: Option<&str>,
+    _start_session_id: Option<&str>,
 ) -> anyhow::Result<RuntimeStartPolicy> {
     let mut policy = RuntimeStartPolicy {
         workdir: expanded_workdir.to_string(),
@@ -254,18 +243,12 @@ fn build_runtime_start_policy(
                     agent.id
                 );
             }
-            if !is_empty_or_missing_dir(expanded_workdir)? {
-                let context = actor_context
-                    .ok_or_else(|| anyhow::anyhow!("leader role policy requires actor context"))?;
-                let session_id = start_session_id.ok_or_else(|| {
-                    anyhow::anyhow!("leader role policy requires start session id")
-                })?;
-                policy.workdir =
-                    derive_leader_runtime_workdir(expanded_workdir, context, session_id);
-            }
-            if !is_empty_or_missing_dir(&policy.workdir)? {
+            let context = actor_context
+                .ok_or_else(|| anyhow::anyhow!("leader role policy requires actor context"))?;
+            policy.workdir = derive_leader_runtime_workdir(expanded_workdir, context);
+            if Path::new(&policy.workdir).exists() && !Path::new(&policy.workdir).is_dir() {
                 anyhow::bail!(
-                    "team leader policy requires empty workdir (agent_id={} workdir={})",
+                    "team leader policy requires directory workdir (agent_id={} workdir={})",
                     agent.id,
                     policy.workdir
                 );
