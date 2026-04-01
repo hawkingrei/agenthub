@@ -55,7 +55,7 @@ type UseTeamActionsOptions = {
   inboxLimit: string;
   inboxAfterId: string;
   inboxIncludeDelivered: boolean;
-  selectedMemberId: string;
+  selectedMemberAgentId: string | null;
   selectedMemberSessionId: string | null;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   activeRunIdRef: MutableRefObject<string | null>;
@@ -184,7 +184,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     inboxLimit,
     inboxAfterId,
     inboxIncludeDelivered,
-    selectedMemberId,
+    selectedMemberAgentId,
     selectedMemberSessionId,
     selectedMemberSnapshot,
     activeRunIdRef,
@@ -407,8 +407,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
 
   const loadMemberEvents = useCallback(
     async (mode: "replace" | "prepend" = "replace") => {
-      const memberAgentId = selectedMemberSnapshot?.member_id ?? selectedMemberId.trim();
-      if (!memberAgentId) {
+      const agentId = selectedMemberAgentId?.trim() ?? "";
+      if (!agentId) {
         setMemberEvents([]);
         setMemberEventsHasMore(false);
         return;
@@ -428,7 +428,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         const beforeId =
           mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
         const list = await teamApi.listAgentEvents(
-          memberAgentId,
+          agentId,
           MEMBER_EVENT_PAGE_LIMIT,
           sessionId,
           beforeId
@@ -453,7 +453,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     },
     [
       memberEventsRef,
-      selectedMemberId,
+      selectedMemberAgentId,
       selectedMemberSessionId,
       selectedMemberSnapshot,
       setMemberEvents,

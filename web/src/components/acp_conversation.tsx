@@ -1,4 +1,5 @@
 import React from "react";
+import type { AcpTerminalActivity } from "../acp";
 import {
   ConversationItem,
   ExploreGroupConversationItem,
@@ -382,6 +383,10 @@ const ToolCallBubble = React.memo(
       [msg.raw_output]
     );
     const statusMark = getToolCallStatusMark(msg.status);
+    const terminalActivityPreview = React.useMemo(() => {
+      const last = msg.terminal_activities?.at(-1);
+      return last ? formatTerminalActivityLabel(last) : "";
+    }, [msg.terminal_activities]);
 
     React.useEffect(() => {
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
@@ -489,6 +494,23 @@ const ToolCallBubble = React.memo(
               />
             </FoldSection>
           )}
+          {msg.terminal_activities && msg.terminal_activities.length > 0 && (
+            <FoldSection
+              key="activity"
+              label="Activity"
+              preview={terminalActivityPreview}
+              defaultOpen={false}
+              lazyRender={true}
+            >
+              <div className="space-y-1 text-sm text-slate-600">
+                {msg.terminal_activities.map((activity, index) => (
+                  <div key={`${activity.kind}:${activity.command ?? ""}:${index}`}>
+                    {formatTerminalActivityLabel(activity)}
+                  </div>
+                ))}
+              </div>
+            </FoldSection>
+          )}
           {msg.terminal_output && (
             <FoldSection
               key="terminal"
@@ -514,6 +536,19 @@ const ToolCallBubble = React.memo(
     prev.grouped === next.grouped &&
     prev.indexLabel === next.indexLabel
 );
+
+function formatTerminalActivityLabel(activity: AcpTerminalActivity): string {
+  const base =
+    activity.kind === "waiting"
+      ? "Waiting for background terminal"
+      : activity.kind === "waited"
+        ? "Waited for background terminal"
+        : "Interacted with background terminal";
+  if (!activity.command?.trim()) {
+    return base;
+  }
+  return `${base} · ${activity.command.trim()}`;
+}
 
 type ToolCallGroupBubbleProps = {
   msg: ToolCallGroupConversationItem;
