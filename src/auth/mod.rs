@@ -42,7 +42,7 @@ pub enum LoginStartResult {
 #[derive(Clone)]
 pub struct AuthService {
     db: SqlitePool,
-    webauthn: Option<Arc<Webauthn>>,
+    webauthn: Arc<Webauthn>,
     pending: Arc<RwLock<HashMap<String, PendingChallenge>>>,
     passkey_enabled: bool,
 }
@@ -85,7 +85,7 @@ impl AuthService {
 
         Ok(Self {
             db,
-            webauthn: Some(Arc::new(webauthn)),
+            webauthn: Arc::new(webauthn),
             pending: Arc::new(RwLock::new(HashMap::new())),
             passkey_enabled,
         })
@@ -127,6 +127,21 @@ impl AuthService {
         device_name: Option<String>,
         user_agent: Option<String>,
     ) -> anyhow::Result<RegisterStartResult> {
+        let username = username.trim();
+        let display_name = display_name.trim();
+        if username.is_empty() {
+            anyhow::bail!("username cannot be empty");
+        }
+        if username.contains('@') {
+            anyhow::bail!("username cannot contain @ (reserved for mentions)");
+        }
+        if display_name.is_empty() {
+            anyhow::bail!("display name cannot be empty");
+        }
+        if role == "root" && password.unwrap_or("").trim().is_empty() {
+            anyhow::bail!("root user requires a password");
+        }
+
         if let Some(existing) = self.get_user_by_username(username).await? {
             if existing.role != role {
                 anyhow::bail!("username already exists");
@@ -210,13 +225,8 @@ impl AuthService {
                 role: role.to_string(),
             });
         }
-        let webauthn = self
-            .webauthn
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let user_uuid = Uuid::parse_str(user_id)?;
-        let (ccr, state) =
-            webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
+        let (ccr, state) = self.webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
@@ -263,11 +273,7 @@ impl AuthService {
             anyhow::bail!("passkey registration is disabled");
         }
 
-        let webauthn = self
-            .webauthn
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
-        let passkey = webauthn.finish_passkey_registration(&cred, &state)?;
+        let passkey = self.webauthn.finish_passkey_registration(&cred, &state)?;
 
         let mut passkeys = self.load_passkeys(&user_id).await?;
         passkeys.push(passkey);
@@ -288,6 +294,15 @@ impl AuthService {
         username: &str,
         password: &str,
     ) -> anyhow::Result<LoginStartResult> {
+        let username = username.trim();
+        let password = password.trim();
+        if username.is_empty() {
+            anyhow::bail!("username cannot be empty");
+        }
+        if password.is_empty() {
+            anyhow::bail!("password cannot be empty");
+        }
+
         let user = self
             .get_user_by_username(username)
             .await?
@@ -307,10 +322,6 @@ impl AuthService {
             });
         }
 
-        let webauthn = self
-            .webauthn
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
         let passkeys = self.load_passkeys(&user.id).await?;
         if passkeys.is_empty() {
             // No passkeys registered, but passkeys are enabled globally.
@@ -340,7 +351,7 @@ impl AuthService {
                 });
         }
 
-        let (rcr, state) = webauthn.start_passkey_authentication(&passkeys)?;
+        let (rcr, state) = self.webauthn.start_passkey_authentication(&passkeys)?;
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;
         pending.insert(
@@ -376,13 +387,8 @@ impl AuthService {
             anyhow::bail!("passkey authentication is disabled");
         }
 
-        let webauthn = self
-            .webauthn
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("webauthn not initialized"))?;
-
         let mut passkeys = self.load_passkeys(&user_id).await?;
-        let result = webauthn.finish_passkey_authentication(&cred, &state)?;
+        let result = self.webauthn.finish_passkey_authentication(&cred, &state)?;
         let mut changed = false;
         for passkey in &mut passkeys {
             if let Some(updated) = passkey.update_credential(&result) {

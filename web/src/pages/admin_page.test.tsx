@@ -105,4 +105,103 @@ describe("AdminPage", () => {
 
     expect(onDeveloperModeChange).toHaveBeenCalledWith(true);
   });
+
+  it("renders system config tab and handles passkey toggle", () => {
+    const onPasskeyEnabledChange = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <AdminPage
+            auth={{ username: "root", role: "root" }}
+            error={null}
+            setError={() => {}}
+            safePaths={[]}
+            selectedSafePaths={new Set<string>()}
+            onToggleSafePath={() => {}}
+            onToggleAllSafePaths={() => {}}
+            onDeleteSelectedSafePaths={() => {}}
+            devices={[]}
+            audits={[]}
+            vapidInfo={null}
+            onRotateVapid={() => {}}
+            onAddSafePath={() => {}}
+            onDeleteSafePath={() => {}}
+            onRevokeDevice={() => {}}
+            onCreateJoin={() => {}}
+            joinQr={null}
+            joinToken={null}
+            joinPin={null}
+            safePathInput=""
+            setSafePathInput={() => {}}
+            developerMode={false}
+            onDeveloperModeChange={() => {}}
+            passkeyEnabled={null}
+            onPasskeyEnabledChange={onPasskeyEnabledChange}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const systemTab = required(
+      Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("System")
+      ),
+      "system tab missing"
+    );
+    act(() => {
+      systemTab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.textContent).toContain("System Configuration");
+    const toggle = required(
+      container.querySelector('input[type="checkbox"]') as HTMLInputElement | null,
+      "passkey toggle missing"
+    );
+    // When null, it should be disabled and show loading text
+    expect(toggle.disabled).toBe(true);
+    expect(container.textContent).toContain("Loading configuration...");
+
+    // Re-render with enabled=false
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <AdminPage
+            auth={{ username: "root", role: "root" }}
+            error={null}
+            setError={() => {}}
+            safePaths={[]}
+            selectedSafePaths={new Set<string>()}
+            onToggleSafePath={() => {}}
+            onToggleAllSafePaths={() => {}}
+            onDeleteSelectedSafePaths={() => {}}
+            devices={[]}
+            audits={[]}
+            vapidInfo={null}
+            onRotateVapid={() => {}}
+            onAddSafePath={() => {}}
+            onDeleteSafePath={() => {}}
+            onRevokeDevice={() => {}}
+            onCreateJoin={() => {}}
+            joinQr={null}
+            joinToken={null}
+            joinPin={null}
+            safePathInput=""
+            setSafePathInput={() => {}}
+            developerMode={false}
+            onDeveloperModeChange={() => {}}
+            passkeyEnabled={false}
+            onPasskeyEnabledChange={onPasskeyEnabledChange}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.checked).toBe(false);
+    act(() => {
+      toggle.click();
+    });
+    expect(onPasskeyEnabledChange).toHaveBeenCalledWith(true);
+  });
 });

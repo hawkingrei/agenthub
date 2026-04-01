@@ -102,4 +102,32 @@ describe("JoinPage error handling", () => {
     expect(container.textContent).not.toContain("{\"error\":\"user not found\"}");
     expect(joinStart).toHaveBeenCalledTimes(1);
   });
+
+  it("completes joining without passkey challenge when token is returned in start response", async () => {
+    const onComplete = vi.fn();
+    joinStart.mockResolvedValueOnce({
+      user_id: "test-user-id",
+      token: "session-token",
+    });
+
+    await act(async () => {
+      root.render(<JoinPage onComplete={onComplete} />);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, "Join");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onComplete).toHaveBeenCalledWith({
+      userId: "test-user-id",
+      token: "session-token",
+      username: "", // initial state
+      role: "device",
+    });
+    expect(ensurePushSubscription).toHaveBeenCalledWith("session-token");
+    expect(joinFinish).not.toHaveBeenCalled();
+  });
 });

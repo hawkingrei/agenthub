@@ -796,7 +796,6 @@ export function App() {
   });
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [deviceName, setDeviceName] = useState("");
   const [password, setPassword] = useState("");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
@@ -2189,8 +2188,7 @@ export function App() {
         username,
         displayName,
         role,
-        role === "root" ? password : undefined,
-        deviceName || undefined
+        role === "root" ? password : undefined
       );
 
       let next: AuthState;
@@ -3390,22 +3388,13 @@ export function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {rootInitialized === false && (
-            <>
-              <input
-                className={AUTH_INPUT_CLASS}
-                placeholder="Display Name"
-                value={displayName}
-                disabled={authBusy !== null}
-                onChange={(e) => setDisplayName(e.target.value)}
-              />
-              <input
-                className={AUTH_INPUT_CLASS}
-                placeholder="Device Name (Optional)"
-                value={deviceName}
-                disabled={authBusy !== null}
-                onChange={(e) => setDeviceName(e.target.value)}
-              />
-            </>
+            <input
+              className={AUTH_INPUT_CLASS}
+              placeholder="Display Name"
+              value={displayName}
+              disabled={authBusy !== null}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
           )}
           <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false && (
