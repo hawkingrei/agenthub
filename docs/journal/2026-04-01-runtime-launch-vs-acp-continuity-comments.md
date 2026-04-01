@@ -4,6 +4,7 @@
 
 - keep Team leader runtime workdirs stable across ordinary restarts by removing the
   per-launch session token from the derived leader workspace path
+- confirm non-Team/project-path agents keep their configured workdirs across launch ids
 - clarify in code comments that AgentHub's runtime `session_id` is still a per-launch identifier
 - clarify that ACP provider continuity is persisted and resumed separately from the runtime launch id
 - document that `Force New Session` is the intentional path that clears ACP continuity before restart
@@ -28,6 +29,10 @@ Recent Team runtime work made it easy to conflate three related but distinct con
 This change fixes the leader workspace identity bug and keeps the code comments explicit at the
 critical boundaries.
 
+The same clarification now explicitly applies to other project-path agents too: ordinary restarts
+should keep a stable workdir, while ACP/Codex continuity remains a separate persisted provider
+session concern.
+
 ## Historical Context
 
 - `docs/journal/2026-03-23-acp-resume-dirty-session-fallback.md`
@@ -47,6 +52,8 @@ critical boundaries.
 - `src/agent/manager/session.rs`
 - `src/agent/manager/tests.rs`
 - `src/team/runtime.rs`
+- `docs/features/acp-runtime.md`
+- `docs/features/agents-teams.md`
 - `docs/todo.md`
 
 ## Validation

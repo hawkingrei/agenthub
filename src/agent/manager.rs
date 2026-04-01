@@ -272,6 +272,8 @@ fn build_runtime_start_policy(
                     .or(context.team_id.as_deref())
                     .map(|value| compact_token(value, "scope", 24))
                     .unwrap_or_else(|| "scope".to_string());
+                // Worker runtime workdirs are stable for the current actor + scope and should
+                // not change just because AgentHub generated a new per-launch runtime session id.
                 let root = derive_worker_runtime_root(expanded_workdir);
                 let workdir = Path::new(&root)
                     .join(format!("{actor_token}-{scope_token}"))

@@ -86,6 +86,8 @@ impl AgentManager {
         agent_id: &str,
         provider: &str,
     ) -> anyhow::Result<Option<String>> {
+        // This is provider-managed continuity state (for example a persisted Codex thread/session),
+        // not the per-launch AgentHub runtime session recorded in `agent_sessions.id`.
         let row = sqlx::query(
             r#"
             SELECT session_id
@@ -106,6 +108,8 @@ impl AgentManager {
         provider: &str,
         session_id: &str,
     ) -> anyhow::Result<()> {
+        // Persist the provider continuity session separately so ordinary restarts can resume ACP
+        // memory without reusing the local runtime launch id.
         let now = Utc::now().timestamp();
         sqlx::query(
             r#"
@@ -129,6 +133,8 @@ impl AgentManager {
         agent_id: &str,
         provider: &str,
     ) -> anyhow::Result<()> {
+        // This intentionally drops provider continuity only; it does not rewrite historical
+        // `agent_sessions` launch records.
         sqlx::query(
             r#"
             DELETE FROM agent_persistent_sessions
@@ -146,6 +152,7 @@ impl AgentManager {
         &self,
         agent_id: &str,
     ) -> anyhow::Result<Option<String>> {
+        // `agent_sessions.id` is the latest AgentHub runtime launch id with an open lifetime.
         let row = sqlx::query(
             r#"
             SELECT id
@@ -163,6 +170,8 @@ impl AgentManager {
     }
 
     async fn get_running_session_id(&self, agent_id: &str) -> Option<String> {
+        // Running-session lookups return the active AgentHub launch id only. Provider continuity
+        // lives in `agent_persistent_sessions` and may survive across multiple launch ids.
         let (child, session_id) = {
             let guard = self.inner.read().await;
             guard
