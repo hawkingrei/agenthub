@@ -9,6 +9,8 @@ bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_rust", version = "0.67.0")
 
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
     commit = "c34b30a3c128bb75fcec27ef838c93c99b92fc61",
@@ -44,12 +46,31 @@ crate.annotation(
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
 )
+new_local_repository(
+    name = "v8_targets",
+    build_file = "//third_party/v8:BUILD.bazel",
+    path = "third_party/v8",
+)
+http_archive(
+    name = "v8_crate_146_4_0",
+    build_file = "//third_party/v8:v8_crate.BUILD.bazel",
+    sha256 = "d97bcac5cdc5a195a4813f1855a6bc658f240452aac36caa12fd6c6f16026ab1",
+    strip_prefix = "v8-146.4.0",
+    type = "tar.gz",
+    urls = ["https://static.crates.io/crates/v8/v8-146.4.0.crate"],
+)
 crate.annotation(
     crate = "v8",
-    # rusty_v8's build.rs points RUSTY_V8_SRC_BINDING_PATH at crate-local
-    # prebuilt bindings under gen/. Add them to the cargo_build_script
-    # runfiles so Bazel sandboxes can resolve the emitted path.
-    build_script_data_glob = ["gen/**"],
+    # Mirror upstream codex's Bazel pattern: inject an explicit binding target
+    # instead of letting rusty_v8 synthesize a crate-local gen/ path that
+    # rustc later cannot resolve inside Bazel sandboxes.
+    build_script_data = [
+        "@v8_targets//:rusty_v8_binding_for_target",
+    ],
+    build_script_env = {
+        "RUSTY_V8_SRC_BINDING_PATH": "$(execpath @v8_targets//:rusty_v8_binding_for_target)",
+    },
+    gen_build_script = "on",
     repositories = ["crate_index"],
 )
 crate.from_cargo(
@@ -57,4 +78,5 @@ crate.from_cargo(
     cargo_lockfile = "//:Cargo.lock",
     manifests = ["//:Cargo.toml"],
 )
+inject_repo(crate, "v8_targets")
 use_repo(crate, "crate_index")

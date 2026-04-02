@@ -1,0 +1,8 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "rusty_v8_binding_for_target",
+    srcs = ["@v8_crate_146_4_0//:src_binding_release_x86_64_unknown_linux_gnu"],
+)
+
+exports_files(["v8_crate.BUILD.bazel"])

@@ -157,11 +157,12 @@ The upstream `v8` crate already ships the prebuilt binding files in its publishe
 
 The break only appears in Bazel because `rusty_v8`'s `build.rs` emits `RUSTY_V8_SRC_BINDING_PATH` pointing at crate-local files under `gen/`, and the crate-universe generated `cargo_build_script` runfiles did not carry that directory into the sandboxed build.
 
-This slice fixes the Bazel-only layout mismatch in `MODULE.bazel` by adding a narrow `crate.annotation` for `v8`:
+The final Bazel-side fix follows the same Bazel consumer pattern that upstream `openai/codex` already uses for `rusty_v8`:
 
 - keep Cargo dependencies unchanged;
-- add `build_script_data_glob = ["gen/**"]` so the `cargo_build_script` runfiles include the prebuilt bindings that `build.rs` already references;
-- preserve the rest of the `v8` build behavior and avoid patching upstream crate sources.
+- add a dedicated Bazel `http_archive` for the published `v8-146.4.0` crate and expose the prebuilt binding file through `third_party/v8/v8_crate.BUILD.bazel`;
+- inject a `v8_targets` repo into `crate_universe` and set `build_script_data` / `build_script_env` so the `v8` crate receives an explicit `RUSTY_V8_SRC_BINDING_PATH` from Bazel instead of synthesizing a crate-local `gen/` path itself;
+- keep the fix narrow to the current Linux consumer path and preserve the Cargo dependency graph.
 
 ## Clippy Follow-up
 
