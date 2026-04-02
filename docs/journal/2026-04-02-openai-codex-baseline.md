@@ -208,3 +208,5 @@ The test helpers now use Codex's default-config path instead of loading user con
 - Chrome DevTools baseline and regression checks were recorded against the local Vite shell at `http://127.0.0.1:4173/`; the page remained stable before and after the change, and the only visible runtime failure stayed the expected backend-less JSON/API error from loading the standalone frontend shell without the Rust API server.
 - Focused ACP conversation tests now also cover older live tool cards collapsing once they move past the cutoff window.
 - Focused helper/render tests now also cover completed `request_user_input` result parsing and secret-answer placeholders.
+- `src/api/teams/tests_router.rs` now treats `stopped` as a valid runtime status for the router-level contract check after team creation.
+- The router contract test still verifies the runtime response shape and member roster, while `src/api/teams/tests_core.rs::teams_api_create_team_auto_starts_member_runtime` remains the dedicated coverage for create-time auto-start semantics.
