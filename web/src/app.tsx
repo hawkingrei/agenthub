@@ -2674,13 +2674,19 @@ export function App() {
     }
   }, [token, activeAgent]);
 
-  const onSendInput = useCallback(async () => {
-    if (!input.trim()) return;
+  const sendAcpInput = useCallback(async (
+    rawText: string,
+    options?: {
+      recordHistory?: boolean;
+      clearComposer?: boolean;
+    }
+  ) => {
+    const text = rawText.trim();
+    if (!text) return;
     if (!token || !activeAgent) return;
     eventPollRef.current.boostUntil = Date.now() + 10_000;
     schedulePollRef.current?.(1000);
     acpConversation.jumpToConversationBottom();
-    const text = input.trim();
     let messageId: string | null = null;
     if (activeSessionId) {
       messageId =
@@ -2698,10 +2704,14 @@ export function App() {
       );
     try {
       await sendInputForSession(activeSessionId);
-      setInputHistory((prev) => pushInputHistory(prev, text));
-      setInputHistoryCursor(-1);
-      inputHistoryDraftRef.current = "";
-      setInput("");
+      if (options?.recordHistory) {
+        setInputHistory((prev) => pushInputHistory(prev, text));
+        setInputHistoryCursor(-1);
+      }
+      if (options?.clearComposer) {
+        inputHistoryDraftRef.current = "";
+        setInput("");
+      }
     } catch (err) {
       const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
       const mismatch = parseSendInputSessionMismatch(msg);
@@ -2712,10 +2722,14 @@ export function App() {
         await loadAgentEvents(activeAgent, runningSessionId);
         try {
           await sendInputForSession(runningSessionId);
-          setInputHistory((prev) => pushInputHistory(prev, text));
-          setInputHistoryCursor(-1);
-          inputHistoryDraftRef.current = "";
-          setInput("");
+          if (options?.recordHistory) {
+            setInputHistory((prev) => pushInputHistory(prev, text));
+            setInputHistoryCursor(-1);
+          }
+          if (options?.clearComposer) {
+            inputHistoryDraftRef.current = "";
+            setInput("");
+          }
           return;
         } catch (retryErr) {
           const retryMsg =
@@ -2734,7 +2748,6 @@ export function App() {
       }
     }
   }, [
-    input,
     token,
     activeAgent,
     activeSessionId,
@@ -2742,6 +2755,17 @@ export function App() {
     loadAgentEvents,
     refreshAgents,
   ]);
+
+  const onSendInput = useCallback(async () => {
+    await sendAcpInput(input, {
+      recordHistory: true,
+      clearComposer: true,
+    });
+  }, [input, sendAcpInput]);
+
+  const onSubmitRequestUserInput = useCallback(async (text: string) => {
+    await sendAcpInput(text);
+  }, [sendAcpInput]);
 
   const onInputChange = useCallback(
     (value: string) => {
@@ -3103,6 +3127,7 @@ export function App() {
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,
       ansi,
+      onSubmitRequestUserInput,
     }),
     [
       acpConversation.conversationRenderItems,
@@ -3121,6 +3146,7 @@ export function App() {
       acpConversation.acpConversationRef,
       acpView.runStatus?.status,
       ansi,
+      onSubmitRequestUserInput,
     ]
   );
   const acpDebugProps = useMemo(

@@ -1,10 +1,7 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     ffi::OsStr,
-    ops::DerefMut,
     path::{Component, Path, PathBuf},
-    rc::Rc,
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -34,24 +31,23 @@ use codex_core::{
 use codex_protocol::{
     approvals::{ElicitationRequest, ElicitationRequestEvent},
     config_types::TrustLevel,
-    custom_prompts::CustomPrompt,
     dynamic_tools::{DynamicToolCallOutputContentItem, DynamicToolCallRequest},
     mcp::CallToolResult,
-    models::{MacOsSeatbeltProfileExtensions, PermissionProfile, ResponseItem, WebSearchAction},
+    models::{PermissionProfile, ResponseItem, WebSearchAction},
     openai_models::{ModelPreset, ReasoningEffort},
     parse_command::ParsedCommand,
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
     protocol::{
         AgentMessageContentDeltaEvent, AgentMessageEvent, AgentReasoningDeltaEvent,
         AgentReasoningEvent, AgentReasoningRawContentDeltaEvent, AgentReasoningRawContentEvent,
-        AgentReasoningSectionBreakEvent, ApplyPatchApprovalRequestEvent,
+        AgentReasoningSectionBreakEvent, ApplyPatchApprovalRequestEvent, DeprecationNoticeEvent,
         DynamicToolCallResponseEvent, ElicitationAction, ErrorEvent, Event, EventMsg,
         ExecApprovalRequestEvent, ExecCommandBeginEvent, ExecCommandEndEvent,
         ExecCommandOutputDeltaEvent, ExecCommandStatus, ExitedReviewModeEvent, FileChange,
-        ItemCompletedEvent, ItemStartedEvent, ListCustomPromptsResponseEvent, McpInvocation,
-        McpStartupCompleteEvent, McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent,
-        ModelRerouteEvent, NetworkApprovalContext, NetworkPolicyRuleAction, Op,
-        PatchApplyBeginEvent, PatchApplyEndEvent, PatchApplyStatus, ReasoningContentDeltaEvent,
+        ItemCompletedEvent, ItemStartedEvent, McpInvocation, McpStartupCompleteEvent,
+        McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent,
+        NetworkApprovalContext, NetworkPolicyRuleAction, Op, PatchApplyBeginEvent,
+        PatchApplyEndEvent, PatchApplyStatus, ReasoningContentDeltaEvent,
         ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
         ReviewTarget, RolloutItem, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent,
         TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
@@ -59,6 +55,10 @@ use codex_protocol::{
     },
     request_permissions::{
         PermissionGrantScope, RequestPermissionsEvent, RequestPermissionsResponse,
+    },
+    request_user_input::{
+        RequestUserInputAnswer, RequestUserInputEvent, RequestUserInputQuestion,
+        RequestUserInputResponse,
     },
     user_input::UserInput,
 };
@@ -71,10 +71,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::{
-    ACP_CLIENT,
-    prompt_args::{expand_custom_prompt, parse_slash_name},
-};
+use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
@@ -354,6 +351,22 @@ struct PendingPermissionInteraction {
     task: tokio::task::JoinHandle<()>,
 }
 
+#[derive(Clone)]
+struct PendingUserInputRequest {
+    response_id: String,
+    call_id: String,
+    questions: Vec<RequestUserInputQuestion>,
+    tool_call_id: ToolCallId,
+}
+
+struct PreparedUserInputAnswer {
+    response_id: String,
+    call_id: String,
+    questions: Vec<RequestUserInputQuestion>,
+    response: RequestUserInputResponse,
+    tool_call_id: ToolCallId,
+}
+
 fn exec_request_key(call_id: &str) -> String {
     format!("exec:{call_id}")
 }
@@ -367,8 +380,6 @@ fn permissions_request_key(call_id: &str) -> String {
 }
 
 enum SubmissionState {
-    /// Loading custom prompts from the project
-    CustomPrompts(CustomPromptsState),
     /// User prompts, including slash commands like /init, /review, /compact, /undo.
     Prompt(Box<PromptState>),
 }
@@ -376,14 +387,12 @@ enum SubmissionState {
 impl SubmissionState {
     fn is_active(&self) -> bool {
         match self {
-            Self::CustomPrompts(state) => state.is_active(),
             Self::Prompt(state) => state.is_active(),
         }
     }
 
     async fn handle_event(&mut self, client: &SessionClient, event: EventMsg) {
         match self {
-            Self::CustomPrompts(state) => state.handle_event(event),
             Self::Prompt(state) => state.handle_event(client, event).await,
         }
     }
@@ -395,7 +404,6 @@ impl SubmissionState {
         response: Result<RequestPermissionResponse, Error>,
     ) -> Result<(), Error> {
         match self {
-            Self::CustomPrompts(..) => Ok(()),
             Self::Prompt(state) => {
                 state
                     .handle_permission_request_resolved(client, request_key, response)
@@ -405,51 +413,43 @@ impl SubmissionState {
     }
 
     fn abort_pending_interactions(&mut self) {
-        if let Self::Prompt(state) = self {
-            state.abort_pending_interactions();
+        let Self::Prompt(state) = self;
+        state.abort_pending_interactions();
+    }
+
+    fn has_pending_user_input(&self) -> bool {
+        match self {
+            Self::Prompt(state) => state.has_pending_user_input(),
+        }
+    }
+
+    fn prepare_user_input_answer(
+        &self,
+        prompt: &[ContentBlock],
+    ) -> Result<Option<PreparedUserInputAnswer>, Error> {
+        match self {
+            Self::Prompt(state) => state.prepare_user_input_answer(prompt),
+        }
+    }
+
+    async fn finalize_user_input_answer(
+        &mut self,
+        client: &SessionClient,
+        prepared: PreparedUserInputAnswer,
+        response_tx: oneshot::Sender<Result<StopReason, Error>>,
+    ) {
+        match self {
+            Self::Prompt(state) => {
+                state
+                    .finalize_user_input_answer(client, prepared, response_tx)
+                    .await
+            }
         }
     }
 
     fn fail(&mut self, err: Error) {
-        if let Self::Prompt(state) = self
-            && let Some(response_tx) = state.response_tx.take()
-        {
-            drop(response_tx.send(Err(err)));
-        }
-    }
-}
-
-struct CustomPromptsState {
-    response_tx: Option<oneshot::Sender<Result<Vec<CustomPrompt>, Error>>>,
-}
-
-impl CustomPromptsState {
-    fn new(response_tx: oneshot::Sender<Result<Vec<CustomPrompt>, Error>>) -> Self {
-        Self {
-            response_tx: Some(response_tx),
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        let Some(response_tx) = &self.response_tx else {
-            return false;
-        };
-        !response_tx.is_closed()
-    }
-
-    fn handle_event(&mut self, event: EventMsg) {
-        match event {
-            EventMsg::ListCustomPromptsResponse(ListCustomPromptsResponseEvent {
-                custom_prompts,
-            }) => {
-                if let Some(tx) = self.response_tx.take() {
-                    drop(tx.send(Ok(custom_prompts)));
-                }
-            }
-            e => {
-                warn!("Unexpected event: {e:?}");
-            }
-        }
+        let Self::Prompt(state) = self;
+        state.finish_err(err);
     }
 }
 
@@ -470,8 +470,10 @@ struct PromptState {
     runtime_actor_cli_path: Option<PathBuf>,
     resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
     pending_permission_interactions: HashMap<String, PendingPermissionInteraction>,
+    pending_user_input_request: Option<PendingUserInputRequest>,
     event_count: usize,
-    response_tx: Option<oneshot::Sender<Result<StopReason, Error>>>,
+    stream_open: bool,
+    response_txs: Vec<oneshot::Sender<Result<StopReason, Error>>>,
     seen_message_deltas: bool,
     seen_reasoning_deltas: bool,
     seen_reasoning_final: bool,
@@ -508,8 +510,33 @@ impl PromptState {
             runtime_actor_cli_path,
             resolution_tx,
             pending_permission_interactions: HashMap::new(),
+            pending_user_input_request: None,
             event_count: 0,
-            response_tx: Some(response_tx),
+            stream_open: true,
+            response_txs: vec![response_tx],
+            seen_message_deltas: false,
+            seen_reasoning_deltas: false,
+            seen_reasoning_final: false,
+        }
+    }
+
+    fn new_detached(
+        submission_id: String,
+        thread: Arc<dyn CodexThreadImpl>,
+        resolution_tx: mpsc::UnboundedSender<ThreadMessage>,
+    ) -> Self {
+        Self {
+            submission_id,
+            active_commands: HashMap::new(),
+            active_web_search: None,
+            thread,
+            runtime_actor_cli_path: resolve_runtime_actor_cli_path(),
+            resolution_tx,
+            pending_permission_interactions: HashMap::new(),
+            pending_user_input_request: None,
+            event_count: 0,
+            stream_open: true,
+            response_txs: Vec::new(),
             seen_message_deltas: false,
             seen_reasoning_deltas: false,
             seen_reasoning_final: false,
@@ -517,10 +544,33 @@ impl PromptState {
     }
 
     fn is_active(&self) -> bool {
-        let Some(response_tx) = &self.response_tx else {
-            return false;
-        };
-        !response_tx.is_closed()
+        self.stream_open
+            || self
+                .response_txs
+                .iter()
+                .any(|response_tx| !response_tx.is_closed())
+    }
+
+    fn add_response_waiter(&mut self, response_tx: oneshot::Sender<Result<StopReason, Error>>) {
+        self.response_txs.push(response_tx);
+    }
+
+    fn has_pending_user_input(&self) -> bool {
+        self.pending_user_input_request.is_some()
+    }
+
+    fn finish_ok(&mut self, stop_reason: StopReason) {
+        self.stream_open = false;
+        for response_tx in self.response_txs.drain(..) {
+            drop(response_tx.send(Ok(stop_reason)));
+        }
+    }
+
+    fn finish_err(&mut self, err: Error) {
+        self.stream_open = false;
+        for response_tx in self.response_txs.drain(..) {
+            drop(response_tx.send(Err(err.clone())));
+        }
     }
 
     fn should_emit_final_reasoning(&mut self) -> bool {
@@ -540,6 +590,7 @@ impl PromptState {
         for (_, interaction) in self.pending_permission_interactions.drain() {
             interaction.task.abort();
         }
+        self.pending_user_input_request = None;
     }
 
     fn spawn_permission_request(
@@ -648,20 +699,20 @@ impl PromptState {
                         ..
                     }) => match option_id.0.as_ref() {
                         "approved-for-session" => RequestPermissionsResponse {
-                            permissions,
+                            permissions: permissions.into(),
                             scope: PermissionGrantScope::Session,
                         },
                         "approved" => RequestPermissionsResponse {
-                            permissions,
+                            permissions: permissions.into(),
                             scope: PermissionGrantScope::Turn,
                         },
                         _ => RequestPermissionsResponse {
-                            permissions: PermissionProfile::default(),
+                            permissions: PermissionProfile::default().into(),
                             scope: PermissionGrantScope::Turn,
                         },
                     },
                     RequestPermissionOutcome::Cancelled | _ => RequestPermissionsResponse {
-                        permissions: PermissionProfile::default(),
+                        permissions: PermissionProfile::default().into(),
                         scope: PermissionGrantScope::Turn,
                     },
                 };
@@ -788,7 +839,7 @@ impl PromptState {
                 self.seen_reasoning_deltas = true;
                 client.send_agent_thought("\n\n").await;
             }
-            EventMsg::AgentMessage(AgentMessageEvent { message , phase: _ }) => {
+            EventMsg::AgentMessage(AgentMessageEvent { message , phase: _, .. }) => {
                 info!("Agent message (non-delta) received: {message:?}");
                 // We didn't receive this message via streaming
                 if !std::mem::take(&mut self.seen_message_deltas) {
@@ -845,10 +896,8 @@ impl PromptState {
                     "Command execution started: call_id={}, command={:?}",
                     event.call_id, event.command
                 );
-                if let Err(err) = self.exec_approval(client, event).await
-                    && let Some(response_tx) = self.response_tx.take()
-                {
-                    drop(response_tx.send(Err(err)));
+                if let Err(err) = self.exec_approval(client, event).await {
+                    self.finish_err(err);
                 }
             }
             EventMsg::ExecCommandBegin(event) => {
@@ -913,10 +962,8 @@ impl PromptState {
                     "Apply patch approval request: call_id={}, reason={:?}",
                     event.call_id, event.reason
                 );
-                if let Err(err) = self.patch_approval(client, event).await
-                    && let Some(response_tx) = self.response_tx.take()
-                {
-                    drop(response_tx.send(Err(err)));
+                if let Err(err) = self.patch_approval(client, event).await {
+                    self.finish_err(err);
                 }
             }
             EventMsg::PatchApplyBegin(event) => {
@@ -946,9 +993,7 @@ impl PromptState {
                     self.event_count
                 );
                 self.abort_pending_interactions();
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::EndTurn)).ok();
-                }
+                self.finish_ok(StopReason::EndTurn);
             }
             EventMsg::UndoStarted(event) => {
                 client
@@ -982,27 +1027,19 @@ impl PromptState {
             }) => {
                 error!("Unhandled error during turn: {message} {codex_error_info:?}");
                 self.abort_pending_interactions();
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx
-                        .send(Err(Error::internal_error().data(
-                            json!({ "message": message, "codex_error_info": codex_error_info }),
-                        )))
-                        .ok();
-                }
+                self.finish_err(Error::internal_error().data(
+                    json!({ "message": message, "codex_error_info": codex_error_info }),
+                ));
             }
             EventMsg::TurnAborted(TurnAbortedEvent { reason, turn_id }) => {
                 info!("Turn {turn_id:?} aborted: {reason:?}");
                 self.abort_pending_interactions();
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::Cancelled)).ok();
-                }
+                self.finish_ok(StopReason::Cancelled);
             }
             EventMsg::ShutdownComplete => {
                 info!("Agent shutting down");
                 self.abort_pending_interactions();
-                if let Some(response_tx) = self.response_tx.take() {
-                    response_tx.send(Ok(StopReason::Cancelled)).ok();
-                }
+                self.finish_ok(StopReason::Cancelled);
             }
             EventMsg::ViewImageToolCall(ViewImageToolCallEvent { call_id, path }) => {
                 info!("ViewImageToolCallEvent received");
@@ -1023,10 +1060,8 @@ impl PromptState {
             }
             EventMsg::ExitedReviewMode(event) => {
                 info!("Review end: output={event:?}");
-                if let Err(err) = self.review_mode_exit(client, event).await
-                    && let Some(response_tx) = self.response_tx.take()
-                {
-                    drop(response_tx.send(Err(err)));
+                if let Err(err) = self.review_mode_exit(client, event).await {
+                    self.finish_err(err);
                 }
             }
             EventMsg::Warning(WarningEvent { message }) => {
@@ -1049,14 +1084,24 @@ impl PromptState {
             }
             EventMsg::ElicitationRequest(event) => {
                 info!("Elicitation request: server={}, id={:?}", event.server_name, event.id);
-                if let Err(err) = self.mcp_elicitation(client, event).await
-                    && let Some(response_tx) = self.response_tx.take()
-                {
-                    drop(response_tx.send(Err(err)));
+                if let Err(err) = self.mcp_elicitation(client, event).await {
+                    self.finish_err(err);
                 }
             }
             EventMsg::ModelReroute(ModelRerouteEvent { from_model, to_model, reason }) => {
                 info!("Model reroute: from={from_model}, to={to_model}, reason={reason:?}");
+                client.send_agent_text(render_model_reroute_message(
+                    &from_model,
+                    &to_model,
+                    &reason,
+                ))
+                .await;
+            }
+            EventMsg::DeprecationNotice(DeprecationNoticeEvent { summary, details }) => {
+                info!("Deprecation notice: summary={summary}, details={details:?}");
+                client
+                    .send_agent_text(render_deprecation_notice_message(&summary, details.as_deref()))
+                    .await;
             }
 
             EventMsg::ContextCompacted(..) => {
@@ -1065,10 +1110,14 @@ impl PromptState {
             }
             EventMsg::RequestPermissions(event) => {
                 info!("Request permissions: {} {}", event.call_id, event.turn_id);
-                if let Err(err) = self.request_permissions(client, event).await
-                    && let Some(response_tx) = self.response_tx.take()
-                {
-                    drop(response_tx.send(Err(err)));
+                if let Err(err) = self.request_permissions(client, event).await {
+                    self.finish_err(err);
+                }
+            }
+            EventMsg::RequestUserInput(event) => {
+                info!("Request user input: {} {}", event.call_id, event.turn_id);
+                if let Err(err) = self.request_user_input(client, event).await {
+                    self.finish_err(err);
                 }
             }
 
@@ -1102,16 +1151,11 @@ impl PromptState {
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
             | EventMsg::PlanDelta(..) => {}
+            EventMsg::GuardianAssessment(..) => {}
             e @ (EventMsg::McpListToolsResponse(..)
-            // returned from Op::ListCustomPrompts, ignore
-            | EventMsg::ListCustomPromptsResponse(..)
             | EventMsg::ListSkillsResponse(..)
             // Used for returning a single history entry
-            | EventMsg::GetHistoryEntryResponse(..)
-            | EventMsg::DeprecationNotice(..)
-            | EventMsg::RequestUserInput(..)
-            | EventMsg::ListRemoteSkillsResponse(..)
-            | EventMsg::RemoteSkillDownloaded(..)) => {
+            | EventMsg::GetHistoryEntryResponse(..)) => {
                 warn!("Unexpected event: {:?}", e);
             }
         }
@@ -1437,7 +1481,6 @@ impl PromptState {
             additional_permissions,
             available_decisions: _,
             proposed_network_policy_amendments,
-            skill_metadata: _,
         } = event;
 
         // Create a new tool call for the command execution
@@ -1958,27 +2001,6 @@ impl PromptState {
         {
             content.push(format!("Network Access: {enabled}"));
         }
-        if let Some(mac) = permissions.macos.as_ref() {
-            let MacOsSeatbeltProfileExtensions {
-                macos_preferences,
-                macos_automation,
-                macos_launch_services,
-                macos_accessibility,
-                macos_calendar,
-                macos_reminders,
-                macos_contacts,
-            } = mac;
-
-            content.push("MacOS Seatbelt Profile Extensions: ".to_string());
-            content.push(format!("Preferences: {:?}", macos_preferences));
-            content.push(format!("Automation: {:?}", macos_automation));
-            content.push(format!("Launch Services: {}", macos_launch_services));
-            content.push(format!("Accessibility: {}", macos_accessibility));
-            content.push(format!("Calendar: {}", macos_calendar));
-            content.push(format!("Reminders: {}", macos_reminders));
-            content.push(format!("Contacts: {:?}", macos_contacts));
-        }
-
         let content = if content.is_empty() {
             None
         } else {
@@ -1990,7 +2012,7 @@ impl PromptState {
             permissions_request_key(&call_id),
             PendingPermissionRequest::RequestPermissions {
                 call_id,
-                permissions,
+                permissions: permissions.into(),
             },
             ToolCallUpdate::new(
                 tool_call_id,
@@ -2012,6 +2034,88 @@ impl PromptState {
         );
 
         Ok(())
+    }
+
+    async fn request_user_input(
+        &mut self,
+        client: &SessionClient,
+        event: RequestUserInputEvent,
+    ) -> Result<(), Error> {
+        let RequestUserInputEvent {
+            call_id,
+            turn_id,
+            questions,
+        } = event;
+        let tool_call_id = ToolCallId::new(format!("request-user-input:{call_id}"));
+        let raw_input = serde_json::to_value(&questions)
+            .map_err(|err| Error::internal_error().data(err.to_string()))?;
+
+        client
+            .send_tool_call(
+                ToolCall::new(tool_call_id.clone(), request_user_input_title(&questions))
+                    .kind(ToolKind::Other)
+                    .status(ToolCallStatus::Pending)
+                    .content(vec![render_request_user_input_prompt(&questions).into()])
+                    .raw_input(raw_input),
+            )
+            .await;
+
+        if self.pending_user_input_request.is_some() {
+            warn!(
+                "Overwriting existing pending request_user_input for submission {}",
+                self.submission_id
+            );
+        }
+        self.pending_user_input_request = Some(PendingUserInputRequest {
+            response_id: turn_id,
+            call_id,
+            questions,
+            tool_call_id,
+        });
+
+        Ok(())
+    }
+
+    fn prepare_user_input_answer(
+        &self,
+        prompt: &[ContentBlock],
+    ) -> Result<Option<PreparedUserInputAnswer>, Error> {
+        let Some(pending) = self.pending_user_input_request.as_ref() else {
+            return Ok(None);
+        };
+        let response = build_request_user_input_response(prompt, &pending.questions)?;
+        Ok(Some(PreparedUserInputAnswer {
+            response_id: pending.response_id.clone(),
+            call_id: pending.call_id.clone(),
+            questions: pending.questions.clone(),
+            response,
+            tool_call_id: pending.tool_call_id.clone(),
+        }))
+    }
+
+    async fn finalize_user_input_answer(
+        &mut self,
+        client: &SessionClient,
+        prepared: PreparedUserInputAnswer,
+        response_tx: oneshot::Sender<Result<StopReason, Error>>,
+    ) {
+        self.pending_user_input_request = None;
+        self.add_response_waiter(response_tx);
+
+        let raw_output =
+            (!prepared.questions.iter().any(|question| question.is_secret)).then(|| {
+                serde_json::to_value(&prepared.response)
+                    .unwrap_or_else(|_| serde_json::json!({ "callId": prepared.call_id }))
+            });
+
+        client
+            .send_tool_call_update(ToolCallUpdate::new(
+                prepared.tool_call_id,
+                ToolCallUpdateFields::new()
+                    .status(ToolCallStatus::Completed)
+                    .raw_output(raw_output),
+            ))
+            .await;
     }
 }
 
@@ -2584,8 +2688,6 @@ struct ThreadActor<A> {
     thread: Arc<dyn CodexThreadImpl>,
     /// The configuration for the thread.
     config: Config,
-    /// The custom prompts loaded for this workspace.
-    custom_prompts: Rc<RefCell<Vec<CustomPrompt>>>,
     /// The models available for this thread.
     models_manager: Arc<dyn ModelsManagerImpl>,
     /// Internal message sender used to route spawned interaction results back to the actor.
@@ -2617,7 +2719,6 @@ impl<A: Auth> ThreadActor<A> {
             client,
             thread,
             config,
-            custom_prompts: Rc::default(),
             models_manager,
             resolution_tx,
             submissions: HashMap::new(),
@@ -2662,47 +2763,11 @@ impl<A: Auth> ThreadActor<A> {
             ThreadMessage::Load { response_tx } => {
                 let result = self.handle_load().await;
                 drop(response_tx.send(result));
-                let client = self.client.clone();
-                let mut available_commands = Self::builtin_commands();
-                let load_custom_prompts = self.load_custom_prompts().await;
-                let custom_prompts = self.custom_prompts.clone();
-
-                // Have this happen after the session is loaded by putting it
-                // in a separate task
-                tokio::task::spawn_local(async move {
-                    let mut new_custom_prompts = load_custom_prompts
-                        .await
-                        .map_err(|_| Error::internal_error())
-                        .flatten()
-                        .inspect_err(|e| error!("Failed to load custom prompts {e:?}"))
-                        .unwrap_or_default();
-
-                    for prompt in &new_custom_prompts {
-                        available_commands.push(
-                            AvailableCommand::new(
-                                prompt.name.clone(),
-                                prompt.description.clone().unwrap_or_default(),
-                            )
-                            .input(prompt.argument_hint.as_ref().map(
-                                |hint| {
-                                    AvailableCommandInput::Unstructured(
-                                        UnstructuredCommandInput::new(hint.clone()),
-                                    )
-                                },
-                            )),
-                        );
-                    }
-                    std::mem::swap(
-                        custom_prompts.borrow_mut().deref_mut(),
-                        &mut new_custom_prompts,
-                    );
-
-                    client
-                        .send_notification(SessionUpdate::AvailableCommandsUpdate(
-                            AvailableCommandsUpdate::new(available_commands),
-                        ))
-                        .await;
-                });
+                self.client
+                    .send_notification(SessionUpdate::AvailableCommandsUpdate(
+                        AvailableCommandsUpdate::new(Self::builtin_commands()),
+                    ))
+                    .await;
             }
             ThreadMessage::GetConfigOptions { response_tx } => {
                 let result = self.config_options().await;
@@ -2803,24 +2868,6 @@ impl<A: Auth> ThreadActor<A> {
             AvailableCommand::new("undo", "undo Codex’s most recent turn"),
             AvailableCommand::new("logout", "logout of Codex"),
         ]
-    }
-
-    async fn load_custom_prompts(&mut self) -> oneshot::Receiver<Result<Vec<CustomPrompt>, Error>> {
-        let (response_tx, response_rx) = oneshot::channel();
-        let submission_id = match self.thread.submit(Op::ListCustomPrompts).await {
-            Ok(id) => id,
-            Err(e) => {
-                drop(response_tx.send(Err(Error::internal_error().data(e.to_string()))));
-                return response_rx;
-            }
-        };
-
-        self.submissions.insert(
-            submission_id,
-            SubmissionState::CustomPrompts(CustomPromptsState::new(response_tx)),
-        );
-
-        response_rx
     }
 
     fn modes(&self) -> Option<SessionModeState> {
@@ -3055,6 +3102,7 @@ impl<A: Auth> ThreadActor<A> {
             .submit(Op::OverrideTurnContext {
                 cwd: None,
                 approval_policy: None,
+                approvals_reviewer: None,
                 sandbox_policy: None,
                 model: Some(model_to_use.clone()),
                 effort: Some(effort_to_use),
@@ -3101,6 +3149,7 @@ impl<A: Auth> ThreadActor<A> {
             .submit(Op::OverrideTurnContext {
                 cwd: None,
                 approval_policy: None,
+                approvals_reviewer: None,
                 sandbox_policy: None,
                 model: None,
                 effort: Some(Some(effort)),
@@ -3164,6 +3213,33 @@ impl<A: Auth> ThreadActor<A> {
     ) -> Result<oneshot::Receiver<Result<StopReason, Error>>, Error> {
         let (response_tx, response_rx) = oneshot::channel();
 
+        if let Some((submission_id, prepared)) =
+            self.find_pending_user_input_answer(request.prompt.as_slice())?
+        {
+            self.thread
+                .submit(Op::UserInputAnswer {
+                    id: prepared.response_id.clone(),
+                    response: prepared.response.clone(),
+                })
+                .await
+                .map_err(|e| {
+                    let err = Error::internal_error().data(e.to_string());
+                    if let Some(submission) = self.submissions.get_mut(&submission_id) {
+                        submission.fail(err.clone());
+                    }
+                    err
+                })?;
+
+            let submission = self
+                .submissions
+                .get_mut(&submission_id)
+                .ok_or_else(|| Error::internal_error().data("missing pending question state"))?;
+            submission
+                .finalize_user_input_answer(&self.client, prepared, response_tx)
+                .await;
+            return Ok(response_rx);
+        }
+
         let items = build_prompt_items(request.prompt);
         let op;
         if let Some((name, rest)) = extract_slash_command(&items) {
@@ -3224,22 +3300,9 @@ impl<A: Auth> ThreadActor<A> {
                     return Err(Error::auth_required());
                 }
                 _ => {
-                    if let Some(prompt) =
-                        expand_custom_prompt(name, rest, self.custom_prompts.borrow().as_ref())
-                            .map_err(|e| Error::invalid_params().data(e.user_message()))?
-                    {
-                        op = Op::UserInput {
-                            items: vec![UserInput::Text {
-                                text: prompt,
-                                text_elements: vec![],
-                            }],
-                            final_output_json_schema: None,
-                        }
-                    } else {
-                        op = Op::UserInput {
-                            items,
-                            final_output_json_schema: None,
-                        }
+                    op = Op::UserInput {
+                        items,
+                        final_output_json_schema: None,
                     }
                 }
             }
@@ -3259,16 +3322,34 @@ impl<A: Auth> ThreadActor<A> {
         info!("Submitted prompt with submission_id: {submission_id}");
         info!("Starting to wait for conversation events for submission_id: {submission_id}");
 
-        let state = SubmissionState::Prompt(Box::new(PromptState::new(
-            submission_id.clone(),
-            self.thread.clone(),
-            self.resolution_tx.clone(),
-            response_tx,
-        )));
-
-        self.submissions.insert(submission_id, state);
+        if let Some(SubmissionState::Prompt(state)) = self.submissions.get_mut(&submission_id) {
+            state.add_response_waiter(response_tx);
+        } else {
+            let state = SubmissionState::Prompt(Box::new(PromptState::new(
+                submission_id.clone(),
+                self.thread.clone(),
+                self.resolution_tx.clone(),
+                response_tx,
+            )));
+            self.submissions.insert(submission_id, state);
+        }
 
         Ok(response_rx)
+    }
+
+    fn find_pending_user_input_answer(
+        &self,
+        prompt: &[ContentBlock],
+    ) -> Result<Option<(String, PreparedUserInputAnswer)>, Error> {
+        for (submission_id, submission) in &self.submissions {
+            if !submission.has_pending_user_input() {
+                continue;
+            }
+            if let Some(prepared) = submission.prepare_user_input_answer(prompt)? {
+                return Ok(Some((submission_id.clone(), prepared)));
+            }
+        }
+        Ok(None)
     }
 
     async fn handle_set_mode(&mut self, mode: SessionModeId) -> Result<(), Error> {
@@ -3281,6 +3362,7 @@ impl<A: Auth> ThreadActor<A> {
             .submit(Op::OverrideTurnContext {
                 cwd: None,
                 approval_policy: Some(preset.approval),
+                approvals_reviewer: None,
                 sandbox_policy: Some(preset.sandbox.clone()),
                 model: None,
                 effort: None,
@@ -3347,6 +3429,7 @@ impl<A: Auth> ThreadActor<A> {
             .submit(Op::OverrideTurnContext {
                 cwd: None,
                 approval_policy: None,
+                approvals_reviewer: None,
                 sandbox_policy: None,
                 model: Some(model_to_use.clone()),
                 effort: Some(effort_to_use),
@@ -3418,7 +3501,9 @@ impl<A: Auth> ThreadActor<A> {
             EventMsg::UserMessage(UserMessageEvent { message, .. }) => {
                 self.client.send_user_message(message.clone()).await;
             }
-            EventMsg::AgentMessage(AgentMessageEvent { message, phase: _ }) => {
+            EventMsg::AgentMessage(AgentMessageEvent {
+                message, phase: _, ..
+            }) => {
                 self.client.send_agent_text(message.clone()).await;
             }
             EventMsg::AgentReasoning(AgentReasoningEvent { text }) => {
@@ -3452,7 +3537,7 @@ impl<A: Auth> ThreadActor<A> {
         for hunk in &parsed.hunks {
             match hunk {
                 codex_apply_patch::Hunk::AddFile { path, contents } => {
-                    let full_path = self.config.cwd.join(path);
+                    let full_path = self.config.cwd.join(path).ok()?;
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(full_path.clone()));
                     // New file: no old_text, new_text is the contents
@@ -3462,7 +3547,7 @@ impl<A: Auth> ThreadActor<A> {
                     )));
                 }
                 codex_apply_patch::Hunk::DeleteFile { path } => {
-                    let full_path = self.config.cwd.join(path);
+                    let full_path = self.config.cwd.join(path).ok()?;
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(full_path.clone()));
                     // Delete file: old_text would be original content, new_text is empty
@@ -3475,10 +3560,10 @@ impl<A: Auth> ThreadActor<A> {
                     move_path,
                     chunks,
                 } => {
-                    let full_path = self.config.cwd.join(path);
+                    let full_path = self.config.cwd.join(path).ok()?;
                     let dest_path = move_path
                         .as_ref()
-                        .map(|p| self.config.cwd.join(p))
+                        .and_then(|p| self.config.cwd.join(p).ok())
                         .unwrap_or_else(|| full_path.clone());
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(dest_path.clone()));
@@ -3549,7 +3634,7 @@ impl<A: Auth> ThreadActor<A> {
 
         let cwd = workdir
             .map(PathBuf::from)
-            .unwrap_or_else(|| self.config.cwd.clone());
+            .unwrap_or_else(|| self.config.cwd.to_path_buf());
 
         let parsed_cmd = parse_command(&command_vec);
         let ParseCommandToolCall {
@@ -3620,7 +3705,7 @@ impl<A: Auth> ThreadActor<A> {
                     .working_directory
                     .as_ref()
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| self.config.cwd.clone());
+                    .unwrap_or_else(|| self.config.cwd.to_path_buf());
 
                 // Parse the command to get rich info like the live event handler does
                 let parsed_cmd = parse_command(&exec.command);
@@ -3683,7 +3768,9 @@ impl<A: Auth> ThreadActor<A> {
                     )
                     .await;
             }
-            ResponseItem::CustomToolCallOutput { call_id, output } => {
+            ResponseItem::CustomToolCallOutput {
+                call_id, output, ..
+            } => {
                 self.client
                     .send_tool_call_completed(call_id.clone(), Some(serde_json::json!(output)))
                     .await;
@@ -3708,12 +3795,355 @@ impl<A: Auth> ThreadActor<A> {
     }
 
     async fn handle_event(&mut self, Event { id, msg }: Event) {
+        if !self.submissions.contains_key(&id) && should_attach_detached_submission(&msg) {
+            info!("Attaching detached submission state for resumed live event: {id}");
+            self.submissions.insert(
+                id.clone(),
+                SubmissionState::Prompt(Box::new(PromptState::new_detached(
+                    id.clone(),
+                    self.thread.clone(),
+                    self.resolution_tx.clone(),
+                ))),
+            );
+        }
+
         if let Some(submission) = self.submissions.get_mut(&id) {
             submission.handle_event(&self.client, msg).await;
         } else {
-            warn!("Received event for unknown submission ID: {id} {msg:?}");
+            let debug_msg = format!("{msg:?}");
+            if !forward_global_visible_event(&self.client, msg).await {
+                warn!("Received event for unknown submission ID: {id} {debug_msg}");
+            }
         }
     }
+}
+
+fn should_attach_detached_submission(msg: &EventMsg) -> bool {
+    matches!(
+        msg,
+        EventMsg::TokenCount(..)
+            | EventMsg::ItemStarted(..)
+            | EventMsg::UserMessage(..)
+            | EventMsg::AgentMessageContentDelta(..)
+            | EventMsg::ReasoningContentDelta(..)
+            | EventMsg::ReasoningRawContentDelta(..)
+            | EventMsg::AgentReasoningDelta(..)
+            | EventMsg::AgentReasoningRawContentDelta(..)
+            | EventMsg::AgentReasoningSectionBreak(..)
+            | EventMsg::AgentMessage(..)
+            | EventMsg::AgentReasoning(..)
+            | EventMsg::AgentReasoningRawContent(..)
+            | EventMsg::PlanUpdate(..)
+            | EventMsg::ExecApprovalRequest(..)
+            | EventMsg::DynamicToolCallRequest(..)
+            | EventMsg::DynamicToolCallResponse(..)
+            | EventMsg::ExecCommandBegin(..)
+            | EventMsg::ExecCommandOutputDelta(..)
+            | EventMsg::TerminalInteraction(..)
+            | EventMsg::ExecCommandEnd(..)
+            | EventMsg::McpToolCallBegin(..)
+            | EventMsg::McpToolCallEnd(..)
+            | EventMsg::ApplyPatchApprovalRequest(..)
+            | EventMsg::PatchApplyBegin(..)
+            | EventMsg::PatchApplyEnd(..)
+            | EventMsg::TurnDiff(..)
+            | EventMsg::WebSearchBegin(..)
+            | EventMsg::WebSearchEnd(..)
+            | EventMsg::ViewImageToolCall(..)
+            | EventMsg::TurnStarted(..)
+            | EventMsg::TurnComplete(..)
+            | EventMsg::UndoStarted(..)
+            | EventMsg::UndoCompleted(..)
+            | EventMsg::StreamError(..)
+            | EventMsg::Error(..)
+            | EventMsg::TurnAborted(..)
+            | EventMsg::ShutdownComplete
+            | EventMsg::EnteredReviewMode(..)
+            | EventMsg::ExitedReviewMode(..)
+            | EventMsg::ElicitationRequest(..)
+            | EventMsg::RequestPermissions(..)
+            | EventMsg::RequestUserInput(..)
+            | EventMsg::ModelReroute(..)
+            | EventMsg::ContextCompacted(..)
+    )
+}
+
+async fn forward_global_visible_event(client: &SessionClient, msg: EventMsg) -> bool {
+    match msg {
+        EventMsg::Warning(WarningEvent { message }) => {
+            client.send_agent_text(message).await;
+            true
+        }
+        EventMsg::DeprecationNotice(DeprecationNoticeEvent { summary, details }) => {
+            client
+                .send_agent_text(render_deprecation_notice_message(
+                    &summary,
+                    details.as_deref(),
+                ))
+                .await;
+            true
+        }
+        _ => false,
+    }
+}
+
+fn render_model_reroute_message(
+    from_model: &str,
+    to_model: &str,
+    reason: &codex_protocol::protocol::ModelRerouteReason,
+) -> String {
+    format!("Model rerouted: {from_model} -> {to_model} ({reason:?})")
+}
+
+fn render_deprecation_notice_message(summary: &str, details: Option<&str>) -> String {
+    match details.map(str::trim).filter(|details| !details.is_empty()) {
+        Some(details) => format!("Deprecation notice: {summary}\n{details}"),
+        None => format!("Deprecation notice: {summary}"),
+    }
+}
+
+fn request_user_input_title(questions: &[RequestUserInputQuestion]) -> String {
+    if questions.len() == 1 {
+        let header = questions[0].header.trim();
+        if !header.is_empty() {
+            return header.to_string();
+        }
+    }
+    "Question".to_string()
+}
+
+fn render_request_user_input_prompt(questions: &[RequestUserInputQuestion]) -> String {
+    let mut lines = Vec::new();
+    lines.push("Codex needs input before continuing.".to_string());
+    lines.push(String::new());
+
+    for (index, question) in questions.iter().enumerate() {
+        let prefix = if questions.len() > 1 {
+            format!("{}. ", index + 1)
+        } else {
+            String::new()
+        };
+        let header = question.header.trim();
+        if !header.is_empty() {
+            lines.push(format!("{prefix}{header} ({})", question.id));
+        } else if questions.len() > 1 {
+            lines.push(format!("{prefix}{}", question.id));
+        }
+        lines.push(question.question.clone());
+        if let Some(options) = question.options.as_ref() {
+            for option in options {
+                lines.push(format!("- {}: {}", option.label, option.description));
+            }
+        }
+        if question.is_other {
+            lines.push("- Other: provide your own answer".to_string());
+        }
+        if question.is_secret {
+            lines.push("- Secret: your reply will not be echoed back in ACP".to_string());
+        }
+        lines.push(String::new());
+    }
+
+    if questions.len() == 1 {
+        lines.push("Reply with your answer in the next message.".to_string());
+    } else {
+        lines.push(
+            "Reply with a JSON object keyed by question id, or send one text block per question in order."
+                .to_string(),
+        );
+    }
+
+    lines.join("\n").trim().to_string()
+}
+
+fn build_request_user_input_response(
+    prompt: &[ContentBlock],
+    questions: &[RequestUserInputQuestion],
+) -> Result<RequestUserInputResponse, Error> {
+    if questions.is_empty() {
+        return Err(Error::invalid_params().data("request_user_input contained no questions"));
+    }
+
+    let raw_answers = prompt_blocks_to_answer_strings(prompt)?;
+    if raw_answers.is_empty() {
+        return Err(Error::invalid_params().data("question answer cannot be empty"));
+    }
+
+    let answers = if questions.len() == 1 {
+        let answers = parse_single_question_answers(&raw_answers)?;
+        HashMap::from([(questions[0].id.clone(), RequestUserInputAnswer { answers })])
+    } else {
+        build_multi_question_answers(&raw_answers, questions)?
+    };
+
+    Ok(RequestUserInputResponse { answers })
+}
+
+fn parse_single_question_answers(raw_answers: &[String]) -> Result<Vec<String>, Error> {
+    if raw_answers.len() == 1
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_answers[0])
+    {
+        match value {
+            serde_json::Value::Array(items) => {
+                let answers = items
+                    .into_iter()
+                    .map(|item| {
+                        item.as_str()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(ToOwned::to_owned)
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| {
+                        Error::invalid_params()
+                            .data("single-question JSON answers must be an array of strings")
+                    })?;
+                if !answers.is_empty() {
+                    return Ok(answers);
+                }
+            }
+            serde_json::Value::String(answer) => {
+                let answer = answer.trim().to_string();
+                if !answer.is_empty() {
+                    return Ok(vec![answer]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(raw_answers.to_vec())
+}
+
+fn build_multi_question_answers(
+    raw_answers: &[String],
+    questions: &[RequestUserInputQuestion],
+) -> Result<HashMap<String, RequestUserInputAnswer>, Error> {
+    if raw_answers.len() == 1
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw_answers[0])
+    {
+        return build_multi_question_answers_from_json(value, questions);
+    }
+
+    if raw_answers.len() == questions.len() {
+        return Ok(questions
+            .iter()
+            .zip(raw_answers)
+            .map(|(question, answer)| {
+                (
+                    question.id.clone(),
+                    RequestUserInputAnswer {
+                        answers: vec![answer.clone()],
+                    },
+                )
+            })
+            .collect());
+    }
+
+    Err(Error::invalid_params().data(format!(
+        "This question expects {} answers. Reply with JSON keyed by question id.",
+        questions.len()
+    )))
+}
+
+fn build_multi_question_answers_from_json(
+    value: serde_json::Value,
+    questions: &[RequestUserInputQuestion],
+) -> Result<HashMap<String, RequestUserInputAnswer>, Error> {
+    let serde_json::Value::Object(map) = value else {
+        return Err(Error::invalid_params()
+            .data("multi-question answers must be a JSON object keyed by question id"));
+    };
+
+    let mut answers = HashMap::new();
+    for question in questions {
+        let value = map
+            .get(&question.id)
+            .or_else(|| map.get(&question.header))
+            .ok_or_else(|| {
+                Error::invalid_params().data(format!("missing answer for question {}", question.id))
+            })?;
+        answers.insert(
+            question.id.clone(),
+            RequestUserInputAnswer {
+                answers: json_value_to_answer_strings(value)?,
+            },
+        );
+    }
+    Ok(answers)
+}
+
+fn json_value_to_answer_strings(value: &serde_json::Value) -> Result<Vec<String>, Error> {
+    match value {
+        serde_json::Value::String(answer) => {
+            let answer = answer.trim().to_string();
+            if answer.is_empty() {
+                return Err(Error::invalid_params().data("question answer cannot be empty"));
+            }
+            Ok(vec![answer])
+        }
+        serde_json::Value::Array(items) => {
+            let answers = items
+                .iter()
+                .map(|item| {
+                    item.as_str()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToOwned::to_owned)
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| {
+                    Error::invalid_params()
+                        .data("question answer arrays must contain only non-empty strings")
+                })?;
+            if answers.is_empty() {
+                return Err(Error::invalid_params().data("question answer cannot be empty"));
+            }
+            Ok(answers)
+        }
+        _ => {
+            Err(Error::invalid_params()
+                .data("question answers must be strings or arrays of strings"))
+        }
+    }
+}
+
+fn prompt_blocks_to_answer_strings(prompt: &[ContentBlock]) -> Result<Vec<String>, Error> {
+    let mut answers = Vec::new();
+    for block in prompt {
+        match block {
+            ContentBlock::Text(text_block) => {
+                let text = text_block.text.trim();
+                if !text.is_empty() {
+                    answers.push(text.to_string());
+                }
+            }
+            ContentBlock::ResourceLink(ResourceLink { name, uri, .. }) => {
+                answers.push(format_uri_as_link(Some(name.clone()), uri.clone()));
+            }
+            ContentBlock::Resource(EmbeddedResource {
+                resource:
+                    EmbeddedResourceResource::TextResourceContents(TextResourceContents {
+                        text, ..
+                    }),
+                ..
+            }) => {
+                let text = text.trim();
+                if !text.is_empty() {
+                    answers.push(text.to_string());
+                }
+            }
+            ContentBlock::Image(_) | ContentBlock::Resource(_) => {
+                return Err(Error::invalid_params()
+                    .data("question answers currently support text and text resources only"));
+            }
+            _ => {
+                return Err(Error::invalid_params()
+                    .data("question answers currently support text and text resources only"));
+            }
+        }
+    }
+    Ok(answers)
 }
 
 fn build_prompt_items(prompt: Vec<ContentBlock>) -> Vec<UserInput> {
@@ -3901,11 +4331,9 @@ fn extract_tool_call_content_from_changes(
                     Diff::new(path, String::new()).old_text(content)
                 }
                 codex_protocol::protocol::FileChange::Update {
-                    unified_diff: _,
+                    unified_diff,
                     move_path,
-                    old_content,
-                    new_content,
-                } => Diff::new(move_path.unwrap_or(path), new_content).old_text(old_content),
+                } => Diff::new(move_path.unwrap_or(path), unified_diff),
             })
         }),
     )
@@ -3976,7 +4404,7 @@ mod tests {
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
     };
-    use codex_core::{config::ConfigOverrides, test_support::all_model_presets};
+    use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
@@ -4017,9 +4445,13 @@ mod tests {
         }
     }
 
+    fn test_config() -> anyhow::Result<Config> {
+        Config::load_default_with_cli_overrides(vec![]).map_err(Into::into)
+    }
+
     #[tokio::test]
     async fn test_prompt() -> anyhow::Result<()> {
-        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, _, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4055,7 +4487,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compact() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4093,7 +4525,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_undo() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4143,7 +4575,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_init() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4193,7 +4625,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_review() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4244,7 +4676,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_custom_review() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
         let instructions = "Review what we did in agents.md";
 
@@ -4303,7 +4735,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_commit_review() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4360,7 +4792,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_branch_review() -> anyhow::Result<()> {
-        let (session_id, client, thread, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4414,15 +4846,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_custom_prompts() -> anyhow::Result<()> {
-        let custom_prompts = vec![CustomPrompt {
-            name: "custom".to_string(),
-            path: "/tmp/custom.md".into(),
-            content: "Custom prompt with $1 arg.".into(),
-            description: None,
-            argument_hint: None,
-        }];
-        let (session_id, client, thread, message_tx, local_set) = setup(custom_prompts).await?;
+    async fn test_unknown_slash_command_is_forwarded_as_plain_input() -> anyhow::Result<()> {
+        let (session_id, client, thread, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4451,7 +4876,7 @@ mod tests {
                 SessionUpdate::AgentMessageChunk(ContentChunk {
                     content: ContentBlock::Text(TextContent { text, .. }),
                     ..
-                }) if text == "Custom prompt with foo arg."
+                }) if text == "/custom foo"
             ),
             "notifications don't match {notifications:?}"
         );
@@ -4461,7 +4886,7 @@ mod tests {
             ops.as_slice(),
             &[Op::UserInput {
                 items: vec![UserInput::Text {
-                    text: "Custom prompt with foo arg.".into(),
+                    text: "/custom foo".into(),
                     text_elements: vec![]
                 }],
                 final_output_json_schema: None,
@@ -4473,8 +4898,347 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_shared_submission_id_completes_all_prompt_waiters() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id.clone(), client, Arc::default());
+                let thread = Arc::new(SharedSubmissionThread::new("shared-submission"));
+                let models_manager = Arc::new(StubModelsManager);
+                let config = test_config()?;
+                let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+
+                let actor = ThreadActor::new(
+                    StubAuth,
+                    session_client,
+                    thread.clone(),
+                    models_manager,
+                    config,
+                    message_rx,
+                    resolution_tx,
+                    resolution_rx,
+                );
+                tokio::task::spawn_local(actor.spawn());
+
+                let (first_response_tx, first_response_rx) = tokio::sync::oneshot::channel();
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["first".into()]),
+                    response_tx: first_response_tx,
+                })?;
+                let first_stop_rx = first_response_rx.await??;
+
+                let (second_response_tx, second_response_rx) = tokio::sync::oneshot::channel();
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["second".into()]),
+                    response_tx: second_response_tx,
+                })?;
+                let second_stop_rx = second_response_rx.await??;
+
+                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
+                    last_agent_message: Some("done".to_string()),
+                    turn_id: "shared-turn".to_string(),
+                }));
+
+                assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
+                assert_eq!(second_stop_rx.await??, StopReason::EndTurn);
+
+                let ops = thread.ops.lock().unwrap();
+                assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
+                assert!(matches!(ops[0], Op::UserInput { .. }));
+                assert!(matches!(ops[1], Op::UserInput { .. }));
+
+                drop(message_tx);
+                anyhow::Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_unknown_live_event_attaches_detached_submission() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let models_manager = Arc::new(StubModelsManager);
+                let config = test_config()?;
+                let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut actor = ThreadActor::new(
+                    StubAuth,
+                    session_client,
+                    thread,
+                    models_manager,
+                    config,
+                    message_rx,
+                    resolution_tx,
+                    resolution_rx,
+                );
+
+                actor
+                    .handle_event(Event {
+                        id: "resumed-turn".to_string(),
+                        msg: EventMsg::AgentMessage(AgentMessageEvent {
+                            message: "resumed output".to_string(),
+                            phase: None,
+                            memory_citation: None,
+                        }),
+                    })
+                    .await;
+
+                assert!(actor.submissions.contains_key("resumed-turn"));
+                assert!(
+                    actor
+                        .submissions
+                        .get("resumed-turn")
+                        .is_some_and(SubmissionState::is_active)
+                );
+
+                actor
+                    .handle_event(Event {
+                        id: "resumed-turn".to_string(),
+                        msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                            last_agent_message: Some("resumed output".to_string()),
+                            turn_id: "resumed-turn".to_string(),
+                        }),
+                    })
+                    .await;
+
+                assert!(
+                    actor
+                        .submissions
+                        .get("resumed-turn")
+                        .is_some_and(|submission| !submission.is_active())
+                );
+
+                let notifications = client.notifications.lock().unwrap();
+                assert!(notifications.iter().any(|notification| {
+                    matches!(
+                        &notification.update,
+                        SessionUpdate::AgentMessageChunk(ContentChunk {
+                            content: ContentBlock::Text(TextContent { text, .. }),
+                            ..
+                        }) if text == "resumed output"
+                    )
+                }));
+
+                anyhow::Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_global_visible_events_without_submission_are_forwarded() -> anyhow::Result<()> {
+        let session_id = SessionId::new("test");
+        let client = Arc::new(StubClient::new());
+        let session_client = SessionClient::with_client(session_id, client.clone(), Arc::default());
+        let thread = Arc::new(StubCodexThread::new());
+        let models_manager = Arc::new(StubModelsManager);
+        let config = test_config()?;
+        let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut actor = ThreadActor::new(
+            StubAuth,
+            session_client,
+            thread,
+            models_manager,
+            config,
+            message_rx,
+            resolution_tx,
+            resolution_rx,
+        );
+
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::Warning(WarningEvent {
+                    message: "Config warning: invalid profile".to_string(),
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::DeprecationNotice(DeprecationNoticeEvent {
+                    summary: "old field is deprecated".to_string(),
+                    details: Some("Use new_field instead.".to_string()),
+                }),
+            })
+            .await;
+
+        let notifications = client.notifications.lock().unwrap();
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Config warning: invalid profile"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
+            )
+        }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_request_user_input_response_maps_multi_question_json_answers() {
+        let response = build_request_user_input_response(
+            &[ContentBlock::Text(TextContent::new(
+                r#"{"question-1":"yes","question-2":["alpha","beta"]}"#,
+            ))],
+            &[
+                RequestUserInputQuestion {
+                    id: "question-1".to_string(),
+                    header: "First".to_string(),
+                    question: "Pick one".to_string(),
+                    is_other: false,
+                    is_secret: false,
+                    options: None,
+                },
+                RequestUserInputQuestion {
+                    id: "question-2".to_string(),
+                    header: "Second".to_string(),
+                    question: "Pick many".to_string(),
+                    is_other: false,
+                    is_secret: false,
+                    options: None,
+                },
+            ],
+        )
+        .expect("parse multi-question response");
+
+        assert_eq!(
+            response.answers["question-1"].answers,
+            vec!["yes".to_string()]
+        );
+        assert_eq!(
+            response.answers["question-2"].answers,
+            vec!["alpha".to_string(), "beta".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_prompt_answer_resolves_pending_request_user_input() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
+                let thread = Arc::new(SharedSubmissionThread::new("shared-submission"));
+                let models_manager = Arc::new(StubModelsManager);
+                let config = test_config()?;
+                let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+
+                let actor = ThreadActor::new(
+                    StubAuth,
+                    session_client,
+                    thread.clone(),
+                    models_manager,
+                    config,
+                    message_rx,
+                    resolution_tx,
+                    resolution_rx,
+                );
+                tokio::task::spawn_local(actor.spawn());
+
+                let (first_response_tx, first_response_rx) = tokio::sync::oneshot::channel();
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["first".into()]),
+                    response_tx: first_response_tx,
+                })?;
+                let first_stop_rx = first_response_rx.await??;
+
+                thread.emit(EventMsg::RequestUserInput(RequestUserInputEvent {
+                    call_id: "question-call".to_string(),
+                    turn_id: "shared-submission".to_string(),
+                    questions: vec![RequestUserInputQuestion {
+                        id: "question-1".to_string(),
+                        header: "Clarify".to_string(),
+                        question: "Pick one".to_string(),
+                        is_other: true,
+                        is_secret: false,
+                        options: None,
+                    }],
+                }));
+                tokio::task::yield_now().await;
+
+                let (answer_response_tx, answer_response_rx) = tokio::sync::oneshot::channel();
+                message_tx.send(ThreadMessage::Prompt {
+                    request: PromptRequest::new(session_id.clone(), vec!["approved".into()]),
+                    response_tx: answer_response_tx,
+                })?;
+                let answer_stop_rx = answer_response_rx.await??;
+
+                {
+                    let ops = thread.ops.lock().unwrap();
+                    assert_eq!(ops.len(), 2, "ops don't match {ops:?}");
+                    assert!(matches!(ops[0], Op::UserInput { .. }));
+                    match &ops[1] {
+                        Op::UserInputAnswer { id, response } => {
+                            assert_eq!(id, "shared-submission");
+                            assert_eq!(
+                                response.answers["question-1"].answers,
+                                vec!["approved".to_string()]
+                            );
+                        }
+                        other => panic!("unexpected op: {other:?}"),
+                    }
+                }
+
+                {
+                    let notifications = client.notifications.lock().unwrap();
+                    assert!(notifications.iter().any(|notification| {
+                        matches!(
+                            &notification.update,
+                            SessionUpdate::ToolCall(tool_call)
+                                if tool_call.title == "Clarify"
+                                    && tool_call.status == ToolCallStatus::Pending
+                        )
+                    }));
+                    assert!(notifications.iter().any(|notification| {
+                        matches!(
+                            &notification.update,
+                            SessionUpdate::ToolCallUpdate(update)
+                                if update.tool_call_id.0.as_ref()
+                                    == "request-user-input:question-call"
+                                    && update.fields.status == Some(ToolCallStatus::Completed)
+                        )
+                    }));
+                }
+
+                thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
+                    last_agent_message: Some("done".to_string()),
+                    turn_id: "shared-turn".to_string(),
+                }));
+
+                assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
+                assert_eq!(answer_stop_rx.await??, StopReason::EndTurn);
+
+                drop(message_tx);
+                anyhow::Ok(())
+            })
+            .await
+    }
+
+    #[tokio::test]
     async fn test_delta_deduplication() -> anyhow::Result<()> {
-        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, _, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -4513,9 +5277,7 @@ mod tests {
         Ok(())
     }
 
-    async fn setup(
-        custom_prompts: Vec<CustomPrompt>,
-    ) -> anyhow::Result<(
+    async fn setup() -> anyhow::Result<(
         SessionId,
         Arc<StubClient>,
         Arc<StubCodexThread>,
@@ -4528,15 +5290,11 @@ mod tests {
             SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
         let conversation = Arc::new(StubCodexThread::new());
         let models_manager = Arc::new(StubModelsManager);
-        let config = Config::load_with_cli_overrides_and_harness_overrides(
-            vec![],
-            ConfigOverrides::default(),
-        )
-        .await?;
+        let config = test_config()?;
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let mut actor = ThreadActor::new(
+        let actor = ThreadActor::new(
             StubAuth,
             session_client,
             conversation.clone(),
@@ -4546,7 +5304,6 @@ mod tests {
             resolution_tx,
             resolution_rx,
         );
-        actor.custom_prompts = Rc::new(RefCell::new(custom_prompts));
 
         let local_set = LocalSet::new();
         local_set.spawn_local(actor.spawn());
@@ -4704,7 +5461,6 @@ mod tests {
                                     proposed_execpolicy_amendment: None,
                                     proposed_network_policy_amendments: None,
                                     additional_permissions: None,
-                                    skill_metadata: None,
                                     available_decisions: Some(vec![
                                         ReviewDecision::Approved,
                                         ReviewDecision::Abort,
@@ -4736,6 +5492,7 @@ mod tests {
                                 msg: EventMsg::AgentMessage(AgentMessageEvent {
                                     message: prompt,
                                     phase: None,
+                                    memory_citation: None,
                                 }),
                             })
                             .unwrap();
@@ -4767,6 +5524,7 @@ mod tests {
                             msg: EventMsg::AgentMessage(AgentMessageEvent {
                                 message: "Compact task completed".to_string(),
                                 phase: None,
+                                memory_citation: None,
                             }),
                         })
                         .unwrap();
@@ -4878,6 +5636,49 @@ mod tests {
         }
     }
 
+    struct SharedSubmissionThread {
+        submission_id: String,
+        ops: std::sync::Mutex<Vec<Op>>,
+        op_tx: mpsc::UnboundedSender<Event>,
+        op_rx: Mutex<mpsc::UnboundedReceiver<Event>>,
+    }
+
+    impl SharedSubmissionThread {
+        fn new(submission_id: impl Into<String>) -> Self {
+            let (op_tx, op_rx) = mpsc::unbounded_channel();
+            Self {
+                submission_id: submission_id.into(),
+                ops: std::sync::Mutex::default(),
+                op_tx,
+                op_rx: Mutex::new(op_rx),
+            }
+        }
+
+        fn emit(&self, msg: EventMsg) {
+            self.op_tx
+                .send(Event {
+                    id: self.submission_id.clone(),
+                    msg,
+                })
+                .expect("send shared submission event");
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CodexThreadImpl for SharedSubmissionThread {
+        async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+            self.ops.lock().unwrap().push(op);
+            Ok(self.submission_id.clone())
+        }
+
+        async fn next_event(&self) -> Result<Event, CodexErr> {
+            let Some(event) = self.op_rx.lock().await.recv().await else {
+                return Err(CodexErr::InternalAgentDied);
+            };
+            Ok(event)
+        }
+    }
+
     struct StubClient {
         notifications: std::sync::Mutex<Vec<SessionNotification>>,
         permission_requests: std::sync::Mutex<Vec<RequestPermissionRequest>>,
@@ -4945,7 +5746,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parallel_exec_commands() -> anyhow::Result<()> {
-        let (session_id, client, _, message_tx, local_set) = setup(vec![]).await?;
+        let (session_id, client, _, message_tx, local_set) = setup().await?;
         let (prompt_response_tx, prompt_response_rx) = tokio::sync::oneshot::channel();
 
         message_tx.send(ThreadMessage::Prompt {
@@ -5059,7 +5860,6 @@ mod tests {
                             proposed_execpolicy_amendment: None,
                             proposed_network_policy_amendments: None,
                             additional_permissions: None,
-                            skill_metadata: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
                                 ReviewDecision::Denied,
@@ -5150,7 +5950,6 @@ mod tests {
                             proposed_execpolicy_amendment: None,
                             proposed_network_policy_amendments: None,
                             additional_permissions: None,
-                            skill_metadata: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
                                 ReviewDecision::Abort,
@@ -5231,7 +6030,6 @@ mod tests {
                             proposed_execpolicy_amendment: None,
                             proposed_network_policy_amendments: None,
                             additional_permissions: None,
-                            skill_metadata: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
                                 ReviewDecision::Abort,
@@ -5488,7 +6286,6 @@ mod tests {
                             proposed_execpolicy_amendment: None,
                             proposed_network_policy_amendments: None,
                             additional_permissions: None,
-                            skill_metadata: None,
                             available_decisions: Some(vec![
                                 ReviewDecision::Approved,
                                 ReviewDecision::Abort,
@@ -5506,6 +6303,7 @@ mod tests {
                         EventMsg::AgentMessage(AgentMessageEvent {
                             message: "still flowing".to_string(),
                             phase: None,
+                            memory_citation: None,
                         }),
                     )
                     .await;
@@ -5871,11 +6669,7 @@ mod tests {
             SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
         let conversation = Arc::new(StubCodexThread::new());
         let models_manager = Arc::new(StubModelsManager);
-        let config = Config::load_with_cli_overrides_and_harness_overrides(
-            vec![],
-            ConfigOverrides::default(),
-        )
-        .await?;
+        let config = test_config()?;
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
         let actor = ThreadActor::new(
