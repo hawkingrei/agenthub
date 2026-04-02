@@ -862,6 +862,26 @@ async fn dispatch_acp_command(
     }
 }
 
+async fn handle_auth_required_failure(
+    err: &AcpError,
+    provider_id: &str,
+    action: &str,
+    event_sink: &Arc<dyn AcpEventSink>,
+) -> Option<String> {
+    if !is_auth_required_error(err) {
+        return None;
+    }
+
+    let message = format_auth_required_message(provider_id);
+    event_sink
+        .emit_raw(
+            AcpStream::System,
+            format!("acp {action} auth required: {message}"),
+        )
+        .await;
+    Some(message)
+}
+
 pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
     let SpawnAcpSessionRequest {
         provider_id,
@@ -1016,14 +1036,14 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         session_id = Some(resume_id);
                     }
                     Err(err) => {
-                        if is_auth_required_error(&err) {
-                            let message = format_auth_required_message(&provider_id);
-                            event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp load_session auth required: {message}"),
-                                )
-                                .await;
+                        if let Some(message) = handle_auth_required_failure(
+                            &err,
+                            &provider_id,
+                            "load_session",
+                            &event_sink,
+                        )
+                        .await
+                        {
                             let _ = ready_tx.send(Err(message));
                             return;
                         }
@@ -1042,14 +1062,14 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 let session = match conn.new_session(request).await {
                     Ok(session) => session,
                     Err(err) => {
-                        if is_auth_required_error(&err) {
-                            let message = format_auth_required_message(&provider_id);
-                            event_sink
-                                .emit_raw(
-                                    AcpStream::System,
-                                    format!("acp new_session auth required: {message}"),
-                                )
-                                .await;
+                        if let Some(message) = handle_auth_required_failure(
+                            &err,
+                            &provider_id,
+                            "new_session",
+                            &event_sink,
+                        )
+                        .await
+                        {
                             let _ = ready_tx.send(Err(message));
                             return;
                         }
@@ -1808,9 +1828,9 @@ mod tests {
         AcpActorContinuityEnvelope, AcpActorSkillContext, AcpCommand, AcpHandle,
         AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
         AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks, dedupe_skills,
-        format_auth_required_message, is_auth_required_error, load_mcp_servers_from_path,
-        load_skills_from_config, load_workdir_skills, remove_skills_conflicting_with_reserved,
-        should_queue_while_prompts_active,
+        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol::{
         ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
@@ -2069,6 +2089,28 @@ mod tests {
         let message = format_auth_required_message("gemini");
         assert!(message.contains("prior authentication on the host"));
         assert!(message.contains("does not trigger interactive Google login"));
+    }
+
+    struct NoopEventSink;
+
+    #[async_trait::async_trait]
+    impl super::AcpEventSink for NoopEventSink {
+        async fn emit_raw(&self, _stream: super::AcpStream, _message: String) {}
+    }
+
+    #[tokio::test]
+    async fn auth_required_failure_helper_returns_provider_message() {
+        let sink: std::sync::Arc<dyn super::AcpEventSink> = std::sync::Arc::new(NoopEventSink);
+        let handled = handle_auth_required_failure(
+            &AcpError::auth_required(),
+            "gemini",
+            "new_session",
+            &sink,
+        )
+        .await;
+
+        let err = handled.expect("auth required should produce a startup error");
+        assert!(err.contains("Gemini ACP requires prior authentication on the host"));
     }
 
     #[test]
