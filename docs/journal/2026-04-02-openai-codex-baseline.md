@@ -267,3 +267,23 @@ Validation for this UI cleanup slice:
 - `npm run lint` passes in `web/`.
 - `npm run build` passes in `web/`.
 - Chrome DevTools regression check against the local Vite shell at `http://127.0.0.1:4173/` shows the page still loading to the same standalone shell state as before; the visible runtime error remains the expected backend-less `404/JSON` failure, and the existing generic form-field issue still appears even though the new request-user-input textarea now has explicit labeling metadata.
+
+## Request-User-Input Submit-State And Custom-Prompt Cleanup
+
+The remaining follow-up after the review-thread sweep was narrow:
+
+- the inline `RequestUserInputCard` could leave itself stuck in `Submitting...` after a successful submit callback if the server-side timeline had not yet rerendered the card away;
+- `agenthub-codex-acp` still carried a legacy `custom_prompts` expansion path even though the pinned `openai/codex` release no longer exposes the old end-to-end prompt-discovery/runtime-loading capability that earlier Codex revisions had.
+
+This slice closes both gaps:
+
+- `RequestUserInputCard` now always clears its local submitting flag in a `finally` block, so the inline controls recover even when the submit callback succeeds but the ACP timeline has not advanced yet;
+- `thread.rs` no longer advertises or expands runtime `custom_prompts`; unknown slash commands now fall through as plain user input, which matches the current upstream app-server model instead of preserving dead local plumbing;
+- the old prompt-argument expansion helpers remain in `prompt_args.rs`, but they are now test-only support code rather than production runtime behavior.
+
+Validation for this cleanup slice:
+
+- `npm run test -- src/acp_conversation.interaction.test.tsx` covers the submit-success recovery path for the inline question card.
+- `cargo clippy -p agenthub-codex-acp --all-targets -- -D warnings` stays clean after removing the dead runtime custom-prompt path.
+- `cargo test -p agenthub-codex-acp test_unknown_slash_command_is_forwarded_as_plain_input -- --nocapture` covers the new unknown-slash-command fallback.
+- `cargo test -p agenthub-codex-acp test_prompt_answer_resolves_pending_request_user_input -- --nocapture` keeps the ACP-side question-answer bridge exercised after the thread cleanup.

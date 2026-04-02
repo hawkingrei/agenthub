@@ -469,4 +469,87 @@ describe("AcpConversation fold interactions", () => {
     expect(rerenderedTextarea).not.toBeNull();
     expect(rerenderedTextarea?.value).toBe("Keep this draft");
   });
+
+  it("re-enables request_user_input submission controls after a successful submit callback", async () => {
+    let resolveSubmission: (() => void) | null = null;
+    const onSubmitRequestUserInput = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmission = resolve;
+        })
+    );
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "request-user-input:call-submit-reset",
+        title: "Question",
+        status: "pending",
+        raw_input: [
+          {
+            id: "notes",
+            header: "Notes",
+            question: "Add extra context.",
+            isOther: false,
+            isSecret: false,
+          },
+        ],
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
+    });
+
+    const textarea = container.querySelector(
+      'textarea[data-request-user-input-note="notes"]'
+    ) as HTMLTextAreaElement | null;
+    const submitButton = container.querySelector(
+      'button[data-request-user-input-submit="request-user-input:call-submit-reset"]'
+    ) as HTMLButtonElement | null;
+
+    expect(textarea).not.toBeNull();
+    expect(submitButton).not.toBeNull();
+    if (!textarea || !submitButton) return;
+
+    act(() => {
+      setNativeValue(textarea, "Keep trying");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await act(async () => {
+      submitButton.click();
+    });
+
+    expect(onSubmitRequestUserInput).toHaveBeenCalledTimes(1);
+    expect(submitButton.disabled).toBe(true);
+    expect(submitButton.textContent).toContain("Submitting");
+
+    await act(async () => {
+      resolveSubmission?.();
+      await Promise.resolve();
+    });
+
+    expect(submitButton.disabled).toBe(false);
+    expect(submitButton.textContent).toContain("Submit Answer");
+    expect(textarea.disabled).toBe(false);
+  });
 });

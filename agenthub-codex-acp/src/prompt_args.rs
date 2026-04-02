@@ -1,14 +1,22 @@
 /// Originally adapted from `codex_tui::bottom_pane::prompt_args`: <https://github.com/openai/codex/blob/rust-v0.118.0/codex-rs/tui/src/bottom_pane/prompt_args.rs#L1>
+#[cfg(test)]
 use regex_lite::Regex;
+#[cfg(test)]
 use shlex::Shlex;
+#[cfg(test)]
 use std::collections::HashMap;
+#[cfg(test)]
 use std::collections::HashSet;
+#[cfg(test)]
 use std::path::PathBuf;
+#[cfg(test)]
 use std::sync::LazyLock;
 
+#[cfg(test)]
 static PROMPT_ARG_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$[A-Z][A-Z0-9_]*").unwrap_or_else(|_| std::process::abort()));
 
+#[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CustomPrompt {
     pub name: String,
@@ -18,12 +26,14 @@ pub struct CustomPrompt {
     pub argument_hint: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub enum PromptArgsError {
     MissingAssignment { token: String },
     MissingKey { token: String },
 }
 
+#[cfg(test)]
 impl PromptArgsError {
     fn describe(&self, command: &str) -> String {
         match self {
@@ -37,6 +47,7 @@ impl PromptArgsError {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub enum PromptExpansionError {
     Args {
@@ -49,6 +60,7 @@ pub enum PromptExpansionError {
     },
 }
 
+#[cfg(test)]
 impl PromptExpansionError {
     pub fn user_message(&self) -> String {
         match self {
@@ -88,6 +100,7 @@ pub fn parse_slash_name(line: &str) -> Option<(&str, &str)> {
 /// A placeholder is any token that matches the pattern `$[A-Z][A-Z0-9_]*`
 /// (for example `$USER`). The function returns the variable names without
 /// the leading `$`, de-duplicated and in the order of first appearance.
+#[cfg(test)]
 pub fn prompt_argument_names(content: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut names = Vec::new();
@@ -113,6 +126,7 @@ pub fn prompt_argument_names(content: &str) -> Vec<String> {
 /// The input is split using shlex rules, so quoted values are supported
 /// (for example `USER="Alice Smith"`). The function returns a map of parsed
 /// arguments, or an error if a token is missing `=` or if the key is empty.
+#[cfg(test)]
 pub fn parse_prompt_inputs(rest: &str) -> Result<HashMap<String, String>, PromptArgsError> {
     let mut map = HashMap::new();
     if rest.trim().is_empty() {
@@ -136,6 +150,7 @@ pub fn parse_prompt_inputs(rest: &str) -> Result<HashMap<String, String>, Prompt
 /// If the text does not start with `/prompts:`, or if no prompt named `name` exists,
 /// the function returns `Ok(None)`. On success it returns
 /// `Ok(Some(expanded))`; otherwise it returns a descriptive error.
+#[cfg(test)]
 pub fn expand_custom_prompt(
     name: &str,
     rest: &str,
@@ -186,6 +201,7 @@ pub fn expand_custom_prompt(
 }
 
 /// Expand `$1..$9` and `$ARGUMENTS` in `content` with values from `args`.
+#[cfg(test)]
 pub fn expand_numeric_placeholders(content: &str, args: &[String]) -> String {
     let mut out = String::with_capacity(content.len());
     let mut i = 0;

@@ -705,6 +705,7 @@ function RequestUserInputCard({
       await onSubmitRequestUserInput(submission.text);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : String(error));
+    } finally {
       setSubmitting(false);
     }
   }, [drafts, onSubmitRequestUserInput, questions]);
