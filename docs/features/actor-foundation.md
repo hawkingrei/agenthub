@@ -47,9 +47,15 @@ Practical mapping:
 - `actor_send`
   - enqueue message with idempotency semantics.
 - `actor_inbox`
-  - fetch pending messages by actor identity and run partition.
+  - fetch mailbox messages by actor identity and run partition without changing delivery state.
 - `actor_ack`
-  - mark message delivered and attach optional result/evidence.
+  - mark a receiver-accepted message delivered.
+
+Client workflow note:
+
+- Client/runtime surfaces may compose `receive = inbox + ack` as an explicit accept-and-consume
+  action.
+- Read-only inbox inspection must remain distinct from message acceptance.
 
 ### 4) Delivery State Model
 

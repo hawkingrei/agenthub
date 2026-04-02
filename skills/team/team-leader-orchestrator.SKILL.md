@@ -35,7 +35,7 @@ You are the coordinator for a multi-agent team run.
 - Use this skill for leader planning, assignment, synthesis, and human-facing coordination.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task creation, review, and status changes.
 - Use `team-deliberation-rules.SKILL.md` for cross-option evaluation and consensus discipline.
-- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
+- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
 
 ## Shared Contract Usage
 
@@ -198,10 +198,9 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 
 ## Coordination Contract
 
-1. Pull inbox before each coordination round:
-   `agenthub actor inbox --limit 50`
-2. Acknowledge each consumed message once:
-   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
+1. Accept inbox work before each coordination round:
+   `agenthub actor receive --limit 50`
+2. Parse each accepted message before making routing decisions.
 3. Delegate with deterministic payload JSON:
    `agenthub actor send --to-actor-id "$WORKER_ID" --text-file .agenthubmemory/mailbox/outbox/task-brief.md`
 4. If a worker is blocked, ask for missing facts or re-scope the task.

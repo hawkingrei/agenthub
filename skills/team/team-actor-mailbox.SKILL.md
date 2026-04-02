@@ -1,12 +1,12 @@
 ---
 name: team-actor-mailbox
-description: Mailbox transport contract for AgentHub Team actor inbox/send/ack flows.
+description: Mailbox transport contract for AgentHub Team actor inbox/receive/send/ack flows.
 ---
 
 # Team Actor Mailbox
 
 Use this skill for Team mailbox communication. It is the protocol reference for
-`actor inbox`, `actor send`, and `actor ack`.
+`actor inbox`, `actor receive`, `actor send`, and `actor ack`.
 
 For Team runtime/roster context, use the single `agenthub actor team-members`
 command. It exposes runtime summary, roster/card data, and per-member
@@ -82,11 +82,10 @@ Recommended fields:
 1. Pull inbox for current actor scope:
    `agenthub actor inbox --limit 50`
    - `actor inbox` now includes `pending_count`; treat it as the live unread snapshot.
-   - `actor inbox` is read-only by default. Add `--auto-ack` only when you intentionally want a
-     bulk sweep to consume the returned pending messages.
-2. Parse message payload and validate required fields before acting.
-3. Acknowledge each consumed message exactly once:
-   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
+   - `actor inbox` is read-only by default and should be used for inspection/debugging.
+2. Accept pending mailbox work for the current actor:
+   `agenthub actor receive --limit 50`
+3. Parse accepted message payload and validate required fields before acting.
 4. For human-readable coordination, prefer markdown text and keep the source in a file:
    `agenthub actor send --to-actor-id "$TARGET_ACTOR_ID" --text-file .agenthubmemory/mailbox/outbox/status-update.md`
 5. Use structured payload files only when the receiver truly needs machine-readable fields:
@@ -122,6 +121,8 @@ Recommended fields:
   - leader-authored shared-channel messages may immediately nudge only explicitly mentioned peers;
   - other unread mailbox traffic should rely on `actor inbox` / `pending_count` first, then on the
     delayed unread-summary reminder path after ACP output has been idle for a while.
+- Treat `actor receive` as the normal accept-and-consume path.
+- Keep `actor ack` only for repair, recovery, or manual compensation flows.
 - Keep messages idempotent-friendly; include stable identifiers in payloads.
 - If the same assignment is retried, return deterministic status updates.
 - If blocked, always include a concrete `next_action`.

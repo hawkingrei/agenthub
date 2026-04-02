@@ -8,7 +8,6 @@ mod transport;
 pub use contract::{
     ActorAckRequest, ActorAckResponse, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
     ActorSendRequest, ActorSendResponse, ActorServiceError, ActorServiceErrorCode,
-    actor_inbox_with_auto_ack,
 };
 pub use idempotency::{
     actor_message_fingerprint, build_actor_channel_fanout_idempotency_key,
