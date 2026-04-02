@@ -251,3 +251,19 @@ Validation for this cleanup slice:
 - `cargo test -p agenthub-codex-acp test_unknown_live_event_attaches_detached_submission -- --nocapture` still passes.
 - `cargo test -p agenthub-codex-acp test_shared_submission_id_completes_all_prompt_waiters -- --nocapture` still passes.
 - `cargo test -p agenthub-codex-acp agenthub_codex_acp_ --lib -- --nocapture` passes, confirming the release-commit pin keeps the multi-agent feature toggles behaving as expected.
+
+## Request-User-Input UI Review Cleanup
+
+The final unresolved PR review threads were both in the new ACP `request_user_input` card and were about frontend state stability rather than backend bridge correctness.
+
+This follow-up keeps the UI shape the same, but fixes two real issues:
+
+- `RequestUserInputCard` no longer resets local drafts merely because polling rebuilt `raw_input` into a fresh `questions` array; it now resets only when the `toolCallId` or a stable semantic signature of the question payload changes;
+- each inline answer textarea now has an explicit `id`, `name`, and `aria-labelledby` relation tied to the existing visible header and question text, so the card is accessible to screen readers without adding duplicate visible labels.
+
+Validation for this UI cleanup slice:
+
+- `npm run test -- src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx` passes with added coverage for stable draft retention across equivalent rerenders and textarea labeling.
+- `npm run lint` passes in `web/`.
+- `npm run build` passes in `web/`.
+- Chrome DevTools regression check against the local Vite shell at `http://127.0.0.1:4173/` shows the page still loading to the same standalone shell state as before; the visible runtime error remains the expected backend-less `404/JSON` failure, and the existing generic form-field issue still appears even though the new request-user-input textarea now has explicit labeling metadata.

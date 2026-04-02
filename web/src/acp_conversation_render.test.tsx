@@ -219,6 +219,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("Codex needs input before continuing");
     expect(html).toContain("Submit Answer");
     expect(html).toContain("Plan only");
+    expect(html).toContain('aria-labelledby="request-user-input:call-1:scope:header request-user-input:call-1:scope:prompt"');
+    expect(html).toContain('id="request-user-input:call-1:scope:note"');
     expect(html).not.toContain(">Input<");
   });
 

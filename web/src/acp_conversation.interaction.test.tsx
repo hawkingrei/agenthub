@@ -15,6 +15,21 @@ function setDetailsOpen(details: HTMLDetailsElement, open: boolean) {
   });
 }
 
+function setNativeValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string
+): void {
+  const prototype = Object.getPrototypeOf(element) as {
+    value?: unknown;
+  };
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  if (descriptor?.set) {
+    descriptor.set.call(element, value);
+    return;
+  }
+  element.value = value;
+}
+
 describe("AcpConversation fold interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -368,5 +383,90 @@ describe("AcpConversation fold interactions", () => {
         2
       )
     );
+  });
+
+  it("keeps in-progress request_user_input drafts across rerenders with equivalent questions", () => {
+    const onSubmitRequestUserInput = () => {};
+    const buildItems = (): ConversationItem[] => [
+      {
+        kind: "tool_call",
+        id: "request-user-input:call-stable",
+        title: "Question",
+        status: "pending",
+        raw_input: [
+          {
+            id: "notes",
+            header: "Notes",
+            question: "Add extra context.",
+            isOther: false,
+            isSecret: false,
+          },
+        ],
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={buildItems()}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
+    });
+
+    const textarea = container.querySelector(
+      'textarea[data-request-user-input-note="notes"]'
+    ) as HTMLTextAreaElement | null;
+    expect(textarea).not.toBeNull();
+    if (!textarea) return;
+
+    act(() => {
+      setNativeValue(textarea, "Keep this draft");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(textarea.value).toBe("Keep this draft");
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={buildItems()}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
+    });
+
+    const rerenderedTextarea = container.querySelector(
+      'textarea[data-request-user-input-note="notes"]'
+    ) as HTMLTextAreaElement | null;
+    expect(rerenderedTextarea).not.toBeNull();
+    expect(rerenderedTextarea?.value).toBe("Keep this draft");
   });
 });

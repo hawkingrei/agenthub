@@ -644,12 +644,19 @@ function RequestUserInputCard({
   );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorText, setErrorText] = React.useState<string | null>(null);
+  const questionsResetKey = createRequestUserInputQuestionsResetKey(questions);
+  const resetStateKey = `${toolCallId}::${questionsResetKey}`;
+  const lastResetStateKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
+    if (lastResetStateKeyRef.current === resetStateKey) {
+      return;
+    }
+    lastResetStateKeyRef.current = resetStateKey;
     setDrafts(createInitialRequestUserInputDrafts(questions));
     setSubmitting(false);
     setErrorText(null);
-  }, [toolCallId, questions]);
+  }, [questions, resetStateKey]);
 
   const handleOptionChange = React.useCallback(
     (questionId: string, optionLabel: string) => {
@@ -724,6 +731,9 @@ function RequestUserInputCard({
             note: "",
           };
           const hasOptions = question.options != null && question.options.length > 0;
+          const questionHeaderId = `${toolCallId}:${question.id}:header`;
+          const questionPromptId = `${toolCallId}:${question.id}:prompt`;
+          const questionTextareaId = `${toolCallId}:${question.id}:note`;
           return (
             <div
               key={question.id}
@@ -734,7 +744,10 @@ function RequestUserInputCard({
                 <span className="rounded-full border border-black/[0.08] bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {questions.length > 1 ? `Q${index + 1}` : "Question"}
                 </span>
-                <span className="text-sm font-semibold text-slate-800">
+                <span
+                  id={questionHeaderId}
+                  className="text-sm font-semibold text-slate-800"
+                >
                   {question.header || question.id}
                 </span>
                 {question.isSecret ? (
@@ -743,7 +756,12 @@ function RequestUserInputCard({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{question.question}</p>
+              <p
+                id={questionPromptId}
+                className="mt-2 text-sm leading-6 text-slate-700"
+              >
+                {question.question}
+              </p>
               {hasOptions ? (
                 <div className="mt-3 space-y-2">
                   {question.options?.map((option) => {
@@ -814,8 +832,10 @@ function RequestUserInputCard({
                 </div>
               ) : null}
               <textarea
+                id={questionTextareaId}
                 className="mono mt-3 min-h-24 w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border"
-                name={`${toolCallId}:${question.id}:note`}
+                name={questionTextareaId}
+                aria-labelledby={`${questionHeaderId} ${questionPromptId}`}
                 value={draft.note}
                 onChange={(event) => handleNoteChange(question.id, event.currentTarget.value)}
                 placeholder={
@@ -865,6 +885,25 @@ function RequestUserInputCard({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function createRequestUserInputQuestionsResetKey(
+  questions: RequestUserInputQuestion[]
+): string {
+  return JSON.stringify(
+    questions.map((question) => ({
+      id: question.id,
+      header: question.header ?? null,
+      question: question.question,
+      isOther: question.isOther,
+      isSecret: question.isSecret,
+      options:
+        question.options?.map((option) => ({
+          label: option.label,
+          description: option.description,
+        })) ?? null,
+    }))
   );
 }
 
