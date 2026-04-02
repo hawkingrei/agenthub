@@ -162,6 +162,25 @@ enum TurnSteerFailure {
     Other,
 }
 
+enum PreparedSubmissionStart {
+    TurnStart {
+        request_id: RequestId,
+        params: TurnStartParams,
+    },
+    ReviewStart {
+        request_id: RequestId,
+        params: ReviewStartParams,
+    },
+    CompactStart {
+        request_id: RequestId,
+        params: ThreadCompactStartParams,
+    },
+    Rollback {
+        request_id: RequestId,
+        params: ThreadRollbackParams,
+    },
+}
+
 struct OverrideTurnContextArgs {
     cwd: Option<PathBuf>,
     approval_policy: Option<codex_protocol::protocol::AskForApproval>,
@@ -207,21 +226,27 @@ impl AppServerCodexThread {
     }
 
     async fn submit_prompt_like(&self, op: Op) -> Result<String, CodexErr> {
-        let mut state = self.state.lock().await;
-        if let Some(active_turn) = state.active_turn.clone() {
-            match self
-                .try_steer_submission(&mut state, active_turn, &op)
-                .await?
-            {
+        let active_turn = {
+            let state = self.state.lock().await;
+            state.active_turn.clone()
+        };
+        if let Some(active_turn) = active_turn {
+            match self.try_steer_submission(active_turn, &op).await? {
                 SteerFollowUpAction::ReuseActiveSubmission(steered_submission_id) => {
                     return Ok(steered_submission_id);
                 }
                 SteerFollowUpAction::QueueFollowUp => {
                     let submission_id = new_submission_id();
-                    state.queued_submissions.push_back(QueuedSubmission {
-                        submission_id: submission_id.clone(),
-                        op,
-                    });
+                    let mut state = self.state.lock().await;
+                    if state.active_turn.is_some() {
+                        state.queued_submissions.push_back(QueuedSubmission {
+                            submission_id: submission_id.clone(),
+                            op,
+                        });
+                    } else {
+                        drop(state);
+                        self.start_submission(submission_id.clone(), op).await?;
+                    }
                     return Ok(submission_id);
                 }
                 SteerFollowUpAction::StartFreshTurn => {}
@@ -229,14 +254,12 @@ impl AppServerCodexThread {
         }
 
         let submission_id = new_submission_id();
-        self.start_submission(&mut state, submission_id.clone(), op)
-            .await?;
+        self.start_submission(submission_id.clone(), op).await?;
         Ok(submission_id)
     }
 
     async fn try_steer_submission(
         &self,
-        state: &mut AppServerState,
         active_turn: ActiveTurn,
         op: &Op,
     ) -> Result<SteerFollowUpAction, CodexErr> {
@@ -252,14 +275,23 @@ impl AppServerCodexThread {
             return Ok(SteerFollowUpAction::QueueFollowUp);
         }
 
-        let request_id = next_request_id(state);
         let turn_id = active_turn.turn_id.clone().unwrap_or_default();
+        let (request_id, thread_id) = {
+            let mut state = self.state.lock().await;
+            let Some(current_active_turn) = state.active_turn.as_ref() else {
+                return Ok(SteerFollowUpAction::StartFreshTurn);
+            };
+            if current_active_turn.submission_id != active_turn.submission_id {
+                return Ok(SteerFollowUpAction::StartFreshTurn);
+            }
+            (next_request_id(&mut state), state.thread_id.clone())
+        };
         let response = self
             .request_handle
             .request_typed::<TurnSteerResponse>(ClientRequest::TurnSteer {
                 request_id,
                 params: TurnSteerParams {
-                    thread_id: state.thread_id.clone(),
+                    thread_id,
                     input: items.into_iter().map(Into::into).collect(),
                     expected_turn_id: turn_id,
                 },
@@ -272,146 +304,166 @@ impl AppServerCodexThread {
             )),
             Err(err) => match classify_turn_steer_failure(&err) {
                 TurnSteerFailure::StaleActiveTurn => {
+                    let mut state = self.state.lock().await;
                     warn!(
                         "turn/steer reported stale local active-turn state, starting a fresh turn instead: {err}"
                     );
-                    clear_active_turn_state(state);
+                    if state
+                        .active_turn
+                        .as_ref()
+                        .is_some_and(|turn| turn.submission_id == active_turn.submission_id)
+                    {
+                        clear_active_turn_state(&mut state);
+                    }
                     Ok(SteerFollowUpAction::StartFreshTurn)
                 }
                 TurnSteerFailure::ActiveTurnNotSteerable => {
+                    let mut state = self.state.lock().await;
                     warn!(
                         "turn/steer rejected because active turn is not steerable, queueing follow-up prompt: {err}"
                     );
-                    if let Some(current_active_turn) = state.active_turn.as_mut() {
+                    if let Some(current_active_turn) = state
+                        .active_turn
+                        .as_mut()
+                        .filter(|turn| turn.submission_id == active_turn.submission_id)
+                    {
                         current_active_turn.steerable = false;
+                    } else {
+                        return Ok(SteerFollowUpAction::StartFreshTurn);
                     }
                     Ok(SteerFollowUpAction::QueueFollowUp)
                 }
                 TurnSteerFailure::Other => {
                     warn!("turn/steer failed, queueing follow-up prompt instead: {err}");
+                    let state = self.state.lock().await;
+                    if state
+                        .active_turn
+                        .as_ref()
+                        .is_none_or(|turn| turn.submission_id != active_turn.submission_id)
+                    {
+                        return Ok(SteerFollowUpAction::StartFreshTurn);
+                    }
                     Ok(SteerFollowUpAction::QueueFollowUp)
                 }
             },
         }
     }
 
-    async fn start_submission(
-        &self,
-        state: &mut AppServerState,
-        submission_id: String,
-        op: Op,
-    ) -> Result<(), CodexErr> {
-        match op {
-            Op::UserInput {
-                items,
-                final_output_json_schema,
-            } => {
-                let response: TurnStartResponse = self
+    async fn start_submission(&self, submission_id: String, op: Op) -> Result<(), CodexErr> {
+        let prepared = {
+            let mut state = self.state.lock().await;
+            if state.active_turn.is_some() {
+                state
+                    .queued_submissions
+                    .push_back(QueuedSubmission { submission_id, op });
+                return Ok(());
+            }
+            prepare_submission_start(&mut state, &submission_id, &op)?
+        };
+
+        match prepared {
+            PreparedSubmissionStart::TurnStart { request_id, params } => {
+                let response = self
                     .request_handle
-                    .request_typed(ClientRequest::TurnStart {
-                        request_id: next_request_id(state),
-                        params: TurnStartParams {
-                            thread_id: state.thread_id.clone(),
-                            input: items.into_iter().map(Into::into).collect(),
-                            cwd: Some(state.config.cwd.to_path_buf()),
-                            approval_policy: Some(
-                                state.config.permissions.approval_policy.value().into(),
+                    .request_typed::<TurnStartResponse>(ClientRequest::TurnStart {
+                        request_id,
+                        params,
+                    })
+                    .await
+                    .map_err(typed_request_error_to_codex);
+                let mut state = self.state.lock().await;
+                match response {
+                    Ok(response) => {
+                        set_active_turn_id(
+                            &mut state,
+                            &submission_id,
+                            Some(response.turn.id),
+                            true,
+                        );
+                        Ok(())
+                    }
+                    Err(err) => {
+                        clear_submission_if_active(&mut state, &submission_id);
+                        Err(err)
+                    }
+                }
+            }
+            PreparedSubmissionStart::ReviewStart { request_id, params } => {
+                let response = self
+                    .request_handle
+                    .request_typed::<ReviewStartResponse>(ClientRequest::ReviewStart {
+                        request_id,
+                        params,
+                    })
+                    .await
+                    .map_err(typed_request_error_to_codex);
+                let mut state = self.state.lock().await;
+                match response {
+                    Ok(response) => {
+                        set_active_turn_id(
+                            &mut state,
+                            &submission_id,
+                            Some(response.turn.id),
+                            false,
+                        );
+                        Ok(())
+                    }
+                    Err(err) => {
+                        clear_submission_if_active(&mut state, &submission_id);
+                        Err(err)
+                    }
+                }
+            }
+            PreparedSubmissionStart::CompactStart { request_id, params } => {
+                let response = self
+                    .request_handle
+                    .request_typed::<ThreadCompactStartResponse>(
+                        ClientRequest::ThreadCompactStart { request_id, params },
+                    )
+                    .await
+                    .map_err(typed_request_error_to_codex);
+                let mut state = self.state.lock().await;
+                match response {
+                    Ok(_) => Ok(()),
+                    Err(err) => {
+                        clear_submission_if_active(&mut state, &submission_id);
+                        Err(err)
+                    }
+                }
+            }
+            PreparedSubmissionStart::Rollback { request_id, params } => {
+                let response = self
+                    .request_handle
+                    .request_typed::<ThreadRollbackResponse>(ClientRequest::ThreadRollback {
+                        request_id,
+                        params,
+                    })
+                    .await
+                    .map_err(typed_request_error_to_codex);
+                let mut state = self.state.lock().await;
+                match response {
+                    Ok(_) => {
+                        state.local_events.push_back(Event {
+                            id: submission_id.clone(),
+                            msg: EventMsg::UndoCompleted(
+                                codex_protocol::protocol::UndoCompletedEvent {
+                                    success: true,
+                                    message: Some("Undo completed.".to_string()),
+                                },
                             ),
-                            approvals_reviewer: Some(state.config.approvals_reviewer.into()),
-                            sandbox_policy: Some(
-                                state.config.permissions.sandbox_policy.get().clone().into(),
-                            ),
-                            model: state.config.model.clone(),
-                            service_tier: Some(state.config.service_tier),
-                            effort: state.config.model_reasoning_effort,
-                            summary: state.config.model_reasoning_summary,
-                            personality: state.config.personality,
-                            output_schema: final_output_json_schema,
-                            collaboration_mode: None,
-                        },
-                    })
-                    .await
-                    .map_err(typed_request_error_to_codex)?;
-                state.active_turn = Some(ActiveTurn {
-                    submission_id,
-                    turn_id: Some(response.turn.id),
-                    steerable: true,
-                    last_agent_message: None,
-                });
-                Ok(())
+                        });
+                        state.local_events.push_back(Event {
+                            id: submission_id,
+                            msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                                turn_id: String::new(),
+                                last_agent_message: None,
+                            }),
+                        });
+                        Ok(())
+                    }
+                    Err(err) => Err(err),
+                }
             }
-            Op::Review { review_request } => {
-                let response: ReviewStartResponse = self
-                    .request_handle
-                    .request_typed(ClientRequest::ReviewStart {
-                        request_id: next_request_id(state),
-                        params: ReviewStartParams {
-                            thread_id: state.thread_id.clone(),
-                            target: review_target_to_app_server(review_request.target),
-                            delivery: Some(ReviewDelivery::Inline),
-                        },
-                    })
-                    .await
-                    .map_err(typed_request_error_to_codex)?;
-                state.active_turn = Some(ActiveTurn {
-                    submission_id,
-                    turn_id: Some(response.turn.id),
-                    steerable: false,
-                    last_agent_message: None,
-                });
-                Ok(())
-            }
-            Op::Compact => {
-                let _: ThreadCompactStartResponse = self
-                    .request_handle
-                    .request_typed(ClientRequest::ThreadCompactStart {
-                        request_id: next_request_id(state),
-                        params: ThreadCompactStartParams {
-                            thread_id: state.thread_id.clone(),
-                        },
-                    })
-                    .await
-                    .map_err(typed_request_error_to_codex)?;
-                state.active_turn = Some(ActiveTurn {
-                    submission_id,
-                    turn_id: None,
-                    steerable: false,
-                    last_agent_message: None,
-                });
-                Ok(())
-            }
-            Op::Undo => {
-                let _response: ThreadRollbackResponse = self
-                    .request_handle
-                    .request_typed(ClientRequest::ThreadRollback {
-                        request_id: next_request_id(state),
-                        params: ThreadRollbackParams {
-                            thread_id: state.thread_id.clone(),
-                            num_turns: 1,
-                        },
-                    })
-                    .await
-                    .map_err(typed_request_error_to_codex)?;
-                state.local_events.push_back(Event {
-                    id: submission_id.clone(),
-                    msg: EventMsg::UndoCompleted(codex_protocol::protocol::UndoCompletedEvent {
-                        success: true,
-                        message: Some("Undo completed.".to_string()),
-                    }),
-                });
-                state.local_events.push_back(Event {
-                    id: submission_id,
-                    msg: EventMsg::TurnComplete(TurnCompleteEvent {
-                        turn_id: String::new(),
-                        last_agent_message: None,
-                    }),
-                });
-                Ok(())
-            }
-            unsupported => Err(CodexErr::UnsupportedOperation(format!(
-                "app-server thread cannot start submission for {}",
-                unsupported.kind()
-            ))),
         }
     }
 
@@ -429,19 +481,21 @@ impl AppServerCodexThread {
                 return;
             };
 
-            let mut state = self.state.lock().await;
             match self
-                .start_submission(&mut state, queued.submission_id.clone(), queued.op)
+                .start_submission(queued.submission_id.clone(), queued.op)
                 .await
             {
                 Ok(()) => return,
-                Err(err) => state.local_events.push_back(Event {
-                    id: queued.submission_id,
-                    msg: EventMsg::Error(ErrorEvent {
-                        message: err.to_string(),
-                        codex_error_info: None,
-                    }),
-                }),
+                Err(err) => {
+                    let mut state = self.state.lock().await;
+                    state.local_events.push_back(Event {
+                        id: queued.submission_id,
+                        msg: EventMsg::Error(ErrorEvent {
+                            message: err.to_string(),
+                            codex_error_info: None,
+                        }),
+                    });
+                }
             }
         }
     }
@@ -1467,30 +1521,7 @@ impl AppServerCodexThread {
 
                     Event {
                         id: submission_id,
-                        msg: match payload.turn.status {
-                            TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
-                                turn_id: payload.turn.id,
-                                last_agent_message,
-                            }),
-                            TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
-                                turn_id: Some(payload.turn.id),
-                                reason: TurnAbortReason::Interrupted,
-                            }),
-                            TurnStatus::Failed => EventMsg::Error(ErrorEvent {
-                                message: payload
-                                    .turn
-                                    .error
-                                    .as_ref()
-                                    .map(|error| error.message.clone())
-                                    .unwrap_or_else(|| "turn failed".to_string()),
-                                codex_error_info: None,
-                            }),
-                            TurnStatus::InProgress => EventMsg::Warning(WarningEvent {
-                                message:
-                                    "received turn/completed while turn still marked in_progress"
-                                        .to_string(),
-                            }),
-                        },
+                        msg: turn_completed_event_msg(&payload.turn, last_agent_message),
                     }
                 };
                 self.start_next_queued_submissions().await;
@@ -1869,9 +1900,9 @@ fn format_config_warning_message(
         message.push_str(&path);
         if let Some(range) = payload.range {
             message.push(':');
-            message.push_str(&range.start.line.to_string());
+            message.push_str(&(range.start.line + 1).to_string());
             message.push(':');
-            message.push_str(&range.start.column.to_string());
+            message.push_str(&(range.start.column + 1).to_string());
         }
         message.push(')');
     }
@@ -1909,7 +1940,22 @@ fn noop_submission_id() -> String {
 }
 
 fn shell_command_vec(command: &str) -> Vec<String> {
-    vec!["bash".to_string(), "-lc".to_string(), command.to_string()]
+    // ACP approvals still model shell commands as argv, while the app-server sends
+    // a shell script string. This wrapper only preserves that legacy ACP shape.
+    #[cfg(windows)]
+    {
+        vec![
+            "powershell.exe".to_string(),
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            command.to_string(),
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["bash".to_string(), "-lc".to_string(), command.to_string()]
+    }
 }
 
 fn submission_id_for_turn_or_fallback(state: &AppServerState, turn_id: &str) -> Option<String> {
@@ -1961,6 +2007,113 @@ fn pending_patch_changes_from_turns(
             _ => None,
         })
         .collect()
+}
+
+fn prepare_submission_start(
+    state: &mut AppServerState,
+    submission_id: &str,
+    op: &Op,
+) -> Result<PreparedSubmissionStart, CodexErr> {
+    match op {
+        Op::UserInput {
+            items,
+            final_output_json_schema,
+        } => {
+            state.active_turn = Some(ActiveTurn {
+                submission_id: submission_id.to_string(),
+                turn_id: None,
+                steerable: true,
+                last_agent_message: None,
+            });
+            Ok(PreparedSubmissionStart::TurnStart {
+                request_id: next_request_id(state),
+                params: TurnStartParams {
+                    thread_id: state.thread_id.clone(),
+                    input: items.clone().into_iter().map(Into::into).collect(),
+                    cwd: Some(state.config.cwd.to_path_buf()),
+                    approval_policy: Some(state.config.permissions.approval_policy.value().into()),
+                    approvals_reviewer: Some(state.config.approvals_reviewer.into()),
+                    sandbox_policy: Some(
+                        state.config.permissions.sandbox_policy.get().clone().into(),
+                    ),
+                    model: state.config.model.clone(),
+                    service_tier: Some(state.config.service_tier),
+                    effort: state.config.model_reasoning_effort,
+                    summary: state.config.model_reasoning_summary,
+                    personality: state.config.personality,
+                    output_schema: final_output_json_schema.clone(),
+                    collaboration_mode: None,
+                },
+            })
+        }
+        Op::Review { review_request } => {
+            state.active_turn = Some(ActiveTurn {
+                submission_id: submission_id.to_string(),
+                turn_id: None,
+                steerable: false,
+                last_agent_message: None,
+            });
+            Ok(PreparedSubmissionStart::ReviewStart {
+                request_id: next_request_id(state),
+                params: ReviewStartParams {
+                    thread_id: state.thread_id.clone(),
+                    target: review_target_to_app_server(review_request.target.clone()),
+                    delivery: Some(ReviewDelivery::Inline),
+                },
+            })
+        }
+        Op::Compact => {
+            state.active_turn = Some(ActiveTurn {
+                submission_id: submission_id.to_string(),
+                turn_id: None,
+                steerable: false,
+                last_agent_message: None,
+            });
+            Ok(PreparedSubmissionStart::CompactStart {
+                request_id: next_request_id(state),
+                params: ThreadCompactStartParams {
+                    thread_id: state.thread_id.clone(),
+                },
+            })
+        }
+        Op::Undo => Ok(PreparedSubmissionStart::Rollback {
+            request_id: next_request_id(state),
+            params: ThreadRollbackParams {
+                thread_id: state.thread_id.clone(),
+                num_turns: 1,
+            },
+        }),
+        unsupported => Err(CodexErr::UnsupportedOperation(format!(
+            "app-server thread cannot start submission for {}",
+            unsupported.kind()
+        ))),
+    }
+}
+
+fn set_active_turn_id(
+    state: &mut AppServerState,
+    submission_id: &str,
+    turn_id: Option<String>,
+    steerable: bool,
+) {
+    if let Some(active_turn) = state
+        .active_turn
+        .as_mut()
+        .filter(|turn| turn.submission_id == submission_id)
+    {
+        active_turn.turn_id = turn_id;
+        active_turn.steerable = steerable;
+    }
+}
+
+fn clear_submission_if_active(state: &mut AppServerState, submission_id: &str) {
+    if state
+        .active_turn
+        .as_ref()
+        .is_some_and(|turn| turn.submission_id == submission_id)
+    {
+        clear_active_turn_state(state);
+    }
 }
 
 fn app_server_changes_to_core(changes: Vec<FileUpdateChange>) -> HashMap<PathBuf, FileChange> {
@@ -2289,6 +2442,36 @@ fn app_server_patch_status_to_core(
     }
 }
 
+fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> EventMsg {
+    match turn.status {
+        TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
+            turn_id: turn.id.clone(),
+            last_agent_message,
+        }),
+        TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
+            turn_id: Some(turn.id.clone()),
+            reason: TurnAbortReason::Interrupted,
+        }),
+        TurnStatus::Failed => EventMsg::Error(ErrorEvent {
+            message: turn
+                .error
+                .as_ref()
+                .map(|error| error.message.clone())
+                .unwrap_or_else(|| "turn failed".to_string()),
+            codex_error_info: None,
+        }),
+        // A completed notification that still claims in-progress status would otherwise
+        // leave ACP-side prompt state hanging, so treat it as a terminal protocol error.
+        TurnStatus::InProgress => EventMsg::Error(ErrorEvent {
+            message: format!(
+                "received turn/completed while turn {} is still marked in_progress",
+                turn.id
+            ),
+            codex_error_info: None,
+        }),
+    }
+}
+
 fn app_server_network_approval_context_to_core(
     context: codex_app_server_protocol::NetworkApprovalContext,
 ) -> codex_protocol::approvals::NetworkApprovalContext {
@@ -2580,7 +2763,48 @@ mod tests {
 
         assert_eq!(
             message,
-            "Config warning: Invalid profile: unknown field (/tmp/codex.toml:3:7)"
+            "Config warning: Invalid profile: unknown field (/tmp/codex.toml:4:8)"
+        );
+    }
+
+    #[test]
+    fn turn_completed_in_progress_translates_to_error() {
+        let turn = Turn {
+            id: "turn-1".to_string(),
+            items: Vec::new(),
+            status: TurnStatus::InProgress,
+            error: None,
+        };
+
+        let event = turn_completed_event_msg(&turn, None);
+        assert!(matches!(
+            event,
+            EventMsg::Error(ErrorEvent { message, codex_error_info: None })
+                if message.contains("turn-1") && message.contains("in_progress")
+        ));
+    }
+
+    #[test]
+    fn shell_command_vec_uses_platform_wrapper() {
+        let command = "echo hello";
+        let wrapped = shell_command_vec(command);
+
+        #[cfg(windows)]
+        assert_eq!(
+            wrapped,
+            vec![
+                "powershell.exe".to_string(),
+                "-NoLogo".to_string(),
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                command.to_string(),
+            ]
+        );
+
+        #[cfg(not(windows))]
+        assert_eq!(
+            wrapped,
+            vec!["bash".to_string(), "-lc".to_string(), command.to_string(),]
         );
     }
 

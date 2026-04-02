@@ -2,15 +2,16 @@
 
 ## Summary
 
-`agenthub-codex-acp` now treats the official `openai/codex` repository as its upstream dependency baseline.
+`agenthub-codex-acp` now treats the official `openai/codex` repository as its upstream dependency baseline and already includes the first live `codex-app-server` bridge slice on top of that baseline.
 
-The adapter pins its Codex crates to the latest stable GitHub release tag available when this change was prepared:
+The adapter is pinned to the commit that backs the latest stable GitHub release that was available when this change was prepared:
 
 - release tag: `rust-v0.118.0`
+- pinned commit: `b630ce9a4e754d35a1f33e4366ba638d18626142`
 - release name: `0.118.0`
 - published at: `2026-03-31T17:02:18Z`
 
-This change is intentionally narrow: it updates provenance and dependency source selection without yet rewriting the ACP prompt pipeline onto `codex-app-server`.
+This change is still intentionally narrow in scope: it does not rewrite ACP history replay or frontend rendering around a new native app-server model, but it does move the live execution bridge onto the official app-server thread/turn APIs.
 
 ## Why
 
@@ -20,29 +21,19 @@ This change is intentionally narrow: it updates provenance and dependency source
 
 ## Current Adapter Gap
 
-Today the ACP adapter still routes user prompts through `agenthub-codex-acp/src/thread.rs` by:
+The live ACP execution path now goes through `app_server_thread.rs`, but the surrounding adapter still retains significant legacy shape:
 
-- flattening ACP prompt content into `UserInput` items,
-- selecting a Codex `Op`,
-- calling `thread.submit(op)`,
-- tracking lifecycle through a local `submission_id` map.
-
-That path works, but it does not model the official app-server contract where:
-
-- ACP session lifecycle should align with `thread/start` and `thread/resume`,
-- a fresh user utterance should start a `turn/start`,
-- an in-flight regular turn should accept follow-up input through `turn/steer`,
-- review and compaction flows stay on their specialized app-server APIs.
+- ACP history replay and a large portion of the renderer still consume the legacy `EventMsg` stream from `agenthub-codex-acp/src/thread.rs`;
+- prompt lifecycle is still tracked locally by `submission_id`, even though live follow-up input is already routed through app-server `turn/start` and `turn/steer`;
+- the bridge therefore still has to translate app-server thread/turn state back into the older ACP session model instead of exposing a native app-server session model end to end.
 
 ## Follow-up
 
-The next implementation slice should introduce an app-server-backed session bridge and move prompt routing from `submission_id` orchestration to explicit thread and turn state.
+The next implementation slice should reduce the amount of legacy ACP orchestration that still wraps the live app-server bridge:
 
-Recommended first slice:
-
-1. Keep existing ACP session and history plumbing.
-2. Introduce an internal adapter boundary that decides between `turn/start`, `turn/steer`, or local queueing for non-steerable turns.
-3. Translate app-server notifications and server requests into existing ACP session updates and permission flows.
+1. keep existing ACP session and history plumbing only where replay compatibility still requires it;
+2. continue shrinking `submission_id`-driven special cases now that live prompt routing already chooses between `turn/start`, `turn/steer`, and local queueing inside the app-server bridge;
+3. tighten notification/request parity until the adapter no longer needs bridge-local fallbacks for resumed turns and approval diffs.
 
 ## App-Server Bridge Slice
 
@@ -237,3 +228,26 @@ Validation for this follow-up slice:
 - `cargo check -p agenthub-codex-acp` passes after the resumed-turn fallback and diff-caching changes.
 - `cargo test -p agenthub-codex-acp app_server_thread::tests -- --nocapture` passes with the new resumed-turn and diff parsing coverage.
 - `cargo test -p agenthub-codex-acp test_unknown_live_event_attaches_detached_submission -- --nocapture` still passes after allowing detached `TurnDiff` delivery.
+
+## Final Review Cleanup
+
+The last unresolved review comments in the ACP bridge were mostly about correctness at the adapter boundary rather than missing functionality.
+
+This cleanup tightens those edges without widening the bridge scope:
+
+- Cargo now pins the official `openai/codex` baseline by the release commit `b630ce9a4e754d35a1f33e4366ba638d18626142` instead of by the symbolic `rust-v0.118.0` tag, so dependency provenance stays stable even if the tag is ever moved or reissued;
+- `app_server_thread.rs` no longer holds the shared bridge mutex across `turn/steer`, `turn/start`, `review/start`, `thread/compact/start`, or `thread/rollback` RPC awaits; submission startup now stages request parameters under lock and finalizes state only after the request completes;
+- app-server `turn/completed` notifications that still report `TurnStatus::InProgress` now terminate the ACP-side submission with an error event instead of leaving it open behind a warning-only path;
+- config warning source locations are now translated to the 1-based coordinates expected by ACP and editor UIs;
+- the ACP command vector wrapper is now platform-aware (`bash -lc` on Unix-like systems, `powershell.exe -Command` on Windows), but it remains only an ACP compatibility/display representation for shell-script requests, not the source of Codex permission matching;
+- `codex_agent.rs` drops the temporary clones that became unused after the earlier session-config refactor;
+- the journal summary now matches the current state of the branch: the live path is already on app-server, while replay and some renderer/session plumbing still retain legacy ACP shape.
+
+Validation for this cleanup slice:
+
+- `cargo fmt -p agenthub-codex-acp` passes after the bridge refactor.
+- `cargo check -p agenthub-codex-acp` passes after converting the startup/steer helpers to the two-phase lock pattern.
+- `cargo test -p agenthub-codex-acp app_server_thread::tests -- --nocapture` passes, including focused coverage for `turn_completed_in_progress_translates_to_error`, config warning formatting, and the platform shell wrapper helper.
+- `cargo test -p agenthub-codex-acp test_unknown_live_event_attaches_detached_submission -- --nocapture` still passes.
+- `cargo test -p agenthub-codex-acp test_shared_submission_id_completes_all_prompt_waiters -- --nocapture` still passes.
+- `cargo test -p agenthub-codex-acp agenthub_codex_acp_ --lib -- --nocapture` passes, confirming the release-commit pin keeps the multi-agent feature toggles behaving as expected.

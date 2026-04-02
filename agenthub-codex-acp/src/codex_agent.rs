@@ -77,8 +77,6 @@ impl CodexAgent {
         let client_capabilities: Arc<Mutex<ClientCapabilities>> = Arc::default();
 
         let session_roots: Arc<Mutex<HashMap<SessionId, PathBuf>>> = Arc::default();
-        let _capabilities_clone = client_capabilities.clone();
-        let _session_roots_clone = session_roots.clone();
         let thread_manager = ThreadManager::new(
             &config,
             auth_manager.clone(),
