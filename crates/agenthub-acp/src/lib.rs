@@ -46,7 +46,7 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
-const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(600);
+const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(40);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
@@ -1825,12 +1825,13 @@ fn parse_permission_record_row(
 #[cfg(test)]
 mod tests {
     use super::{
-        AcpActorContinuityEnvelope, AcpActorSkillContext, AcpCommand, AcpHandle,
-        AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
-        AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks, dedupe_skills,
-        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
-        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
-        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
+        ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
+        AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
+        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks,
+        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
+        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
+        load_workdir_skills, remove_skills_conflicting_with_reserved,
+        should_queue_while_prompts_active,
     };
     use agent_client_protocol::{
         ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
@@ -2491,5 +2492,10 @@ Fallback to the user-level review contract.
         assert_eq!(row.get::<String, _>("status"), "responded");
         assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
         assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "leader");
+    }
+
+    #[test]
+    fn permission_review_timeout_defaults_to_forty_seconds() {
+        assert_eq!(ACP_PERMISSION_REVIEW_TIMEOUT, Duration::from_secs(40));
     }
 }
