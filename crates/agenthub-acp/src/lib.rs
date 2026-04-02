@@ -866,7 +866,7 @@ async fn handle_auth_required_failure(
     err: &AcpError,
     provider_id: &str,
     action: &str,
-    event_sink: &Arc<dyn AcpEventSink>,
+    event_sink: &dyn AcpEventSink,
 ) -> Option<String> {
     if !is_auth_required_error(err) {
         return None;
@@ -1040,7 +1040,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             &err,
                             &provider_id,
                             "load_session",
-                            &event_sink,
+                            event_sink.as_ref(),
                         )
                         .await
                         {
@@ -1066,7 +1066,7 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                             &err,
                             &provider_id,
                             "new_session",
-                            &event_sink,
+                            event_sink.as_ref(),
                         )
                         .await
                         {
@@ -2105,7 +2105,7 @@ mod tests {
             &AcpError::auth_required(),
             "gemini",
             "new_session",
-            &sink,
+            sink.as_ref(),
         )
         .await;
 
