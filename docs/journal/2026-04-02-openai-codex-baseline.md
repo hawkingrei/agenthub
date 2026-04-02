@@ -161,7 +161,8 @@ The final Bazel-side fix follows the same Bazel consumer pattern that upstream `
 
 - keep Cargo dependencies unchanged;
 - add a dedicated Bazel `http_archive` for the published `v8-146.4.0` crate and expose the prebuilt binding file through `third_party/v8/v8_crate.BUILD.bazel`;
-- inject a `v8_targets` repo into `crate_universe` and set `build_script_data` / `build_script_env` so the `v8` crate receives an explicit `RUSTY_V8_SRC_BINDING_PATH` from Bazel instead of synthesizing a crate-local `gen/` path itself;
+- inject a `v8_targets` repo into `crate_universe` and set `build_script_data` / `build_script_env` so the `v8` crate receives explicit Bazel-provided `RUSTY_V8_SRC_BINDING_PATH` and `RUSTY_V8_ARCHIVE` inputs instead of synthesizing crate-local paths itself;
+- reuse the upstream `rusty_v8` Bazel consumer patch pattern so custom archives are staged under `OUT_DIR` and the emitted link-search path survives the Rust compile action;
 - keep the fix narrow to the current Linux consumer path and preserve the Cargo dependency graph.
 
 ## Clippy Follow-up

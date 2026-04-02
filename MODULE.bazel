@@ -10,6 +10,7 @@ bazel_dep(name = "rules_rust", version = "0.67.0")
 
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
@@ -59,18 +60,50 @@ http_archive(
     type = "tar.gz",
     urls = ["https://static.crates.io/crates/v8/v8-146.4.0.crate"],
 )
+http_file(
+    name = "rusty_v8_146_4_0_aarch64_apple_darwin_archive",
+    downloaded_file_path = "librusty_v8_release_aarch64-apple-darwin.a.gz",
+    urls = [
+        "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_aarch64-apple-darwin.a.gz",
+    ],
+)
+http_file(
+    name = "rusty_v8_146_4_0_aarch64_unknown_linux_gnu_archive",
+    downloaded_file_path = "librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
+    urls = [
+        "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
+    ],
+)
+http_file(
+    name = "rusty_v8_146_4_0_x86_64_apple_darwin_archive",
+    downloaded_file_path = "librusty_v8_release_x86_64-apple-darwin.a.gz",
+    urls = [
+        "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_x86_64-apple-darwin.a.gz",
+    ],
+)
+http_file(
+    name = "rusty_v8_146_4_0_x86_64_unknown_linux_gnu_archive",
+    downloaded_file_path = "librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
+    urls = [
+        "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
+    ],
+)
 crate.annotation(
     crate = "v8",
     # Mirror upstream codex's Bazel pattern: inject an explicit binding target
     # instead of letting rusty_v8 synthesize a crate-local gen/ path that
     # rustc later cannot resolve inside Bazel sandboxes.
     build_script_data = [
+        "@v8_targets//:rusty_v8_archive_for_target",
         "@v8_targets//:rusty_v8_binding_for_target",
     ],
     build_script_env = {
+        "RUSTY_V8_ARCHIVE": "$(execpath @v8_targets//:rusty_v8_archive_for_target)",
         "RUSTY_V8_SRC_BINDING_PATH": "$(execpath @v8_targets//:rusty_v8_binding_for_target)",
     },
     gen_build_script = "on",
+    patch_args = ["-p1"],
+    patches = ["//third_party/v8:rusty_v8_prebuilt_out_dir.patch"],
     repositories = ["crate_index"],
 )
 crate.from_cargo(
