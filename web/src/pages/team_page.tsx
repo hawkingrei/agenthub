@@ -340,7 +340,7 @@ export function validateRunInputJson(raw: string): RunInputValidation {
 const panelSecondaryButtonClassName =
   "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/88 px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[24px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-3.5";
+  "min-h-0 min-w-0 rounded-[18px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] px-2.5 py-2.5 shadow-[0_6px_16px_rgba(15,23,42,0.035)] sm:px-3 sm:py-3";
 const teamSectionCardLargeClassName =
   "min-h-0 rounded-[28px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.97))] p-3.5 shadow-[0_12px_28px_rgba(15,23,42,0.05)] sm:p-4";
 const teamSectionHeadingClassName =
@@ -421,7 +421,7 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
 });
 
 const teamWorkbenchPanelClassName =
-  "rounded-[28px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] p-2.5 shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur-xl";
+  "rounded-[22px] border border-ui-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.96))] p-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)] backdrop-blur-xl";
 const teamWorkbenchAccentButtonClassName =
   "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
 const teamWorkbenchMutedButtonClassName =
@@ -430,17 +430,17 @@ const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-full border border-ui-border/90 bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-ui-text-muted";
 const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-2 rounded-[20px] border border-ui-border/80 bg-white/76 px-2 py-2 backdrop-blur-sm";
+  "flex flex-wrap items-center justify-between gap-1.5 rounded-[14px] border border-ui-border/65 bg-white/72 px-1.5 py-1.5 backdrop-blur-sm";
 const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-9 w-9 items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/88 text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-ui-border/85 bg-white/88 text-ui-text-primary shadow-[0_4px_10px_rgba(15,23,42,0.035)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-1.5 rounded-full border border-ui-border/90 bg-white/84 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
+  "inline-flex items-center gap-1.5 rounded-full border border-ui-border/80 bg-white/82 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.15em] text-ui-text-muted";
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)]";
 const teamWorkbenchDetailLayoutExpandedClassName =
   "teams-layout grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(288px,340px)_minmax(0,1fr)]";
 const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[24px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.95))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]";
+  "rounded-[18px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.95))] px-2.5 py-2 shadow-[0_6px_16px_rgba(15,23,42,0.035)]";
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-[22px] border border-ui-border/90 bg-white/88 shadow-[0_10px_24px_rgba(15,23,42,0.05)]";
 const teamWorkbenchInfoStripGridClassName =

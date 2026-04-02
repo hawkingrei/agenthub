@@ -9,7 +9,8 @@ status: implemented
 Restore installable PWA support without reintroducing offline shell caching,
 collapse Team permission review cards once they time out or are answered, and
 render structured Team `task_note` payloads as markdown text instead of raw
-JSON envelopes.
+JSON envelopes. At the same time, slim down the Team workbench shell so header
+and wrapper chrome leave more room for the primary content panes.
 
 ## Background
 
@@ -27,6 +28,9 @@ Separately:
   falling through the generic JSON fallback in `TeamTaskPanel`, so the shared
   channel showed the raw envelope instead of rendering `payload.text` through
   the normal markdown path.
+- The Team workbench shell itself still consumed more space than it should:
+  large radii, heavier shadows, and generous wrapper padding made the header
+  and workspace chrome compete with the conversation/task content.
 
 ## Decisions
 
@@ -45,6 +49,9 @@ Separately:
 - Treat Team `task_note` payloads as visible conversation text in the same
   parser layer as `chat_message`, so channel/mailbox views feed `payload.text`
   into the existing markdown renderer instead of pretty-printing JSON.
+- Tighten the Team workbench shell chrome in `team_page.tsx` by reducing the
+  outer section card radius/padding/shadow and slimming the header/workspace
+  wrapper classes.
 
 ## Scope
 
@@ -58,6 +65,7 @@ Separately:
 - `web/src/pages/team_mailbox_panel.tsx`
 - `web/src/pages/team/mailbox_helpers.ts`
 - `web/src/pages/team/mailbox_helpers.test.ts`
+- `web/src/pages/team_page.tsx`
 - `web/src/pages/team_panels.test.tsx`
 - `docs/todo.md`
 
