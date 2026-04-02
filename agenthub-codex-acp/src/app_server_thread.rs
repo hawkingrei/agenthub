@@ -165,19 +165,19 @@ enum TurnSteerFailure {
 enum PreparedSubmissionStart {
     TurnStart {
         request_id: RequestId,
-        params: TurnStartParams,
+        params: Box<TurnStartParams>,
     },
     ReviewStart {
         request_id: RequestId,
-        params: ReviewStartParams,
+        params: Box<ReviewStartParams>,
     },
     CompactStart {
         request_id: RequestId,
-        params: ThreadCompactStartParams,
+        params: Box<ThreadCompactStartParams>,
     },
     Rollback {
         request_id: RequestId,
-        params: ThreadRollbackParams,
+        params: Box<ThreadRollbackParams>,
     },
 }
 
@@ -358,7 +358,15 @@ impl AppServerCodexThread {
                     .push_back(QueuedSubmission { submission_id, op });
                 return Ok(());
             }
-            prepare_submission_start(&mut state, &submission_id, &op)?
+            match prepare_submission_start(&mut state, &submission_id, &op) {
+                Some(prepared) => prepared,
+                None => {
+                    return Err(CodexErr::UnsupportedOperation(format!(
+                        "app-server thread cannot start submission for {}",
+                        op.kind()
+                    )));
+                }
+            }
         };
 
         match prepared {
@@ -367,7 +375,7 @@ impl AppServerCodexThread {
                     .request_handle
                     .request_typed::<TurnStartResponse>(ClientRequest::TurnStart {
                         request_id,
-                        params,
+                        params: *params,
                     })
                     .await
                     .map_err(typed_request_error_to_codex);
@@ -393,7 +401,7 @@ impl AppServerCodexThread {
                     .request_handle
                     .request_typed::<ReviewStartResponse>(ClientRequest::ReviewStart {
                         request_id,
-                        params,
+                        params: *params,
                     })
                     .await
                     .map_err(typed_request_error_to_codex);
@@ -418,7 +426,10 @@ impl AppServerCodexThread {
                 let response = self
                     .request_handle
                     .request_typed::<ThreadCompactStartResponse>(
-                        ClientRequest::ThreadCompactStart { request_id, params },
+                        ClientRequest::ThreadCompactStart {
+                            request_id,
+                            params: *params,
+                        },
                     )
                     .await
                     .map_err(typed_request_error_to_codex);
@@ -436,7 +447,7 @@ impl AppServerCodexThread {
                     .request_handle
                     .request_typed::<ThreadRollbackResponse>(ClientRequest::ThreadRollback {
                         request_id,
-                        params,
+                        params: *params,
                     })
                     .await
                     .map_err(typed_request_error_to_codex);
@@ -2013,7 +2024,7 @@ fn prepare_submission_start(
     state: &mut AppServerState,
     submission_id: &str,
     op: &Op,
-) -> Result<PreparedSubmissionStart, CodexErr> {
+) -> Option<PreparedSubmissionStart> {
     match op {
         Op::UserInput {
             items,
@@ -2025,9 +2036,9 @@ fn prepare_submission_start(
                 steerable: true,
                 last_agent_message: None,
             });
-            Ok(PreparedSubmissionStart::TurnStart {
+            Some(PreparedSubmissionStart::TurnStart {
                 request_id: next_request_id(state),
-                params: TurnStartParams {
+                params: Box::new(TurnStartParams {
                     thread_id: state.thread_id.clone(),
                     input: items.clone().into_iter().map(Into::into).collect(),
                     cwd: Some(state.config.cwd.to_path_buf()),
@@ -2043,7 +2054,7 @@ fn prepare_submission_start(
                     personality: state.config.personality,
                     output_schema: final_output_json_schema.clone(),
                     collaboration_mode: None,
-                },
+                }),
             })
         }
         Op::Review { review_request } => {
@@ -2053,13 +2064,13 @@ fn prepare_submission_start(
                 steerable: false,
                 last_agent_message: None,
             });
-            Ok(PreparedSubmissionStart::ReviewStart {
+            Some(PreparedSubmissionStart::ReviewStart {
                 request_id: next_request_id(state),
-                params: ReviewStartParams {
+                params: Box::new(ReviewStartParams {
                     thread_id: state.thread_id.clone(),
                     target: review_target_to_app_server(review_request.target.clone()),
                     delivery: Some(ReviewDelivery::Inline),
-                },
+                }),
             })
         }
         Op::Compact => {
@@ -2069,24 +2080,21 @@ fn prepare_submission_start(
                 steerable: false,
                 last_agent_message: None,
             });
-            Ok(PreparedSubmissionStart::CompactStart {
+            Some(PreparedSubmissionStart::CompactStart {
                 request_id: next_request_id(state),
-                params: ThreadCompactStartParams {
+                params: Box::new(ThreadCompactStartParams {
                     thread_id: state.thread_id.clone(),
-                },
+                }),
             })
         }
-        Op::Undo => Ok(PreparedSubmissionStart::Rollback {
+        Op::Undo => Some(PreparedSubmissionStart::Rollback {
             request_id: next_request_id(state),
-            params: ThreadRollbackParams {
+            params: Box::new(ThreadRollbackParams {
                 thread_id: state.thread_id.clone(),
                 num_turns: 1,
-            },
+            }),
         }),
-        unsupported => Err(CodexErr::UnsupportedOperation(format!(
-            "app-server thread cannot start submission for {}",
-            unsupported.kind()
-        ))),
+        _ => None,
     }
 }
 
