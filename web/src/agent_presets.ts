@@ -20,7 +20,7 @@ const PRESETS: AgentPreset[] = [
     id: "gemini",
     label: "Gemini CLI",
     command: "gemini",
-    args: ["--experimental-acp"],
+    args: ["--acp"],
     provider: "gemini",
   },
   {

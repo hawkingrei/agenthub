@@ -101,9 +101,12 @@ pub(super) fn acp_provider_spec_for_agent_with_binary(
     let provider = acp_provider_for_command_with_binary(codex_acp_binary, command)?;
     match provider.id {
         ACP_PROVIDER_GEMINI => {
-            let has_flag = args
-                .iter()
-                .any(|arg| arg == "--experimental-acp" || arg.starts_with("--experimental-acp="));
+            let has_flag = args.iter().any(|arg| {
+                arg == "--acp"
+                    || arg.starts_with("--acp=")
+                    || arg == "--experimental-acp"
+                    || arg.starts_with("--experimental-acp=")
+            });
             if has_flag { Some(provider) } else { None }
         }
         ACP_PROVIDER_KIMI => {
@@ -205,7 +208,7 @@ mod tests {
         let provider = acp_provider_spec_for_agent_with_binary(
             "agenthub-codex-acp",
             "gemini",
-            &["--experimental-acp".to_string()],
+            &["--acp".to_string()],
         );
         assert_ne!(provider.map(|spec| spec.id), Some(ACP_PROVIDER_CODEX));
         assert!(default_env_for_acp_provider(provider, true).is_empty());
