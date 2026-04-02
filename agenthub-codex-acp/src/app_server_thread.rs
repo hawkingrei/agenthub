@@ -160,6 +160,18 @@ enum TurnSteerFailure {
     Other,
 }
 
+struct OverrideTurnContextArgs {
+    cwd: Option<PathBuf>,
+    approval_policy: Option<codex_protocol::protocol::AskForApproval>,
+    approvals_reviewer: Option<codex_protocol::config_types::ApprovalsReviewer>,
+    sandbox_policy: Option<codex_protocol::protocol::SandboxPolicy>,
+    model: Option<String>,
+    effort: Option<Option<ReasoningEffort>>,
+    summary: Option<ReasoningSummary>,
+    personality: Option<codex_protocol::config_types::Personality>,
+    service_tier: Option<Option<codex_protocol::config_types::ServiceTier>>,
+}
+
 impl AppServerCodexThread {
     fn new(
         client: InProcessAppServerClient,
@@ -485,52 +497,44 @@ impl AppServerCodexThread {
 
     async fn override_turn_context(
         &self,
-        cwd: Option<PathBuf>,
-        approval_policy: Option<codex_protocol::protocol::AskForApproval>,
-        approvals_reviewer: Option<codex_protocol::config_types::ApprovalsReviewer>,
-        sandbox_policy: Option<codex_protocol::protocol::SandboxPolicy>,
-        model: Option<String>,
-        effort: Option<Option<ReasoningEffort>>,
-        summary: Option<ReasoningSummary>,
-        personality: Option<codex_protocol::config_types::Personality>,
-        service_tier: Option<Option<codex_protocol::config_types::ServiceTier>>,
+        args: OverrideTurnContextArgs,
     ) -> Result<String, CodexErr> {
         let mut state = self.state.lock().await;
         let mut updated_config = state.config.clone();
 
-        if let Some(cwd) = cwd {
+        if let Some(cwd) = args.cwd {
             updated_config.cwd = cwd.try_into()?;
         }
-        if let Some(approval_policy) = approval_policy {
+        if let Some(approval_policy) = args.approval_policy {
             updated_config
                 .permissions
                 .approval_policy
                 .set(approval_policy)
                 .map_err(|err| CodexErr::Fatal(err.to_string()))?;
         }
-        if let Some(approvals_reviewer) = approvals_reviewer {
+        if let Some(approvals_reviewer) = args.approvals_reviewer {
             updated_config.approvals_reviewer = approvals_reviewer;
         }
-        if let Some(sandbox_policy) = sandbox_policy {
+        if let Some(sandbox_policy) = args.sandbox_policy {
             updated_config
                 .permissions
                 .sandbox_policy
                 .set(sandbox_policy)
                 .map_err(|err| CodexErr::Fatal(err.to_string()))?;
         }
-        if let Some(model) = model {
+        if let Some(model) = args.model {
             updated_config.model = Some(model);
         }
-        if let Some(effort) = effort {
+        if let Some(effort) = args.effort {
             updated_config.model_reasoning_effort = effort;
         }
-        if let Some(summary) = summary {
+        if let Some(summary) = args.summary {
             updated_config.model_reasoning_summary = Some(summary);
         }
-        if let Some(personality) = personality {
+        if let Some(personality) = args.personality {
             updated_config.personality = Some(personality);
         }
-        if let Some(service_tier) = service_tier {
+        if let Some(service_tier) = args.service_tier {
             updated_config.service_tier = service_tier;
         }
 
@@ -1640,7 +1644,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                 windows_sandbox_level: _,
                 service_tier,
             } => {
-                self.override_turn_context(
+                self.override_turn_context(OverrideTurnContextArgs {
                     cwd,
                     approval_policy,
                     approvals_reviewer,
@@ -1650,7 +1654,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                     summary,
                     personality,
                     service_tier,
-                )
+                })
                 .await
             }
             Op::ExecApproval { id, decision, .. } => self.resolve_exec_request(id, decision).await,

@@ -163,6 +163,16 @@ This slice fixes the Bazel-only layout mismatch in `MODULE.bazel` by adding a na
 - add `build_script_data_glob = ["gen/**"]` so the `cargo_build_script` runfiles include the prebuilt bindings that `build.rs` already references;
 - preserve the rest of the `v8` build behavior and avoid patching upstream crate sources.
 
+## Clippy Follow-up
+
+The first CI pass also surfaced a few mechanical `clippy -D warnings` failures in the ACP bridge layer.
+
+These follow-ups intentionally keep behavior unchanged:
+
+- collapse `override_turn_context` into a single argument struct so the helper stays lint-clean without suppressing `too_many_arguments`;
+- switch `build_session_config` from `&PathBuf` to `&Path` and convert back only at ownership boundaries;
+- remove a redundant `clone()` on `StopReason`, which already implements `Copy`.
+
 ## Test Determinism
 
 Some `thread.rs` tests were still loading Codex through the normal config loader path, which means an invalid local `~/.codex/config.toml` could cause unrelated ACP regression tests to fail.

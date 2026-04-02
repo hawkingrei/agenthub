@@ -567,7 +567,7 @@ impl PromptState {
     fn finish_ok(&mut self, stop_reason: StopReason) {
         self.stream_open = false;
         for response_tx in self.response_txs.drain(..) {
-            drop(response_tx.send(Ok(stop_reason.clone())));
+            drop(response_tx.send(Ok(stop_reason)));
         }
     }
 

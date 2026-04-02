@@ -33,7 +33,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     collections::HashSet,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -118,13 +118,13 @@ impl CodexAgent {
     /// This is shared between `new_session` and `load_session`.
     fn build_session_config(
         &self,
-        cwd: &PathBuf,
+        cwd: &Path,
         mcp_servers: Vec<McpServer>,
     ) -> Result<Config, Error> {
         let mut config = self.config.clone();
         config.include_apply_patch_tool = true;
         config.cwd = cwd
-            .clone()
+            .to_path_buf()
             .try_into()
             .map_err(|e: std::io::Error| Error::internal_error().data(e.to_string()))?;
 
@@ -186,7 +186,7 @@ impl CodexAgent {
                                     Some(env.into_iter().map(|env| (env.name, env.value)).collect())
                                 },
                                 env_vars: vec![],
-                                cwd: Some(cwd.clone()),
+                                cwd: Some(cwd.to_path_buf()),
                             },
                             required: false,
                             enabled: true,
