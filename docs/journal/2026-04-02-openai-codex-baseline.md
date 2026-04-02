@@ -210,3 +210,30 @@ The test helpers now use Codex's default-config path instead of loading user con
 - Focused helper/render tests now also cover completed `request_user_input` result parsing and secret-answer placeholders.
 - `src/api/teams/tests_router.rs` now treats `stopped` as a valid runtime status for the router-level contract check after team creation.
 - The router contract test still verifies the runtime response shape and member roster, while `src/api/teams/tests_core.rs::teams_api_create_team_auto_starts_member_runtime` remains the dedicated coverage for create-time auto-start semantics.
+
+## Review Follow-up
+
+The latest PR review pass surfaced a few bridge-level gaps that were worth fixing directly instead of hand-waving away as bot noise.
+
+The app-server ACP bridge now keeps enough resumed-turn state to preserve user-visible follow-up events even when the local `active_turn` record is missing:
+
+- server requests that carry a `turn_id` now fall back to that `turn_id` as the detached submission id instead of silently returning `None`;
+- `TurnDiffUpdated` is no longer dropped and is cached so patch-approval events can still surface file diffs after resume;
+- in-progress `ThreadItem::FileChange` items from `thread/resume` are rehydrated into pending patch-change state so the ACP approval UI can render a structured diff immediately;
+- unexpected app-server `InProgress` completion statuses now degrade to failed command/patch terminal states instead of being misreported as success.
+
+The Bazel-side `rusty_v8` archive wiring also now pins explicit `sha256` digests for the four published prebuilt archives used by the `rust-v0.118.0` consumer layout, so the custom archive injection is reproducible in CI instead of depending on unchecked remote downloads.
+
+Additional focused validation was added for the new helper paths:
+
+- `submission_id_for_turn_falls_back_to_turn_id_when_local_state_is_missing`
+- `pending_patch_changes_from_turns_recovers_in_progress_patch_items`
+- `parse_turn_diff_to_core_changes_splits_multi_file_diff_and_tracks_rename`
+- `command_status_in_progress_maps_to_failed`
+- `patch_status_in_progress_maps_to_failed`
+
+Validation for this follow-up slice:
+
+- `cargo check -p agenthub-codex-acp` passes after the resumed-turn fallback and diff-caching changes.
+- `cargo test -p agenthub-codex-acp app_server_thread::tests -- --nocapture` passes with the new resumed-turn and diff parsing coverage.
+- `cargo test -p agenthub-codex-acp test_unknown_live_event_attaches_detached_submission -- --nocapture` still passes after allowing detached `TurnDiff` delivery.

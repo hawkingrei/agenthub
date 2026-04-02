@@ -63,6 +63,7 @@ http_archive(
 http_file(
     name = "rusty_v8_146_4_0_aarch64_apple_darwin_archive",
     downloaded_file_path = "librusty_v8_release_aarch64-apple-darwin.a.gz",
+    sha256 = "bfe2c9be32a56c28546f0f965825ee68fbf606405f310cc4e17b448a568cf98a",
     urls = [
         "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_aarch64-apple-darwin.a.gz",
     ],
@@ -70,6 +71,7 @@ http_file(
 http_file(
     name = "rusty_v8_146_4_0_aarch64_unknown_linux_gnu_archive",
     downloaded_file_path = "librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
+    sha256 = "dbf165b07c81bdb054bc046b43d23e69fcf7bcc1a4c1b5b4776983a71062ecd8",
     urls = [
         "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_aarch64-unknown-linux-gnu.a.gz",
     ],
@@ -77,6 +79,7 @@ http_file(
 http_file(
     name = "rusty_v8_146_4_0_x86_64_apple_darwin_archive",
     downloaded_file_path = "librusty_v8_release_x86_64-apple-darwin.a.gz",
+    sha256 = "630cd240f1bbecdb071417dc18387ab81cf67c549c1c515a0b4fcf9eba647bb7",
     urls = [
         "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_x86_64-apple-darwin.a.gz",
     ],
@@ -84,6 +87,7 @@ http_file(
 http_file(
     name = "rusty_v8_146_4_0_x86_64_unknown_linux_gnu_archive",
     downloaded_file_path = "librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
+    sha256 = "e64b4d99e4ae293a2e846244a89b80178ba10382c13fb591c1fa6968f5291153",
     urls = [
         "https://github.com/denoland/rusty_v8/releases/download/v146.4.0/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz",
     ],

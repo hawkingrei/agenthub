@@ -3881,6 +3881,7 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::ApplyPatchApprovalRequest(..)
             | EventMsg::PatchApplyBegin(..)
             | EventMsg::PatchApplyEnd(..)
+            | EventMsg::TurnDiff(..)
             | EventMsg::WebSearchBegin(..)
             | EventMsg::WebSearchEnd(..)
             | EventMsg::ViewImageToolCall(..)

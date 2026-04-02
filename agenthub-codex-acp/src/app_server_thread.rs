@@ -129,9 +129,11 @@ struct AppServerState {
     local_events: VecDeque<Event>,
     pending_exec_requests: HashMap<String, RequestId>,
     pending_patch_requests: HashMap<String, RequestId>,
+    pending_patch_changes: HashMap<String, HashMap<PathBuf, FileChange>>,
     pending_permissions_requests: HashMap<String, RequestId>,
     pending_user_input_requests: HashMap<String, RequestId>,
     pending_elicitation_requests: HashMap<String, RequestId>,
+    pending_turn_diffs: HashMap<String, String>,
     interrupt_after_turn_starts: bool,
 }
 
@@ -194,9 +196,11 @@ impl AppServerCodexThread {
                 local_events: VecDeque::new(),
                 pending_exec_requests: HashMap::new(),
                 pending_patch_requests: HashMap::new(),
+                pending_patch_changes: pending_patch_changes_from_turns(&turns),
                 pending_permissions_requests: HashMap::new(),
                 pending_user_input_requests: HashMap::new(),
                 pending_elicitation_requests: HashMap::new(),
+                pending_turn_diffs: HashMap::new(),
                 interrupt_after_turn_starts: false,
             }),
         }
@@ -745,23 +749,14 @@ impl AppServerCodexThread {
         match request {
             ServerRequest::CommandExecutionRequestApproval { request_id, params } => {
                 let mut state = self.state.lock().await;
-                let Some(submission_id) = active_submission_id(&state) else {
-                    state.pending_exec_requests.insert(
-                        params
-                            .approval_id
-                            .clone()
-                            .unwrap_or_else(|| params.item_id.clone()),
-                        request_id,
-                    );
-                    return Ok(None);
-                };
-
                 let command = params.command.unwrap_or_default();
                 let command_vec = shell_command_vec(&command);
                 let approval_key = params
                     .approval_id
                     .clone()
                     .unwrap_or_else(|| params.item_id.clone());
+                let submission_id = submission_id_for_turn_or_fallback(&state, &params.turn_id)
+                    .unwrap_or_else(noop_submission_id);
                 state
                     .pending_exec_requests
                     .insert(approval_key.clone(), request_id);
@@ -802,13 +797,10 @@ impl AppServerCodexThread {
             }
             ServerRequest::FileChangeRequestApproval { request_id, params } => {
                 let mut state = self.state.lock().await;
-                let Some(submission_id) = active_submission_id(&state) else {
-                    state
-                        .pending_patch_requests
-                        .insert(params.item_id.clone(), request_id);
-                    return Ok(None);
-                };
-
+                let submission_id = submission_id_for_turn_or_fallback(&state, &params.turn_id)
+                    .unwrap_or_else(noop_submission_id);
+                let changes =
+                    pending_patch_changes_for_request(&state, &params.item_id, &params.turn_id);
                 state
                     .pending_patch_requests
                     .insert(params.item_id.clone(), request_id);
@@ -818,7 +810,7 @@ impl AppServerCodexThread {
                     msg: EventMsg::ApplyPatchApprovalRequest(ApplyPatchApprovalRequestEvent {
                         call_id: params.item_id,
                         turn_id: params.turn_id,
-                        changes: HashMap::new(),
+                        changes,
                         reason: params.reason,
                         grant_root: params.grant_root,
                     }),
@@ -826,13 +818,8 @@ impl AppServerCodexThread {
             }
             ServerRequest::PermissionsRequestApproval { request_id, params } => {
                 let mut state = self.state.lock().await;
-                let Some(submission_id) = active_submission_id(&state) else {
-                    state
-                        .pending_permissions_requests
-                        .insert(params.item_id.clone(), request_id);
-                    return Ok(None);
-                };
-
+                let submission_id = submission_id_for_turn_or_fallback(&state, &params.turn_id)
+                    .unwrap_or_else(noop_submission_id);
                 state
                     .pending_permissions_requests
                     .insert(params.item_id.clone(), request_id);
@@ -853,14 +840,11 @@ impl AppServerCodexThread {
             ServerRequest::McpServerElicitationRequest { request_id, params } => {
                 let mut state = self.state.lock().await;
                 let mcp_request_id = server_request_id_to_mcp_request_id(&request_id);
-                let Some(submission_id) = active_submission_id(&state) else {
-                    state.pending_elicitation_requests.insert(
-                        elicitation_request_key(&params.server_name, &mcp_request_id),
-                        request_id,
-                    );
-                    return Ok(None);
-                };
-
+                let submission_id = submission_id_for_turn_or_fallback(
+                    &state,
+                    params.turn_id.as_deref().unwrap_or_default(),
+                )
+                .unwrap_or_else(noop_submission_id);
                 let request = match params.request {
                     codex_app_server_protocol::McpServerElicitationRequest::Form {
                         meta,
@@ -901,12 +885,8 @@ impl AppServerCodexThread {
             }
             ServerRequest::ToolRequestUserInput { request_id, params } => {
                 let mut state = self.state.lock().await;
-                let Some(submission_id) = active_submission_id(&state) else {
-                    state
-                        .pending_user_input_requests
-                        .insert(params.turn_id.clone(), request_id);
-                    return Ok(None);
-                };
+                let submission_id = submission_id_for_turn_or_fallback(&state, &params.turn_id)
+                    .unwrap_or_else(noop_submission_id);
                 state
                     .pending_user_input_requests
                     .insert(params.turn_id.clone(), request_id);
@@ -1000,12 +980,7 @@ impl AppServerCodexThread {
             ServerNotification::ThreadTokenUsageUpdated(payload) => {
                 let submission_id = {
                     let state = self.state.lock().await;
-                    state.active_turn.as_ref().and_then(|turn| {
-                        turn.turn_id
-                            .as_ref()
-                            .filter(|turn_id| *turn_id == &payload.turn_id)
-                            .map(|_| turn.submission_id.clone())
-                    })
+                    submission_id_for_turn_or_fallback(&state, &payload.turn_id)
                 };
                 Ok(submission_id.map(|id| Event {
                     id,
@@ -1206,15 +1181,22 @@ impl AppServerCodexThread {
                             changes,
                             ..
                         },
-                    ) => Some(Event {
-                        id,
-                        msg: EventMsg::PatchApplyBegin(PatchApplyBeginEvent {
-                            call_id,
-                            turn_id: payload.turn_id,
-                            auto_approved: true,
-                            changes: app_server_changes_to_core(changes),
-                        }),
-                    }),
+                    ) => {
+                        let core_changes = app_server_changes_to_core(changes);
+                        let mut state = self.state.lock().await;
+                        state
+                            .pending_patch_changes
+                            .insert(call_id.clone(), core_changes.clone());
+                        Some(Event {
+                            id,
+                            msg: EventMsg::PatchApplyBegin(PatchApplyBeginEvent {
+                                call_id,
+                                turn_id: payload.turn_id,
+                                auto_approved: true,
+                                changes: core_changes,
+                            }),
+                        })
+                    }
                     (
                         Some(id),
                         codex_app_server_protocol::ThreadItem::WebSearch { id: call_id, .. },
@@ -1347,19 +1329,24 @@ impl AppServerCodexThread {
                             changes,
                             status,
                         },
-                    ) => Some(Event {
-                        id,
-                        msg: EventMsg::PatchApplyEnd(PatchApplyEndEvent {
-                            call_id,
-                            turn_id: payload.turn_id,
-                            stdout: String::new(),
-                            stderr: String::new(),
-                            success: status
-                                == codex_app_server_protocol::PatchApplyStatus::Completed,
-                            changes: app_server_changes_to_core(changes),
-                            status: app_server_patch_status_to_core(status),
-                        }),
-                    }),
+                    ) => {
+                        let core_changes = app_server_changes_to_core(changes);
+                        let mut state = self.state.lock().await;
+                        state.pending_patch_changes.remove(&call_id);
+                        Some(Event {
+                            id,
+                            msg: EventMsg::PatchApplyEnd(PatchApplyEndEvent {
+                                call_id,
+                                turn_id: payload.turn_id,
+                                stdout: String::new(),
+                                stderr: String::new(),
+                                success: status
+                                    == codex_app_server_protocol::PatchApplyStatus::Completed,
+                                changes: core_changes,
+                                status: app_server_patch_status_to_core(status),
+                            }),
+                        })
+                    }
                     (
                         Some(id),
                         codex_app_server_protocol::ThreadItem::McpToolCall {
@@ -1476,12 +1463,7 @@ impl AppServerCodexThread {
                         .active_turn
                         .as_ref()
                         .and_then(|turn| turn.last_agent_message.clone());
-                    state.active_turn = None;
-                    state.pending_exec_requests.clear();
-                    state.pending_patch_requests.clear();
-                    state.pending_permissions_requests.clear();
-                    state.pending_user_input_requests.clear();
-                    state.pending_elicitation_requests.clear();
+                    clear_active_turn_state(&mut state);
 
                     Event {
                         id: submission_id,
@@ -1524,6 +1506,9 @@ impl AppServerCodexThread {
                     .retain(|_, request_id| request_id != &payload.request_id);
                 state
                     .pending_permissions_requests
+                    .retain(|_, request_id| request_id != &payload.request_id);
+                state
+                    .pending_user_input_requests
                     .retain(|_, request_id| request_id != &payload.request_id);
                 state
                     .pending_elicitation_requests
@@ -1576,9 +1561,10 @@ impl AppServerCodexThread {
             })),
             ServerNotification::ThreadClosed(_) => {
                 let mut state = self.state.lock().await;
-                let Some(active_turn) = state.active_turn.take() else {
+                let Some(active_turn) = state.active_turn.clone() else {
                     return Ok(None);
                 };
+                clear_active_turn_state(&mut state);
                 Ok(Some(Event {
                     id: active_turn.submission_id,
                     msg: EventMsg::ShutdownComplete,
@@ -1591,7 +1577,6 @@ impl AppServerCodexThread {
             | ServerNotification::SkillsChanged(_)
             | ServerNotification::HookStarted(_)
             | ServerNotification::HookCompleted(_)
-            | ServerNotification::TurnDiffUpdated(_)
             | ServerNotification::ItemGuardianApprovalReviewStarted(_)
             | ServerNotification::ItemGuardianApprovalReviewCompleted(_)
             | ServerNotification::RawResponseItemCompleted(_)
@@ -1618,6 +1603,21 @@ impl AppServerCodexThread {
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
             | ServerNotification::AccountLoginCompleted(_) => Ok(None),
+            ServerNotification::TurnDiffUpdated(payload) => {
+                let submission_id = {
+                    let mut state = self.state.lock().await;
+                    state
+                        .pending_turn_diffs
+                        .insert(payload.turn_id.clone(), payload.diff.clone());
+                    submission_id_for_turn_or_fallback(&state, &payload.turn_id)
+                };
+                Ok(submission_id.map(|id| Event {
+                    id,
+                    msg: EventMsg::TurnDiff(codex_protocol::protocol::TurnDiffEvent {
+                        unified_diff: payload.diff,
+                    }),
+                }))
+            }
         }
     }
 }
@@ -1720,9 +1720,11 @@ fn clear_active_turn_state(state: &mut AppServerState) {
     state.active_turn = None;
     state.pending_exec_requests.clear();
     state.pending_patch_requests.clear();
+    state.pending_patch_changes.clear();
     state.pending_permissions_requests.clear();
     state.pending_user_input_requests.clear();
     state.pending_elicitation_requests.clear();
+    state.pending_turn_diffs.clear();
     state.interrupt_after_turn_starts = false;
 }
 
@@ -1889,12 +1891,7 @@ async fn active_submission_id_for_turn(
     turn_id: &str,
 ) -> Option<String> {
     let state = thread.state.lock().await;
-    state.active_turn.as_ref().and_then(|turn| {
-        turn.turn_id
-            .as_deref()
-            .filter(|active_turn_id| *active_turn_id == turn_id)
-            .map(|_| turn.submission_id.clone())
-    })
+    submission_id_for_turn_or_fallback(&state, turn_id)
 }
 
 fn next_request_id(state: &mut AppServerState) -> RequestId {
@@ -1913,6 +1910,57 @@ fn noop_submission_id() -> String {
 
 fn shell_command_vec(command: &str) -> Vec<String> {
     vec!["bash".to_string(), "-lc".to_string(), command.to_string()]
+}
+
+fn submission_id_for_turn_or_fallback(state: &AppServerState, turn_id: &str) -> Option<String> {
+    state
+        .active_turn
+        .as_ref()
+        .and_then(|turn| {
+            turn.turn_id
+                .as_deref()
+                .filter(|active_turn_id| *active_turn_id == turn_id)
+                .map(|_| turn.submission_id.clone())
+        })
+        .or_else(|| (!turn_id.is_empty()).then(|| turn_id.to_string()))
+        .or_else(|| active_submission_id(state))
+}
+
+fn pending_patch_changes_for_request(
+    state: &AppServerState,
+    item_id: &str,
+    turn_id: &str,
+) -> HashMap<PathBuf, FileChange> {
+    state
+        .pending_patch_changes
+        .get(item_id)
+        .cloned()
+        .or_else(|| {
+            state
+                .pending_turn_diffs
+                .get(turn_id)
+                .map(|diff| parse_turn_diff_to_core_changes(diff))
+        })
+        .unwrap_or_default()
+}
+
+fn pending_patch_changes_from_turns(
+    turns: &[Turn],
+) -> HashMap<String, HashMap<PathBuf, FileChange>> {
+    turns
+        .iter()
+        .flat_map(|turn| turn.items.iter())
+        .filter_map(|item| match item {
+            ThreadItem::FileChange {
+                id,
+                changes,
+                status,
+            } if *status == codex_app_server_protocol::PatchApplyStatus::InProgress => {
+                Some((id.clone(), app_server_changes_to_core(changes.clone())))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 fn app_server_changes_to_core(changes: Vec<FileUpdateChange>) -> HashMap<PathBuf, FileChange> {
@@ -1937,6 +1985,165 @@ fn app_server_changes_to_core(changes: Vec<FileUpdateChange>) -> HashMap<PathBuf
             (path, change_kind)
         })
         .collect()
+}
+
+fn parse_turn_diff_to_core_changes(diff: &str) -> HashMap<PathBuf, FileChange> {
+    split_turn_diff_blocks(diff)
+        .into_iter()
+        .filter_map(|block| turn_diff_block_to_core_change(&block))
+        .collect()
+}
+
+fn split_turn_diff_blocks(diff: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut current = String::new();
+
+    for line in diff.lines() {
+        if line.starts_with("diff --git ") && !current.is_empty() {
+            if !current.ends_with('\n') {
+                current.push('\n');
+            }
+            blocks.push(current);
+            current = String::new();
+        }
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(line);
+    }
+
+    if !current.is_empty() {
+        if !current.ends_with('\n') {
+            current.push('\n');
+        }
+        blocks.push(current);
+    }
+
+    blocks
+}
+
+fn turn_diff_block_to_core_change(block: &str) -> Option<(PathBuf, FileChange)> {
+    let header = block.lines().next()?.trim();
+    let (old_raw, new_raw) = parse_diff_git_paths(header.strip_prefix("diff --git ")?)?;
+    let old_path = normalize_diff_path(&old_raw, "a/");
+    let new_path = normalize_diff_path(&new_raw, "b/");
+    let key_path = old_path.clone().or(new_path.clone()).map(PathBuf::from)?;
+    let move_path = match (old_path, new_path.as_ref()) {
+        (Some(old_path), Some(new_path)) if old_path != *new_path => Some(PathBuf::from(new_path)),
+        _ => None,
+    };
+    Some((
+        key_path,
+        FileChange::Update {
+            unified_diff: block.to_string(),
+            move_path,
+        },
+    ))
+}
+
+fn parse_diff_git_paths(line: &str) -> Option<(String, String)> {
+    let mut chars = line.chars().peekable();
+    let first = read_diff_git_token(&mut chars)?;
+    let second = read_diff_git_token(&mut chars)?;
+    Some((first, second))
+}
+
+fn read_diff_git_token(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<String> {
+    while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+        chars.next();
+    }
+    let quote = match chars.peek().copied() {
+        Some('"') | Some('\'') => chars.next(),
+        _ => None,
+    };
+    let mut out = String::new();
+    while let Some(c) = chars.next() {
+        if let Some(q) = quote {
+            if c == q {
+                break;
+            }
+            if c == '\\' {
+                out.push('\\');
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+                continue;
+            }
+        } else if c.is_whitespace() {
+            break;
+        }
+        out.push(c);
+    }
+    if out.is_empty() && quote.is_none() {
+        None
+    } else {
+        Some(match quote {
+            Some(_) => unescape_c_string(&out),
+            None => out,
+        })
+    }
+}
+
+fn normalize_diff_path(raw: &str, prefix: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed == "/dev/null" || trimmed == format!("{prefix}dev/null") {
+        return None;
+    }
+    let trimmed = trimmed.strip_prefix(prefix).unwrap_or(trimmed);
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn unescape_c_string(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let Some(next) = chars.next() else {
+            out.push('\\');
+            break;
+        };
+        match next {
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            'b' => out.push('\u{0008}'),
+            'f' => out.push('\u{000C}'),
+            'a' => out.push('\u{0007}'),
+            'v' => out.push('\u{000B}'),
+            '\\' => out.push('\\'),
+            '"' => out.push('"'),
+            '\'' => out.push('\''),
+            '0'..='7' => {
+                let mut value = next.to_digit(8).unwrap_or(0);
+                for _ in 0..2 {
+                    match chars.peek() {
+                        Some('0'..='7') => {
+                            if let Some(digit) = chars.next() {
+                                value = value * 8 + digit.to_digit(8).unwrap_or(0);
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                if let Some(ch) = std::char::from_u32(value) {
+                    out.push(ch);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn review_target_to_app_server(target: ReviewTarget) -> AppReviewTarget {
@@ -2062,7 +2269,8 @@ fn app_server_command_status_to_core(
         codex_app_server_protocol::CommandExecutionStatus::Failed => ExecCommandStatus::Failed,
         codex_app_server_protocol::CommandExecutionStatus::Declined => ExecCommandStatus::Declined,
         codex_app_server_protocol::CommandExecutionStatus::InProgress => {
-            ExecCommandStatus::Completed
+            warn!("received unexpected in-progress command completion status from app server");
+            ExecCommandStatus::Failed
         }
     }
 }
@@ -2074,7 +2282,10 @@ fn app_server_patch_status_to_core(
         codex_app_server_protocol::PatchApplyStatus::Completed => PatchApplyStatus::Completed,
         codex_app_server_protocol::PatchApplyStatus::Failed => PatchApplyStatus::Failed,
         codex_app_server_protocol::PatchApplyStatus::Declined => PatchApplyStatus::Declined,
-        codex_app_server_protocol::PatchApplyStatus::InProgress => PatchApplyStatus::Completed,
+        codex_app_server_protocol::PatchApplyStatus::InProgress => {
+            warn!("received unexpected in-progress patch completion status from app server");
+            PatchApplyStatus::Failed
+        }
     }
 }
 
@@ -2220,6 +2431,8 @@ fn server_request_id_to_mcp_request_id(request_id: &RequestId) -> McpRequestId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codex_core::config::ConfigBuilder;
+    use std::fs;
 
     #[test]
     fn resumed_regular_turn_is_steerable() {
@@ -2423,6 +2636,120 @@ mod tests {
                 .expect("question answer")
                 .answers,
             vec!["approved".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn submission_id_for_turn_falls_back_to_turn_id_when_local_state_is_missing() {
+        let codex_home =
+            std::env::temp_dir().join(format!("agenthub-codex-home-{}", Uuid::new_v4()));
+        fs::create_dir_all(&codex_home).expect("create codex home");
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home.clone())
+            .fallback_cwd(Some(codex_home.clone()))
+            .build()
+            .await
+            .expect("build config");
+        let state = AppServerState {
+            config,
+            next_request_id: 1,
+            thread_id: "thread-1".to_string(),
+            active_turn: None,
+            queued_submissions: VecDeque::new(),
+            local_events: VecDeque::new(),
+            pending_exec_requests: HashMap::new(),
+            pending_patch_requests: HashMap::new(),
+            pending_patch_changes: HashMap::new(),
+            pending_permissions_requests: HashMap::new(),
+            pending_user_input_requests: HashMap::new(),
+            pending_elicitation_requests: HashMap::new(),
+            pending_turn_diffs: HashMap::new(),
+            interrupt_after_turn_starts: false,
+        };
+
+        assert_eq!(
+            submission_id_for_turn_or_fallback(&state, "resumed-turn").as_deref(),
+            Some("resumed-turn")
+        );
+    }
+
+    #[test]
+    fn pending_patch_changes_from_turns_recovers_in_progress_patch_items() {
+        let turns = vec![Turn {
+            id: "turn-1".to_string(),
+            items: vec![ThreadItem::FileChange {
+                id: "patch-1".to_string(),
+                changes: vec![FileUpdateChange {
+                    path: "README.md".to_string(),
+                    kind: codex_app_server_protocol::PatchChangeKind::Update { move_path: None },
+                    diff: "diff --git a/README.md b/README.md\n".to_string(),
+                }],
+                status: codex_app_server_protocol::PatchApplyStatus::InProgress,
+            }],
+            status: TurnStatus::InProgress,
+            error: None,
+        }];
+
+        let pending = pending_patch_changes_from_turns(&turns);
+        let changes = pending.get("patch-1").expect("pending patch changes");
+        assert!(matches!(
+            changes.get(&PathBuf::from("README.md")),
+            Some(FileChange::Update { unified_diff, move_path: None })
+                if unified_diff == "diff --git a/README.md b/README.md\n"
+        ));
+    }
+
+    #[test]
+    fn parse_turn_diff_to_core_changes_splits_multi_file_diff_and_tracks_rename() {
+        let diff = concat!(
+            "diff --git a/src.txt b/dst.txt\n",
+            "rename from src.txt\n",
+            "rename to dst.txt\n",
+            "--- a/src.txt\n",
+            "+++ b/dst.txt\n",
+            "@@ -1 +1 @@\n",
+            "-old\n",
+            "+new\n",
+            "diff --git a/README.md b/README.md\n",
+            "--- a/README.md\n",
+            "+++ b/README.md\n",
+            "@@ -1 +1 @@\n",
+            "-before\n",
+            "+after\n",
+        );
+
+        let changes = parse_turn_diff_to_core_changes(diff);
+        assert_eq!(changes.len(), 2);
+        assert!(matches!(
+            changes.get(&PathBuf::from("src.txt")),
+            Some(FileChange::Update { move_path: Some(path), unified_diff })
+                if path == &PathBuf::from("dst.txt")
+                    && unified_diff.contains("rename from src.txt")
+        ));
+        assert!(matches!(
+            changes.get(&PathBuf::from("README.md")),
+            Some(FileChange::Update { move_path: None, unified_diff })
+                if unified_diff.contains("diff --git a/README.md b/README.md")
+        ));
+    }
+
+    #[test]
+    fn command_status_in_progress_maps_to_failed() {
+        assert_eq!(
+            app_server_command_status_to_core(
+                codex_app_server_protocol::CommandExecutionStatus::InProgress,
+            ),
+            ExecCommandStatus::Failed
+        );
+    }
+
+    #[test]
+    fn patch_status_in_progress_maps_to_failed() {
+        assert_eq!(
+            app_server_patch_status_to_core(
+                codex_app_server_protocol::PatchApplyStatus::InProgress
+            ),
+            PatchApplyStatus::Failed
         );
     }
 }
