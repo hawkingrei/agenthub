@@ -22,7 +22,7 @@ findings.
 - Use this skill for worker execution and evidence reporting.
 - Use `team-task-lifecycle.SKILL.md` for canonical Team task progression and review handoff.
 - Use `team-deliberation-rules.SKILL.md` for option comparison and evidence-quality decisions.
-- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`send`/`ack`).
+- Use `team-actor-mailbox.SKILL.md` as source-of-truth for mailbox protocol details (`inbox`/`receive`/`send`/`ack`).
 
 ## Shared Contract Usage
 
@@ -176,10 +176,9 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Worker Loop
 
-1. Pull inbox and find the latest unhandled assignment:
-   `agenthub actor inbox --limit 50`
-2. Acknowledge after parsing the task:
-   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
+1. Accept inbox work and find the latest unhandled assignment:
+   `agenthub actor receive --limit 50`
+2. Parse the accepted task and validate required fields.
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
    `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`

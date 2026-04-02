@@ -880,7 +880,6 @@ pub(super) fn parse_actor_command(
             let mut limit = 100_i64;
             let mut after_id = None;
             let mut include_delivered = false;
-            let mut auto_ack = false;
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -916,7 +915,6 @@ pub(super) fn parse_actor_command(
                         after_id = Some(parse_i64(raw, "after_id")?);
                     }
                     "--include-delivered" => include_delivered = true,
-                    "--auto-ack" => auto_ack = true,
                     other => return Err(anyhow::anyhow!("unknown flag for inbox: {}", other)),
                 }
                 idx += 1;
@@ -928,7 +926,57 @@ pub(super) fn parse_actor_command(
                 limit: limit.max(1),
                 after_id,
                 include_delivered,
-                auto_ack,
+            })
+        }
+        "receive" => {
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut limit = 100_i64;
+            let mut after_id = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--limit requires a value"))?;
+                        limit = parse_i64(raw, "limit")?;
+                    }
+                    "--after-id" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--after-id requires a value"))?;
+                        after_id = Some(parse_i64(raw, "after_id")?);
+                    }
+                    other => return Err(anyhow::anyhow!("unknown flag for receive: {}", other)),
+                }
+                idx += 1;
+            }
+            Ok(ActorCommand::Receive {
+                run_id: take_optional(run_id)
+                    .or_else(|| normalized_env_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV)),
+                actor_id: take_mailbox_actor_id(actor_id)?,
+                limit: limit.max(1),
+                after_id,
             })
         }
         "ack" => {

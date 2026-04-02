@@ -226,7 +226,9 @@ impl AuthService {
             });
         }
         let user_uuid = Uuid::parse_str(user_id)?;
-        let (ccr, state) = self.webauthn.start_passkey_registration(user_uuid, username, display_name, None)?;
+        let (ccr, state) =
+            self.webauthn
+                .start_passkey_registration(user_uuid, username, display_name, None)?;
 
         let challenge_id = Uuid::new_v4().to_string();
         let mut pending = self.pending.write().await;

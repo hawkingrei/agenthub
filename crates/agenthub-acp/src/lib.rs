@@ -13,12 +13,12 @@ use std::time::Duration;
 
 use agent_client_protocol::{
     Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ContentChunk, Implementation, InitializeRequest, LoadSessionRequest, McpServer,
-    NewSessionRequest, PermissionOption, PermissionOptionKind, PromptRequest, ProtocolVersion,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionModeRequest, SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate,
-    ToolCallUpdateFields,
+    ContentChunk, Error as AcpError, ErrorCode as AcpErrorCode, Implementation, InitializeRequest,
+    LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption, PermissionOptionKind,
+    PromptRequest, ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
+    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -95,6 +95,7 @@ pub trait AcpPermissionReviewDispatcher: Send + Sync {
 }
 
 pub struct SpawnAcpSessionRequest {
+    pub provider_id: String,
     pub event_sink: Arc<dyn AcpEventSink>,
     pub permissions: Arc<AcpPermissionService>,
     pub permission_review_dispatcher: Option<Arc<dyn AcpPermissionReviewDispatcher>>,
@@ -861,8 +862,29 @@ async fn dispatch_acp_command(
     }
 }
 
+async fn handle_auth_required_failure(
+    err: &AcpError,
+    provider_id: &str,
+    action: &str,
+    event_sink: &dyn AcpEventSink,
+) -> Option<String> {
+    if !is_auth_required_error(err) {
+        return None;
+    }
+
+    let message = format_auth_required_message(provider_id);
+    event_sink
+        .emit_raw(
+            AcpStream::System,
+            format!("acp {action} auth required: {message}"),
+        )
+        .await;
+    Some(message)
+}
+
 pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Result<AcpHandle> {
     let SpawnAcpSessionRequest {
+        provider_id,
         event_sink,
         permissions,
         permission_review_dispatcher,
@@ -1014,6 +1036,17 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                         session_id = Some(resume_id);
                     }
                     Err(err) => {
+                        if let Some(message) = handle_auth_required_failure(
+                            &err,
+                            &provider_id,
+                            "load_session",
+                            event_sink.as_ref(),
+                        )
+                        .await
+                        {
+                            let _ = ready_tx.send(Err(message));
+                            return;
+                        }
                         event_sink
                             .emit_raw(AcpStream::System, format!("acp load_session failed: {err}"))
                             .await;
@@ -1029,6 +1062,17 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
                 let session = match conn.new_session(request).await {
                     Ok(session) => session,
                     Err(err) => {
+                        if let Some(message) = handle_auth_required_failure(
+                            &err,
+                            &provider_id,
+                            "new_session",
+                            event_sink.as_ref(),
+                        )
+                        .await
+                        {
+                            let _ = ready_tx.send(Err(message));
+                            return;
+                        }
                         let _ = ready_tx.send(Err(format!("acp new_session failed: {err}")));
                         return;
                     }
@@ -1122,6 +1166,19 @@ pub async fn spawn_acp_session(request: SpawnAcpSessionRequest) -> anyhow::Resul
             "acp session init timed out after {}s",
             ACP_SESSION_START_TIMEOUT.as_secs()
         )),
+    }
+}
+
+fn is_auth_required_error(err: &AcpError) -> bool {
+    err.code == AcpErrorCode::AuthRequired
+}
+
+fn format_auth_required_message(provider_id: &str) -> String {
+    match provider_id {
+        "gemini" => "Gemini ACP requires prior authentication on the host. AgentHub does not trigger interactive Google login for remote sessions; authenticate Gemini CLI on the host first.".to_string(),
+        _ => format!(
+            "ACP authentication is required for provider '{provider_id}' before AgentHub can create or resume a session."
+        ),
     }
 }
 
@@ -1771,12 +1828,13 @@ mod tests {
         AcpActorContinuityEnvelope, AcpActorSkillContext, AcpCommand, AcpHandle,
         AcpPermissionRespondResult, AcpPermissionService, AcpPromptDeliveryPolicy,
         AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks, dedupe_skills,
+        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
         load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
         remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
-    use agent_client_protocol::McpServer;
     use agent_client_protocol::{
-        ContentBlock, RequestPermissionOutcome, SelectedPermissionOutcome,
+        ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
+        RequestPermissionOutcome, SelectedPermissionOutcome,
     };
     use agenthub_acp_core::build_skill;
     use sqlx::Row;
@@ -2015,6 +2073,44 @@ mod tests {
             AcpRuntimeLocation::default(),
             AcpRuntimeLocation::LocalProcess
         );
+    }
+
+    #[test]
+    fn auth_required_error_detection_matches_protocol_error_code() {
+        let err = AcpError::auth_required();
+        assert!(is_auth_required_error(&err));
+
+        let other = AcpError::new(AcpErrorCode::InternalError.into(), "boom");
+        assert!(!is_auth_required_error(&other));
+    }
+
+    #[test]
+    fn gemini_auth_required_message_mentions_host_side_authentication() {
+        let message = format_auth_required_message("gemini");
+        assert!(message.contains("prior authentication on the host"));
+        assert!(message.contains("does not trigger interactive Google login"));
+    }
+
+    struct NoopEventSink;
+
+    #[async_trait::async_trait]
+    impl super::AcpEventSink for NoopEventSink {
+        async fn emit_raw(&self, _stream: super::AcpStream, _message: String) {}
+    }
+
+    #[tokio::test]
+    async fn auth_required_failure_helper_returns_provider_message() {
+        let sink: std::sync::Arc<dyn super::AcpEventSink> = std::sync::Arc::new(NoopEventSink);
+        let handled = handle_auth_required_failure(
+            &AcpError::auth_required(),
+            "gemini",
+            "new_session",
+            sink.as_ref(),
+        )
+        .await;
+
+        let err = handled.expect("auth required should produce a startup error");
+        assert!(err.contains("Gemini ACP requires prior authentication on the host"));
     }
 
     #[test]

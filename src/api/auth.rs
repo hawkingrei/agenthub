@@ -94,7 +94,9 @@ async fn register_start(
         return Err(ApiError::bad_request("username cannot be empty"));
     }
     if username.contains('@') {
-        return Err(ApiError::bad_request("username cannot contain @ (reserved for mentions)"));
+        return Err(ApiError::bad_request(
+            "username cannot contain @ (reserved for mentions)",
+        ));
     }
     if display_name.is_empty() {
         return Err(ApiError::bad_request("display name cannot be empty"));
@@ -181,10 +183,7 @@ async fn login_start(
 
     let ip = extract_ip(&headers);
     let ua = extract_ua(&headers);
-    let result = state
-        .auth
-        .login_start(username, password)
-        .await;
+    let result = state.auth.login_start(username, password).await;
     let auth_result = match result {
         Ok(value) => value,
         Err(err) => {

@@ -26,7 +26,7 @@ describe("agent presets", () => {
     const codex = getAgentPreset(DEFAULT_AGENT_PRESET_ID);
     const gemini = getAgentPreset("gemini");
     expect(formatAgentCommand(codex)).toBe("agenthub-codex-acp");
-    expect(formatAgentCommand(gemini)).toBe("gemini --experimental-acp");
+    expect(formatAgentCommand(gemini)).toBe("gemini --acp");
   });
 
   it("resolves ACP provider from command", () => {
