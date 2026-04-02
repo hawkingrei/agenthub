@@ -146,6 +146,23 @@ This slice now applies the existing cutoff policy consistently to the remaining 
 - each affected bubble now starts closed when it is already older than the cutoff, and auto-collapses once when it first crosses the cutoff on later renders;
 - manual re-open still works after that first forced collapse, so the cutoff remains a timeline-noise guard instead of a persistent lock.
 
+## Bazel `v8` Runfiles Fix
+
+After the Cargo-side migration to `openai/codex rust-v0.118.0`, Bazel CI started failing inside the generated `v8 146.4.0` crate with:
+
+- missing `gen/src_binding_release_x86_64-unknown-linux-gnu.rs`
+- `include!(env!("RUSTY_V8_SRC_BINDING_PATH"))` aborting in `src/binding.rs`
+
+The upstream `v8` crate already ships the prebuilt binding files in its published crate archive, so the failure is not a bad release artifact.
+
+The break only appears in Bazel because `rusty_v8`'s `build.rs` emits `RUSTY_V8_SRC_BINDING_PATH` pointing at crate-local files under `gen/`, and the crate-universe generated `cargo_build_script` runfiles did not carry that directory into the sandboxed build.
+
+This slice fixes the Bazel-only layout mismatch in `MODULE.bazel` by adding a narrow `crate.annotation` for `v8`:
+
+- keep Cargo dependencies unchanged;
+- add `build_script_data_glob = ["gen/**"]` so the `cargo_build_script` runfiles include the prebuilt bindings that `build.rs` already references;
+- preserve the rest of the `v8` build behavior and avoid patching upstream crate sources.
+
 ## Test Determinism
 
 Some `thread.rs` tests were still loading Codex through the normal config loader path, which means an invalid local `~/.codex/config.toml` could cause unrelated ACP regression tests to fail.

@@ -44,6 +44,14 @@ crate.annotation(
     repositories = ["crate_index"],
     rustc_flags = ["--cfg=vendored_bwrap_available"],
 )
+crate.annotation(
+    crate = "v8",
+    # rusty_v8's build.rs points RUSTY_V8_SRC_BINDING_PATH at crate-local
+    # prebuilt bindings under gen/. Add them to the cargo_build_script
+    # runfiles so Bazel sandboxes can resolve the emitted path.
+    build_script_data_glob = ["gen/**"],
+    repositories = ["crate_index"],
+)
 crate.from_cargo(
     name = "crate_index",
     cargo_lockfile = "//:Cargo.lock",
