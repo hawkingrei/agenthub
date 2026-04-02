@@ -1,0 +1,12 @@
+[target.x86_64-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install --assume-yes pkg-config libssl-dev:amd64 libsqlite3-dev:amd64 libcap-dev:amd64",
+]
+env.passthrough = ["OPENSSL_STATIC=1"]
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes pkg-config libssl-dev:amd64 libssl-dev:$CROSS_DEB_ARCH libsqlite3-dev:$CROSS_DEB_ARCH libcap-dev:$CROSS_DEB_ARCH",
+]
+env.passthrough = ["OPENSSL_STATIC=1"]
