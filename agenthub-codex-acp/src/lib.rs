@@ -378,6 +378,7 @@ mod tests {
     #[test]
     fn agenthub_codex_acp_enables_multi_agent_when_override_is_true() {
         let mut features = Features::with_defaults();
+        features.disable(Feature::Collab);
 
         let changed = apply_agenthub_multi_agent_override(&mut features, Some(true))
             .expect("enable collab succeeds");
@@ -401,23 +402,25 @@ mod tests {
     #[test]
     fn agenthub_codex_acp_skips_multi_agent_enable_when_override_is_false() {
         let mut features = Features::with_defaults();
+        let initial = features.enabled(Feature::Collab);
 
         let changed = apply_agenthub_multi_agent_override(&mut features, Some(false))
             .expect("disable override is a no-op");
 
         assert!(!changed);
-        assert!(!features.enabled(Feature::Collab));
+        assert_eq!(features.enabled(Feature::Collab), initial);
     }
 
     #[test]
     fn agenthub_codex_acp_skips_multi_agent_enable_without_override() {
         let mut features = Features::with_defaults();
+        let initial = features.enabled(Feature::Collab);
 
         let changed = apply_agenthub_multi_agent_override(&mut features, None)
             .expect("missing override is a no-op");
 
         assert!(!changed);
-        assert!(!features.enabled(Feature::Collab));
+        assert_eq!(features.enabled(Feature::Collab), initial);
     }
 
     #[test]
