@@ -23,6 +23,8 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 - Rust packaging policy: prefer workspace crates under `crates/` with clear functional ownership; avoid unrelated "grab-bag" crates
 - Frontend: mainstream TS framework (default React + Vite SPA), static assets embedded in the Rust service
 - Frontend UI standard: all new UI features and UI refactors must use the project UI library (`@mantine/core`) plus Tailwind CSS utility classes as the default styling path
+- Frontend product standard: user-facing UI should be modern, simple, clean, easy to use, and designed for customization and long-term extensibility instead of one-off page-specific styling
+- Frontend internationalization standard: user-facing surfaces should be designed for multilingual support from the start; avoid hard-coded single-language assumptions in layout, copy structure, and component APIs
 - CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
 - Maintainability policy: low-risk maintainability review suggestions should be implemented directly in the active change instead of being deferred by default
 - Agent context/file-boundary policy: there is no hard single-file LOC cap, but code should be organized for token-efficient navigation; prefer cohesive files plus thin routing/index files, and split files when mixed responsibilities or sustained work would require reading large unrelated sections (rough warning threshold: ~800-1000 LOC or multi-domain ownership)
@@ -113,6 +115,9 @@ agenthub/
   - History must be retained and replayable
 - Frontend implementation policy:
   - Follow-up UI work should be built with UI library components + Tailwind CSS utilities
+  - UI shells and interaction patterns should favor compact, content-first layouts with restrained chrome so primary content keeps the largest share of the viewport
+  - New frontend work should preserve straightforward theming/customization hooks and avoid hard-wiring page-specific visual decisions into low-level shared components
+  - User-facing copy and component contracts should remain localization-ready: prefer reusable text keys/centralized copy paths and layouts that tolerate longer translated strings
   - Avoid introducing new parallel style systems or expanding legacy handcrafted global CSS except compatibility patches
   - All frontend changes must be validated with Chrome DevTools MCP before edits (baseline) and after edits (regression check), and responses should include the MCP verification result summary
 - Team role workflow policy:
