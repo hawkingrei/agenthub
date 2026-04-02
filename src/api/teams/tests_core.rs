@@ -3114,7 +3114,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
 }
 
 #[tokio::test]
-async fn team_run_messages_api_supports_human_actor_auto_load_and_ack_fallback() {
+async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
     let user = crate::api::authz::require_user(&headers, &state)
@@ -3243,7 +3243,7 @@ async fn team_run_messages_api_supports_human_actor_auto_load_and_ack_fallback()
     assert!(
         inbox_by_canonical
             .iter()
-            .all(|message| message.status == crate::team::TeamActorMessageStatus::Delivered)
+            .all(|message| message.status == crate::team::TeamActorMessageStatus::Pending)
     );
 
     let Json(alias_acked_via_canonical) = ack_team_run_message(

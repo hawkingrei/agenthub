@@ -280,8 +280,10 @@ mod tests {
         ActorAckRequest, ActorAckResponse, ActorInboxResponse, ActorSendRequest, ActorSendResponse,
     };
     use serde::Serialize;
+    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use std::time::Duration;
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
@@ -324,6 +326,7 @@ mod tests {
     struct MockMailboxService {
         inbox: Vec<agenthub_team_actor::ActorMessageRecord>,
         acked_ids: Arc<StdMutex<Vec<i64>>>,
+        ack_delays_ms: Arc<HashMap<i64, u64>>,
     }
 
     #[derive(Clone)]
@@ -359,6 +362,9 @@ mod tests {
             &self,
             request: ActorAckRequest,
         ) -> Result<ActorAckResponse, ActorServiceError> {
+            if let Some(delay_ms) = self.ack_delays_ms.get(&request.message_id) {
+                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+            }
             self.acked_ids
                 .lock()
                 .expect("acquire acked_ids mutex")
@@ -1513,6 +1519,7 @@ mod tests {
         let service = MockMailboxService {
             inbox: vec![mock_inbox_message(1, ActorMessageStatus::Pending)],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::new()),
         };
         let response = load_actor_inbox(
             &service,
@@ -1543,6 +1550,7 @@ mod tests {
         let service = MockMailboxService {
             inbox: vec![mock_inbox_message(7, ActorMessageStatus::Pending)],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::new()),
         };
         let response = receive_actor_inbox(
             &service,
@@ -1566,6 +1574,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_actor_inbox_preserves_message_order_with_concurrent_ack() {
+        let service = MockMailboxService {
+            inbox: vec![
+                mock_inbox_message(7, ActorMessageStatus::Pending),
+                mock_inbox_message(8, ActorMessageStatus::Pending),
+            ],
+            acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::from([(7, 50_u64), (8, 0_u64)])),
+        };
+        let response = receive_actor_inbox(
+            &service,
+            ActorInboxRequest {
+                run_id: "run-1".to_string(),
+                actor_id: "worker".to_string(),
+                cursor: None,
+                limit: Some(20),
+                states: Some(vec![ActorMessageStatus::Pending]),
+            },
+        )
+        .await
+        .expect("receive inbox concurrently");
+        assert_eq!(response.pending_count, 0);
+        assert_eq!(response.messages.len(), 2);
+        assert_eq!(response.messages[0].message_id, 7);
+        assert_eq!(response.messages[1].message_id, 8);
+        assert!(
+            response
+                .messages
+                .iter()
+                .all(|message| message.status == ActorMessageStatus::Delivered)
+        );
+        let mut acked_ids = service.acked_ids.lock().expect("acquire acked ids").clone();
+        acked_ids.sort_unstable();
+        assert_eq!(acked_ids, vec![7, 8]);
+    }
+
+    #[tokio::test]
     async fn ack_actor_messages_batches_requests_in_order() {
         let service = MockMailboxService {
             inbox: vec![
@@ -1573,6 +1618,7 @@ mod tests {
                 mock_inbox_message(12, ActorMessageStatus::Pending),
             ],
             acked_ids: Arc::new(StdMutex::new(Vec::new())),
+            ack_delays_ms: Arc::new(HashMap::new()),
         };
         let responses = ack_actor_messages(&service, "run-1", "worker", &[11, 12])
             .await

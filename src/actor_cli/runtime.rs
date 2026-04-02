@@ -4,10 +4,13 @@ use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorInboxResponse, ActorMailboxService,
     ActorMessageStatus, ActorServiceError, ActorServiceErrorCode,
 };
+use futures::{StreamExt, TryStreamExt, stream};
 
 use crate::actor_runtime_env::connect_runtime_internal_mailbox_service;
 use crate::internal::auth::InternalAction;
 use crate::internal::client::InternalGrpcMailboxClient;
+
+const RECEIVE_ACK_CONCURRENCY: usize = 8;
 
 pub(super) async fn init_actor_control_client(
     actor_id: &str,
@@ -68,37 +71,49 @@ pub(super) async fn receive_actor_inbox<S: ActorMailboxService + ?Sized>(
     let run_id = request.run_id.clone();
     let response = service.actor_inbox(request).await?;
     let pending_count = response.pending_count;
-    let mut messages = Vec::with_capacity(response.messages.len());
-    let mut acked_pending = 0_i64;
-
-    for message in response.messages {
-        if message.status != ActorMessageStatus::Pending {
-            messages.push(message);
-            continue;
-        }
-
-        let acked = service
-            .actor_ack(ActorAckRequest {
-                run_id: run_id.clone(),
-                actor_id: message.to_actor_id.clone(),
-                message_id: message.message_id,
-                ack_token: None,
-                result: None,
-            })
-            .await;
-        match acked {
-            Ok(acked) => {
-                acked_pending += 1;
-                messages.push(acked.message);
+    let next_cursor = response.next_cursor;
+    // Ack pending messages with bounded concurrency but preserve inbox output ordering.
+    let mut indexed_messages = stream::iter(response.messages.into_iter().enumerate())
+        .map(|(idx, message)| {
+            let run_id = run_id.clone();
+            async move {
+                if message.status != ActorMessageStatus::Pending {
+                    return Ok((idx, message, false));
+                }
+                let acked = service
+                    .actor_ack(ActorAckRequest {
+                        run_id,
+                        actor_id: message.to_actor_id.clone(),
+                        message_id: message.message_id,
+                        ack_token: None,
+                        result: None,
+                    })
+                    .await;
+                match acked {
+                    Ok(acked) => Ok((idx, acked.message, true)),
+                    Err(err) if err.code == ActorServiceErrorCode::NotFound => {
+                        Ok((idx, message, false))
+                    }
+                    Err(err) => Err(err),
+                }
             }
-            Err(err) if err.code == ActorServiceErrorCode::NotFound => messages.push(message),
-            Err(err) => return Err(err),
-        }
-    }
+        })
+        .buffer_unordered(RECEIVE_ACK_CONCURRENCY)
+        .try_collect::<Vec<_>>()
+        .await?;
+    indexed_messages.sort_by_key(|(idx, _, _)| *idx);
+    let acked_pending = indexed_messages
+        .iter()
+        .filter(|(_, _, acked)| *acked)
+        .count() as i64;
+    let messages = indexed_messages
+        .into_iter()
+        .map(|(_, message, _)| message)
+        .collect();
 
     Ok(ActorInboxResponse {
         messages,
-        next_cursor: response.next_cursor,
+        next_cursor,
         pending_count: pending_count.saturating_sub(acked_pending),
     })
 }
