@@ -352,10 +352,10 @@ coordination.
 
 Team mailbox commands:
 
-1. Pull inbox:
-   `<actor_cli_path> actor inbox --run-id "<run-id>" --limit 20`
-2. Acknowledge a message after processing:
-   `<actor_cli_path> actor ack --run-id "<run-id>" --message-id 123`
+1. Accept pending inbox work:
+   `<actor_cli_path> actor receive --run-id "<run-id>" --limit 20`
+2. Inspect mailbox without mutating delivery state:
+   `<actor_cli_path> actor inbox --run-id "<run-id>" --limit 20 --include-delivered`
 3. Send a local direct message:
    `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
@@ -378,16 +378,17 @@ Team context commands:
 
 Protocol rules:
 
-- Always pull inbox before starting a new coordination step.
-- In each turn, the first mailbox action must be `actor inbox` before planning/coding.
-- Treat `actor inbox` output as a live unread snapshot: it now includes `pending_count` alongside the fetched messages.
+- Always accept mailbox work before starting a new coordination step.
+- In each turn, the first mailbox action should be `actor receive` before planning/coding.
+- Treat `actor receive` as the normal accept-and-consume path for pending mailbox work.
+- Treat `actor inbox` output as a read-only unread snapshot: it includes `pending_count` alongside the fetched messages.
 - Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and leader-authored channel `@member_id` mentions trigger immediate ACP hints.
 - Other unread mailbox traffic may surface later as one compact unread summary after roughly 3 minutes of ACP output silence; if unread count is `0`, no reminder is sent.
 - Before routing work based on teammate assumptions, inspect `actor team-members`.
 - Treat `actor team-members` as the single Team context snapshot command: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.
 - Treat the runtime context block as the canonical source for the current actor identity and default run scope.
-- If inbox has pending items, process and `actor ack` them before emitting final result.
-- Acknowledge each consumed message exactly once.
+- Use `actor inbox` only for inspection/debugging or historical mailbox review.
+- Keep `actor ack` for repair, recovery, or manual compensation flows.
 - For `actor permission-review-respond`, choose any allow/session/persistent approval by passing the
   concrete request-provided `--option-id`; do not invent `--outcome always`.
 - `actor permission-review-respond --outcome` currently supports only `cancelled`.
@@ -442,7 +443,7 @@ mod tests {
             if kind == ManagedSkillKind::ActorRuntime {
                 assert!(doc.contents.contains("Runtime coordination contract"));
                 assert!(doc.contents.contains("`actor_cli_path`"));
-                assert!(doc.contents.contains("<actor_cli_path> actor inbox"));
+                assert!(doc.contents.contains("<actor_cli_path> actor receive"));
             }
         }
     }

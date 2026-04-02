@@ -3,7 +3,7 @@ use super::output::{actor_output_preference_for_command, write_actor_output};
 use super::parse::compute_time_trigger_fire_at;
 use super::runtime::{
     init_actor_control_client, init_actor_mailbox_service, init_actor_permission_review_client,
-    load_actor_inbox, map_actor_service_error,
+    load_actor_inbox, map_actor_service_error, receive_actor_inbox,
 };
 use super::{
     ActorCommand, ActorOutputMode, ActorSendIdempotency, ActorSendPayloadSource,
@@ -440,7 +440,6 @@ pub(super) async fn run_actor_command(
             limit,
             after_id,
             include_delivered,
-            auto_ack,
         } => {
             let run_id = resolve_inbox_run_id(&actor_id, run_id).await?;
             let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
@@ -462,10 +461,31 @@ pub(super) async fn run_actor_command(
                     limit: Some(limit),
                     states,
                 },
-                auto_ack,
             )
             .await
             .map_err(|err| map_actor_service_error("actor inbox", err))?;
+            write_actor_output(&inbox, output_mode, output_preference)?;
+        }
+        ActorCommand::Receive {
+            run_id,
+            actor_id,
+            limit,
+            after_id,
+        } => {
+            let run_id = resolve_inbox_run_id(&actor_id, run_id).await?;
+            let service = init_actor_mailbox_service(&actor_id, &run_id).await?;
+            let inbox = receive_actor_inbox(
+                service.as_ref(),
+                ActorInboxRequest {
+                    run_id,
+                    actor_id,
+                    cursor: after_id,
+                    limit: Some(limit),
+                    states: Some(vec![ActorMessageStatus::Pending]),
+                },
+            )
+            .await
+            .map_err(|err| map_actor_service_error("actor receive", err))?;
             write_actor_output(&inbox, output_mode, output_preference)?;
         }
         ActorCommand::Ack {

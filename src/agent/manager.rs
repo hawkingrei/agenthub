@@ -195,10 +195,7 @@ fn derive_worker_runtime_root(workdir: &str) -> String {
         .unwrap_or_else(|| workdir.to_string())
 }
 
-fn derive_leader_runtime_workdir(
-    workdir: &str,
-    actor_context: &AcpActorSkillContext,
-) -> String {
+fn derive_leader_runtime_workdir(workdir: &str, actor_context: &AcpActorSkillContext) -> String {
     // Team leader continuity should survive ordinary runtime restarts, so the derived
     // coordination workspace is keyed by actor + scope and intentionally excludes the
     // per-launch AgentHub runtime session id.

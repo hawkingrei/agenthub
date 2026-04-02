@@ -177,9 +177,8 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 ## Worker Loop
 
 1. Pull inbox and find the latest unhandled assignment:
-   `agenthub actor inbox --limit 50`
-2. Acknowledge after parsing the task:
-   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
+   `agenthub actor receive --limit 50`
+2. Parse the accepted task and validate required fields.
 3. Execute with minimal, auditable changes.
 4. Reply to leader with status, evidence, and findings:
    `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`

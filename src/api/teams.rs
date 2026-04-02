@@ -9,7 +9,7 @@ use self::errors::{
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
-    actor_inbox_with_auto_ack, parse_actor_transport,
+    parse_actor_transport,
 };
 use agenthub_team_prompts::default_team_prompt_for_role;
 use axum::{
@@ -1529,19 +1529,17 @@ async fn list_team_run_inbox(
     let service = state.teams.actor_mailbox_service();
     let mut messages = Vec::new();
     for actor_id in actor_ids {
-        let actor_messages = actor_inbox_with_auto_ack(
-            &service,
-            ActorInboxRequest {
+        let actor_messages = service
+            .actor_inbox(ActorInboxRequest {
                 run_id: run_id.clone(),
                 actor_id,
                 cursor: query.after_id,
                 limit: Some(limit),
                 states: states.clone(),
-            },
-        )
-        .await
-        .map_err(map_actor_service_api_error)?
-        .messages;
+            })
+            .await
+            .map_err(map_actor_service_api_error)?
+            .messages;
         messages.extend(actor_messages);
     }
     messages.sort_by_key(|message| message.message_id);

@@ -872,6 +872,9 @@ async fn teams_router_http_contract() {
     let inbox = decode_json_body(list_inbox_resp).await;
     let inbox = inbox.as_array().expect("inbox array");
     assert_eq!(inbox.len(), 2);
+    for message in inbox.iter() {
+        assert_eq!(message["status"], "pending");
+    }
     let message_ids = inbox
         .iter()
         .filter_map(|message| message["message_id"].as_i64())

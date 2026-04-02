@@ -199,9 +199,8 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 ## Coordination Contract
 
 1. Pull inbox before each coordination round:
-   `agenthub actor inbox --limit 50`
-2. Acknowledge each consumed message once:
-   `MESSAGE_ID="<from inbox>"; agenthub actor ack --message-id "$MESSAGE_ID"`
+   `agenthub actor receive --limit 50`
+2. Parse each accepted message before making routing decisions.
 3. Delegate with deterministic payload JSON:
    `agenthub actor send --to-actor-id "$WORKER_ID" --text-file .agenthubmemory/mailbox/outbox/task-brief.md`
 4. If a worker is blocked, ask for missing facts or re-scope the task.
