@@ -5,7 +5,7 @@ import {
   isHumanMailboxActor,
   resolveDisplayName,
   renderPlainTextWithMentions,
-  resolveChatMessageText,
+  resolveVisibleTeamPayloadText,
 } from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
@@ -432,7 +432,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
             >
               {conversationMessages.map((message) => {
                 const isOutgoing = message.from_actor_id === chatActors.fromActorId;
-                const chatText = resolveChatMessageText(message.payload);
+                const chatText = resolveVisibleTeamPayloadText(message.payload);
                 const payload = chatText ?? toPrettyJson(message.payload);
                 return (
                   <li

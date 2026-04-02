@@ -2,12 +2,12 @@ use std::{
     future::{Future, IntoFuture},
     net::SocketAddr,
     pin::Pin,
+    sync::Arc,
     time::Duration,
 };
 
 use axum::{Router, routing::get};
 use tower_http::compression::CompressionLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
@@ -115,10 +115,8 @@ fn build_app_router(
         .layer(compression);
     if let Some(dir) = web_dir {
         tracing::info!("serving web from dir: {}", dir);
-        let web_service = ServeDir::new(dir)
-            .append_index_html_on_directories(true)
-            .fallback(ServeFile::new(format!("{}/index.html", dir)));
-        app = app.fallback_service(web_service);
+        let web_root = Arc::new(std::path::PathBuf::from(dir));
+        app = app.fallback(move |uri| crate::web::dir_handler(web_root.clone(), uri));
     } else {
         tracing::info!("serving web from embedded assets");
         app = app.fallback(crate::web::embedded_handler);
@@ -261,7 +259,7 @@ mod tests {
 
     use axum::{
         body::{Body, to_bytes},
-        http::{Request, StatusCode},
+        http::{Request, StatusCode, header},
     };
 
     use tower::util::ServiceExt;
@@ -327,11 +325,20 @@ mod tests {
             "<html><body>agenthub-test</body></html>",
         )
         .expect("write index html");
+        std::fs::create_dir_all(dir.join("assets")).expect("create assets dir");
+        std::fs::write(dir.join("assets/app-123.js"), "console.log('agenthub');")
+            .expect("write asset");
+        std::fs::write(
+            dir.join("manifest.webmanifest"),
+            "{\"name\":\"AgentHub\",\"display\":\"standalone\"}",
+        )
+        .expect("write manifest");
 
         let state = crate::api::team_tests::build_test_state().await;
         let api_router = crate::api::router(state.clone());
         let app = super::build_app_router(state, api_router, Some(dir.to_string_lossy().as_ref()));
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/not-found-path")
@@ -341,11 +348,55 @@ mod tests {
             .await
             .expect("request fallback path");
         assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read response body");
         let body_text = String::from_utf8(body.to_vec()).expect("utf8 body");
         assert!(body_text.contains("agenthub-test"));
+
+        let asset_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/app-123.js")
+                    .body(Body::empty())
+                    .expect("build asset request"),
+            )
+            .await
+            .expect("request asset path");
+        assert_eq!(asset_response.status(), StatusCode::OK);
+        assert_eq!(
+            asset_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("public, max-age=31536000, immutable")
+        );
+
+        let manifest_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/manifest.webmanifest")
+                    .body(Body::empty())
+                    .expect("build manifest request"),
+            )
+            .await
+            .expect("request manifest path");
+        assert_eq!(manifest_response.status(), StatusCode::OK);
+        assert_eq!(
+            manifest_response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
     }
 
     #[tokio::test]

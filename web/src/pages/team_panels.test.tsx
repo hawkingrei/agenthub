@@ -1848,6 +1848,7 @@ describe("team panels interactions", () => {
       );
 
       await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
+      await waitForCondition(() => container.textContent?.includes("Awaiting human review") ?? false);
       expect(container.textContent).toContain("git push");
       expect(container.textContent).toContain("Agent review timed out");
       expect(container.textContent).toContain("Awaiting human review");
@@ -1865,9 +1866,87 @@ describe("team panels interactions", () => {
       expect(container.textContent).toContain("Approved · Allow once");
       expect(queryButtonByText(container, "Allow once")).toBeNull();
       expect(queryButtonByText(container, "Cancel")).toBeNull();
+      expect(container.textContent).not.toContain("worker requests permission to execute git push.");
+      expect(container.textContent).not.toContain("Agent review timed out");
     } finally {
       listPermissionsSpy.mockRestore();
       respondPermissionSpy.mockRestore();
+    }
+  });
+
+  it("TeamTaskPanel collapses timed out permission review cards even before permission polling catches up", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+    const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([]);
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          token="token-1"
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "permission_review_card",
+                permission_id: "perm-timeout-1",
+                agent_id: "worker-agent",
+                tool_name: "git push",
+                summary: "worker requests permission to execute git push.",
+                reason: "review_timeout",
+                reason_text: "Agent review timed out",
+                status: "pending",
+                options: [
+                  { option_id: "allow", name: "Allow once", kind: "allow_once" },
+                  { option_id: "allow_always", name: "Always allow", kind: "allow_always" },
+                ],
+              },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "WorkerAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "waiting for review",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+      );
+
+      await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
+      const permissionCard = required(
+        container.querySelector("[data-team-permission-card='true']"),
+        "permission card missing"
+      ) as HTMLElement;
+      expect(permissionCard.textContent).toContain("git push");
+      expect(permissionCard.textContent).toContain("Timed out");
+      expect(permissionCard.textContent).not.toContain("worker requests permission to execute git push.");
+      expect(permissionCard.textContent).not.toContain("Agent review timed out");
+      expect(queryButtonByText(permissionCard, "Allow once")).toBeNull();
+      expect(queryButtonByText(permissionCard, "Cancel")).toBeNull();
+    } finally {
+      listPermissionsSpy.mockRestore();
     }
   });
 
@@ -2496,6 +2575,47 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("rendered from string payload");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamTaskPanel renders task_note payloads as visible text instead of raw JSON", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(12, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "task_note",
+                kind: "comment",
+                text: "@leader idle update:\n\n- mailbox pending_count: 0\n\nAwaiting next task.",
+              },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    expect(container.textContent).toContain("idle update:");
+    expect(container.textContent).toContain("Awaiting next task.");
+    expect(container.textContent).not.toContain('"type": "task_note"');
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 

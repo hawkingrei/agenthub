@@ -19,8 +19,8 @@ import {
   type MentionCandidate,
   renderMarkdownWithMentions,
   resolveMentionDraftQuery,
-  resolveChatMessageText,
   resolveDisplayName,
+  resolveVisibleTeamPayloadText,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
@@ -236,9 +236,9 @@ function resolveMessageText(
   message: TeamConversationMessageRecord,
   toPrettyJson: (value: unknown) => string
 ): string {
-  const chatText = resolveChatMessageText(message.payload);
-  if (chatText !== null) {
-    return chatText;
+  const visibleText = resolveVisibleTeamPayloadText(message.payload);
+  if (visibleText !== null) {
+    return visibleText;
   }
   return toPrettyJson(message.payload);
 }
@@ -417,30 +417,44 @@ function buildPermissionRecordStub(
   };
 }
 
+function resolvePermissionCardStatus(
+  payload: PermissionReviewCardPayload,
+  record?: AcpPermissionRecord
+): string {
+  const recordStatus = normalizeTrimmedString(record?.status);
+  if (recordStatus) {
+    return recordStatus;
+  }
+  const reason = normalizeTrimmedString(payload.reason)?.toLowerCase();
+  if (reason === "review_timeout" || reason === "timed_out" || reason === "timeout") {
+    return "timeout";
+  }
+  return normalizeTrimmedString(payload.status) ?? "pending";
+}
+
 function resolvePermissionStatusText(
   payload: PermissionReviewCardPayload,
   record?: AcpPermissionRecord
 ): string {
-  if (!record) {
-    return "Awaiting human review";
-  }
-  if (record.status === "responded") {
-    const selectedOptionId = normalizeTrimmedString(record.selected_option_id);
+  const status = resolvePermissionCardStatus(payload, record);
+  if (status === "responded") {
+    const normalizedRecord = record ?? buildPermissionRecordStub(payload);
+    const selectedOptionId = normalizeTrimmedString(normalizedRecord.selected_option_id);
     if (!selectedOptionId) {
       return "Cancelled";
     }
-    const option = record.options.find(
+    const option = normalizedRecord.options.find(
       (candidate) => candidate.option_id === selectedOptionId
     );
     return option ? `Approved · ${option.name}` : "Approved";
   }
-  if (record.status === "timeout") {
+  if (status === "timeout") {
     return "Timed out";
   }
-  if (record.status === "pending") {
+  if (status === "pending") {
     return "Awaiting human review";
   }
-  return payload.status?.trim() || record.status;
+  return status;
 }
 
 type SeenProgressState = {
@@ -468,13 +482,17 @@ type PermissionReviewCardProps = {
 
 function PermissionReviewCard(props: PermissionReviewCardProps) {
   const { payload, permissionRecord, busy, errorText, onRespond } = props;
+  const status = resolvePermissionCardStatus(payload, permissionRecord);
   const statusText = resolvePermissionStatusText(payload, permissionRecord);
-  const isPending = (permissionRecord?.status ?? payload.status ?? "pending") === "pending";
+  const isPending = status === "pending";
   const toolLabel =
     payload.tool_name?.trim() || payload.tool_call_id?.trim() || "Permission review";
+  const cardClassName = isPending
+    ? TEAM_TASK_PERMISSION_CARD_CLASS
+    : "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-3 py-2";
 
   return (
-    <div className={TEAM_TASK_PERMISSION_CARD_CLASS} data-team-permission-card="true">
+    <div className={cardClassName} data-team-permission-card="true">
       <div className={TEAM_TASK_PERMISSION_CARD_HEADER_CLASS}>
         <span className={TEAM_TASK_PERMISSION_CARD_TITLE_CLASS}>{toolLabel}</span>
         <span className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</span>

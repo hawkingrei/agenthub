@@ -379,6 +379,24 @@ export function resolveChatMessageText(payload: unknown): string | null {
   return null;
 }
 
+export function resolveVisibleTeamPayloadText(payload: unknown): string | null {
+  const chatText = resolveChatMessageText(payload);
+  if (chatText !== null) {
+    return chatText;
+  }
+  const parsed = parseStructuredTeamPayload(payload);
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "type" in parsed &&
+    (parsed as { type?: unknown }).type === "task_note" &&
+    "text" in parsed
+  ) {
+    return String((parsed as { text?: unknown }).text ?? "");
+  }
+  return null;
+}
+
 export function buildMailboxChatPayload(
   text: string,
   options?: {

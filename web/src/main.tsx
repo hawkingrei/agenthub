@@ -7,11 +7,14 @@ import "bootstrap-icons/font/bootstrap-icons.css";
 import "./tailwind.css";
 import "./styles.css";
 import { mantineTheme } from "./ui/mantine_theme";
+import { ensureServiceWorkerRegistration } from "./push";
 
 const root = document.getElementById("root");
 if (!root) {
   throw new Error("root element missing");
 }
+
+void ensureServiceWorkerRegistration();
 
 createRoot(root).render(
   <React.StrictMode>
