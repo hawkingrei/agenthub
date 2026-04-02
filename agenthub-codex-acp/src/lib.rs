@@ -4,7 +4,7 @@
 use agent_client_protocol::AgentSideConnection;
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
-use codex_core::features::{Feature, Features};
+use codex_features::{Feature, Features};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
 use std::future::Future;
@@ -23,8 +23,8 @@ use tracing_subscriber::fmt::{FormatEvent, FormatFields};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
+mod app_server_thread;
 mod codex_agent;
-mod local_spawner;
 mod prompt_args;
 mod thread;
 
@@ -351,7 +351,7 @@ mod tests {
         responses_websocket_feature_opt_in_enabled, rewrite_misleading_timeout_message,
         should_disable_implicit_responses_websockets,
     };
-    use codex_core::features::{Feature, Features};
+    use codex_features::{Feature, Features};
     use std::sync::{Mutex, MutexGuard};
     use tracing::Level;
 
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn explicit_responses_websocket_feature_keeps_provider_websocket_support() {
         let mut features = Features::with_defaults();
-        features.enable(codex_core::features::Feature::ResponsesWebsockets);
+        features.enable(codex_features::Feature::ResponsesWebsockets);
 
         assert!(responses_websocket_feature_opt_in_enabled(&features));
         assert!(!should_disable_implicit_responses_websockets(
@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn explicit_responses_websocket_v2_feature_keeps_provider_websocket_support() {
         let mut features = Features::with_defaults();
-        features.enable(codex_core::features::Feature::ResponsesWebsocketsV2);
+        features.enable(codex_features::Feature::ResponsesWebsocketsV2);
 
         assert!(responses_websocket_feature_opt_in_enabled(&features));
         assert!(!should_disable_implicit_responses_websockets(

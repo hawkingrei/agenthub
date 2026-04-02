@@ -220,8 +220,14 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     }
     handleTerminalScroll();
   }, [acpTab, handleTerminalScroll, terminalOutputs.length]);
-  const handleSendInput = React.useCallback(async () => {
-    const text = input.trim();
+  const sendMemberInput = React.useCallback(async (
+    rawText: string,
+    options?: {
+      recordHistory?: boolean;
+      clearComposer?: boolean;
+    }
+  ) => {
+    const text = rawText.trim();
     if (!text || !selectedSessionId || !onSendInput || sendingInputRef.current) {
       return;
     }
@@ -229,15 +235,28 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     setSendingInput(true);
     try {
       await onSendInput(text, selectedSessionId);
-      setInputHistory((prev) => pushInputHistory(prev, text));
-      setInputHistoryCursor(-1);
-      inputHistoryDraftRef.current = "";
-      setInput("");
+      if (options?.recordHistory) {
+        setInputHistory((prev) => pushInputHistory(prev, text));
+        setInputHistoryCursor(-1);
+      }
+      if (options?.clearComposer) {
+        inputHistoryDraftRef.current = "";
+        setInput("");
+      }
     } finally {
       sendingInputRef.current = false;
       setSendingInput(false);
     }
-  }, [input, onSendInput, selectedSessionId]);
+  }, [onSendInput, selectedSessionId]);
+  const handleSendInput = React.useCallback(async () => {
+    await sendMemberInput(input, {
+      recordHistory: true,
+      clearComposer: true,
+    });
+  }, [input, sendMemberInput]);
+  const handleSubmitRequestUserInput = React.useCallback(async (text: string) => {
+    await sendMemberInput(text);
+  }, [sendMemberInput]);
   const handleInputChange = React.useCallback(
     (value: string) => {
       setInput(value);
@@ -310,6 +329,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,
       ansi,
+      onSubmitRequestUserInput: canSendInput ? handleSubmitRequestUserInput : undefined,
     }),
     [
       acpConversation.acpConversationRef,
@@ -328,6 +348,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpConversation.showConversationTopReachedHint,
       acpView.runStatus?.status,
       ansi,
+      canSendInput,
+      handleSubmitRequestUserInput,
       memberEventsLoading,
     ]
   );

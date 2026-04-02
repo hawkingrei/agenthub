@@ -22,15 +22,20 @@ agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-arg0 = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-core = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-mcp-server = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-protocol = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-login = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-shell-command = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-utils-approval-presets = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
-codex-utils-cli = { git = "https://github.com/zed-industries/codex", rev = "ab7a5b87a9e455235f65637f1675c03051481c87" }
+codex-apply-patch = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-arg0 = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-app-server-client = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-app-server-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-core = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-exec-server = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-features = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-feedback = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-mcp-server = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-protocol = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-login = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-shell-command = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-utils-approval-presets = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
+codex-utils-cli = { git = "https://github.com/openai/codex", tag = "rust-v0.118.0" }
 heck = "0.5.0"
 itertools = "0.14.0"
 regex-lite = "0.1"

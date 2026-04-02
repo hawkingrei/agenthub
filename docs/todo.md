@@ -1,6 +1,7 @@
 # TODO
 
 Active backlog only. Keep this file small and current.
+- [ ] Refactor `agenthub-codex-acp` prompt delivery onto official `openai/codex` app-server turn semantics: replace the current `submission_id`-centric prompt state machine with ACP session to `thread/start` or `thread/resume` mapping plus `turn/start` or `turn/steer` routing, while preserving approval bridging and existing ACP history replay guarantees. Record implementation notes in `docs/journal/2026-04-02-openai-codex-baseline.md`.
 - [ ] Verify split release assets on both `push` and `workflow_dispatch`: the `Release` workflow should publish separate release-mode archives for `agenthub` and `agenthub-codex-acp` on `linux-amd64`, `linux-arm64`, and `darwin-arm64`, plus `agenthub-<version>-source.tar.gz` and `SHA256SUMS.txt`. Record release run IDs and uploaded asset names in `docs/journal/2026-04-02-release-assets-workflow.md`.
 - [ ] Verify direct `actor send` target validation after merge: direct mailbox sends should reject role aliases such as `leader`/`worker` and require canonical Team `spec.members[].member_id` values, while human mailbox targets (`user`, `user:<id>`) and valid member IDs continue to work. Record focused notes and push/PR CI run IDs in `docs/journal/2026-03-31-actor-send-direct-target-validation.md`.
 - [ ] Verify Team leader continuity workspace reuse after restart: on `agenthub.hawkingrei.com`, create/update leader-side `AGENTS.md` and `TODO.md`, restart the same Team member runtime (not `Force New Session`), and confirm the next leader launch still sees the same files while `Force New Session` continues to clear ACP continuity only. Record Chrome DevTools notes and push/PR CI run IDs in `docs/journal/2026-04-01-runtime-launch-vs-acp-continuity-comments.md`.
@@ -64,6 +65,7 @@ Active backlog only. Keep this file small and current.
 
 ## ACP And Adapter Hardening
 
+- [ ] Polish ACP-native Codex `request_user_input` UX after the inline card rollout: cover richer note-entry flows in browser-level regression fixtures, and decide whether pending questions should eventually bypass prompt-text serialization entirely (see `docs/journal/2026-04-02-openai-codex-baseline.md`).
 - [ ] Verify AgentHub-managed Codex skill materialization end to end: ACP Team/runtime skills should be written under `~/.agents/skills/agenthub-runtime/...`, injected as absolute-path ACP `<skill>` wrappers, and translated by `agenthub-codex-acp` into native Codex `UserInput::Skill` items while dynamic actor runtime context remains a separate text prefix block; record evidence before closing this item (see `docs/journal/2026-03-24-codex-acp-native-skill-injection.md`).
 - [ ] Audit `agenthub-codex-acp` provenance and licensing metadata so any MIT-derived material preserves the required notice and repository metadata stays legally accurate before the next release.
 - [ ] Verify the codex-acp upstream PR160 sync after the current lockfile upgrade so approvals, `ModelReroute`, and model preset lookup remain compatible across config, options, and model APIs (see `docs/features/acp-runtime.md`, `docs/journal/2026-02-19-codex-acp-upstream-sync-pr160.md`).

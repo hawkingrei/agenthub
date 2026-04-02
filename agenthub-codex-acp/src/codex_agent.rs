@@ -11,8 +11,8 @@ use agent_client_protocol::{
     SetSessionModelRequest, SetSessionModelResponse,
 };
 use codex_core::{
-    CodexAuth, NewThread, RolloutRecorder, ThreadManager, ThreadSortKey,
-    auth::{AuthManager, read_codex_api_key_from_env, read_openai_api_key_from_env},
+    CodexAuth, RolloutRecorder, ThreadManager, ThreadSortKey,
+    auth::AuthManager,
     config::{
         Config,
         types::{McpServerConfig, McpServerTransportConfig},
@@ -21,6 +21,8 @@ use codex_core::{
     models_manager::collaboration_mode_presets::CollaborationModesConfig,
     parse_cursor,
 };
+use codex_exec_server::EnvironmentManager;
+use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{CODEX_API_KEY_ENV_VAR, OPENAI_API_KEY_ENV_VAR};
 use codex_protocol::{
     ThreadId,
@@ -38,10 +40,8 @@ use std::{
 use tracing::{debug, info, warn};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{
-    local_spawner::{AcpFs, LocalSpawner},
-    thread::Thread,
-};
+use crate::app_server_thread;
+use crate::thread::Thread;
 
 /// The Codex implementation of the ACP Agent trait.
 ///
@@ -76,26 +76,17 @@ impl CodexAgent {
 
         let client_capabilities: Arc<Mutex<ClientCapabilities>> = Arc::default();
 
-        let local_spawner = LocalSpawner::new();
-        let capabilities_clone = client_capabilities.clone();
         let session_roots: Arc<Mutex<HashMap<SessionId, PathBuf>>> = Arc::default();
-        let session_roots_clone = session_roots.clone();
-        let thread_manager = ThreadManager::new_with_fs(
+        let _capabilities_clone = client_capabilities.clone();
+        let _session_roots_clone = session_roots.clone();
+        let thread_manager = ThreadManager::new(
             &config,
             auth_manager.clone(),
             SessionSource::Unknown,
             CollaborationModesConfig {
-                // False for now
-                default_mode_request_user_input: false,
+                default_mode_request_user_input: true,
             },
-            Box::new(move |thread_id| {
-                Arc::new(AcpFs::new(
-                    Self::session_id_from_thread_id(thread_id),
-                    capabilities_clone.clone(),
-                    local_spawner.clone(),
-                    session_roots_clone.clone(),
-                ))
-            }),
+            Arc::new(EnvironmentManager::from_env()),
         );
         Self {
             auth_manager,
@@ -105,10 +96,6 @@ impl CodexAgent {
             sessions: Rc::default(),
             session_roots,
         }
-    }
-
-    fn session_id_from_thread_id(thread_id: ThreadId) -> SessionId {
-        SessionId::new(thread_id.to_string())
     }
 
     fn get_thread(&self, session_id: &SessionId) -> Result<Rc<Thread>, Error> {
@@ -136,7 +123,10 @@ impl CodexAgent {
     ) -> Result<Config, Error> {
         let mut config = self.config.clone();
         config.include_apply_patch_tool = true;
-        config.cwd.clone_from(cwd);
+        config.cwd = cwd
+            .clone()
+            .try_into()
+            .map_err(|e: std::io::Error| Error::internal_error().data(e.to_string()))?;
 
         // Propagate any client-provided MCP servers that codex-rs supports.
         let mut new_mcp_servers = config.mcp_servers.get().clone();
@@ -171,6 +161,7 @@ impl CodexAgent {
                             disabled_reason: None,
                             scopes: None,
                             oauth_resource: None,
+                            tools: HashMap::new(),
                         },
                     );
                 }
@@ -206,6 +197,7 @@ impl CodexAgent {
                             disabled_reason: None,
                             scopes: None,
                             oauth_resource: None,
+                            tools: HashMap::new(),
                         },
                     );
                 }
@@ -298,6 +290,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
                         idx,
                         ResponseItem::CustomToolCallOutput {
                             call_id: call_id.clone(),
+                            name: None,
                             output: aborted_call_output(),
                         },
                     ));
@@ -371,10 +364,18 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                     repaired += 1;
                 }
             }
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output }) => {
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                call_id,
+                output,
+                ..
+            }) => {
                 if custom_tool_call_ids.contains(&call_id) {
                     retained.push(RolloutItem::ResponseItem(
-                        ResponseItem::CustomToolCallOutput { call_id, output },
+                        ResponseItem::CustomToolCallOutput {
+                            call_id,
+                            name: None,
+                            output,
+                        },
                     ));
                 } else {
                     repaired += 1;
@@ -429,6 +430,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                         idx,
                         RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
                             call_id: call_id.clone(),
+                            name: None,
                             output: aborted_call_output(),
                         }),
                     ));
@@ -607,23 +609,15 @@ impl Agent for CodexAgent {
         let config = self.build_session_config(&cwd, mcp_servers)?;
         let num_mcp_servers = config.mcp_servers.len();
 
-        let NewThread {
-            thread_id,
-            thread,
-            session_configured: _,
-        } = Box::pin(self.thread_manager.start_thread(config.clone()))
-            .await
-            .map_err(|_e| Error::internal_error())?;
-
-        let session_id = Self::session_id_from_thread_id(thread_id);
+        let (session_id, thread_impl) = app_server_thread::start_new_thread(config.clone()).await?;
         // Record the session root for filesystem sandboxing.
         self.session_roots
             .lock()
             .unwrap()
-            .insert(session_id.clone(), config.cwd.clone());
+            .insert(session_id.clone(), config.cwd.to_path_buf());
         let thread = Rc::new(Thread::new(
             session_id.clone(),
-            thread,
+            thread_impl,
             self.auth_manager.clone(),
             self.thread_manager.get_models_manager(),
             self.client_capabilities.clone(),
@@ -680,22 +674,11 @@ impl Agent for CodexAgent {
 
         let config = self.build_session_config(&cwd, mcp_servers)?;
 
-        let NewThread {
-            thread_id: _,
-            thread,
-            session_configured: _,
-        } = Box::pin(self.thread_manager.resume_thread_with_history(
-            config.clone(),
-            history,
-            self.auth_manager.clone(),
-            false,
-        ))
-        .await
-        .map_err(|e| Error::internal_error().data(e.to_string()))?;
+        let thread_impl = app_server_thread::resume_thread(config.clone(), &session_id).await?;
 
         let thread = Rc::new(Thread::new(
             session_id.clone(),
-            thread,
+            thread_impl,
             self.auth_manager.clone(),
             self.thread_manager.get_models_manager(),
             self.client_capabilities.clone(),
@@ -709,7 +692,7 @@ impl Agent for CodexAgent {
         self.session_roots
             .lock()
             .unwrap()
-            .insert(session_id.clone(), config.cwd);
+            .insert(session_id.clone(), config.cwd.to_path_buf());
         self.sessions.borrow_mut().insert(session_id, thread);
 
         Ok(LoadSessionResponse::new()
@@ -894,7 +877,7 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert!(matches!(
             &items[1],
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output })
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput { call_id, output, .. })
                 if call_id == "call-1" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
         ));
     }
@@ -904,6 +887,7 @@ mod tests {
         let mut history = vec![
             ResponseItem::CustomToolCallOutput {
                 call_id: "missing".to_string(),
+                name: None,
                 output: FunctionCallOutputPayload::from_text("ok".to_string()),
             },
             ResponseItem::CustomToolCall {
@@ -920,7 +904,7 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert!(matches!(
             &history[1],
-            ResponseItem::CustomToolCallOutput { call_id, output }
+            ResponseItem::CustomToolCallOutput { call_id, output, .. }
                 if call_id == "call-2" && output == &FunctionCallOutputPayload::from_text("aborted".to_string())
         ));
     }

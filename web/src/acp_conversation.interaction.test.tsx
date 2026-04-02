@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { ConversationItem } from "./conversation";
 
@@ -214,5 +214,159 @@ describe("AcpConversation fold interactions", () => {
 
     expect(detailedFold).not.toBeUndefined();
     expect(detailedFold?.open).toBe(false);
+  });
+
+  it("auto-collapses an older live tool call when it crosses the conversation cutoff", () => {
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-live-cutoff-transition",
+        title: "Shell",
+        status: "in_progress",
+      },
+    ];
+    const baseProps = {
+      windowOffset: 0,
+      isFrozenView: false,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input: string) => input,
+    };
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          {...baseProps}
+        />
+      );
+    });
+
+    const toolFold = container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null;
+    expect(toolFold).not.toBeNull();
+    expect(toolFold?.open).toBe(true);
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          shouldAutoCollapse={true}
+          collapseCutoff={10}
+          {...baseProps}
+        />
+      );
+    });
+
+    const collapsedToolFold = container.querySelector(
+      ".acp-tool-fold"
+    ) as HTMLDetailsElement | null;
+    expect(collapsedToolFold).not.toBeNull();
+    expect(collapsedToolFold?.open).toBe(false);
+  });
+
+  it("submits multi-question request_user_input answers through the shared ACP input callback", async () => {
+    const onSubmitRequestUserInput = vi.fn().mockResolvedValue(undefined);
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "request-user-input:call-1",
+        title: "Question",
+        status: "pending",
+        raw_input: [
+          {
+            id: "scope",
+            header: "Reasoning scope",
+            question: "Which reasoning scope should I use?",
+            isOther: false,
+            isSecret: false,
+            options: [
+              {
+                label: "Plan only",
+                description: "Update only Plan mode.",
+              },
+            ],
+          },
+          {
+            id: "notes",
+            header: "Notes",
+            question: "Add extra context.",
+            isOther: true,
+            isSecret: false,
+            options: [
+              {
+                label: "Reuse current plan",
+                description: "Keep the current plan structure.",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
+    });
+
+    const firstOption = container.querySelector(
+      'input[data-request-user-input-option="Plan only"]'
+    ) as HTMLInputElement | null;
+    const otherOption = container.querySelector(
+      'input[data-request-user-input-option="None of the above"]'
+    ) as HTMLInputElement | null;
+    const submitButton = container.querySelector(
+      'button[data-request-user-input-submit="request-user-input:call-1"]'
+    ) as HTMLButtonElement | null;
+
+    expect(firstOption).not.toBeNull();
+    expect(otherOption).not.toBeNull();
+    expect(submitButton).not.toBeNull();
+    if (!firstOption || !otherOption || !submitButton) return;
+
+    act(() => {
+      firstOption.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      otherOption.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      submitButton.click();
+    });
+
+    expect(onSubmitRequestUserInput).toHaveBeenCalledTimes(1);
+    expect(onSubmitRequestUserInput).toHaveBeenCalledWith(
+      JSON.stringify(
+        {
+          scope: "Plan only",
+          notes: "None of the above",
+        },
+        null,
+        2
+      )
+    );
   });
 });
