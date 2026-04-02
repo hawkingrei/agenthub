@@ -26,6 +26,7 @@ pub struct AgentEventCleanupResult {
 struct AgentEventIdleGcState {
     generation: u64,
     checked_for_generation: bool,
+    completed_generation: u64,
 }
 
 #[derive(Clone)]
@@ -64,6 +65,7 @@ impl AgentEventIdleGc {
                 .or_insert(AgentEventIdleGcState {
                     generation: 0,
                     checked_for_generation: false,
+                    completed_generation: 0,
                 });
             state.generation = state.generation.wrapping_add(1);
             state.checked_for_generation = false;
@@ -131,6 +133,12 @@ impl AgentEventIdleGc {
                         "idle gc check failed"
                     );
                 }
+            }
+            let mut states = states.lock().await;
+            if let Some(state) = states.get_mut(&agent_id)
+                && state.generation == generation
+            {
+                state.completed_generation = generation;
             }
         });
     }
@@ -2754,6 +2762,13 @@ mod tests {
         let remaining_after_first_check =
             wait_for_old_event_count(&pool, old_ts + 1, 0, Duration::from_millis(500)).await;
         assert_eq!(remaining_after_first_check, 0);
+        wait_for_idle_gc_generation_completion(
+            &idle_gc,
+            "agent-idle-gc",
+            1,
+            Duration::from_millis(500),
+        )
+        .await;
 
         sqlx::query(
             r#"
@@ -2812,6 +2827,35 @@ mod tests {
             if tokio::time::Instant::now() >= deadline {
                 panic!(
                     "timed out waiting for old event count: cutoff_ts={cutoff_ts}, expected={expected}, last_remaining={remaining}, timeout_ms={}",
+                    timeout.as_millis()
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    async fn wait_for_idle_gc_generation_completion(
+        idle_gc: &AgentEventIdleGc,
+        agent_id: &str,
+        expected_generation: u64,
+        timeout: Duration,
+    ) {
+        let started_at = tokio::time::Instant::now();
+        let deadline = started_at + timeout;
+        loop {
+            let completed_generation = {
+                let states = idle_gc.states.lock().await;
+                states
+                    .get(agent_id)
+                    .map(|state| state.completed_generation)
+                    .unwrap_or_default()
+            };
+            if completed_generation >= expected_generation {
+                return;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for idle gc generation completion: agent_id={agent_id}, expected_generation={expected_generation}, completed_generation={completed_generation}, timeout_ms={}",
                     timeout.as_millis()
                 );
             }
