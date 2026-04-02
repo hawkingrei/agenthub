@@ -52,7 +52,8 @@ type TeamMailboxPanelProps = {
   toPrettyJson: (value: unknown) => string;
   formatTs: (ts?: number | null) => string;
   busy: string | null;
-  onAckMessage: (message: TeamActorMessageRecord) => Promise<void> | void;
+  onAcceptMessage: (message: TeamActorMessageRecord) => Promise<void> | void;
+  onAcceptVisibleMessages?: (messages: TeamActorMessageRecord[]) => Promise<void> | void;
   chatDraft: string;
   onChatDraftChange: (value: string) => void;
   onSendChatMessage: () => Promise<void> | void;
@@ -124,6 +125,27 @@ function resolveMailboxActorLabel(
   return resolveDisplayName(normalizedActorId, displayNameByActorId, normalizedActorId);
 }
 
+function isMessageAcceptableForInbox(
+  message: TeamActorMessageRecord,
+  inboxActorId: string,
+  humanActorId: string
+): boolean {
+  if (message.status !== "pending") {
+    return false;
+  }
+  const normalizedInboxActorId = inboxActorId.trim();
+  if (!normalizedInboxActorId) {
+    return false;
+  }
+  if (message.to_actor_id === normalizedInboxActorId) {
+    return true;
+  }
+  return (
+    isHumanMailboxActor(message.to_actor_id, humanActorId) &&
+    isHumanMailboxActor(normalizedInboxActorId, humanActorId)
+  );
+}
+
 export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
@@ -143,7 +165,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     toPrettyJson,
     formatTs,
     busy,
-    onAckMessage,
+    onAcceptMessage,
+    onAcceptVisibleMessages,
     chatDraft,
     onChatDraftChange,
     onSendChatMessage,
@@ -180,6 +203,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   const showAdvancedControls = mode === "advanced_only";
   const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
+  const acceptVisibleMessages = conversationMessages.filter((message) =>
+    isMessageAcceptableForInbox(message, chatActors.inboxActorId, normalizedHumanActorId)
+  );
   const humanPendingCount =
     snapshot?.mailbox.recent_messages.filter(
       (message) =>
@@ -281,7 +307,11 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       </div>
 
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
-        <h4>Inbox (raw query)</h4>
+        <h4>Inbox Query (read-only)</h4>
+        <p className={TEAM_MUTED_TEXT_CLASS}>
+          Refresh inspects mailbox state only. Accept pending work from the conversation pane when
+          you are taking ownership of it.
+        </p>
         <input
           className={TEAM_PANEL_INPUT_CLASS}
           placeholder="actor_id"
@@ -312,11 +342,11 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
           onClick={onRefreshInbox}
           disabled={busy === "refresh-inbox"}
-          title="Refresh inbox"
-          aria-label="Refresh inbox"
+          title="Refresh read-only inbox"
+          aria-label="Refresh read-only inbox"
         >
           <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-          <span>Refresh</span>
+          <span>Refresh Query</span>
         </button>
       </div>
     </div>
@@ -409,22 +439,43 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   )}
                 </strong>
               </div>
-              {developerMode && (
-                <>
-                  <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
-                  <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
-                </>
-              )}
-              <button
-                type="button"
-                className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
-                onClick={onJumpToBottom}
-                disabled={conversationMessages.length === 0}
-                title="Jump to latest message"
-              >
-                Jump to bottom
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {developerMode && (
+                  <>
+                    <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
+                    <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                  onClick={() => {
+                    void onAcceptVisibleMessages?.(acceptVisibleMessages);
+                  }}
+                  disabled={
+                    busy === "accept-visible" ||
+                    acceptVisibleMessages.length === 0 ||
+                    !onAcceptVisibleMessages
+                  }
+                  title="Accept pending inbox work visible in this conversation"
+                >
+                  Accept visible pending
+                </button>
+                <button
+                  type="button"
+                  className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
+                  onClick={onJumpToBottom}
+                  disabled={conversationMessages.length === 0}
+                  title="Jump to latest message"
+                >
+                  Jump to bottom
+                </button>
+              </div>
             </div>
+            <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
+              Refresh is read-only. Use Accept to consume pending inbox work for{" "}
+              <code>{chatActors.inboxActorId || "-"}</code>.
+            </p>
             <ul
               className="teams-chat-messages"
               ref={chatMessagesRef}
@@ -467,16 +518,20 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     ) : (
                       <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
                     )}
-                    {message.status !== "delivered" && (
+                    {isMessageAcceptableForInbox(
+                      message,
+                      chatActors.inboxActorId,
+                      normalizedHumanActorId
+                    ) && (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
-                            void onAckMessage(message);
+                            void onAcceptMessage(message);
                           }}
-                          disabled={busy === `ack-${message.message_id}`}
+                          disabled={busy === `accept-${message.message_id}`}
                           className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
                         >
-                          Ack
+                          Accept
                         </button>
                       </div>
                     )}

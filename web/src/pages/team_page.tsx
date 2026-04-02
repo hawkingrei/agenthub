@@ -1476,7 +1476,13 @@ export function TeamPage(props: TeamPageProps) {
     refreshSnapshot,
   });
 
-  const { onSendChatMessage, onSendMessage, onRefreshInbox, onAckMessage } =
+  const {
+    onSendChatMessage,
+    onSendMessage,
+    onRefreshInbox,
+    onAcceptMessage,
+    onAcceptVisibleMessages,
+  } =
     useTeamMailboxActions({
       token: props.token,
       tab,
@@ -4073,7 +4079,8 @@ export function TeamPage(props: TeamPageProps) {
                       toPrettyJson={toPrettyJson}
                       formatTs={formatTs}
                       busy={busy}
-                      onAckMessage={onAckMessage}
+                      onAcceptMessage={onAcceptMessage}
+                      onAcceptVisibleMessages={onAcceptVisibleMessages}
                       chatDraft={chatDraft}
                       onChatDraftChange={setChatDraft}
                       onSendChatMessage={onSendChatMessage}
@@ -4270,7 +4277,8 @@ export function TeamPage(props: TeamPageProps) {
                           toPrettyJson={toPrettyJson}
                           formatTs={formatTs}
                           busy={busy}
-                          onAckMessage={onAckMessage}
+                          onAcceptMessage={onAcceptMessage}
+                          onAcceptVisibleMessages={onAcceptVisibleMessages}
                           chatDraft={chatDraft}
                           onChatDraftChange={setChatDraft}
                           onSendChatMessage={onSendChatMessage}

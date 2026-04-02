@@ -92,7 +92,8 @@ vi.mock("./team/use_team_mailbox_actions", () => ({
     onSendChatMessage: vi.fn().mockResolvedValue(undefined),
     onSendMessage: vi.fn().mockResolvedValue(undefined),
     onRefreshInbox: vi.fn().mockResolvedValue(undefined),
-    onAckMessage: vi.fn().mockResolvedValue(undefined),
+    onAcceptMessage: vi.fn().mockResolvedValue(undefined),
+    onAcceptVisibleMessages: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 

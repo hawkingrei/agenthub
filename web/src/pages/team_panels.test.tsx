@@ -3297,11 +3297,12 @@ describe("team panels interactions", () => {
     expect(sendButton.disabled).toBe(false);
   });
 
-  it("TeamMailboxPanel handles member chat, ack, and advanced mailbox controls", () => {
+  it("TeamMailboxPanel handles member chat, accept, and advanced mailbox controls", () => {
     const onSelectMember = vi.fn();
     const onConversationScroll = vi.fn();
     const onJumpToBottom = vi.fn();
-    const onAckMessage = vi.fn();
+    const onAcceptMessage = vi.fn();
+    const onAcceptVisibleMessages = vi.fn();
     const onChatDraftChange = vi.fn();
     const onSendChatMessage = vi.fn();
     const onMsgFromActorIdChange = vi.fn();
@@ -3322,6 +3323,11 @@ describe("team panels interactions", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     const pendingMessage = buildMailboxMessage(1);
+    const pendingForLeaderMessage = buildMailboxMessage(3, {
+      from_actor_id: "worker-agent",
+      to_actor_id: "leader-agent",
+      payload: { type: "chat_message", text: "pending-to-leader" },
+    });
     const deliveredMessage = buildMailboxMessage(2, {
       from_actor_id: "worker-agent",
       to_actor_id: "leader-agent",
@@ -3353,11 +3359,12 @@ describe("team panels interactions", () => {
           chatMessagesRef={React.createRef<HTMLUListElement>()}
           onConversationScroll={onConversationScroll}
           onJumpToBottom={onJumpToBottom}
-          conversationMessages={[pendingMessage, deliveredMessage]}
+          conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
           toPrettyJson={toPrettyJson}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={onAckMessage}
+          onAcceptMessage={onAcceptMessage}
+          onAcceptVisibleMessages={onAcceptVisibleMessages}
           chatDraft="draft"
           onChatDraftChange={onChatDraftChange}
           onSendChatMessage={onSendChatMessage}
@@ -3404,7 +3411,15 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Ack"));
+    clickElement(
+      required(
+        Array.from(container.querySelectorAll(".teams-chat-messages button")).find((candidate) =>
+          candidate.textContent?.includes("Accept")
+        ) as HTMLButtonElement | undefined,
+        "message accept button missing"
+      )
+    );
+    clickElement(findButtonByText(container, "Accept visible pending"));
     clickElement(findButtonByText(container, "Jump to bottom"));
 
     const chatDraft = required(
@@ -3431,7 +3446,8 @@ describe("team panels interactions", () => {
     expect(onSelectMember).toHaveBeenCalledWith("user");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
-    expect(onAckMessage).toHaveBeenCalledWith(pendingMessage);
+    expect(onAcceptMessage).toHaveBeenCalledWith(pendingMessage);
+    expect(onAcceptVisibleMessages).toHaveBeenCalledWith([pendingMessage]);
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
@@ -3460,11 +3476,12 @@ describe("team panels interactions", () => {
           chatMessagesRef={React.createRef<HTMLUListElement>()}
           onConversationScroll={onConversationScroll}
           onJumpToBottom={onJumpToBottom}
-          conversationMessages={[pendingMessage, deliveredMessage]}
+          conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
           toPrettyJson={toPrettyJson}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={onAckMessage}
+          onAcceptMessage={onAcceptMessage}
+          onAcceptVisibleMessages={onAcceptVisibleMessages}
           chatDraft="draft"
           onChatDraftChange={onChatDraftChange}
           onSendChatMessage={onSendChatMessage}
@@ -3565,7 +3582,7 @@ describe("team panels interactions", () => {
       required(container.querySelector('.teams-message-panel input[type="checkbox"]') as HTMLInputElement | null, "include delivered checkbox missing"),
       true
     );
-    clickElement(findButtonByAriaLabel(container, "Refresh inbox"));
+    clickElement(findButtonByAriaLabel(container, "Refresh read-only inbox"));
 
     expect(onMsgFromActorIdChange).toHaveBeenCalledWith("leader-2");
     expect(onMsgToActorIdChange).toHaveBeenCalledWith("worker-2");
@@ -3600,7 +3617,7 @@ describe("team panels interactions", () => {
           toPrettyJson={(value) => JSON.stringify(value)}
           formatTs={(ts) => String(ts)}
           busy={null}
-          onAckMessage={() => {}}
+          onAcceptMessage={() => {}}
           chatDraft=""
           onChatDraftChange={() => {}}
           onSendChatMessage={() => {}}
@@ -3676,7 +3693,7 @@ describe("team panels interactions", () => {
           toPrettyJson={toPrettyJson}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={vi.fn()}
+          onAcceptMessage={vi.fn()}
           chatDraft=""
           onChatDraftChange={vi.fn()}
           onSendChatMessage={vi.fn()}
@@ -3753,7 +3770,7 @@ describe("team panels interactions", () => {
           toPrettyJson={toPrettyJson}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={vi.fn()}
+          onAcceptMessage={vi.fn()}
           chatDraft=""
           onChatDraftChange={vi.fn()}
           onSendChatMessage={vi.fn()}
@@ -3828,7 +3845,7 @@ describe("team panels interactions", () => {
           toPrettyJson={(value) => JSON.stringify(value)}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={vi.fn()}
+          onAcceptMessage={vi.fn()}
           chatDraft=""
           onChatDraftChange={vi.fn()}
           onSendChatMessage={vi.fn()}
@@ -3894,7 +3911,7 @@ describe("team panels interactions", () => {
           toPrettyJson={(value) => JSON.stringify(value)}
           formatTs={(ts) => `ts-${String(ts)}`}
           busy={null}
-          onAckMessage={vi.fn()}
+          onAcceptMessage={vi.fn()}
           chatDraft=""
           onChatDraftChange={vi.fn()}
           onSendChatMessage={vi.fn()}

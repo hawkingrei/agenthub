@@ -205,7 +205,7 @@ describe("useTeamMailboxActions", () => {
     }
   });
 
-  it("acks mailbox message with fallback actor id and refreshes non-mailbox views", async () => {
+  it("accepts mailbox message with fallback actor id and refreshes non-mailbox views", async () => {
     mockedApi.ackTeamRunMessage.mockResolvedValueOnce(buildMessage({ status: "delivered" }));
 
     let captured: TeamMailboxActions | null = null;
@@ -220,7 +220,7 @@ describe("useTeamMailboxActions", () => {
 
     try {
       await act(async () => {
-        await captured?.onAckMessage(buildMessage({ message_id: 88, to_actor_id: "worker-x" }));
+        await captured?.onAcceptMessage(buildMessage({ message_id: 88, to_actor_id: "worker-x" }));
       });
 
       expect(mockedApi.ackTeamRunMessage).toHaveBeenCalledWith(
@@ -231,6 +231,51 @@ describe("useTeamMailboxActions", () => {
       );
       expect(options.loadInbox).toHaveBeenCalledWith();
       expect(options.refreshEvents).toHaveBeenCalledWith("run-1");
+      expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("accepts visible pending messages once and refreshes the selected inbox", async () => {
+    mockedApi.ackTeamRunMessage.mockImplementation(
+      async (_token, _runId, messageId, actorId) =>
+        buildMessage({ message_id: messageId, to_actor_id: actorId, status: "delivered" })
+    );
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions();
+
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onAcceptVisibleMessages([
+          buildMessage({ message_id: 51, to_actor_id: "worker-1", status: "pending" }),
+          buildMessage({ message_id: 51, to_actor_id: "worker-1", status: "pending" }),
+          buildMessage({ message_id: 52, to_actor_id: "worker-1", status: "pending" }),
+          buildMessage({ message_id: 99, to_actor_id: "worker-1", status: "delivered" }),
+        ]);
+      });
+
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenCalledTimes(2);
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "run-1",
+        51,
+        "worker-1"
+      );
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "run-1",
+        52,
+        "worker-1"
+      );
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-1");
       expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
     } finally {
       cleanupHarness(root, container);

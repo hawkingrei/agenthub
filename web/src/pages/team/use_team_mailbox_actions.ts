@@ -51,6 +51,19 @@ type TeamMailboxApiClient = {
   ) => Promise<TeamActorMessageRecord>;
 };
 
+function collectPendingMessages(messages: TeamActorMessageRecord[]): TeamActorMessageRecord[] {
+  const seen = new Set<number>();
+  const pending: TeamActorMessageRecord[] = [];
+  for (const message of messages) {
+    if (message.status !== "pending" || seen.has(message.message_id)) {
+      continue;
+    }
+    seen.add(message.message_id);
+    pending.push(message);
+  }
+  return pending;
+}
+
 function buildTeamMailboxApiClient(token: string): TeamMailboxApiClient {
   return {
     sendTeamRunMessage: (runId, payload) => api.sendTeamRunMessage(token, runId, payload),
@@ -84,6 +97,28 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
   } = options;
 
   const teamMailboxApi = useMemo(() => buildTeamMailboxApiClient(token), [token]);
+
+  const refreshAfterMailboxAccept = useCallback(
+    async (actorId?: string) => {
+      if (!activeRunIdForSelectedTeam) {
+        return;
+      }
+      const nextInboxActorId = actorId?.trim();
+      if (tab === "mailbox") {
+        await Promise.all([
+          nextInboxActorId ? loadInbox(nextInboxActorId) : loadInbox(),
+          refreshSnapshot(activeRunIdForSelectedTeam),
+        ]);
+      } else {
+        await Promise.all([
+          loadInbox(),
+          refreshEvents(activeRunIdForSelectedTeam),
+          refreshSnapshot(activeRunIdForSelectedTeam),
+        ]);
+      }
+    },
+    [activeRunIdForSelectedTeam, loadInbox, refreshEvents, refreshSnapshot, tab]
+  );
 
   const onSendChatMessage = useCallback(async () => {
     if (!activeRunIdForSelectedTeam) {
@@ -211,11 +246,11 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     }
   }, [activeRunIdForSelectedTeam, loadInbox, setBusy, setError]);
 
-  const onAckMessage = useCallback(
+  const onAcceptMessage = useCallback(
     async (message: TeamActorMessageRecord) => {
       if (!activeRunIdForSelectedTeam) return;
       const actorId = inboxActorId.trim() || message.to_actor_id;
-      setBusy(`ack-${message.message_id}`);
+      setBusy(`accept-${message.message_id}`);
       setError(null);
       try {
         await teamMailboxApi.ackTeamRunMessage(
@@ -223,15 +258,7 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
           message.message_id,
           actorId
         );
-        if (tab === "mailbox") {
-          await Promise.all([loadInbox(actorId), refreshSnapshot(activeRunIdForSelectedTeam)]);
-        } else {
-          await Promise.all([
-            loadInbox(),
-            refreshEvents(activeRunIdForSelectedTeam),
-            refreshSnapshot(activeRunIdForSelectedTeam),
-          ]);
-        }
+        await refreshAfterMailboxAccept(actorId);
       } catch (err) {
         setError(parseErrorMessage(err));
       } finally {
@@ -241,12 +268,46 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     [
       activeRunIdForSelectedTeam,
       inboxActorId,
-      loadInbox,
-      refreshEvents,
-      refreshSnapshot,
+      refreshAfterMailboxAccept,
       setBusy,
       setError,
-      tab,
+      teamMailboxApi,
+    ]
+  );
+
+  const onAcceptVisibleMessages = useCallback(
+    async (messages: TeamActorMessageRecord[]) => {
+      if (!activeRunIdForSelectedTeam) return;
+      const pendingMessages = collectPendingMessages(messages);
+      if (pendingMessages.length === 0) {
+        return;
+      }
+      const actorId = inboxActorId.trim();
+      setBusy("accept-visible");
+      setError(null);
+      try {
+        await Promise.all(
+          pendingMessages.map((message) =>
+            teamMailboxApi.ackTeamRunMessage(
+              activeRunIdForSelectedTeam,
+              message.message_id,
+              actorId || message.to_actor_id
+            )
+          )
+        );
+        await refreshAfterMailboxAccept(actorId || pendingMessages[0]?.to_actor_id);
+      } catch (err) {
+        setError(parseErrorMessage(err));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [
+      activeRunIdForSelectedTeam,
+      inboxActorId,
+      refreshAfterMailboxAccept,
+      setBusy,
+      setError,
       teamMailboxApi,
     ]
   );
@@ -255,6 +316,7 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     onSendChatMessage,
     onSendMessage,
     onRefreshInbox,
-    onAckMessage,
+    onAcceptMessage,
+    onAcceptVisibleMessages,
   };
 }

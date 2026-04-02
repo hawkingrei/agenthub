@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library(
     name = "agenthub_team_prompts",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = glob(["prompts/**"]),
     crate_name = "agenthub_team_prompts",
     edition = "2024",
     aliases = aliases(),
@@ -16,6 +17,7 @@ rust_library(
 rust_test(
     name = "agenthub_team_prompts_tests",
     crate = ":agenthub_team_prompts",
+    compile_data = glob(["prompts/**"]),
     edition = "2024",
     aliases = aliases(
         normal_dev = True,
