@@ -465,8 +465,12 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Canonical system-managed tasks and execution state.");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
-    expect(container.textContent).toContain("leader · working");
-    expect(container.textContent).toContain("worker · working");
+    expect(container.textContent).toContain("planning handoff");
+    expect(container.textContent).toContain("collecting evidence");
+    expect(container.textContent).toContain("Leader · Working");
+    expect(container.textContent).toContain("Worker · Working");
+    expect(container.textContent).toContain("id leader-agent");
+    expect(container.textContent).toContain("id worker-agent");
     expect(container.textContent).not.toContain("Console");
 
     act(() => {
@@ -1609,15 +1613,15 @@ describe("team panels interactions", () => {
     expect(queryButtonByAriaLabel(container, "Toggle thread options")).toBeNull();
     expect(queryButtonByText(container, "Refresh Channel")).toBeNull();
     expect(queryButtonByText(container, "Refresh Thread")).toBeNull();
-    changeInputValue(
-      required(
-        container.querySelector(
-          'textarea[placeholder="Message #all"]'
-        ) as HTMLTextAreaElement | null,
-        "draft textarea missing"
-      ),
-      "please continue @Worker Agent and review"
+    const draftTextarea = required(
+      container.querySelector(
+        'textarea[placeholder="Message #all"]'
+      ) as HTMLTextAreaElement | null,
+      "draft textarea missing"
     );
+    expect(draftTextarea.id).toBe("team-task-panel-message");
+    expect(draftTextarea.name).toBe("team_task_message");
+    changeInputValue(draftTextarea, "please continue @Worker Agent and review");
     clickElement(findButtonByText(container, "Send"));
 
     expect(onSendMessage).toHaveBeenCalledTimes(1);

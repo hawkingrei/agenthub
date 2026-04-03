@@ -241,6 +241,7 @@ export function InputDock({
   showConversationJump,
   isComposingRef,
 }: InputDockProps) {
+  const textareaId = React.useId();
   const [showHistory, setShowHistory] = React.useState(false);
   const [inputFocused, setInputFocused] = React.useState(false);
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
@@ -382,6 +383,8 @@ export function InputDock({
         </div>
         <div className="input-editor-row">
           <textarea
+            id={textareaId}
+            name="acp_input"
             className={INPUT_DOCK_TEXTAREA_CLASS}
             ref={textareaRef}
             placeholder={inputPlaceholder}

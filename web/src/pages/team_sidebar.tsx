@@ -61,14 +61,14 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
+const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 
-export function formatWorkLabel(
-  status: ReturnType<typeof normalizeTeamMemberWorkStatus>
-): string {
-  if (status === "no_run") {
-    return "idle";
-  }
-  return status;
+function humanizeToken(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
@@ -93,28 +93,91 @@ export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | n
   return parts.join(" · ");
 }
 
+function formatRoleLabel(role: string): string {
+  return humanizeToken(role);
+}
+
+function formatLifecycleLabel(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
+): string {
+  if (lifecycle === "working") {
+    return "Online";
+  }
+  if (lifecycle === "stopped") {
+    return "Offline";
+  }
+  return humanizeToken(lifecycle);
+}
+
+function formatMemberStateLabel(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
+  workStatus: ReturnType<typeof normalizeTeamMemberWorkStatus>
+): string {
+  if (lifecycle === "missing") {
+    return "Missing";
+  }
+  if (workStatus === "blocked") {
+    return "Blocked";
+  }
+  if (workStatus === "pending") {
+    return "Waiting";
+  }
+  if (workStatus === "working") {
+    return "Working";
+  }
+  if (workStatus === "done") {
+    return "Done";
+  }
+  if (workStatus === "idle" || workStatus === "no_run") {
+    if (lifecycle === "working") {
+      return "Online";
+    }
+    return formatLifecycleLabel(lifecycle);
+  }
+  return formatLifecycleLabel(lifecycle);
+}
+
+function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
+  const currentWork = member.current_work?.trim();
+  if (!currentWork || currentWork === NO_ACTIVE_RUN_CONTEXT) {
+    return null;
+  }
+  return currentWork;
+}
+
+function formatDeveloperMemberLabel(memberId: string): string {
+  if (memberId.length <= 18) {
+    return memberId;
+  }
+  return `${memberId.slice(0, 8)}...${memberId.slice(-4)}`;
+}
+
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[30px] border border-ui-border/70 bg-white/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]";
+  "rounded-[24px] border border-black/[0.05] bg-white/52 p-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[20px] border border-ui-border/70 bg-white/55 p-2 backdrop-blur-sm";
+  "rounded-[18px] border border-black/[0.05] bg-white/68 p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] backdrop-blur-sm";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
   "px-1.5 py-1";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 px-2.5 py-1.5 text-[12px] font-medium text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-black/[0.06] bg-white/94 px-3 py-2 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-white/70";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
+  "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2.5 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.06] bg-white/94 px-3 py-2.5 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-white/70";
+  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
+const TEAM_WORKBENCH_SIDEBAR_WORK_CLASS =
+  "truncate text-[12px] font-medium leading-5 text-ui-text-secondary";
+const TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS =
+  "truncate text-[11px] leading-4 text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
-  "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
+  "mono truncate text-[10px] leading-4 text-ui-text-muted/72";
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -562,17 +625,15 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   const isActiveMember =
                     focusedAgentMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
                   const primaryLabel = resolveMemberPrimaryLabel(member);
-                  const memberMeta = Array.from(
-                    new Set(
-                      [
-                        primaryLabel !== member.member_id ? member.member_id : null,
-                        member.role,
-                        lifecycle,
-                      ].filter(
-                        (value): value is string => Boolean(value && value !== "unknown")
-                      )
-                    )
-                  ).join(" · ");
+                  const currentWorkLabel = resolveCurrentWorkLabel(member);
+                  const memberSummaryLabel = [
+                    formatRoleLabel(member.role),
+                    formatMemberStateLabel(lifecycle, workStatus),
+                  ].join(" · ");
+                  const developerMemberLabel =
+                    developerMode && primaryLabel !== member.member_id
+                      ? `id ${formatDeveloperMemberLabel(member.member_id)}`
+                      : null;
                   return (
                     <button
                       key={member.member_id}
@@ -584,7 +645,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={
-                        [primaryLabel, developerMode ? member.member_id : null, member.current_work]
+                        [primaryLabel, developerMode ? member.member_id : null, currentWorkLabel]
                           .filter((value) => value && value.trim().length > 0)
                           .join(" · ") || member.member_id
                       }
@@ -610,20 +671,25 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           )}
                         </span>
                       </span>
-                      <span className="truncate text-[11px] leading-4 text-ui-text-muted">
-                        {[member.role, lifecycle, formatWorkLabel(workStatus)]
-                          .filter((value): value is string => Boolean(value && value !== "unknown"))
-                          .join(" · ")}
-                      </span>
-                      {isActiveMember &&
-                        member.current_work?.trim() &&
-                        member.current_work !== "No active run context." && (
-                        <span className="truncate text-[11px] leading-4 text-ui-text-muted/85">
-                          {member.current_work}
+                      {currentWorkLabel && (
+                        <span
+                          className={`${TEAM_WORKBENCH_SIDEBAR_WORK_CLASS} ${
+                            isActiveMember ? "text-ui-text-primary" : ""
+                          }`}
+                        >
+                          {currentWorkLabel}
                         </span>
-                        )}
-                      {developerMode && memberMeta && (
-                        <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>{memberMeta}</span>
+                      )}
+                      <span className={TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS}>
+                        {memberSummaryLabel}
+                      </span>
+                      {developerMemberLabel && (
+                        <span
+                          className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}
+                          title={member.member_id}
+                        >
+                          {developerMemberLabel}
+                        </span>
                       )}
                     </button>
                   );
