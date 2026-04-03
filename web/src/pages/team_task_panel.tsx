@@ -106,7 +106,7 @@ type TeamTaskPanelAudioWindow = Window &
   };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-3 flex flex-col gap-2 rounded-[20px] border border-ui-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.94))] px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]";
+  "mt-3 flex flex-col gap-2 rounded-[18px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.035)]";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
@@ -117,52 +117,52 @@ const TEAM_TASK_ACTIVITY_LIST_CLASS =
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
   "mt-2 min-h-[120px] overflow-y-auto pr-1";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[20px] border border-ui-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.94))] px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]";
+  "rounded-[18px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.97))] px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.035)]";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
   "flex w-full flex-col gap-2";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble relative rounded-[12px] border px-2.5 py-2";
+  "acp-bubble relative rounded-[16px] border px-3 py-2.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(29,78,216,0.12)] bg-[linear-gradient(180deg,rgba(239,246,255,0.96),rgba(248,250,252,0.92))] text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(59,130,246,0.16)] bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(248,250,252,0.94))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-ui-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.94))] text-ui-text-primary`;
+  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.95))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "flex items-start justify-between gap-3";
+  "flex items-start justify-between gap-2.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
-  "flex min-w-0 flex-wrap items-center gap-2";
+  "flex min-w-0 flex-wrap items-center gap-1.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
-  "text-sm font-semibold tracking-tight text-ui-text-primary";
+  "text-[13px] font-semibold tracking-tight text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_TIME_CLASS =
-  "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
+  "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted/90";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 min-w-0 break-words text-ui-text-primary";
+  "mt-2 min-w-0 break-words text-[13px] leading-6 text-ui-text-primary";
 const TEAM_TASK_PERMISSION_CARD_CLASS =
-  "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-3 py-3";
+  "mt-1 rounded-[14px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,252,247,0.96),rgba(250,250,249,0.92))] px-3 py-3";
 const TEAM_TASK_PERMISSION_CARD_HEADER_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_PERMISSION_CARD_TITLE_CLASS =
-  "text-sm font-semibold tracking-tight text-ui-text-primary";
+  "text-[13px] font-semibold tracking-tight text-ui-text-primary";
 const TEAM_TASK_PERMISSION_CARD_STATUS_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.82] px-2 py-0.5 text-[11px] font-medium text-ui-text-muted";
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.84] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_PERMISSION_CARD_BODY_CLASS =
-  "mt-2 space-y-2 text-sm text-ui-text-secondary";
+  "mt-2 space-y-2 text-[13px] leading-6 text-ui-text-secondary";
 const TEAM_TASK_PERMISSION_CARD_REASON_CLASS =
   "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS =
   "mt-3 flex flex-wrap items-center gap-2";
 const TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.78] px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.8] px-2.5 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary disabled:cursor-not-allowed disabled:opacity-60";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS = "text-xs text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-3 rounded-lg border border-ui-border/80 bg-ui-surface/70";
+  "mt-3 rounded-[14px] border border-ui-border/75 bg-ui-surface/78";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "mt-2 inline-flex items-center rounded-md border border-ui-border bg-ui-surface-soft px-2.5 py-1 text-xs font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
+  "mt-2 inline-flex items-center rounded-full border border-ui-border/90 bg-ui-surface-soft/88 px-2.5 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
   "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-medium text-ui-text-secondary";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.78] p-0.5 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
+  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.8] p-0.5 text-[10px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
 const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute bottom-2.5 right-2.5 z-[1]";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
@@ -171,7 +171,7 @@ const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
   "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
-  "min-w-[220px] rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.98)] p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
+  "min-w-[220px] rounded-[14px] border border-black/[0.06] bg-[rgba(252,251,247,0.98)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]";
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
   "text-[11px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =

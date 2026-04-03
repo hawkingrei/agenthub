@@ -326,7 +326,7 @@ mod tests {
         )
         .expect("write index html");
         std::fs::create_dir_all(dir.join("assets")).expect("create assets dir");
-        std::fs::write(dir.join("assets/app-123.js"), "console.log('agenthub');")
+        std::fs::write(dir.join("assets/app-abc123.js"), "console.log('agenthub');")
             .expect("write asset");
         std::fs::write(
             dir.join("manifest.webmanifest"),
@@ -365,7 +365,7 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/assets/app-123.js")
+                    .uri("/assets/app-abc123.js")
                     .body(Body::empty())
                     .expect("build asset request"),
             )

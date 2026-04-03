@@ -394,58 +394,6 @@ section {
   width: 100%;
 }
 
-.mode-switch {
-  display: inline-flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.mode-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #d0d6dd;
-  border-radius: 999px;
-  padding: 4px 10px;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: #3a4654;
-  background: #f8fafc;
-}
-
-.mode-tag:hover {
-  border-color: #7f95ad;
-  color: #1f2c3d;
-}
-
-.mode-tag.active {
-  border-color: #1b3a57;
-  background: #1b3a57;
-  color: #fff;
-}
-
-.agents-rail-metric {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.agents-rail-metric .value {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.agents-rail-metric.running .value {
-  color: #1c4a7a;
-}
-
 .agents-rail-dot {
   position: absolute;
   top: 0;
@@ -696,15 +644,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   box-shadow: var(--focus-ring);
 }
 
-.agent-list {
-  display: grid;
-  gap: 6px;
-  overflow: auto;
-  min-height: 0;
-  flex: 1 1 auto;
-  align-content: start;
-}
-
 .agents-workbench-row {
   text-align: left;
   cursor: pointer;
@@ -876,19 +815,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   background: transparent;
   color: #222;
   border: 1px solid #cfcfcf;
-}
-
-.agent-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
 }
 
 .form-row {
@@ -2288,18 +2214,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   overflow: auto;
 }
 
-.checkbox-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.checkbox-row input {
-  margin: 0;
-  width: auto;
-}
-
 .kv-list {
   display: grid;
   gap: 12px;
@@ -2328,21 +2242,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   font-family: "Source Code Pro", monospace;
 }
 
-.checkbox-row.compact {
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-
 .line.stderr {
   color: #f38ba8;
 }
 
 .line.system {
   color: #94e2d5;
-}
-
-.agents-collapse-button {
-  display: none;
 }
 
 @media (max-width: 1024px) {
@@ -2377,10 +2282,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
   .workspace:not(.collapsed) .output-agents-toggle {
     display: none;
-  }
-
-  .agents-collapse-button {
-    display: inline-flex;
   }
 }
 
@@ -2668,12 +2569,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 }
 
-.admin-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-}
-
 .admin .card ul:not([class*="mantine-"]),
 .admin .admin-card ul:not([class*="mantine-"]) {
   padding-left: 18px;
@@ -2741,47 +2636,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   padding: 5px 8px 6px;
 }
 
-.team-member-row-main {
-  display: grid;
-  grid-template-columns: auto minmax(130px, auto) auto minmax(120px, auto) minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-}
-
-.team-member-row-id {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1f2a37;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-member-row-meta {
-  font-size: 11px;
-  color: #5e6d80;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.team-member-workline {
-  font-size: 11px;
-  color: #5e6d80;
-  text-align: right;
-  padding-left: 48px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.team-session {
-  min-width: 0;
-}
-
-.team-role-chip,
-.team-status-chip,
 .team-status.status-badge {
   border-radius: 999px;
   font-size: 10px;
@@ -2791,23 +2645,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   text-transform: lowercase;
 }
 
-.team-role-chip {
-  border: 1px solid transparent;
-}
-
-.team-role-chip.leader {
-  background: #e9f0ff;
-  border-color: #c5d4f7;
-  color: #274785;
-}
-
-.team-role-chip.worker {
-  background: #f4eefb;
-  border-color: #dcc8f5;
-  color: #5b3a83;
-}
-
-.team-status-chip,
 .team-status.status-badge {
   border: 1px solid var(--status-neutral-border);
   background: var(--status-neutral-bg);
@@ -2816,21 +2653,18 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   align-items: center;
 }
 
-.team-status-chip.active,
 .team-status.status-badge.tone-active {
   background: var(--status-active-bg);
   border-color: var(--status-active-border);
   color: var(--status-active-ink);
 }
 
-.team-status-chip.inactive,
 .team-status.status-badge.tone-inactive {
   background: var(--status-inactive-bg);
   border-color: var(--status-inactive-border);
   color: var(--status-inactive-ink);
 }
 
-.team-status-chip.missing,
 .team-status.status-badge.tone-danger {
   background: var(--status-danger-bg);
   border-color: var(--status-danger-border);
@@ -2853,12 +2687,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   background:
     radial-gradient(circle at 84% 0, rgba(255, 223, 141, 0.2), transparent 52%),
     linear-gradient(160deg, #f4f9ff, #fbfdff 48%, #f2f7ff);
-}
-
-.team-create-progress {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
 }
 
 .team-create-stage {
@@ -2890,126 +2718,9 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: #758296;
 }
 
-.team-create-stage-index {
-  font-size: 11px;
-  font-weight: 700;
-  opacity: 0.85;
-}
-
-.team-create-stage-title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .team-create-panel {
   display: grid;
   gap: 10px;
-}
-
-.team-create-agent-entry {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d9e1ec;
-  background: #f7fbff;
-  border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-
-.team-create-agent-entry-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.team-create-agent-entry-head h4,
-.team-create-panel h4 {
-  margin: 0;
-}
-
-.team-create-checklist {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.team-create-check-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid #d8e0ea;
-  background: #f8fbff;
-  font-size: 12px;
-  color: #415368;
-}
-
-.team-create-check-item.ready {
-  border-color: #9fd6b2;
-  background: #edf9f2;
-  color: #1f5f3e;
-}
-
-.team-create-check-icon {
-  font-family: "Source Code Pro", monospace;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.team-create-head-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.team-create-mission-intro {
-  border: 1px solid #dbe4ef;
-  background: #f8fbff;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.team-create-mission-intro p {
-  margin: 0;
-}
-
-.team-create-mode-toggle {
-  border: 1px solid #dbe4ef;
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.team-create-mode-checkbox {
-  display: flex;
-  width: 100%;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.team-create-mode-checkbox input {
-  margin-top: 2px;
-}
-
-.team-create-mode-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.team-create-mode-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #233446;
-  line-height: 1.35;
-}
-
-.team-create-mode-hint {
-  font-size: 12px;
-  color: #5d6f82;
-  line-height: 1.45;
 }
 
 .team-create-stage-note {
@@ -3039,34 +2750,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   gap: 8px;
 }
 
-.team-create-forge-agent-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.team-create-forge-agent-meta {
-  display: grid;
-  gap: 4px;
-  color: #4d5f73;
-  font-size: 11px;
-}
-
-.team-create-forge-agent-meta select {
-  width: min(260px, 100%);
-}
-
-.team-create-forge-agent-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.team-create-worker-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
 .teams-worker-card {
   display: grid;
   gap: 8px;
@@ -3083,34 +2766,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .team-create-actions {
   margin-top: 0;
   flex-wrap: wrap;
-}
-
-.team-create-actions-note {
-  margin-right: auto;
-  font-size: 12px;
-  color: #6f5230;
-}
-
-.team-create-warning {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #e6d9be;
-  background: #fff8ea;
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
-.team-create-warning p {
-  margin: 0;
-  flex: 1 1 360px;
-}
-
-.team-skill-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .team-skill-tag {
@@ -3132,7 +2787,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
 .teams-event-list,
 .teams-step-list,
-.teams-message-list,
 .teams-chat-messages {
   max-height: 420px;
   overflow: auto;
@@ -3145,8 +2799,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 .teams-event-list li,
-.teams-step-list li,
-.teams-message-list li {
+.teams-step-list li {
   border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 8px;
@@ -3181,9 +2834,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .teams-message-panel textarea,
 .teams-form input,
 .teams-form select,
-.teams-form textarea,
-.teams-run-create input,
-.teams-run-create textarea {
+.teams-form textarea {
   width: 100%;
 }
 
@@ -3325,25 +2976,10 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   .teams-chat-members {
     max-height: 220px;
   }
-
-  .team-member-row-main {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    row-gap: 4px;
-  }
-
-  .team-member-row-meta {
-    grid-column: 1 / -1;
-  }
-
-  .team-member-workline {
-    text-align: left;
-    padding-left: 0;
-  }
 }
 
 @media (max-width: 720px) {
   .teams-create-launch,
-  .teams-run-create,
   .teams-run-list,
   .teams-step-panel,
   .teams-message-panel,
@@ -3354,7 +2990,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
   .teams-event-list,
   .teams-step-list,
-  .teams-message-list,
   .teams-chat-messages {
     max-height: 320px;
   }
@@ -3371,8 +3006,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     font-size: 20px;
   }
 
-  .session,
-  .team-session {
+  .session {
     gap: 6px;
   }
 
@@ -3428,18 +3062,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
   .teams-layout {
     grid-template-columns: 1fr;
-  }
-
-  .team-create-progress {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .team-create-checklist {
-    grid-template-columns: 1fr;
-  }
-
-  .team-member-workline {
-    padding-left: 24px;
   }
 
   .teams-chat-shell {

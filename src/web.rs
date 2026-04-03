@@ -17,11 +17,35 @@ const WEB_IMMUTABLE_ASSET_CACHE: &str = "public, max-age=31536000, immutable";
 struct EmbeddedWeb;
 
 fn web_cache_control_for_request_path(path: &str) -> &'static str {
-    if path.trim_start_matches('/').starts_with("assets/") {
+    if is_hashed_asset_request_path(path) {
         WEB_IMMUTABLE_ASSET_CACHE
     } else {
         WEB_NO_CACHE
     }
+}
+
+fn is_hashed_asset_request_path(path: &str) -> bool {
+    let normalized = path.trim_start_matches('/');
+    let normalized = normalized.strip_prefix("dist/").unwrap_or(normalized);
+    if !normalized.starts_with("assets/") {
+        return false;
+    }
+    let Some(file_name) = Path::new(normalized)
+        .file_name()
+        .and_then(|value| value.to_str())
+    else {
+        return false;
+    };
+    let Some((stem, _extension)) = file_name.rsplit_once('.') else {
+        return false;
+    };
+    let Some((_prefix, hash_suffix)) = stem.rsplit_once('-') else {
+        return false;
+    };
+    hash_suffix.len() >= 6
+        && hash_suffix
+            .chars()
+            .all(|value| value.is_ascii_alphanumeric() || value == '_' || value == '-')
 }
 
 fn sanitize_relative_web_path(path: &str) -> Option<PathBuf> {
@@ -38,15 +62,41 @@ fn sanitize_relative_web_path(path: &str) -> Option<PathBuf> {
 
 fn candidate_web_paths(path: &str) -> Vec<String> {
     let requested = if path.is_empty() { "index.html" } else { path };
-    let mut candidates = vec![requested.to_string()];
     if !requested.starts_with("dist/") {
-        candidates.push(format!("dist/{requested}"));
+        vec![format!("dist/{requested}"), requested.to_string()]
+    } else {
+        vec![requested.to_string()]
     }
-    candidates
 }
 
 fn fallback_web_paths() -> [&'static str; 2] {
     ["dist/index.html", "index.html"]
+}
+
+fn should_fallback_to_shell(path: &str) -> bool {
+    let normalized = path.trim_start_matches('/');
+    if normalized.is_empty() {
+        return true;
+    }
+    let normalized = normalized.strip_prefix("dist/").unwrap_or(normalized);
+    if normalized.starts_with("assets/") {
+        return false;
+    }
+    Path::new(normalized).extension().is_none()
+}
+
+fn web_paths_to_try(path: &str) -> Vec<String> {
+    let normalized = path.trim_start_matches('/');
+    let mut paths = candidate_web_paths(normalized);
+    if should_fallback_to_shell(normalized) {
+        for fallback in fallback_web_paths() {
+            if paths.iter().any(|candidate| candidate == fallback) {
+                continue;
+            }
+            paths.push(fallback.to_string());
+        }
+    }
+    paths
 }
 
 fn web_mime_for_path(path: &str) -> &'static str {
@@ -72,13 +122,22 @@ fn apply_web_response_headers(response: &mut Response, request_path: &str, mime_
     );
 }
 
+fn no_cache_text_response(status: StatusCode, body: &'static str) -> Response {
+    let mut response = (status, body).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(WEB_NO_CACHE),
+    );
+    response
+}
+
 pub async fn dir_handler(base_dir: Arc<PathBuf>, uri: Uri) -> Response {
     serve_dir_fallback(base_dir.as_path(), uri).await
 }
 
 async fn serve_dir_fallback(base_dir: &Path, uri: Uri) -> Response {
     let request_path = uri.path().trim_start_matches('/');
-    for candidate in candidate_web_paths(request_path) {
+    for candidate in web_paths_to_try(request_path) {
         let Some(sanitized_candidate) = sanitize_relative_web_path(&candidate) else {
             continue;
         };
@@ -91,57 +150,27 @@ async fn serve_dir_fallback(base_dir: &Path, uri: Uri) -> Response {
             }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => {
-                return (
+                return no_cache_text_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "failed to read web asset",
-                )
-                    .into_response();
+                );
             }
         }
     }
 
-    for fallback in fallback_web_paths() {
-        let Some(sanitized_fallback) = sanitize_relative_web_path(fallback) else {
-            continue;
-        };
-        let fallback_path = base_dir.join(sanitized_fallback);
-        match tokio::fs::read(&fallback_path).await {
-            Ok(content) => {
-                let mut response = Response::new(Body::from(content));
-                apply_web_response_headers(&mut response, request_path, fallback);
-                return response;
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(_) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to read web asset",
-                )
-                    .into_response();
-            }
-        }
-    }
-
-    (StatusCode::NOT_FOUND, "not found").into_response()
+    no_cache_text_response(StatusCode::NOT_FOUND, "not found")
 }
 
 #[cfg(not(debug_assertions))]
 pub async fn embedded_handler(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
-    let candidates = candidate_web_paths(path);
+    let candidates = web_paths_to_try(path);
 
-    let hit = candidates
+    let resolved = candidates
         .iter()
         .find_map(|candidate| EmbeddedWeb::get(candidate).map(|content| (content, candidate)));
-    let resolved = if let Some((content, mime_path)) = hit {
-        Some((content, mime_path.as_str()))
-    } else {
-        fallback_web_paths()
-            .into_iter()
-            .find_map(|fallback| EmbeddedWeb::get(fallback).map(|content| (content, fallback)))
-    };
     let Some((content, mime_path)) = resolved else {
-        return (StatusCode::NOT_FOUND, "not found").into_response();
+        return no_cache_text_response(StatusCode::NOT_FOUND, "not found");
     };
 
     let mut response = Response::new(Body::from(content.data.into_owned()));
@@ -151,22 +180,32 @@ pub async fn embedded_handler(uri: Uri) -> Response {
 
 #[cfg(debug_assertions)]
 pub async fn embedded_handler(_uri: Uri) -> impl IntoResponse {
-    (
+    no_cache_text_response(
         StatusCode::NOT_FOUND,
         "embedded assets are disabled in debug builds",
     )
-        .into_response()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{WEB_IMMUTABLE_ASSET_CACHE, WEB_NO_CACHE, web_cache_control_for_request_path};
+    use super::{
+        WEB_IMMUTABLE_ASSET_CACHE, WEB_NO_CACHE, web_cache_control_for_request_path,
+        web_paths_to_try,
+    };
 
     #[test]
-    fn web_cache_control_uses_immutable_for_hashed_assets_only() {
+    fn web_cache_control_uses_immutable_for_hashed_asset_requests_only() {
         assert_eq!(
             web_cache_control_for_request_path("/assets/index-abc123.js"),
             WEB_IMMUTABLE_ASSET_CACHE
+        );
+        assert_eq!(
+            web_cache_control_for_request_path("/dist/assets/vendor-C8LL_u4z.css"),
+            WEB_IMMUTABLE_ASSET_CACHE
+        );
+        assert_eq!(
+            web_cache_control_for_request_path("/assets/runtime.js"),
+            WEB_NO_CACHE
         );
         assert_eq!(
             web_cache_control_for_request_path("/teams/example"),
@@ -177,5 +216,26 @@ mod tests {
             WEB_NO_CACHE
         );
         assert_eq!(web_cache_control_for_request_path("/sw.js"), WEB_NO_CACHE);
+    }
+
+    #[test]
+    fn web_paths_to_try_only_adds_shell_fallback_for_navigation_requests() {
+        assert_eq!(web_paths_to_try(""), vec!["dist/index.html", "index.html"]);
+        assert_eq!(
+            web_paths_to_try("teams/example"),
+            vec![
+                "dist/teams/example".to_string(),
+                "teams/example".to_string(),
+                "dist/index.html".to_string(),
+                "index.html".to_string(),
+            ]
+        );
+        assert_eq!(
+            web_paths_to_try("assets/app-OLDHASH.js"),
+            vec![
+                "dist/assets/app-OLDHASH.js".to_string(),
+                "assets/app-OLDHASH.js".to_string(),
+            ]
+        );
     }
 }
