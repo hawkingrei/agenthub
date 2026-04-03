@@ -3065,6 +3065,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
         developerMode={true}
         selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
         selectedMemberSnapshot={buildMemberSnapshot({
           member_id: "worker-agent",
           role: "worker",
@@ -3082,16 +3083,46 @@ describe("team panels interactions", () => {
       />
     );
 
-    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("Worker agent");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
-    expect(container.textContent).toContain("Role worker");
+    expect(container.textContent).toContain("role");
+    expect(container.textContent).toContain("worker");
     expect(container.textContent).toContain("Details");
-    expect(container.textContent).toContain("member");
-    expect(container.textContent).toContain("session");
-    expect(container.textContent).not.toContain("member=worker-agent");
+    expect(container.textContent).not.toContain("member");
+    expect(container.textContent).not.toContain("session");
     expect(container.textContent).not.toContain("role=worker");
-    expect(container.textContent).not.toContain("session=task-77");
+    expect(container.textContent).not.toContain("worker-agent");
+  });
+
+  it("TeamMemberAcpPanel can hide the inner member title when the outer workspace already shows it", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        hideMemberTitle={true}
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          model: "gpt-5",
+          status: "working",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).not.toContain("Worker agent");
+    expect(container.textContent).toContain("gpt-5");
+    expect(container.textContent).toContain("working");
   });
 
   it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
@@ -3313,7 +3344,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).not.toContain("Debug");
     expect(container.textContent).toContain("Refresh");
-    expect(container.textContent).not.toContain("Details");
+    expect(container.textContent).toContain("Details");
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
     expect(container.textContent).not.toContain("session=task-77");
@@ -3325,6 +3356,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           selectedSessionId="runtime-session-1"
@@ -3360,6 +3392,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           memberEvents={[]}
@@ -3383,6 +3416,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           selectedSessionId="runtime-session-1"
@@ -3396,7 +3430,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("session runtime-session-1 · no thread events yet");
+    expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
   });

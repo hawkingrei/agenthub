@@ -289,10 +289,10 @@ export const AGENTS_ROW_ACTIVE_CLASS =
   "agents-workbench-row active rounded-[18px] border-[2px] border-[#203b2d]/35 bg-[#e7efe8] px-ctrl-x py-3 text-[#13261d] shadow-[0_2px_0_rgba(0,0,0,0.12)]";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
-  "output-header grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_auto] items-center justify-between gap-x-3 gap-y-2 rounded-[18px] border-[2px] border-black bg-[#f3f1eb] px-3 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:rounded-[24px] sm:border-[3px] sm:px-4 sm:py-3 sm:shadow-[0_3px_0_rgba(0,0,0,0.16)] max-[720px]:grid-cols-[minmax(0,1fr)_auto] max-[720px]:grid-rows-[auto] max-[720px]:gap-x-2 max-[720px]:gap-y-1 max-[720px]:rounded-b-none max-[720px]:border-b-0 max-[720px]:px-2.5 max-[720px]:py-1.5 max-[720px]:shadow-none";
+  "output-header flex flex-col gap-2";
 
 export const OUTPUT_HEADER_TITLE_CLASS =
-  "output-title col-start-1 row-start-1 inline-flex min-w-0 w-fit max-w-[clamp(160px,32vw,360px)] items-center gap-2 max-[720px]:w-full max-[720px]:max-w-full";
+  "output-title flex min-w-0 items-center gap-2";
 
 export const OUTPUT_HEADER_TITLE_TEXT_CLASS =
   "output-title-text flex min-w-0 flex-col gap-0.5";
@@ -304,14 +304,7 @@ export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
   "truncate text-sm font-semibold leading-tight sm:text-base";
 
 export const OUTPUT_HEADER_META_CLASS =
-  "output-meta col-start-2 row-start-1 flex max-w-[52vw] flex-nowrap items-center justify-self-end gap-2 overflow-hidden whitespace-nowrap text-ui-xs text-black/60 max-[720px]:col-start-2 max-[720px]:row-start-1 max-[720px]:max-w-[40vw] max-[720px]:justify-self-end [&>*]:min-w-0 [&>*]:overflow-hidden [&>*]:text-ellipsis [&>*]:whitespace-nowrap max-[720px]:[&>*:nth-child(n+2)]:hidden";
-
-export const OUTPUT_HEADER_PILL_CLASS =
-  "output-pill rounded-full border-[2px] border-black bg-[#fcfbf7] px-3 py-1 text-ui-xs font-medium text-black shadow-[0_1px_0_rgba(0,0,0,0.12)]";
-
-export const OUTPUT_HEADER_SESSION_CLASS = "output-session mono text-[11px] text-black/58";
-
-export const OUTPUT_HEADER_UPDATED_CLASS = "output-updated text-[11px] text-black/58";
+  "output-meta flex flex-wrap items-center gap-2 text-ui-xs text-black/60";
 
 export const OUTPUT_HEADER_DETAILS_ROOT_CLASS = "output-header-details relative";
 
@@ -319,7 +312,7 @@ export const OUTPUT_HEADER_DETAILS_SUMMARY_CLASS =
   "inline-flex cursor-pointer list-none items-center rounded-full border border-black/[0.08] bg-white/72 px-2 py-0.5 text-[11px] font-medium text-black/58 transition hover:border-black/[0.14] hover:bg-white/88 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10";
 
 export const OUTPUT_HEADER_DETAILS_PANEL_CLASS =
-  "absolute right-0 top-[calc(100%+8px)] z-20 min-h-0 min-w-[220px] rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2";
+  "absolute right-0 top-[calc(100%+8px)] z-20 min-h-0 min-w-[220px] rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-0.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2";
 
 export const OUTPUT_HEADER_DETAILS_LIST_CLASS = "flex flex-col gap-1.5";
 
@@ -333,7 +326,7 @@ export const OUTPUT_HEADER_DETAILS_VALUE_CLASS =
   "mono min-w-0 break-all text-[11px] leading-5 text-black/72";
 
 export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS =
-  "output-subtitle-row col-start-1 row-start-2 mt-1 flex min-w-0 items-center justify-self-start max-w-full max-[720px]:hidden";
+  "output-subtitle-row flex min-w-0 items-center max-w-full max-[720px]:hidden";
 
 export const OUTPUT_HEADER_SUBTITLE_CLASS =
   "output-subtitle overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-black/58";

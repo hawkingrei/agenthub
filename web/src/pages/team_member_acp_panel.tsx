@@ -29,6 +29,8 @@ import {
 type TeamMemberAcpPanelProps = {
   developerMode: boolean;
   selectedMemberId: string;
+  memberTitle?: string | null;
+  hideMemberTitle?: boolean;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   selectedMemberRole?: string | null;
   selectedSessionId?: string | null;
@@ -58,6 +60,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     selectedMemberId,
     developerMode,
     selectedMemberSnapshot,
+    memberTitle: memberTitleProp,
+    hideMemberTitle = false,
     selectedMemberRole,
     selectedSessionId: selectedSessionIdProp,
     memberEvents,
@@ -179,7 +183,24 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const canInterruptAcpRun =
     Boolean(canInterrupt) &&
     (acpView.runStatus?.status === "running" || hasInProgressToolCall);
-  const memberTitle = selectedMemberId.trim() || "No team member selected";
+  const memberTitle = React.useMemo(() => {
+    const explicitTitle = memberTitleProp?.trim();
+    if (explicitTitle) {
+      return explicitTitle;
+    }
+    const normalizedRole = (
+      selectedMemberRole?.trim() ||
+      selectedMemberSnapshot?.role?.trim() ||
+      ""
+    ).toLowerCase();
+    if (normalizedRole === "leader") {
+      return "Leader agent";
+    }
+    if (normalizedRole === "worker") {
+      return "Worker agent";
+    }
+    return selectedMemberId.trim() ? "Selected agent" : "No team member selected";
+  }, [memberTitleProp, selectedMemberId, selectedMemberRole, selectedMemberSnapshot?.role]);
   const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
   const memberRoleLabel =
     selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
@@ -198,12 +219,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     : memberStatus;
   const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
   const developerTechnicalMetadata = React.useMemo(
-    () => [
-      { label: "role", value: memberRoleLabel || "-" },
-      ...(developerMode ? [{ label: "member", value: memberTitle }] : []),
-      ...(developerMode ? [{ label: "session", value: selectedSessionId || "-" }] : []),
-    ],
-    [developerMode, memberRoleLabel, memberTitle, selectedSessionId]
+    () => [{ label: "role", value: memberRoleLabel || "-" }],
+    [memberRoleLabel]
   );
   const handleTerminalScroll = React.useCallback(() => {
     const element = terminalRef.current;
@@ -399,12 +416,12 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       return "No active thread session yet";
     }
     if (memberEventsLoading) {
-      return `session ${selectedSessionId} · loading`;
+      return "Active thread loading";
     }
     if (!acpView.hasAcp && memberEvents.length === 0) {
-      return `session ${selectedSessionId} · no thread events yet`;
+      return "Active thread has no events yet";
     }
-    return `session ${selectedSessionId}`;
+    return "Active thread";
   }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
   const hasSelectedMember = Boolean(selectedMemberId.trim());
   const canShowThreadOptions =
@@ -556,16 +573,18 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       {shouldRenderPanel && (
         <div className="relative mt-2 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1.5">
           <div className={`${OUTPUT_HEADER_ROOT_CLASS} shrink-0`}>
-            <div className={OUTPUT_HEADER_TITLE_CLASS}>
-              <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
-                <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
-                  <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
-                  {memberModelLabel ? (
-                    <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
-                  ) : null}
+            {!hideMemberTitle && (
+              <div className={OUTPUT_HEADER_TITLE_CLASS}>
+                <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
+                  <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
+                    <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
+                    {memberModelLabel ? (
+                      <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
             <div className={OUTPUT_HEADER_META_CLASS}>
               <StatusBadge
                 label={memberStatusLabel}
@@ -573,6 +592,9 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
                 className={`agent-status status-${memberStatusClassToken}`}
                 title={`status: ${memberStatusLabel}`}
               />
+              {hideMemberTitle && memberModelLabel ? (
+                <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
+              ) : null}
               <OutputHeaderDetails items={developerTechnicalMetadata} />
             </div>
           </div>

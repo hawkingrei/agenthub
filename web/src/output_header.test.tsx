@@ -51,10 +51,7 @@ describe("OutputHeader", () => {
     expect(html).toContain("Details");
     expect(html).toContain("mode");
     expect(html).toContain("on");
-    expect(html).toContain("session");
     expect(html).toContain("updated");
-    expect(html).not.toContain("output-session");
-    expect(html).not.toContain("output-updated");
     expect(html).not.toContain("output-agents-toggle");
   });
 
@@ -66,6 +63,11 @@ describe("OutputHeader", () => {
   it("hides subtitle row when ACP is present", () => {
     const html = renderHeader({ hasAcp: true });
     expect(html).not.toContain("/tmp");
+  });
+
+  it("does not expose session metadata even when a session is active", () => {
+    const html = renderHeader({});
+    expect(html).not.toContain("session");
   });
 
   it("omits session label when no session id is active", () => {

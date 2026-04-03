@@ -23,12 +23,19 @@
 - `web/src/pages/team/use_team_conversation_actions.ts`
   - removed the old `60 -> 200` background hydration path for shared-thread conversation refresh;
   - now loads only the latest `20` conversation messages and latest `20` mailbox records per refresh so the frontend state and markdown render cost stay bounded.
+- `web/src/pages/team/use_team_conversation_effects.ts`
+  - decoupled the shared-thread SSE subscription from the active `# all` tab so Team keeps a live shared-thread stream target whenever a team with a shared conversation is selected;
+  - kept the 4s fallback polling limited to the `# all` tab so only the realtime stream remains active on agent/task views.
+- `web/src/pages/team_page.tsx`
+  - updated the Team workbench connection badge to treat the shared-thread SSE stream as a team-wide target instead of only a conversation-tab target.
 - `web/src/pages/team_panels.test.tsx`
   - updated channel conversation tests to cover the `200`-item tail window;
   - added a regression check that a small upward scroll near the bottom does not immediately exit stick-to-bottom mode.
   - added a layout regression test that locks the dedicated body-shell/composer-shell structure in place.
 - `web/src/pages/team/use_team_conversation_actions.test.tsx`
   - updated the shared-thread refresh test to lock the new `20`-item bounded-load behavior in place.
+- `web/src/pages/team/use_team_conversation_effects.test.tsx`
+  - added a regression check that the shared-thread SSE stream stays active outside the `# all` tab while polling still remains disabled there.
 
 ## Validation
 

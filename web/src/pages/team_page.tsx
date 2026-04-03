@@ -2176,7 +2176,6 @@ export function TeamPage(props: TeamPageProps) {
   const selectedConversation = sharedConversation;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
-      tab === "conversation" &&
       selectedTeamId &&
       (selectedConversation?.id ?? "").trim()
   );
@@ -4094,6 +4093,8 @@ export function TeamPage(props: TeamPageProps) {
                     <TeamMemberAcpPanel
                       developerMode={props.developerMode}
                       selectedMemberId={selectedAgentWorkspaceMemberId}
+                      memberTitle={selectedAgentLabel}
+                      hideMemberTitle={true}
                       selectedMemberSnapshot={selectedAgentWorkspaceSnapshot}
                       selectedMemberRole={
                         selectedAgentWorkspaceRuntimeMember?.role ??

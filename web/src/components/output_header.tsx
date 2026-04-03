@@ -63,7 +63,7 @@ type OutputHeaderProps = {
 
 export const OutputHeader = React.memo(function OutputHeader({
   activeAgent,
-  activeSessionId,
+  activeSessionId: _activeSessionId,
   developerMode,
   hasAcp,
   thinkingStartTs,
@@ -74,7 +74,6 @@ export const OutputHeader = React.memo(function OutputHeader({
   const subtitleText = activeAgent
     ? activeAgent.workdir
     : "Select an agent to continue.";
-  const sessionLabel = activeSessionId ? activeSessionId.slice(0, 8) : null;
   const updatedLabel = activeAgent
     ? new Date(activeAgent.updated_at * 1000).toLocaleString()
     : null;
@@ -96,7 +95,6 @@ export const OutputHeader = React.memo(function OutputHeader({
     ...(
       developerMode
         ? [
-        ...(sessionLabel ? [{ label: "session", value: sessionLabel }] : []),
         ...(updatedLabel ? [{ label: "updated", value: updatedLabel }] : []),
           ]
         : []

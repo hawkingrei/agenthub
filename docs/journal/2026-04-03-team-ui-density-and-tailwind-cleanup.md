@@ -19,10 +19,14 @@
   - Added explicit Tailwind list/detail layout classes for member console event/detail blocks.
 - `web/src/components/output_header.tsx`
   - Moved developer-facing `session` and `updated` metadata out of the always-visible header row and into a compact `Details` disclosure so the header stays content-first.
+  - Removed the standalone bordered header chrome so the title/status row now merges into the surrounding `flex flex-col gap-2` shell instead of rendering as a second card.
+  - Stopped exposing agent/session identifiers in visible header details; only human-facing mode/status metadata remains visible.
 - `web/src/ui/tailwind_classes.ts`
   - Simplified the output-header title typography to a more standard Tailwind `truncate + text-sm/base + leading-tight` treatment and removed the remaining redundant heading utilities.
 - `web/src/pages/team_member_acp_panel.tsx`
   - Merged the member ACP technical metadata into the same compact `Details` disclosure instead of rendering a second metadata row under the header.
+  - Switched the member ACP title to a human-facing workspace label and removed direct `member/session` identifier rendering from the header and subtitle copy.
+  - Hid the inner member ACP title when the Team workbench already renders the selected member label in the outer workspace header, avoiding duplicate names in the same column.
 - `web/src/pages/team_task_panel.tsx`
   - Slimmed the shared-thread shell, item padding, seen-state badge, details button, and detail grid.
   - Added compact command-style body rendering for plain command messages.
