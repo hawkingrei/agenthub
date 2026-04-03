@@ -6,10 +6,8 @@ import {
   buildLeaderForgeDefaultWorkdir,
   type TeamMemberProfileDraft,
 } from "./create_helpers";
-import {
-  DEFAULT_TEAM_LEADER_PROMPT,
-  DEFAULT_TEAM_WORKER_PROMPT,
-} from "./member_helpers";
+import type { TeamPromptDefaultsRecord } from "../../api";
+import { EMPTY_TEAM_PROMPT_DEFAULTS, resolveTeamPromptForRole } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT } from "./state";
 import { normalizeWorkdirInput, resolveWorkdirForModalOpen } from "../../worktree_defaults";
 
@@ -46,6 +44,7 @@ type ResolveTeamForgeDefaultsArgs = {
   workerCount: number;
   defaultWorktreeRoot: string;
   agentPresetId?: AgentPresetId;
+  promptDefaults?: TeamPromptDefaultsRecord;
 };
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -134,14 +133,15 @@ function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
 
 export function buildTeamMemberProfileDraft(
   role: TeamMemberRole,
-  model: string = DEFAULT_AGENT_PRESET_ID
+  model: string = DEFAULT_AGENT_PRESET_ID,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): TeamMemberProfileDraft {
   return {
     member_id: "",
     role,
     description: "",
     model,
-    prompt: role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT,
+    prompt: resolveTeamPromptForRole(promptDefaults, role),
     skills: [],
     custom_skills: "",
     agent_loop_enabled: false,
@@ -214,6 +214,7 @@ export function resolveTeamForgeDefaults({
   workerCount,
   defaultWorktreeRoot,
   agentPresetId = DEFAULT_AGENT_PRESET_ID,
+  promptDefaults = EMPTY_TEAM_PROMPT_DEFAULTS,
 }: ResolveTeamForgeDefaultsArgs): TeamForgeDefaults {
   const prefix = buildTeamAgentNameToken(teamName);
   const agentName =
@@ -224,7 +225,7 @@ export function resolveTeamForgeDefaults({
     normalizeWorkdirInput(defaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
 
   return {
-    draft: buildTeamMemberProfileDraft(role, agentPresetId),
+    draft: buildTeamMemberProfileDraft(role, agentPresetId, promptDefaults),
     agentName,
     agentWorkdir:
       role === "leader"

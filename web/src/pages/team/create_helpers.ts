@@ -1,9 +1,9 @@
-import type { AgentRecord } from "../../api";
+import type { AgentRecord, TeamPromptDefaultsRecord } from "../../api";
 import {
-  DEFAULT_TEAM_LEADER_PROMPT,
   DEFAULT_TEAM_LEADER_SKILLS,
-  DEFAULT_TEAM_WORKER_PROMPT,
   DEFAULT_TEAM_WORKER_SKILLS,
+  EMPTY_TEAM_PROMPT_DEFAULTS,
+  resolveTeamPromptForRole,
   type WorkerDraft,
 } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
@@ -43,7 +43,8 @@ export function buildTeamSpecFromForm(
   leaderModel: string,
   leaderPrompt: string,
   workers: WorkerDraft[],
-  teamForgeAgents: AgentRecord[]
+  teamForgeAgents: AgentRecord[],
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): unknown {
   const leaderId = leaderMemberId.trim();
   const forgeAgentById = new Map(teamForgeAgents.map((agent) => [agent.id, agent]));
@@ -52,7 +53,7 @@ export function buildTeamSpecFromForm(
       member_id: worker.member_id.trim(),
       description: worker.description.trim(),
       model: worker.model.trim(),
-      prompt: worker.prompt.trim() || DEFAULT_TEAM_WORKER_PROMPT,
+      prompt: worker.prompt.trim() || promptDefaults.worker_prompt,
     }))
     .filter((worker) => worker.member_id.length > 0);
   const steps = buildDefaultWorkflowSteps(
@@ -65,7 +66,7 @@ export function buildTeamSpecFromForm(
       member_id: leaderId,
       role: "leader",
       model: leaderModel.trim() || undefined,
-      prompt: leaderPrompt.trim() || DEFAULT_TEAM_LEADER_PROMPT,
+      prompt: leaderPrompt.trim() || promptDefaults.leader_prompt,
       runtime: buildMemberRuntimeHint(forgeAgentById.get(leaderId)),
     },
     ...normalizedWorkers.map((worker) => ({
@@ -132,7 +133,8 @@ export function teamSpecHasLeader(spec: unknown): boolean {
 export function appendTeamMemberToSpec(
   spec: unknown,
   draft: TeamMemberProfileDraft,
-  agent: AgentRecord
+  agent: AgentRecord,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): unknown {
   const memberId = draft.member_id.trim();
   if (!memberId) {
@@ -157,8 +159,7 @@ export function appendTeamMemberToSpec(
   }
 
   const prompt =
-    draft.prompt.trim() ||
-    (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
+    draft.prompt.trim() || resolveTeamPromptForRole(promptDefaults, role);
 
   existingMembers.push({
     member_id: memberId,
@@ -231,7 +232,8 @@ function readRuntimeLoopPrompt(member: Record<string, unknown>): string {
 export function buildTeamMemberDraftFromSpec(
   spec: unknown,
   memberId: string,
-  agent?: AgentRecord | null
+  agent?: AgentRecord | null,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): TeamMemberProfileDraft | null {
   const normalizedMemberId = memberId.trim();
   if (!normalizedMemberId) {
@@ -258,8 +260,7 @@ export function buildTeamMemberDraftFromSpec(
     description: readOptionalStringField(member, "description"),
     model: readOptionalStringField(member, "model"),
     prompt:
-      readOptionalStringField(member, "prompt") ||
-      (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT),
+      readOptionalStringField(member, "prompt") || resolveTeamPromptForRole(promptDefaults, role),
     skills:
       role === "leader"
         ? [...DEFAULT_TEAM_LEADER_SKILLS]
@@ -276,7 +277,8 @@ export function buildTeamMemberDraftFromSpec(
 
 export function updateTeamMemberProfileInSpec(
   spec: unknown,
-  draft: TeamMemberProfileDraft
+  draft: TeamMemberProfileDraft,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): unknown {
   const memberId = draft.member_id.trim();
   if (!memberId) {
@@ -295,8 +297,7 @@ export function updateTeamMemberProfileInSpec(
   const existing = existingMembers[memberIndex];
   const role = readMemberRole(existing) === "leader" ? "leader" : "worker";
   const prompt =
-    draft.prompt.trim() ||
-    (role === "leader" ? DEFAULT_TEAM_LEADER_PROMPT : DEFAULT_TEAM_WORKER_PROMPT);
+    draft.prompt.trim() || resolveTeamPromptForRole(promptDefaults, role);
   const loopIdleRaw = draft.agent_loop_idle_seconds.trim();
   const parsedLoopIdleSeconds =
     loopIdleRaw !== "" && /^\d+$/.test(loopIdleRaw)

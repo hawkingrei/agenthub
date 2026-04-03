@@ -11,7 +11,9 @@ use agenthub_team_actor::{
     ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
     parse_actor_transport,
 };
-use agenthub_team_prompts::default_team_prompt_for_role;
+use agenthub_team_prompts::{
+    DEFAULT_TEAM_LEADER_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
+};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -383,9 +385,16 @@ pub struct TeamCompiledRoleAssignment {
 
 pub type TeamRuntimeControlResponse = crate::team::TeamRuntimeControlRecord;
 
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct TeamPromptDefaultsResponse {
+    pub leader_prompt: String,
+    pub worker_prompt: String,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_team).get(list_teams))
+        .route("/prompt_defaults", get(get_team_prompt_defaults))
         .route("/{id}", get(get_team).delete(delete_team))
         .route("/{id}/spec", put(update_team_spec))
         .route("/{id}/runtime", get(get_team_runtime))
@@ -451,6 +460,17 @@ pub fn router(state: AppState) -> Router {
             post(ack_team_run_message),
         )
         .with_state(state)
+}
+
+async fn get_team_prompt_defaults(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<TeamPromptDefaultsResponse>, ApiError> {
+    let _user = require_user(&headers, &state).await?;
+    Ok(Json(TeamPromptDefaultsResponse {
+        leader_prompt: DEFAULT_TEAM_LEADER_PROMPT.to_string(),
+        worker_prompt: DEFAULT_TEAM_WORKER_PROMPT.to_string(),
+    }))
 }
 
 async fn create_team(

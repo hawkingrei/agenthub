@@ -89,7 +89,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
             <p className={OVERVIEW_PLAYBOOK_TITLE_CLASS}>Worker startup</p>
             <ol className={OVERVIEW_PLAYBOOK_LIST_CLASS}>
               <li>Scan workspace TODO files for unfinished execution items.</li>
-              <li>Finish unfinished worker items first, then pull inbox assignments.</li>
+              <li>Finish unfinished worker items first, then accept inbox work.</li>
               <li>If no assignment exists, report idle and request next task from leader.</li>
               <li>Send execution evidence to leader; keep human-facing planning with leader.</li>
             </ol>

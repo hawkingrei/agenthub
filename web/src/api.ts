@@ -199,6 +199,11 @@ export type RuntimeDefaults = {
   default_worktree_root: string;
 };
 
+export type TeamPromptDefaultsRecord = {
+  leader_prompt: string;
+  worker_prompt: string;
+};
+
 export type TeamRunStatus =
   | "submitted"
   | "working"
@@ -612,6 +617,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getTeamPromptDefaults: (token: string) =>
+    apiFetch<TeamPromptDefaultsRecord>("/api/teams/prompt_defaults", token),
   listTeams: (token: string) =>
     apiFetch<TeamDefinitionRecord[]>("/api/teams", token),
   getTeam: (token: string, id: string) =>

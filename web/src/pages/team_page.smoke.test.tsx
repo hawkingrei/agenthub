@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getRuntimeDefaults,
+  getTeamPromptDefaults,
   getTeamRuntime,
   getTeamSharedThread,
   listTeamTasks,
@@ -15,6 +16,10 @@ const {
   useMediaQueryMock,
 } = vi.hoisted(() => ({
   getRuntimeDefaults: vi.fn().mockResolvedValue({ default_worktree_root: "/tmp/worktrees" }),
+  getTeamPromptDefaults: vi.fn().mockResolvedValue({
+    leader_prompt: "leader-default-prompt",
+    worker_prompt: "worker-default-prompt",
+  }),
   getTeamRuntime: vi.fn().mockResolvedValue({
     team_id: "team-1",
     team_name: "Team One",
@@ -42,6 +47,7 @@ vi.mock("../api", async () => {
     api: {
       ...actual.api,
       getRuntimeDefaults,
+      getTeamPromptDefaults,
       getTeamRuntime,
       getTeamSharedThread,
       listTeamTasks,
@@ -92,7 +98,8 @@ vi.mock("./team/use_team_mailbox_actions", () => ({
     onSendChatMessage: vi.fn().mockResolvedValue(undefined),
     onSendMessage: vi.fn().mockResolvedValue(undefined),
     onRefreshInbox: vi.fn().mockResolvedValue(undefined),
-    onAckMessage: vi.fn().mockResolvedValue(undefined),
+    onAcceptMessage: vi.fn().mockResolvedValue(undefined),
+    onAcceptVisibleMessages: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -170,6 +177,7 @@ describe("TeamPage smoke render", () => {
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     getRuntimeDefaults.mockClear();
+    getTeamPromptDefaults.mockClear();
     getTeamRuntime.mockClear();
     getTeamSharedThread.mockClear();
     listTeamTasks.mockClear();
