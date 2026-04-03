@@ -2807,6 +2807,66 @@ export function TeamPage(props: TeamPageProps) {
     selectedAgentWorkspaceAgent,
     selectedTeamId,
   ]);
+  const onSetTeamMemberAcpMode = useCallback(async (modeId: string) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedModeId = modeId.trim();
+    if (!trimmedModeId) {
+      setError("mode id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpMode(props.token, selectedAgentWorkspaceAgent.id, trimmedModeId);
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
+  const onSetTeamMemberAcpModel = useCallback(async (modelId: string) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedModelId = modelId.trim();
+    if (!trimmedModelId) {
+      setError("model id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpModel(props.token, selectedAgentWorkspaceAgent.id, trimmedModelId);
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
+  const onSetTeamMemberAcpConfig = useCallback(async (
+    configId: string,
+    value: string
+  ) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedConfigId = configId.trim();
+    const trimmedValue = value.trim();
+    if (!trimmedConfigId || !trimmedValue) {
+      setError("config id and value are required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpConfig(
+        props.token,
+        selectedAgentWorkspaceAgent.id,
+        trimmedConfigId,
+        trimmedValue
+      );
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
   const onForceNewTeamMemberSession = useCallback(async () => {
     if (!props.token || !selectedTeamId || !selectedAgentWorkspaceMemberId) {
       return;
@@ -4047,8 +4107,12 @@ export function TeamPage(props: TeamPageProps) {
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
                       onSendInput={onSendAgentAcpInput}
+                      canControlAcp={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
                       canInterrupt={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
                       onInterrupt={onCancelTeamMemberAcp}
+                      onAcpSetMode={onSetTeamMemberAcpMode}
+                      onAcpSetModel={onSetTeamMemberAcpModel}
+                      onAcpSetConfig={onSetTeamMemberAcpConfig}
                       onForceNewSession={onForceNewTeamMemberSession}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}

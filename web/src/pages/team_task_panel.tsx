@@ -7,7 +7,10 @@ import {
   api,
 } from "../api";
 import { preloadThreadMarkdownAssets, ThreadRichText } from "../components/thread_rich_text";
-import { windowConversation } from "../conversation";
+import {
+  DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
+  windowConversation,
+} from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
@@ -187,7 +190,7 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_JUMP_BUTTON_CLASS =
   "inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.9] text-ui-text-secondary shadow-[0_2px_6px_rgba(15,23,42,0.06)] backdrop-blur transition hover:border-black/[0.1] hover:text-ui-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong sm:h-8 sm:w-8";
-const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
+const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
 
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
@@ -1020,7 +1023,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       clientHeight: node.clientHeight,
       wasStickToBottom: stickToBottom,
       previousScrollTop: lastActivityScrollTopRef.current,
-      threshold: 24,
     });
     lastActivityScrollTopRef.current = node.scrollTop;
     if (nextStickToBottom !== stickToBottom) {

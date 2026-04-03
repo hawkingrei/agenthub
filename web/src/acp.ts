@@ -65,6 +65,19 @@ export type AcpRawEvent = {
   payload: unknown;
 };
 
+export type AcpConfigSelectOption = {
+  valueId: string;
+  label: string;
+};
+
+export type AcpConfigOption = {
+  id: string;
+  label: string;
+  category?: string | null;
+  currentValueId?: string | null;
+  selectOptions: AcpConfigSelectOption[];
+};
+
 export type AcpRunStatus = {
   status: string;
   session_id?: string;
@@ -84,6 +97,7 @@ export type AcpView = {
   toolCalls: AcpToolCall[];
   messages: AcpMessage[];
   rawEvents: AcpRawEvent[];
+  configOptions: AcpConfigOption[];
   plan: AcpPlanView | null;
   commands: AcpCommand[];
   currentMode: string | null;
@@ -98,6 +112,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
   const messageIndex = new Map<string, number>();
   const messageChunks = new Map<string, Map<number, string>>();
   const rawEvents: AcpRawEvent[] = [];
+  let configOptions: AcpConfigOption[] = [];
   let plan: AcpPlanView | null = null;
   let commands: AcpCommand[] = [];
   let currentMode: string | null = null;
@@ -114,6 +129,10 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       type: String(parsed.type ?? "unknown"),
       payload: parsed,
     });
+    const parsedConfigOptions = parseAcpConfigOptions(parsed);
+    if (parsedConfigOptions.length > 0) {
+      configOptions = parsedConfigOptions;
+    }
     if (
       parsed.type === "agent_message" ||
       parsed.type === "agent_thought" ||
@@ -344,19 +363,25 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
 
   const limitedRawEvents =
     rawEvents.length > 200 ? rawEvents.slice(rawEvents.length - 200) : rawEvents;
+  const resolvedCurrentMode =
+    currentMode ??
+    configOptions.find((option) => option.id === "mode")?.currentValueId ??
+    null;
   return {
     hasAcp:
       toolCalls.length > 0 ||
       messages.length > 0 ||
       limitedRawEvents.length > 0 ||
       (plan?.entries?.length ?? 0) > 0 ||
-      commands.length > 0,
+      commands.length > 0 ||
+      configOptions.length > 0,
     toolCalls,
     messages,
     rawEvents: limitedRawEvents,
+    configOptions,
     plan,
     commands,
-    currentMode,
+    currentMode: resolvedCurrentMode,
     runStatus,
     thinkingStartTs,
   };
@@ -391,6 +416,109 @@ function parseAcpEvent(line: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function parseAcpConfigOptions(value: unknown): AcpConfigOption[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  const rawOptions = record.config_options;
+  if (!Array.isArray(rawOptions)) {
+    return [];
+  }
+  return rawOptions
+    .map((option) => parseAcpConfigOption(option))
+    .filter((option): option is AcpConfigOption => option !== null);
+}
+
+function parseAcpConfigOption(value: unknown): AcpConfigOption | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  const label =
+    (typeof record.label === "string" && record.label.trim()) ||
+    (typeof record.name === "string" && record.name.trim()) ||
+    id;
+  const selectOptions = Array.isArray(record.select_options)
+    ? record.select_options
+        .map((option) => parseAcpConfigSelectOption(option))
+        .filter((option): option is AcpConfigSelectOption => option !== null)
+    : [];
+  const currentValueId = parseAcpConfigValueId(record.current_value);
+  if (
+    currentValueId &&
+    !selectOptions.some((option) => option.valueId === currentValueId)
+  ) {
+    selectOptions.unshift({ valueId: currentValueId, label: currentValueId });
+  }
+  return {
+    id,
+    label,
+    category: typeof record.category === "string" ? record.category : null,
+    currentValueId,
+    selectOptions,
+  };
+}
+
+function parseAcpConfigSelectOption(value: unknown): AcpConfigSelectOption | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const valueId = parseAcpConfigValueId(record.value_id ?? record.value);
+  if (!valueId) {
+    return null;
+  }
+  const label =
+    (typeof record.label === "string" && record.label.trim()) ||
+    (typeof record.name === "string" && record.name.trim()) ||
+    valueId;
+  return { valueId, label };
+}
+
+function parseAcpConfigValueId(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.value_id === "string") {
+    const trimmed = record.value_id.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  if (record.value_id && typeof record.value_id === "object") {
+    const nested = record.value_id as Record<string, unknown>;
+    if (typeof nested.value === "string") {
+      const trimmed = nested.value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+  if (record.type === "value_id" && typeof record.value === "string") {
+    const trimmed = record.value.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  if (typeof record.value === "string") {
+    const trimmed = record.value.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return null;
 }
 
 function formatAcpContent(content: unknown): string {

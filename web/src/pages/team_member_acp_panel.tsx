@@ -38,8 +38,12 @@ type TeamMemberAcpPanelProps = {
   eventsLoading: boolean;
   oldestMemberEventId: number | null;
   onSendInput?: (input: string, sessionId: string) => Promise<void> | void;
+  canControlAcp?: boolean;
   canInterrupt?: boolean;
   onInterrupt?: () => Promise<void> | void;
+  onAcpSetMode?: (modeId: string) => Promise<void> | void;
+  onAcpSetModel?: (modelId: string) => Promise<void> | void;
+  onAcpSetConfig?: (configId: string, value: string) => Promise<void> | void;
   onForceNewSession?: () => Promise<void> | void;
   onRefresh: () => Promise<void> | void;
   onLoadOlder: () => Promise<void> | void;
@@ -62,8 +66,12 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     eventsLoading,
     oldestMemberEventId,
     onSendInput,
+    canControlAcp = false,
     canInterrupt,
     onInterrupt,
+    onAcpSetMode,
+    onAcpSetModel,
+    onAcpSetConfig,
     onForceNewSession,
     onRefresh,
     onLoadOlder,
@@ -433,6 +441,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onJumpToTerminalBottom: jumpToTerminalBottom,
         currentMode: acpView.currentMode,
         rawEvents: acpView.rawEvents,
+        configOptions: acpView.configOptions,
         acpPermissionHistory: [],
         acpModeId,
         acpModelId,
@@ -442,10 +451,16 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpModelIdChange: setAcpModelId,
         onAcpConfigIdChange: setAcpConfigId,
         onAcpConfigValueChange: setAcpConfigValue,
-        canControlAcp: Boolean(onInterrupt) && canInterruptAcpRun,
-        onAcpSetMode: NOOP,
-        onAcpSetModel: NOOP,
-        onAcpSetConfig: NOOP,
+        canControlAcp,
+        onAcpSetMode: (value: string) => {
+          void onAcpSetMode?.(value);
+        },
+        onAcpSetModel: (value: string) => {
+          void onAcpSetModel?.(value);
+        },
+        onAcpSetConfig: () => {
+          void onAcpSetConfig?.(acpConfigId, acpConfigValue);
+        },
         onAcpCancel: () => {
           void onInterrupt?.();
         },
@@ -469,11 +484,14 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpRuntimeMetrics,
       acpView,
       ansi,
-      canInterruptAcpRun,
+      canControlAcp,
       developerMode,
       effectiveAcpTab,
       handleTerminalScroll,
       jumpToTerminalBottom,
+      onAcpSetConfig,
+      onAcpSetMode,
+      onAcpSetModel,
       onForceNewSession,
       onInterrupt,
       panelSubtitle,

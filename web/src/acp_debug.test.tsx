@@ -12,6 +12,7 @@ const baseProps: AcpDebugProps = {
   onJumpToTerminalBottom: () => {},
   currentMode: "default",
   rawEvents: [],
+  configOptions: [],
   acpPermissionHistory: [],
   acpModeId: "",
   acpModelId: "",
@@ -156,5 +157,38 @@ describe("AcpDebug", () => {
     expect(html).toContain("Raw Events");
     expect(html).toContain("agent_message");
     expect(html).toContain("&quot;hello&quot;");
+  });
+
+  it("renders model and mode selectors from ACP config options", () => {
+    const html = renderToStaticMarkup(
+      <AcpDebug
+        {...baseProps}
+        configOptions={[
+          {
+            id: "mode",
+            label: "Mode",
+            currentValueId: "workspace_write",
+            selectOptions: [
+              { valueId: "workspace_write", label: "Workspace Write" },
+              { valueId: "danger_full_access", label: "Full Access" },
+            ],
+          },
+          {
+            id: "model",
+            label: "Model",
+            currentValueId: "gemini-2.5-pro",
+            selectOptions: [
+              { valueId: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+              { valueId: "gpt-5", label: "GPT-5" },
+            ],
+          },
+        ]}
+      />
+    );
+    expect(html).toContain("Workspace Write");
+    expect(html).toContain("Full Access");
+    expect(html).toContain("Gemini 2.5 Pro");
+    expect(html).toContain("GPT-5");
+    expect(html).not.toContain('placeholder="Model ID"');
   });
 });

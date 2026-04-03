@@ -11,6 +11,7 @@ import {
   applyConversationFreeze,
   buildConversationMessages,
   ConversationItem,
+  DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
   deriveConversationFreezeCursor,
   flattenExploreGroupToolCalls,
   windowConversation,
@@ -415,7 +416,12 @@ export function useAcpConversation({
     [acpView.messages, acpView.toolCalls, acpView.plan, activeSessionId]
   );
   const conversationWindow = useMemo(
-    () => windowConversation(conversationMessages, conversationStickToBottom, 200),
+    () =>
+      windowConversation(
+        conversationMessages,
+        conversationStickToBottom,
+        DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE
+      ),
     [conversationMessages, conversationStickToBottom]
   );
   const conversationTailKey = useMemo(

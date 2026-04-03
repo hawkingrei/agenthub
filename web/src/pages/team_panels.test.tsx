@@ -2359,6 +2359,7 @@ describe("team panels interactions", () => {
       .mockImplementation(() => {});
 
     try {
+      const totalMessages = 213;
       renderWithMantine(
         root,
         <TeamTaskPanel
@@ -2369,7 +2370,7 @@ describe("team panels interactions", () => {
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
             onRefreshMessages={vi.fn()}
-            messages={Array.from({ length: 12 }, (_, index) =>
+            messages={Array.from({ length: totalMessages - 1 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
                 to_actor_id: null,
@@ -2417,10 +2418,14 @@ describe("team panels interactions", () => {
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
             onRefreshMessages={vi.fn()}
-            messages={Array.from({ length: 13 }, (_, index) =>
+            messages={Array.from({ length: totalMessages }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id:
-                  index === 0 ? "user:u-1" : index === 12 ? "worker-agent" : "leader-agent",
+                  index === 0
+                    ? "user:u-1"
+                    : index === totalMessages - 1
+                      ? "worker-agent"
+                      : "leader-agent",
                 to_actor_id: null,
                 route: "group_chat",
                 payload: { type: "chat_message", text: `message ${index + 1}` },
@@ -2441,10 +2446,18 @@ describe("team panels interactions", () => {
       });
 
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
+      expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
+
+      act(() => {
+        scrollNode.scrollTop = 720;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+
       expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
 
@@ -2459,7 +2472,7 @@ describe("team panels interactions", () => {
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
       expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
@@ -2483,7 +2496,7 @@ describe("team panels interactions", () => {
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
             onRefreshMessages={vi.fn()}
-            messages={Array.from({ length: 13 }, (_, index) =>
+            messages={Array.from({ length: 213 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
                 to_actor_id: null,
@@ -2507,8 +2520,8 @@ describe("team panels interactions", () => {
 
       const initialTexts = markdownSpy.mock.calls.map((call) => call[0]);
       expect(initialTexts).not.toContain("message 1");
-      expect(initialTexts).toContain("message 4");
-      expect(initialTexts).toContain("message 13");
+      expect(initialTexts).toContain("message 14");
+      expect(initialTexts).toContain("message 213");
 
       const scrollNode = required(
         container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
