@@ -10,6 +10,22 @@ type StatusBadgeProps = {
   title?: string;
 };
 
+const STATUS_BADGE_BASE_CLASS =
+  "status-badge inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold lowercase tracking-[0.01em] sm:text-[11px]";
+
+const STATUS_BADGE_TONE_CLASS: Record<StatusTone, string> = {
+  neutral:
+    "border-[color:var(--status-neutral-border)] bg-[color:var(--status-neutral-bg)] text-[color:var(--status-neutral-ink)]",
+  active:
+    "border-[color:var(--status-active-border)] bg-[color:var(--status-active-bg)] text-[color:var(--status-active-ink)]",
+  inactive:
+    "border-[color:var(--status-inactive-border)] bg-[color:var(--status-inactive-bg)] text-[color:var(--status-inactive-ink)]",
+  warning:
+    "border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-ink)]",
+  danger:
+    "border-[color:var(--status-danger-border)] bg-[color:var(--status-danger-bg)] text-[color:var(--status-danger-ink)]",
+};
+
 export function resolveAgentStatusTone(status: AgentRecord["status"] | string): StatusTone {
   const normalized = status.trim().toLowerCase();
   if (normalized === "running") return "active";
@@ -43,9 +59,13 @@ export const StatusBadge = React.memo(function StatusBadge({
   className,
   title,
 }: StatusBadgeProps) {
-  const joinedClassName = className
-    ? `status-badge tone-${tone} ${className}`
-    : `status-badge tone-${tone}`;
+  const joinedClassName = [
+    STATUS_BADGE_BASE_CLASS,
+    STATUS_BADGE_TONE_CLASS[tone],
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <span className={joinedClassName} title={title}>
       {label}

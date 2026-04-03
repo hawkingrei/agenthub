@@ -747,7 +747,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: #7a7a7a;
 }
 
-.status-badge,
 .agents-workbench-status {
   font-size: 11px;
   padding: 2px 8px;
@@ -762,7 +761,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 @media (max-width: 720px) {
-  .status-badge,
   .agent-status {
     font-size: 10px;
     padding: 1px 6px;
@@ -770,14 +768,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 }
 
-.status-badge.tone-active,
 .agent-status.status-running {
   background: var(--status-active-bg);
   border-color: var(--status-active-border);
   color: var(--status-active-ink);
 }
 
-.status-badge.tone-inactive,
 .agent-status.status-completed,
 .agent-status.status-stopped {
   background: var(--status-inactive-bg);
@@ -785,14 +781,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: var(--status-inactive-ink);
 }
 
-.status-badge.tone-warning,
 .agent-status.status-idle {
   background: var(--status-warning-bg);
   border-color: var(--status-warning-border);
   color: var(--status-warning-ink);
 }
 
-.status-badge.tone-danger,
 .agent-status.status-failed {
   background: var(--status-danger-bg);
   border-color: var(--status-danger-border);
@@ -2636,196 +2630,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   padding: 5px 8px 6px;
 }
 
-.team-status.status-badge {
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  padding: 1px 7px;
-  text-transform: lowercase;
-}
-
-.team-status.status-badge {
-  border: 1px solid var(--status-neutral-border);
-  background: var(--status-neutral-bg);
-  color: var(--status-neutral-ink);
-  display: inline-flex;
-  align-items: center;
-}
-
-.team-status.status-badge.tone-active {
-  background: var(--status-active-bg);
-  border-color: var(--status-active-border);
-  color: var(--status-active-ink);
-}
-
-.team-status.status-badge.tone-inactive {
-  background: var(--status-inactive-bg);
-  border-color: var(--status-inactive-border);
-  color: var(--status-inactive-ink);
-}
-
-.team-status.status-badge.tone-danger {
-  background: var(--status-danger-bg);
-  border-color: var(--status-danger-border);
-  color: var(--status-danger-ink);
-}
-
-.team-status.status-badge.tone-warning {
-  background: var(--status-warning-bg);
-  border-color: var(--status-warning-border);
-  color: var(--status-warning-ink);
-}
-
-.team-create-modal-backdrop {
-  z-index: 80;
-}
-
-.team-create-modal {
-  width: min(940px, 96vw);
-  border: 1px solid #cfdbeb;
-  background:
-    radial-gradient(circle at 84% 0, rgba(255, 223, 141, 0.2), transparent 52%),
-    linear-gradient(160deg, #f4f9ff, #fbfdff 48%, #f2f7ff);
-}
-
-.team-create-stage {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #cad8ea;
-  background: #fff;
-  color: #2b3d52;
-}
-
-.team-create-stage.active {
-  border-color: #1d4f80;
-  background: #1d4f80;
-  color: #fff;
-}
-
-.team-create-stage.completed {
-  border-color: #2c8453;
-  background: #edf9f2;
-  color: #225f3d;
-}
-
-.team-create-stage.locked {
-  border-color: #d8dee9;
-  background: #f5f7fb;
-  color: #758296;
-}
-
-.team-create-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.team-create-stage-note {
-  margin: 0;
-  border-left: 3px solid #d59c2f;
-  background: #fff8ea;
-  color: #5f4a23;
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.team-create-forge-agent {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d7e0ee;
-  background: #f8fbff;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.team-create-forge-agent-head,
-.team-create-worker-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.teams-worker-card {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d7e0ee;
-  background: #fff;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.team-create-worker-head button {
-  padding: 4px 8px;
-}
-
-.team-create-actions {
-  margin-top: 0;
-  flex-wrap: wrap;
-}
-
-.team-skill-tag {
-  border: 1px solid #d2dbe8;
-  background: #fff;
-  color: #3f5166;
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.team-skill-tag.selected {
-  border-color: #7ba4d9;
-  background: #eaf2ff;
-  color: #1f4a86;
-}
-
-
-.teams-event-list,
-.teams-step-list,
-.teams-chat-messages {
-  max-height: 420px;
-  overflow: auto;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.teams-event-list li,
-.teams-step-list li {
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 8px;
-  background: #fafafa;
-}
-
-.teams-event-head,
-.teams-step-head,
-.teams-message-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.teams-step-grid,
-.teams-message-grid {
-  margin-bottom: 12px;
-}
-
-.teams-step-panel,
-.teams-message-panel {
-  min-width: 0;
-}
-
 .teams-step-panel select,
 .teams-message-panel select,
 .teams-step-panel input,
@@ -2838,123 +2642,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   width: 100%;
 }
 
-.teams-chat-shell {
-  display: grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.teams-chat-members,
-.teams-chat-panel {
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fcfcfc;
-}
-
-.teams-chat-members {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 560px;
-  overflow: auto;
-}
-
-.teams-member-unread {
-  justify-self: start;
-  font-size: 11px;
-  border-radius: 999px;
-  padding: 2px 8px;
-  border: 1px solid #d4e3ff;
-  background: #edf4ff;
-  color: #234f8f;
-}
-
-.teams-member-unread.muted {
-  border-color: #e2e2e2;
-  background: #f7f7f7;
-  color: #7a7a7a;
-}
-
-.teams-chat-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.teams-chat-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
-  align-items: center;
-}
-
-.teams-chat-head > * {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.teams-chat-jump-bottom {
-  margin-left: auto;
-  white-space: nowrap;
-  min-width: 120px;
-}
-
-.teams-chat-bubble {
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 8px;
-  background: #fafafa;
-}
-
-.teams-chat-bubble.outgoing {
-  border-color: #c3d8ff;
-  background: #f2f7ff;
-}
-
-.teams-chat-bubble.incoming {
-  border-color: #c3e9d1;
-  background: #ecfff4;
-}
-
-.teams-chat-empty {
-  border: 1px dashed #d2d2d2;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fff;
-}
-
-.teams-chat-compose textarea {
-  width: 100%;
-}
-
-.teams-message-advanced {
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
-}
-
-.teams-message-advanced > summary {
-  cursor: pointer;
-  color: #3f5166;
-  margin-bottom: 8px;
-}
-
-.teams-step-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -2963,35 +2650,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: #6f6f6f;
 }
 
-@media (max-width: 960px) {
-  .teams-step-grid,
-  .teams-message-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-chat-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-chat-members {
-    max-height: 220px;
-  }
-}
-
 @media (max-width: 720px) {
   .teams-create-launch,
   .teams-run-list,
   .teams-step-panel,
-  .teams-message-panel,
-  .teams-chat-panel,
-  .teams-chat-members {
+  .teams-message-panel {
     padding: 8px;
-  }
-
-  .teams-event-list,
-  .teams-step-list,
-  .teams-chat-messages {
-    max-height: 320px;
   }
 }
 
@@ -3064,7 +2728,4 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     grid-template-columns: 1fr;
   }
 
-  .teams-chat-shell {
-    grid-template-columns: 1fr;
-  }
 }

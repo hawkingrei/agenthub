@@ -113,21 +113,21 @@ const TEAM_TASK_COMPOSER_META_ROW_CLASS =
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-1 py-2 text-ui-sm text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-2 min-h-[220px] max-h-[min(72vh,760px)] overflow-y-auto pr-1";
+  "mt-2 min-h-[220px] max-h-[min(72vh,760px)] overflow-y-auto pr-0.5";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
-  "mt-2 min-h-[120px] overflow-y-auto pr-1";
+  "mt-2 min-h-[120px] overflow-y-auto pr-0.5";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[18px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.97))] px-3 py-2.5 shadow-[0_8px_18px_rgba(15,23,42,0.035)]";
+  "rounded-[16px] border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.97))] px-2.5 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.035)] sm:px-3 sm:py-2.5";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
-  "flex w-full flex-col gap-2";
+  "flex w-full flex-col gap-1.5";
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble relative rounded-[16px] border px-3 py-2.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
+  "acp-bubble relative rounded-[14px] border px-2.5 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)] sm:px-3 sm:py-2.5";
 const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(59,130,246,0.16)] bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(248,250,252,0.94))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
   `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.95))] text-ui-text-primary`;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "flex items-start justify-between gap-2.5";
+  "flex items-start justify-between gap-2";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 flex-wrap items-center gap-1.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
@@ -135,15 +135,21 @@ const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
 const TEAM_TASK_ACTIVITY_TIME_CLASS =
   "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted/90";
 const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-2 min-w-0 break-words text-[13px] leading-6 text-ui-text-primary";
+  "mt-1.5 min-w-0 break-words text-[12.5px] leading-5 text-ui-text-primary sm:text-[13px] sm:leading-6";
+const TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS =
+  "mono mt-1.5 max-w-full overflow-x-auto whitespace-pre rounded-[12px] border border-black/[0.05] bg-black/[0.035] px-2 py-1.5 text-[10px] leading-[1.35] text-ui-text-secondary sm:px-2.5 sm:py-2 sm:text-[10.5px]";
 const TEAM_TASK_PERMISSION_CARD_CLASS =
-  "mt-1 rounded-[14px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,252,247,0.96),rgba(250,250,249,0.92))] px-3 py-3";
+  "mt-1 rounded-[13px] border border-black/[0.06] bg-[linear-gradient(180deg,rgba(255,252,247,0.96),rgba(250,250,249,0.92))] px-2.5 py-2.5 sm:px-3 sm:py-3";
+const TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS =
+  "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-2.5 py-1.5";
 const TEAM_TASK_PERMISSION_CARD_HEADER_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_PERMISSION_CARD_TITLE_CLASS =
   "text-[13px] font-semibold tracking-tight text-ui-text-primary";
 const TEAM_TASK_PERMISSION_CARD_STATUS_CLASS =
   "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.84] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
+const TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS =
+  "mono mt-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ui-text-muted";
 const TEAM_TASK_PERMISSION_CARD_BODY_CLASS =
   "mt-2 space-y-2 text-[13px] leading-6 text-ui-text-secondary";
 const TEAM_TASK_PERMISSION_CARD_REASON_CLASS =
@@ -154,16 +160,16 @@ const TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.8] px-2.5 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary disabled:cursor-not-allowed disabled:opacity-60";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS = "text-xs text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-3 rounded-[14px] border border-ui-border/75 bg-ui-surface/78";
+  "mt-2 rounded-[12px] border border-ui-border/75 bg-ui-surface/78";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "mt-2 inline-flex items-center rounded-full border border-ui-border/90 bg-ui-surface-soft/88 px-2.5 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface";
+  "mt-1.5 inline-flex items-center rounded-full border border-ui-border/80 bg-white/72 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
-  "grid gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-text-muted sm:grid-cols-2";
+  "grid gap-1.5 border-t border-ui-border px-2.5 py-2 text-[11px] text-ui-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-medium text-ui-text-secondary";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.8] p-0.5 text-[10px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
-const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute bottom-2.5 right-2.5 z-[1]";
+  "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-black/[0.06] bg-white/[0.8] p-0.5 text-[10px] font-medium text-ui-text-muted transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft hover:text-ui-text-primary";
+const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute bottom-1.5 right-1.5 z-[1]";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
@@ -180,7 +186,7 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
 const TEAM_TASK_JUMP_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.86] text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.08)] backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong";
+  "inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.86] text-ui-text-secondary shadow-[0_8px_18px_rgba(15,23,42,0.08)] backdrop-blur transition hover:border-ui-border-emphasis hover:text-ui-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong sm:h-8 sm:w-8";
 const TEAM_TASK_TAIL_WINDOW_SIZE = 10;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
 
@@ -303,6 +309,19 @@ function normalizePermissionOption(value: unknown): AcpPermissionOption | null {
     name,
     kind: typeof record.kind === "string" ? record.kind.trim() : "",
   };
+}
+
+function isCompactCommandLikeText(text: string): boolean {
+  const normalized = text.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+  return (
+    normalized.startsWith("Run ") ||
+    normalized.startsWith("$ ") ||
+    normalized.startsWith("/bin/zsh ") ||
+    normalized.startsWith("/bin/bash ")
+  );
 }
 
 function normalizePermissionOptions(value: unknown): AcpPermissionOption[] {
@@ -457,6 +476,29 @@ function resolvePermissionStatusText(
   return status;
 }
 
+function resolvePermissionToolPreview(payload: PermissionReviewCardPayload): string | null {
+  const preview = normalizeTrimmedString(payload.tool_name) ?? normalizeTrimmedString(payload.summary);
+  if (!preview) {
+    return null;
+  }
+  return preview
+    .split(/\r?\n/, 1)[0]
+    ?.replace(/\s+/g, " ")
+    .trim() || null;
+}
+
+function resolvePermissionToolLabel(payload: PermissionReviewCardPayload): string {
+  const preview = resolvePermissionToolPreview(payload);
+  if (!preview) {
+    return "Permission review";
+  }
+  const normalized = preview.toLowerCase();
+  if (preview.length > 72 || normalized.startsWith("run ") || normalized.startsWith("/bin/")) {
+    return "Command review";
+  }
+  return preview;
+}
+
 type SeenProgressState = {
   readActorIds: string[];
   unreadActorIds: string[];
@@ -485,11 +527,11 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
   const status = resolvePermissionCardStatus(payload, permissionRecord);
   const statusText = resolvePermissionStatusText(payload, permissionRecord);
   const isPending = status === "pending";
-  const toolLabel =
-    payload.tool_name?.trim() || payload.tool_call_id?.trim() || "Permission review";
+  const toolLabel = resolvePermissionToolLabel(payload);
+  const toolPreview = resolvePermissionToolPreview(payload);
   const cardClassName = isPending
     ? TEAM_TASK_PERMISSION_CARD_CLASS
-    : "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.92)] px-3 py-2";
+    : TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS;
 
   return (
     <div className={cardClassName} data-team-permission-card="true">
@@ -497,13 +539,16 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
         <span className={TEAM_TASK_PERMISSION_CARD_TITLE_CLASS}>{toolLabel}</span>
         <span className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</span>
       </div>
+      {!isPending && toolPreview && toolPreview !== toolLabel && (
+        <div className={TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS}>{toolPreview}</div>
+      )}
       {isPending ? (
         <div className={TEAM_TASK_PERMISSION_CARD_BODY_CLASS}>
           {payload.reason_text && (
             <div className={TEAM_TASK_PERMISSION_CARD_REASON_CLASS}>{payload.reason_text}</div>
           )}
           <>
-            {payload.summary && <div>{payload.summary}</div>}
+            {(payload.summary ?? toolPreview) && <div>{payload.summary ?? toolPreview}</div>}
             <div className={TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS}>
               {payload.options.map((option, index) => {
                 const optionId = option.option_id.trim();
@@ -1022,7 +1067,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               <div
                 key={item.key}
                 className={`${resolveActivityItemClassName(item.fromActorId, humanActorId)}${
-                  shouldShowSeenMeta ? " pb-7 pr-8" : ""
+                  shouldShowSeenMeta ? " pb-6 pr-7 max-[720px]:pb-5 max-[720px]:pr-6" : ""
                 }`}
                 data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
                 data-team-channel-item="true"
@@ -1041,6 +1086,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                     errorText={permissionErrorById[permissionCardPayload.permission_id]}
                     onRespond={onRespondPermission}
                   />
+                ) : isCompactCommandLikeText(item.text) ? (
+                  <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
                 ) : (
                   <ThreadRichText
                     className={TEAM_TASK_ACTIVITY_BODY_CLASS}

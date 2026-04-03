@@ -88,26 +88,47 @@ type TeamMailboxPanelProps = {
 
 const MAILBOX_META_CLASS =
   "mb-3 grid min-w-0 gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3 text-ui-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-4";
-const MAILBOX_MEMBER_LIST_CLASS = "teams-chat-members rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
-const MAILBOX_PANEL_CLASS = "teams-chat-panel rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MAILBOX_SHELL_CLASS =
+  "teams-chat-shell grid min-w-0 gap-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]";
+const MAILBOX_MEMBER_LIST_CLASS =
+  "teams-chat-members flex max-h-[220px] min-w-0 flex-col gap-2 overflow-auto rounded-[18px] border border-ui-border bg-ui-surface-soft/60 p-3 lg:max-h-[560px]";
+const MAILBOX_PANEL_CLASS =
+  "teams-chat-panel flex min-w-0 flex-col gap-3 rounded-[18px] border border-ui-border bg-ui-surface-soft/60 p-3";
 const MAILBOX_MEMBER_BUTTON_BASE_CLASS = `${TEAM_LIST_ITEM_BASE_CLASS}`;
 const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
   `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-ui-border-strong bg-ui-surface-soft ring-1 ring-ui-border`;
 const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
   `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} hover:border-ui-border-strong`;
 const MAILBOX_UNREAD_ACTIVE_CLASS =
-  "teams-member-unread mono text-ui-xs text-[color:var(--status-warning-ink)]";
-const MAILBOX_UNREAD_MUTED_CLASS = "teams-member-unread mono text-ui-xs text-ui-text-muted";
+  "teams-member-unread mono inline-flex items-center rounded-full border border-state-warning-border bg-state-warning-bg px-2 py-0.5 text-ui-xs text-[color:var(--status-warning-ink)]";
+const MAILBOX_UNREAD_MUTED_CLASS =
+  "teams-member-unread mono inline-flex items-center rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-ui-xs text-ui-text-muted";
+const MAILBOX_HEAD_CLASS = "teams-chat-head flex flex-wrap items-center justify-between gap-2";
+const MAILBOX_HEAD_META_CLASS =
+  "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ui-sm text-ui-text-secondary";
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "ghost teams-chat-jump-bottom rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
-const MAILBOX_CONVERSATION_EMPTY_CLASS = `teams-chat-empty ${TEAM_MUTED_TEXT_CLASS}`;
-const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid gap-3 lg:grid-cols-2";
+  "ghost teams-chat-jump-bottom ml-auto inline-flex items-center rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
+const MAILBOX_MESSAGE_LIST_CLASS =
+  "teams-chat-messages m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto p-0";
+const MAILBOX_MESSAGE_BUBBLE_BASE_CLASS =
+  "teams-chat-bubble rounded-[14px] border px-2.5 py-2.5";
+const MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS =
+  `${MAILBOX_MESSAGE_BUBBLE_BASE_CLASS} border-[rgba(59,130,246,0.18)] bg-[linear-gradient(180deg,rgba(239,246,255,0.95),rgba(248,250,252,0.92))]`;
+const MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS =
+  `${MAILBOX_MESSAGE_BUBBLE_BASE_CLASS} border-[rgba(16,185,129,0.14)] bg-[linear-gradient(180deg,rgba(240,253,250,0.94),rgba(248,250,252,0.92))]`;
+const MAILBOX_MESSAGE_HEAD_CLASS =
+  "teams-message-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+const MAILBOX_CONVERSATION_EMPTY_CLASS =
+  `teams-chat-empty rounded-xl border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 ${TEAM_MUTED_TEXT_CLASS}`;
+const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-3 lg:grid-cols-2";
 const MAILBOX_ADVANCED_PANEL_CLASS =
-  "teams-message-panel flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+  "teams-message-panel flex min-w-0 flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
 const MAILBOX_SECTION_TITLE_CLASS = "text-ui-sm font-semibold text-ui-text-primary";
 const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-ui-sm text-ui-text-secondary";
 const MAILBOX_ADVANCED_HINT_CLASS =
   "mt-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
+const MAILBOX_ADVANCED_ROOT_CLASS =
+  "teams-message-advanced mt-3 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
 
 function resolveMailboxActorLabel(
   actorId: string,
@@ -346,7 +367,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       )}
 
       {showConversation && (
-        <div className="teams-chat-shell">
+        <div className={MAILBOX_SHELL_CLASS}>
           <div className={MAILBOX_MEMBER_LIST_CLASS}>
             <h4 className={MAILBOX_SECTION_TITLE_CLASS}>Agents</h4>
             {mailboxActors.map((member) => {
@@ -393,8 +414,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-            <div className="teams-chat-head">
-              <div>
+            <div className={MAILBOX_HEAD_CLASS}>
+              <div className={MAILBOX_HEAD_META_CLASS}>
                 <strong>
                   {resolveMailboxActorLabel(
                     chatActors.fromActorId,
@@ -411,8 +432,12 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               </div>
               {developerMode && (
                 <>
-                  <div className="mono">inbox_actor_id={chatActors.inboxActorId || "-"}</div>
-                  <div className="mono">auto_follow={chatStickToBottom ? "on" : "off"}</div>
+                  <div className={`mono ${MAILBOX_HEAD_META_CLASS}`}>
+                    inbox_actor_id={chatActors.inboxActorId || "-"}
+                  </div>
+                  <div className={`mono ${MAILBOX_HEAD_META_CLASS}`}>
+                    auto_follow={chatStickToBottom ? "on" : "off"}
+                  </div>
                 </>
               )}
               <button
@@ -426,7 +451,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               </button>
             </div>
             <ul
-              className="teams-chat-messages"
+              className={MAILBOX_MESSAGE_LIST_CLASS}
               ref={chatMessagesRef}
               onScroll={() => onConversationScroll()}
             >
@@ -437,9 +462,13 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 return (
                   <li
                     key={message.message_id}
-                    className={isOutgoing ? "teams-chat-bubble outgoing" : "teams-chat-bubble incoming"}
+                    className={
+                      isOutgoing
+                        ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS
+                        : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS
+                    }
                   >
-                    <div className="teams-message-head">
+                    <div className={MAILBOX_MESSAGE_HEAD_CLASS}>
                       <span className="mono">#{message.message_id}</span>
                       <span>
                         {resolveMailboxActorLabel(
@@ -530,7 +559,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       )}
 
       {showDeveloperMailboxTools && (
-        <div className="teams-message-advanced mt-3">
+        <div className={MAILBOX_ADVANCED_ROOT_CLASS}>
           <h4 className={`mb-2 ${MAILBOX_SECTION_TITLE_CLASS}`}>Advanced mailbox controls</h4>
           {advancedControls}
         </div>
