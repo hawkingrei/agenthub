@@ -467,10 +467,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");
     expect(container.textContent).toContain("collecting evidence");
-    expect(container.textContent).toContain("Leader · Working");
-    expect(container.textContent).toContain("Worker · Working");
-    expect(container.textContent).toContain("id leader-agent");
-    expect(container.textContent).toContain("id worker-agent");
+    expect(container.textContent).toContain("Working");
+    expect(container.textContent).not.toContain("id leader-agent");
+    expect(container.textContent).not.toContain("id worker-agent");
     expect(container.textContent).not.toContain("Console");
 
     act(() => {

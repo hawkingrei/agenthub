@@ -145,13 +145,6 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
   return currentWork;
 }
 
-function formatDeveloperMemberLabel(memberId: string): string {
-  if (memberId.length <= 18) {
-    return memberId;
-  }
-  return `${memberId.slice(0, 8)}...${memberId.slice(-4)}`;
-}
-
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
   "rounded-[24px] border border-black/[0.05] bg-white/52 p-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
@@ -163,21 +156,19 @@ const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-black/[0.06] bg-white/94 px-3 py-2 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[14px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
   "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.06] bg-white/94 px-3 py-2.5 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_WORK_CLASS =
-  "truncate text-[12px] font-medium leading-5 text-ui-text-secondary";
+  "truncate pl-4 text-[11px] leading-4 text-ui-text-secondary";
 const TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS =
-  "truncate text-[11px] leading-4 text-ui-text-muted";
-const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
-  "mono truncate text-[10px] leading-4 text-ui-text-muted/72";
+  "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none text-ui-text-muted";
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -626,14 +617,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                     focusedAgentMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
                   const primaryLabel = resolveMemberPrimaryLabel(member);
                   const currentWorkLabel = resolveCurrentWorkLabel(member);
-                  const memberSummaryLabel = [
-                    formatRoleLabel(member.role),
-                    formatMemberStateLabel(lifecycle, workStatus),
-                  ].join(" · ");
-                  const developerMemberLabel =
-                    developerMode && primaryLabel !== member.member_id
-                      ? `id ${formatDeveloperMemberLabel(member.member_id)}`
-                      : null;
+                  const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   return (
                     <button
                       key={member.member_id}
@@ -645,7 +629,13 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={
-                        [primaryLabel, developerMode ? member.member_id : null, currentWorkLabel]
+                        [
+                          primaryLabel,
+                          formatRoleLabel(member.role),
+                          memberStateLabel,
+                          developerMode ? member.member_id : null,
+                          currentWorkLabel,
+                        ]
                           .filter((value) => value && value.trim().length > 0)
                           .join(" · ") || member.member_id
                       }
@@ -659,13 +649,16 @@ export function TeamSidebar(props: TeamSidebarProps) {
                             )}`}
                             aria-hidden="true"
                           />
-                          <span className="truncate text-[13px] font-semibold text-ui-text-primary">
+                          <span className="truncate text-[13px] font-medium text-ui-text-primary">
                             {primaryLabel}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
+                          <span className={TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS}>
+                            {memberStateLabel}
+                          </span>
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[10px] font-semibold text-ui-text-primary">
+                            <span className="shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-ui-text-primary">
                               {member.pending_inbox_count}
                             </span>
                           )}
@@ -678,17 +671,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           }`}
                         >
                           {currentWorkLabel}
-                        </span>
-                      )}
-                      <span className={TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS}>
-                        {memberSummaryLabel}
-                      </span>
-                      {developerMemberLabel && (
-                        <span
-                          className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}
-                          title={member.member_id}
-                        >
-                          {developerMemberLabel}
                         </span>
                       )}
                     </button>
