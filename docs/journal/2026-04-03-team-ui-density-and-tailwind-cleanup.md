@@ -43,6 +43,7 @@
   - Reworked member information hierarchy so agent name stays primary, current work becomes the first supporting line, role/state collapse into a smaller humanized summary, and developer IDs move into a weaker tertiary line with shortened UUID display.
   - Further flattened agent rows into tree-like entries: active state now uses a subtle fill instead of a bordered card, status moves to a compact trailing label, and developer IDs stay in the tooltip instead of the visible row.
   - Removed the remaining panel chrome around the sidebar, collapsed workflow entries to single-line navigation rows, and weakened section headings so the whole rail reads closer to a document tree than a dashboard column.
+  - Restored the exported `formatWorkLabel()` compatibility helper after the cleanup so existing helper tests and callers keep the old work-label normalization contract.
 - `web/src/pages/team_task_panel.tsx`
   - Flattened the shared-thread activity shell, message bubbles, permission review cards, details disclosure block, seen popover, and jump button.
   - Reduced gradient usage in `# all` so command review and progress cards feel closer to document annotations than dashboard tiles.
@@ -83,6 +84,7 @@
 - `make build-web`
 - `cd web && npm run test -- src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
 - `cd web && npm run test -- src/app.runtime_effects.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
+- `cd web && npm run test -- src/pages/team_sidebar.helpers.test.ts src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run lint`
 - `cd web && npm run build`
 

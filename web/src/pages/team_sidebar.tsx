@@ -97,6 +97,13 @@ function formatRoleLabel(role: string): string {
   return humanizeToken(role);
 }
 
+export function formatWorkLabel(workLabel: string): string {
+  if (workLabel === "no_run") {
+    return "idle";
+  }
+  return humanizeToken(workLabel).toLowerCase();
+}
+
 function formatLifecycleLabel(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
 ): string {
