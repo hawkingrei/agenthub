@@ -107,7 +107,7 @@ const MAILBOX_UNREAD_MUTED_CLASS =
 const MAILBOX_HEAD_CLASS =
   "teams-chat-head grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start";
 const MAILBOX_HEAD_META_CLASS =
-  "min-w-0 break-all whitespace-normal text-ui-sm leading-5 text-ui-text-secondary";
+  "min-w-0 break-words whitespace-normal text-ui-sm leading-5 text-ui-text-secondary";
 const MAILBOX_HEAD_ACTIONS_CLASS =
   "flex min-w-0 flex-wrap items-center justify-start gap-2 lg:justify-end";
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =

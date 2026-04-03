@@ -46,7 +46,11 @@ const SKILLS_CONFIG_FILE: &str = ".agenthub/skills.json";
 const ACP_COMMAND_CHANNEL_CAPACITY: usize = 64;
 const ACP_COMMAND_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ACP_SESSION_START_TIMEOUT: Duration = Duration::from_secs(30);
-const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(40);
+const ACP_PERMISSION_REVIEW_TIMEOUT: Duration = Duration::from_secs(120);
+
+pub const fn acp_permission_review_timeout() -> Duration {
+    ACP_PERMISSION_REVIEW_TIMEOUT
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpActorContinuityEnvelope {
     pub mode: String,
@@ -1827,10 +1831,10 @@ mod tests {
     use super::{
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, build_prompt_prefix_blocks,
-        dedupe_skills, format_auth_required_message, handle_auth_required_failure,
-        is_auth_required_error, load_mcp_servers_from_path, load_skills_from_config,
-        load_workdir_skills, remove_skills_conflicting_with_reserved,
+        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, acp_permission_review_timeout,
+        build_prompt_prefix_blocks, dedupe_skills, format_auth_required_message,
+        handle_auth_required_failure, is_auth_required_error, load_mcp_servers_from_path,
+        load_skills_from_config, load_workdir_skills, remove_skills_conflicting_with_reserved,
         should_queue_while_prompts_active,
     };
     use agent_client_protocol::{
@@ -2495,7 +2499,11 @@ Fallback to the user-level review contract.
     }
 
     #[test]
-    fn permission_review_timeout_defaults_to_forty_seconds() {
-        assert_eq!(ACP_PERMISSION_REVIEW_TIMEOUT, Duration::from_secs(40));
+    fn permission_review_timeout_defaults_to_two_minutes() {
+        assert_eq!(ACP_PERMISSION_REVIEW_TIMEOUT, Duration::from_secs(120));
+        assert_eq!(
+            acp_permission_review_timeout(),
+            ACP_PERMISSION_REVIEW_TIMEOUT
+        );
     }
 }

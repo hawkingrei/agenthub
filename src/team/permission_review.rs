@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use agenthub_acp::{
     AcpPermissionReviewDispatcher, AcpPermissionReviewRequest, AcpPermissionService,
+    acp_permission_review_timeout,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorMailboxService, ActorMessageTransport, ActorSendRequest,
@@ -600,6 +601,15 @@ mod tests {
         assert_eq!(
             TeamPermissionReviewDispatcherSettings::default().human_fallback_delay,
             DEFAULT_TEAM_PERMISSION_REVIEW_HUMAN_FALLBACK_DELAY
+        );
+    }
+
+    #[test]
+    fn permission_review_human_fallback_stays_below_acp_timeout() {
+        assert!(
+            TeamPermissionReviewDispatcherSettings::default().human_fallback_delay
+                < acp_permission_review_timeout(),
+            "human fallback delay must remain below ACP permission timeout"
         );
     }
 
