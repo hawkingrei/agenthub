@@ -185,6 +185,118 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("src/main.rs");
   });
 
+  it("renders a native request_user_input card for pending questions", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "request-user-input:call-1",
+          title: "Reasoning scope",
+          status: "pending",
+          raw_input: [
+            {
+              id: "scope",
+              header: "Reasoning scope",
+              question: "Which reasoning scope should I use?",
+              isOther: false,
+              isSecret: false,
+              options: [
+                {
+                  label: "Plan only",
+                  description: "Update only Plan mode.",
+                },
+              ],
+            },
+          ],
+          content: "Codex needs input before continuing.",
+        },
+      ],
+      {
+        onSubmitRequestUserInput: () => {},
+      }
+    );
+
+    expect(html).toContain("Codex needs input before continuing");
+    expect(html).toContain("Submit Answer");
+    expect(html).toContain("Plan only");
+    expect(html).toContain('aria-labelledby="request-user-input:call-1:scope:header request-user-input:call-1:scope:prompt"');
+    expect(html).toContain('id="request-user-input:call-1:scope:note"');
+    expect(html).not.toContain(">Input<");
+  });
+
+  it("renders a native request_user_input result card for completed answers", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "request-user-input:call-2",
+        title: "Question",
+        status: "completed",
+        raw_input: [
+          {
+            id: "scope",
+            header: "Reasoning scope",
+            question: "Which reasoning scope should I use?",
+            isOther: false,
+            isSecret: false,
+            options: [
+              {
+                label: "Plan only",
+                description: "Update only Plan mode.",
+              },
+            ],
+          },
+          {
+            id: "notes",
+            header: "Notes",
+            question: "Add extra context.",
+            isOther: false,
+            isSecret: false,
+          },
+        ],
+        raw_output: {
+          answers: {
+            scope: {
+              answers: ["Plan only"],
+            },
+            notes: {
+              answers: ["Need a narrower reasoning budget."],
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(html).toContain("Questions answered");
+    expect(html).toContain("2/2 answers recorded");
+    expect(html).toContain("Need a narrower reasoning budget.");
+    expect(html).not.toContain(">Output<");
+    expect(html).not.toContain(">Input<");
+  });
+
+  it("renders secret request_user_input results as private placeholders", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "request-user-input:call-3",
+        title: "Question",
+        status: "completed",
+        raw_input: [
+          {
+            id: "secret_scope",
+            header: "Private scope",
+            question: "Share the private scope.",
+            isOther: false,
+            isSecret: true,
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain("Question answered");
+    expect(html).toContain("Answer submitted privately.");
+    expect(html).toContain("suppressed the structured answer payload");
+  });
+
   it("renders markdown code fences in tool text sections", () => {
     const html = renderConversation([
       {
@@ -328,6 +440,58 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
+  it("collapses older live tool calls once the conversation passes the cutoff window", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "tool_call",
+          id: "call-live-cutoff",
+          title: "Shell",
+          status: "in_progress",
+          raw_input: { cmd: "cargo test" },
+        },
+      ],
+      {
+        shouldAutoCollapse: true,
+        collapseCutoff: 10,
+      }
+    );
+
+    expect(html).toContain("Tool Call: Shell");
+    expect(html).not.toMatch(/acp-tool-fold" open/);
+  });
+
+  it("collapses older live grouped cards once the conversation passes the cutoff window", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "explore_group",
+          event_id: 20,
+          items: [
+            {
+              kind: "agent_thinking",
+              text: "explore repo layout",
+              event_id: 18,
+            },
+            {
+              kind: "tool_call",
+              id: "call-live-group-cutoff",
+              title: "Search",
+              status: "in_progress",
+            },
+          ],
+        },
+      ],
+      {
+        shouldAutoCollapse: true,
+        collapseCutoff: 10,
+      }
+    );
+
+    expect(html).toContain("Explore (1 tools)");
+    expect(html).not.toMatch(/acp-explore-group-fold" open/);
+  });
+
   it("shows success status dot for completed tool calls", () => {
     const html = renderConversation([
       {
@@ -393,9 +557,10 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Show more");
     expect(html).toContain("more lines");
-    expect(html).toContain('<pre class="acp-content acp-payload-text">line-364');
+    expect(html).toContain('<pre class="acp-content acp-payload-text');
+    expect(html).toContain(">line-364");
     expect(html).toContain("line-399");
-    expect(html).not.toContain('<pre class="acp-content acp-payload-text">line-363');
+    expect(html).not.toContain(">line-363");
   });
 
   it("renders aggregated_output in tail-first mode and keeps older lines behind Show more", () => {
@@ -414,9 +579,10 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("<dt>aggregated_output</dt>");
     expect(html).toContain("Show more");
-    expect(html).toContain('<pre class="acp-content acp-payload-text">agg-364');
+    expect(html).toContain('<pre class="acp-content acp-payload-text');
+    expect(html).toContain(">agg-364");
     expect(html).toContain("agg-399");
-    expect(html).not.toContain('<pre class="acp-content acp-payload-text">agg-363');
+    expect(html).not.toContain(">agg-363");
   });
 
   it("renders aggregated_output as plain terminal block even when text looks like markdown", () => {
@@ -486,9 +652,9 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("turnId");
     expect(html).not.toContain("process_id");
     expect(html).not.toContain("source");
-    expect(html).not.toContain("t-1");
-    expect(html).not.toContain("t-2");
-    expect(html).not.toContain("p-1");
+    expect(html).not.toContain(">t-1<");
+    expect(html).not.toContain(">t-2<");
+    expect(html).not.toContain(">p-1<");
   });
 
   it("hides call_id/cwd/success from regular payload fields and shows them in Detailed section", () => {

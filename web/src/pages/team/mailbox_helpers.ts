@@ -362,21 +362,33 @@ export function parseStructuredTeamPayload(payload: unknown): unknown {
   }
 }
 
-export function resolveChatMessageText(payload: unknown): string | null {
-  const parsed = parseStructuredTeamPayload(payload);
-  if (typeof parsed === "string") {
+function resolveStructuredPayloadTextByType(parsed: unknown, expectedType: string): string | null {
+  if (expectedType === "chat_message" && typeof parsed === "string") {
     return parsed;
   }
   if (
     typeof parsed === "object" &&
     parsed !== null &&
     "type" in parsed &&
-    (parsed as { type?: unknown }).type === "chat_message" &&
+    (parsed as { type?: unknown }).type === expectedType &&
     "text" in parsed
   ) {
     return String((parsed as { text?: unknown }).text ?? "");
   }
   return null;
+}
+
+export function resolveChatMessageText(payload: unknown): string | null {
+  return resolveStructuredPayloadTextByType(parseStructuredTeamPayload(payload), "chat_message");
+}
+
+export function resolveVisibleTeamPayloadText(payload: unknown): string | null {
+  const parsed = parseStructuredTeamPayload(payload);
+  const chatText = resolveStructuredPayloadTextByType(parsed, "chat_message");
+  if (chatText !== null) {
+    return chatText;
+  }
+  return resolveStructuredPayloadTextByType(parsed, "task_note");
 }
 
 export function buildMailboxChatPayload(

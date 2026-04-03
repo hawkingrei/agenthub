@@ -50,49 +50,49 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "rounded-[20px] border border-ui-border/80 bg-white/76 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]";
+  "rounded-[16px] border border-black/[0.06] bg-white/82 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
 const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-1";
 const TASKS_BOARD_LANES_CLASS =
   "grid min-w-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-4";
 const TASKS_BOARD_COLUMN_CLASS =
-  "flex min-h-[320px] flex-col rounded-[22px] border border-ui-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.94))] p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]";
+  "flex min-h-[320px] flex-col rounded-[18px] border border-black/[0.05] bg-white/84 p-3 shadow-[0_1px_4px_rgba(15,23,42,0.04)]";
 const TASKS_BOARD_COLUMN_HEADER_CLASS =
-  "flex items-start justify-between gap-2.5 border-b border-ui-border/80 pb-2.5";
+  "flex items-start justify-between gap-2.5 border-b border-black/[0.05] pb-2.5";
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
 const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2.5";
 const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-[16px] border border-dashed border-ui-border-strong bg-white/76 px-2.5 py-2.5 text-sm text-ui-text-muted";
+  "rounded-[14px] border border-dashed border-black/[0.12] bg-white/72 px-2.5 py-2.5 text-sm text-ui-text-muted";
 const TASKS_BOARD_CARD_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[18px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.97))] px-3 py-3 text-left text-ui-text-primary shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.08] bg-white/94 px-3 py-3 text-left text-ui-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition";
 const TASKS_BOARD_CARD_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[18px] border border-ui-border/90 bg-white/88 px-3 py-3 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.03)] transition hover:border-ui-border-strong hover:bg-ui-surface-soft";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.05] bg-white/90 px-3 py-3 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-black/[0.08] hover:bg-black/[0.02]";
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
   "flex w-full min-w-0 flex-col items-start gap-1.5 text-left";
 const TASKS_DETAIL_PANEL_CLASS =
-  "rounded-[24px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]";
+  "rounded-[18px] border border-black/[0.05] bg-white/88 p-4 shadow-[0_1px_4px_rgba(15,23,42,0.04)]";
 const TASKS_DETAIL_META_CLASS =
   "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
 const TASKS_DETAIL_META_ITEM_CLASS =
-  "rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-2.5 py-2";
+  "rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-2.5 py-2";
 const TASKS_RUN_CARD_CLASS =
-  "rounded-[18px] border border-ui-border/80 bg-white/82 px-3 py-3";
+  "rounded-[14px] border border-black/[0.05] bg-white/90 px-3 py-3";
 const TASKS_RUN_LIST_CLASS = "mt-3.5 space-y-2";
 const TASKS_DEBUG_DISCLOSURE_CLASS =
-  "mt-3.5 rounded-[16px] border border-dashed border-ui-border bg-ui-surface-soft/55 px-2.5 py-2.5";
+  "mt-3.5 rounded-[14px] border border-dashed border-black/[0.1] bg-black/[0.018] px-2.5 py-2.5";
 const TASKS_DEBUG_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-center justify-between gap-3 text-left";
 const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-sm text-ui-text-muted";
-const TASKS_DEBUG_BODY_CLASS = "mt-3 space-y-3 border-t border-ui-border pt-3";
+const TASKS_DEBUG_BODY_CLASS = "mt-3 space-y-3 border-t border-black/[0.05] pt-3";
 
 const SEGMENTED_CONTROL_CLASSNAMES = {
-  root: "rounded-lg border border-ui-border bg-ui-surface-soft/80 p-1",
+  root: "rounded-lg border border-black/[0.05] bg-black/[0.02] p-1",
   control: "flex-1",
   label:
-    "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition data-[active]:bg-ui-surface data-[active]:text-ui-text-primary data-[active]:shadow-sm hover:text-ui-text-primary",
+    "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition data-[active]:bg-white data-[active]:text-ui-text-primary data-[active]:shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:text-ui-text-primary",
   indicator: "hidden",
   innerLabel: "truncate",
 } as const;
@@ -316,7 +316,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                       <h4 className="text-sm font-semibold text-ui-text-primary">
                         {column.label}
                       </h4>
-                      <span className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                      <span className="rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
                         {laneTasks.length}
                       </span>
                     </div>
@@ -451,7 +451,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
             </div>
           </div>
 
-          <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-2.5 py-2 text-sm text-ui-text-muted">
+          <div className="mt-4 rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-2.5 py-2 text-sm text-ui-text-muted">
             Task status and ownership are agent-managed through Team runtime controls.
           </div>
 
@@ -526,7 +526,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                       Earlier execution attempts linked to this task.
                     </p>
                   </div>
-                  <span className="rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                  <span className="rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
                     {relatedRuns.length - 1}
                   </span>
                 </div>
@@ -535,7 +535,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                     <button
                       key={run.id}
                       type="button"
-                      className="flex w-full flex-col items-start gap-2 rounded-lg border border-ui-border bg-ui-surface px-3 py-2 text-left transition hover:border-ui-border-strong hover:bg-ui-surface-soft"
+                      className="flex w-full flex-col items-start gap-2 rounded-[12px] border border-black/[0.05] bg-white/92 px-3 py-2 text-left transition hover:border-black/[0.08] hover:bg-black/[0.02]"
                       onClick={() => onOpenRun(run.id)}
                     >
                       <div className="flex w-full flex-wrap items-center justify-between gap-2">
@@ -606,7 +606,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 </div>
 
                 {compiledRunPreview ? (
-                  <div className="space-y-3 rounded-xl border border-ui-border bg-ui-surface-soft p-3">
+                  <div className="space-y-3 rounded-[14px] border border-black/[0.05] bg-black/[0.018] p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -694,7 +694,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="min-w-[220px] flex-1 rounded-[14px] border border-ui-border bg-ui-surface-soft/65 px-3 py-2.5 text-sm text-ui-text-muted">
+        <div className="min-w-[220px] flex-1 rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-3 py-2.5 text-sm text-ui-text-muted">
           Kanban is the canonical Team task surface. Human requests and clarifications should go
           through <strong className="text-ui-text-primary"># all</strong>; leader planning and Team
           runtime create and advance tasks here.

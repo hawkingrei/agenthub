@@ -47,11 +47,17 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS = "teams-step-panel rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
-const STEPS_LIST_CLASS = "teams-step-list rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const STEPS_PANEL_CLASS =
+  "teams-step-panel min-w-0 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const STEPS_LIST_CLASS =
+  "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
 const STEPS_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const STEPS_ITEM_HEAD_CLASS =
+  "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+const STEPS_ITEM_BODY_CLASS =
+  "teams-step-body mono flex flex-col gap-1 text-ui-xs text-ui-text-muted break-words";
 const STEPS_LIST_ONLY_NOTE_CLASS =
   "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
@@ -255,12 +261,12 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
         <ul className={STEPS_LIST_CLASS}>
           {steps.map((step) => (
             <li key={step.id} className={STEPS_ITEM_CLASS}>
-              <div className="teams-step-head">
+              <div className={STEPS_ITEM_HEAD_CLASS}>
                 <span className="mono">{step.id}</span>
                 <span>{step.step_key}</span>
                 <span>{step.status}</span>
               </div>
-              <div className="teams-step-body mono">
+              <div className={STEPS_ITEM_BODY_CLASS}>
                 <div>member_id: {step.member_id}</div>
                 <div>attempt: {step.attempt}</div>
                 <div>depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}</div>

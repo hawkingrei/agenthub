@@ -1,20 +1,33 @@
 import { api } from "./api";
 import { urlBase64ToUint8Array } from "./webauthn";
 
-export async function ensurePushSubscription(token: string) {
-  if (!("serviceWorker" in navigator)) return;
-  if (!("PushManager" in window)) return;
-  let registration: ServiceWorkerRegistration;
+export async function ensureServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!("serviceWorker" in navigator)) return null;
   try {
-    registration =
-      (await navigator.serviceWorker.getRegistration()) ??
-      (await navigator.serviceWorker.register("/sw.js"));
-    registration = await navigator.serviceWorker.ready;
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (existing) {
+      return existing;
+    }
+    return await navigator.serviceWorker.register("/sw.js");
+  } catch {
+    return null;
+  }
+}
+
+export async function ensurePushSubscription(token: string) {
+  if (!("PushManager" in window)) return;
+  const registration = await ensureServiceWorkerRegistration();
+  if (!registration) {
+    return;
+  }
+  let readyRegistration: ServiceWorkerRegistration;
+  try {
+    readyRegistration = await navigator.serviceWorker.ready;
   } catch {
     return;
   }
-  if (!registration.pushManager) return;
-  let sub = await registration.pushManager.getSubscription();
+  if (!readyRegistration.pushManager) return;
+  let sub = await readyRegistration.pushManager.getSubscription();
   if (!sub) {
     let vapid: { public_key: string };
     try {
@@ -24,7 +37,7 @@ export async function ensurePushSubscription(token: string) {
     }
     const key = urlBase64ToUint8Array(vapid.public_key);
     try {
-      sub = await registration.pushManager.subscribe({
+      sub = await readyRegistration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: key,
       });

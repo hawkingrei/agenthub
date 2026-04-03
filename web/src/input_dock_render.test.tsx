@@ -70,6 +70,12 @@ describe("InputDock interrupt placement", () => {
     expect(sendPos).toBeGreaterThan(textareaPos);
   });
 
+  it("renders textarea with stable form attributes for browser accessibility checks", () => {
+    const html = renderDock();
+    expect(html).toContain('name="acp_input"');
+    expect(html).toMatch(/<textarea[^>]*id="/);
+  });
+
   it("keeps jump-to-bottom control outside the editor grid flow", () => {
     const html = renderDock({ showConversationJump: true });
     const shellPos = html.indexOf('class="input-dock-shell');

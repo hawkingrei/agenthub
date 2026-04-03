@@ -17,6 +17,7 @@ import {
   resolveChatMessageText,
   resolveDisplayName,
   resolveMentionDraftQuery,
+  resolveVisibleTeamPayloadText,
   resolveTaskMailboxRoutePlan,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
@@ -190,6 +191,33 @@ describe("mailbox helpers", () => {
 
   it("treats plain string mailbox payloads as chat text", () => {
     expect(resolveChatMessageText("line one\n\n- line two")).toBe("line one\n\n- line two");
+  });
+
+  it("resolves task_note payloads into visible text", () => {
+    expect(
+      resolveVisibleTeamPayloadText({
+        type: "task_note",
+        kind: "comment",
+        text: "Awaiting next task.",
+      })
+    ).toBe("Awaiting next task.");
+    expect(
+      resolveVisibleTeamPayloadText(
+        '{"type":"task_note","kind":"result","text":"Completed #59445."}'
+      )
+    ).toBe("Completed #59445.");
+  });
+
+  it("resolves chat_message payloads into visible text through the unified visible-text path", () => {
+    expect(
+      resolveVisibleTeamPayloadText({
+        type: "chat_message",
+        text: "hello team",
+      })
+    ).toBe("hello team");
+    expect(
+      resolveVisibleTeamPayloadText('{"type":"chat_message","text":"hello from json"}')
+    ).toBe("hello from json");
   });
 
   it("renders raw mentions as chips in plain text only", () => {

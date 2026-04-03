@@ -44,7 +44,7 @@ type TeamMemberConsolePanelProps = {
 };
 
 const MEMBER_CONSOLE_DETAIL_CLASS =
-  "teams-step-body mono rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+  "teams-step-body mono flex flex-col gap-1 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3 text-ui-xs text-ui-text-muted";
 const MEMBER_CONSOLE_DETAIL_GRID_CLASS = "grid gap-2 md:grid-cols-2";
 const MEMBER_CONSOLE_DETAIL_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
 const MEMBER_CONSOLE_DETAIL_LABEL_CLASS =
@@ -54,7 +54,8 @@ const MEMBER_CONSOLE_DETAIL_VALUE_CLASS =
 const MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS =
   "mono mt-1 block min-w-0 whitespace-pre-wrap break-words text-ui-text-primary";
 const MEMBER_CONSOLE_DISCOVERY_CLASS = "mt-2 rounded-lg border border-ui-border bg-ui-surface p-2";
-const MEMBER_CONSOLE_LIST_CLASS = "teams-event-list rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
+const MEMBER_CONSOLE_LIST_CLASS =
+  "teams-event-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const MEMBER_CONSOLE_LIST_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
 const MEMBER_CONSOLE_EVENT_HEAD_CLASS =
   "teams-event-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";

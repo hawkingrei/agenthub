@@ -24,6 +24,19 @@ import {
   ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS,
 } from "../ui/tailwind_classes";
 import {
+  REQUEST_USER_INPUT_OTHER_OPTION_LABEL,
+  buildRequestUserInputSubmissionText,
+  countAnsweredRequestUserInputQuestions,
+  createInitialRequestUserInputDrafts,
+  formatRequestUserInputSummary,
+  parseRequestUserInputQuestions,
+  parseRequestUserInputResponse,
+  splitRequestUserInputAnswer,
+  type RequestUserInputDrafts,
+  type RequestUserInputQuestion,
+  type RequestUserInputResponse,
+} from "../request_user_input";
+import {
   getThreadMarkdownCacheStats,
   renderThreadMarkdownCached,
   resetThreadMarkdownCache,
@@ -56,6 +69,7 @@ type AcpConversationProps = {
   onScroll: () => void;
   containerRef: React.Ref<HTMLDivElement>;
   ansi: (input: string) => string;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
@@ -99,6 +113,48 @@ const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
 const TOOL_PAYLOAD_INITIAL_ITEMS = 8;
 const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
+const ACP_SUBFOLD_CLASS = "acp-subfold mt-1.5";
+const ACP_SUBFOLD_SUMMARY_CLASS =
+  "mb-1 flex cursor-pointer items-center gap-1.5 text-[10.5px] leading-[1.35] text-slate-500 max-[720px]:items-start max-[720px]:text-[10px]";
+const ACP_SUBFOLD_PREVIEW_CLASS =
+  "acp-subfold-preview max-w-[min(60vw,460px)] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-slate-400 max-[720px]:max-w-[min(64vw,300px)] max-[600px]:max-w-[58vw]";
+const ACP_PAYLOAD_CARD_CLASS =
+  "acp-payload-card overflow-hidden rounded-[10px] border border-[#dde2db] bg-[#fcfcfa] px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
+const ACP_PAYLOAD_GRID_CLASS = "acp-payload-grid m-0 grid gap-1.5";
+const ACP_PAYLOAD_ROW_CLASS =
+  "acp-payload-row grid grid-cols-[minmax(84px,128px)_minmax(0,1fr)] items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 [&>dt]:break-words [&>dt]:font-mono [&>dt]:text-[11px] [&>dt]:leading-[1.4] [&>dt]:text-slate-500 [&>dd]:m-0 [&>dd]:min-w-0 max-[720px]:grid-cols-[minmax(64px,96px)_minmax(0,1fr)] max-[720px]:gap-[5px] max-[600px]:grid-cols-1 max-[600px]:gap-1";
+const ACP_PAYLOAD_SCALAR_CLASS =
+  "acp-payload-scalar inline-block max-w-full break-words font-mono text-[11px] leading-[1.45] text-slate-800";
+const ACP_PAYLOAD_SCALAR_MUTED_CLASS =
+  "acp-payload-scalar muted inline-block max-w-full break-words font-mono text-[11px] leading-[1.45] text-slate-400";
+const ACP_PAYLOAD_TEXT_BASE_CLASS =
+  "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.45] text-slate-800";
+const ACP_PAYLOAD_TEXT_ASCII_CLASS =
+  `${ACP_PAYLOAD_TEXT_BASE_CLASS} acp-payload-ascii overflow-x-auto whitespace-pre`;
+const ACP_PAYLOAD_MARKDOWN_CLASS =
+  "acp-payload-markdown text-[12.5px] leading-[1.55] [&_pre]:m-0 max-[720px]:text-[12px] max-[720px]:leading-[1.52]";
+const ACP_PAYLOAD_SEGMENTED_CLASS = "acp-payload-segmented grid gap-1.5";
+const ACP_PAYLOAD_LIST_CLASS = "acp-payload-list m-0 grid list-none gap-1.5 pl-0";
+const ACP_PAYLOAD_LIST_ITEM_CLASS = "m-0 min-w-0";
+const ACP_PAYLOAD_NESTED_CLASS = "acp-payload-nested rounded-md border border-slate-200 bg-white";
+const ACP_PAYLOAD_NESTED_SUMMARY_CLASS =
+  "cursor-pointer font-mono text-[10.5px] leading-[1.35] text-slate-500";
+const ACP_PAYLOAD_NESTED_BODY_CLASS =
+  "acp-payload-nested-body mt-1 border-t border-slate-200 px-2 py-2";
+const ACP_SEGMENTED_BLOCK_CLASS = "acp-segmented-block grid gap-1.5";
+const ACP_SEGMENTED_FOOTER_CLASS =
+  "acp-segmented-footer flex flex-wrap items-center justify-between gap-1.5";
+const ACP_SEGMENTED_META_CLASS = "acp-segmented-meta text-[11px] text-slate-500";
+const ACP_PLAN_CARD_CLASS =
+  "acp-plan-card grid gap-2.5 rounded-[10px] border border-[#efd9a9] bg-[#fffbf1] p-2.5";
+const ACP_PLAN_PROGRESS_CLASS = "acp-plan-progress grid gap-1.5";
+const ACP_PLAN_PROGRESS_META_CLASS = "acp-plan-progress-meta flex flex-wrap gap-1.5 text-[11px] text-slate-500";
+const ACP_PLAN_PROGRESS_BAR_CLASS =
+  "acp-plan-progress-bar mt-2 h-1.5 overflow-hidden rounded-full bg-[#e7ebe5]";
+const ACP_PLAN_PROGRESS_BAR_FILL_CLASS =
+  "block h-full rounded-full bg-gradient-to-r from-[#203b2d] to-[#4b6b5d]";
+const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-3 grid list-none gap-1.5 p-0";
+const ACP_PLAN_CONTENT_CLASS = "acp-plan-content min-w-0 text-sm text-slate-800";
 const FAILED_TOOL_STATUSES = new Set([
   "failed",
   "cancelled",
@@ -168,6 +224,7 @@ export function AcpConversation({
   onScroll,
   containerRef,
   ansi,
+  onSubmitRequestUserInput,
 }: AcpConversationProps) {
   const bottomClearance = Number.isFinite(bottomClearancePx)
     ? Math.max(0, Math.round(bottomClearancePx))
@@ -219,6 +276,7 @@ export function AcpConversation({
                 isFrozenView={isFrozenView}
                 runStatus={runStatus}
                 ansi={ansi}
+                onSubmitRequestUserInput={onSubmitRequestUserInput}
               />
             </div>
           );
@@ -250,6 +308,7 @@ type ConversationBubbleProps = {
   isFrozenView: boolean;
   runStatus?: string | null;
   ansi: (input: string) => string;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
 const ConversationBubble = React.memo(
@@ -261,6 +320,7 @@ const ConversationBubble = React.memo(
     isFrozenView,
     runStatus,
     ansi,
+    onSubmitRequestUserInput,
   }: ConversationBubbleProps) {
     const autoCollapse =
       shouldAutoCollapse && !isFrozenView && globalIndex < collapseCutoff;
@@ -274,14 +334,38 @@ const ConversationBubble = React.memo(
     }
 
     if (msg.kind === "explore_group") {
-      return <ExploreGroupBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
+      return (
+        <ExploreGroupBubble
+          msg={msg}
+          ansi={ansi}
+          runStatus={runStatus}
+          autoCollapse={autoCollapse}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
     }
 
     if (msg.kind === "tool_call") {
-      return <ToolCallBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
+      return (
+        <ToolCallBubble
+          msg={msg}
+          ansi={ansi}
+          runStatus={runStatus}
+          autoCollapse={autoCollapse}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
     }
     if (msg.kind === "tool_call_group") {
-      return <ToolCallGroupBubble msg={msg} ansi={ansi} runStatus={runStatus} />;
+      return (
+        <ToolCallGroupBubble
+          msg={msg}
+          ansi={ansi}
+          runStatus={runStatus}
+          autoCollapse={autoCollapse}
+          onSubmitRequestUserInput={onSubmitRequestUserInput}
+        />
+      );
     }
 
     if (msg.kind === "agent_message") {
@@ -303,6 +387,7 @@ function areConversationBubblePropsEqual(
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
   if (prev.ansi !== next.ansi) return false;
+  if (prev.onSubmitRequestUserInput !== next.onSubmitRequestUserInput) return false;
   if (
     prev.msg.kind === "tool_call" ||
     prev.msg.kind === "tool_call_group" ||
@@ -337,8 +422,10 @@ type ToolCallBubbleProps = {
   msg: ToolCallConversationItem;
   ansi: (input: string) => string;
   runStatus?: string | null;
+  autoCollapse?: boolean;
   grouped?: boolean;
   indexLabel?: string;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
 const ToolCallBubble = React.memo(
@@ -346,17 +433,35 @@ const ToolCallBubble = React.memo(
     msg,
     ansi,
     runStatus,
+    autoCollapse = false,
     grouped = false,
     indexLabel,
+    onSubmitRequestUserInput,
   }: ToolCallBubbleProps) {
     const isLive = isToolCallEffectivelyLive(msg.status, runStatus);
-    const [open, setOpen] = React.useState(isLive);
+    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
     }, []);
     const wasLiveRef = React.useRef(isLive);
+    const wasAutoCollapseRef = React.useRef(autoCollapse);
     const callHint = deriveToolCallHint(msg.title, msg.raw_input, msg.content);
+    const requestUserInputQuestions = React.useMemo(
+      () => parseRequestUserInputQuestions(msg.id, msg.raw_input),
+      [msg.id, msg.raw_input]
+    );
+    const requestUserInputResponse = React.useMemo(
+      () => parseRequestUserInputResponse(msg.raw_output),
+      [msg.raw_output]
+    );
+    const requestUserInputSummary = React.useMemo(
+      () =>
+        requestUserInputQuestions
+          ? formatRequestUserInputSummary(requestUserInputQuestions)
+          : "",
+      [requestUserInputQuestions]
+    );
     const inputPayload = React.useMemo(
       () => normalizeToolPayload(msg.raw_input),
       [msg.raw_input]
@@ -392,6 +497,12 @@ const ToolCallBubble = React.memo(
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
     }, [isLive]);
+    React.useEffect(() => {
+      if (autoCollapse && !wasAutoCollapseRef.current) {
+        setOpen(false);
+      }
+      wasAutoCollapseRef.current = autoCollapse;
+    }, [autoCollapse]);
     useAutoCollapseToolFoldWhenOutOfView({
       detailsRef,
       enabled: !grouped,
@@ -401,6 +512,11 @@ const ToolCallBubble = React.memo(
     const title = grouped
       ? `${indexLabel ? `${indexLabel} ` : ""}${msg.title || "Tool Call"}`
       : `Tool Call${msg.title ? `: ${msg.title}` : ""}`;
+    const effectiveHint = requestUserInputSummary || callHint;
+    const hasRequestUserInputCard =
+      requestUserInputQuestions != null && requestUserInputQuestions.length > 0;
+    const showPendingRequestUserInputCard = isLive && hasRequestUserInputCard;
+    const showResolvedRequestUserInputCard = !isLive && hasRequestUserInputCard;
 
     return (
       <div
@@ -429,7 +545,7 @@ const ToolCallBubble = React.memo(
               )}
               <span>
                 {title}
-                {callHint ? ` · ${callHint}` : ""}
+                {effectiveHint ? ` · ${effectiveHint}` : ""}
               </span>
             </span>
             {msg.status && (
@@ -441,7 +557,22 @@ const ToolCallBubble = React.memo(
               </span>
             )}
           </summary>
-          {msg.content && (
+          {showPendingRequestUserInputCard && requestUserInputQuestions ? (
+            <RequestUserInputCard
+              toolCallId={msg.id}
+              questions={requestUserInputQuestions}
+              canSubmit={typeof onSubmitRequestUserInput === "function"}
+              onSubmitRequestUserInput={onSubmitRequestUserInput}
+            />
+          ) : null}
+          {showResolvedRequestUserInputCard && requestUserInputQuestions ? (
+            <RequestUserInputResultCard
+              questions={requestUserInputQuestions}
+              response={requestUserInputResponse}
+              status={msg.status}
+            />
+          ) : null}
+          {!hasRequestUserInputCard && msg.content && (
             <FoldSection
               key="content"
               label="Content"
@@ -451,12 +582,12 @@ const ToolCallBubble = React.memo(
             >
               <ToolTextContent
                 text={unescapeLineBreaks(msg.content)}
-                markdownClassName="acp-payload-markdown"
+                markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
                 preferPlainText={true}
               />
             </FoldSection>
           )}
-          {hasToolPayload(inputPayload) && (
+          {!hasRequestUserInputCard && hasToolPayload(inputPayload) && (
             <FoldSection
               key="input"
               label="Input"
@@ -468,7 +599,7 @@ const ToolCallBubble = React.memo(
               <ToolPayloadView payload={inputPayload} />
             </FoldSection>
           )}
-          {hasToolPayload(outputPayload) && (
+          {!hasRequestUserInputCard && hasToolPayload(outputPayload) && (
             <FoldSection
               key="output"
               label="Output"
@@ -533,9 +664,427 @@ const ToolCallBubble = React.memo(
     prev.msg === next.msg &&
     prev.ansi === next.ansi &&
     prev.runStatus === next.runStatus &&
+    prev.autoCollapse === next.autoCollapse &&
     prev.grouped === next.grouped &&
-    prev.indexLabel === next.indexLabel
+    prev.indexLabel === next.indexLabel &&
+    prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput
 );
+
+function RequestUserInputCard({
+  toolCallId,
+  questions,
+  canSubmit,
+  onSubmitRequestUserInput,
+}: {
+  toolCallId: string;
+  questions: RequestUserInputQuestion[];
+  canSubmit: boolean;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
+}) {
+  const [drafts, setDrafts] = React.useState<RequestUserInputDrafts>(() =>
+    createInitialRequestUserInputDrafts(questions)
+  );
+  const [submitting, setSubmitting] = React.useState(false);
+  const [errorText, setErrorText] = React.useState<string | null>(null);
+  const questionsResetKey = createRequestUserInputQuestionsResetKey(questions);
+  const resetStateKey = `${toolCallId}::${questionsResetKey}`;
+  const lastResetStateKeyRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (lastResetStateKeyRef.current === resetStateKey) {
+      return;
+    }
+    lastResetStateKeyRef.current = resetStateKey;
+    setDrafts(createInitialRequestUserInputDrafts(questions));
+    setSubmitting(false);
+    setErrorText(null);
+  }, [questions, resetStateKey]);
+
+  const handleOptionChange = React.useCallback(
+    (questionId: string, optionLabel: string) => {
+      setDrafts((prev) => ({
+        ...prev,
+        [questionId]: {
+          selectedOptionLabel: optionLabel,
+          note: prev[questionId]?.note ?? "",
+        },
+      }));
+      setErrorText(null);
+    },
+    []
+  );
+
+  const handleNoteChange = React.useCallback((questionId: string, note: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [questionId]: {
+        selectedOptionLabel: prev[questionId]?.selectedOptionLabel ?? null,
+        note,
+      },
+    }));
+    setErrorText(null);
+  }, []);
+
+  const handleSubmit = React.useCallback(async () => {
+    if (!onSubmitRequestUserInput) {
+      return;
+    }
+    const submission = buildRequestUserInputSubmissionText(questions, drafts);
+    if (!submission.text) {
+      setErrorText("Answer required before continuing.");
+      return;
+    }
+    if (submission.missingQuestionIds.length > 0) {
+      setErrorText(
+        `Answer required for: ${submission.missingQuestionIds.join(", ")}.`
+      );
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setErrorText(null);
+      await onSubmitRequestUserInput(submission.text);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [drafts, onSubmitRequestUserInput, questions]);
+
+  return (
+    <div className="mx-3 mb-3 mt-2 rounded-[16px] border border-[#d7dfeb] bg-[linear-gradient(180deg,rgba(247,250,252,0.94),rgba(255,255,255,0.96))] p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">
+            Codex needs input before continuing
+          </div>
+          <div className="text-xs text-slate-500">
+            Submit here to answer the pending question without using the input dock.
+          </div>
+        </div>
+        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+          Pending
+        </span>
+      </div>
+      <div className="mt-3 space-y-3">
+        {questions.map((question, index) => {
+          const draft = drafts[question.id] ?? {
+            selectedOptionLabel: null,
+            note: "",
+          };
+          const hasOptions = question.options != null && question.options.length > 0;
+          const questionHeaderId = `${toolCallId}:${question.id}:header`;
+          const questionPromptId = `${toolCallId}:${question.id}:prompt`;
+          const questionTextareaId = `${toolCallId}:${question.id}:note`;
+          return (
+            <div
+              key={question.id}
+              className="rounded-[14px] border border-black/[0.06] bg-white/90 p-3"
+              data-request-user-input-question={question.id}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-black/[0.08] bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {questions.length > 1 ? `Q${index + 1}` : "Question"}
+                </span>
+                <span
+                  id={questionHeaderId}
+                  className="text-sm font-semibold text-slate-800"
+                >
+                  {question.header || question.id}
+                </span>
+                {question.isSecret ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    Secret
+                  </span>
+                ) : null}
+              </div>
+              <p
+                id={questionPromptId}
+                className="mt-2 text-sm leading-6 text-slate-700"
+              >
+                {question.question}
+              </p>
+              {hasOptions ? (
+                <div className="mt-3 space-y-2">
+                  {question.options?.map((option) => {
+                    const checked = draft.selectedOptionLabel === option.label;
+                    return (
+                      <label
+                        key={option.label}
+                        className={`flex cursor-pointer items-start gap-3 rounded-[12px] border px-3 py-2 transition ${
+                          checked
+                            ? "border-sky-300 bg-sky-50"
+                            : "border-black/[0.06] bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`${toolCallId}:${question.id}`}
+                          value={option.label}
+                          checked={checked}
+                          onChange={() => handleOptionChange(question.id, option.label)}
+                          disabled={submitting}
+                          data-request-user-input-option={option.label}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-slate-800">
+                            {option.label}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                            {option.description}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {question.isOther ? (
+                    <label
+                      className={`flex cursor-pointer items-start gap-3 rounded-[12px] border px-3 py-2 transition ${
+                        draft.selectedOptionLabel === REQUEST_USER_INPUT_OTHER_OPTION_LABEL
+                          ? "border-sky-300 bg-sky-50"
+                          : "border-black/[0.06] bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`${toolCallId}:${question.id}`}
+                        value={REQUEST_USER_INPUT_OTHER_OPTION_LABEL}
+                        checked={
+                          draft.selectedOptionLabel === REQUEST_USER_INPUT_OTHER_OPTION_LABEL
+                        }
+                        onChange={() =>
+                          handleOptionChange(
+                            question.id,
+                            REQUEST_USER_INPUT_OTHER_OPTION_LABEL
+                          )
+                        }
+                        disabled={submitting}
+                        data-request-user-input-option={REQUEST_USER_INPUT_OTHER_OPTION_LABEL}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-slate-800">
+                          {REQUEST_USER_INPUT_OTHER_OPTION_LABEL}
+                        </span>
+                        <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                          Add your own answer in notes below.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+              <textarea
+                id={questionTextareaId}
+                className="mono mt-3 min-h-24 w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border"
+                name={questionTextareaId}
+                aria-labelledby={`${questionHeaderId} ${questionPromptId}`}
+                value={draft.note}
+                onChange={(event) => handleNoteChange(question.id, event.currentTarget.value)}
+                placeholder={
+                  hasOptions
+                    ? question.isOther
+                      ? "Notes or custom answer"
+                      : "Optional notes"
+                    : "Type your answer"
+                }
+                disabled={submitting}
+                data-request-user-input-note={question.id}
+              />
+              {question.isSecret ? (
+                <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-2`}>
+                  Secret answers are submitted but not echoed back into ACP history.
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {errorText ? (
+        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-3`}>
+          {errorText}
+        </div>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs text-slate-500">
+          The answer is still sent through the current ACP session, so it keeps the existing
+          turn semantics.
+        </div>
+        <button
+          type="button"
+          className={ACP_SEGMENTED_BUTTON_CLASS}
+          onClick={() => {
+            void handleSubmit();
+          }}
+          disabled={!canSubmit || submitting}
+          data-request-user-input-submit={toolCallId}
+        >
+          {submitting ? "Submitting..." : "Submit Answer"}
+        </button>
+      </div>
+      {!canSubmit ? (
+        <div className="mt-2 text-xs text-slate-500">
+          Input submission is unavailable in this view.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function createRequestUserInputQuestionsResetKey(
+  questions: RequestUserInputQuestion[]
+): string {
+  return JSON.stringify(
+    questions.map((question) => ({
+      id: question.id,
+      header: question.header ?? null,
+      question: question.question,
+      isOther: question.isOther,
+      isSecret: question.isSecret,
+      options:
+        question.options?.map((option) => ({
+          label: option.label,
+          description: option.description,
+        })) ?? null,
+    }))
+  );
+}
+
+function RequestUserInputResultCard({
+  questions,
+  response,
+  status,
+}: {
+  questions: RequestUserInputQuestion[];
+  response: RequestUserInputResponse | null;
+  status?: string;
+}) {
+  const answeredCount = React.useMemo(
+    () => countAnsweredRequestUserInputQuestions(questions, response),
+    [questions, response]
+  );
+  const hasSecretQuestions = questions.some((question) => question.isSecret);
+  const hideAllAnswers = hasSecretQuestions && response == null;
+  const statusLabel = formatToolCallStatus(status);
+
+  return (
+    <div className="mx-3 mb-3 mt-2 rounded-[16px] border border-[#d7dfeb] bg-[linear-gradient(180deg,rgba(247,250,252,0.94),rgba(255,255,255,0.96))] p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-slate-800">
+            {questions.length === 1 ? "Question answered" : "Questions answered"}
+          </div>
+          <div className="text-xs text-slate-500">
+            {answeredCount}/{questions.length} answers recorded
+            {statusLabel ? ` · ${statusLabel}` : ""}
+          </div>
+        </div>
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+          Complete
+        </span>
+      </div>
+      <div className="mt-3 space-y-3">
+        {questions.map((question, index) => (
+          <RequestUserInputResultQuestion
+            key={question.id}
+            question={question}
+            index={index}
+            totalQuestions={questions.length}
+            answer={response?.answers[question.id]}
+            hideAnswer={hideAllAnswers || question.isSecret}
+          />
+        ))}
+      </div>
+      {hideAllAnswers ? (
+        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-3`}>
+          At least one question was marked secret, so Codex suppressed the structured answer
+          payload in ACP history.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RequestUserInputResultQuestion({
+  question,
+  index,
+  totalQuestions,
+  answer,
+  hideAnswer,
+}: {
+  question: RequestUserInputQuestion;
+  index: number;
+  totalQuestions: number;
+  answer: RequestUserInputResponse["answers"][string] | undefined;
+  hideAnswer: boolean;
+}) {
+  const parts = splitRequestUserInputAnswer(answer);
+  const hasOptions = question.options != null && question.options.length > 0;
+  const hasStructuredAnswer =
+    parts.options.length > 0 || (parts.note != null && parts.note.length > 0);
+
+  return (
+    <div
+      className="rounded-[14px] border border-black/[0.06] bg-white/90 p-3"
+      data-request-user-input-result={question.id}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-black/[0.08] bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          {totalQuestions > 1 ? `Q${index + 1}` : "Question"}
+        </span>
+        <span className="text-sm font-semibold text-slate-800">
+          {question.header || question.id}
+        </span>
+        {question.isSecret ? (
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            Secret
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{question.question}</p>
+      {hideAnswer ? (
+        <div className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-800">
+          Answer submitted privately.
+        </div>
+      ) : hasStructuredAnswer ? (
+        <div className="mt-3 space-y-2">
+          {hasOptions ? (
+            <div className="flex flex-wrap gap-2">
+              {parts.options.map((entry) => (
+                <span
+                  key={entry}
+                  className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800"
+                >
+                  {entry}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {parts.options.map((entry) => (
+                <div
+                  key={entry}
+                  className="mono rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                >
+                  {entry}
+                </div>
+              ))}
+            </div>
+          )}
+          {parts.note ? (
+            <div className="mono rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              {parts.note}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-500">
+          No answer payload recorded.
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatTerminalActivityLabel(activity: AcpTerminalActivity): string {
   const base =
@@ -554,20 +1103,29 @@ type ToolCallGroupBubbleProps = {
   msg: ToolCallGroupConversationItem;
   ansi: (input: string) => string;
   runStatus?: string | null;
+  autoCollapse?: boolean;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
 const ToolCallGroupBubble = React.memo(
-  function ToolCallGroupBubble({ msg, ansi, runStatus }: ToolCallGroupBubbleProps) {
+  function ToolCallGroupBubble({
+    msg,
+    ansi,
+    runStatus,
+    autoCollapse = false,
+    onSubmitRequestUserInput,
+  }: ToolCallGroupBubbleProps) {
     const isLive = React.useMemo(
       () => msg.calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
       [msg.calls, runStatus]
     );
-    const [open, setOpen] = React.useState(isLive);
+    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
     }, []);
     const wasLiveRef = React.useRef(isLive);
+    const wasAutoCollapseRef = React.useRef(autoCollapse);
     const titlePreview = React.useMemo(() => summarizeToolGroupTitles(msg.calls), [msg.calls]);
     const statusSummary = React.useMemo(
       () => deriveToolGroupStatusSummary(msg.calls, runStatus),
@@ -578,6 +1136,12 @@ const ToolCallGroupBubble = React.memo(
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
     }, [isLive]);
+    React.useEffect(() => {
+      if (autoCollapse && !wasAutoCollapseRef.current) {
+        setOpen(false);
+      }
+      wasAutoCollapseRef.current = autoCollapse;
+    }, [autoCollapse]);
     useAutoCollapseToolFoldWhenOutOfView({
       detailsRef,
       enabled: true,
@@ -616,8 +1180,10 @@ const ToolCallGroupBubble = React.memo(
                   msg={call}
                   ansi={ansi}
                   runStatus={runStatus}
+                  autoCollapse={autoCollapse}
                   grouped={true}
                   indexLabel={`#${idx + 1}`}
+                  onSubmitRequestUserInput={onSubmitRequestUserInput}
                 />
               </div>
             ))}
@@ -629,17 +1195,27 @@ const ToolCallGroupBubble = React.memo(
   (prev, next) =>
     prev.msg === next.msg &&
     prev.ansi === next.ansi &&
-    prev.runStatus === next.runStatus
+    prev.runStatus === next.runStatus &&
+    prev.autoCollapse === next.autoCollapse &&
+    prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput
 );
 
 type ExploreGroupBubbleProps = {
   msg: ExploreGroupConversationItem;
   ansi: (input: string) => string;
   runStatus?: string | null;
+  autoCollapse?: boolean;
+  onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
 const ExploreGroupBubble = React.memo(
-  function ExploreGroupBubble({ msg, ansi, runStatus }: ExploreGroupBubbleProps) {
+  function ExploreGroupBubble({
+    msg,
+    ansi,
+    runStatus,
+    autoCollapse = false,
+    onSubmitRequestUserInput,
+  }: ExploreGroupBubbleProps) {
     const calls = React.useMemo(
       () => flattenExploreGroupToolCalls(msg.items),
       [msg.items]
@@ -648,12 +1224,13 @@ const ExploreGroupBubble = React.memo(
       () => calls.some((call) => isToolCallEffectivelyLive(call.status, runStatus)),
       [calls, runStatus]
     );
-    const [open, setOpen] = React.useState(isLive);
+    const [open, setOpen] = React.useState(() => !autoCollapse && isLive);
     const detailsRef = React.useRef<HTMLDetailsElement | null>(null);
     const handleAutoCollapse = React.useCallback(() => {
       setOpen((prev) => (prev ? false : prev));
     }, []);
     const wasLiveRef = React.useRef(isLive);
+    const wasAutoCollapseRef = React.useRef(autoCollapse);
     const titlePreview = React.useMemo(
       () => summarizeExploreGroupPreview(msg.items),
       [msg.items]
@@ -667,6 +1244,12 @@ const ExploreGroupBubble = React.memo(
       setOpen((prevOpen) => deriveToolCallOpenState(prevOpen, wasLiveRef.current, isLive));
       wasLiveRef.current = isLive;
     }, [isLive]);
+    React.useEffect(() => {
+      if (autoCollapse && !wasAutoCollapseRef.current) {
+        setOpen(false);
+      }
+      wasAutoCollapseRef.current = autoCollapse;
+    }, [autoCollapse]);
     useAutoCollapseToolFoldWhenOutOfView({
       detailsRef,
       enabled: true,
@@ -722,8 +1305,10 @@ const ExploreGroupBubble = React.memo(
                           msg={call}
                           ansi={ansi}
                           runStatus={runStatus}
+                          autoCollapse={autoCollapse}
                           grouped={true}
                           indexLabel={`#${toolIndex}`}
+                          onSubmitRequestUserInput={onSubmitRequestUserInput}
                         />
                       </div>
                     );
@@ -739,7 +1324,9 @@ const ExploreGroupBubble = React.memo(
   (prev, next) =>
     prev.msg === next.msg &&
     prev.ansi === next.ansi &&
-    prev.runStatus === next.runStatus
+    prev.runStatus === next.runStatus &&
+    prev.autoCollapse === next.autoCollapse &&
+    prev.onSubmitRequestUserInput === next.onSubmitRequestUserInput
 );
 
 function ExploreThinkingEntry({
@@ -917,6 +1504,16 @@ function normalizeThinkingSummaryLine(line: string): string {
   return normalized || line.trim();
 }
 
+function resolvePlanItemClassName(status: string): string {
+  if (status === "completed") {
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c7e6c9] bg-[#f4fbf5] px-2 py-1.5";
+  }
+  if (status === "active") {
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c6ddf6] bg-[#f5f9ff] px-2 py-1.5";
+  }
+  return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#eddab0] bg-white px-2 py-1.5";
+}
+
 type PlanBubbleProps = {
   msg: Extract<ConversationItem, { kind: "agent_plan" }>;
   autoCollapse: boolean;
@@ -937,32 +1534,32 @@ const PlanBubble = React.memo(
           <summary className="cursor-pointer text-sm font-semibold text-slate-800">{summary}</summary>
           <div className="acp-text mt-2 text-sm text-slate-700">
             {planSummary.total > 0 ? (
-              <div className="acp-plan-card rounded-lg border border-[#dde2db] bg-white p-3">
-                <div className="acp-plan-progress">
-                  <div className="acp-plan-progress-meta flex flex-wrap gap-3 text-xs">
+              <div className={ACP_PLAN_CARD_CLASS}>
+                <div className={ACP_PLAN_PROGRESS_CLASS}>
+                  <div className={ACP_PLAN_PROGRESS_META_CLASS}>
                     <span>{planSummary.completed}/{planSummary.total} completed</span>
                     <span>{planSummary.active} active</span>
                     <span>{planSummary.pending} pending</span>
                   </div>
-                  <div className="acp-plan-progress-bar mt-2 h-2 overflow-hidden rounded-full bg-[#e7ebe5]">
+                  <div className={ACP_PLAN_PROGRESS_BAR_CLASS}>
                     <span
-                      className="block h-full rounded-full bg-[#203b2d]"
+                      className={ACP_PLAN_PROGRESS_BAR_FILL_CLASS}
                       style={{ width: `${planSummary.ratio}%` }}
                     />
                   </div>
                 </div>
-                <ol className="acp-plan-list mt-3 space-y-2">
+                <ol className={ACP_PLAN_LIST_CLASS}>
                   {msg.plan_entries?.map((entry, idx) => {
                     const status = normalizePlanEntryStatus(entry.status);
                     return (
                       <li
                         key={`${idx}-${entry.content}`}
-                        className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#dde2db] bg-[#fbfcfa] px-2 py-1.5`}
+                        className={`${resolvePlanItemClassName(status)} ${status}`}
                       >
                         <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
                           {idx + 1}
                         </span>
-                        <span className="acp-plan-content text-sm text-slate-800">{entry.content}</span>
+                        <span className={ACP_PLAN_CONTENT_CLASS}>{entry.content}</span>
                         {entry.priority && (
                           <span className={ACP_PLAN_PRIORITY_BADGE_CLASS}>
                             {entry.priority}
@@ -1023,16 +1620,16 @@ function FoldSection({
   const shouldRenderBody = !lazyRender || open || typeof window === "undefined";
   return (
     <details
-      className="acp-subfold"
+      className={ACP_SUBFOLD_CLASS}
       open={open}
       onToggle={(event) => {
         setOpen(event.currentTarget.open);
       }}
     >
-      <summary>
+      <summary className={ACP_SUBFOLD_SUMMARY_CLASS}>
         <span>{label}</span>
         {preview ? (
-          <span className="acp-subfold-preview">
+          <span className={ACP_SUBFOLD_PREVIEW_CLASS}>
             {preview}
           </span>
         ) : null}
@@ -1402,20 +1999,20 @@ function filterPayloadEntries(
 function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
   if (payload.kind === "empty") return null;
   if (payload.kind === "text") {
-    return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+    return <ToolTextContent text={payload.text} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
   }
   if (payload.kind === "json_text") {
     if (payload.parsed === undefined) {
-      return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+      return <ToolTextContent text={payload.text} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
     }
     return (
-      <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <div className={ACP_PAYLOAD_CARD_CLASS}>
         {renderPayloadValue(payload.parsed, 0)}
       </div>
     );
   }
   return (
-    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
+    <div className={ACP_PAYLOAD_CARD_CLASS}>
       {renderPayloadValue(payload.value, 0)}
     </div>
   );
@@ -1423,11 +2020,11 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
 
 function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
   return (
-    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <dl className="acp-payload-grid grid gap-3">
+    <div className={ACP_PAYLOAD_CARD_CLASS}>
+      <dl className={ACP_PAYLOAD_GRID_CLASS}>
         {details.map((detail) => (
           <div
-            className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5"
+            className={ACP_PAYLOAD_ROW_CLASS}
             key={detail.key}
           >
             <dt>{detail.key}</dt>
@@ -1447,13 +2044,13 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
     return renderPayloadValue(normalizedValue, depth);
   }
   if (value == null) {
-    return <span className="acp-payload-scalar muted text-xs text-slate-400">null</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>null</span>;
   }
   if (typeof value === "string") {
-    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName="acp-payload-markdown" />;
+    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{String(value)}</span>;
   }
   if (Array.isArray(value)) {
     return <PayloadArrayView value={value} depth={depth} />;
@@ -1461,7 +2058,7 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
   if (isPlainObject(value)) {
     return <PayloadObjectView value={value} depth={depth} />;
   }
-  return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
+  return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{String(value)}</span>;
 }
 
 function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number }) {
@@ -1470,14 +2067,14 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (value.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">[]</span>;
+  if (value.length === 0) return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>[]</span>;
   const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
   const visibleItems = value.slice(0, visibleCount);
 
   if (allScalar) {
     return (
-      <div className="acp-payload-segmented space-y-2">
-        <span className="acp-payload-scalar text-sm text-slate-700">
+      <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+        <span className={ACP_PAYLOAD_SCALAR_CLASS}>
           {visibleItems.map((item) => summarizeScalarValue(item)).join(", ")}
           {hasMore ? ` … (+${remaining} more)` : ""}
         </span>
@@ -1493,10 +2090,10 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
   }
 
   return (
-    <div className="acp-payload-segmented space-y-2">
-      <ul className="acp-payload-list list-none space-y-1 pl-0 text-sm text-slate-700">
+    <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+      <ul className={ACP_PAYLOAD_LIST_CLASS}>
         {visibleItems.map((item, index) => (
-          <li key={index}>
+          <li className={ACP_PAYLOAD_LIST_ITEM_CLASS} key={index}>
             {renderNestedPayloadValue(item, depth + 1)}
           </li>
         ))}
@@ -1525,13 +2122,13 @@ function PayloadObjectView({
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (entries.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">{"{}"}</span>;
+  if (entries.length === 0) return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>{"{}"}</span>;
   const visibleEntries = entries.slice(0, visibleCount);
   return (
-    <div className="acp-payload-segmented space-y-2">
-      <dl className="acp-payload-grid grid gap-3">
+    <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+      <dl className={ACP_PAYLOAD_GRID_CLASS}>
         {visibleEntries.map(([key, item]) => (
-          <div className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" key={key}>
+          <div className={ACP_PAYLOAD_ROW_CLASS} key={key}>
             <dt>{key}</dt>
             <dd className="text-sm text-slate-700">
               {renderPayloadFieldValue(key, item, depth + 1)}
@@ -1576,7 +2173,7 @@ function isPrimaryOutputPayloadField(key: string): boolean {
 function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
   const isStructured = Array.isArray(value) || isPlainObject(value);
   if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
-    return <span className="acp-payload-scalar text-sm text-slate-600">{summarizePayloadValue(value)}</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{summarizePayloadValue(value)}</span>;
   }
   if (isStructured && shouldInlineStructuredPayload(value, depth)) {
     return (
@@ -1587,11 +2184,11 @@ function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNod
   }
   if (isStructured) {
     return (
-      <details className="acp-payload-nested rounded-md border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-slate-600">
+      <details className={ACP_PAYLOAD_NESTED_CLASS}>
+        <summary className={`${ACP_PAYLOAD_NESTED_SUMMARY_CLASS} px-2 py-1.5`}>
           {summarizePayloadValue(value)}
         </summary>
-        <div className="acp-payload-nested-body border-t border-slate-200 px-2 py-2">
+        <div className={ACP_PAYLOAD_NESTED_BODY_CLASS}>
           {renderPayloadValue(value, depth)}
         </div>
       </details>
@@ -1639,7 +2236,7 @@ function ToolTextContent({
   }
   if (markdownText && tooLargeForMarkdown) {
     return (
-      <div className="acp-segmented-block space-y-2">
+      <div className={ACP_SEGMENTED_BLOCK_CLASS}>
         <div className={ACP_SEGMENTED_NOTE_WARNING_CLASS}>
           Large markdown payload is rendered as plain text for performance.
         </div>
@@ -1662,10 +2259,10 @@ function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boole
     [lines, startIndex, endIndex]
   );
   const className = asciiLike
-    ? "acp-content acp-payload-text acp-payload-ascii"
-    : "acp-content acp-payload-text";
+    ? ACP_PAYLOAD_TEXT_ASCII_CLASS
+    : ACP_PAYLOAD_TEXT_BASE_CLASS;
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={className}>{visibleText}</pre>
       {hasMore && (
         <SegmentedMoreFooter
@@ -1700,7 +2297,7 @@ function TerminalOutputView({
     [ansi, visibleText]
   );
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={ACP_TERMINAL_PRE_CLASS}>{rendered}</pre>
       {hasMore && (
         <SegmentedMoreFooter
@@ -1805,8 +2402,8 @@ function SegmentedMoreFooter({
   onShowMore: () => void;
 }) {
   return (
-    <div className="acp-segmented-footer flex items-center justify-between gap-3">
-      <span className="acp-segmented-meta text-xs">
+    <div className={ACP_SEGMENTED_FOOTER_CLASS}>
+      <span className={ACP_SEGMENTED_META_CLASS}>
         {remaining} more {unitLabel}
       </span>
       <button
@@ -1924,7 +2521,7 @@ function ToolDiffView({ text }: { text: string }) {
   );
   const visibleLines = lines.slice(startIndex, endIndex);
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={ACP_DIFF_PRE_CLASS}>
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);

@@ -17,7 +17,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.3",
+    "@chenglou/pretext": "^0.0.4",
     "@mantine/core": "9.0.0",
     "@mantine/hooks": "9.0.0",
     "bootstrap-icons": "^1.11.3",
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.59.0",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^19.2.14",
