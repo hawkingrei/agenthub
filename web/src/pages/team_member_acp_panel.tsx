@@ -6,6 +6,7 @@ import {
   AcpPanel,
 } from "../components/acp_panel";
 import { getAcpConversationCacheStats } from "../components/acp_conversation";
+import { OutputHeaderDetails } from "../components/output_header";
 import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
@@ -580,19 +581,8 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
                   Role {memberRoleLabel}
                 </span>
               ) : null}
+              <OutputHeaderDetails items={developerTechnicalMetadata} />
             </div>
-            {developerTechnicalMetadata.length > 0 && (
-              <div className="mono mt-1 flex flex-wrap gap-1.5 text-[11px] text-ui-text-muted">
-                {developerTechnicalMetadata.map((item) => (
-                  <span
-                    key={item.label}
-                    className="rounded-md border border-black/[0.06] bg-ui-surface/70 px-2 py-0.5"
-                  >
-                    {item.label}={item.value}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <AcpPanel {...acpPanelProps} />

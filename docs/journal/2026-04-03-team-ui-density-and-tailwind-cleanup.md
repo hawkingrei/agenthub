@@ -17,6 +17,10 @@
   - Added explicit Tailwind list/head/body classes for step records so `teams-step-*` no longer depends on `styles.css`.
 - `web/src/pages/team_member_console_panel.tsx`
   - Added explicit Tailwind list/detail layout classes for member console event/detail blocks.
+- `web/src/components/output_header.tsx`
+  - Moved developer-facing `session` and `updated` metadata out of the always-visible header row and into a compact `Details` disclosure so the header stays content-first.
+- `web/src/pages/team_member_acp_panel.tsx`
+  - Merged the member ACP technical metadata into the same compact `Details` disclosure instead of rendering a second metadata row under the header.
 - `web/src/pages/team_task_panel.tsx`
   - Slimmed the shared-thread shell, item padding, seen-state badge, details button, and detail grid.
   - Added compact command-style body rendering for plain command messages.

@@ -49,8 +49,11 @@ describe("OutputHeader", () => {
     const html = renderHeader({});
     expect(html).toContain("running");
     expect(html).toContain("Code mode on");
-    expect(html).toContain("Session session-");
-    expect(html).toContain("Updated");
+    expect(html).toContain("Details");
+    expect(html).toContain("session");
+    expect(html).toContain("updated");
+    expect(html).not.toContain("output-session");
+    expect(html).not.toContain("output-updated");
     expect(html).not.toContain("output-agents-toggle");
   });
 
@@ -66,14 +69,15 @@ describe("OutputHeader", () => {
 
   it("omits session label when no session id is active", () => {
     const html = renderHeader({ activeSessionId: null });
-    expect(html).not.toContain("Session");
+    expect(html).not.toContain("session");
   });
 
   it("hides session metadata when developer mode is off", () => {
     const html = renderHeader({ developerMode: false });
     expect(html).toContain("Code mode on");
-    expect(html).not.toContain("Session session-");
-    expect(html).not.toContain("Updated");
+    expect(html).not.toContain("Details");
+    expect(html).not.toContain("session");
+    expect(html).not.toContain("updated");
   });
 
   it("renders model tag when label is provided", () => {

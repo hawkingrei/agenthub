@@ -109,16 +109,16 @@ type TeamTaskPanelAudioWindow = Window &
   };
 
 const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "mt-3 flex flex-col gap-2 rounded-[16px] border border-black/[0.06] bg-white/88 px-3 py-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
+  "flex shrink-0 flex-col gap-2 border-t border-black/[0.05] bg-white/90 px-3 py-2.5 shadow-[0_-1px_0_rgba(15,23,42,0.02)]";
 const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
   "flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-1 py-2 text-ui-sm text-ui-text-muted";
 const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "mt-2 min-h-[220px] max-h-[min(72vh,760px)] overflow-y-auto pr-0.5";
+  "min-h-0 flex-1 overflow-y-auto pr-0.5";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
-  "mt-2 min-h-[120px] overflow-y-auto pr-0.5";
+  "min-h-0 flex-1 overflow-y-auto pr-0.5";
 const TEAM_TASK_ACTIVITY_SHELL_CLASS =
   "rounded-[14px] border border-black/[0.05] bg-white/88 px-2.5 py-2 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:px-3 sm:py-2.5";
 const TEAM_TASK_ACTIVITY_STACK_CLASS =
@@ -1031,8 +1031,14 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [stickToBottom]);
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS} data-team-surface="conversation">
-      <div className="relative">
+    <div
+      className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col overflow-hidden`}
+      data-team-surface="conversation"
+    >
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5"
+        data-team-channel-body="true"
+      >
         <div
           ref={activityListRef}
           className={activityListClassName}
@@ -1284,7 +1290,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         )}
       </div>
 
-      <div className={TEAM_TASK_COMPOSER_PANEL_CLASS}>
+      <div
+        className={TEAM_TASK_COMPOSER_PANEL_CLASS}
+        data-team-channel-composer="true"
+      >
         <textarea
           id="team-task-panel-message"
           name="team_task_message"
