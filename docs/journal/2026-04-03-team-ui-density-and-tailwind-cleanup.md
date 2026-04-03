@@ -31,6 +31,8 @@
     - `teams-chat-*`
     - `teams-message-*`
     - `teams-step-body`
+  - Removed the ACP legacy selector block for `acp-subfold*`, `acp-payload-*`, `acp-segmented-*`, `acp-plan-*`, and base/mobile `acp-diff-view` after migrating those shells to inline Tailwind utilities.
+  - Kept only the remaining ACP global compatibility rules that still style shared markdown/code content outside the migrated payload shell.
 - `web/src/pages/team_page.tsx`
   - Reduced the workbench gutter from `24px` to `16px`.
   - Flattened the main workbench surfaces, header shell, toolbar, and workspace shell by replacing glossy gradients and heavier shadows with lower-contrast borders and subtle white surfaces.
@@ -49,6 +51,16 @@
   - Shifted lane counters and supporting callout panels to lighter neutral pills and low-contrast surfaces.
 - `web/src/ui/tailwind_classes.ts`
   - Flattened the shared Team panel shell, toolbar, secondary controls, refresh button, and workflow tabs so the broader Team chrome matches the lighter workbench treatment.
+  - Added responsive Tailwind handling for ACP diff blocks so the diff shell no longer depends on legacy mobile CSS overrides.
+- `web/src/components/acp_conversation.tsx`
+  - Migrated ACP payload cards, sub-fold headers, segmented footers, plain-text payload blocks, and structured plan cards onto explicit Tailwind utility composition.
+  - Preserved stable ACP class tokens where selectors/tests still rely on them, while moving the visual treatment out of `styles.css`.
+- `web/src/acp_conversation_render.test.tsx`
+  - Relaxed payload text assertions that depended on an exact class-string match so the tests continue to validate tail-window behavior instead of class ordering.
+- `web/src/app.tsx`
+  - Wrapped the login inputs in a real `<form>` and added explicit `id`/`name`/`autocomplete` attributes so the auth entry no longer triggers browser form-field warnings.
+- `web/src/pages/join_page.tsx`
+  - Applied the same form semantics and explicit field attributes to the Join Device flow for consistency with the login page.
 - `web/src/components/input_dock.tsx`
   - Added explicit `id` and `name` attributes to the ACP input dock textarea to satisfy browser form-field checks.
 - `web/src/input_dock_render.test.tsx`
@@ -69,6 +81,10 @@
 - `make build-web`
 - `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 - `make build-web`
+- `cd web && npm run test -- src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
+- `cd web && npm run test -- src/app.runtime_effects.test.tsx src/acp_conversation_render.test.tsx src/acp_conversation.interaction.test.tsx`
+- `cd web && npm run lint`
+- `cd web && npm run build`
 
 ## Chrome DevTools MCP
 

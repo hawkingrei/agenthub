@@ -208,6 +208,18 @@ describe("mailbox helpers", () => {
     ).toBe("Completed #59445.");
   });
 
+  it("resolves chat_message payloads into visible text through the unified visible-text path", () => {
+    expect(
+      resolveVisibleTeamPayloadText({
+        type: "chat_message",
+        text: "hello team",
+      })
+    ).toBe("hello team");
+    expect(
+      resolveVisibleTeamPayloadText('{"type":"chat_message","text":"hello from json"}')
+    ).toBe("hello from json");
+  });
+
   it("renders raw mentions as chips in plain text only", () => {
     const plain = renderPlainTextWithMentions("hello @worker-1");
     expect(plain).toContain("team-mention");

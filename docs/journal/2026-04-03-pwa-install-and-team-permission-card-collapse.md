@@ -49,6 +49,9 @@ Separately:
 - Treat Team `task_note` payloads as visible conversation text in the same
   parser layer as `chat_message`, so channel/mailbox views feed `payload.text`
   into the existing markdown renderer instead of pretty-printing JSON.
+- Keep the visible Team payload-text resolver on a single parse path so JSON
+  payload rows do not pay a second `JSON.parse` just to distinguish
+  `chat_message` from `task_note`.
 - Tighten the Team workbench shell chrome in `team_page.tsx` by reducing the
   outer section card radius/padding/shadow and slimming the header/workspace
   wrapper classes.
@@ -77,6 +80,8 @@ Separately:
 - Web:
   - `cd web && npm run build`
   - `cd web && npm run test -- src/pages/team/mailbox_helpers.test.ts src/pages/team_panels.test.tsx`
+  - `cd web && npm run test -- src/pages/team/mailbox_helpers.test.ts`
+  - `cd web && npm run lint`
 - Chrome DevTools MCP:
   - Baseline on `https://agenthub.hawkingrei.com/teams/...` showed timed-out
     permission cards still rendering full summaries and action buttons, and

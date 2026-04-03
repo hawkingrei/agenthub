@@ -3394,37 +3394,53 @@ export function App() {
       )}
 
       {!auth && (
-        <section className={AUTH_FORM_CARD_CLASS}>
+        <form
+          className={AUTH_FORM_CARD_CLASS}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onLogin();
+          }}
+        >
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">
             Login
           </h2>
           <input
             className={AUTH_INPUT_CLASS}
+            id="login-username"
+            name="username"
             placeholder="Username"
             value={username}
             disabled={authBusy !== null}
+            autoComplete="username"
             onChange={(e) => setUsername(e.target.value)}
           />
           <input
             className={AUTH_INPUT_CLASS}
+            id="login-password"
+            name="password"
             placeholder="Password"
             type="password"
             value={password}
             disabled={authBusy !== null}
+            autoComplete="current-password"
             onChange={(e) => setPassword(e.target.value)}
           />
           {rootInitialized === false && (
             <input
               className={AUTH_INPUT_CLASS}
+              id="login-display-name"
+              name="display_name"
               placeholder="Display Name"
               value={displayName}
               disabled={authBusy !== null}
+              autoComplete="name"
               onChange={(e) => setDisplayName(e.target.value)}
             />
           )}
           <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false && (
               <button
+                type="button"
                 className={AUTH_SECONDARY_BUTTON_CLASS}
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
@@ -3433,14 +3449,14 @@ export function App() {
               </button>
             )}
             <button
+              type="submit"
               className={AUTH_PRIMARY_BUTTON_CLASS}
               disabled={authBusy !== null}
-              onClick={onLogin}
             >
               {authBusy === "login" ? "Logging in..." : "Login"}
             </button>
           </div>
-        </section>
+        </form>
       )}
 
       {auth && (

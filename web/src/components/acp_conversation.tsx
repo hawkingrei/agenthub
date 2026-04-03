@@ -113,6 +113,48 @@ const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
 const TOOL_PAYLOAD_INITIAL_ITEMS = 8;
 const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
+const ACP_SUBFOLD_CLASS = "acp-subfold mt-1.5";
+const ACP_SUBFOLD_SUMMARY_CLASS =
+  "mb-1 flex cursor-pointer items-center gap-1.5 text-[10.5px] leading-[1.35] text-slate-500 max-[720px]:items-start max-[720px]:text-[10px]";
+const ACP_SUBFOLD_PREVIEW_CLASS =
+  "acp-subfold-preview max-w-[min(60vw,460px)] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-slate-400 max-[720px]:max-w-[min(64vw,300px)] max-[600px]:max-w-[58vw]";
+const ACP_PAYLOAD_CARD_CLASS =
+  "acp-payload-card overflow-hidden rounded-[10px] border border-[#dde2db] bg-[#fcfcfa] px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
+const ACP_PAYLOAD_GRID_CLASS = "acp-payload-grid m-0 grid gap-1.5";
+const ACP_PAYLOAD_ROW_CLASS =
+  "acp-payload-row grid grid-cols-[minmax(84px,128px)_minmax(0,1fr)] items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 [&>dt]:break-words [&>dt]:font-mono [&>dt]:text-[11px] [&>dt]:leading-[1.4] [&>dt]:text-slate-500 [&>dd]:m-0 [&>dd]:min-w-0 max-[720px]:grid-cols-[minmax(64px,96px)_minmax(0,1fr)] max-[720px]:gap-[5px] max-[600px]:grid-cols-1 max-[600px]:gap-1";
+const ACP_PAYLOAD_SCALAR_CLASS =
+  "acp-payload-scalar inline-block max-w-full break-words font-mono text-[11px] leading-[1.45] text-slate-800";
+const ACP_PAYLOAD_SCALAR_MUTED_CLASS =
+  "acp-payload-scalar muted inline-block max-w-full break-words font-mono text-[11px] leading-[1.45] text-slate-400";
+const ACP_PAYLOAD_TEXT_BASE_CLASS =
+  "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.45] text-slate-800";
+const ACP_PAYLOAD_TEXT_ASCII_CLASS =
+  `${ACP_PAYLOAD_TEXT_BASE_CLASS} acp-payload-ascii overflow-x-auto whitespace-pre`;
+const ACP_PAYLOAD_MARKDOWN_CLASS =
+  "acp-payload-markdown text-[12.5px] leading-[1.55] [&_pre]:m-0 max-[720px]:text-[12px] max-[720px]:leading-[1.52]";
+const ACP_PAYLOAD_SEGMENTED_CLASS = "acp-payload-segmented grid gap-1.5";
+const ACP_PAYLOAD_LIST_CLASS = "acp-payload-list m-0 grid list-none gap-1.5 pl-0";
+const ACP_PAYLOAD_LIST_ITEM_CLASS = "m-0 min-w-0";
+const ACP_PAYLOAD_NESTED_CLASS = "acp-payload-nested rounded-md border border-slate-200 bg-white";
+const ACP_PAYLOAD_NESTED_SUMMARY_CLASS =
+  "cursor-pointer font-mono text-[10.5px] leading-[1.35] text-slate-500";
+const ACP_PAYLOAD_NESTED_BODY_CLASS =
+  "acp-payload-nested-body mt-1 border-t border-slate-200 px-2 py-2";
+const ACP_SEGMENTED_BLOCK_CLASS = "acp-segmented-block grid gap-1.5";
+const ACP_SEGMENTED_FOOTER_CLASS =
+  "acp-segmented-footer flex flex-wrap items-center justify-between gap-1.5";
+const ACP_SEGMENTED_META_CLASS = "acp-segmented-meta text-[11px] text-slate-500";
+const ACP_PLAN_CARD_CLASS =
+  "acp-plan-card grid gap-2.5 rounded-[10px] border border-[#efd9a9] bg-[#fffbf1] p-2.5";
+const ACP_PLAN_PROGRESS_CLASS = "acp-plan-progress grid gap-1.5";
+const ACP_PLAN_PROGRESS_META_CLASS = "acp-plan-progress-meta flex flex-wrap gap-1.5 text-[11px] text-slate-500";
+const ACP_PLAN_PROGRESS_BAR_CLASS =
+  "acp-plan-progress-bar mt-2 h-1.5 overflow-hidden rounded-full bg-[#e7ebe5]";
+const ACP_PLAN_PROGRESS_BAR_FILL_CLASS =
+  "block h-full rounded-full bg-gradient-to-r from-[#203b2d] to-[#4b6b5d]";
+const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-3 grid list-none gap-1.5 p-0";
+const ACP_PLAN_CONTENT_CLASS = "acp-plan-content min-w-0 text-sm text-slate-800";
 const FAILED_TOOL_STATUSES = new Set([
   "failed",
   "cancelled",
@@ -540,7 +582,7 @@ const ToolCallBubble = React.memo(
             >
               <ToolTextContent
                 text={unescapeLineBreaks(msg.content)}
-                markdownClassName="acp-payload-markdown"
+                markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
                 preferPlainText={true}
               />
             </FoldSection>
@@ -1462,6 +1504,16 @@ function normalizeThinkingSummaryLine(line: string): string {
   return normalized || line.trim();
 }
 
+function resolvePlanItemClassName(status: string): string {
+  if (status === "completed") {
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c7e6c9] bg-[#f4fbf5] px-2 py-1.5";
+  }
+  if (status === "active") {
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c6ddf6] bg-[#f5f9ff] px-2 py-1.5";
+  }
+  return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#eddab0] bg-white px-2 py-1.5";
+}
+
 type PlanBubbleProps = {
   msg: Extract<ConversationItem, { kind: "agent_plan" }>;
   autoCollapse: boolean;
@@ -1482,32 +1534,32 @@ const PlanBubble = React.memo(
           <summary className="cursor-pointer text-sm font-semibold text-slate-800">{summary}</summary>
           <div className="acp-text mt-2 text-sm text-slate-700">
             {planSummary.total > 0 ? (
-              <div className="acp-plan-card rounded-lg border border-[#dde2db] bg-white p-3">
-                <div className="acp-plan-progress">
-                  <div className="acp-plan-progress-meta flex flex-wrap gap-3 text-xs">
+              <div className={ACP_PLAN_CARD_CLASS}>
+                <div className={ACP_PLAN_PROGRESS_CLASS}>
+                  <div className={ACP_PLAN_PROGRESS_META_CLASS}>
                     <span>{planSummary.completed}/{planSummary.total} completed</span>
                     <span>{planSummary.active} active</span>
                     <span>{planSummary.pending} pending</span>
                   </div>
-                  <div className="acp-plan-progress-bar mt-2 h-2 overflow-hidden rounded-full bg-[#e7ebe5]">
+                  <div className={ACP_PLAN_PROGRESS_BAR_CLASS}>
                     <span
-                      className="block h-full rounded-full bg-[#203b2d]"
+                      className={ACP_PLAN_PROGRESS_BAR_FILL_CLASS}
                       style={{ width: `${planSummary.ratio}%` }}
                     />
                   </div>
                 </div>
-                <ol className="acp-plan-list mt-3 space-y-2">
+                <ol className={ACP_PLAN_LIST_CLASS}>
                   {msg.plan_entries?.map((entry, idx) => {
                     const status = normalizePlanEntryStatus(entry.status);
                     return (
                       <li
                         key={`${idx}-${entry.content}`}
-                        className={`acp-plan-item ${status} grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#dde2db] bg-[#fbfcfa] px-2 py-1.5`}
+                        className={`${resolvePlanItemClassName(status)} ${status}`}
                       >
                         <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
                           {idx + 1}
                         </span>
-                        <span className="acp-plan-content text-sm text-slate-800">{entry.content}</span>
+                        <span className={ACP_PLAN_CONTENT_CLASS}>{entry.content}</span>
                         {entry.priority && (
                           <span className={ACP_PLAN_PRIORITY_BADGE_CLASS}>
                             {entry.priority}
@@ -1568,16 +1620,16 @@ function FoldSection({
   const shouldRenderBody = !lazyRender || open || typeof window === "undefined";
   return (
     <details
-      className="acp-subfold"
+      className={ACP_SUBFOLD_CLASS}
       open={open}
       onToggle={(event) => {
         setOpen(event.currentTarget.open);
       }}
     >
-      <summary>
+      <summary className={ACP_SUBFOLD_SUMMARY_CLASS}>
         <span>{label}</span>
         {preview ? (
-          <span className="acp-subfold-preview">
+          <span className={ACP_SUBFOLD_PREVIEW_CLASS}>
             {preview}
           </span>
         ) : null}
@@ -1947,20 +1999,20 @@ function filterPayloadEntries(
 function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
   if (payload.kind === "empty") return null;
   if (payload.kind === "text") {
-    return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+    return <ToolTextContent text={payload.text} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
   }
   if (payload.kind === "json_text") {
     if (payload.parsed === undefined) {
-      return <ToolTextContent text={payload.text} markdownClassName="acp-payload-markdown" />;
+      return <ToolTextContent text={payload.text} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
     }
     return (
-      <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <div className={ACP_PAYLOAD_CARD_CLASS}>
         {renderPayloadValue(payload.parsed, 0)}
       </div>
     );
   }
   return (
-    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
+    <div className={ACP_PAYLOAD_CARD_CLASS}>
       {renderPayloadValue(payload.value, 0)}
     </div>
   );
@@ -1968,11 +2020,11 @@ function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
 
 function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
   return (
-    <div className="acp-payload-card rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <dl className="acp-payload-grid grid gap-3">
+    <div className={ACP_PAYLOAD_CARD_CLASS}>
+      <dl className={ACP_PAYLOAD_GRID_CLASS}>
         {details.map((detail) => (
           <div
-            className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5"
+            className={ACP_PAYLOAD_ROW_CLASS}
             key={detail.key}
           >
             <dt>{detail.key}</dt>
@@ -1992,13 +2044,13 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
     return renderPayloadValue(normalizedValue, depth);
   }
   if (value == null) {
-    return <span className="acp-payload-scalar muted text-xs text-slate-400">null</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>null</span>;
   }
   if (typeof value === "string") {
-    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName="acp-payload-markdown" />;
+    return <ToolTextContent text={unescapeLineBreaks(value)} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{String(value)}</span>;
   }
   if (Array.isArray(value)) {
     return <PayloadArrayView value={value} depth={depth} />;
@@ -2006,7 +2058,7 @@ function renderPayloadValue(value: unknown, depth: number): React.ReactNode {
   if (isPlainObject(value)) {
     return <PayloadObjectView value={value} depth={depth} />;
   }
-  return <span className="acp-payload-scalar text-sm text-slate-700">{String(value)}</span>;
+  return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{String(value)}</span>;
 }
 
 function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number }) {
@@ -2015,14 +2067,14 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (value.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">[]</span>;
+  if (value.length === 0) return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>[]</span>;
   const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
   const visibleItems = value.slice(0, visibleCount);
 
   if (allScalar) {
     return (
-      <div className="acp-payload-segmented space-y-2">
-        <span className="acp-payload-scalar text-sm text-slate-700">
+      <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+        <span className={ACP_PAYLOAD_SCALAR_CLASS}>
           {visibleItems.map((item) => summarizeScalarValue(item)).join(", ")}
           {hasMore ? ` … (+${remaining} more)` : ""}
         </span>
@@ -2038,10 +2090,10 @@ function PayloadArrayView({ value, depth }: { value: unknown[]; depth: number })
   }
 
   return (
-    <div className="acp-payload-segmented space-y-2">
-      <ul className="acp-payload-list list-none space-y-1 pl-0 text-sm text-slate-700">
+    <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+      <ul className={ACP_PAYLOAD_LIST_CLASS}>
         {visibleItems.map((item, index) => (
-          <li key={index}>
+          <li className={ACP_PAYLOAD_LIST_ITEM_CLASS} key={index}>
             {renderNestedPayloadValue(item, depth + 1)}
           </li>
         ))}
@@ -2070,13 +2122,13 @@ function PayloadObjectView({
     TOOL_PAYLOAD_INITIAL_ITEMS,
     TOOL_PAYLOAD_ITEM_CHUNK
   );
-  if (entries.length === 0) return <span className="acp-payload-scalar muted text-xs text-slate-400">{"{}"}</span>;
+  if (entries.length === 0) return <span className={ACP_PAYLOAD_SCALAR_MUTED_CLASS}>{"{}"}</span>;
   const visibleEntries = entries.slice(0, visibleCount);
   return (
-    <div className="acp-payload-segmented space-y-2">
-      <dl className="acp-payload-grid grid gap-3">
+    <div className={ACP_PAYLOAD_SEGMENTED_CLASS}>
+      <dl className={ACP_PAYLOAD_GRID_CLASS}>
         {visibleEntries.map(([key, item]) => (
-          <div className="acp-payload-row rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5" key={key}>
+          <div className={ACP_PAYLOAD_ROW_CLASS} key={key}>
             <dt>{key}</dt>
             <dd className="text-sm text-slate-700">
               {renderPayloadFieldValue(key, item, depth + 1)}
@@ -2121,7 +2173,7 @@ function isPrimaryOutputPayloadField(key: string): boolean {
 function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNode {
   const isStructured = Array.isArray(value) || isPlainObject(value);
   if (isStructured && depth > TOOL_PAYLOAD_MAX_NESTED_DEPTH) {
-    return <span className="acp-payload-scalar text-sm text-slate-600">{summarizePayloadValue(value)}</span>;
+    return <span className={ACP_PAYLOAD_SCALAR_CLASS}>{summarizePayloadValue(value)}</span>;
   }
   if (isStructured && shouldInlineStructuredPayload(value, depth)) {
     return (
@@ -2132,11 +2184,11 @@ function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNod
   }
   if (isStructured) {
     return (
-      <details className="acp-payload-nested rounded-md border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-2 py-1.5 text-xs font-medium text-slate-600">
+      <details className={ACP_PAYLOAD_NESTED_CLASS}>
+        <summary className={`${ACP_PAYLOAD_NESTED_SUMMARY_CLASS} px-2 py-1.5`}>
           {summarizePayloadValue(value)}
         </summary>
-        <div className="acp-payload-nested-body border-t border-slate-200 px-2 py-2">
+        <div className={ACP_PAYLOAD_NESTED_BODY_CLASS}>
           {renderPayloadValue(value, depth)}
         </div>
       </details>
@@ -2184,7 +2236,7 @@ function ToolTextContent({
   }
   if (markdownText && tooLargeForMarkdown) {
     return (
-      <div className="acp-segmented-block space-y-2">
+      <div className={ACP_SEGMENTED_BLOCK_CLASS}>
         <div className={ACP_SEGMENTED_NOTE_WARNING_CLASS}>
           Large markdown payload is rendered as plain text for performance.
         </div>
@@ -2207,10 +2259,10 @@ function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boole
     [lines, startIndex, endIndex]
   );
   const className = asciiLike
-    ? "acp-content acp-payload-text acp-payload-ascii"
-    : "acp-content acp-payload-text";
+    ? ACP_PAYLOAD_TEXT_ASCII_CLASS
+    : ACP_PAYLOAD_TEXT_BASE_CLASS;
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={className}>{visibleText}</pre>
       {hasMore && (
         <SegmentedMoreFooter
@@ -2245,7 +2297,7 @@ function TerminalOutputView({
     [ansi, visibleText]
   );
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={ACP_TERMINAL_PRE_CLASS}>{rendered}</pre>
       {hasMore && (
         <SegmentedMoreFooter
@@ -2350,8 +2402,8 @@ function SegmentedMoreFooter({
   onShowMore: () => void;
 }) {
   return (
-    <div className="acp-segmented-footer flex items-center justify-between gap-3">
-      <span className="acp-segmented-meta text-xs">
+    <div className={ACP_SEGMENTED_FOOTER_CLASS}>
+      <span className={ACP_SEGMENTED_META_CLASS}>
         {remaining} more {unitLabel}
       </span>
       <button
@@ -2469,7 +2521,7 @@ function ToolDiffView({ text }: { text: string }) {
   );
   const visibleLines = lines.slice(startIndex, endIndex);
   return (
-    <div className="acp-segmented-block space-y-2">
+    <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={ACP_DIFF_PRE_CLASS}>
         {visibleLines.map((line, index) => {
           const kind = classifyDiffLine(line);
