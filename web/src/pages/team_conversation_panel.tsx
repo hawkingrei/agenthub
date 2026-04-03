@@ -17,6 +17,9 @@ type TeamConversationPanelProps = {
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
   onRefreshMessages?: () => Promise<void> | void;
+  onLoadOlderMessages?: () => Promise<void> | void;
+  canLoadOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
   messages: TeamConversationMessageRecord[];
   conversationMailboxMessages: TeamActorMessageRecord[];
   snapshotMailboxMessages?: TeamActorMessageRecord[];
@@ -56,6 +59,9 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}
+        onLoadOlderMessages={props.onLoadOlderMessages}
+        canLoadOlderMessages={props.canLoadOlderMessages}
+        loadingOlderMessages={props.loadingOlderMessages}
         messages={messages}
         seenByMessageId={seenByMessageId}
         humanActorId={humanActorId}

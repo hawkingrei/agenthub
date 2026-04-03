@@ -379,6 +379,19 @@ function sameConversationMessage(
   );
 }
 
+function compareConversationMessageOrder(
+  left: TeamConversationMessageRecord,
+  right: TeamConversationMessageRecord
+): number {
+  if (left.created_at !== right.created_at) {
+    return left.created_at - right.created_at;
+  }
+  if (left.message_id !== right.message_id) {
+    return left.message_id - right.message_id;
+  }
+  return left.from_actor_id.localeCompare(right.from_actor_id);
+}
+
 export function mergeConversationMessages(
   prev: TeamConversationMessageRecord[],
   next: TeamConversationMessageRecord[]
@@ -400,6 +413,34 @@ export function mergeConversationMessages(
     return prev;
   }
   return merged;
+}
+
+export function prependOlderConversationMessages(
+  prev: TeamConversationMessageRecord[],
+  older: TeamConversationMessageRecord[]
+): TeamConversationMessageRecord[] {
+  if (older.length === 0) {
+    return prev;
+  }
+  const prevById = new Map(prev.map((message) => [message.message_id, message] as const));
+  const mergedById = new Map<number, TeamConversationMessageRecord>();
+  for (const message of [...older, ...prev]) {
+    if (mergedById.has(message.message_id)) {
+      continue;
+    }
+    mergedById.set(message.message_id, message);
+  }
+  const next = [...mergedById.values()].sort(compareConversationMessageOrder);
+  let changed = next.length !== prev.length;
+  const normalized = next.map((message) => {
+    const cached = prevById.get(message.message_id);
+    if (cached && sameConversationMessage(cached, message)) {
+      return cached;
+    }
+    changed = true;
+    return message;
+  });
+  return changed ? normalized : prev;
 }
 
 export function buildAgentLabel(agent: AgentRecord): string {

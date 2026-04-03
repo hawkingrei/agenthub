@@ -70,6 +70,7 @@ export const OutputHeader = React.memo(function OutputHeader({
   runStatus,
   modelLabel,
 }: OutputHeaderProps) {
+  void _activeSessionId;
   const titleText = activeAgent ? activeAgent.name : "No agent selected";
   const subtitleText = activeAgent
     ? activeAgent.workdir

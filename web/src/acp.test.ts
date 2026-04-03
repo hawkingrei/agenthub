@@ -67,6 +67,42 @@ describe("buildAcpView", () => {
     });
   });
 
+  it("clears ACP config selectors when the provider sends an explicit empty config_options list", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [
+            {
+              id: "mode",
+              label: "Mode",
+              current_value: { type: "value_id", value: "workspace_write" },
+              select_options: [
+                { value_id: "workspace_write", label: "Workspace Write" },
+              ],
+            },
+          ],
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [],
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.configOptions).toEqual([]);
+    expect(view.currentMode).toBeNull();
+  });
+
   it("merges messages within the same session and kind", () => {
     const events = [
       {

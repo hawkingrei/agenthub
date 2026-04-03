@@ -3180,6 +3180,48 @@ describe("team panels interactions", () => {
     expect(container.querySelector("textarea")).not.toBeNull();
   });
 
+  it("TeamTaskPanel exposes a load-older action without losing the bottom-pinned composer", () => {
+    const onLoadOlderMessages = vi.fn();
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onLoadOlderMessages={onLoadOlderMessages}
+        canLoadOlderMessages={true}
+        loadingOlderMessages={false}
+        messages={[
+          buildTaskMessage(21, {
+            from_actor_id: "leader-agent",
+            payload: { type: "chat_message", text: "latest message" },
+          }),
+        ]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    const channelBody = required(
+      container.querySelector('[data-team-channel-body="true"]') as HTMLDivElement | null,
+      "channel body missing"
+    );
+    const composer = required(
+      container.querySelector('[data-team-channel-composer="true"]') as HTMLDivElement | null,
+      "channel composer missing"
+    );
+
+    clickElement(findButtonByText(container, "Load older"));
+
+    expect(onLoadOlderMessages).toHaveBeenCalledTimes(1);
+    expect(channelBody.classList.contains("flex")).toBe(true);
+    expect(composer.classList.contains("shrink-0")).toBe(true);
+  });
+
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
     const onForceNewSession = vi.fn();
 
@@ -3205,6 +3247,57 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Debug"));
     clickElement(findButtonByText(container, "Force New Session"));
     expect(onForceNewSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("TeamMemberAcpPanel disables ACP debug actions when the corresponding handlers are unavailable", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedSessionId="runtime-session-1"
+        memberEvents={[
+          {
+            event_id: 33,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "33",
+            ts: 1_700_000_333,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "config_option_update",
+              config_options: [
+                {
+                  id: "mode",
+                  label: "Mode",
+                  current_value: { type: "value_id", value: "workspace_write" },
+                  select_options: [
+                    { value_id: "workspace_write", label: "Workspace Write" },
+                  ],
+                },
+              ],
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        canControlAcp={true}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Debug"));
+
+    expect(findButtonByText(container, "Set Mode").disabled).toBe(true);
+    expect(findButtonByText(container, "Set Model").disabled).toBe(true);
+    expect(findButtonByText(container, "Set Config").disabled).toBe(true);
+    expect(findButtonByText(container, "Cancel Run").disabled).toBe(true);
+    expect(findButtonByText(container, "Clear Session").disabled).toBe(true);
   });
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
     const onLoadOlder = vi.fn();

@@ -180,6 +180,13 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
   );
+  const canSetMode = Boolean(canControlAcp && onAcpSetMode);
+  const canSetModel = Boolean(canControlAcp && onAcpSetModel);
+  const canSetConfig = Boolean(canControlAcp && onAcpSetConfig);
+  const canCancelRun = Boolean(canControlAcp && onInterrupt);
+  const canClearSession = Boolean(onForceNewSession);
+  const canControlAcpSession =
+    canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const canInterruptAcpRun =
     Boolean(canInterrupt) &&
     (acpView.runStatus?.status === "running" || hasInProgressToolCall);
@@ -466,7 +473,12 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
         onAcpModelIdChange: setAcpModelId,
         onAcpConfigIdChange: setAcpConfigId,
         onAcpConfigValueChange: setAcpConfigValue,
-        canControlAcp,
+        canControlAcp: canControlAcpSession,
+        canSetMode,
+        canSetModel,
+        canSetConfig,
+        canCancelRun,
+        canClearSession,
         onAcpSetMode: (value: string) => {
           void onAcpSetMode?.(value);
         },
@@ -499,7 +511,12 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       acpRuntimeMetrics,
       acpView,
       ansi,
-      canControlAcp,
+      canCancelRun,
+      canClearSession,
+      canControlAcpSession,
+      canSetConfig,
+      canSetMode,
+      canSetModel,
       developerMode,
       effectiveAcpTab,
       handleTerminalScroll,
