@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use agenthub_acp::{
     AcpPermissionReviewDispatcher, AcpPermissionReviewRequest, AcpPermissionService,
-    acp_permission_review_timeout,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ActorMailboxService, ActorMessageTransport, ActorSendRequest,
@@ -555,6 +554,7 @@ mod tests {
     use crate::team::TeamDefinitionConfig;
     use crate::team::mailbox_hint::RunningActorRuntime;
     use agenthub_acp::AcpPermissionRoutingMetadata;
+    use agenthub_acp::acp_permission_review_timeout;
     use agenthub_team_actor::{ActorInboxRequest, ActorMailboxService};
     use serde_json::json;
     use tokio::sync::Mutex;

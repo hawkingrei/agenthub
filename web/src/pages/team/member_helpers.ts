@@ -401,6 +401,25 @@ export function buildDefaultWorkerDraft(
   };
 }
 
+export function backfillEmptyWorkerDraftPrompts(
+  workers: WorkerDraft[],
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
+): WorkerDraft[] {
+  const defaultPrompt = promptDefaults.worker_prompt.trim();
+  if (!defaultPrompt) {
+    return workers;
+  }
+  let changed = false;
+  const nextWorkers = workers.map((worker) => {
+    if (worker.prompt.trim()) {
+      return worker;
+    }
+    changed = true;
+    return { ...worker, prompt: defaultPrompt };
+  });
+  return changed ? nextWorkers : workers;
+}
+
 export function assignCreatedWorkerToDraft(
   workers: WorkerDraft[],
   createdMemberId: string,

@@ -104,6 +104,7 @@ import {
   EMPTY_TEAM_PROMPT_DEFAULTS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
+  backfillEmptyWorkerDraftPrompts,
   buildTeamMemberLiveStates,
   parseTeamSpecMembers,
   resolveTeamPromptForRole,
@@ -1364,6 +1365,25 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
+    if (!showCreateTeamModal) {
+      return;
+    }
+    const nextWorkers = backfillEmptyWorkerDraftPrompts(
+      teamCreateState.workers,
+      teamPromptDefaults
+    );
+    if (nextWorkers === teamCreateState.workers) {
+      return;
+    }
+    patchTeamCreate({ workers: nextWorkers });
+  }, [
+    patchTeamCreate,
+    showCreateTeamModal,
+    teamCreateState.workers,
+    teamPromptDefaults,
+  ]);
+
+  useEffect(() => {
     if (!teamMemberDraft || teamMemberDraft.prompt.trim()) {
       return;
     }
@@ -1666,15 +1686,13 @@ export function TeamPage(props: TeamPageProps) {
     }
     resetTeamDraft();
     if (restoredDraft) {
-      const hydratedWorkers = restoredDraft.workers.map((worker) =>
-        worker.prompt.trim()
-          ? worker
-          : { ...worker, prompt: teamPromptDefaults.worker_prompt }
-      );
       patchTeamCreate({
         ...restoredDraft,
         leaderPrompt: restoredDraft.leaderPrompt || teamPromptDefaults.leader_prompt,
-        workers: hydratedWorkers,
+        workers: backfillEmptyWorkerDraftPrompts(
+          restoredDraft.workers,
+          teamPromptDefaults
+        ),
         showCreateTeamModal: true,
         showForgeAgentForm: false,
         forgeAgentWorktreeError: null,

@@ -3847,6 +3847,73 @@ describe("team panels interactions", () => {
     expect(findButtonByText(container, "Accept visible pending").disabled).toBe(true);
   });
 
+  it("TeamMailboxPanel disables refresh while any mailbox action is busy", () => {
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={true}
+          mode="advanced_only"
+          snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{}}
+          onSelectMember={() => {}}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={() => {}}
+          onJumpToBottom={() => {}}
+          conversationMessages={[]}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          formatTs={(ts) => String(ts)}
+          busy="send-message"
+          onAcceptMessage={vi.fn()}
+          onAcceptVisibleMessages={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={() => {}}
+          onSendChatMessage={() => {}}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={() => {}}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={() => {}}
+          msgChannel="default"
+          onMsgChannelChange={() => {}}
+          msgTransport="local"
+          onMsgTransportChange={() => {}}
+          msgRoute="{}"
+          onMsgRouteChange={() => {}}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={() => {}}
+          onApplyMessageTemplate={() => {}}
+          msgPayload="{}"
+          onMsgPayloadChange={() => {}}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={() => {}}
+          onSendMessage={() => {}}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={() => {}}
+          inboxLimit="20"
+          onInboxLimitChange={() => {}}
+          inboxAfterId=""
+          onInboxAfterIdChange={() => {}}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={() => {}}
+          onRefreshInbox={() => {}}
+        />
+      );
+    });
+
+    expect(findButtonByAriaLabel(container, "Refresh read-only inbox").disabled).toBe(true);
+  });
+
   it("TeamMailboxPanel renders chat_message payload strings as plain text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 

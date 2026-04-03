@@ -365,7 +365,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         <button
           className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
           onClick={onRefreshInbox}
-          disabled={busy === "refresh-inbox"}
+          disabled={busy !== null}
           title="Refresh read-only inbox"
           aria-label="Refresh read-only inbox"
         >
