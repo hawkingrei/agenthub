@@ -99,13 +99,13 @@ export function useTeamConversationEffects({
     updateSseState,
   ]);
 
-  const conversationRefreshEnabled = Boolean(
+  const conversationSelectionEnabled = Boolean(
     eventsAutoRefresh &&
-      tab === "conversation" &&
       token.trim() &&
       (selectedTeamId?.trim() ?? "") &&
       (selectedConversationId?.trim() ?? "")
   );
+  const conversationRefreshEnabled = conversationSelectionEnabled && tab === "conversation";
 
   useResumeRefresh({
     enabled: conversationRefreshEnabled,
@@ -116,11 +116,7 @@ export function useTeamConversationEffects({
   useEffect(() => {
     const conversationId = selectedConversationId?.trim() ?? "";
     if (
-      !eventsAutoRefresh ||
-      tab !== "conversation" ||
-      !token.trim() ||
-      !selectedTeamId ||
-      !conversationId ||
+      !conversationSelectionEnabled ||
       typeof EventSource === "undefined"
     ) {
       sseConnectedRef.current = false;
@@ -198,12 +194,11 @@ export function useTeamConversationEffects({
       updateSseState("idle");
     };
   }, [
-    eventsAutoRefresh,
+    conversationSelectionEnabled,
     onSseStateChange,
     refreshSelectedConversation,
     selectedConversationId,
     selectedTeamId,
-    tab,
     token,
     updateSseState,
   ]);

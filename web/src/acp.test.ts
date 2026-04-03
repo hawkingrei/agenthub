@@ -23,6 +23,86 @@ describe("buildAcpView", () => {
     expect(view.messages[1].text).toBe("World");
   });
 
+  it("extracts ACP config options and derives the current mode from them", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [
+            {
+              id: "mode",
+              label: "Mode",
+              current_value: { type: "value_id", value: "danger_full_access" },
+              select_options: [
+                { value_id: "workspace_write", label: "Workspace Write" },
+                { value_id: "danger_full_access", label: "Full Access" },
+              ],
+            },
+            {
+              id: "model",
+              label: "Model",
+              current_value: { type: "value_id", value: "gemini-2.5-pro" },
+              select_options: [
+                { value_id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+                { value_id: "gpt-5", label: "GPT-5" },
+              ],
+            },
+          ],
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.currentMode).toBe("danger_full_access");
+    expect(view.configOptions).toHaveLength(2);
+    expect(view.configOptions[0]).toMatchObject({
+      id: "mode",
+      currentValueId: "danger_full_access",
+    });
+    expect(view.configOptions[1]).toMatchObject({
+      id: "model",
+      currentValueId: "gemini-2.5-pro",
+    });
+  });
+
+  it("clears ACP config selectors when the provider sends an explicit empty config_options list", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [
+            {
+              id: "mode",
+              label: "Mode",
+              current_value: { type: "value_id", value: "workspace_write" },
+              select_options: [
+                { value_id: "workspace_write", label: "Workspace Write" },
+              ],
+            },
+          ],
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [],
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.configOptions).toEqual([]);
+    expect(view.currentMode).toBeNull();
+  });
+
   it("merges messages within the same session and kind", () => {
     const events = [
       {

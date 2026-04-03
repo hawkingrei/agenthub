@@ -2608,9 +2608,9 @@ export function App() {
     }
   }, [token]);
 
-  const onAcpSetMode = useCallback(async () => {
+  const onAcpSetMode = useCallback(async (requestedModeId: string) => {
     if (!token || !activeAgent) return;
-    const modeId = acpModeId.trim();
+    const modeId = requestedModeId.trim();
     if (!modeId) {
       setError("mode id is required");
       return;
@@ -2621,11 +2621,11 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  }, [token, activeAgent, acpModeId]);
+  }, [token, activeAgent]);
 
-  const onAcpSetModel = useCallback(async () => {
+  const onAcpSetModel = useCallback(async (requestedModelId: string) => {
     if (!token || !activeAgent) return;
-    const modelId = acpModelId.trim();
+    const modelId = requestedModelId.trim();
     if (!modelId) {
       setError("model id is required");
       return;
@@ -2636,7 +2636,7 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  }, [token, activeAgent, acpModelId]);
+  }, [token, activeAgent]);
 
   const onAcpSetConfig = useCallback(async () => {
     if (!token || !activeAgent) return;
@@ -3159,6 +3159,7 @@ export function App() {
       onJumpToTerminalBottom: jumpToTerminalBottom,
       currentMode: acpView.currentMode,
       rawEvents: acpView.rawEvents,
+      configOptions: acpView.configOptions,
       acpPermissionHistory: scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,
@@ -3186,6 +3187,7 @@ export function App() {
       jumpToTerminalBottom,
       acpView.currentMode,
       acpView.rawEvents,
+      acpView.configOptions,
       scopedAcpPermissionHistory,
       acpModeId,
       acpModelId,

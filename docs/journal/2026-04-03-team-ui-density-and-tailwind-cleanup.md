@@ -17,6 +17,16 @@
   - Added explicit Tailwind list/head/body classes for step records so `teams-step-*` no longer depends on `styles.css`.
 - `web/src/pages/team_member_console_panel.tsx`
   - Added explicit Tailwind list/detail layout classes for member console event/detail blocks.
+- `web/src/components/output_header.tsx`
+  - Moved developer-facing `session` and `updated` metadata out of the always-visible header row and into a compact `Details` disclosure so the header stays content-first.
+  - Removed the standalone bordered header chrome so the title/status row now merges into the surrounding `flex flex-col gap-2` shell instead of rendering as a second card.
+  - Stopped exposing agent/session identifiers in visible header details; only human-facing mode/status metadata remains visible.
+- `web/src/ui/tailwind_classes.ts`
+  - Simplified the output-header title typography to a more standard Tailwind `truncate + text-sm/base + leading-tight` treatment and removed the remaining redundant heading utilities.
+- `web/src/pages/team_member_acp_panel.tsx`
+  - Merged the member ACP technical metadata into the same compact `Details` disclosure instead of rendering a second metadata row under the header.
+  - Switched the member ACP title to a human-facing workspace label and removed direct `member/session` identifier rendering from the header and subtitle copy.
+  - Hid the inner member ACP title when the Team workbench already renders the selected member label in the outer workspace header, avoiding duplicate names in the same column.
 - `web/src/pages/team_task_panel.tsx`
   - Slimmed the shared-thread shell, item padding, seen-state badge, details button, and detail grid.
   - Added compact command-style body rendering for plain command messages.
@@ -37,6 +47,7 @@
   - Reduced the workbench gutter from `24px` to `16px`.
   - Flattened the main workbench surfaces, header shell, toolbar, and workspace shell by replacing glossy gradients and heavier shadows with lower-contrast borders and subtle white surfaces.
   - Softened the page background so the content reads more like a document canvas than a dashboard.
+  - Tightened the two-column workbench layout toward Notion's proportions by shrinking the sidebar track to roughly `240px` and letting the main workbench column center itself within a bounded reading width.
 - `web/src/pages/team_sidebar.tsx`
   - Slimmed the sidebar shell, action buttons, active nav states, and section panels to match the flatter workbench treatment.
   - Kept selection affordances, but shifted them from glossy card styling to thin-border emphasis.

@@ -437,9 +437,9 @@ const teamWorkbenchHeaderIconButtonClassName =
 const teamWorkbenchHeaderStatusClassName =
   "inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/92 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
 const teamWorkbenchDetailLayoutCollapsedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)]";
 const teamWorkbenchDetailLayoutExpandedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(288px,340px)_minmax(0,1fr)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(232px,252px)_minmax(0,1fr)] lg:items-start";
 const teamWorkbenchWorkspaceShellClassName =
   "rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)]";
 const teamWorkbenchSetupChecklistClassName =
@@ -2176,7 +2176,6 @@ export function TeamPage(props: TeamPageProps) {
   const selectedConversation = sharedConversation;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
-      tab === "conversation" &&
       selectedTeamId &&
       (selectedConversation?.id ?? "").trim()
   );
@@ -2271,7 +2270,10 @@ export function TeamPage(props: TeamPageProps) {
     void refreshSharedConversation(selectedTeamId);
   }, [refreshSharedConversation, refreshTasks, selectedTeamId]);
 
-  const { refreshTaskMessages, sendTaskMessage: onSendTaskMessage } = useTeamConversationActions({
+  const {
+    refreshTaskMessages,
+    sendTaskMessage: onSendTaskMessage,
+  } = useTeamConversationActions({
     token: props.token,
     selectedTeamId,
     selectedConversation,
@@ -2807,6 +2809,66 @@ export function TeamPage(props: TeamPageProps) {
     selectedAgentWorkspaceAgent,
     selectedTeamId,
   ]);
+  const onSetTeamMemberAcpMode = useCallback(async (modeId: string) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedModeId = modeId.trim();
+    if (!trimmedModeId) {
+      setError("mode id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpMode(props.token, selectedAgentWorkspaceAgent.id, trimmedModeId);
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
+  const onSetTeamMemberAcpModel = useCallback(async (modelId: string) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedModelId = modelId.trim();
+    if (!trimmedModelId) {
+      setError("model id is required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpModel(props.token, selectedAgentWorkspaceAgent.id, trimmedModelId);
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
+  const onSetTeamMemberAcpConfig = useCallback(async (
+    configId: string,
+    value: string
+  ) => {
+    if (!props.token || !selectedAgentWorkspaceAgent) {
+      return;
+    }
+    const trimmedConfigId = configId.trim();
+    const trimmedValue = value.trim();
+    if (!trimmedConfigId || !trimmedValue) {
+      setError("config id and value are required");
+      return;
+    }
+    setError(null);
+    try {
+      await api.setAcpConfig(
+        props.token,
+        selectedAgentWorkspaceAgent.id,
+        trimmedConfigId,
+        trimmedValue
+      );
+      await loadMemberEvents("replace");
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    }
+  }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
   const onForceNewTeamMemberSession = useCallback(async () => {
     if (!props.token || !selectedTeamId || !selectedAgentWorkspaceMemberId) {
       return;
@@ -3610,7 +3672,7 @@ export function TeamPage(props: TeamPageProps) {
 
           {showWorkbenchPane && (
           <div
-            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-3 pr-1 [&>*]:shrink-0"
+            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0 [&>*]:shrink-0"
             data-team-surface="workbench"
           >
             {!selectedTeam && (
@@ -4034,6 +4096,8 @@ export function TeamPage(props: TeamPageProps) {
                     <TeamMemberAcpPanel
                       developerMode={props.developerMode}
                       selectedMemberId={selectedAgentWorkspaceMemberId}
+                      memberTitle={selectedAgentLabel}
+                      hideMemberTitle={true}
                       selectedMemberSnapshot={selectedAgentWorkspaceSnapshot}
                       selectedMemberRole={
                         selectedAgentWorkspaceRuntimeMember?.role ??
@@ -4047,8 +4111,12 @@ export function TeamPage(props: TeamPageProps) {
                       eventsLoading={eventsLoading}
                       oldestMemberEventId={oldestMemberEventId}
                       onSendInput={onSendAgentAcpInput}
+                      canControlAcp={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
                       canInterrupt={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
                       onInterrupt={onCancelTeamMemberAcp}
+                      onAcpSetMode={onSetTeamMemberAcpMode}
+                      onAcpSetModel={onSetTeamMemberAcpModel}
+                      onAcpSetConfig={onSetTeamMemberAcpConfig}
                       onForceNewSession={onForceNewTeamMemberSession}
                       onRefresh={onRefreshMemberConsole}
                       onLoadOlder={onLoadOlderMemberConsole}

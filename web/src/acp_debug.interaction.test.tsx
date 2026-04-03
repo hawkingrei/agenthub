@@ -34,6 +34,7 @@ function buildProps(
     onJumpToTerminalBottom: () => {},
     currentMode: "default",
     rawEvents: [],
+    configOptions: [],
     acpPermissionHistory: [permission],
     acpModeId: "",
     acpModelId: "",
@@ -187,6 +188,68 @@ describe("AcpDebug interactions", () => {
 
     expect(onJump).toHaveBeenCalledTimes(1);
     expect(onJump.mock.calls[0][0]).toMatchObject({ id: "perm-1" });
+  });
+
+  it("submits selected ACP mode and model values from config selectors", () => {
+    const onSetMode = vi.fn();
+    const onSetModel = vi.fn();
+    function ControlledDebug() {
+      const [acpModeId, setAcpModeId] = React.useState("");
+      const [acpModelId, setAcpModelId] = React.useState("");
+      return (
+        <AcpDebug
+          {...buildProps({
+            configOptions: [
+              {
+                id: "mode",
+                label: "Mode",
+                currentValueId: "workspace_write",
+                selectOptions: [
+                  { valueId: "workspace_write", label: "Workspace Write" },
+                  { valueId: "danger_full_access", label: "Full Access" },
+                ],
+              },
+              {
+                id: "model",
+                label: "Model",
+                currentValueId: "gpt-5",
+                selectOptions: [
+                  { valueId: "gpt-5", label: "GPT-5" },
+                  { valueId: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+                ],
+              },
+            ],
+            acpModeId,
+            acpModelId,
+            onAcpModeIdChange: setAcpModeId,
+            onAcpModelIdChange: setAcpModelId,
+            onAcpSetMode: onSetMode,
+            onAcpSetModel: onSetModel,
+          })}
+        />
+      );
+    }
+    act(() => {
+      root.render(<ControlledDebug />);
+    });
+
+    const modeSelect = container.querySelector('select[name="acp-mode"]');
+    const modelSelect = container.querySelector('select[name="acp-model"]');
+    expect(modeSelect).not.toBeNull();
+    expect(modelSelect).not.toBeNull();
+
+    act(() => {
+      (modeSelect as HTMLSelectElement).value = "danger_full_access";
+      modeSelect?.dispatchEvent(new Event("change", { bubbles: true }));
+      (modelSelect as HTMLSelectElement).value = "gemini-2.5-pro";
+      modelSelect?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    clickByText(container, "Set Mode");
+    clickByText(container, "Set Model");
+
+    expect(onSetMode).toHaveBeenCalledWith("danger_full_access");
+    expect(onSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
   });
 
   it("copies permission payload and resets copied state after timeout", async () => {

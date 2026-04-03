@@ -24,6 +24,7 @@ const baseAcpView: AcpView = {
   ],
   messages: [],
   rawEvents: [],
+  configOptions: [],
   plan: null,
   commands: [],
   currentMode: null,
