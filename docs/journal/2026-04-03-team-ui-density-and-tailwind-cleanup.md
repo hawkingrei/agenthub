@@ -19,6 +19,8 @@
   - Added explicit Tailwind list/detail layout classes for member console event/detail blocks.
 - `web/src/components/output_header.tsx`
   - Moved developer-facing `session` and `updated` metadata out of the always-visible header row and into a compact `Details` disclosure so the header stays content-first.
+- `web/src/ui/tailwind_classes.ts`
+  - Simplified the output-header title typography to a more standard Tailwind `truncate + text-sm/base + leading-tight` treatment and removed the remaining redundant heading utilities.
 - `web/src/pages/team_member_acp_panel.tsx`
   - Merged the member ACP technical metadata into the same compact `Details` disclosure instead of rendering a second metadata row under the header.
 - `web/src/pages/team_task_panel.tsx`
@@ -41,6 +43,7 @@
   - Reduced the workbench gutter from `24px` to `16px`.
   - Flattened the main workbench surfaces, header shell, toolbar, and workspace shell by replacing glossy gradients and heavier shadows with lower-contrast borders and subtle white surfaces.
   - Softened the page background so the content reads more like a document canvas than a dashboard.
+  - Tightened the two-column workbench layout toward Notion's proportions by shrinking the sidebar track to roughly `240px` and letting the main workbench column center itself within a bounded reading width.
 - `web/src/pages/team_sidebar.tsx`
   - Slimmed the sidebar shell, action buttons, active nav states, and section panels to match the flatter workbench treatment.
   - Kept selection affordances, but shifted them from glossy card styling to thin-border emphasis.

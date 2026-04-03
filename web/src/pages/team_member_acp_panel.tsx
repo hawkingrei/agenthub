@@ -14,7 +14,6 @@ import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
 import {
   OUTPUT_HEADER_META_CLASS,
-  OUTPUT_HEADER_PILL_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
   OUTPUT_HEADER_TITLE_CLASS,
   OUTPUT_HEADER_TITLE_HEADING_CLASS,
@@ -198,16 +197,14 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     ? `${memberStatus} · ${thinkingLabel}`
     : memberStatus;
   const memberStatusClassToken = memberStatus.replace(/[^a-z0-9_-]+/g, "-");
-  const developerTechnicalMetadata = React.useMemo(() => {
-    if (!developerMode) {
-      return [];
-    }
-    return [
-      { label: "member", value: memberTitle },
+  const developerTechnicalMetadata = React.useMemo(
+    () => [
       { label: "role", value: memberRoleLabel || "-" },
-      { label: "session", value: selectedSessionId || "-" },
-    ];
-  }, [developerMode, memberRoleLabel, memberTitle, selectedSessionId]);
+      ...(developerMode ? [{ label: "member", value: memberTitle }] : []),
+      ...(developerMode ? [{ label: "session", value: selectedSessionId || "-" }] : []),
+    ],
+    [developerMode, memberRoleLabel, memberTitle, selectedSessionId]
+  );
   const handleTerminalScroll = React.useCallback(() => {
     const element = terminalRef.current;
     if (!element) {
@@ -576,11 +573,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
                 className={`agent-status status-${memberStatusClassToken}`}
                 title={`status: ${memberStatusLabel}`}
               />
-              {memberRoleLabel ? (
-                <span className={OUTPUT_HEADER_PILL_CLASS}>
-                  Role {memberRoleLabel}
-                </span>
-              ) : null}
               <OutputHeaderDetails items={developerTechnicalMetadata} />
             </div>
           </div>

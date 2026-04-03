@@ -10,7 +10,6 @@ import {
   OUTPUT_HEADER_DETAILS_SUMMARY_CLASS,
   OUTPUT_HEADER_DETAILS_VALUE_CLASS,
   OUTPUT_HEADER_META_CLASS,
-  OUTPUT_HEADER_PILL_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
   OUTPUT_HEADER_SUBTITLE_CLASS,
   OUTPUT_HEADER_SUBTITLE_ROW_CLASS,
@@ -92,12 +91,17 @@ export const OutputHeader = React.memo(function OutputHeader({
     ? `${mergedStatus} · ${thinkingLabel}`
     : mergedStatus;
   const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
-  const developerDetails = developerMode
-    ? [
+  const detailsItems = [
+    { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
+    ...(
+      developerMode
+        ? [
         ...(sessionLabel ? [{ label: "session", value: sessionLabel }] : []),
         ...(updatedLabel ? [{ label: "updated", value: updatedLabel }] : []),
-      ]
-    : [];
+          ]
+        : []
+    ),
+  ];
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
       <div className={OUTPUT_HEADER_TITLE_CLASS}>
@@ -118,10 +122,7 @@ export const OutputHeader = React.memo(function OutputHeader({
             className={`agent-status status-${mergedStatusClassToken}`}
             title={`status: ${mergedStatusLabel}`}
           />
-          <span className={OUTPUT_HEADER_PILL_CLASS}>
-            Code mode {activeAgent.code_mode ? "on" : "off"}
-          </span>
-          <OutputHeaderDetails items={developerDetails} />
+          <OutputHeaderDetails items={detailsItems} />
         </div>
       ) : null}
       {!hasAcp ? (

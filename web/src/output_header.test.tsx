@@ -48,8 +48,9 @@ describe("OutputHeader", () => {
   it("renders agent meta when active agent exists", () => {
     const html = renderHeader({});
     expect(html).toContain("running");
-    expect(html).toContain("Code mode on");
     expect(html).toContain("Details");
+    expect(html).toContain("mode");
+    expect(html).toContain("on");
     expect(html).toContain("session");
     expect(html).toContain("updated");
     expect(html).not.toContain("output-session");
@@ -74,8 +75,9 @@ describe("OutputHeader", () => {
 
   it("hides session metadata when developer mode is off", () => {
     const html = renderHeader({ developerMode: false });
-    expect(html).toContain("Code mode on");
-    expect(html).not.toContain("Details");
+    expect(html).toContain("Details");
+    expect(html).toContain("mode");
+    expect(html).toContain("on");
     expect(html).not.toContain("session");
     expect(html).not.toContain("updated");
   });

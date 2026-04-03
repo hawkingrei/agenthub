@@ -301,7 +301,7 @@ export const OUTPUT_HEADER_TITLE_MAIN_CLASS =
   "output-title-main flex min-w-0 flex-wrap items-center gap-2 max-[720px]:gap-1.5";
 
 export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
-  "m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[1.1] text-black sm:text-[18px]";
+  "truncate text-sm font-semibold leading-tight sm:text-base";
 
 export const OUTPUT_HEADER_META_CLASS =
   "output-meta col-start-2 row-start-1 flex max-w-[52vw] flex-nowrap items-center justify-self-end gap-2 overflow-hidden whitespace-nowrap text-ui-xs text-black/60 max-[720px]:col-start-2 max-[720px]:row-start-1 max-[720px]:max-w-[40vw] max-[720px]:justify-self-end [&>*]:min-w-0 [&>*]:overflow-hidden [&>*]:text-ellipsis [&>*]:whitespace-nowrap max-[720px]:[&>*:nth-child(n+2)]:hidden";
@@ -319,7 +319,7 @@ export const OUTPUT_HEADER_DETAILS_SUMMARY_CLASS =
   "inline-flex cursor-pointer list-none items-center rounded-full border border-black/[0.08] bg-white/72 px-2 py-0.5 text-[11px] font-medium text-black/58 transition hover:border-black/[0.14] hover:bg-white/88 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10";
 
 export const OUTPUT_HEADER_DETAILS_PANEL_CLASS =
-  "absolute right-0 top-[calc(100%+8px)] z-20 min-w-[220px] rounded-[12px] border border-black/[0.08] bg-[#fcfbf7] p-2.5 shadow-[0_8px_24px_rgba(15,23,42,0.12)]";
+  "absolute right-0 top-[calc(100%+8px)] z-20 min-h-0 min-w-[220px] rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2";
 
 export const OUTPUT_HEADER_DETAILS_LIST_CLASS = "flex flex-col gap-1.5";
 
