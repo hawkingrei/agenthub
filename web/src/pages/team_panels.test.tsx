@@ -461,8 +461,6 @@ describe("team panels interactions", () => {
     expect(
       Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
-    expect(container.textContent).toContain("Human requests, planning, and team-visible progress.");
-    expect(container.textContent).toContain("Canonical system-managed tasks and execution state.");
     expect(container.textContent).toContain("Leader Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");

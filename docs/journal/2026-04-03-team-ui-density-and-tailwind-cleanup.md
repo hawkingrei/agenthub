@@ -40,6 +40,7 @@
   - Kept selection affordances, but shifted them from glossy card styling to thin-border emphasis.
   - Reworked member information hierarchy so agent name stays primary, current work becomes the first supporting line, role/state collapse into a smaller humanized summary, and developer IDs move into a weaker tertiary line with shortened UUID display.
   - Further flattened agent rows into tree-like entries: active state now uses a subtle fill instead of a bordered card, status moves to a compact trailing label, and developer IDs stay in the tooltip instead of the visible row.
+  - Removed the remaining panel chrome around the sidebar, collapsed workflow entries to single-line navigation rows, and weakened section headings so the whole rail reads closer to a document tree than a dashboard column.
 - `web/src/pages/team_task_panel.tsx`
   - Flattened the shared-thread activity shell, message bubbles, permission review cards, details disclosure block, seen popover, and jump button.
   - Reduced gradient usage in `# all` so command review and progress cards feel closer to document annotations than dashboard tiles.
