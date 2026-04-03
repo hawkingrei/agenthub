@@ -23,9 +23,7 @@
 - `web/src/pages/team/use_team_conversation_actions.ts`
   - removed the old `60 -> 200` background hydration path for shared-thread conversation refresh;
   - now loads only the latest `20` conversation messages and latest `20` mailbox records per refresh so the frontend state and markdown render cost stay bounded;
-  - added explicit `before_id` pagination for older shared-thread messages so the `recent 20` optimization does not make history unreachable.
-- `web/src/pages/team/page_helpers.ts`
-  - added `prependOlderConversationMessages()` to merge paged shared-thread history without losing cached message identity.
+  - intentionally keeps shared-thread browsing as a recent-20 tail view instead of adding in-panel history pagination.
 - `web/src/pages/team/use_team_conversation_effects.ts`
   - decoupled the shared-thread SSE subscription from the active `# all` tab so Team keeps a live shared-thread stream target whenever a team with a shared conversation is selected;
   - kept the 4s fallback polling limited to the `# all` tab so only the realtime stream remains active on agent/task views.
@@ -34,11 +32,9 @@
 - `web/src/pages/team_panels.test.tsx`
   - updated channel conversation tests to cover the `200`-item tail window;
   - added a regression check that a small upward scroll near the bottom does not immediately exit stick-to-bottom mode.
-  - added a layout regression test that locks the dedicated body-shell/composer-shell structure in place;
-  - added a regression check that `Load older` keeps the composer pinned while expanding channel history.
+  - added a layout regression test that locks the dedicated body-shell/composer-shell structure in place.
 - `web/src/pages/team/use_team_conversation_actions.test.tsx`
-  - updated the shared-thread refresh test to lock the new `20`-item bounded-load behavior in place;
-  - added a regression check for `before_id` pagination on older shared-thread messages.
+  - updated the shared-thread refresh test to lock the new `20`-item bounded-load behavior in place.
 - `web/src/pages/team/use_team_conversation_effects.test.tsx`
   - added a regression check that the shared-thread SSE stream stays active outside the `# all` tab while polling still remains disabled there.
 

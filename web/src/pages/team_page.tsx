@@ -2272,15 +2272,11 @@ export function TeamPage(props: TeamPageProps) {
 
   const {
     refreshTaskMessages,
-    loadOlderTaskMessages,
-    taskMessagesHasMore,
-    taskMessagesLoadingOlder,
     sendTaskMessage: onSendTaskMessage,
   } = useTeamConversationActions({
     token: props.token,
     selectedTeamId,
     selectedConversation,
-    taskMessages,
     latestRunForSharedConversation: sharedConversationLatestRun,
     activeRunIdForSelectedTeam,
     refreshSnapshot,
@@ -3252,9 +3248,6 @@ export function TeamPage(props: TeamPageProps) {
       onMessageDraftChange={setTaskMessageDraft}
       onSendMessage={onSendTaskMessage}
       onRefreshMessages={refreshTaskMessages}
-      onLoadOlderMessages={loadOlderTaskMessages}
-      canLoadOlderMessages={taskMessagesHasMore}
-      loadingOlderMessages={taskMessagesLoadingOlder}
       messages={taskMessages}
       conversationMailboxMessages={conversationMailboxMessages}
       snapshotMailboxMessages={snapshot?.mailbox.recent_messages ?? []}

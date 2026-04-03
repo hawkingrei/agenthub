@@ -29,7 +29,6 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
@@ -44,9 +43,6 @@ type TeamTaskPanelProps = {
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
   onRefreshMessages?: () => Promise<void> | void;
-  onLoadOlderMessages?: () => Promise<void> | void;
-  canLoadOlderMessages?: boolean;
-  loadingOlderMessages?: boolean;
   messages: TeamConversationMessageRecord[];
   seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;
@@ -643,7 +639,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     token = null,
     messageDraft,
     onMessageDraftChange,
-    onLoadOlderMessages,
     onRefreshMessages,
     onSendMessage,
     messages,
@@ -652,8 +647,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     memberLiveStates = [],
     memberIds = [],
     messagesLoading,
-    canLoadOlderMessages = false,
-    loadingOlderMessages = false,
     busy,
     formatTs,
     toPrettyJson,
@@ -674,11 +667,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
   const [stickToBottom, setStickToBottom] = React.useState(true);
-  const [historyExpanded, setHistoryExpanded] = React.useState(false);
-  const conversationId = messages[0]?.conversation_id ?? "";
-  React.useEffect(() => {
-    setHistoryExpanded(false);
-  }, [conversationId]);
   const liveStateByMemberId = React.useMemo(
     () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
     [memberLiveStates]
@@ -882,11 +870,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     }
   }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
-    () =>
-      historyExpanded
-        ? { items: orderedMessages, offset: 0, total: orderedMessages.length }
-        : windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
-    [historyExpanded, orderedMessages, stickToBottom]
+    () => windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
+    [orderedMessages, stickToBottom]
   );
   const visibleWaterfallItems = React.useMemo(
     () =>
@@ -1057,37 +1042,21 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5"
         data-team-channel-body="true"
       >
-        {(onRefreshMessages || onLoadOlderMessages) && (
+        {onRefreshMessages && (
           <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} mb-2 w-full shrink-0 justify-end gap-2`}>
-            {onRefreshMessages && (
-              <button
-                type="button"
-                className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-                onClick={() => {
-                  void onRefreshMessages();
-                }}
-                disabled={messagesLoading || loadingOlderMessages}
-                title="Refresh channel"
-                aria-label="Refresh channel"
-              >
-                <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                <span>Refresh</span>
-              </button>
-            )}
-            {onLoadOlderMessages && (canLoadOlderMessages || loadingOlderMessages) && (
-              <button
-                type="button"
-                className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                onClick={() => {
-                  setHistoryExpanded(true);
-                  setStickToBottom(false);
-                  void onLoadOlderMessages();
-                }}
-                disabled={messagesLoading || loadingOlderMessages}
-              >
-                {loadingOlderMessages ? "Loading older..." : "Load older"}
-              </button>
-            )}
+            <button
+              type="button"
+              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+              onClick={() => {
+                void onRefreshMessages();
+              }}
+              disabled={messagesLoading}
+              title="Refresh channel"
+              aria-label="Refresh channel"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
+            </button>
           </div>
         )}
         <div

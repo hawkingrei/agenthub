@@ -180,16 +180,16 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
   );
-  const canSetMode = Boolean(canControlAcp && onAcpSetMode);
-  const canSetModel = Boolean(canControlAcp && onAcpSetModel);
-  const canSetConfig = Boolean(canControlAcp && onAcpSetConfig);
-  const canCancelRun = Boolean(canControlAcp && onInterrupt);
-  const canClearSession = Boolean(onForceNewSession);
-  const canControlAcpSession =
-    canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const canInterruptAcpRun =
     Boolean(canInterrupt) &&
     (acpView.runStatus?.status === "running" || hasInProgressToolCall);
+  const canSetMode = Boolean(canControlAcp && onAcpSetMode);
+  const canSetModel = Boolean(canControlAcp && onAcpSetModel);
+  const canSetConfig = Boolean(canControlAcp && onAcpSetConfig);
+  const canCancelRun = Boolean(canControlAcp && onInterrupt && canInterruptAcpRun);
+  const canClearSession = Boolean(onForceNewSession);
+  const canControlAcpSession =
+    canSetMode || canSetModel || canSetConfig || canCancelRun || canClearSession;
   const memberTitle = React.useMemo(() => {
     const explicitTitle = memberTitleProp?.trim();
     if (explicitTitle) {

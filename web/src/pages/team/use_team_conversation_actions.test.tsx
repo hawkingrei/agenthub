@@ -111,7 +111,6 @@ function createOptions(
     token: "token-1",
     selectedTeamId: "team-1",
     selectedConversation: buildSharedThreadTask(),
-    taskMessages: taskMessages.state.current,
     latestRunForSharedConversation: null,
     activeRunIdForSelectedTeam: "run-1",
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
@@ -260,47 +259,6 @@ describe("useTeamConversationActions", () => {
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledTimes(1);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(true);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(false);
-    } finally {
-      cleanupHarness(root, container);
-    }
-  });
-
-  it("loads older shared-thread history with before_id pagination", async () => {
-    mockedApi.listTeamTaskMessages.mockResolvedValueOnce([
-      buildTaskMessage(5, "older-1"),
-      buildTaskMessage(9, "older-2"),
-    ]);
-
-    let captured: TeamConversationActions | null = null;
-    const options = createOptions({
-      taskMessages: [buildTaskMessage(22, "tail-1"), buildTaskMessage(41, "tail-2")],
-    });
-    const { root, container } = await mountHarness(options, (actions) => {
-      captured = actions;
-    });
-
-    try {
-      await act(async () => {
-        await captured?.loadOlderTaskMessages();
-        await Promise.resolve();
-      });
-
-      expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledWith(
-        "token-1",
-        "team-1",
-        "task-all",
-        { limit: 20, before_id: 22 }
-      );
-      expect(options.setTaskMessages).toHaveBeenCalled();
-      const finalTaskMessages = (
-        options.setTaskMessages as ReturnType<typeof vi.fn>
-      ).mock.calls.at(-1)?.[0] as React.SetStateAction<TeamConversationMessageRecord[]>;
-      const resolvedMessages =
-        typeof finalTaskMessages === "function"
-          ? finalTaskMessages([buildTaskMessage(22, "tail-1"), buildTaskMessage(41, "tail-2")])
-          : finalTaskMessages;
-      expect(resolvedMessages.map((message) => message.message_id)).toEqual([5, 9, 22, 41]);
-      expect(captured?.taskMessagesHasMore).toBe(false);
     } finally {
       cleanupHarness(root, container);
     }

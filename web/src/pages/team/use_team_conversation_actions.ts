@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -18,7 +17,6 @@ import { buildMailboxChatPayload } from "./mailbox_helpers";
 import {
   isSharedThreadTask,
   mergeConversationMessages,
-  prependOlderConversationMessages,
   refreshTeamConversationMailboxAfterSend,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
@@ -35,7 +33,6 @@ type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
   selectedConversation: TeamTaskRecord | null;
-  taskMessages: TeamConversationMessageRecord[];
   latestRunForSharedConversation: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
@@ -57,7 +54,6 @@ export function useTeamConversationActions({
   refreshSnapshot,
   selectedConversation,
   selectedTeamId,
-  taskMessages,
   latestRunForSharedConversation,
   setBusy,
   setConversationMailboxMessages,
@@ -75,8 +71,6 @@ export function useTeamConversationActions({
     teamId: "",
     taskId: "",
   });
-  const [taskMessagesHasMore, setTaskMessagesHasMore] = useState(false);
-  const [taskMessagesLoadingOlder, setTaskMessagesLoadingOlder] = useState(false);
 
   useEffect(() => {
     taskMessageRequestSeqRef.current += 1;
@@ -85,8 +79,6 @@ export function useTeamConversationActions({
       taskId: (selectedConversation?.id ?? "").trim(),
     };
     if (!selectedTeamId || !selectedConversation?.id) {
-      setTaskMessagesHasMore(false);
-      setTaskMessagesLoadingOlder(false);
       setTaskMessagesLoading(false);
     }
   }, [selectedConversation?.id, selectedTeamId, setTaskMessagesLoading]);
@@ -104,7 +96,6 @@ export function useTeamConversationActions({
       if (!teamId || !taskId) {
         setTaskMessages([]);
         setConversationMailboxMessages([]);
-        setTaskMessagesHasMore(false);
         return;
       }
       setTaskMessagesLoading(true);
@@ -125,7 +116,6 @@ export function useTeamConversationActions({
         startTransition(() => {
           setTaskMessages((prev) => mergeConversationMessages(prev, messages));
         });
-        setTaskMessagesHasMore(messages.length >= TEAM_CONVERSATION_MESSAGE_LIMIT);
         const conversationRunId = taskDetail?.latest_run?.id?.trim() ?? "";
         if (conversationRunId) {
           const conversationSnapshot = await api.getTeamRunSnapshot(token, conversationRunId, {
@@ -148,7 +138,6 @@ export function useTeamConversationActions({
           return;
         }
         setError(parseErrorMessage(err));
-        setTaskMessagesHasMore(false);
         startTransition(() => {
           setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
         });
@@ -168,43 +157,6 @@ export function useTeamConversationActions({
       token,
     ]
   );
-
-  const loadOlderTaskMessages = useCallback(async () => {
-    const teamId = selectedTeamId?.trim() ?? "";
-    const taskId = (selectedConversation?.id ?? "").trim();
-    const oldestMessageId = taskMessages[0]?.message_id ?? null;
-    if (
-      !teamId ||
-      !taskId ||
-      oldestMessageId == null ||
-      taskMessagesLoadingOlder
-    ) {
-      return;
-    }
-    setTaskMessagesLoadingOlder(true);
-    try {
-      const older = await api.listTeamTaskMessages(token, teamId, taskId, {
-        limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
-        before_id: oldestMessageId,
-      });
-      startTransition(() => {
-        setTaskMessages((prev) => prependOlderConversationMessages(prev, older));
-      });
-      setTaskMessagesHasMore(older.length >= TEAM_CONVERSATION_MESSAGE_LIMIT);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setTaskMessagesLoadingOlder(false);
-    }
-  }, [
-    selectedConversation?.id,
-    selectedTeamId,
-    setError,
-    setTaskMessages,
-    taskMessages,
-    taskMessagesLoadingOlder,
-    token,
-  ]);
 
   const resolveConversationForMessage = useCallback((): SharedConversationTarget | null => {
     if (!selectedTeamId || !selectedConversation) {
@@ -229,7 +181,6 @@ export function useTeamConversationActions({
     setSharedConversationLatestRun(detail.latest_run ?? null);
     setTaskMessages([]);
     setConversationMailboxMessages([]);
-    setTaskMessagesHasMore(false);
     return {
       task: detail.task,
       latestRunId: detail.latest_run?.id?.trim() || null,
@@ -307,9 +258,6 @@ export function useTeamConversationActions({
   return {
     ensureSharedConversation,
     refreshTaskMessages,
-    loadOlderTaskMessages,
-    taskMessagesHasMore,
-    taskMessagesLoadingOlder,
     sendTaskMessage,
   };
 }

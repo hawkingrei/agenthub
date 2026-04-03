@@ -21,7 +21,8 @@
 - `web/src/pages/team_member_acp_panel.tsx`
   - Team member ACP debug now accepts `canControlAcp`, `onAcpSetMode`, `onAcpSetModel`, and `onAcpSetConfig`;
   - the Team panel now passes ACP config options through to `AcpDebug`;
-  - ACP debug actions are now disabled whenever the corresponding Team member handler is unavailable, so the panel no longer renders enabled no-op buttons.
+  - ACP debug actions are now disabled whenever the corresponding Team member handler is unavailable, so the panel no longer renders enabled no-op buttons;
+  - `Cancel Run` now also respects the Team panel's interruptibility state instead of enabling a no-op cancel action when no ACP run is actually interruptible.
 - `web/src/pages/team_page.tsx`
   - wired Team member ACP actions to `/api/agents/:id/acp/mode`, `/api/agents/:id/acp/model`, and `/api/agents/:id/acp/config`.
 
