@@ -131,11 +131,11 @@ export function AcpDebug({
   const debugTabClassName = (isActive: boolean) =>
     `acp-debug-tab ${isActive ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
   const debugInputClassName =
-    "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-300";
+    "w-full rounded-md border border-notion-border bg-white px-3 py-1.5 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
   const debugSecondaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
+    "inline-flex h-8 items-center justify-center rounded-md border border-notion-border bg-white px-3 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover disabled:cursor-not-allowed disabled:opacity-60 active:translate-y-px";
   const debugPrimaryButtonClassName =
-    "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
+    "inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:cursor-not-allowed disabled:opacity-60 active:translate-y-px";
   const modeConfigOption = React.useMemo(
     () => configOptions.find((option) => option.id === "mode") ?? null,
     [configOptions]
@@ -240,15 +240,15 @@ export function AcpDebug({
         <div className={`acp-terminal-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Terminal</h4>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+              <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Terminal</h4>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-notion-text-muted">
                 <span>{terminalCounts.stdout} stdout</span>
                 <span>{terminalCounts.stderr} stderr</span>
                 <span>{terminalCounts.system} system</span>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <div className="flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-md border border-notion-border">
                 <button
                   className={debugTabClassName(terminalFilter === "all")}
                   type="button"
@@ -302,8 +302,8 @@ export function AcpDebug({
       )}
       {tab === "session" && (
         <div className={`acp-controls ${ACP_DEBUG_SECTION_CLASS}`}>
-          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Session Controls</h4>
-          <div className="acp-control-meta text-sm text-slate-600">
+          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Session Controls</h4>
+          <div className="acp-control-meta text-[13px] text-notion-text-muted italic">
             Current mode: {currentMode ?? "unknown"}
           </div>
           <div className="form-row flex flex-col gap-2 sm:flex-row">
@@ -401,7 +401,7 @@ export function AcpDebug({
       )}
       {tab === "runtime" && (
         <div className={`acp-runtime ${ACP_DEBUG_SECTION_CLASS}`}>
-          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Runtime Metrics</h4>
+          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Runtime Metrics</h4>
           <div className="acp-runtime-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <RuntimeMetricCard label="Conversation (total/source/rendered)">
               {runtimeMetrics.totalConversationItems}
@@ -456,7 +456,7 @@ export function AcpDebug({
       )}
       {tab === "permissions" && (
         <div className={`acp-permissions ${ACP_DEBUG_SECTION_CLASS}`}>
-          <h4>Permissions</h4>
+          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Permissions</h4>
           {acpPermissionHistory.length === 0 && (
             <div className={ACP_DEBUG_EMPTY_CLASS}>
               No permissions yet.
@@ -467,7 +467,7 @@ export function AcpDebug({
             const copied = copiedPermissionId === permission.id;
             const canJump = Boolean(permission.tool_call_id?.trim());
             return (
-              <div key={permission.id} className="acp-permission rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <div key={permission.id} className="acp-permission rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
                 <div className="head flex items-start justify-between gap-2">
                   <button
                     className={ACP_DEBUG_PERMISSION_TOGGLE_CLASS}
@@ -475,10 +475,10 @@ export function AcpDebug({
                     onClick={() => onJumpToPermissionHistory(permission)}
                     disabled={!canJump}
                   >
-                    <span className="title">
+                    <span className="text-[14px] font-bold text-notion-text">
                       {derivePermissionTitle(permission, toolCall)}
                     </span>
-                    <span className="meta">{permission.status}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">{permission.status}</span>
                   </button>
                   <button
                     className={`acp-permission-copy ${debugSecondaryButtonClassName}`}
@@ -510,11 +510,11 @@ export function AcpDebug({
       )}
       {tab === "raw" && (
         <div className={`acp-raw-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
-          <h4 className="text-sm font-semibold text-slate-900 sm:text-base">Raw Events</h4>
+          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Raw Events</h4>
           <ul className="acp-raw max-h-[420px] space-y-2 overflow-auto pr-1" ref={rawRef}>
             {rawEvents.map((evt, idx) => (
-              <li key={`${evt.ts}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                <div className="meta flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <li key={`${evt.ts}-${idx}`} className="rounded-lg border border-notion-border bg-white p-2">
+                <div className="meta flex flex-wrap items-center gap-2 text-[11px] text-notion-text-muted font-bold uppercase">
                   <span>{new Date(evt.ts * 1000).toLocaleTimeString()}</span>
                   <span className="mono">{evt.type}</span>
                 </div>
@@ -613,11 +613,11 @@ function RuntimeMetricCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="acp-runtime-card rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <div className="acp-runtime-label text-xs font-medium uppercase tracking-wide text-slate-500">
+    <div className="acp-runtime-card rounded-lg border border-notion-border bg-notion-sidebar/30 px-3 py-2 shadow-sm">
+      <div className="acp-runtime-label text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
         {label}
       </div>
-      <div className="acp-runtime-value mt-1 text-sm font-semibold text-slate-900">{children}</div>
+      <div className="acp-runtime-value mt-1 text-[14px] font-bold text-notion-text">{children}</div>
     </div>
   );
 }

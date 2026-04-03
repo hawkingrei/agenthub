@@ -56,8 +56,8 @@ describe("AcpDebug", () => {
     expect(html).toContain("Mode ID");
     expect(html).toContain("Model ID");
     expect(html).toContain("Config ID");
-    expect(html).not.toContain("<h4>Permissions</h4>");
-    expect(html).not.toContain("<h4>Raw Events</h4>");
+    expect(html).not.toContain("Permissions");
+    expect(html).not.toContain("Raw Events");
     expect(html).not.toContain("acp-raw");
   });
 
@@ -139,7 +139,7 @@ describe("AcpDebug", () => {
         ]}
       />
     );
-    expect(html).toContain("<h4>Permissions</h4>");
+    expect(html).toContain("Permissions");
     expect(html).toContain("Read file");
     expect(html).toContain("Copy");
     expect(html).toContain("tool_call call-1");

@@ -130,7 +130,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       payload: parsed,
     });
     const parsedConfigOptions = parseAcpConfigOptions(parsed);
-    if (parsedConfigOptions) {
+    if (parsedConfigOptions.length > 0) {
       configOptions = parsedConfigOptions;
     }
     if (
@@ -418,14 +418,11 @@ function parseAcpEvent(line: string): Record<string, unknown> | null {
   }
 }
 
-function parseAcpConfigOptions(value: unknown): AcpConfigOption[] | null {
+function parseAcpConfigOptions(value: unknown): AcpConfigOption[] {
   if (!value || typeof value !== "object") {
-    return null;
+    return [];
   }
   const record = value as Record<string, unknown>;
-  if (!Object.prototype.hasOwnProperty.call(record, "config_options")) {
-    return null;
-  }
   const rawOptions = record.config_options;
   if (!Array.isArray(rawOptions)) {
     return [];
