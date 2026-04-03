@@ -61,14 +61,14 @@ type TeamSidebarProps = {
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
+const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
 
-export function formatWorkLabel(
-  status: ReturnType<typeof normalizeTeamMemberWorkStatus>
-): string {
-  if (status === "no_run") {
-    return "idle";
-  }
-  return status;
+function humanizeToken(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
@@ -93,28 +93,93 @@ export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | n
   return parts.join(" · ");
 }
 
+function formatRoleLabel(role: string): string {
+  return humanizeToken(role);
+}
+
+export function formatWorkLabel(workLabel: string): string {
+  if (workLabel === "no_run") {
+    return "idle";
+  }
+  return humanizeToken(workLabel).toLowerCase();
+}
+
+function formatLifecycleLabel(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>
+): string {
+  if (lifecycle === "working") {
+    return "Online";
+  }
+  if (lifecycle === "stopped") {
+    return "Offline";
+  }
+  return humanizeToken(lifecycle);
+}
+
+function formatMemberStateLabel(
+  lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
+  workStatus: ReturnType<typeof normalizeTeamMemberWorkStatus>
+): string {
+  if (lifecycle === "missing") {
+    return "Missing";
+  }
+  if (workStatus === "blocked") {
+    return "Blocked";
+  }
+  if (workStatus === "pending") {
+    return "Waiting";
+  }
+  if (workStatus === "working") {
+    return "Working";
+  }
+  if (workStatus === "done") {
+    return "Done";
+  }
+  if (workStatus === "idle" || workStatus === "no_run") {
+    if (lifecycle === "working") {
+      return "Online";
+    }
+    return formatLifecycleLabel(lifecycle);
+  }
+  return formatLifecycleLabel(lifecycle);
+}
+
+function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
+  const currentWork = member.current_work?.trim();
+  if (!currentWork || currentWork === NO_ACTIVE_RUN_CONTEXT) {
+    return null;
+  }
+  return currentWork;
+}
+
 const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[30px] border border-ui-border/70 bg-white/45 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]";
+  "rounded-[18px] border-0 bg-transparent p-1 shadow-none";
 const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[20px] border border-ui-border/70 bg-white/55 p-2 backdrop-blur-sm";
+  "rounded-[14px] border-0 bg-transparent p-0 shadow-none";
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "px-1.5 py-1";
+  "px-1 py-0.5";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 px-2.5 py-1.5 text-[12px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex items-center justify-center rounded-[10px] border border-transparent bg-transparent px-2 py-1.5 text-[12px] font-medium text-ui-text-primary shadow-none transition hover:bg-black/[0.04]";
 const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/90 text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft";
+  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-transparent bg-transparent text-ui-text-primary shadow-none transition hover:bg-black/[0.04]";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary";
 const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-transparent bg-transparent px-3 py-2 text-left text-ui-text-primary transition hover:bg-white/70";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
 const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between px-1 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
+  "flex w-full items-center justify-between px-1 py-1 text-left text-[11px] font-medium tracking-normal text-ui-text-muted";
 const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] px-3 py-2.5 text-left text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary transition";
 const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[16px] border border-transparent bg-transparent px-3 py-2.5 text-left text-ui-text-primary transition hover:bg-white/70";
-const TEAM_WORKBENCH_SIDEBAR_META_CLASS =
-  "text-[11px] font-medium uppercase tracking-[0.14em] text-ui-text-muted";
+  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
+const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS =
+  "flex w-full items-center gap-2 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary transition";
+const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS =
+  "flex w-full items-center gap-2 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
+const TEAM_WORKBENCH_SIDEBAR_WORK_CLASS =
+  "truncate pl-4 text-[11px] leading-4 text-ui-text-secondary";
+const TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS =
+  "shrink-0 rounded-full bg-black/[0.05] px-1.5 py-0.5 text-[10px] font-medium leading-none text-ui-text-muted";
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -401,7 +466,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
             />
           </button>
           {sectionOpen.teams && (
-            <div className={`${TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS} mt-2`}>
+            <div className={`${TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS} mt-1.5`}>
               {teams.length > 0 && (
                 <div className="teams-filter flex items-start gap-2">
                   <TextInput
@@ -458,11 +523,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
                         <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
                           {team.name}
                         </span>
-                        {isSelected && (
-                          <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted">
-                            Current
-                          </span>
-                        )}
                       </span>
                       {summaryLabel && (
                         <span className={`${TEAM_LIST_ITEM_META_CLASS} text-ui-text-muted`}>
@@ -498,42 +558,34 @@ export function TeamSidebar(props: TeamSidebarProps) {
       {selectedTeam && (
         <>
           <div className="mt-3 flex flex-col gap-1.5">
-            <div className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted">
+            <div className="px-1 pt-1 text-[11px] font-medium text-ui-text-muted">
               Workflow
             </div>
             <button
               type="button"
               className={
                 tab === "conversation"
-                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+                  ? TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
               }
               onClick={onSelectConversation}
+              title="Shared channel for human requests, planning discussion, and team-visible progress updates."
             >
-              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
-                <i className="bi bi-hash" aria-hidden="true" />
-                <span># all</span>
-              </span>
-              <span className="text-[11px] leading-4 text-ui-text-muted">
-                Human requests, planning, and team-visible progress.
-              </span>
+              <i className="bi bi-hash text-[13px] text-ui-text-muted" aria-hidden="true" />
+              <span className="truncate text-[13px] font-medium text-ui-text-primary"># all</span>
             </button>
             <button
               type="button"
               className={
                 tab === "tasks"
-                  ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+                  ? TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
               }
               onClick={onSelectKanban}
+              title="Canonical system-managed Team tasks and execution state."
             >
-              <span className="flex items-center gap-2 text-[13px] font-semibold text-ui-text-primary">
-                <i className="bi bi-kanban" aria-hidden="true" />
-                <span>Kanban</span>
-              </span>
-              <span className="text-[11px] leading-4 text-ui-text-muted">
-                Canonical system-managed tasks and execution state.
-              </span>
+              <i className="bi bi-kanban text-[13px] text-ui-text-muted" aria-hidden="true" />
+              <span className="truncate text-[13px] font-medium text-ui-text-primary">Kanban</span>
             </button>
           </div>
 
@@ -562,17 +614,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   const isActiveMember =
                     focusedAgentMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
                   const primaryLabel = resolveMemberPrimaryLabel(member);
-                  const memberMeta = Array.from(
-                    new Set(
-                      [
-                        primaryLabel !== member.member_id ? member.member_id : null,
-                        member.role,
-                        lifecycle,
-                      ].filter(
-                        (value): value is string => Boolean(value && value !== "unknown")
-                      )
-                    )
-                  ).join(" · ");
+                  const currentWorkLabel = resolveCurrentWorkLabel(member);
+                  const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   return (
                     <button
                       key={member.member_id}
@@ -584,7 +627,13 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={
-                        [primaryLabel, developerMode ? member.member_id : null, member.current_work]
+                        [
+                          primaryLabel,
+                          formatRoleLabel(member.role),
+                          memberStateLabel,
+                          developerMode ? member.member_id : null,
+                          currentWorkLabel,
+                        ]
                           .filter((value) => value && value.trim().length > 0)
                           .join(" · ") || member.member_id
                       }
@@ -598,32 +647,29 @@ export function TeamSidebar(props: TeamSidebarProps) {
                             )}`}
                             aria-hidden="true"
                           />
-                          <span className="truncate text-[13px] font-semibold text-ui-text-primary">
+                          <span className="truncate text-[13px] font-medium text-ui-text-primary">
                             {primaryLabel}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
+                          <span className={TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS}>
+                            {memberStateLabel}
+                          </span>
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="shrink-0 rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[10px] font-semibold text-ui-text-primary">
+                            <span className="shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-ui-text-primary">
                               {member.pending_inbox_count}
                             </span>
                           )}
                         </span>
                       </span>
-                      <span className="truncate text-[11px] leading-4 text-ui-text-muted">
-                        {[member.role, lifecycle, formatWorkLabel(workStatus)]
-                          .filter((value): value is string => Boolean(value && value !== "unknown"))
-                          .join(" · ")}
-                      </span>
-                      {isActiveMember &&
-                        member.current_work?.trim() &&
-                        member.current_work !== "No active run context." && (
-                        <span className="truncate text-[11px] leading-4 text-ui-text-muted/85">
-                          {member.current_work}
+                      {currentWorkLabel && (
+                        <span
+                          className={`${TEAM_WORKBENCH_SIDEBAR_WORK_CLASS} ${
+                            isActiveMember ? "text-ui-text-primary" : ""
+                          }`}
+                        >
+                          {currentWorkLabel}
                         </span>
-                        )}
-                      {developerMode && memberMeta && (
-                        <span className={TEAM_WORKBENCH_SIDEBAR_META_CLASS}>{memberMeta}</span>
                       )}
                     </button>
                   );

@@ -18,10 +18,10 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-primary transition hover:border-ui-border-emphasis";
 
 export const TEAM_PANEL_CARD_CLASS =
-  "card team-panel-card min-h-0 rounded-[24px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.96))] shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm";
+  "card team-panel-card min-h-0 rounded-[18px] border border-black/[0.05] bg-white/88 shadow-[0_1px_4px_rgba(15,23,42,0.04)] backdrop-blur-sm";
 
 export const TEAM_PANEL_TOOLBAR_CLASS =
-  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-ui-border/80 bg-white/75 px-3 py-2";
+  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-black/[0.05] bg-white/82 px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 
 export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
   "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
@@ -30,13 +30,13 @@ export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-[14px] border border-brand-primary bg-brand-primary px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-inverse shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition hover:border-brand-primary-hover hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/85 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_GHOST_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/85 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_REFRESH_BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[14px] border border-ui-border-strong bg-white/85 px-2.5 py-ctrl-y-sm text-ui-sm font-semibold text-ui-text-secondary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border";
+  "inline-flex items-center gap-1.5 rounded-[12px] border border-black/[0.06] bg-white/92 px-2.5 py-ctrl-y-sm text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border";
 
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border";
@@ -50,16 +50,16 @@ export const TEAM_PANEL_PRE_CLASS =
   "mono max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-ui-border bg-ui-surface-soft p-2";
 
 export const TEAM_TAB_BAR_CLASS =
-  "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-[22px] border border-ui-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.92))] p-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)]";
+  "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-[16px] border border-black/[0.05] bg-white/84 p-1 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
 
 const TEAM_TAB_BUTTON_BASE_CLASS =
-  "tab shrink-0 rounded-[14px] px-3 py-2 text-ui-sm font-semibold transition";
+  "tab shrink-0 rounded-[12px] px-3 py-1.5 text-ui-sm font-semibold transition";
 
 export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} active border border-ui-border-strong bg-white text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} active border border-black/[0.06] bg-white text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]`;
 
 export const TEAM_TAB_BUTTON_IDLE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-ui-surface hover:text-ui-text-primary`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-black/[0.03] hover:text-ui-text-primary`;
 
 export const TEAM_LIST_ITEM_BASE_CLASS =
   "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border/90 bg-white/82 px-ctrl-x py-ctrl-y text-left text-ui-text-primary shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition";
@@ -188,7 +188,7 @@ export const ACP_TERMINAL_PRE_CLASS =
   "acp-content rounded-md border border-ui-border bg-brand-primary p-2 text-ui-xs text-ui-text-inverse";
 
 export const ACP_DIFF_PRE_CLASS =
-  "acp-content acp-diff-view m-0 overflow-auto whitespace-pre rounded-md border border-slate-700 bg-slate-950 p-2 text-ui-xs text-slate-100 leading-[1.45]";
+  "acp-content acp-diff-view m-0 overflow-auto whitespace-pre rounded-md border border-slate-700 bg-slate-950 p-2 text-ui-xs text-slate-100 leading-[1.45] max-[720px]:p-1.5 max-[720px]:text-[11px] max-[600px]:text-[10.5px]";
 
 export const ACP_TOOL_STATUS_CLASS =
   "acp-tool-status ml-auto mt-px inline-flex shrink-0 items-center self-start whitespace-nowrap rounded-full border px-[5px] py-0.5 text-[10px] leading-tight sm:px-1.5 sm:text-[11px]";

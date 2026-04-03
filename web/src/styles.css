@@ -394,58 +394,6 @@ section {
   width: 100%;
 }
 
-.mode-switch {
-  display: inline-flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.mode-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #d0d6dd;
-  border-radius: 999px;
-  padding: 4px 10px;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: #3a4654;
-  background: #f8fafc;
-}
-
-.mode-tag:hover {
-  border-color: #7f95ad;
-  color: #1f2c3d;
-}
-
-.mode-tag.active {
-  border-color: #1b3a57;
-  background: #1b3a57;
-  color: #fff;
-}
-
-.agents-rail-metric {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.agents-rail-metric .value {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.agents-rail-metric.running .value {
-  color: #1c4a7a;
-}
-
 .agents-rail-dot {
   position: absolute;
   top: 0;
@@ -696,15 +644,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   box-shadow: var(--focus-ring);
 }
 
-.agent-list {
-  display: grid;
-  gap: 6px;
-  overflow: auto;
-  min-height: 0;
-  flex: 1 1 auto;
-  align-content: start;
-}
-
 .agents-workbench-row {
   text-align: left;
   cursor: pointer;
@@ -808,7 +747,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: #7a7a7a;
 }
 
-.status-badge,
 .agents-workbench-status {
   font-size: 11px;
   padding: 2px 8px;
@@ -823,7 +761,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 }
 
 @media (max-width: 720px) {
-  .status-badge,
   .agent-status {
     font-size: 10px;
     padding: 1px 6px;
@@ -831,14 +768,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 }
 
-.status-badge.tone-active,
 .agent-status.status-running {
   background: var(--status-active-bg);
   border-color: var(--status-active-border);
   color: var(--status-active-ink);
 }
 
-.status-badge.tone-inactive,
 .agent-status.status-completed,
 .agent-status.status-stopped {
   background: var(--status-inactive-bg);
@@ -846,14 +781,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: var(--status-inactive-ink);
 }
 
-.status-badge.tone-warning,
 .agent-status.status-idle {
   background: var(--status-warning-bg);
   border-color: var(--status-warning-border);
   color: var(--status-warning-ink);
 }
 
-.status-badge.tone-danger,
 .agent-status.status-failed {
   background: var(--status-danger-bg);
   border-color: var(--status-danger-border);
@@ -876,19 +809,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   background: transparent;
   color: #222;
   border: 1px solid #cfcfcf;
-}
-
-.agent-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
 }
 
 .form-row {
@@ -1965,281 +1885,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   }
 }
 
-.acp-subfold {
-  margin-top: 6px;
-}
-
-.acp-subfold > summary {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
-  line-height: 1.35;
-  color: #5f6b77;
-  margin-bottom: 4px;
-}
-
-.acp-subfold-preview {
-  color: #74808c;
-  font-family: "Source Code Pro", monospace;
-  font-size: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: min(60vw, 460px);
-}
-
-.acp-payload-card {
-  border: 1px solid #dde2db;
-  border-radius: 10px;
-  background: #fcfcfa;
-  padding: 6px 7px;
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-
-.acp-payload-grid {
-  margin: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.acp-payload-row {
-  display: grid;
-  grid-template-columns: minmax(84px, 128px) minmax(0, 1fr);
-  align-items: start;
-  gap: 6px;
-}
-
-.acp-payload-row dt {
-  font-family: "Source Code Pro", monospace;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #55606b;
-  word-break: break-word;
-}
-
-.acp-payload-row dd {
-  margin: 0;
-  min-width: 0;
-}
-
-.acp-payload-scalar {
-  display: inline-block;
-  max-width: 100%;
-  font-family: "Source Code Pro", monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  color: #1f2933;
-  word-break: break-word;
-}
-
-.acp-payload-scalar.muted {
-  color: #74808c;
-}
-
-.acp-payload-text {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: "Source Code Pro", monospace;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.acp-payload-ascii {
-  white-space: pre;
-  overflow-x: auto;
-}
-
-.acp-payload-markdown {
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.acp-payload-markdown pre {
-  margin: 0;
-}
-
-.acp-payload-segmented {
-  display: grid;
-  gap: 6px;
-}
-
-.acp-payload-list {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  display: grid;
-  gap: 6px;
-}
-
-.acp-payload-list > li {
-  margin: 0;
-  min-width: 0;
-}
-
-.acp-payload-nested > summary {
-  cursor: pointer;
-  font-family: "Source Code Pro", monospace;
-  font-size: 10.5px;
-  line-height: 1.35;
-  color: #5b6976;
-}
-
-.acp-payload-nested-body {
-  margin-top: 4px;
-}
-
-.acp-diff-view {
-  line-height: 1.45;
-}
-
-.acp-segmented-block {
-  display: grid;
-  gap: 6px;
-}
-
-.acp-segmented-note {
-  font-size: 11px;
-  color: #5f6b77;
-}
-
-.acp-segmented-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.acp-segmented-meta {
-  font-size: 11px;
-  color: #5f6b77;
-}
-
-.acp-segmented-button {
-  border: 1px solid #d7ddd5;
-  background: #fbfcfa;
-  color: #334155;
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.acp-segmented-button:hover {
-  background: #f4f6f8;
-}
-
-.acp-segmented-button:focus-visible {
-  outline: none;
-  border-color: var(--focus-border);
-  box-shadow: var(--focus-ring);
-}
-
-.acp-plan-card {
-  border: 1px solid #efd9a9;
-  border-radius: 10px;
-  background: #fffbf1;
-  padding: 10px;
-  display: grid;
-  gap: 10px;
-}
-
-.acp-plan-progress {
-  display: grid;
-  gap: 6px;
-}
-
-.acp-plan-progress-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 11px;
-  color: #5f6b77;
-}
-
-.acp-plan-progress-bar {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: #e7ebe5;
-  overflow: hidden;
-}
-
-.acp-plan-progress-bar > span {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #203b2d, #4b6b5d);
-}
-
-.acp-plan-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.acp-plan-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #eddab0;
-  border-radius: 8px;
-  background: #fff;
-  padding: 6px 8px;
-}
-
-.acp-plan-item.completed {
-  border-color: #c7e6c9;
-  background: #f4fbf5;
-}
-
-.acp-plan-item.active {
-  border-color: #c6ddf6;
-  background: #f5f9ff;
-}
-
-.acp-plan-index {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: #f6e7bc;
-  color: #6f5e33;
-  font-size: 11px;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.acp-plan-content {
-  font-size: 13px;
-  color: #2f3a45;
-  min-width: 0;
-}
-
-.acp-plan-priority,
-.acp-plan-status {
-  font-size: 10px;
-  border-radius: 999px;
-  padding: 2px 6px;
-  background: #f1f3f5;
-  color: #4f5a65;
-}
-
-.acp-plan-item.completed .acp-plan-status {
-  background: #dff2e2;
-  color: #295d52;
-}
-
-.acp-plan-item.active .acp-plan-status {
-  background: #dcecff;
-  color: #1f4d86;
-}
-
 .acp-content code,
 .acp-terminal code {
   background: #0e1116;
@@ -2288,18 +1933,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   overflow: auto;
 }
 
-.checkbox-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.checkbox-row input {
-  margin: 0;
-  width: auto;
-}
-
 .kv-list {
   display: grid;
   gap: 12px;
@@ -2328,21 +1961,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   font-family: "Source Code Pro", monospace;
 }
 
-.checkbox-row.compact {
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-
 .line.stderr {
   color: #f38ba8;
 }
 
 .line.system {
   color: #94e2d5;
-}
-
-.agents-collapse-button {
-  display: none;
 }
 
 @media (max-width: 1024px) {
@@ -2377,10 +2001,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 
   .workspace:not(.collapsed) .output-agents-toggle {
     display: none;
-  }
-
-  .agents-collapse-button {
-    display: inline-flex;
   }
 }
 
@@ -2616,42 +2236,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     padding: 6px 7px;
   }
 
-  .acp-subfold > summary {
-    align-items: flex-start;
-    gap: 6px;
-    font-size: 10px;
-  }
-
-  .acp-subfold-preview {
-    max-width: min(64vw, 300px);
-    font-size: 10px;
-  }
-
-  .acp-payload-card {
-    border-radius: 8px;
-    padding: 5px 6px;
-  }
-
-  .acp-payload-row {
-    grid-template-columns: minmax(64px, 96px) minmax(0, 1fr);
-    gap: 5px;
-  }
-
-  .acp-payload-scalar,
-  .acp-payload-text {
-    font-size: 11px;
-  }
-
-  .acp-payload-markdown {
-    font-size: 12px;
-    line-height: 1.52;
-  }
-
-  .acp-diff-view {
-    padding: 6px;
-    font-size: 11px;
-  }
-
   .acp-runtime-grid {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 6px;
@@ -2666,12 +2250,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     padding: 8px;
     margin-bottom: 8px;
   }
-}
-
-.admin-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
 }
 
 .admin .card ul:not([class*="mantine-"]),
@@ -2741,438 +2319,6 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   padding: 5px 8px 6px;
 }
 
-.team-member-row-main {
-  display: grid;
-  grid-template-columns: auto minmax(130px, auto) auto minmax(120px, auto) minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-}
-
-.team-member-row-id {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1f2a37;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-member-row-meta {
-  font-size: 11px;
-  color: #5e6d80;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.team-member-workline {
-  font-size: 11px;
-  color: #5e6d80;
-  text-align: right;
-  padding-left: 48px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.team-session {
-  min-width: 0;
-}
-
-.team-role-chip,
-.team-status-chip,
-.team-status.status-badge {
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  padding: 1px 7px;
-  text-transform: lowercase;
-}
-
-.team-role-chip {
-  border: 1px solid transparent;
-}
-
-.team-role-chip.leader {
-  background: #e9f0ff;
-  border-color: #c5d4f7;
-  color: #274785;
-}
-
-.team-role-chip.worker {
-  background: #f4eefb;
-  border-color: #dcc8f5;
-  color: #5b3a83;
-}
-
-.team-status-chip,
-.team-status.status-badge {
-  border: 1px solid var(--status-neutral-border);
-  background: var(--status-neutral-bg);
-  color: var(--status-neutral-ink);
-  display: inline-flex;
-  align-items: center;
-}
-
-.team-status-chip.active,
-.team-status.status-badge.tone-active {
-  background: var(--status-active-bg);
-  border-color: var(--status-active-border);
-  color: var(--status-active-ink);
-}
-
-.team-status-chip.inactive,
-.team-status.status-badge.tone-inactive {
-  background: var(--status-inactive-bg);
-  border-color: var(--status-inactive-border);
-  color: var(--status-inactive-ink);
-}
-
-.team-status-chip.missing,
-.team-status.status-badge.tone-danger {
-  background: var(--status-danger-bg);
-  border-color: var(--status-danger-border);
-  color: var(--status-danger-ink);
-}
-
-.team-status.status-badge.tone-warning {
-  background: var(--status-warning-bg);
-  border-color: var(--status-warning-border);
-  color: var(--status-warning-ink);
-}
-
-.team-create-modal-backdrop {
-  z-index: 80;
-}
-
-.team-create-modal {
-  width: min(940px, 96vw);
-  border: 1px solid #cfdbeb;
-  background:
-    radial-gradient(circle at 84% 0, rgba(255, 223, 141, 0.2), transparent 52%),
-    linear-gradient(160deg, #f4f9ff, #fbfdff 48%, #f2f7ff);
-}
-
-.team-create-progress {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.team-create-stage {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid #cad8ea;
-  background: #fff;
-  color: #2b3d52;
-}
-
-.team-create-stage.active {
-  border-color: #1d4f80;
-  background: #1d4f80;
-  color: #fff;
-}
-
-.team-create-stage.completed {
-  border-color: #2c8453;
-  background: #edf9f2;
-  color: #225f3d;
-}
-
-.team-create-stage.locked {
-  border-color: #d8dee9;
-  background: #f5f7fb;
-  color: #758296;
-}
-
-.team-create-stage-index {
-  font-size: 11px;
-  font-weight: 700;
-  opacity: 0.85;
-}
-
-.team-create-stage-title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.team-create-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.team-create-agent-entry {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d9e1ec;
-  background: #f7fbff;
-  border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-
-.team-create-agent-entry-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.team-create-agent-entry-head h4,
-.team-create-panel h4 {
-  margin: 0;
-}
-
-.team-create-checklist {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.team-create-check-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid #d8e0ea;
-  background: #f8fbff;
-  font-size: 12px;
-  color: #415368;
-}
-
-.team-create-check-item.ready {
-  border-color: #9fd6b2;
-  background: #edf9f2;
-  color: #1f5f3e;
-}
-
-.team-create-check-icon {
-  font-family: "Source Code Pro", monospace;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.team-create-head-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.team-create-mission-intro {
-  border: 1px solid #dbe4ef;
-  background: #f8fbff;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.team-create-mission-intro p {
-  margin: 0;
-}
-
-.team-create-mode-toggle {
-  border: 1px solid #dbe4ef;
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.team-create-mode-checkbox {
-  display: flex;
-  width: 100%;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.team-create-mode-checkbox input {
-  margin-top: 2px;
-}
-
-.team-create-mode-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.team-create-mode-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #233446;
-  line-height: 1.35;
-}
-
-.team-create-mode-hint {
-  font-size: 12px;
-  color: #5d6f82;
-  line-height: 1.45;
-}
-
-.team-create-stage-note {
-  margin: 0;
-  border-left: 3px solid #d59c2f;
-  background: #fff8ea;
-  color: #5f4a23;
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.team-create-forge-agent {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d7e0ee;
-  background: #f8fbff;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.team-create-forge-agent-head,
-.team-create-worker-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.team-create-forge-agent-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.team-create-forge-agent-meta {
-  display: grid;
-  gap: 4px;
-  color: #4d5f73;
-  font-size: 11px;
-}
-
-.team-create-forge-agent-meta select {
-  width: min(260px, 100%);
-}
-
-.team-create-forge-agent-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.team-create-worker-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.teams-worker-card {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d7e0ee;
-  background: #fff;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.team-create-worker-head button {
-  padding: 4px 8px;
-}
-
-.team-create-actions {
-  margin-top: 0;
-  flex-wrap: wrap;
-}
-
-.team-create-actions-note {
-  margin-right: auto;
-  font-size: 12px;
-  color: #6f5230;
-}
-
-.team-create-warning {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #e6d9be;
-  background: #fff8ea;
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
-.team-create-warning p {
-  margin: 0;
-  flex: 1 1 360px;
-}
-
-.team-skill-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.team-skill-tag {
-  border: 1px solid #d2dbe8;
-  background: #fff;
-  color: #3f5166;
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.team-skill-tag.selected {
-  border-color: #7ba4d9;
-  background: #eaf2ff;
-  color: #1f4a86;
-}
-
-
-.teams-event-list,
-.teams-step-list,
-.teams-message-list,
-.teams-chat-messages {
-  max-height: 420px;
-  overflow: auto;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.teams-event-list li,
-.teams-step-list li,
-.teams-message-list li {
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 8px;
-  background: #fafafa;
-}
-
-.teams-event-head,
-.teams-step-head,
-.teams-message-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.teams-step-grid,
-.teams-message-grid {
-  margin-bottom: 12px;
-}
-
-.teams-step-panel,
-.teams-message-panel {
-  min-width: 0;
-}
-
 .teams-step-panel select,
 .teams-message-panel select,
 .teams-step-panel input,
@@ -3181,127 +2327,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
 .teams-message-panel textarea,
 .teams-form input,
 .teams-form select,
-.teams-form textarea,
-.teams-run-create input,
-.teams-run-create textarea {
+.teams-form textarea {
   width: 100%;
-}
-
-.teams-chat-shell {
-  display: grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.teams-chat-members,
-.teams-chat-panel {
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fcfcfc;
-}
-
-.teams-chat-members {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 560px;
-  overflow: auto;
-}
-
-.teams-member-unread {
-  justify-self: start;
-  font-size: 11px;
-  border-radius: 999px;
-  padding: 2px 8px;
-  border: 1px solid #d4e3ff;
-  background: #edf4ff;
-  color: #234f8f;
-}
-
-.teams-member-unread.muted {
-  border-color: #e2e2e2;
-  background: #f7f7f7;
-  color: #7a7a7a;
-}
-
-.teams-chat-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.teams-chat-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px;
-  align-items: center;
-}
-
-.teams-chat-head > * {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.teams-chat-jump-bottom {
-  margin-left: auto;
-  white-space: nowrap;
-  min-width: 120px;
-}
-
-.teams-chat-bubble {
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 8px;
-  background: #fafafa;
-}
-
-.teams-chat-bubble.outgoing {
-  border-color: #c3d8ff;
-  background: #f2f7ff;
-}
-
-.teams-chat-bubble.incoming {
-  border-color: #c3e9d1;
-  background: #ecfff4;
-}
-
-.teams-chat-empty {
-  border: 1px dashed #d2d2d2;
-  border-radius: 10px;
-  padding: 10px;
-  background: #fff;
-}
-
-.teams-chat-compose textarea {
-  width: 100%;
-}
-
-.teams-message-advanced {
-  border: 1px solid #ececec;
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
-}
-
-.teams-message-advanced > summary {
-  cursor: pointer;
-  color: #3f5166;
-  margin-bottom: 8px;
-}
-
-.teams-step-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .mono {
@@ -3312,51 +2339,12 @@ body.teams-page button:not([class*="mantine-"]):disabled {
   color: #6f6f6f;
 }
 
-@media (max-width: 960px) {
-  .teams-step-grid,
-  .teams-message-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-chat-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .teams-chat-members {
-    max-height: 220px;
-  }
-
-  .team-member-row-main {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    row-gap: 4px;
-  }
-
-  .team-member-row-meta {
-    grid-column: 1 / -1;
-  }
-
-  .team-member-workline {
-    text-align: left;
-    padding-left: 0;
-  }
-}
-
 @media (max-width: 720px) {
   .teams-create-launch,
-  .teams-run-create,
   .teams-run-list,
   .teams-step-panel,
-  .teams-message-panel,
-  .teams-chat-panel,
-  .teams-chat-members {
+  .teams-message-panel {
     padding: 8px;
-  }
-
-  .teams-event-list,
-  .teams-step-list,
-  .teams-message-list,
-  .teams-chat-messages {
-    max-height: 320px;
   }
 }
 
@@ -3371,8 +2359,7 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     font-size: 20px;
   }
 
-  .session,
-  .team-session {
+  .session {
     gap: 6px;
   }
 
@@ -3409,40 +2396,8 @@ body.teams-page button:not([class*="mantine-"]):disabled {
     font-size: 11px;
   }
 
-  .acp-subfold-preview {
-    max-width: 58vw;
-  }
-
-  .acp-payload-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-
-  .acp-payload-row dt {
-    font-size: 11px;
-  }
-
-  .acp-diff-view {
-    font-size: 10.5px;
-  }
-
   .teams-layout {
     grid-template-columns: 1fr;
   }
 
-  .team-create-progress {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .team-create-checklist {
-    grid-template-columns: 1fr;
-  }
-
-  .team-member-workline {
-    padding-left: 24px;
-  }
-
-  .teams-chat-shell {
-    grid-template-columns: 1fr;
-  }
 }

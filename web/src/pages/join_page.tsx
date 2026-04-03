@@ -75,45 +75,66 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
 
   return (
     <div className={AUTH_PAGE_CLASS}>
-      <section className={AUTH_FORM_CARD_CLASS}>
+      <form
+        className={AUTH_FORM_CARD_CLASS}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onJoin();
+        }}
+      >
         <h2 className="text-xl font-semibold tracking-tight text-slate-900">Join Device</h2>
         {tokenError && <div className="error">{tokenError}</div>}
         {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
         <input
           className={AUTH_INPUT_CLASS}
+          id="join-pin"
+          name="pin"
           placeholder="PIN"
           value={pin}
+          autoComplete="one-time-code"
           onChange={(e) => setPin(e.target.value)}
         />
         <input
           className={AUTH_INPUT_CLASS}
+          id="join-username"
+          name="username"
           placeholder="Username"
           value={username}
+          autoComplete="username"
           onChange={(e) => setUsername(e.target.value)}
         />
         <input
           className={AUTH_INPUT_CLASS}
+          id="join-display-name"
+          name="display_name"
           placeholder="Display Name"
           value={displayName}
+          autoComplete="name"
           onChange={(e) => setDisplayName(e.target.value)}
         />
         <input
           className={AUTH_INPUT_CLASS}
+          id="join-password"
+          name="password"
           placeholder="Password"
           type="password"
           value={password}
+          autoComplete="new-password"
           onChange={(e) => setPassword(e.target.value)}
         />
         <input
           className={AUTH_INPUT_CLASS}
+          id="join-device-name"
+          name="device_name"
           placeholder="Device Name"
           value={deviceName}
+          autoComplete="organization"
           onChange={(e) => setDeviceName(e.target.value)}
         />
-        <button className={JOIN_PRIMARY_BUTTON_CLASS} onClick={onJoin}>
+        <button className={JOIN_PRIMARY_BUTTON_CLASS} type="submit">
           Join
         </button>
-      </section>
+      </form>
     </div>
   );
 }

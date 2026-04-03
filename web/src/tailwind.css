@@ -1,6 +1,7 @@
-@layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss";
+
+/* Keep preflight disabled in tailwind.config.cjs while the app still carries
+   legacy global styles; this file stays as the v4-first Tailwind entrypoint. */
 
 /* Tailwind v4 changed the default border color to currentColor.
    Keep v3-like neutral borders during migration to avoid unexpected dark frames. */
