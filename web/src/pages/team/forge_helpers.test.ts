@@ -8,18 +8,24 @@ import {
   resolveTeamMemberRoleProfile,
 } from "./forge_helpers";
 
+const TEST_PROMPT_DEFAULTS = {
+  leader_prompt: "leader-default-prompt",
+  worker_prompt: "worker-default-prompt",
+};
+
 describe("team forge helpers", () => {
   it("builds role-specific default drafts", () => {
-    const leaderDraft = buildTeamMemberProfileDraft("leader");
-    const workerDraft = buildTeamMemberProfileDraft("worker");
+    const leaderDraft = buildTeamMemberProfileDraft("leader", undefined, TEST_PROMPT_DEFAULTS);
+    const workerDraft = buildTeamMemberProfileDraft("worker", undefined, TEST_PROMPT_DEFAULTS);
 
     expect(leaderDraft.role).toBe("leader");
     expect(leaderDraft.model).toBe("codex");
     expect(leaderDraft.skills).toEqual([]);
-    expect(leaderDraft.prompt).not.toBe(workerDraft.prompt);
+    expect(leaderDraft.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
     expect(workerDraft.role).toBe("worker");
     expect(workerDraft.model).toBe("codex");
     expect(workerDraft.skills).toEqual([]);
+    expect(workerDraft.prompt).toBe(TEST_PROMPT_DEFAULTS.worker_prompt);
   });
 
   it("normalizes agent name tokens and initial role", () => {
@@ -91,6 +97,7 @@ describe("team forge helpers", () => {
       workerCount: 0,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
       agentPresetId: "gemini",
+      promptDefaults: TEST_PROMPT_DEFAULTS,
     });
     expect(leaderDefaults.agentName).toBe("alpha-desk-leader");
     expect(leaderDefaults.agentWorkdir).toMatch(
@@ -119,6 +126,7 @@ describe("team forge helpers", () => {
       workerCount: 2,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
       agentPresetId: "kimi",
+      promptDefaults: TEST_PROMPT_DEFAULTS,
     });
     expect(workerDefaults.agentName).toBe("alpha-desk-worker-3");
     expect(workerDefaults.agentWorkdir).toBe("/Users/weizhenwang/devel/opensource/agent/tidb");
@@ -147,6 +155,7 @@ describe("team forge helpers", () => {
       role: "worker",
       workerCount: 0,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
+      promptDefaults: TEST_PROMPT_DEFAULTS,
     });
 
     expect(workerDefaults.agentWorkdir).toBe(
@@ -176,6 +185,7 @@ describe("team forge helpers", () => {
       role: "worker",
       workerCount: 1,
       defaultWorktreeRoot: "~/.agenthub/worktrees",
+      promptDefaults: TEST_PROMPT_DEFAULTS,
     });
 
     expect(workerDefaults.agentWorkdir).toBe(

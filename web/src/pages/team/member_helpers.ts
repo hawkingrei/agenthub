@@ -1,11 +1,6 @@
+import type { TeamPromptDefaultsRecord } from "../../api";
 import { AgentRecord, TeamRunSnapshotRecord, TeamRuntimeMemberRecord } from "../../api";
 import { isAgentActiveStatus } from "../../agent_ws";
-import DEFAULT_TEAM_LEADER_PROMPT_TEMPLATE from "../../../../crates/agenthub-team-prompts/prompts/default_team_leader_prompt.txt?raw";
-import DEFAULT_TEAM_WORKER_PROMPT_TEMPLATE from "../../../../crates/agenthub-team-prompts/prompts/default_team_worker_prompt.txt?raw";
-
-export const DEFAULT_TEAM_LEADER_PROMPT = DEFAULT_TEAM_LEADER_PROMPT_TEMPLATE;
-
-export const DEFAULT_TEAM_WORKER_PROMPT = DEFAULT_TEAM_WORKER_PROMPT_TEMPLATE;
 
 export const DEFAULT_TEAM_LEADER_SKILLS = [
   "agenthub-actor-runtime",
@@ -103,6 +98,18 @@ export type TeamCreateDraftState = {
   teamForgeAgentIds: string[];
 };
 
+export const EMPTY_TEAM_PROMPT_DEFAULTS: TeamPromptDefaultsRecord = {
+  leader_prompt: "",
+  worker_prompt: "",
+};
+
+export function resolveTeamPromptForRole(
+  promptDefaults: TeamPromptDefaultsRecord,
+  role: string
+): string {
+  return role === "leader" ? promptDefaults.leader_prompt : promptDefaults.worker_prompt;
+}
+
 export function selectTeamForgeAgents(
   agents: AgentRecord[],
   teamForgeAgentIds: string[]
@@ -116,11 +123,13 @@ export function selectTeamForgeAgents(
     .filter((agent): agent is AgentRecord => Boolean(agent));
 }
 
-export function createInitialTeamDraftState(): TeamCreateDraftState {
+export function createInitialTeamDraftState(
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
+): TeamCreateDraftState {
   return {
     leaderMemberId: "",
     leaderModel: "",
-    leaderPrompt: DEFAULT_TEAM_LEADER_PROMPT,
+    leaderPrompt: promptDefaults.leader_prompt,
     leaderSkills: [...DEFAULT_TEAM_LEADER_SKILLS],
     leaderCustomSkills: "",
     workers: [],
@@ -378,12 +387,15 @@ export function buildTeamMemberLiveStates(
     });
 }
 
-export function buildDefaultWorkerDraft(memberId: string): WorkerDraft {
+export function buildDefaultWorkerDraft(
+  memberId: string,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
+): WorkerDraft {
   return {
     member_id: memberId,
     description: "",
     model: "",
-    prompt: DEFAULT_TEAM_WORKER_PROMPT,
+    prompt: promptDefaults.worker_prompt,
     skills: [...DEFAULT_TEAM_WORKER_SKILLS],
     custom_skills: "",
   };
@@ -391,7 +403,8 @@ export function buildDefaultWorkerDraft(memberId: string): WorkerDraft {
 
 export function assignCreatedWorkerToDraft(
   workers: WorkerDraft[],
-  createdMemberId: string
+  createdMemberId: string,
+  promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): WorkerDraft[] {
   const memberId = createdMemberId.trim();
   if (!memberId) {
@@ -408,5 +421,5 @@ export function assignCreatedWorkerToDraft(
       index === firstUnassigned ? { ...worker, member_id: memberId } : worker
     );
   }
-  return [...workers, buildDefaultWorkerDraft(memberId)];
+  return [...workers, buildDefaultWorkerDraft(memberId, promptDefaults)];
 }

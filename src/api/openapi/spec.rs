@@ -45,6 +45,14 @@ pub(super) fn openapi_spec() -> Value {
               "updated_at": { "type": "integer", "format": "int64" }
             }
           },
+          "TeamPromptDefaultsResponse": {
+            "type": "object",
+            "required": ["leader_prompt", "worker_prompt"],
+            "properties": {
+              "leader_prompt": { "type": "string" },
+              "worker_prompt": { "type": "string" }
+            }
+          },
           "TeamRunRecord": {
             "type": "object",
             "required": ["id", "team_id", "context_id", "status", "input", "created_at"],
@@ -308,6 +316,22 @@ pub(super) fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/TeamDefinitionRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/prompt_defaults": {
+          "get": {
+            "tags": ["teams"],
+            "summary": "Get default Team prompts",
+            "responses": {
+              "200": {
+                "description": "Default leader and worker prompts",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamPromptDefaultsResponse" }
                   }
                 }
               }

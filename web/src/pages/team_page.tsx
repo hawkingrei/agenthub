@@ -101,10 +101,12 @@ import {
 import {
   DEFAULT_TEAM_LEADER_SKILLS,
   DEFAULT_TEAM_WORKER_SKILLS,
+  EMPTY_TEAM_PROMPT_DEFAULTS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
   buildTeamMemberLiveStates,
   parseTeamSpecMembers,
+  resolveTeamPromptForRole,
   resolveTeamMemberAgentStatuses,
   summarizeTeamMemberAgentStatuses,
 } from "./team/member_helpers";
@@ -187,9 +189,7 @@ export {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 export {
-  DEFAULT_TEAM_LEADER_PROMPT,
   DEFAULT_TEAM_LEADER_SKILLS,
-  DEFAULT_TEAM_WORKER_PROMPT,
   DEFAULT_TEAM_WORKER_SKILLS,
   assignCreatedWorkerToDraft,
   buildDefaultWorkerDraft,
@@ -658,6 +658,7 @@ export function TeamPage(props: TeamPageProps) {
   const [forgeDefaultWorktreeRoot, setForgeDefaultWorktreeRoot] = useState(
     DEFAULT_WORKTREE_ROOT
   );
+  const [teamPromptDefaults, setTeamPromptDefaults] = useState(EMPTY_TEAM_PROMPT_DEFAULTS);
   const [teamMemberDraft, setTeamMemberDraft] = useState<TeamMemberProfileDraft | null>(null);
   const [teamMemberEditDraft, setTeamMemberEditDraft] =
     useState<TeamMemberProfileDraft | null>(null);
@@ -1302,6 +1303,7 @@ export function TeamPage(props: TeamPageProps) {
     patchTeamCreate({
       newTeamName: initial.newTeamName,
       newTeamDescription: initial.newTeamDescription,
+      leaderPrompt: teamPromptDefaults.leader_prompt,
       showForgeAgentForm: initial.showForgeAgentForm,
       forgeAgentName: initial.forgeAgentName,
       forgeAgentWorkdir: initial.forgeAgentWorkdir,
@@ -1314,22 +1316,26 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentBusy: initial.forgeAgentBusy,
     });
     setTeamMemberDraft(null);
-  }, [patchTeamCreate]);
+  }, [patchTeamCreate, teamPromptDefaults.leader_prompt]);
 
   useEffect(() => {
     if (!props.token) {
       setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
+      setTeamPromptDefaults(EMPTY_TEAM_PROMPT_DEFAULTS);
       return;
     }
     let active = true;
-    void api
-      .getRuntimeDefaults(props.token)
-      .then((defaults) => {
+    void Promise.all([
+      api.getRuntimeDefaults(props.token),
+      api.getTeamPromptDefaults(props.token),
+    ])
+      .then(([runtimeDefaults, promptDefaults]) => {
         if (!active) {
           return;
         }
-        const root = normalizeWorkdirInput(defaults.default_worktree_root);
+        const root = normalizeWorkdirInput(runtimeDefaults.default_worktree_root);
         setForgeDefaultWorktreeRoot(root || DEFAULT_WORKTREE_ROOT);
+        setTeamPromptDefaults(promptDefaults);
       })
       .catch((err) => {
         if (!active || (!showCreateTeamModal && !showForgeAgentForm)) {
@@ -1341,6 +1347,43 @@ export function TeamPage(props: TeamPageProps) {
       active = false;
     };
   }, [props.token, setError, showCreateTeamModal, showForgeAgentForm]);
+
+  useEffect(() => {
+    if (!showCreateTeamModal || teamCreateState.leaderPrompt.trim()) {
+      return;
+    }
+    if (!teamPromptDefaults.leader_prompt.trim()) {
+      return;
+    }
+    patchTeamCreate({ leaderPrompt: teamPromptDefaults.leader_prompt });
+  }, [
+    patchTeamCreate,
+    showCreateTeamModal,
+    teamCreateState.leaderPrompt,
+    teamPromptDefaults.leader_prompt,
+  ]);
+
+  useEffect(() => {
+    if (!teamMemberDraft || teamMemberDraft.prompt.trim()) {
+      return;
+    }
+    const prompt = resolveTeamPromptForRole(teamPromptDefaults, teamMemberDraft.role);
+    if (!prompt.trim()) {
+      return;
+    }
+    patchTeamMemberDraft({ prompt });
+  }, [patchTeamMemberDraft, teamMemberDraft, teamPromptDefaults]);
+
+  useEffect(() => {
+    if (!teamMemberEditDraft || teamMemberEditDraft.prompt.trim()) {
+      return;
+    }
+    const prompt = resolveTeamPromptForRole(teamPromptDefaults, teamMemberEditDraft.role);
+    if (!prompt.trim()) {
+      return;
+    }
+    patchTeamMemberEditDraft({ prompt });
+  }, [patchTeamMemberEditDraft, teamMemberEditDraft, teamPromptDefaults]);
 
   useEffect(() => {
     if (!showCreateTeamModal || busy === "create-team") {
@@ -1623,8 +1666,15 @@ export function TeamPage(props: TeamPageProps) {
     }
     resetTeamDraft();
     if (restoredDraft) {
+      const hydratedWorkers = restoredDraft.workers.map((worker) =>
+        worker.prompt.trim()
+          ? worker
+          : { ...worker, prompt: teamPromptDefaults.worker_prompt }
+      );
       patchTeamCreate({
         ...restoredDraft,
+        leaderPrompt: restoredDraft.leaderPrompt || teamPromptDefaults.leader_prompt,
+        workers: hydratedWorkers,
         showCreateTeamModal: true,
         showForgeAgentForm: false,
         forgeAgentWorktreeError: null,
@@ -1638,6 +1688,8 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     patchTeamCreate,
     resetTeamDraft,
+    teamPromptDefaults,
+    setError,
     setShowCreateTeamModal,
     setShowForgeAgentForm,
     setForgeAgentWorktreeError,
@@ -1664,6 +1716,7 @@ export function TeamPage(props: TeamPageProps) {
       workerCount: selectedTeamWorkerCount,
       defaultWorktreeRoot: forgeDefaultWorktreeRoot,
       agentPresetId: DEFAULT_AGENT_PRESET_ID,
+      promptDefaults: teamPromptDefaults,
     });
 
     setError(null);
@@ -1683,6 +1736,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeam,
     selectedTeamHasLeader,
     selectedTeamWorkerCount,
+    teamPromptDefaults,
     setError,
     setWarning,
     setShowForgeAgentForm,
@@ -1716,6 +1770,7 @@ export function TeamPage(props: TeamPageProps) {
         workerCount: selectedTeamWorkerCount,
         defaultWorktreeRoot: forgeDefaultWorktreeRoot,
         agentPresetId: forgeAgentPresetId,
+        promptDefaults: teamPromptDefaults,
       });
       setError(null);
       setWarning(null);
@@ -1732,6 +1787,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeDefaultWorktreeRoot,
       selectedTeam,
       selectedTeamWorkerCount,
+      teamPromptDefaults,
       setError,
       setWarning,
       setForgeAgentName,
@@ -1761,7 +1817,8 @@ export function TeamPage(props: TeamPageProps) {
     const draft = buildTeamMemberDraftFromSpec(
       selectedTeam.spec,
       selectedAgentWorkspaceMemberId,
-      teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null
+      teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null,
+      teamPromptDefaults
     );
     if (!draft) {
       setError("Unable to load the selected agent profile");
@@ -1772,6 +1829,7 @@ export function TeamPage(props: TeamPageProps) {
     setTeamMemberEditDraft(draft);
     setShowTeamMemberEditModal(true);
   }, [
+    teamPromptDefaults,
     selectedAgentWorkspaceMemberId,
     selectedTeam,
     setError,
@@ -1892,7 +1950,8 @@ export function TeamPage(props: TeamPageProps) {
       const nextSpec = appendTeamMemberToSpec(
         selectedTeam.spec,
         { ...teamMemberDraft, member_id: created.id },
-        created
+        created,
+        teamPromptDefaults
       );
       const updated = await api.updateTeamSpec(props.token, selectedTeam.id, {
         spec: nextSpec,
@@ -1931,7 +1990,11 @@ export function TeamPage(props: TeamPageProps) {
     setError(null);
     setWarning(null);
     try {
-      const nextSpec = updateTeamMemberProfileInSpec(selectedTeam.spec, teamMemberEditDraft);
+      const nextSpec = updateTeamMemberProfileInSpec(
+        selectedTeam.spec,
+        teamMemberEditDraft,
+        teamPromptDefaults
+      );
       const updated = await api.updateTeamSpec(props.token, selectedTeam.id, {
         spec: nextSpec,
         expected_updated_at: selectedTeam.updated_at,
@@ -2002,6 +2065,7 @@ export function TeamPage(props: TeamPageProps) {
     setBusy,
     setError,
     setWarning,
+    teamPromptDefaults,
     teamMemberEditDraft,
   ]);
 
@@ -2433,9 +2497,10 @@ export function TeamPage(props: TeamPageProps) {
       selectedAgentWorkspaceMemberId,
       selectedAgentWorkspaceMemberId
         ? teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null
-        : null
+        : null,
+      teamPromptDefaults
     );
-  }, [selectedAgentWorkspaceMemberId, selectedTeam, teamMemberAgentsById]);
+  }, [selectedAgentWorkspaceMemberId, selectedTeam, teamMemberAgentsById, teamPromptDefaults]);
   const selectedAgentStatusView = useMemo(
     () => resolveAgentWorkspaceStatusView(selectedAgentLiveState),
     [selectedAgentLiveState]

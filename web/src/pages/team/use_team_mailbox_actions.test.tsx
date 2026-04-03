@@ -237,6 +237,35 @@ describe("useTeamMailboxActions", () => {
     }
   });
 
+  it("accepts mailbox message with the message recipient even when inbox query actor differs", async () => {
+    mockedApi.ackTeamRunMessage.mockResolvedValueOnce(buildMessage({ status: "delivered" }));
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions({
+      inboxActorId: "worker-query",
+    });
+
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onAcceptMessage(buildMessage({ message_id: 77, to_actor_id: "worker-real" }));
+      });
+
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenCalledWith(
+        "token-1",
+        "run-1",
+        77,
+        "worker-real"
+      );
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-real");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("accepts visible pending messages once and refreshes the selected inbox", async () => {
     mockedApi.ackTeamRunMessage.mockImplementation(
       async (_token, _runId, messageId, actorId) =>
@@ -277,6 +306,49 @@ describe("useTeamMailboxActions", () => {
       );
       expect(options.loadInbox).toHaveBeenCalledWith("worker-1");
       expect(options.refreshSnapshot).toHaveBeenCalledWith("run-1");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("accepts visible pending messages with each message recipient instead of the raw inbox query actor", async () => {
+    mockedApi.ackTeamRunMessage.mockImplementation(
+      async (_token, _runId, messageId, actorId) =>
+        buildMessage({ message_id: messageId, to_actor_id: actorId, status: "delivered" })
+    );
+
+    let captured: TeamMailboxActions | null = null;
+    const options = createBaseOptions({
+      inboxActorId: "worker-query",
+    });
+
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.onAcceptVisibleMessages([
+          buildMessage({ message_id: 61, to_actor_id: "worker-a", status: "pending" }),
+          buildMessage({ message_id: 62, to_actor_id: "worker-b", status: "pending" }),
+        ]);
+      });
+
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "run-1",
+        61,
+        "worker-a"
+      );
+      expect(mockedApi.ackTeamRunMessage).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "run-1",
+        62,
+        "worker-b"
+      );
+      expect(options.loadInbox).toHaveBeenCalledWith("worker-a");
     } finally {
       cleanupHarness(root, container);
     }

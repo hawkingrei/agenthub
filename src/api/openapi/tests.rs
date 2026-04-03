@@ -49,6 +49,7 @@ async fn openapi_json_contains_team_runs_list_path() {
         .expect("read response body");
     let value: Value = serde_json::from_slice(&bytes).expect("decode openapi json");
     assert_eq!(value["openapi"], Value::from("3.0.3"));
+    assert!(value["paths"]["/api/teams/prompt_defaults"]["get"].is_object());
     assert!(value["paths"]["/api/teams/{id}"]["delete"].is_object());
     assert!(value["paths"]["/api/teams/{id}/runs"].is_object());
     assert!(value["paths"]["/api/teams/runs/{run_id}/resume"].is_object());

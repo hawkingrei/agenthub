@@ -104,11 +104,14 @@ const MAILBOX_UNREAD_ACTIVE_CLASS =
   "teams-member-unread mono inline-flex items-center rounded-full border border-state-warning-border bg-state-warning-bg px-2 py-0.5 text-ui-xs text-[color:var(--status-warning-ink)]";
 const MAILBOX_UNREAD_MUTED_CLASS =
   "teams-member-unread mono inline-flex items-center rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-ui-xs text-ui-text-muted";
-const MAILBOX_HEAD_CLASS = "teams-chat-head flex flex-wrap items-center justify-between gap-2";
+const MAILBOX_HEAD_CLASS =
+  "teams-chat-head grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start";
 const MAILBOX_HEAD_META_CLASS =
-  "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ui-sm text-ui-text-secondary";
+  "min-w-0 break-all whitespace-normal text-ui-sm leading-5 text-ui-text-secondary";
+const MAILBOX_HEAD_ACTIONS_CLASS =
+  "flex min-w-0 flex-wrap items-center justify-start gap-2 lg:justify-end";
 const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "ghost teams-chat-jump-bottom ml-auto inline-flex items-center rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
+  "ghost teams-chat-jump-bottom inline-flex items-center rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
 const MAILBOX_MESSAGE_LIST_CLASS =
   "teams-chat-messages m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto p-0";
 const MAILBOX_MESSAGE_BUBBLE_BASE_CLASS =
@@ -460,7 +463,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   )}
                 </strong>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className={MAILBOX_HEAD_ACTIONS_CLASS}>
                 {developerMode && (
                   <>
                     <div className={`mono ${MAILBOX_HEAD_META_CLASS}`}>
@@ -478,7 +481,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     void onAcceptVisibleMessages?.(acceptVisibleMessages);
                   }}
                   disabled={
-                    busy === "accept-visible" ||
+                    busy !== null ||
                     acceptVisibleMessages.length === 0 ||
                     !onAcceptVisibleMessages
                   }
@@ -557,7 +560,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                           onClick={() => {
                             void onAcceptMessage(message);
                           }}
-                          disabled={busy === `accept-${message.message_id}`}
+                          disabled={busy !== null}
                           className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
                         >
                           Accept

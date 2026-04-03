@@ -3778,6 +3778,75 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No conversation records yet for this pair.");
   });
 
+  it("TeamMailboxPanel disables accept actions while a mailbox accept is already in progress", () => {
+    const pendingMessage = buildMailboxMessage(1);
+
+    act(() => {
+      root.render(
+        <TeamMailboxPanel
+          developerMode={true}
+          snapshot={buildSnapshot()}
+          displayNameByActorId={{
+            "leader-agent": "Leader Agent",
+            "worker-agent": "Worker Agent",
+          }}
+          selectedMemberId="worker-agent"
+          unreadByMemberId={{ "worker-agent": 1 }}
+          onSelectMember={() => {}}
+          chatActors={{
+            fromActorId: "leader-agent",
+            toActorId: "worker-agent",
+            inboxActorId: "worker-agent",
+          }}
+          chatStickToBottom={true}
+          chatMessagesRef={React.createRef<HTMLUListElement>()}
+          onConversationScroll={() => {}}
+          onJumpToBottom={() => {}}
+          conversationMessages={[pendingMessage]}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          formatTs={(ts) => String(ts)}
+          busy="accept-visible"
+          onAcceptMessage={vi.fn()}
+          onAcceptVisibleMessages={vi.fn()}
+          chatDraft=""
+          onChatDraftChange={() => {}}
+          onSendChatMessage={() => {}}
+          msgFromActorId="leader-agent"
+          onMsgFromActorIdChange={() => {}}
+          msgToActorId="worker-agent"
+          onMsgToActorIdChange={() => {}}
+          msgChannel="default"
+          onMsgChannelChange={() => {}}
+          msgTransport="local"
+          onMsgTransportChange={() => {}}
+          msgRoute="{}"
+          onMsgRouteChange={() => {}}
+          mailboxTemplateOptions={[]}
+          msgTemplate=""
+          onMsgTemplateChange={() => {}}
+          onApplyMessageTemplate={() => {}}
+          msgPayload="{}"
+          onMsgPayloadChange={() => {}}
+          msgIdempotencyKey=""
+          onMsgIdempotencyKeyChange={() => {}}
+          onSendMessage={() => {}}
+          inboxActorId="worker-agent"
+          onInboxActorIdChange={() => {}}
+          inboxLimit="20"
+          onInboxLimitChange={() => {}}
+          inboxAfterId=""
+          onInboxAfterIdChange={() => {}}
+          inboxIncludeDelivered={false}
+          onInboxIncludeDeliveredChange={() => {}}
+          onRefreshInbox={() => {}}
+        />
+      );
+    });
+
+    expect(findButtonByText(container, "Accept").disabled).toBe(true);
+    expect(findButtonByText(container, "Accept visible pending").disabled).toBe(true);
+  });
+
   it("TeamMailboxPanel renders chat_message payload strings as plain text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 

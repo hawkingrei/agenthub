@@ -1,46 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_TEAM_LEADER_PROMPT,
-  DEFAULT_TEAM_WORKER_PROMPT,
+  EMPTY_TEAM_PROMPT_DEFAULTS,
+  buildDefaultWorkerDraft,
+  createInitialTeamDraftState,
+  resolveTeamPromptForRole,
 } from "./member_helpers";
 
-describe("team member prompt mirrors", () => {
-  it("keeps leader prompt aligned with canonical actor CLI contracts", () => {
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("profile_patch_proposal");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain('target="team"');
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain('target="run"');
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor time-trigger-set");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor time-trigger-list");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor time-trigger-cancel");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agent_loop");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("team-task-lifecycle");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor team-members");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor team-tasks");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor team-task-create");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("agenthub actor team-task-update");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("in_review");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("Inspect inbox regularly");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).not.toContain("Pull inbox regularly");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).not.toContain("acp_permission_review_respond");
-    expect(DEFAULT_TEAM_LEADER_PROMPT).toContain("human-review request");
+const TEST_PROMPT_DEFAULTS = {
+  leader_prompt: "leader-default-prompt",
+  worker_prompt: "worker-default-prompt",
+};
+
+describe("team member helper prompt defaults", () => {
+  it("starts with empty prompt defaults until the API payload arrives", () => {
+    const initial = createInitialTeamDraftState();
+    expect(initial.leaderPrompt).toBe("");
+    expect(EMPTY_TEAM_PROMPT_DEFAULTS).toEqual({
+      leader_prompt: "",
+      worker_prompt: "",
+    });
   });
 
-  it("keeps worker prompt aligned with canonical actor CLI contracts", () => {
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("profile_patch_proposal");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor time-trigger-set");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor time-trigger-list");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor time-trigger-cancel");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agent_loop");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain(".agenthubmemory/TODO.md");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("team-task-lifecycle");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor team-members");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor team-tasks");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("agenthub actor team-task-create");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("in_review");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("Receive inbox work");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("Treat inbox inspection as read-only");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).not.toContain("Acknowledge messages after reading");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).not.toContain("acp_permission_review_respond");
-    expect(DEFAULT_TEAM_WORKER_PROMPT).toContain("human-review request");
+  it("uses runtime prompt defaults for fresh create drafts and worker drafts", () => {
+    const initial = createInitialTeamDraftState(TEST_PROMPT_DEFAULTS);
+    const worker = buildDefaultWorkerDraft("worker-1", TEST_PROMPT_DEFAULTS);
+
+    expect(initial.leaderPrompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
+    expect(worker.prompt).toBe(TEST_PROMPT_DEFAULTS.worker_prompt);
+  });
+
+  it("resolves prompt text by role", () => {
+    expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "leader")).toBe(
+      TEST_PROMPT_DEFAULTS.leader_prompt
+    );
+    expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "worker")).toBe(
+      TEST_PROMPT_DEFAULTS.worker_prompt
+    );
+    expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "unknown")).toBe(
+      TEST_PROMPT_DEFAULTS.worker_prompt
+    );
   });
 });

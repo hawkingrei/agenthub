@@ -249,7 +249,7 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
   const onAcceptMessage = useCallback(
     async (message: TeamActorMessageRecord) => {
       if (!activeRunIdForSelectedTeam) return;
-      const actorId = inboxActorId.trim() || message.to_actor_id;
+      const actorId = message.to_actor_id;
       setBusy(`accept-${message.message_id}`);
       setError(null);
       try {
@@ -267,7 +267,6 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     },
     [
       activeRunIdForSelectedTeam,
-      inboxActorId,
       refreshAfterMailboxAccept,
       setBusy,
       setError,
@@ -282,7 +281,6 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
       if (pendingMessages.length === 0) {
         return;
       }
-      const actorId = inboxActorId.trim();
       setBusy("accept-visible");
       setError(null);
       try {
@@ -291,11 +289,11 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
             teamMailboxApi.ackTeamRunMessage(
               activeRunIdForSelectedTeam,
               message.message_id,
-              actorId || message.to_actor_id
+              message.to_actor_id
             )
           )
         );
-        await refreshAfterMailboxAccept(actorId || pendingMessages[0]?.to_actor_id);
+        await refreshAfterMailboxAccept(pendingMessages[0]?.to_actor_id);
       } catch (err) {
         setError(parseErrorMessage(err));
       } finally {
@@ -304,7 +302,6 @@ export function useTeamMailboxActions(options: UseTeamMailboxActionsOptions) {
     },
     [
       activeRunIdForSelectedTeam,
-      inboxActorId,
       refreshAfterMailboxAccept,
       setBusy,
       setError,

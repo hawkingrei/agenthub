@@ -12,6 +12,45 @@ async fn teams_router_http_contract() {
         .expect("run unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
+    let prompt_defaults_unauthorized = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/prompt_defaults",
+            None,
+            None,
+        ))
+        .await
+        .expect("run unauthorized prompt defaults request");
+    assert_eq!(prompt_defaults_unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let prompt_defaults_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            "/prompt_defaults",
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("get team prompt defaults via router");
+    assert_eq!(prompt_defaults_resp.status(), StatusCode::OK);
+    let prompt_defaults = decode_json_body(prompt_defaults_resp).await;
+    assert!(
+        prompt_defaults["leader_prompt"]
+            .as_str()
+            .is_some_and(|value| value.contains("Inspect inbox regularly")),
+        "unexpected leader prompt contract: {}",
+        prompt_defaults["leader_prompt"]
+    );
+    assert!(
+        prompt_defaults["worker_prompt"]
+            .as_str()
+            .is_some_and(|value| value.contains("Receive inbox work")),
+        "unexpected worker prompt contract: {}",
+        prompt_defaults["worker_prompt"]
+    );
+
     let empty_team_resp = app
         .clone()
         .oneshot(build_json_request(

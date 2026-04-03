@@ -153,10 +153,7 @@ describe("team state defaults and constants", () => {
     expect(initial.forgeAgentPresetId).toBe("codex");
     expect(initial.forgeAgentWorktreeMode).toBe("use_existing");
     expect(initial.forgeAgentCodeMode).toBe(true);
-    expect(initial.leaderPrompt).toContain("You are the Team Leader in AgentHub.");
-    expect(initial.leaderPrompt).toContain("Do not implement feature code directly.");
-    expect(initial.leaderPrompt).toContain("perform targeted technical research");
-    expect(initial.leaderPrompt).toContain("Start from an empty workspace.");
+    expect(initial.leaderPrompt).toBe("");
     expect(initial.leaderSkills).toEqual(
       expect.arrayContaining(["agenthub-actor-runtime", "team-leader-orchestrator"])
     );

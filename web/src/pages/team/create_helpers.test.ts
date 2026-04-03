@@ -22,6 +22,11 @@ import {
   updateTeamMemberProfileInSpec,
 } from "./create_helpers";
 
+const TEST_PROMPT_DEFAULTS = {
+  leader_prompt: "leader-default-prompt",
+  worker_prompt: "worker-default-prompt",
+};
+
 function buildWorker(overrides: Partial<WorkerDraft> = {}): WorkerDraft {
   return {
     member_id: "worker-alpha",
@@ -80,7 +85,8 @@ describe("team create helpers", () => {
           worktree_ref: "HEAD",
           code_mode: true,
         }),
-      ]
+      ],
+      TEST_PROMPT_DEFAULTS
     ) as {
       spec_version: number;
       entrypoint: string;
@@ -109,10 +115,8 @@ describe("team create helpers", () => {
       "worker alpha",
     ]);
     expect(spec.members[0]?.skills).toBeUndefined();
-    expect(spec.members[1]?.prompt).toContain("You are a Worker in an AgentHub team");
+    expect(spec.members[1]?.prompt).toBe(TEST_PROMPT_DEFAULTS.worker_prompt);
     expect(spec.members[1]?.description).toBe("query optimizer specialist");
-    expect(spec.members[1]?.prompt).toContain("Work in your own git worktree only.");
-    expect(spec.members[1]?.prompt).toContain("Create a random branch at start");
     expect(spec.members[1]?.skills).toBeUndefined();
     expect(spec.members[0]?.runtime).toEqual({
       name: "leader-main-name",
@@ -163,7 +167,8 @@ describe("team create helpers", () => {
       "",
       "",
       [],
-      [buildForgeAgent({ id: "leader-only" })]
+      [buildForgeAgent({ id: "leader-only" })],
+      TEST_PROMPT_DEFAULTS
     ) as {
       entrypoint: string;
       members: Array<{ member_id: string; prompt: string; runtime?: Record<string, unknown> }>;
@@ -178,11 +183,7 @@ describe("team create helpers", () => {
       },
     ]);
     expect(spec.members[0]?.member_id).toBe("leader-only");
-    expect(spec.members[0]?.prompt).toContain("Decision Complete");
-    expect(spec.members[0]?.prompt).toContain("Explore Before Asking");
-    expect(spec.members[0]?.prompt).toContain("Clearance checklist before delegation");
-    expect(spec.members[0]?.prompt).toContain("spec.members[].member_id");
-    expect(spec.members[0]?.prompt).toContain("Finalization by mode");
+    expect(spec.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
     expect(spec.members[0]?.runtime).toEqual({
       name: "leader-only-name",
       target_node_id: null,
@@ -234,7 +235,8 @@ describe("team create helpers", () => {
         skills: ["team-deliberation-rules"],
         custom_skills: "",
       },
-      leaderAgent
+      leaderAgent,
+      TEST_PROMPT_DEFAULTS
     ) as {
       leader_member_id: string;
       entrypoint: string;
@@ -246,6 +248,7 @@ describe("team create helpers", () => {
     expect(withLeader.leader_member_id).toBe("leader-1");
     expect(withLeader.entrypoint).toBe("leader_plan");
     expect(withLeader.members).toHaveLength(1);
+    expect(withLeader.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
     expect(withLeader.steps).toEqual([
       {
         step_key: "leader_plan",
@@ -265,7 +268,8 @@ describe("team create helpers", () => {
         skills: ["team-deliberation-rules"],
         custom_skills: "custom-worker-skill",
       },
-      workerAgent
+      workerAgent,
+      TEST_PROMPT_DEFAULTS
     ) as {
       leader_member_id: string;
       members: Array<Record<string, unknown>>;
@@ -273,6 +277,7 @@ describe("team create helpers", () => {
     };
     expect(withWorker.leader_member_id).toBe("leader-1");
     expect(withWorker.members).toHaveLength(2);
+    expect(withWorker.members[1]?.prompt).toBe("Execute with evidence");
     expect(withWorker.steps).toEqual([
       {
         step_key: "leader_plan",
@@ -305,7 +310,8 @@ describe("team create helpers", () => {
           skills: [],
           custom_skills: "",
         },
-        buildForgeAgent({ id: "worker-1" })
+        buildForgeAgent({ id: "worker-1" }),
+        TEST_PROMPT_DEFAULTS
       )
     ).toThrow("Create the first agent before adding more agents");
 
@@ -320,7 +326,8 @@ describe("team create helpers", () => {
         skills: [],
         custom_skills: "",
       },
-      buildForgeAgent({ id: "leader-1" })
+      buildForgeAgent({ id: "leader-1" }),
+      TEST_PROMPT_DEFAULTS
     );
     expect(() =>
       appendTeamMemberToSpec(
@@ -334,7 +341,8 @@ describe("team create helpers", () => {
           skills: [],
           custom_skills: "",
         },
-        buildForgeAgent({ id: "leader-2" })
+        buildForgeAgent({ id: "leader-2" }),
+        TEST_PROMPT_DEFAULTS
       )
     ).toThrow("Team already has a leader");
   });
@@ -353,7 +361,7 @@ describe("team create helpers", () => {
       },
       buildForgeAgent({ id: "leader-1" })
     );
-    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1");
+    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1", undefined, TEST_PROMPT_DEFAULTS);
     expect(draft).toMatchObject({
       member_id: "leader-1",
       role: "leader",
@@ -361,7 +369,7 @@ describe("team create helpers", () => {
       model: "codex",
       custom_skills: "",
     });
-    expect(draft?.prompt).toContain("You are the Team Leader in AgentHub.");
+    expect(draft?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
     expect(draft?.skills).toEqual(
       expect.arrayContaining(["agenthub-actor-runtime", "team-leader-orchestrator"])
     );
@@ -391,7 +399,7 @@ describe("team create helpers", () => {
       },
     };
 
-    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1");
+    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1", undefined, TEST_PROMPT_DEFAULTS);
     expect(draft?.agent_loop_idle_seconds).toBe("");
   });
 
