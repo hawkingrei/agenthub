@@ -176,12 +176,9 @@ import {
   TEAM_DEBUG_TABS_CLASS,
   TEAM_DEBUG_TAB_ACTIVE_CLASS,
   TEAM_DEBUG_TAB_IDLE_CLASS,
-  TEAM_MUTED_TEXT_CLASS,
   TEAM_PAGE_ROOT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_SECTION_BODY_TEXT_CLASS,
   TEAM_SECTION_CARD_CLASS,
   TEAM_SECTION_CARD_LARGE_CLASS,
@@ -196,12 +193,6 @@ import {
   TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
   TEAM_WORKBENCH_PANEL_CLASS,
   TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
-  OUTPUT_HEADER_META_CLASS,
-  OUTPUT_HEADER_ROOT_CLASS,
-  OUTPUT_HEADER_TITLE_CLASS,
-  OUTPUT_HEADER_TITLE_HEADING_CLASS,
-  OUTPUT_HEADER_TITLE_MAIN_CLASS,
-  OUTPUT_HEADER_TITLE_TEXT_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -4835,7 +4826,7 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   </div>
                 </div>
-                <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
+                <div className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
                   <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
                   <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                     Role-bound Team skills come from the system-managed skill path and are shown

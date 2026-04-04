@@ -2609,6 +2609,51 @@ describe("team panels interactions", () => {
     }
   });
 
+  it("TeamTaskPanel renders chat items inside explicit conversation bubbles", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "user:u-1",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Need status update." },
+            }),
+            buildTaskMessage(2, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Working on it." },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-team-channel-bubble="human"]')).not.toBeNull();
+    expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
+  });
+
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 

@@ -4,6 +4,8 @@ import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
 import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
 import {
+  AGENTS_PANEL_BACKDROP_CLASS,
+  AGENTS_PANEL_BODY_CLASS,
   AGENTS_CREATE_BUTTON_CLASS,
   AGENTS_PANEL_COLLAPSED_CLASS,
   AGENTS_PANEL_EXPANDED_CLASS,
@@ -70,7 +72,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   return (
     <>
       {!agentsCollapsed && (
-        <div className="agents-backdrop" onClick={onCollapse} />
+        <div className={AGENTS_PANEL_BACKDROP_CLASS} onClick={onCollapse} />
       )}
       <div
         className={
@@ -134,7 +136,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 </button>
               </div>
             </div>
-            <div className="agent-layout">
+            <div className={AGENTS_PANEL_BODY_CLASS}>
               <div className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);

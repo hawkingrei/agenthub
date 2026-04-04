@@ -185,6 +185,24 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("src/main.rs");
   });
 
+  it("renders agent and user messages with explicit bubble markers", () => {
+    const html = renderConversation([
+      {
+        kind: "agent_message",
+        text: "Agent reply",
+        event_id: 1,
+      },
+      {
+        kind: "user_message",
+        text: "User prompt",
+        event_id: 2,
+      },
+    ]);
+
+    expect(html).toContain('data-acp-message-bubble="agent"');
+    expect(html).toContain('data-acp-message-bubble="user"');
+  });
+
   it("renders a native request_user_input card for pending questions", () => {
     const html = renderConversation(
       [

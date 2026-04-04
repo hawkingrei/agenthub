@@ -86,6 +86,10 @@ describe("AgentsPanel", () => {
       <AgentsPanel {...baseProps} agentsCollapsed={false} />
     );
     expect(html).toContain("agents-backdrop");
+    expect(html).toContain("fixed inset-0 z-20");
+    expect(html).toContain("lg:hidden");
+    expect(html).toContain("workspace-left flex h-full min-h-0 flex-col overflow-hidden");
+    expect(html).toContain("agent-layout flex min-h-0 flex-1 flex-col overflow-hidden");
     expect(html).toContain("Agents</h2>");
     expect(html).not.toContain('href="/teams"');
     expect(html).toContain('aria-label="Hide agents"');

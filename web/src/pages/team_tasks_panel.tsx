@@ -29,8 +29,6 @@ import {
   TASKS_DETAIL_PANEL_CLASS,
   TASKS_DETAIL_META_ITEM_CLASS,
 } from "../ui/tailwind_classes";
-import { DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE } from "../conversation";
-import { windowConversation } from "../acp_window";
 
 type TaskStatusFilter = "all" | TeamTaskStatus;
 

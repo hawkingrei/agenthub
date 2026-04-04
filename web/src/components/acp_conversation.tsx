@@ -14,6 +14,9 @@ import {
   ACP_BUBBLE_THINKING_CLASS,
   ACP_CONVERSATION_TOP_HINT_CLASS,
   ACP_DIFF_PRE_CLASS,
+  ACP_MESSAGE_BUBBLE_CLASS,
+  ACP_MESSAGE_BUBBLE_AGENT_CLASS,
+  ACP_MESSAGE_BUBBLE_USER_CLASS,
   ACP_PLAN_INDEX_BADGE_CLASS,
   ACP_PLAN_PRIORITY_BADGE_CLASS,
   ACP_PLAN_STATUS_BADGE_CLASS,
@@ -22,6 +25,7 @@ import {
   ACP_TERMINAL_PRE_CLASS,
   ACP_TOOL_STATUS_CLASS,
   ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS,
+  ACP_PAYLOAD_MARKDOWN_CLASS,
 } from "../ui/tailwind_classes";
 import {
   REQUEST_USER_INPUT_OTHER_OPTION_LABEL,
@@ -114,10 +118,6 @@ const TOOL_PAYLOAD_INITIAL_ITEMS = 8;
 const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
 const ACP_SUBFOLD_CLASS = "acp-subfold mt-1.5";
-const ACP_SUBFOLD_SUMMARY_CLASS =
-  "mb-1 flex cursor-pointer items-center gap-1.5 text-[10.5px] leading-[1.35] text-slate-500 max-[720px]:items-start max-[720px]:text-[10px]";
-const ACP_SUBFOLD_PREVIEW_CLASS =
-  "acp-subfold-preview max-w-[min(60vw,460px)] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-slate-400 max-[720px]:max-w-[min(64vw,300px)] max-[600px]:max-w-[58vw]";
 const ACP_PAYLOAD_CARD_CLASS =
   "acp-payload-card overflow-hidden rounded-[10px] border border-[#dde2db] bg-[#fcfcfa] px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
 const ACP_PAYLOAD_GRID_CLASS = "acp-payload-grid m-0 grid gap-1.5";
@@ -131,8 +131,6 @@ const ACP_PAYLOAD_TEXT_BASE_CLASS =
   "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.45] text-slate-800";
 const ACP_PAYLOAD_TEXT_ASCII_CLASS =
   `${ACP_PAYLOAD_TEXT_BASE_CLASS} acp-payload-ascii overflow-x-auto whitespace-pre`;
-const ACP_PAYLOAD_MARKDOWN_CLASS =
-  "acp-payload-markdown text-[12.5px] leading-[1.55] [&_pre]:m-0 max-[720px]:text-[12px] max-[720px]:leading-[1.52]";
 const ACP_PAYLOAD_SEGMENTED_CLASS = "acp-payload-segmented grid gap-1.5";
 const ACP_PAYLOAD_LIST_CLASS = "acp-payload-list m-0 grid list-none gap-1.5 pl-0";
 const ACP_PAYLOAD_LIST_ITEM_CLASS = "m-0 min-w-0";
@@ -403,17 +401,28 @@ type MarkdownBubbleProps = {
   text: string;
 };
 
+const ACP_TOOL_ROW_CLASS = "flex w-full px-4 py-1.5 sm:px-8";
+const ACP_TOOL_CARD_CLASS =
+  "self-start max-w-[min(88%,78ch)] overflow-hidden rounded-[18px] border border-black/[0.06] bg-white/94 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
+const ACP_TOOL_CARD_NESTED_CLASS =
+  "max-w-full border-black/[0.05] bg-notion-sidebar/32 shadow-none";
+const ACP_TOOL_SUMMARY_CLASS =
+  "flex cursor-pointer list-none items-start gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden";
+const ACP_TOOL_TITLE_CLASS =
+  "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-notion-text";
+const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-2 px-3 pb-3";
+
 const MarkdownBubble = React.memo(function MarkdownBubble({
   className,
   text,
 }: MarkdownBubbleProps) {
   const isAgent = className === "agent_message";
   return (
-    <div className={`acp-block ${className} group relative flex w-full max-w-full gap-4 px-4 py-2 sm:px-8`}>
-      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm ${isAgent ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
-        {isAgent ? "A" : "U"}
-      </div>
-      <div className="min-w-0 flex-1 text-[15px] leading-relaxed text-notion-text">
+    <div className={`acp-row group relative flex w-full flex-col px-4 py-1.5 sm:px-8 ${isAgent ? "items-start" : "items-end"}`}>
+      <div
+        data-acp-message-bubble={isAgent ? "agent" : "user"}
+        className={`${ACP_MESSAGE_BUBBLE_CLASS} ${isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}`}
+      >
         <ThreadRichText text={text} />
       </div>
     </div>
@@ -522,32 +531,32 @@ const ToolCallBubble = React.memo(
 
     return (
       <div
-        className={`acp-bubble tool_call ${
-          grouped ? "acp-tool-group-entry" : "tool-call-enter"
-        }`}
+        className={grouped ? "acp-bubble tool_call acp-tool-group-entry my-1" : `acp-bubble tool_call tool-call-enter ${ACP_TOOL_ROW_CLASS}`}
       >
         <details
-          className={`acp-tool-fold${grouped ? " acp-tool-fold-nested" : ""}`}
+          className={`acp-tool-fold${grouped ? " acp-tool-fold-nested" : ""} ${ACP_TOOL_CARD_CLASS} ${grouped ? ACP_TOOL_CARD_NESTED_CLASS : ""}`}
           ref={detailsRef}
           open={open}
           onToggle={(event) => {
             setOpen(event.currentTarget.open);
           }}
         >
-          <summary>
-            <span className="acp-tool-title">
+          <summary className={ACP_TOOL_SUMMARY_CLASS}>
+            <span className={`${ACP_TOOL_TITLE_CLASS} flex items-start gap-2`}>
               {statusMark && (
                 <span
-                  className={`acp-tool-status-mark tone-${statusMark.tone}`}
+                  className={`acp-tool-status-mark tone-${statusMark.tone} mt-1 inline-flex h-2 w-2 rounded-full ${statusMark.tone === "success" ? "bg-emerald-500" : "bg-rose-500"}`}
                   title={statusMark.label}
                   aria-label={statusMark.label}
                 >
                   <span className="acp-tool-status-dot" />
                 </span>
               )}
-              <span>
+              <span className="min-w-0 flex-1">
                 {title}
-                {effectiveHint ? ` · ${effectiveHint}` : ""}
+                {effectiveHint ? (
+                  <span className="ml-2 font-normal text-notion-text-muted">· {effectiveHint}</span>
+                ) : ""}
               </span>
             </span>
             {msg.status && (
@@ -559,105 +568,112 @@ const ToolCallBubble = React.memo(
               </span>
             )}
           </summary>
-          {showPendingRequestUserInputCard && requestUserInputQuestions ? (
-            <RequestUserInputCard
-              toolCallId={msg.id}
-              questions={requestUserInputQuestions}
-              canSubmit={typeof onSubmitRequestUserInput === "function"}
-              onSubmitRequestUserInput={onSubmitRequestUserInput}
-            />
-          ) : null}
-          {showResolvedRequestUserInputCard && requestUserInputQuestions ? (
-            <RequestUserInputResultCard
-              questions={requestUserInputQuestions}
-              response={requestUserInputResponse}
-              status={msg.status}
-            />
-          ) : null}
-          {!hasRequestUserInputCard && msg.content && (
-            <FoldSection
-              key="content"
-              label="Content"
-              preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
-              defaultOpen={false}
-              lazyRender={true}
-            >
-              <ToolTextContent
-                text={unescapeLineBreaks(msg.content)}
-                markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
-                preferPlainText={true}
-              />
-            </FoldSection>
-          )}
-          {!hasRequestUserInputCard && hasToolPayload(inputPayload) && (
-            <FoldSection
-              key="input"
-              label="Input"
-              preview={inputPreview}
-              defaultOpen={false}
-              parentOpen={open}
-              lazyRender={true}
-            >
-              <ToolPayloadView payload={inputPayload} />
-            </FoldSection>
-          )}
-          {!hasRequestUserInputCard && hasToolPayload(outputPayload) && (
-            <FoldSection
-              key="output"
-              label="Output"
-              preview={outputPreview}
-              defaultOpen={false}
-              parentOpen={open}
-              lazyRender={true}
-            >
-              <ToolPayloadView payload={outputPayload} />
-            </FoldSection>
-          )}
-          {msg.id && (
-            <FoldSection
-              key="detailed"
-              label="Detailed"
-              preview={`call_id=${formatConversationPreview(msg.id, 40)}`}
-              defaultOpen={false}
-              parentOpen={open}
-              lazyRender={false}
-            >
-              <ToolCallDetailsView
-                details={extractToolCallDetails(msg.id, msg.raw_output, msg.title)}
-              />
-            </FoldSection>
-          )}
-          {msg.terminal_activities && msg.terminal_activities.length > 0 && (
-            <FoldSection
-              key="activity"
-              label="Activity"
-              preview={terminalActivityPreview}
-              defaultOpen={false}
-              lazyRender={true}
-            >
-              <div className="space-y-1 text-sm text-slate-600">
-                {msg.terminal_activities.map((activity, index) => (
-                  <div key={`${activity.kind}:${activity.command ?? ""}:${index}`}>
-                    {formatTerminalActivityLabel(activity)}
-                  </div>
-                ))}
+          <div className="px-3 pb-3">
+            {msg.content ? (
+              <div className="px-1 pb-1 text-[13px] leading-relaxed text-notion-text-muted">
+                {unescapeLineBreaks(msg.content)}
               </div>
-            </FoldSection>
-          )}
-          {msg.terminal_output && (
-            <FoldSection
-              key="terminal"
-              label="Terminal"
-              preview={formatConversationPreview(unescapeLineBreaks(msg.terminal_output), 88)}
-              defaultOpen={false}
-              lazyRender={true}
-            >
-              <TerminalOutputView
-                text={unescapeLineBreaks(msg.terminal_output)}
-                ansi={ansi}
+            ) : null}
+            {showPendingRequestUserInputCard && requestUserInputQuestions ? (
+              <RequestUserInputCard
+                toolCallId={msg.id}
+                questions={requestUserInputQuestions}
+                canSubmit={typeof onSubmitRequestUserInput === "function"}
+                onSubmitRequestUserInput={onSubmitRequestUserInput}
               />
-            </FoldSection>
-          )}
+            ) : null}
+            {showResolvedRequestUserInputCard && requestUserInputQuestions ? (
+              <RequestUserInputResultCard
+                questions={requestUserInputQuestions}
+                response={requestUserInputResponse}
+                status={msg.status}
+              />
+            ) : null}
+            {!hasRequestUserInputCard && msg.content && (
+              <FoldSection
+                key="content"
+                label="Content"
+                preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
+                defaultOpen={false}
+                lazyRender={true}
+              >
+                <ToolTextContent
+                  text={unescapeLineBreaks(msg.content)}
+                  markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
+                  preferPlainText={true}
+                />
+              </FoldSection>
+            )}
+            {!hasRequestUserInputCard && hasToolPayload(inputPayload) && (
+              <FoldSection
+                key="input"
+                label="Input"
+                preview={inputPreview}
+                defaultOpen={false}
+                parentOpen={open}
+                lazyRender={true}
+              >
+                <ToolPayloadView payload={inputPayload} />
+              </FoldSection>
+            )}
+            {!hasRequestUserInputCard && hasToolPayload(outputPayload) && (
+              <FoldSection
+                key="output"
+                label="Output"
+                preview={outputPreview}
+                defaultOpen={false}
+                parentOpen={open}
+                lazyRender={true}
+              >
+                <ToolPayloadView payload={outputPayload} />
+              </FoldSection>
+            )}
+            {msg.id && (
+              <FoldSection
+                key="detailed"
+                label="Detailed"
+                preview={`call_id=${formatConversationPreview(msg.id, 40)}`}
+                defaultOpen={false}
+                parentOpen={open}
+                lazyRender={false}
+              >
+                <ToolCallDetailsView
+                  details={extractToolCallDetails(msg.id, msg.raw_output, msg.title)}
+                />
+              </FoldSection>
+            )}
+            {msg.terminal_activities && msg.terminal_activities.length > 0 && (
+              <FoldSection
+                key="activity"
+                label="Activity"
+                preview={terminalActivityPreview}
+                defaultOpen={false}
+                lazyRender={true}
+              >
+                <div className="space-y-1 text-sm text-notion-text-muted">
+                  {msg.terminal_activities.map((activity, index) => (
+                    <div key={`${activity.kind}:${activity.command ?? ""}:${index}`}>
+                      {formatTerminalActivityLabel(activity)}
+                    </div>
+                  ))}
+                </div>
+              </FoldSection>
+            )}
+            {msg.terminal_output && (
+              <FoldSection
+                key="terminal"
+                label="Terminal"
+                preview={formatConversationPreview(unescapeLineBreaks(msg.terminal_output), 88)}
+                defaultOpen={false}
+                lazyRender={true}
+              >
+                <TerminalOutputView
+                  text={unescapeLineBreaks(msg.terminal_output)}
+                  ansi={ansi}
+                />
+              </FoldSection>
+            )}
+          </div>
         </details>
       </div>
     );
@@ -755,21 +771,21 @@ function RequestUserInputCard({
   }, [drafts, onSubmitRequestUserInput, questions]);
 
   return (
-    <div className="mx-3 mb-3 mt-2 rounded-[16px] border border-[#d7dfeb] bg-[linear-gradient(180deg,rgba(247,250,252,0.94),rgba(255,255,255,0.96))] p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+    <div className="mx-0 mb-3 mt-2 rounded-xl border border-notion-border bg-notion-sidebar/30 p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-slate-800">
-            Codex needs input before continuing
+          <div className="text-sm font-bold text-notion-text">
+            Input Required
           </div>
-          <div className="text-xs text-slate-500">
-            Submit here to answer the pending question without using the input dock.
+          <div className="text-xs text-notion-text-muted">
+            Submit your answer to continue execution.
           </div>
         </div>
-        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+        <span className="rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted">
           Pending
         </span>
       </div>
-      <div className="mt-3 space-y-3">
+      <div className="mt-4 space-y-4">
         {questions.map((question, index) => {
           const draft = drafts[question.id] ?? {
             selectedOptionLabel: null,
@@ -782,42 +798,42 @@ function RequestUserInputCard({
           return (
             <div
               key={question.id}
-              className="rounded-[14px] border border-black/[0.06] bg-white/90 p-3"
+              className="rounded-lg border border-notion-border bg-white p-4 shadow-sm"
               data-request-user-input-question={question.id}
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-black/[0.08] bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <span className="rounded-md bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted">
                   {questions.length > 1 ? `Q${index + 1}` : "Question"}
                 </span>
                 <span
                   id={questionHeaderId}
-                  className="text-sm font-semibold text-slate-800"
+                  className="text-sm font-bold text-notion-text"
                 >
                   {question.header || question.id}
                 </span>
                 {question.isSecret ? (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">
                     Secret
                   </span>
                 ) : null}
               </div>
               <p
                 id={questionPromptId}
-                className="mt-2 text-sm leading-6 text-slate-700"
+                className="mt-2 text-[14px] leading-relaxed text-notion-text"
               >
                 {question.question}
               </p>
               {hasOptions ? (
-                <div className="mt-3 space-y-2">
+                <div className="mt-4 space-y-2">
                   {question.options?.map((option) => {
                     const checked = draft.selectedOptionLabel === option.label;
                     return (
                       <label
                         key={option.label}
-                        className={`flex cursor-pointer items-start gap-3 rounded-[12px] border px-3 py-2 transition ${
+                        className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition ${
                           checked
-                            ? "border-sky-300 bg-sky-50"
-                            : "border-black/[0.06] bg-white hover:border-slate-300"
+                            ? "border-notion-accent bg-notion-accent-bg"
+                            : "border-notion-border bg-white hover:bg-notion-hover"
                         }`}
                       >
                         <input
@@ -830,10 +846,10 @@ function RequestUserInputCard({
                           data-request-user-input-option={option.label}
                         />
                         <span className="min-w-0">
-                          <span className="block text-sm font-medium text-slate-800">
+                          <span className="block text-sm font-bold text-notion-text">
                             {option.label}
                           </span>
-                          <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                          <span className="mt-0.5 block text-xs leading-relaxed text-notion-text-muted">
                             {option.description}
                           </span>
                         </span>
@@ -842,10 +858,10 @@ function RequestUserInputCard({
                   })}
                   {question.isOther ? (
                     <label
-                      className={`flex cursor-pointer items-start gap-3 rounded-[12px] border px-3 py-2 transition ${
+                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition ${
                         draft.selectedOptionLabel === REQUEST_USER_INPUT_OTHER_OPTION_LABEL
-                          ? "border-sky-300 bg-sky-50"
-                          : "border-black/[0.06] bg-white hover:border-slate-300"
+                          ? "border-notion-accent bg-notion-accent-bg"
+                          : "border-notion-border bg-white hover:bg-notion-hover"
                       }`}
                     >
                       <input
@@ -865,11 +881,11 @@ function RequestUserInputCard({
                         data-request-user-input-option={REQUEST_USER_INPUT_OTHER_OPTION_LABEL}
                       />
                       <span className="min-w-0">
-                        <span className="block text-sm font-medium text-slate-800">
+                        <span className="block text-sm font-bold text-notion-text">
                           {REQUEST_USER_INPUT_OTHER_OPTION_LABEL}
                         </span>
-                        <span className="mt-0.5 block text-xs leading-5 text-slate-500">
-                          Add your own answer in notes below.
+                        <span className="mt-0.5 block text-xs leading-relaxed text-notion-text-muted">
+                          Provide custom input in the field below.
                         </span>
                       </span>
                     </label>
@@ -878,7 +894,7 @@ function RequestUserInputCard({
               ) : null}
               <textarea
                 id={questionTextareaId}
-                className="mono mt-3 min-h-24 w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border"
+                className="mono mt-4 min-h-24 w-full rounded-md border border-notion-border bg-white px-3 py-2 text-[13px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10"
                 name={questionTextareaId}
                 aria-labelledby={`${questionHeaderId} ${questionPromptId}`}
                 value={draft.note}
@@ -886,16 +902,16 @@ function RequestUserInputCard({
                 placeholder={
                   hasOptions
                     ? question.isOther
-                      ? "Notes or custom answer"
-                      : "Optional notes"
-                    : "Type your answer"
+                      ? "Custom answer or details..."
+                      : "Optional notes..."
+                    : "Type your answer..."
                 }
                 disabled={submitting}
                 data-request-user-input-note={question.id}
               />
               {question.isSecret ? (
-                <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-2`}>
-                  Secret answers are submitted but not echoed back into ACP history.
+                <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-3`}>
+                  Secret answers are submitted but not persisted in history.
                 </div>
               ) : null}
             </div>
@@ -903,18 +919,17 @@ function RequestUserInputCard({
         })}
       </div>
       {errorText ? (
-        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-3`}>
+        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-4`}>
           {errorText}
         </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs text-slate-500">
-          The answer is still sent through the current ACP session, so it keeps the existing
-          turn semantics.
-        </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] leading-relaxed text-notion-text-muted italic max-w-sm">
+          Response will be sent through the active turn.
+        </p>
         <button
           type="button"
-          className={ACP_SEGMENTED_BUTTON_CLASS}
+          className="inline-flex h-9 items-center justify-center rounded-md bg-notion-accent px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px"
           onClick={() => {
             void handleSubmit();
           }}
@@ -924,11 +939,6 @@ function RequestUserInputCard({
           {submitting ? "Submitting..." : "Submit Answer"}
         </button>
       </div>
-      {!canSubmit ? (
-        <div className="mt-2 text-xs text-slate-500">
-          Input submission is unavailable in this view.
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -970,22 +980,22 @@ function RequestUserInputResultCard({
   const statusLabel = formatToolCallStatus(status);
 
   return (
-    <div className="mx-3 mb-3 mt-2 rounded-[16px] border border-[#d7dfeb] bg-[linear-gradient(180deg,rgba(247,250,252,0.94),rgba(255,255,255,0.96))] p-3 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+    <div className="mx-0 mb-3 mt-2 rounded-xl border border-notion-border bg-notion-sidebar/30 p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-slate-800">
+          <div className="text-sm font-bold text-notion-text">
             {questions.length === 1 ? "Question answered" : "Questions answered"}
           </div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-notion-text-muted">
             {answeredCount}/{questions.length} answers recorded
             {statusLabel ? ` · ${statusLabel}` : ""}
           </div>
         </div>
-        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+        <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
           Complete
         </span>
       </div>
-      <div className="mt-3 space-y-3">
+      <div className="mt-4 space-y-4">
         {questions.map((question, index) => (
           <RequestUserInputResultQuestion
             key={question.id}
@@ -998,9 +1008,8 @@ function RequestUserInputResultCard({
         ))}
       </div>
       {hideAllAnswers ? (
-        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-3`}>
-          At least one question was marked secret, so Codex suppressed the structured answer
-          payload in ACP history.
+        <div className={`${ACP_SEGMENTED_NOTE_WARNING_CLASS} mt-4`}>
+          Agent suppressed the structured answer payload in execution history.
         </div>
       ) : null}
     </div>
@@ -1027,7 +1036,7 @@ function RequestUserInputResultQuestion({
 
   return (
     <div
-      className="rounded-lg border border-notion-border bg-notion-sidebar/30 p-4"
+      className="rounded-lg border border-notion-border bg-white p-4 shadow-sm"
       data-request-user-input-result={question.id}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -1038,24 +1047,24 @@ function RequestUserInputResultQuestion({
           {question.header || question.id}
         </span>
         {question.isSecret ? (
-          <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+          <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-600">
             Secret
           </span>
         ) : null}
       </div>
       <p className="mt-2 text-[14px] leading-relaxed text-notion-text">{question.question}</p>
       {hideAnswer ? (
-        <div className="mt-3 rounded-md border border-state-warning-border bg-state-warning-bg px-3 py-2 text-sm text-state-warning-text">
+        <div className="mt-3 rounded-md border border-state-warning-border bg-state-warning-bg px-3 py-2 text-[12px] text-state-warning-text italic">
           Answer submitted privately.
         </div>
       ) : hasStructuredAnswer ? (
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-3">
           {hasOptions ? (
             <div className="flex flex-wrap gap-2">
               {parts.options.map((entry) => (
                 <span
                   key={entry}
-                  className="rounded-md bg-notion-accent-bg px-2 py-0.5 text-[12px] font-medium text-notion-accent"
+                  className="rounded-md bg-notion-accent-bg px-2 py-0.5 text-[12px] font-bold text-notion-accent border border-notion-accent/10"
                 >
                   {entry}
                 </span>
@@ -1066,7 +1075,7 @@ function RequestUserInputResultQuestion({
               {parts.options.map((entry) => (
                 <div
                   key={entry}
-                  className="mono rounded-md border border-notion-border bg-white px-3 py-2 text-[13px] text-notion-text"
+                  className="mono rounded-md border border-notion-border bg-notion-sidebar/20 px-3 py-2 text-[13px] text-notion-text"
                 >
                   {entry}
                 </div>
@@ -1074,14 +1083,14 @@ function RequestUserInputResultQuestion({
             </div>
           )}
           {parts.note ? (
-            <div className="mono rounded-md border border-notion-border bg-white px-3 py-2 text-[13px] text-notion-text">
+            <div className="mono rounded-md border border-notion-border bg-notion-sidebar/20 px-3 py-2 text-[13px] text-notion-text">
               {parts.note}
             </div>
           ) : null}
         </div>
       ) : (
-        <div className="mt-3 rounded-md border border-notion-border bg-white/50 px-3 py-2 text-[13px] text-notion-text-muted italic">
-          No answer payload recorded.
+        <div className="mt-3 rounded-md border border-notion-border bg-notion-sidebar/10 px-3 py-2 text-[12px] text-notion-text-muted italic">
+          No payload recorded.
         </div>
       )}
     </div>
@@ -1151,46 +1160,50 @@ const ToolCallGroupBubble = React.memo(
     });
 
     return (
-      <div className="acp-bubble tool_call tool_call_group tool-call-enter">
-        <details
-          className="acp-tool-group-fold"
-          ref={detailsRef}
-          open={open}
-          onToggle={(event) => {
-            setOpen(event.currentTarget.open);
-          }}
-        >
-          <summary>
-            <span className="acp-tool-title acp-tool-group-title">
-              Tool Calls ({msg.calls.length})
-              {titlePreview ? ` · ${titlePreview}` : ""}
-            </span>
-            {statusSummary && (
-              <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
-                {statusSummary.label}
+      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+        <div className={`acp-bubble tool_call tool_call_group tool-call-enter ${ACP_TOOL_CARD_CLASS}`}>
+          <details
+            className="acp-tool-group-fold"
+            ref={detailsRef}
+            open={open}
+            onToggle={(event) => {
+              setOpen(event.currentTarget.open);
+            }}
+          >
+            <summary className={ACP_TOOL_SUMMARY_CLASS}>
+              <span className={`${ACP_TOOL_TITLE_CLASS} acp-tool-group-title`}>
+                Tool Calls ({msg.calls.length})
+                {titlePreview ? (
+                  <span className="ml-2 font-normal text-notion-text-muted">· {titlePreview}</span>
+                ) : ""}
               </span>
-            )}
-          </summary>
-          <div className="acp-tool-group-list">
-            {msg.calls.map((call, idx) => (
-              <div
-                key={`${call.id}:${call.event_id ?? call.seq ?? idx}`}
-                className="acp-tool-group-item"
-                data-tool-call-id={call.id}
-              >
-                <ToolCallBubble
-                  msg={call}
-                  ansi={ansi}
-                  runStatus={runStatus}
-                  autoCollapse={autoCollapse}
-                  grouped={true}
-                  indexLabel={`#${idx + 1}`}
-                  onSubmitRequestUserInput={onSubmitRequestUserInput}
-                />
-              </div>
-            ))}
-          </div>
-        </details>
+              {statusSummary && (
+                <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
+                  {statusSummary.label}
+                </span>
+              )}
+            </summary>
+            <div className={`acp-tool-group-list ${ACP_TOOL_GROUP_LIST_CLASS}`}>
+              {msg.calls.map((call, idx) => (
+                <div
+                  key={`${call.id}:${call.event_id ?? call.seq ?? idx}`}
+                  className="acp-tool-group-item"
+                  data-tool-call-id={call.id}
+                >
+                  <ToolCallBubble
+                    msg={call}
+                    ansi={ansi}
+                    runStatus={runStatus}
+                    autoCollapse={autoCollapse}
+                    grouped={true}
+                    indexLabel={`#${idx + 1}`}
+                    onSubmitRequestUserInput={onSubmitRequestUserInput}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        </div>
       </div>
     );
   },
@@ -1261,65 +1274,69 @@ const ExploreGroupBubble = React.memo(
     let thinkingIndex = 0;
     let toolIndex = 0;
     return (
-      <div className="acp-bubble tool_call tool_call_group explore_group tool-call-enter">
-        <details
-          className="acp-tool-group-fold acp-explore-group-fold"
-          ref={detailsRef}
-          open={open}
-          onToggle={(event) => {
-            setOpen(event.currentTarget.open);
-          }}
-        >
-          <summary>
-            <span className="acp-tool-title acp-tool-group-title">
-              Explore ({calls.length} tools)
-              {titlePreview ? ` · ${titlePreview}` : ""}
-            </span>
-            {statusSummary && (
-              <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
-                {statusSummary.label}
+      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+        <div className={`acp-bubble tool_call tool_call_group explore_group tool-call-enter ${ACP_TOOL_CARD_CLASS}`}>
+          <details
+            className="acp-tool-group-fold acp-explore-group-fold"
+            ref={detailsRef}
+            open={open}
+            onToggle={(event) => {
+              setOpen(event.currentTarget.open);
+            }}
+          >
+            <summary className={ACP_TOOL_SUMMARY_CLASS}>
+              <span className={`${ACP_TOOL_TITLE_CLASS} acp-tool-group-title`}>
+                Explore ({calls.length} tools)
+                {titlePreview ? (
+                  <span className="ml-2 font-normal text-notion-text-muted">· {titlePreview}</span>
+                ) : ""}
               </span>
-            )}
-          </summary>
-          <div className="acp-tool-group-list acp-explore-group-list">
-            {msg.items.map((item, idx) => {
-              if (item.kind === "agent_thinking") {
-                thinkingIndex += 1;
+              {statusSummary && (
+                <span className={resolveToolGroupStatusClassName(statusSummary.tone)}>
+                  {statusSummary.label}
+                </span>
+              )}
+            </summary>
+            <div className={`acp-tool-group-list acp-explore-group-list ${ACP_TOOL_GROUP_LIST_CLASS}`}>
+              {msg.items.map((item, idx) => {
+                if (item.kind === "agent_thinking") {
+                  thinkingIndex += 1;
+                  return (
+                    <ExploreThinkingEntry
+                      key={`thinking:${item.event_id ?? item.seq ?? idx}`}
+                      item={item}
+                      index={thinkingIndex}
+                    />
+                  );
+                }
+                const groupedCalls = item.kind === "tool_call" ? [item] : item.calls;
                 return (
-                  <ExploreThinkingEntry
-                    key={`thinking:${item.event_id ?? item.seq ?? idx}`}
-                    item={item}
-                    index={thinkingIndex}
-                  />
+                  <div
+                    key={`tool:${item.event_id ?? item.seq ?? idx}`}
+                    className="acp-tool-group-item space-y-2"
+                  >
+                    {groupedCalls.map((call) => {
+                      toolIndex += 1;
+                      return (
+                        <div key={`${call.id}:${call.event_id ?? call.seq ?? toolIndex}`} data-tool-call-id={call.id}>
+                          <ToolCallBubble
+                            msg={call}
+                            ansi={ansi}
+                            runStatus={runStatus}
+                            autoCollapse={autoCollapse}
+                            grouped={true}
+                            indexLabel={`#${toolIndex}`}
+                            onSubmitRequestUserInput={onSubmitRequestUserInput}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 );
-              }
-              const groupedCalls = item.kind === "tool_call" ? [item] : item.calls;
-              return (
-                <div
-                  key={`tool:${item.event_id ?? item.seq ?? idx}`}
-                  className="acp-tool-group-item"
-                >
-                  {groupedCalls.map((call) => {
-                    toolIndex += 1;
-                    return (
-                      <div key={`${call.id}:${call.event_id ?? call.seq ?? toolIndex}`} data-tool-call-id={call.id}>
-                        <ToolCallBubble
-                          msg={call}
-                          ansi={ansi}
-                          runStatus={runStatus}
-                          autoCollapse={autoCollapse}
-                          grouped={true}
-                          indexLabel={`#${toolIndex}`}
-                          onSubmitRequestUserInput={onSubmitRequestUserInput}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </details>
+              })}
+            </div>
+          </details>
+        </div>
       </div>
     );
   },
@@ -1459,16 +1476,20 @@ const ThinkingBubble = React.memo(function ThinkingBubble({
     live,
     summaryPrefix,
   });
-  const entryClassName = grouped ? " acp-tool-group-entry" : "";
+  const entryClassName = grouped ? "" : " acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8";
 
   return (
-    <div className={`${ACP_BUBBLE_THINKING_CLASS}${entryClassName}`}>
-      <details className="acp-thought-fold acp-thinking-fold">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-          {summary}
-        </summary>
-        <ThreadRichText text={text} className="mt-2 text-slate-700" />
-      </details>
+    <div className={entryClassName}>
+      <div className={ACP_BUBBLE_THINKING_CLASS}>
+        <details className="acp-thought-fold acp-thinking-fold">
+          <summary className="cursor-pointer text-sm font-bold text-notion-text opacity-80">
+            {summary}
+          </summary>
+          <div className="acp-text mt-3 text-[14px] leading-relaxed text-notion-text opacity-90">
+            <ThreadRichText text={text} />
+          </div>
+        </details>
+      </div>
     </div>
   );
 });
@@ -1508,12 +1529,12 @@ function normalizeThinkingSummaryLine(line: string): string {
 
 function resolvePlanItemClassName(status: string): string {
   if (status === "completed") {
-    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c7e6c9] bg-[#f4fbf5] px-2 py-1.5";
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-emerald-100 bg-emerald-50/30 px-2 py-1.5";
   }
   if (status === "active") {
-    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#c6ddf6] bg-[#f5f9ff] px-2 py-1.5";
+    return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-notion-accent/20 bg-notion-accent-bg px-2 py-1.5";
   }
-  return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-[#eddab0] bg-white px-2 py-1.5";
+  return "acp-plan-item grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-3 rounded-md border border-notion-border bg-white px-2 py-1.5";
 }
 
 type PlanBubbleProps = {
@@ -1531,59 +1552,61 @@ const PlanBubble = React.memo(
         ? `Plan: ${preview}`
         : "Plan (collapsed)";
     return (
-      <div className={ACP_BUBBLE_PLAN_CLASS}>
-        <details className="acp-thought-fold acp-plan-fold">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">{summary}</summary>
-          <div className="acp-text mt-2 text-sm text-slate-700">
-            {planSummary.total > 0 ? (
-              <div className={ACP_PLAN_CARD_CLASS}>
-                <div className={ACP_PLAN_PROGRESS_CLASS}>
-                  <div className={ACP_PLAN_PROGRESS_META_CLASS}>
-                    <span>{planSummary.completed}/{planSummary.total} completed</span>
-                    <span>{planSummary.active} active</span>
-                    <span>{planSummary.pending} pending</span>
+      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+        <div className={ACP_BUBBLE_PLAN_CLASS}>
+          <details className="acp-thought-fold acp-plan-fold">
+            <summary className="cursor-pointer text-sm font-bold text-notion-text">{summary}</summary>
+            <div className="acp-text mt-3 text-sm text-notion-text">
+              {planSummary.total > 0 ? (
+                <div className={ACP_PLAN_CARD_CLASS}>
+                  <div className={ACP_PLAN_PROGRESS_CLASS}>
+                    <div className={ACP_PLAN_PROGRESS_META_CLASS}>
+                      <span>{planSummary.completed}/{planSummary.total} completed</span>
+                      <span>{planSummary.active} active</span>
+                      <span>{planSummary.pending} pending</span>
+                    </div>
+                    <div className={ACP_PLAN_PROGRESS_BAR_CLASS}>
+                      <span
+                        className={ACP_PLAN_PROGRESS_BAR_FILL_CLASS}
+                        style={{ width: `${planSummary.ratio}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className={ACP_PLAN_PROGRESS_BAR_CLASS}>
-                    <span
-                      className={ACP_PLAN_PROGRESS_BAR_FILL_CLASS}
-                      style={{ width: `${planSummary.ratio}%` }}
-                    />
-                  </div>
+                  <ol className={ACP_PLAN_LIST_CLASS}>
+                    {msg.plan_entries?.map((entry, idx) => {
+                      const status = normalizePlanEntryStatus(entry.status);
+                      return (
+                        <li
+                          key={`${idx}-${entry.content}`}
+                          className={`${resolvePlanItemClassName(status)} ${status}`}
+                        >
+                          <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
+                            {idx + 1}
+                          </span>
+                          <span className={ACP_PLAN_CONTENT_CLASS}>{entry.content}</span>
+                          {entry.priority && (
+                            <span className={ACP_PLAN_PRIORITY_BADGE_CLASS}>
+                              {entry.priority}
+                            </span>
+                          )}
+                          {entry.status && (
+                            <span className={ACP_PLAN_STATUS_BADGE_CLASS}>
+                              {entry.status}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </div>
-                <ol className={ACP_PLAN_LIST_CLASS}>
-                  {msg.plan_entries?.map((entry, idx) => {
-                    const status = normalizePlanEntryStatus(entry.status);
-                    return (
-                      <li
-                        key={`${idx}-${entry.content}`}
-                        className={`${resolvePlanItemClassName(status)} ${status}`}
-                      >
-                        <span className={ACP_PLAN_INDEX_BADGE_CLASS}>
-                          {idx + 1}
-                        </span>
-                        <span className={ACP_PLAN_CONTENT_CLASS}>{entry.content}</span>
-                        {entry.priority && (
-                          <span className={ACP_PLAN_PRIORITY_BADGE_CLASS}>
-                            {entry.priority}
-                          </span>
-                        )}
-                        {entry.status && (
-                          <span className={ACP_PLAN_STATUS_BADGE_CLASS}>
-                            {entry.status}
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-            ) : (
-              <pre className="overflow-auto rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
-                {msg.text}
-              </pre>
-            )}
-          </div>
-        </details>
+              ) : (
+                <pre className="overflow-auto rounded-lg border border-notion-border bg-white p-3 text-[12px] text-notion-text">
+                  {msg.text}
+                </pre>
+              )}
+            </div>
+          </details>
+        </div>
       </div>
     );
   },
@@ -1621,23 +1644,25 @@ function FoldSection({
 
   const shouldRenderBody = !lazyRender || open || typeof window === "undefined";
   return (
-    <details
-      className={ACP_SUBFOLD_CLASS}
-      open={open}
-      onToggle={(event) => {
-        setOpen(event.currentTarget.open);
-      }}
-    >
-      <summary className={ACP_SUBFOLD_SUMMARY_CLASS}>
-        <span>{label}</span>
-        {preview ? (
-          <span className={ACP_SUBFOLD_PREVIEW_CLASS}>
-            {preview}
-          </span>
-        ) : null}
-      </summary>
-      {shouldRenderBody ? <div>{children}</div> : null}
-    </details>
+    <div className={ACP_SUBFOLD_CLASS}>
+      <details
+        open={open}
+        onToggle={(event) => {
+          setOpen(event.currentTarget.open);
+        }}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md bg-notion-sidebar/55 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-notion-text-muted">
+          <i className={`bi ${open ? "bi-chevron-down" : "bi-chevron-right"}`} aria-hidden="true" />
+          <span>{label}</span>
+          {preview && !open ? (
+            <span className="truncate opacity-60 font-normal normal-case ml-1 max-w-[240px]">
+              · {preview}
+            </span>
+          ) : null}
+        </summary>
+        {shouldRenderBody ? <div className="mt-2 border-l border-black/[0.06] pl-3">{children}</div> : null}
+      </details>
+    </div>
   );
 }
 
@@ -1947,7 +1972,9 @@ function isHiddenPayloadKey(key: string): boolean {
 }
 
 function isPayloadValueEffectivelyEmpty(value: unknown): boolean {
-  if (value == null) return true;
+  if (value == null) {
+    return true;
+  }
   if (typeof value === "string") {
     return unescapeLineBreaks(value).trim().length === 0;
   }
@@ -2030,7 +2057,7 @@ function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
             key={detail.key}
           >
             <dt>{detail.key}</dt>
-            <dd className="text-sm text-slate-700">
+            <dd className="text-sm text-notion-text font-medium opacity-90">
               <code>{detail.value}</code>
             </dd>
           </div>
@@ -2132,7 +2159,7 @@ function PayloadObjectView({
         {visibleEntries.map(([key, item]) => (
           <div className={ACP_PAYLOAD_ROW_CLASS} key={key}>
             <dt>{key}</dt>
-            <dd className="text-sm text-slate-700">
+            <dd className="text-sm text-notion-text font-medium opacity-90">
               {renderPayloadFieldValue(key, item, depth + 1)}
             </dd>
           </div>
@@ -2187,8 +2214,9 @@ function renderNestedPayloadValue(value: unknown, depth: number): React.ReactNod
   if (isStructured) {
     return (
       <details className={ACP_PAYLOAD_NESTED_CLASS}>
-        <summary className={`${ACP_PAYLOAD_NESTED_SUMMARY_CLASS} px-2 py-1.5`}>
-          {summarizePayloadValue(value)}
+        <summary className={`${ACP_PAYLOAD_NESTED_SUMMARY_CLASS} px-2 py-1.5 list-none flex items-center gap-2 cursor-pointer`}>
+          <i className="bi bi-chevron-right text-[10px]" />
+          <span>{summarizePayloadValue(value)}</span>
         </summary>
         <div className={ACP_PAYLOAD_NESTED_BODY_CLASS}>
           {renderPayloadValue(value, depth)}

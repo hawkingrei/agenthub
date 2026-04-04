@@ -14,7 +14,6 @@ import {
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
@@ -28,6 +27,9 @@ import {
   MAILBOX_CHAT_JUMP_BUTTON_CLASS,
   MAILBOX_MESSAGE_LIST_CLASS,
   MAILBOX_MESSAGE_ITEM_CLASS,
+  MAILBOX_MESSAGE_BUBBLE_CLASS,
+  MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS,
+  MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS,
   MAILBOX_CONVERSATION_EMPTY_CLASS,
   MAILBOX_MESSAGE_HEAD_CLASS,
   MAILBOX_ADVANCED_GRID_CLASS,
@@ -152,7 +154,6 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     unreadByMemberId,
     onSelectMember,
     chatActors,
-    chatStickToBottom,
     chatMessagesRef,
     onConversationScroll,
     onJumpToBottom,
@@ -485,36 +486,35 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 const isOutgoing = message.from_actor_id === chatActors.fromActorId;
                 const chatText = resolveVisibleTeamPayloadText(message.payload);
                 const payload = chatText ?? toPrettyJson(message.payload);
+                const fromLabel = resolveMailboxActorLabel(
+                  message.from_actor_id,
+                  displayNameByActorId,
+                  normalizedHumanActorId
+                );
+                const toLabel = resolveMailboxActorLabel(
+                  message.to_actor_id,
+                  displayNameByActorId,
+                  normalizedHumanActorId
+                );
+
                 return (
                   <li
                     key={message.message_id}
-                    className={MAILBOX_MESSAGE_ITEM_CLASS}
+                    className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${isOutgoing ? "items-end" : "items-start"}`}
                   >
-                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm mt-1 ${isOutgoing ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
-                      {isOutgoing ? "O" : "I"}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className={MAILBOX_MESSAGE_HEAD_CLASS}>
-                        <span className="text-notion-text font-bold">
-                          {resolveMailboxActorLabel(
-                            message.from_actor_id,
-                            displayNameByActorId,
-                            normalizedHumanActorId
-                          )}
+                    <div className={`${MAILBOX_MESSAGE_BUBBLE_CLASS} ${isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}`}>
+                      <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
+                        <span className="font-bold">
+                          {fromLabel}
                         </span>
-                        <span>{" → "}</span>
-                        <span className="text-notion-text font-bold">
-                          {resolveMailboxActorLabel(
-                            message.to_actor_id,
-                            displayNameByActorId,
-                            normalizedHumanActorId
-                          )}
+                        <span className="opacity-60">{" → "}</span>
+                        <span className="font-bold">
+                          {toLabel}
                         </span>
-                        <span>{" · "}</span>
-                        <span>{formatTs(message.created_at)}</span>
-                        <span className="ml-auto mono opacity-60">#{message.message_id}</span>
+                        <span className="opacity-40">{" · "}</span>
+                        <span className="opacity-60">{formatTs(message.created_at)}</span>
                       </div>
-                      <div className="text-[14px] leading-relaxed text-notion-text mt-1">
+                      <div className="text-[14px] leading-relaxed mt-1">
                         {chatText !== null ? (
                           <div
                             dangerouslySetInnerHTML={{
@@ -522,7 +522,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                             }}
                           />
                         ) : (
-                          <pre className="mono whitespace-pre-wrap text-[12px] bg-notion-sidebar/30 p-2 rounded border border-notion-border/50">{payload}</pre>
+                          <pre className="mono whitespace-pre-wrap text-[12px] bg-white/40 p-2 rounded border border-black/5">{payload}</pre>
                         )}
                       </div>
                       {isMessageAcceptableForInbox(
@@ -530,7 +530,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                         chatActors.inboxActorId,
                         normalizedHumanActorId
                       ) && (
-                        <div className="mt-3">
+                        <div className={`mt-3 flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
                           <button
                             onClick={() => {
                               void onAcceptMessage(message);

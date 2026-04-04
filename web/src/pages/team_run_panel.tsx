@@ -76,7 +76,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     isActiveRunHiddenByFilter,
     activeRun,
     totalLoadedRunsForTeam,
-    pageLimit,
     runsHasMore,
     selectedTeamId,
     onLoadMoreRuns,

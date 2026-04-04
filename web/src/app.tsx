@@ -113,6 +113,11 @@ import {
   AUTH_INPUT_CLASS,
   AUTH_PRIMARY_BUTTON_CLASS,
   AUTH_SECONDARY_BUTTON_CLASS,
+  APP_WORKBENCH_HEADER_CLASS,
+  APP_WORKBENCH_HEADER_STATUS_CLASS,
+  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
+  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
   loadDeveloperModePreference,
@@ -135,16 +140,6 @@ const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
-const APP_WORKBENCH_HEADER_CLASS =
-  "flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 sm:gap-3 sm:px-6 sm:py-4 border-b border-notion-border";
-const APP_WORKBENCH_HEADER_STATUS_CLASS =
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted shadow-sm transition hover:bg-notion-hover";
-const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text lg:hidden";
-const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
-const ROUTE_FALLBACK_SHELL_CLASS =
-  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-xl bg-notion-sidebar px-6 py-10 text-sm font-medium text-notion-text-muted";
 
 const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
 
@@ -297,25 +292,12 @@ type RuntimeViewportSize = {
   width: number;
 };
 
-type PermissionJumpDecision = "idle" | "wait" | "clear" | "attempt";
-
-type RuntimeEventHandler = () => void;
-
-type RuntimeEventTargetLike = {
-  addEventListener: (type: string, listener: RuntimeEventHandler) => void;
-  removeEventListener: (type: string, listener: RuntimeEventHandler) => void;
-};
-
-type RuntimeVisualViewportLike = RuntimeEventTargetLike & {
-  height?: number;
-  width?: number;
-  offsetTop?: number;
-};
-
-type RuntimeWindowLike = RuntimeEventTargetLike & {
+type RuntimeWindowLike = {
   innerHeight: number;
   innerWidth: number;
-  visualViewport?: RuntimeVisualViewportLike | null;
+  visualViewport?: VisualViewport | null;
+  addEventListener: (type: string, listener: () => void) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
   requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
   cancelAnimationFrame?: (id: number) => void;
 };
@@ -1693,8 +1675,6 @@ export function App() {
     api
       .getRuntimeDefaults(token)
       .then((defaults) => {
-        // Backend guarantees a non-empty default root; keep a defensive fallback
-        // in case of malformed responses.
         const root = normalizeRuntimeWorktreeRoot(
           defaults.default_worktree_root,
           DEFAULT_WORKTREE_ROOT
@@ -2638,21 +2618,21 @@ export function App() {
     }
   }, [token, activeAgent]);
 
-  const onAcpSetConfig = useCallback(async () => {
+  const onAcpSetConfig = useCallback(async (configId: string, configValue: string) => {
     if (!token || !activeAgent) return;
-    const configId = acpConfigId.trim();
-    const configValue = acpConfigValue.trim();
-    if (!configId || !configValue) {
+    const trimmedId = configId.trim();
+    const trimmedValue = configValue.trim();
+    if (!trimmedId || !trimmedValue) {
       setError("config id and value are required");
       return;
     }
     setError(null);
     try {
-      await api.setAcpConfig(token, activeAgent, configId, configValue);
+      await api.setAcpConfig(token, activeAgent, trimmedId, trimmedValue);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  }, [token, activeAgent, acpConfigId, acpConfigValue]);
+  }, [token, activeAgent]);
 
   const onAcpCancel = useCallback(async () => {
     if (!token || !activeAgent) return;
@@ -3279,9 +3259,11 @@ export function App() {
 
   if (routeLocation.pathname.startsWith("/join")) {
     return (
-      <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
-        <LazyJoinPage onComplete={(next) => setAuth(next)} />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
+          <LazyJoinPage onComplete={(next) => setAuth(next)} />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3293,35 +3275,37 @@ export function App() {
       return <ForbiddenPage />;
     }
     return (
-      <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
-        <LazyAdminPage
-          auth={auth}
-          error={normalizedError}
-          setError={setError}
-          safePaths={safePaths}
-          selectedSafePaths={selectedSafePaths}
-          onToggleSafePath={onToggleSafePath}
-          onToggleAllSafePaths={onToggleAllSafePaths}
-          onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-          devices={devices}
-          audits={audits}
-          vapidInfo={vapidInfo}
-          onRotateVapid={onRotateVapid}
-          onAddSafePath={onAddSafePath}
-          onDeleteSafePath={onDeleteSafePath}
-          onRevokeDevice={onRevokeDevice}
-          onCreateJoin={onCreateJoin}
-          joinQr={joinQr}
-          joinToken={joinToken}
-          joinPin={joinPin}
-          safePathInput={safePathInput}
-          setSafePathInput={setSafePathInput}
-          developerMode={developerMode}
-          onDeveloperModeChange={handleDeveloperModeChange}
-          passkeyEnabled={passkeyEnabled}
-          onPasskeyEnabledChange={onPasskeyEnabledChange}
-        />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
+          <LazyAdminPage
+            auth={auth}
+            error={normalizedError}
+            setError={setError}
+            safePaths={safePaths}
+            selectedSafePaths={selectedSafePaths}
+            onToggleSafePath={onToggleSafePath}
+            onToggleAllSafePaths={onToggleAllSafePaths}
+            onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+            devices={devices}
+            audits={audits}
+            vapidInfo={vapidInfo}
+            onRotateVapid={onRotateVapid}
+            onAddSafePath={onAddSafePath}
+            onDeleteSafePath={onDeleteSafePath}
+            onRevokeDevice={onRevokeDevice}
+            onCreateJoin={onCreateJoin}
+            joinQr={joinQr}
+            joinToken={joinToken}
+            joinPin={joinPin}
+            safePathInput={safePathInput}
+            setSafePathInput={setSafePathInput}
+            developerMode={developerMode}
+            onDeveloperModeChange={handleDeveloperModeChange}
+            passkeyEnabled={passkeyEnabled}
+            onPasskeyEnabledChange={onPasskeyEnabledChange}
+          />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3331,15 +3315,17 @@ export function App() {
     }
     const teamRoute = resolveTeamRoute(routeLocation.pathname);
     return (
-      <Suspense fallback={<RouteFallback label="Loading teams..." />}>
-        <LazyTeamPage
-          auth={auth}
-          token={token}
-          onLogout={onLogout}
-          developerMode={developerMode}
-          routeTeamId={teamRoute?.teamId ?? null}
-        />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading teams..." />}>
+          <LazyTeamPage
+            auth={auth}
+            token={token}
+            onLogout={onLogout}
+            developerMode={developerMode}
+            routeTeamId={teamRoute?.teamId ?? null}
+          />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3362,7 +3348,7 @@ export function App() {
           </p>
         </div>
         {auth && (
-          <div className="session">
+          <div className="session flex items-center gap-2 sm:gap-3">
             <button
               className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
               onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
@@ -3462,7 +3448,7 @@ export function App() {
       )}
 
       {auth && (
-        <section
+        <main
           className={agentsCollapsed ? "workspace collapsed" : "workspace"}
           ref={workspaceRef}
           style={workspaceStyle}
@@ -3484,15 +3470,17 @@ export function App() {
             onStopAgent={onStopAgent}
             onDeleteAgent={onDeleteAgent}
           />
-          <div
-            className="workspace-splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize agents sidebar"
-            onPointerDown={handleAgentsSplitterPointerDown}
-          />
+          {!agentsCollapsed && (
+            <div
+              className="workspace-splitter"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize agents sidebar"
+              onPointerDown={handleAgentsSplitterPointerDown}
+            />
+          )}
           <div className="workspace-right">
-            <div className={acpView.hasAcp ? "max-[720px]:hidden" : ""}>
+            <div className={acpView.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"}>
               <OutputHeader
                 activeAgent={activeAgentRecord}
                 activeSessionId={activeSessionId}
@@ -3503,37 +3491,39 @@ export function App() {
                 modelLabel={activeAgentModelLabel}
               />
             </div>
-            {activeAgent ? (
-              <OutputErrorBoundary>
-                <OutputBody
-                  terminalRef={terminalRef}
-                  onTerminalScroll={handleTerminalScroll}
-                  isOutputLoading={isOutputLoading}
-                  isConversationLoading={isConversationLoading}
-                  outputs={outputs}
-                  ansi={ansi}
-                  acpPanelProps={acpPanelProps}
+            <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
+              {activeAgent ? (
+                <OutputErrorBoundary>
+                  <OutputBody
+                    terminalRef={terminalRef}
+                    onTerminalScroll={handleTerminalScroll}
+                    isOutputLoading={isOutputLoading}
+                    isConversationLoading={isConversationLoading}
+                    outputs={outputs}
+                    ansi={ansi}
+                    acpPanelProps={acpPanelProps}
+                  />
+                </OutputErrorBoundary>
+              ) : null}
+              {showInputDock && (
+                <InputDock
+                  input={input}
+                  historyCommands={inputHistory}
+                  showInterrupt={acpView.hasAcp}
+                  canInterrupt={canInterruptAcpRun}
+                  onInputChange={onInputChange}
+                  onSendInput={onSendInput}
+                  onInterrupt={onAcpCancel}
+                  onNavigateHistory={onNavigateInputHistory}
+                  onSelectHistoryCommand={onSelectInputHistory}
+                  onJumpToBottom={inputDockJumpMode.onJumpToBottom}
+                  showConversationJump={inputDockJumpMode.showConversationJump}
+                  isComposingRef={isComposingRef}
                 />
-              </OutputErrorBoundary>
-            ) : null}
-            {showInputDock && (
-              <InputDock
-                input={input}
-                historyCommands={inputHistory}
-                showInterrupt={acpView.hasAcp}
-                canInterrupt={canInterruptAcpRun}
-                onInputChange={onInputChange}
-                onSendInput={onSendInput}
-                onInterrupt={onAcpCancel}
-                onNavigateHistory={onNavigateInputHistory}
-                onSelectHistoryCommand={onSelectInputHistory}
-                onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                showConversationJump={inputDockJumpMode.showConversationJump}
-                isComposingRef={isComposingRef}
-              />
-            )}
+              )}
+            </div>
           </div>
-        </section>
+        </main>
       )}
 
       {auth && showCreateAgent && (
@@ -3839,7 +3829,7 @@ export function resolveLiveSessionSwitch(
 export function dispatchLiveOutputBatch(params: {
   cursorRef: CursorRef;
   lines: OutputLine[];
-  activeAgent: string | null;
+  activeAgent: string | null,
   activeSessionId: string | null;
   onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
   onOutputGroup: (key: string, grouped: OutputLine[]) => void;

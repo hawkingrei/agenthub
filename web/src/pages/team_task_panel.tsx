@@ -33,8 +33,14 @@ import {
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS,
   TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_LIST_CLASS,
@@ -263,6 +269,28 @@ function resolveActivityItemClassName(
   return isHumanMailboxActor(actorId, humanActorId)
     ? TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
+}
+
+function resolveActivityContentClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return `${TEAM_TASK_ACTIVITY_CONTENT_CLASS} ${
+    isHumanMailboxActor(actorId, humanActorId)
+      ? TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS
+      : TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS
+  }`;
+}
+
+function resolveActivityBubbleClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} ${
+    isHumanMailboxActor(actorId, humanActorId)
+      ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
+      : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS
+  }`;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -1075,7 +1103,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm mt-0.5 ${!isHumanAuthor ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
                   {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
                   <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                     <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
                       <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
@@ -1083,21 +1111,33 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                     </div>
                   </div>
                   {permissionCardPayload ? (
-                    <PermissionReviewCard
-                      payload={permissionCardPayload}
-                      permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
-                      busy={permissionBusyId === permissionCardPayload.permission_id}
-                      errorText={permissionErrorById[permissionCardPayload.permission_id]}
-                      onRespond={onRespondPermission}
-                    />
+                    <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
+                      <PermissionReviewCard
+                        payload={permissionCardPayload}
+                        permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
+                        busy={permissionBusyId === permissionCardPayload.permission_id}
+                        errorText={permissionErrorById[permissionCardPayload.permission_id]}
+                        onRespond={onRespondPermission}
+                      />
+                    </div>
                   ) : isCompactCommandLikeText(item.text) ? (
-                    <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
+                    <div
+                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                    >
+                      <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
+                    </div>
                   ) : (
-                    <ThreadRichText
-                      className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                      text={item.text}
-                      renderHtml={renderTeamMessageHtml}
-                    />
+                    <div
+                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                    >
+                      <ThreadRichText
+                        className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+                        text={item.text}
+                        renderHtml={renderTeamMessageHtml}
+                      />
+                    </div>
                   )}
                   {shouldShowSeenMeta && (
                     <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>

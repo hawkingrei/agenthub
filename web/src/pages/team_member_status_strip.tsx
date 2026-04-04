@@ -172,8 +172,6 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
           {members.map((member) => {
             const lifecycle = normalizeTeamMemberLifecycle(member);
             const workStatus = normalizeTeamMemberWorkStatus(member);
-            const pendingInbox =
-              member.pending_inbox_count == null ? "-" : String(member.pending_inbox_count);
             return (
               <div
                 key={member.member_id}
