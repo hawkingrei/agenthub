@@ -1,18 +1,13 @@
 import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { ActionButton, PanelHeader, StatusPill, SurfaceCard } from "../ui/primitives";
 import {
-  TEAM_PANEL_CARD_CLASS,
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
   TEAM_SECTION_TITLE_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -80,29 +75,28 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
   } = props;
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4 sm:p-6`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <div className={TEAM_SECTION_TITLE_CLASS}>
-          {selectedTeam.name}
-        </div>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <span className="mono rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] font-bold text-notion-text-muted shadow-sm">
-            {selectedTeam.id}
-          </span>
+    <SurfaceCard className="p-4 sm:p-6">
+      <PanelHeader
+        title={<div className={TEAM_SECTION_TITLE_CLASS}>{selectedTeam.name}</div>}
+        actions={
+          <>
+            <StatusPill className="mono">{selectedTeam.id}</StatusPill>
           {developerMode && (
-            <button
+            <ActionButton
+              tone="danger"
+              size="sm"
               type="button"
               onClick={() => {
                 void onDeleteTeam();
               }}
               disabled={busy === "delete-team"}
-              className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 bg-red-50 px-3 text-[12px] font-bold text-red-600 transition hover:bg-red-100 active:translate-y-px disabled:opacity-50"
             >
               Delete Team
-            </button>
+            </ActionButton>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className={RUN_PANEL_LIST_CLASS}>
         <div className="flex flex-col gap-1">
@@ -116,17 +110,18 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>
             {runBlockedReason ?? "Start a new run for this team."}
           </span>
-          <button
+          <ActionButton
+            tone="primary"
+            size="md"
             onClick={() => {
               void onStartRun();
             }}
             disabled={busy === "create-run" || !selectedTeamId || !canStartRun}
-            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
             title={runBlockedReason ?? "Start a new run"}
             aria-label="Start run"
           >
             {busy === "create-run" ? "Starting..." : "Start Run"}
-          </button>
+          </ActionButton>
         </div>
 
         <div className="teams-run-list-head mt-2 flex flex-wrap items-center justify-between gap-3">
@@ -141,17 +136,18 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               size="xs"
               radius="sm"
             />
-            <button
+            <ActionButton
+              tone="secondary"
+              size="md"
               onClick={() => {
                 void onRefreshRuns();
               }}
               disabled={runsLoading}
-              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
               title="Refresh runs"
               aria-label="Refresh runs"
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            </button>
+            </ActionButton>
           </div>
         </div>
 
@@ -198,17 +194,18 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           <span className={RUN_PANEL_FOOT_META_CLASS}>
             {visibleRuns.length} of {totalLoadedRunsForTeam}
           </span>
-          <button
+          <ActionButton
+            tone="secondary"
+            size="md"
             onClick={() => {
               void onLoadMoreRuns();
             }}
             disabled={runsLoading || !runsHasMore || !selectedTeamId}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             {runsLoading ? "..." : "Load More"}
-          </button>
+          </ActionButton>
         </div>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

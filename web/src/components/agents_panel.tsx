@@ -3,6 +3,7 @@ import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
 import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
+import { ActionButton, IconButton, StatusPill, cx } from "../ui/primitives";
 import {
   AGENTS_PANEL_BACKDROP_CLASS,
   AGENTS_PANEL_BODY_CLASS,
@@ -15,16 +16,12 @@ import {
   AGENTS_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
-const AGENTS_WORKBENCH_ICON_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-notion-border bg-white text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px sm:h-9 sm:w-9";
-const AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-notion-accent/30 bg-notion-accent-bg text-notion-accent shadow-sm transition hover:bg-notion-accent/10 active:translate-y-px sm:h-9 sm:w-9";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
+  "text-[13px] sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md bg-notion-accent-bg text-[13px] text-notion-accent transition hover:bg-notion-accent/10 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
+  "text-[13px] sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] text-notion-text-muted transition hover:bg-red-50 hover:text-red-600 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
+  "text-[13px] sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_HEAD_CLASS =
   "agents-workbench-row-head flex min-w-0 items-start justify-between gap-2";
 const AGENTS_WORKBENCH_ROW_TITLE_CLASS =
@@ -35,8 +32,6 @@ const AGENTS_WORKBENCH_ROW_BADGES_CLASS =
   "agents-workbench-row-badges mt-1 flex min-w-0 flex-wrap items-center gap-1.5";
 const AGENTS_WORKBENCH_PERMISSION_DOT_CLASS =
   "agents-workbench-permission-dot inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
-const AGENTS_WORKBENCH_TAG_CLASS =
-  "agents-workbench-tag inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
 const AGENTS_WORKBENCH_ROW_ACTIONS_CLASS =
   "agents-workbench-row-actions inline-flex shrink-0 items-center gap-1";
 const AGENTS_WORKBENCH_ROW_META_CLASS =
@@ -107,14 +102,15 @@ export const AgentsPanel = React.memo(function AgentsPanel({
       >
         {agentsCollapsed ? (
           <div className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
-            <button
-              className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
+            <IconButton
+              size="md"
+              tone="default"
               onClick={onExpand}
               title="Show agents"
               aria-label="Show agents"
             >
               <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
-            </button>
+            </IconButton>
             <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
               <span className="value">{agents.length}</span>
               <span className="label">Agents</span>
@@ -131,31 +127,39 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               <span className="value">{runningCount}</span>
               <span className="label">Running</span>
             </div>
-            <button
-              className={AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS}
+            <IconButton
+              size="md"
+              tone="active"
               onClick={onCreateAgent}
               title="Create agent"
               aria-label="Create agent"
             >
               <i className="bi bi-plus-lg" aria-hidden="true" />
-            </button>
+            </IconButton>
           </div>
         ) : (
           <>
             <div className={AGENTS_TOOLBAR_CLASS}>
               <h2 className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</h2>
               <div className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
-                <button
-                  className={`hidden lg:inline-flex ${AGENTS_WORKBENCH_ICON_BUTTON_CLASS}`}
+                <IconButton
+                  size="md"
+                  tone="default"
+                  className="hidden lg:inline-flex"
                   onClick={onCollapse}
                   title="Hide agents"
                   aria-label="Hide agents"
                 >
                   <i className="bi bi-chevron-left" aria-hidden="true" />
-                </button>
-                <button className={AGENTS_CREATE_BUTTON_CLASS} onClick={onCreateAgent}>
+                </IconButton>
+                <ActionButton
+                  tone="secondary"
+                  size="sm"
+                  className={AGENTS_CREATE_BUTTON_CLASS}
+                  onClick={onCreateAgent}
+                >
                   Create Agent
-                </button>
+                </ActionButton>
               </div>
             </div>
             <div className={AGENTS_PANEL_BODY_CLASS}>
@@ -219,7 +223,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           ) : null}
                         </div>
                         <div className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
-                          <button
+                          <IconButton
+                            size="sm"
+                            tone={agent.code_mode ? "active" : "subtle"}
                             className={
                               agent.code_mode
                                 ? AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS
@@ -242,8 +248,10 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             aria-pressed={agent.code_mode}
                           >
                             <i className="bi bi-code-slash" aria-hidden="true" />
-                          </button>
-                          <button
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            tone="subtle"
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                             disabled={isActive || isStarting}
                             onClick={(e) => {
@@ -254,14 +262,16 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             }}
                             title={startButtonTitle}
                             aria-label={startButtonAriaLabel}
-                          >
-                            <i
-                              className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}
-                              aria-hidden="true"
-                            />
-                          </button>
+                            >
+                              <i
+                                className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}
+                                aria-hidden="true"
+                              />
+                          </IconButton>
                           {isAgentActiveStatus(agent.status) && (
-                            <button
+                            <IconButton
+                              size="sm"
+                              tone="subtle"
                               className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -271,9 +281,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                               aria-label="Stop"
                             >
                               <i className="bi bi-stop-fill" aria-hidden="true" />
-                            </button>
+                            </IconButton>
                           )}
-                          <button
+                          <IconButton
+                            size="sm"
+                            tone="danger"
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -283,22 +295,25 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             aria-label="Delete"
                           >
                             <i className="bi bi-trash" aria-hidden="true" />
-                          </button>
+                          </IconButton>
                         </div>
                       </div>
                       <div className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
                         {modelLabel ? (
-                          <span className={AGENTS_WORKBENCH_TAG_CLASS}>{modelLabel}</span>
+                          <StatusPill className="agents-workbench-tag">{modelLabel}</StatusPill>
                         ) : null}
                         {isRemoteTarget ? (
-                          <span className={AGENTS_WORKBENCH_TAG_CLASS}>
+                          <StatusPill className="agents-workbench-tag">
                             node:{agent.target_node_id}
-                          </span>
+                          </StatusPill>
                         ) : null}
                         <StatusBadge
                           label={agent.status}
                           tone={resolveAgentStatusTone(agent.status)}
-                          className={`agents-workbench-status status-${agent.status} px-2 py-0.5 text-[10px]`}
+                          className={cx(
+                            `agents-workbench-status status-${agent.status}`,
+                            "px-2 py-0.5 text-[10px]"
+                          )}
                           title={`status: ${agent.status}`}
                         />
                       </div>

@@ -1,16 +1,12 @@
 import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { ActionButton, PanelHeader, StatusPill, SurfaceCard } from "../ui/primitives";
 import { resolveDisplayName } from "./team/mailbox_helpers";
 import {
-  TEAM_PANEL_CARD_CLASS,
   TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
   OVERVIEW_META_CLASS,
   OVERVIEW_PLAYBOOK_CLASS,
   OVERVIEW_PLAYBOOK_GRID_CLASS,
@@ -46,24 +42,25 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
     }`;
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Team Snapshot</h3>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <button
+    <SurfaceCard className="p-4">
+      <PanelHeader
+        title="Team Snapshot"
+        actions={
+          <ActionButton
+            tone="secondary"
+            size="md"
             onClick={() => {
               void onRefreshSnapshot();
             }}
             disabled={snapshotLoading}
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
             title="Refresh snapshot"
             aria-label="Refresh snapshot"
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
-          </button>
-        </div>
-      </div>
+          </ActionButton>
+        }
+      />
 
       <div className={OVERVIEW_PLAYBOOK_CLASS}>
         <h4 className="text-[15px] font-bold text-notion-text uppercase tracking-tight">Cold Start Playbook</h4>
@@ -99,7 +96,9 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
           <div className={`teams-overview-meta ${OVERVIEW_META_CLASS}`}>
             <span>
               <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Leader</strong>
-              <code className="mono font-bold text-notion-accent">{snapshot.leader_member_id ?? "-"}</code>
+              <StatusPill className="mono border-notion-accent/20 text-notion-accent">
+                {snapshot.leader_member_id ?? "-"}
+              </StatusPill>
             </span>
             <span>
               <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Members</strong>
@@ -152,6 +151,6 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
           </div>
         </>
       )}
-    </div>
+    </SurfaceCard>
   );
 }
