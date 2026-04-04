@@ -439,7 +439,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
-    await flushReactWork();
+    await waitForCondition(() => document.body.textContent?.includes("Create Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Create Team"));
     const filterInput = required(
       container.querySelector("input[aria-label='Search teams']"),
@@ -450,7 +450,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Team Two");
     clickElement(findButtonByAriaLabel(container, "Clear filter"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
-    await flushReactWork();
+    await waitForCondition(
+      () => document.body.textContent?.includes("Show Team Details") ?? false
+    );
     clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");

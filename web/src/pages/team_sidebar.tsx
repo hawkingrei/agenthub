@@ -378,7 +378,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               <Menu
                 position="bottom-end"
                 {...NOTION_FLOATING_MENU_PROPS}
-                defaultOpened={import.meta.env.MODE === "test"}
               >
                 <Menu.Target>
                   <button

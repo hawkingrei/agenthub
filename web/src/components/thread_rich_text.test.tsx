@@ -66,7 +66,7 @@ describe("thread_rich_text", () => {
     expect(stats.markdownHits).toBe(0);
   });
 
-  it("rerenders mounted rich text with markdown after assets finish loading", async () => {
+  it("renders mounted rich text with markdown on first render", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root: Root = createRoot(container);
@@ -83,11 +83,6 @@ describe("thread_rich_text", () => {
             ].join("\n")}
           />
         );
-      });
-
-      await act(async () => {
-        await preloadThreadMarkdownAssets();
-        await Promise.resolve();
       });
 
       expect(container.innerHTML).toContain("<p>Markdown ready:</p>");
