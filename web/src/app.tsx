@@ -2633,10 +2633,10 @@ export function App() {
     }
   }, [token, activeAgent]);
 
-  const onAcpSetConfig = useCallback(async (configId: string, configValue: string) => {
+  const onAcpSetConfig = useCallback(async () => {
     if (!token || !activeAgent) return;
-    const trimmedId = configId.trim();
-    const trimmedValue = configValue.trim();
+    const trimmedId = acpConfigId.trim();
+    const trimmedValue = acpConfigValue.trim();
     if (!trimmedId || !trimmedValue) {
       setError("config id and value are required");
       return;
@@ -2647,7 +2647,7 @@ export function App() {
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
-  }, [token, activeAgent]);
+  }, [token, activeAgent, acpConfigId, acpConfigValue]);
 
   const onAcpCancel = useCallback(async () => {
     if (!token || !activeAgent) return;

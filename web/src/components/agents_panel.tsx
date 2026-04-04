@@ -28,9 +28,11 @@ const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
 const AGENTS_WORKBENCH_ROW_HEAD_CLASS =
   "agents-workbench-row-head flex min-w-0 items-start justify-between gap-2";
 const AGENTS_WORKBENCH_ROW_TITLE_CLASS =
-  "agents-workbench-row-title flex min-w-0 flex-1 flex-wrap items-center gap-1.5";
+  "agents-workbench-row-title flex min-w-0 flex-1 items-start gap-1.5";
 const AGENTS_WORKBENCH_NAME_CLASS =
   "agents-workbench-name min-w-0 flex-1 truncate text-[14px] font-bold tracking-tight text-notion-text";
+const AGENTS_WORKBENCH_ROW_BADGES_CLASS =
+  "agents-workbench-row-badges mt-1 flex min-w-0 flex-wrap items-center gap-1.5";
 const AGENTS_WORKBENCH_PERMISSION_DOT_CLASS =
   "agents-workbench-permission-dot inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_TAG_CLASS =
@@ -215,16 +217,6 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                               title={pendingPermissionLabel}
                             />
                           ) : null}
-                          {modelLabel ? (
-                            <span className={`${AGENTS_WORKBENCH_TAG_CLASS} hidden sm:inline-flex`}>
-                              {modelLabel}
-                            </span>
-                          ) : null}
-                          {isRemoteTarget ? (
-                            <span className={`${AGENTS_WORKBENCH_TAG_CLASS} hidden sm:inline-flex`}>
-                              node:{agent.target_node_id}
-                            </span>
-                          ) : null}
                         </div>
                         <div className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
                           <button
@@ -299,6 +291,22 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             <i className="bi bi-trash" aria-hidden="true" />
                           </button>
                         </div>
+                      </div>
+                      <div className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
+                        {modelLabel ? (
+                          <span className={AGENTS_WORKBENCH_TAG_CLASS}>{modelLabel}</span>
+                        ) : null}
+                        {isRemoteTarget ? (
+                          <span className={AGENTS_WORKBENCH_TAG_CLASS}>
+                            node:{agent.target_node_id}
+                          </span>
+                        ) : null}
+                        <StatusBadge
+                          label={agent.status}
+                          tone={resolveAgentStatusTone(agent.status)}
+                          className={`agents-workbench-status status-${agent.status} px-2 py-0.5 text-[10px]`}
+                          title={`status: ${agent.status}`}
+                        />
                       </div>
                       <div className={AGENTS_WORKBENCH_ROW_META_CLASS}>
                         <span className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</span>

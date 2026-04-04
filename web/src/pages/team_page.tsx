@@ -155,7 +155,6 @@ import {
   MAILBOX_TEMPLATE_OPTIONS,
   TEAM_TAB_ITEMS,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
-  TEAM_RUN_PAGE_LIMIT,
   tabRequiresActiveRun,
   createInitialTeamCreateState,
   reduceTeamControlState,
@@ -4108,7 +4107,6 @@ export function TeamPage(props: TeamPageProps) {
                   isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
                   activeRun={activeRunForSelectedTeam}
                   totalLoadedRunsForTeam={totalLoadedRunsForTeam}
-                  pageLimit={TEAM_RUN_PAGE_LIMIT}
                   runsHasMore={runsHasMore}
                   selectedTeamId={selectedTeamId}
                   onLoadMoreRuns={onLoadMoreRuns}

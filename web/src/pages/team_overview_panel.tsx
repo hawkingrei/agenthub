@@ -142,8 +142,8 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                     title={`member status: ${member.status}`}
                   />
                 </div>
-                <span className={TEAM_LIST_ITEM_META_CLASS}>
-                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} id=${member.member_id}`}
+                <span className={`${TEAM_LIST_ITEM_META_CLASS} break-words whitespace-normal`}>
+                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                 </span>
               </button>
             ))}

@@ -1,4 +1,3 @@
-import React from "react";
 import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
@@ -50,7 +49,6 @@ type TeamRunPanelProps = {
   isActiveRunHiddenByFilter: boolean;
   activeRun: TeamRunRecord | null;
   totalLoadedRunsForTeam: number;
-  pageLimit: number;
   runsHasMore: boolean;
   selectedTeamId: string | null;
   onLoadMoreRuns: () => Promise<void> | void;

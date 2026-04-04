@@ -100,6 +100,7 @@ describe("AgentsPanel", () => {
     expect(html).toContain("Beta");
     expect(html).toContain("agents-workbench-row");
     expect(html).toContain("agents-workbench-name");
+    expect(html).toContain("agents-workbench-row-badges");
     expect(html).toContain("running");
   });
 
@@ -175,6 +176,7 @@ describe("AgentsPanel", () => {
       />
     );
     expect(html).toContain("node:node-east");
+    expect(html).toContain("agents-workbench-row-badges");
     expect(html).toContain("Start on node node-east");
     expect(html).toContain('aria-label="Start agent on node node-east"');
   });

@@ -55,3 +55,35 @@
 
 - Chrome DevTools MCP transport was unavailable during this pass (`Transport closed`), so no browser-tree regression snapshot could be captured from MCP for these edits.
 - Local Playwright still cannot be used as a final oracle on this machine because Chromium headless launch aborts with the existing macOS Mach-port permission failure (`bootstrap_check_in ... Permission denied (1100)`), so E2E-facing fixes were verified by code-path review plus the updated unit/build checks rather than a successful local browser run.
+
+## 2026-04-04 review and CI cleanup
+
+- Reverted `web/src/app.tsx` ACP config submission back to a zero-argument callback so `AcpDebug` no longer risks calling `.trim()` on `undefined` through the existing click-handler contract.
+- Removed stale Team UI review leftovers:
+  - dropped the unused `React` import from `web/src/pages/team_run_panel.tsx`
+  - removed the unused `pageLimit` prop from `TeamRunPanel`
+  - removed redundant local Tailwind aliases from `web/src/pages/team_tasks_panel.tsx`
+  - deleted the unused `web/src/ui/floating_surfaces.ts` helper module
+- Tightened the Team overview member meta row so long IDs no longer force `.teams-member-list` to overflow on desktop; the row now keeps only compact `model=` and `pending=` metadata with wrapping enabled.
+- Updated `tests/web_assets.rs` to validate the current system-font global CSS contract instead of the removed Google Fonts import.
+- Aligned `web/tests/e2e/input_dock_layout.e2e.ts` with the current dock behavior by treating the bottom gutter as a deliberate `20px` inset rather than a flush-to-viewport requirement.
+
+## 2026-04-04 review and CI verification
+
+- `cargo test styles_keep_runtime_shell_constraints --test web_assets -- --nocapture`
+- `cd web && npm run test -- src/acp_conversation_render.test.tsx src/components/thread_rich_text.test.tsx src/input_dock_render.test.tsx src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run lint`
+- `cd web && npm run build`
+
+## 2026-04-04 live verification note
+
+- ACP markdown rendering was verified against the authenticated live AgentHub page through `agent-browser --auto-connect` because Chrome DevTools MCP remained unavailable. The rendered ACP message HTML now contains real markdown structures such as `<code>` and `<ul>` instead of the previous plain-text fallback.
+
+## 2026-04-04 responsive dock follow-up
+
+- Removed the remaining horizontal dock margin (`mx-4` / `sm:mx-6`) so the ACP input dock now stretches flush to the panel edges at every breakpoint instead of preserving a centered gutter.
+
+## 2026-04-04 agents sidebar row follow-up
+
+- Reflowed the Agents sidebar row so the first line keeps only the agent name, pending-permission dot, and action buttons.
+- Moved model / node / status badges onto a dedicated second row to stop long names from being squeezed out by tags on both desktop and mobile widths.

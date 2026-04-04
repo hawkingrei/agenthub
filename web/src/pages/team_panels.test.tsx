@@ -783,7 +783,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={false}
             activeRun={activeRun}
             totalLoadedRunsForTeam={1}
-            pageLimit={20}
             runsHasMore={true}
             selectedTeamId="team-1"
             onLoadMoreRuns={onLoadMoreRuns}
@@ -835,7 +834,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={true}
             activeRun={buildRun({ id: "run-hidden" })}
             totalLoadedRunsForTeam={0}
-            pageLimit={20}
             runsHasMore={false}
             selectedTeamId={null}
             onLoadMoreRuns={() => {}}
@@ -923,7 +921,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={false}
             activeRun={null}
             totalLoadedRunsForTeam={0}
-            pageLimit={20}
             runsHasMore={false}
             selectedTeamId="team-1"
             onLoadMoreRuns={() => {}}

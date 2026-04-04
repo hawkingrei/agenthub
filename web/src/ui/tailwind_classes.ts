@@ -623,7 +623,7 @@ export const OUTPUT_BODY_EMPTY_CLASS =
   "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 text-center";
 
 export const INPUT_DOCK_ROOT_CLASS =
-  "input docked sticky bottom-5 z-50 mx-4 flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white/92 p-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.10)] backdrop-blur-md transition-all sm:bottom-6 sm:mx-6 sm:p-3";
+  "input docked sticky bottom-5 z-50 flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white/92 p-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.10)] backdrop-blur-md transition-all sm:bottom-6 sm:p-3";
 
 export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
   "acp-interrupt-button input-interrupt-button inline-flex h-8 items-center justify-center rounded-md border border-state-warning-border bg-state-warning-bg px-3 text-[12px] font-semibold text-state-warning-text hover:bg-state-warning-bg/80 transition active:translate-y-px";

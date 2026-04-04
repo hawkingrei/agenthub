@@ -39,8 +39,16 @@ fn styles_keep_runtime_shell_constraints() {
     let path = styles_css_path();
     let css = fs::read_to_string(&path).expect("styles.css should be readable");
     assert!(
-        css.contains("@import url(\"https://fonts.googleapis.com/css2?family=Inter"),
-        "styles.css should define the shared font import"
+        css.contains("--notion-font:"),
+        "styles.css should define the shared sans-serif font stack"
+    );
+    assert!(
+        css.contains("--notion-mono:"),
+        "styles.css should define the shared monospace font stack"
+    );
+    assert!(
+        !css.contains("fonts.googleapis.com"),
+        "styles.css should not depend on remote font imports"
     );
     assert!(css.contains(":root {"), "styles.css should define root variables");
     assert!(

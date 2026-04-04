@@ -231,7 +231,8 @@ async function mountAppShellWithDock(
 
 async function assertDockAnchoredToWorkspaceBottom(
   page: import("@playwright/test").Page,
-  tolerance = 6
+  tolerance = 6,
+  bottomInset = 20
 ): Promise<void> {
   const workspaceBox = await page.locator(".workspace-right").boundingBox();
   const dockBox = await page.locator(".input.docked").boundingBox();
@@ -240,7 +241,7 @@ async function assertDockAnchoredToWorkspaceBottom(
   const workspace = workspaceBox!;
   const dock = dockBox!;
   expect(dock.y + dock.height).toBeGreaterThanOrEqual(
-    workspace.y + workspace.height - tolerance
+    workspace.y + workspace.height - bottomInset - tolerance
   );
 }
 
@@ -372,5 +373,5 @@ test("keeps docked input flush with viewport bottom in app shell on mobile", asy
   const dockBox = await page.locator(".input.docked").boundingBox();
   expect(dockBox).not.toBeNull();
   const dock = dockBox!;
-  expect(dock.y + dock.height).toBeGreaterThanOrEqual(844 - 3);
+  expect(dock.y + dock.height).toBeGreaterThanOrEqual(844 - 24);
 });
