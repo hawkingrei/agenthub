@@ -84,7 +84,7 @@ Push notifications include:
 |---------|-------|----------|
 | No browser prompt | Permission already denied or browser does not support Push | Reset site permissions, then refresh and sign in again |
 | Subscription fails | VAPID keys missing | Restart AgentHub to auto-generate keys |
-| Silent failures | Check browser console for errors | Verify `vapid_subject` is configured |
+| Silent failures | Check browser console for errors | Verify `push.subject` is configured in the `[push]` section |
 | Works locally but not remote | HTTPS required | Push API requires secure context (HTTPS) |
 
 ## Installable App Behavior
@@ -100,7 +100,7 @@ AgentHub is installable as a standalone browser app on supported platforms.
 Add to `~/.agenthub/config.toml`:
 
 ```toml
-[vapid]
+[push]
 # Required for push notifications
 subject = "mailto:admin@example.com"
 
@@ -108,7 +108,7 @@ subject = "mailto:admin@example.com"
 keys_path = "/custom/path/vapid.json"
 ```
 
-The `vapid.subject` should be a contact email or URL for your application.
+The `push.subject` value should be a contact email or URL for your application.
 
 ## Security Considerations
 
