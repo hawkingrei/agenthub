@@ -21,6 +21,19 @@ Use the input dock in the output panel:
 - Submit with **Send**
 - Use **Interrupt** when an in-progress tool call or long response must stop
 
+## Session Controls
+
+When the active ACP runtime exposes session controls, the debug surface can also
+let you:
+
+- switch `mode` or `model` from provider-supplied options
+- submit generic config values
+- cancel an actively running ACP turn
+- force a new session when recovery is easier than continuing the current one
+
+These controls are runtime-specific. Codex, Gemini, and other ACP providers may
+surface different option sets.
+
 ## Pre-Run Checklist
 
 Before sending the first instruction:
@@ -35,6 +48,8 @@ AgentHub persists runtime state in the backend process:
 
 - Closing or refreshing the browser does not stop the running task
 - You can reconnect to the same session later and continue interaction
+- Technical metadata stays available through compact `Details` surfaces instead
+  of taking over the main conversation header
 
 ## Practical Prompting Pattern
 

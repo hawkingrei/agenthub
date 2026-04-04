@@ -57,6 +57,18 @@ cargo run -- -c /path/to/config.toml
 
 By default, AgentHub serves the UI at `http://localhost:8080`.
 
+## Optional App Install
+
+On supported browsers, AgentHub can be installed as a standalone web app.
+
+- The frontend registers its service worker automatically.
+- The same service worker is used for push notifications and installability.
+- AgentHub is **not** offline-first: a normal refresh still fetches the latest
+  app shell and hashed assets from the server.
+
+For non-localhost deployments, use HTTPS if you want installability and browser
+push to work reliably.
+
 ## Runtime Data Location
 
 AgentHub stores runtime data under `~/.agenthub/` by default, including:

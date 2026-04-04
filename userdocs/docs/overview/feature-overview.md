@@ -31,6 +31,14 @@ logs. That gives you:
 
 Use this when task review, auditability, or deep debugging matters.
 
+ACP debug surfaces can also expose runtime-controlled session actions, such as:
+
+- provider-driven `mode` / `model` selectors
+- generic session config updates
+- force-new-session recovery when a thread gets stuck
+
+The exact controls depend on the active ACP provider and runtime.
+
 ## Team Workbench
 
 `/teams` adds a multi-agent workflow surface with clear role boundaries.
@@ -47,6 +55,17 @@ Key concepts:
 
 Use this when planning, implementation, and review should be coordinated rather
 than collapsed into one session.
+
+## Installable Web App And Push
+
+AgentHub can also behave like an installable web app:
+
+- supported browsers can install it as a standalone app window
+- the frontend registers a service worker automatically
+- browser push notifications can be attached to the signed-in browser session
+
+AgentHub still prefers fresh server-delivered UI resources on reload; install
+support does not turn it into an offline-first shell.
 
 ## Agent Nodes And Actor P2P
 
@@ -79,7 +98,7 @@ AgentHub also includes operational guardrails:
 
 - safe-path restrictions for workdirs
 - persistent session and history storage
-- in-app notifications
+- in-app notifications and browser push delivery
 - troubleshooting and recovery guidance
 
 ## Next Reading
