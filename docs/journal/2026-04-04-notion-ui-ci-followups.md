@@ -109,3 +109,9 @@
 - Slimmed the Team shared-channel composer shell and textarea density to keep the bottom tool area lighter.
 - Raised `OutputHeader` status/details onto the same horizontal row as the agent title and promoted the `Details` panel to a higher floating z-layer.
 - Anchored the ACP dock-local jump-to-bottom button to the dock shell (`bottom: calc(100% + 0.75rem)`) so it no longer sits under the dock when the input area is visible.
+
+## 2026-04-04 CI follow-up for PR 296
+
+- Moved the mobile ACP input dock anchor to `bottom: 0` so the dock now stays flush with the viewport bottom on mobile instead of keeping the previous `20px` inset.
+- Tightened the Team overview member snapshot layout with `min-w-0`, wrapped member titles, and a non-scrolling member list container so long member metadata no longer produces desktop horizontal overflow.
+- Revalidated the shared `web_assets` runtime-shell contract locally after the font-stack migration to keep Bazel root tests and Rust coverage aligned with the current CSS baseline.

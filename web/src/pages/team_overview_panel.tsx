@@ -130,15 +130,17 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 className={memberButtonClassName(selectedMemberId === member.member_id)}
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
-                <div className="flex w-full items-center justify-between gap-2">
-                  <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>
+                <div className="flex w-full min-w-0 items-start justify-between gap-2">
+                  <span
+                    className={`${TEAM_LIST_ITEM_TITLE_CLASS} min-w-0 flex-1 break-words whitespace-normal font-bold leading-5`}
+                  >
                     {resolveDisplayName(member.member_id, displayNameByActorId, member.member_id)} (
                     {member.role})
                   </span>
                   <StatusBadge
                     label={member.status}
                     tone={resolveTeamRunStatusTone(member.status)}
-                    className="team-status"
+                    className="team-status shrink-0"
                     title={`member status: ${member.status}`}
                   />
                 </div>

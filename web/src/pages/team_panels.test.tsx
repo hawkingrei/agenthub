@@ -1355,6 +1355,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Cold Start Playbook");
     expect(container.textContent).toContain("Leader startup");
     expect(container.textContent).toContain("Worker startup");
+    expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
+    expect(container.querySelector(".teams-member-list")).not.toBeNull();
+    expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
 
     act(() => {
       root.render(

@@ -383,7 +383,8 @@ export const OVERVIEW_PLAYBOOK_TITLE_CLASS =
 
 export const OVERVIEW_PLAYBOOK_LIST_CLASS = "mt-3 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-notion-text";
 
-export const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2 mt-4";
+export const OVERVIEW_MEMBER_LIST_CLASS =
+  "teams-member-list mt-4 flex min-w-0 flex-col gap-2 overflow-hidden";
 
 export const MAILBOX_META_CLASS =
   "mb-4 grid min-w-0 gap-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-4 text-[13px] text-notion-text sm:grid-cols-2 xl:grid-cols-4";
@@ -628,7 +629,7 @@ export const OUTPUT_BODY_EMPTY_CLASS =
   "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 text-center";
 
 export const INPUT_DOCK_ROOT_CLASS =
-  "input docked sticky bottom-5 z-50 flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white/92 p-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.10)] backdrop-blur-md transition-all sm:bottom-6 sm:p-3";
+  "input docked sticky bottom-0 z-50 flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white/92 p-2.5 shadow-[0_10px_30px_rgba(15,23,42,0.10)] backdrop-blur-md transition-all sm:bottom-6 sm:p-3";
 
 export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
   "acp-interrupt-button input-interrupt-button inline-flex h-8 items-center justify-center rounded-md border border-state-warning-border bg-state-warning-bg px-3 text-[12px] font-semibold text-state-warning-text hover:bg-state-warning-bg/80 transition active:translate-y-px";
