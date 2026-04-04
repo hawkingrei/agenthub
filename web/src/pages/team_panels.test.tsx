@@ -56,12 +56,6 @@ function clickMenuTrigger(element: Element | null): void {
   });
 }
 
-async function flushReactWork(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-  });
-}
-
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
     candidate.textContent?.includes(text)
