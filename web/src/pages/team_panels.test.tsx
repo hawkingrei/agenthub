@@ -422,20 +422,20 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findInteractiveByText(document.body, "Create Team"));
     const filterInput = required(
-      container.querySelector("input[aria-label='Filter teams']"),
+      container.querySelector("input[aria-label='Search teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
     expect(container.textContent).not.toContain("draft_team=alpha");
     changeInputValue(filterInput, "team-2");
-    expect(container.textContent).toContain("filtered=1 total=2");
-    clickElement(findButtonByAriaLabel(container, "Clear team filter"));
+    expect(container.textContent).toContain("Team Two");
+    clickElement(findButtonByAriaLabel(container, "Clear filter"));
     clickElement(findButtonByAriaLabel(container, "Open team actions"));
     clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");
     expect(container.textContent).toContain("workers=2");
     clickElement(findButtonByText(container, "Team Two"));
-    expect(container.querySelector("input[aria-label='Filter teams']")).not.toBeNull();
+    expect(container.querySelector("input[aria-label='Search teams']")).not.toBeNull();
     expect(container.textContent).toContain("Team One");
     clickElement(findButtonByText(container, "Kanban"));
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
@@ -451,9 +451,9 @@ describe("team panels interactions", () => {
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
-    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("Kanban");
-    expect(container.textContent).toContain("Agents");
+    expect(container.textContent).toContain("Agents · 2");
     expect(container.textContent).toContain("Workflow");
     expect(container.textContent).toContain("# all");
     const kanbanButton = findButtonByText(container, "Kanban");
@@ -530,7 +530,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Show Team Details");
     expect(container.textContent).not.toContain("team-1");
 
-    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("# all");
     expect(container.textContent).not.toContain("Runs");
     expect(container.textContent).not.toContain("Advanced");
@@ -623,11 +623,11 @@ describe("team panels interactions", () => {
     });
 
     const unmatchedFilterInput = required(
-      container.querySelector("input[aria-label='Filter teams']"),
+      container.querySelector("input[aria-label='Search teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
     changeInputValue(unmatchedFilterInput, "missing-team");
-    expect(container.textContent).toContain("No teams match current filter.");
+    expect(container.textContent).toContain("No results found.");
 
     const noTeamsCreate = vi.fn();
     act(() => {

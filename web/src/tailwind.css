@@ -1,11 +1,32 @@
 @import "tailwindcss";
 
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;600&display=swap");
+
 /* Keep preflight disabled in tailwind.config.cjs while the app still carries
    legacy global styles; this file stays as the v4-first Tailwind entrypoint. */
 
-/* Tailwind v4 changed the default border color to currentColor.
-   Keep v3-like neutral borders during migration to avoid unexpected dark frames. */
 @layer base {
+  :root {
+    --notion-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --notion-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  html {
+    font-family: var(--notion-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #37352f;
+    background-color: #ffffff;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* Tailwind v4 changed the default border color to currentColor.
+   Keep v3-like neutral borders during migration to avoid unexpected dark frames. */
   *,
   ::before,
   ::after,

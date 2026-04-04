@@ -1,10 +1,12 @@
 import React from "react";
 import {
+  ACP_JUMP_BOTTOM_BUTTON_CLASS,
   INPUT_DOCK_HISTORY_BUTTON_CLASS,
   INPUT_DOCK_HISTORY_ITEM_CLASS,
   INPUT_DOCK_HISTORY_MENU_CLASS,
   INPUT_DOCK_INTERRUPT_BUTTON_CLASS,
   INPUT_DOCK_ROOT_CLASS,
+  INPUT_DOCK_SEND_BUTTON_CLASS,
   INPUT_DOCK_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -329,7 +331,7 @@ export function InputDock({
     <div className="input-dock-shell flex flex-col gap-1.5" ref={inputDockRef}>
       {showConversationJump && (
         <button
-          className="jump-bottom"
+          className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
           onClick={onJumpToBottom}
           title="Jump to bottom"
           aria-label="Jump to bottom"
@@ -450,7 +452,7 @@ export function InputDock({
             rows={2}
           />
           <button
-            className="input-send-button"
+            className={INPUT_DOCK_SEND_BUTTON_CLASS}
             onClick={onSendInput}
             disabled={sendDisabled}
             aria-label="Send input"

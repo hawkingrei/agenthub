@@ -14,21 +14,21 @@ import {
 } from "../ui/tailwind_classes";
 
 const AGENTS_WORKBENCH_ICON_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fcfbf7] text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-notion-border bg-white text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px sm:h-9 sm:w-9";
 const AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-notion-accent/30 bg-notion-accent-bg text-notion-accent shadow-sm transition hover:bg-notion-accent/10 active:translate-y-px sm:h-9 sm:w-9";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fcfbf7] text-[13px] text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#203b2d] text-[13px] text-white shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md bg-notion-accent-bg text-[13px] text-notion-accent transition hover:bg-notion-accent/10 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fff4f1] text-[13px] text-[#8d2d20] shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
-const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] text-notion-text-muted transition hover:bg-red-50 hover:text-red-600 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
+const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4 py-4 bg-notion-sidebar border-r border-notion-border";
 const AGENTS_WORKBENCH_METRIC_CLASS =
-  "relative grid gap-1 justify-items-center rounded-[14px] border-[2px] border-black/10 bg-[#e9e1d2] px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/60 shadow-[0_1px_0_rgba(0,0,0,0.08)]";
-const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-3 overflow-auto pr-1";
+  "relative grid gap-1 justify-items-center rounded-lg border border-notion-border bg-white px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-notion-text-muted shadow-sm";
+const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
 const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
-  "text-lg font-semibold tracking-tight text-[#1f252c]";
+  "text-sm font-bold uppercase tracking-widest text-notion-text-muted px-2";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];

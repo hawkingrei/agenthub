@@ -130,7 +130,7 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       payload: parsed,
     });
     const parsedConfigOptions = parseAcpConfigOptions(parsed);
-    if (parsedConfigOptions.length > 0) {
+    if (parsed.type === "config_option_update") {
       configOptions = parsedConfigOptions;
     }
     if (

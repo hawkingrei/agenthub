@@ -173,7 +173,35 @@ import {
   TEAM_CREATE_MODAL_CARD_CLASS,
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
+  TEAM_DEBUG_TABS_CLASS,
+  TEAM_DEBUG_TAB_ACTIVE_CLASS,
+  TEAM_DEBUG_TAB_IDLE_CLASS,
+  TEAM_MUTED_TEXT_CLASS,
+  TEAM_PAGE_ROOT_CLASS,
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_REFRESH_BUTTON_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_SECTION_BODY_TEXT_CLASS,
+  TEAM_SECTION_CARD_CLASS,
+  TEAM_SECTION_CARD_LARGE_CLASS,
+  TEAM_SECTION_HEADING_CLASS,
+  TEAM_SECTION_HINT_TEXT_CLASS,
+  TEAM_SECTION_TITLE_CLASS,
+  TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
+  TEAM_WORKBENCH_HEADER_SHELL_CLASS,
+  TEAM_WORKBENCH_HEADER_STATUS_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
+  TEAM_WORKBENCH_PANEL_CLASS,
+  TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
+  OUTPUT_HEADER_META_CLASS,
+  OUTPUT_HEADER_ROOT_CLASS,
+  OUTPUT_HEADER_TITLE_CLASS,
+  OUTPUT_HEADER_TITLE_HEADING_CLASS,
+  OUTPUT_HEADER_TITLE_MAIN_CLASS,
+  OUTPUT_HEADER_TITLE_TEXT_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -338,48 +366,37 @@ export function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-const panelSecondaryButtonClassName =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/88 px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
-const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[14px] border border-black/[0.06] bg-white/88 px-2.5 py-2 shadow-[0_1px_3px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2.5";
-const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[20px] border border-black/[0.06] bg-white/90 p-3 shadow-[0_1px_4px_rgba(15,23,42,0.04)] sm:p-3.5";
-const teamSectionHeadingClassName =
-  "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
-const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
-const teamSectionBodyTextClassName = "mt-2 text-[13px] leading-5 text-ui-text-secondary";
-const teamSectionHintTextClassName = "mt-2 text-[12px] leading-5 text-ui-text-muted";
-const teamDebugTabsClassName =
-  "flex flex-wrap items-center gap-2 border-b border-ui-border pb-1";
-const teamDebugTabBaseClassName =
-  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
-const teamDebugTabActiveClassName =
-  `${teamDebugTabBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
-const teamDebugTabIdleClassName =
-  `${teamDebugTabBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
+const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
+const teamSectionCardClassName = TEAM_SECTION_CARD_CLASS;
+const teamSectionCardLargeClassName = TEAM_SECTION_CARD_LARGE_CLASS;
+const teamSectionHeadingClassName = TEAM_SECTION_HEADING_CLASS;
+const teamSectionTitleClassName = TEAM_SECTION_TITLE_CLASS;
+const teamSectionBodyTextClassName = TEAM_SECTION_BODY_TEXT_CLASS;
+const teamSectionHintTextClassName = TEAM_SECTION_HINT_TEXT_CLASS;
+const teamDebugTabsClassName = TEAM_DEBUG_TABS_CLASS;
+const teamDebugTabActiveClassName = TEAM_DEBUG_TAB_ACTIVE_CLASS;
+const teamDebugTabIdleClassName = TEAM_DEBUG_TAB_IDLE_CLASS;
 const teamCreateModalHeaderClassName =
-  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-4";
+  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4";
 const teamRunMetaItemClassName =
-  "rounded-[14px] border border-ui-border-strong bg-white/88 px-2.5 py-1.5 text-[11px] text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
+  "rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] text-notion-text-muted";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1 rounded-[12px] border border-black/[0.06] bg-black/[0.02] p-1";
-const workspaceToolbarButtonBaseClassName =
-  "inline-flex items-center gap-1 rounded-[12px] border border-transparent px-2.5 py-1.5 text-[12px] font-semibold transition";
+  "flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-lg border border-notion-border";
 const workspaceToolbarButtonActiveClassName =
-  `${workspaceToolbarButtonBaseClassName} border border-black/[0.06] bg-white text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]`;
+  "inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-[12px] font-bold text-notion-text shadow-sm";
 const workspaceToolbarButtonIdleClassName =
-  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:bg-black/[0.04] hover:text-ui-text-primary`;
+  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-bold text-notion-text-muted transition hover:text-notion-text hover:bg-notion-hover";
 const workspaceNoticeClassName =
-  "mt-1 flex flex-wrap items-center justify-between gap-2";
+  "mt-1 flex flex-wrap items-center justify-between gap-2 px-1";
 const workspaceNoticeTextClassName =
-  "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-ui-text-muted";
+  "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-notion-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2 w-2 shrink-0 rounded-full";
 const teamRuntimeNoticeClassName =
-  "mb-4 flex items-start justify-between gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-emerald-950 shadow-sm";
+  "mb-4 flex items-start justify-between gap-3 rounded-lg border border-state-success-border bg-state-success-bg px-4 py-3 text-state-success-text shadow-sm";
 const teamRuntimeNoticeTitleClassName =
-  "text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800";
-const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-5 text-emerald-900";
+  "text-[11px] font-bold uppercase tracking-wider text-state-success-text opacity-80";
+const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-relaxed font-medium";
 const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
   TeamCreateNoteTone,
   { color: "blue" | "yellow"; title: string; iconClassName: string }
@@ -410,49 +427,40 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
     <Alert
       color={config.color}
       variant="light"
-      radius="xl"
+      radius="md"
       mt="md"
       title={config.title}
       icon={<i className={config.iconClassName} aria-hidden="true" />}
     >
-      <div className="text-sm text-ui-text-secondary">{children}</div>
+      <div className="text-sm">{children}</div>
       {action ? <div className="mt-3">{action}</div> : null}
     </Alert>
   );
 });
 
-const teamWorkbenchPanelClassName =
-  "rounded-[18px] border border-black/[0.05] bg-white/84 p-2 shadow-[0_1px_4px_rgba(15,23,42,0.04)] backdrop-blur-md";
+const teamWorkbenchPanelClassName = TEAM_WORKBENCH_PANEL_CLASS;
 const teamWorkbenchAccentButtonClassName =
-  "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
+  "!bg-notion-accent !text-white !border-transparent hover:!bg-notion-accent/90 transition shadow-sm active:!translate-y-px";
 const teamWorkbenchMutedButtonClassName =
-  "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
+  "!bg-white !text-notion-text !border-notion-border hover:!bg-notion-hover transition shadow-sm active:!translate-y-px";
 const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
-const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-1.5 rounded-[16px] border border-black/[0.05] bg-white/78 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] backdrop-blur-sm";
-const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] border border-black/[0.06] bg-white/90 text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03]";
-const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/92 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+  "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+const teamWorkbenchHeaderShellClassName = TEAM_WORKBENCH_HEADER_SHELL_CLASS;
+const teamWorkbenchHeaderIconButtonClassName = TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS;
+const teamWorkbenchHeaderStatusClassName = TEAM_WORKBENCH_HEADER_STATUS_CLASS;
 const teamWorkbenchDetailLayoutCollapsedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(232px,252px)_minmax(0,1fr)] lg:items-start";
-const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] lg:items-start bg-white";
+const teamWorkbenchWorkspaceShellClassName = TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS;
 const teamWorkbenchSetupChecklistClassName =
-  "overflow-hidden rounded-[22px] border border-ui-border/90 bg-white/88 shadow-[0_10px_24px_rgba(15,23,42,0.05)]";
+  "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
 const teamWorkbenchInfoStripGridClassName =
-  "grid gap-px bg-ui-border/80 lg:grid-cols-3";
-const teamWorkbenchInfoStripItemClassName =
-  "min-w-0 bg-white/92 px-3.5 py-3";
-const teamWorkbenchInfoStripLabelClassName =
-  "text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
-const teamWorkbenchInfoStripValueClassName =
-  "mt-1.5 text-[13px] leading-5 text-ui-text-primary";
-
+  "grid gap-px bg-notion-border lg:grid-cols-3";
+const teamWorkbenchInfoStripItemClassName = TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS;
+const teamWorkbenchInfoStripLabelClassName = TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS;
+const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS;
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const isSelectorRoute = routeTeamId == null;
@@ -3457,7 +3465,7 @@ export function TeamPage(props: TeamPageProps) {
       : teamWorkbenchDetailLayoutExpandedClassName;
 
   return (
-    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-[linear-gradient(180deg,#f7f6f3_0%,#f3f1ec_100%)] px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0">
+    <div className={TEAM_PAGE_ROOT_CLASS}>
       <header className={teamWorkbenchHeaderShellClassName}>
         <div className="flex min-w-0 items-center gap-3">
           {!isSelectorRoute && (

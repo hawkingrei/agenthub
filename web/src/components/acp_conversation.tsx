@@ -407,13 +407,15 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
   className,
   text,
 }: MarkdownBubbleProps) {
-  const bubbleToneClassName =
-    className === "agent_message"
-      ? "border-[#d9ddd5] bg-[#fbfcfa] text-slate-800"
-      : "border-[#d8dee7] bg-[#f7f9fc] text-slate-800";
+  const isAgent = className === "agent_message";
   return (
-    <div className={`acp-bubble ${className} rounded-xl border px-3 py-2 shadow-sm ${bubbleToneClassName}`}>
-      <ThreadRichText text={text} />
+    <div className={`acp-block ${className} group relative flex w-full max-w-full gap-4 px-4 py-2 sm:px-8`}>
+      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm ${isAgent ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
+        {isAgent ? "A" : "U"}
+      </div>
+      <div className="min-w-0 flex-1 text-[15px] leading-relaxed text-notion-text">
+        <ThreadRichText text={text} />
+      </div>
     </div>
   );
 });
@@ -1025,25 +1027,25 @@ function RequestUserInputResultQuestion({
 
   return (
     <div
-      className="rounded-[14px] border border-black/[0.06] bg-white/90 p-3"
+      className="rounded-lg border border-notion-border bg-notion-sidebar/30 p-4"
       data-request-user-input-result={question.id}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-black/[0.08] bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <span className="rounded-md bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted">
           {totalQuestions > 1 ? `Q${index + 1}` : "Question"}
         </span>
-        <span className="text-sm font-semibold text-slate-800">
+        <span className="text-sm font-bold text-notion-text">
           {question.header || question.id}
         </span>
         {question.isSecret ? (
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+          <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
             Secret
           </span>
         ) : null}
       </div>
-      <p className="mt-2 text-sm leading-6 text-slate-700">{question.question}</p>
+      <p className="mt-2 text-[14px] leading-relaxed text-notion-text">{question.question}</p>
       {hideAnswer ? (
-        <div className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-800">
+        <div className="mt-3 rounded-md border border-state-warning-border bg-state-warning-bg px-3 py-2 text-sm text-state-warning-text">
           Answer submitted privately.
         </div>
       ) : hasStructuredAnswer ? (
@@ -1053,7 +1055,7 @@ function RequestUserInputResultQuestion({
               {parts.options.map((entry) => (
                 <span
                   key={entry}
-                  className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800"
+                  className="rounded-md bg-notion-accent-bg px-2 py-0.5 text-[12px] font-medium text-notion-accent"
                 >
                   {entry}
                 </span>
@@ -1064,7 +1066,7 @@ function RequestUserInputResultQuestion({
               {parts.options.map((entry) => (
                 <div
                   key={entry}
-                  className="mono rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                  className="mono rounded-md border border-notion-border bg-white px-3 py-2 text-[13px] text-notion-text"
                 >
                   {entry}
                 </div>
@@ -1072,13 +1074,13 @@ function RequestUserInputResultQuestion({
             </div>
           )}
           {parts.note ? (
-            <div className="mono rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="mono rounded-md border border-notion-border bg-white px-3 py-2 text-[13px] text-notion-text">
               {parts.note}
             </div>
           ) : null}
         </div>
       ) : (
-        <div className="mt-3 rounded-[12px] border border-black/[0.06] bg-slate-50 px-3 py-2 text-sm text-slate-500">
+        <div className="mt-3 rounded-md border border-notion-border bg-white/50 px-3 py-2 text-[13px] text-notion-text-muted italic">
           No answer payload recorded.
         </div>
       )}

@@ -136,15 +136,15 @@ const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
 const APP_WORKBENCH_HEADER_CLASS =
-  "flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#f3f1eb] px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:gap-3 sm:rounded-[20px] sm:px-3.5 sm:py-3 sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
+  "flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 sm:gap-3 sm:px-6 sm:py-4 border-b border-notion-border";
 const APP_WORKBENCH_HEADER_STATUS_CLASS =
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-black bg-[#fcfbf7] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)] sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[10px] sm:tracking-[0.14em]";
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted shadow-sm transition hover:bg-notion-hover";
 const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border-[2px] border-black text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] lg:hidden";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text lg:hidden";
 const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
 const ROUTE_FALLBACK_SHELL_CLASS =
-  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-[16px] border border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-6 py-10 text-sm font-medium text-ui-text-muted shadow-sm";
+  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-xl bg-notion-sidebar px-6 py-10 text-sm font-medium text-notion-text-muted";
 
 const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
 
@@ -3349,7 +3349,7 @@ export function App() {
 
   return (
     <div
-      className="app bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)]"
+      className="app bg-white"
       ref={appRootRef}
     >
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
@@ -3364,7 +3364,7 @@ export function App() {
         {auth && (
           <div className="session">
             <button
-              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-[#203b2d] text-white"}`}
+              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
               onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
               title={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
@@ -3403,7 +3403,7 @@ export function App() {
             void onLogin();
           }}
         >
-          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+          <h2 className="text-xl font-bold tracking-tight text-notion-text">
             Login
           </h2>
           <input
@@ -3447,7 +3447,7 @@ export function App() {
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
               >
-                {authBusy === "register" ? "Bootstrapping..." : "Bootstrap Root"}
+                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
               </button>
             )}
             <button

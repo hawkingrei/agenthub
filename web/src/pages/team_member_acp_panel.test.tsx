@@ -133,8 +133,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
-    expect(container.querySelector(".jump-bottom")).not.toBeNull();
-    expect(container.querySelector(".acp-jump-bottom")).toBeNull();
+    expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
   });
 

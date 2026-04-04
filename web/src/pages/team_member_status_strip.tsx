@@ -2,9 +2,13 @@ import React, { useMemo } from "react";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
+  TEAM_MEMBER_CARD_CLASS,
+  TEAM_MEMBER_META_CLASS,
+  TEAM_MEMBER_NAME_CLASS,
+  TEAM_MEMBER_SUMMARY_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
+  TEAM_SECTION_TITLE_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamMemberStatusStripProps = {
@@ -49,12 +53,7 @@ const TEAM_MEMBER_SUMMARY_BADGE_CLASS: Record<TeamMemberLifecycle, string> = {
     "border-[color:var(--status-neutral-border)] bg-[color:var(--status-neutral-bg)] text-[color:var(--status-neutral-ink)]",
 };
 
-const TEAM_MEMBER_SUMMARY_CLASS = "mono flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
-const TEAM_MEMBER_CARD_CLASS =
-  "flex min-w-0 flex-col gap-1 rounded-lg border border-ui-border bg-ui-surface-soft/60 px-3 py-2";
-const TEAM_MEMBER_NAME_CLASS = "min-w-0 flex-1 truncate text-ui-sm font-semibold text-ui-text-primary";
-const TEAM_MEMBER_META_CLASS = "mono truncate text-ui-xs text-ui-text-muted";
-const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-2";
+const TEAM_MEMBER_STATUS_ROW_CLASS = "flex flex-wrap items-center gap-1.5 mt-1";
 const WORKING_STATUSES = new Set(["running", "working", "in_progress"]);
 const PENDING_STATUSES = new Set(["submitted", "pending", "input_required", "queued", "waiting"]);
 const BLOCKED_STATUSES = new Set(["failed", "blocked", "error"]);
@@ -153,13 +152,13 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
 
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Status</h3>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h3 className={TEAM_SECTION_TITLE_CLASS}>Member Status</h3>
         <div className={TEAM_MEMBER_SUMMARY_CLASS}>
           {TEAM_MEMBER_SUMMARY_STATUSES.map((status) => (
             <span
               key={status}
-              className={`rounded-md border ${TEAM_MEMBER_SUMMARY_BADGE_CLASS[status]} px-2 py-1`}
+              className={`rounded-sm border ${TEAM_MEMBER_SUMMARY_BADGE_CLASS[status]} px-1.5 py-0.5`}
             >
               {status}={summary[status]}
             </span>
@@ -200,11 +199,13 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
                   />
                 </div>
                 <div className={TEAM_MEMBER_META_CLASS}>
-                  role={member.role} agent={member.agent_name ?? "-"} pending_inbox={pendingInbox}
+                  role={member.role} agent={member.agent_name ?? "-"}
                 </div>
-                <div className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
-                  current={member.current_work}
-                </div>
+                {member.current_work && (
+                  <div className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
+                    current={member.current_work}
+                  </div>
+                )}
               </div>
             );
           })}

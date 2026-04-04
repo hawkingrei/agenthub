@@ -12,7 +12,15 @@ import {
   TEAM_SIDEBAR_SECTION_CLASS,
   TEAM_SIDEBAR_SECTION_TOGGLE_CLASS,
   TEAM_SIDEBAR_NAV_LIST_CLASS,
+  TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
+  TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS,
+  TEAM_SIDEBAR_SWITCHER_BUTTON_CLASS,
   TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS,
+  TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS,
+  TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS,
+  TEAM_SIDEBAR_WORK_CLASS,
+  TEAM_SIDEBAR_BADGE_CLASS,
+  TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
 } from "../ui/tailwind_classes";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
@@ -152,34 +160,16 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
   return currentWork;
 }
 
-const TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS =
-  "rounded-[18px] border-0 bg-transparent p-1 shadow-none";
-const TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS =
-  "rounded-[14px] border-0 bg-transparent p-0 shadow-none";
-const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS =
-  "px-1 py-0.5";
-const TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS =
-  "inline-flex items-center justify-center rounded-[10px] border border-transparent bg-transparent px-2 py-1.5 text-[12px] font-medium text-ui-text-primary shadow-none transition hover:bg-black/[0.04]";
-const TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-transparent bg-transparent text-ui-text-primary shadow-none transition hover:bg-black/[0.04]";
-const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary";
-const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
-const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "flex w-full items-center justify-between px-1 py-1 text-left text-[11px] font-medium tracking-normal text-ui-text-muted";
-const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary transition";
-const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-1 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
-const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS =
-  "flex w-full items-center gap-2 rounded-[10px] bg-black/[0.055] px-2.5 py-1.5 text-left text-ui-text-primary transition";
-const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS =
-  "flex w-full items-center gap-2 rounded-[10px] bg-transparent px-2.5 py-1.5 text-left text-ui-text-primary transition hover:bg-black/[0.03]";
-const TEAM_WORKBENCH_SIDEBAR_WORK_CLASS =
-  "truncate pl-4 text-[11px] leading-4 text-ui-text-secondary";
-const TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS =
-  "shrink-0 rounded-full bg-black/[0.05] px-1.5 py-0.5 text-[10px] font-medium leading-none text-ui-text-muted";
+const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS = "px-3 py-2";
+const TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS = TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS = TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS = TEAM_SIDEBAR_SECTION_TOGGLE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS = TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS = TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS = TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS = TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_WORK_CLASS = TEAM_SIDEBAR_WORK_CLASS;
+const TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS = TEAM_SIDEBAR_BADGE_CLASS;
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -262,14 +252,14 @@ export function TeamSidebar(props: TeamSidebarProps) {
 
   return (
     <aside
-      className={`${TEAM_SIDEBAR_ROOT_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ROOT_CLASS}`}
+      className={TEAM_SIDEBAR_ROOT_CLASS}
       data-team-surface="sidebar"
     >
       <div className={TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             {showTeamSelector ? (
-              <div className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
+              <div className="truncate text-[15px] font-bold tracking-tight text-notion-text">
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
@@ -277,14 +267,14 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 <Menu.Target>
                   <button
                     type="button"
-                    className="inline-flex max-w-full items-center gap-1 rounded-[8px] px-1 py-0.5 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
+                    className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-left transition hover:bg-notion-hover"
                     aria-label="Open selected team menu"
                     title="Open selected team menu"
                   >
-                    <span className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
+                    <span className="truncate text-[15px] font-bold tracking-tight text-notion-text">
                       {selectedTeam.name}
                     </span>
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-ui-text-muted">
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-notion-text-muted">
                       <i className="bi bi-three-dots" aria-hidden="true" />
                     </span>
                   </button>
@@ -293,8 +283,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   <Menu.Label>{selectedTeam.name}</Menu.Label>
                   {selectedTeamRuntimeStatus && (
                     <Menu.Item disabled>
-                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                        <span className="font-semibold text-ui-text-primary">Runtime</span>
+                      <div className="min-w-[240px] text-[12px] leading-5 text-notion-text-muted">
+                        <span className="font-bold text-notion-text">Runtime</span>
                         <span className="ml-2">
                           {selectedTeamRuntimeStatus.label} · {selectedTeamRuntimeStatus.online}/
                           {selectedTeamRuntimeStatus.total} online
@@ -303,29 +293,29 @@ export function TeamSidebar(props: TeamSidebarProps) {
                     </Menu.Item>
                   )}
                   <Menu.Item disabled>
-                    <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                      <span className="font-semibold text-ui-text-primary">Members</span>
+                    <div className="min-w-[240px] text-[12px] leading-5 text-notion-text-muted">
+                      <span className="font-bold text-notion-text">Members</span>
                       <span className="ml-2">{selectedTeamMemberCount}</span>
                     </div>
                   </Menu.Item>
                   <Menu.Item disabled>
-                    <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                      <span className="font-semibold text-ui-text-primary">Workers</span>
+                    <div className="min-w-[240px] text-[12px] leading-5 text-notion-text-muted">
+                      <span className="font-bold text-notion-text">Workers</span>
                       <span className="ml-2">{selectedTeamWorkerCount}</span>
                     </div>
                   </Menu.Item>
                   <Menu.Item disabled>
-                    <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                      <span className="font-semibold text-ui-text-primary">Goal</span>
-                      <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
+                    <div className="min-w-[240px] text-[12px] leading-5 text-notion-text-muted">
+                      <span className="font-bold text-notion-text">Goal</span>
+                      <p className="mt-1 whitespace-pre-wrap text-notion-text">
                         {selectedTeam.description?.trim() || "No team goal description yet."}
                       </p>
                     </div>
                   </Menu.Item>
                   {developerMode && (
                     <Menu.Item disabled>
-                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                        <span className="font-semibold text-ui-text-primary">Team ID</span>
+                      <div className="min-w-[240px] text-[12px] leading-5 text-notion-text-muted">
+                        <span className="font-bold text-notion-text">Team ID</span>
                         <span className="ml-2 break-all">{selectedTeam.id}</span>
                       </div>
                     </Menu.Item>
@@ -371,12 +361,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 </Menu.Dropdown>
               </Menu>
             ) : (
-              <div className="truncate text-[15px] font-semibold leading-tight tracking-tight text-ui-text-primary">
+              <div className="truncate text-[15px] font-bold tracking-tight text-notion-text">
                 Team workspace
               </div>
             )}
             {showTeamSelector && (
-              <p className="mt-0.5 text-[12px] leading-5 text-ui-text-secondary">
+              <p className="mt-0.5 text-[12px] leading-relaxed text-notion-text-muted">
                 {selectedTeam
                   ? "Switch teams from the index below."
                   : "Choose an existing team or create a new one."}
@@ -384,23 +374,22 @@ export function TeamSidebar(props: TeamSidebarProps) {
             )}
           </div>
           {showTeamSelector && (
-            <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex items-center gap-1.5 pt-0.5">
               <button
                 onClick={() => {
                   void onRefreshTeams();
                 }}
                 disabled={busy === "refresh-teams"}
-                className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_CLASS}`}
+                className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} inline-flex h-8 w-8 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text`}
                 title="Refresh teams"
                 aria-label="Refresh teams"
               >
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                <span className="hidden sm:inline">Refresh</span>
               </button>
               <div className="relative">
                 <button
                   type="button"
-                  className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} ${TEAM_WORKBENCH_SIDEBAR_ACTION_ICON_CLASS}`}
+                  className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-8`}
                   aria-label="Open team actions"
                   title="Open team actions"
                   aria-expanded={teamActionsOpen}
@@ -409,29 +398,31 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   <i className="bi bi-three-dots" aria-hidden="true" />
                 </button>
                 {teamActionsOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-[16px] border border-ui-border bg-ui-surface p-2 shadow-lg">
+                  <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-lg border border-notion-border bg-white p-1.5 shadow-xl backdrop-blur-md">
                     <button
                       type="button"
-                      className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary`}
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
                       onClick={() => {
                         setTeamActionsOpen(false);
                         onOpenCreateTeam();
                       }}
                     >
-                      Create Team
+                      <i className="bi bi-plus-lg" aria-hidden="true" />
+                      <span>Create Team</span>
                     </button>
                     {developerMode && (
                       <>
-                        <div className="my-1 border-t border-ui-border" />
+                        <div className="my-1 border-t border-notion-border" />
                         <button
                           type="button"
-                          className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} w-full justify-start rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary`}
+                          className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
                           onClick={() => {
                             setTeamActionsOpen(false);
                             setTeamDetailsOpen((current) => !current);
                           }}
                         >
-                          {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                          <i className="bi bi-info-circle" aria-hidden="true" />
+                          <span>{teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}</span>
                         </button>
                       </>
                     )}
@@ -442,7 +433,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
           )}
         </div>
         {showTeamSelector && teamDetailsOpen && (
-          <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} mt-3 border-t border-ui-border pt-3 text-ui-text-muted`}>
+          <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} mt-3 border-t border-notion-border pt-3`}>
             <span>draft_team={draftTeamName.trim() || "-"}</span>
             <span>leader={leaderMemberId.trim() || "-"}</span>
             <span>workers={configuredWorkerCount}</span>
@@ -451,39 +442,40 @@ export function TeamSidebar(props: TeamSidebarProps) {
       </div>
 
       {showTeamSelector && (
-        <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-3`}>
+        <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
           <button
             type="button"
-            className={`${TEAM_SIDEBAR_SECTION_TOGGLE_CLASS} ${TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS}`}
+            className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
             onClick={() => toggleSection("teams")}
             aria-expanded={sectionOpen.teams}
             aria-label="Toggle teams section"
           >
-            <span>{`Teams ${teams.length}`}</span>
+            <span>{`Teams · ${teams.length}`}</span>
             <i
               className={sectionOpen.teams ? "bi bi-chevron-down" : "bi bi-chevron-right"}
               aria-hidden="true"
             />
           </button>
           {sectionOpen.teams && (
-            <div className={`${TEAM_WORKBENCH_SIDEBAR_PANEL_CLASS} mt-1.5`}>
+            <div className="mt-1.5 space-y-1">
               {teams.length > 0 && (
-                <div className="teams-filter flex items-start gap-2">
+                <div className="px-2 pb-2">
                   <TextInput
                     className="flex-1"
-                    placeholder="Filter teams by name or id"
-                    aria-label="Filter teams"
+                    placeholder="Search teams..."
+                    aria-label="Search teams"
                     value={teamFilter}
                     onChange={(event) => setTeamFilter(event.currentTarget.value)}
-                    size="sm"
+                    size="xs"
                     radius="md"
+                    variant="filled"
                     rightSection={
                       hasTeamFilter ? (
                         <CloseButton
-                          aria-label="Clear team filter"
-                          title="Clear team filter"
+                          aria-label="Clear filter"
+                          title="Clear filter"
                           onClick={() => setTeamFilter("")}
-                          size="sm"
+                          size="xs"
                         />
                       ) : undefined
                     }
@@ -491,13 +483,10 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 </div>
               )}
 
-              <div className="teams-list mt-2 flex max-h-72 min-h-0 flex-col gap-1.5 overflow-auto">
-                {teams.length === 0 && <p className={TEAM_MUTED_TEXT_CLASS}>No teams yet.</p>}
+              <div className="teams-list flex max-h-72 min-h-0 flex-col gap-0.5 overflow-auto px-1">
+                {teams.length === 0 && <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No teams yet.</p>}
                 {teams.length > 0 && filteredTeams.length === 0 && (
-                  <p className={TEAM_MUTED_TEXT_CLASS}>No teams match current filter.</p>
-                )}
-                {hasTeamFilter && filteredTeams.length > 0 && (
-                  <p className={`${TEAM_MUTED_TEXT_CLASS} mono`}>{`filtered=${filteredTeams.length} total=${teams.length}`}</p>
+                  <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No results found.</p>
                 )}
                 {filteredTeams.map((team) => {
                   const summary = teamMemberSummaryByTeamId.get(team.id);
@@ -509,8 +498,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       type="button"
                       className={
                         isSelected
-                          ? TEAM_WORKBENCH_SIDEBAR_PICKER_ACTIVE_CLASS
-                          : TEAM_WORKBENCH_SIDEBAR_PICKER_IDLE_CLASS
+                          ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
+                          : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
                       }
                       onClick={() => {
                         onSelectTeam(team.id);
@@ -519,19 +508,14 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       data-team-selected={isSelected ? "true" : "false"}
                       title={developerMode ? team.id : team.name}
                     >
-                      <span className="flex w-full items-start justify-between gap-2">
-                        <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-medium`}>
                           {team.name}
                         </span>
                       </span>
                       {summaryLabel && (
-                        <span className={`${TEAM_LIST_ITEM_META_CLASS} text-ui-text-muted`}>
+                        <span className={TEAM_LIST_ITEM_META_CLASS}>
                           {summaryLabel}
-                        </span>
-                      )}
-                      {developerMode && (
-                        <span className={`${TEAM_LIST_ITEM_META_CLASS} text-ui-text-muted/90`}>
-                          {team.id}
                         </span>
                       )}
                     </button>
@@ -540,13 +524,14 @@ export function TeamSidebar(props: TeamSidebarProps) {
               </div>
 
               {teams.length === 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2 px-2">
                   <button
                     type="button"
-                    className={`${TEAM_PANEL_GHOST_BUTTON_CLASS} rounded-[12px] border border-ui-border bg-ui-surface text-ui-text-primary shadow-sm`}
+                    className="flex w-full items-center gap-2 rounded-md border border-notion-border bg-white px-3 py-1.5 text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
                     onClick={onOpenCreateTeam}
                   >
-                    Create Team
+                    <i className="bi bi-plus-lg" aria-hidden="true" />
+                    <span>New Team</span>
                   </button>
                 </div>
               )}
@@ -557,56 +542,56 @@ export function TeamSidebar(props: TeamSidebarProps) {
 
       {selectedTeam && (
         <>
-          <div className="mt-3 flex flex-col gap-1.5">
-            <div className="px-1 pt-1 text-[11px] font-medium text-ui-text-muted">
+          <div className="mt-4 flex flex-col gap-0.5">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
               Workflow
             </div>
             <button
               type="button"
               className={
                 tab === "conversation"
-                  ? TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
                   : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
               }
               onClick={onSelectConversation}
-              title="Shared channel for human requests, planning discussion, and team-visible progress updates."
+              title="Shared channel"
             >
-              <i className="bi bi-hash text-[13px] text-ui-text-muted" aria-hidden="true" />
-              <span className="truncate text-[13px] font-medium text-ui-text-primary"># all</span>
+              <i className="bi bi-hash text-[14px]" aria-hidden="true" />
+              <span className="truncate text-[13px]"># all</span>
             </button>
             <button
               type="button"
               className={
                 tab === "tasks"
-                  ? TEAM_WORKBENCH_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
                   : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
               }
               onClick={onSelectKanban}
-              title="Canonical system-managed Team tasks and execution state."
+              title="Kanban"
             >
-              <i className="bi bi-kanban text-[13px] text-ui-text-muted" aria-hidden="true" />
-              <span className="truncate text-[13px] font-medium text-ui-text-primary">Kanban</span>
+              <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
+              <span className="truncate text-[13px]">Kanban</span>
             </button>
           </div>
 
-          <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-3`}>
+          <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
             <button
               type="button"
-              className={`${TEAM_SIDEBAR_SECTION_TOGGLE_CLASS} ${TEAM_WORKBENCH_SIDEBAR_SECTION_TOGGLE_CLASS}`}
+              className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
               onClick={() => toggleSection("agents")}
               aria-expanded={sectionOpen.agents}
               aria-label="Toggle agents section"
             >
-              <span>{`Agents ${memberLiveStates.length}`}</span>
+              <span>{`Agents · ${memberLiveStates.length}`}</span>
               <i
                 className={sectionOpen.agents ? "bi bi-chevron-down" : "bi bi-chevron-right"}
                 aria-hidden="true"
               />
             </button>
             {sectionOpen.agents && (
-              <div className={TEAM_SIDEBAR_NAV_LIST_CLASS}>
+              <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} px-1`}>
                 {memberLiveStates.length === 0 && (
-                  <p className={TEAM_MUTED_TEXT_CLASS}>No members found in current team spec.</p>
+                  <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No agents joined yet.</p>
                 )}
                 {memberLiveStates.map((member) => {
                   const lifecycle = normalizeTeamMemberLifecycle(member);
@@ -622,52 +607,38 @@ export function TeamSidebar(props: TeamSidebarProps) {
                       type="button"
                       className={
                         isActiveMember
-                          ? TEAM_WORKBENCH_SIDEBAR_NAV_ACTIVE_CLASS
-                          : TEAM_WORKBENCH_SIDEBAR_NAV_IDLE_CLASS
+                          ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
+                          : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
                       }
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
-                      title={
-                        [
-                          primaryLabel,
-                          formatRoleLabel(member.role),
-                          memberStateLabel,
-                          developerMode ? member.member_id : null,
-                          currentWorkLabel,
-                        ]
-                          .filter((value) => value && value.trim().length > 0)
-                          .join(" · ") || member.member_id
-                      }
+                      title={primaryLabel}
                     >
-                      <span className="flex w-full items-start justify-between gap-2">
+                      <span className="flex w-full items-center justify-between gap-2">
                         <span className="min-w-0 flex items-center gap-2">
                           <span
-                            className={`mt-[5px] h-2 w-2 shrink-0 rounded-full ${resolveMemberIndicatorClassName(
+                            className={`${TEAM_SIDEBAR_INDICATOR_DOT_CLASS} ${resolveMemberIndicatorClassName(
                               lifecycle,
                               workStatus
                             )}`}
                             aria-hidden="true"
                           />
-                          <span className="truncate text-[13px] font-medium text-ui-text-primary">
+                          <span className="truncate text-[13px] font-medium">
                             {primaryLabel}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
-                          <span className={TEAM_WORKBENCH_SIDEBAR_SUMMARY_CLASS}>
+                          <span className={TEAM_SIDEBAR_BADGE_CLASS}>
                             {memberStateLabel}
                           </span>
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="shrink-0 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-ui-text-primary">
+                            <span className="shrink-0 rounded-sm bg-notion-accent text-white px-1 py-0.5 text-[10px] font-bold leading-none shadow-sm">
                               {member.pending_inbox_count}
                             </span>
                           )}
                         </span>
                       </span>
                       {currentWorkLabel && (
-                        <span
-                          className={`${TEAM_WORKBENCH_SIDEBAR_WORK_CLASS} ${
-                            isActiveMember ? "text-ui-text-primary" : ""
-                          }`}
-                        >
+                        <span className={TEAM_SIDEBAR_WORK_CLASS}>
                           {currentWorkLabel}
                         </span>
                       )}
@@ -677,7 +648,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
               </div>
             )}
           </section>
-
         </>
       )}
     </aside>

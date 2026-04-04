@@ -89,7 +89,7 @@ function AcpPanelView({
       <div className={ACP_PANEL_HEAD_CLASS}>
         {mobileTitle ? (
           <div className="flex min-w-0 items-center gap-2 sm:hidden">
-            <div className="min-w-0 max-w-[42%] flex-none overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-[1.15] text-black">
+            <div className="min-w-0 max-w-[42%] flex-none overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-bold text-notion-text">
               {mobileTitle}
             </div>
             <div className="min-w-0 flex-1">
@@ -99,7 +99,7 @@ function AcpPanelView({
         ) : null}
         {subtitle ? (
           <div
-            className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle text-[12px] text-slate-500 max-[720px]:hidden`}
+            className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle text-[12px] text-notion-text-muted max-[720px]:hidden`}
           >
             {subtitle}
           </div>

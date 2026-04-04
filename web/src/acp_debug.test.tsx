@@ -56,9 +56,10 @@ describe("AcpDebug", () => {
     expect(html).toContain("Mode ID");
     expect(html).toContain("Model ID");
     expect(html).toContain("Config ID");
-    expect(html).not.toContain("Permissions");
-    expect(html).not.toContain("Raw Events");
-    expect(html).not.toContain("acp-raw");
+    // All tabs are now in the DOM as part of the tab bar
+    expect(html).toContain("Terminal");
+    expect(html).toContain("Permissions");
+    expect(html).toContain("Raw Events");
   });
 
   it("renders debug tabs", () => {

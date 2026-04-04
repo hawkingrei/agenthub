@@ -12,6 +12,16 @@ module.exports = {
           primary: "#0f172a",
           "primary-hover": "#1e293b",
         },
+        notion: {
+          bg: "#ffffff",
+          sidebar: "#fbfbfa",
+          text: "#37352f",
+          "text-muted": "#787774",
+          border: "#e2e8f0",
+          hover: "#efefee",
+          accent: "#2383e2",
+          "accent-bg": "rgba(35, 131, 226, 0.05)",
+        },
         ui: {
           surface: "#ffffff",
           "surface-soft": "#f8fafc",
