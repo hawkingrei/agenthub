@@ -5,6 +5,7 @@ import { api } from "./api";
 
 describe("api request headers", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -64,5 +65,39 @@ describe("api request headers", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
     expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("retries idempotent network reads with backoff before surfacing an error", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(
+        new Response(JSON.stringify([{ id: "team-1", name: "Team One" }]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = api.listTeams("token-1");
+    await vi.runAllTimersAsync();
+
+    await expect(request).resolves.toEqual([{ id: "team-1", name: "Team One" }]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry mutating requests without explicit opt-in", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      api.createTeam("token-1", {
+      name: "Team One",
+      spec: { members: [] },
+      })
+    ).rejects.toThrow("Failed to fetch");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

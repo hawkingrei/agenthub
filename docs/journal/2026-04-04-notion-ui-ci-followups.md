@@ -10,6 +10,7 @@
 - Updated `tests/web_assets.rs` to validate the remaining shared CSS/runtime shell contract instead of requiring legacy `.acp-conversation` rules in `styles.css`.
 - Updated `web/src/acp.ts` so `config_option_update` preserves existing selector state when `config_options` is absent and clears state only when the backend explicitly sends an empty array.
 - Added ACP selector regression coverage in `web/src/acp.test.ts`.
+- Updated `web/src/api.ts` so network jitter on idempotent browser requests uses bounded retry with backoff before surfacing `Failed to fetch`, while mutating `POST` flows keep their previous fail-fast behavior.
 - Restored Team mailbox compatibility affordances in `web/src/pages/team_mailbox_panel.tsx`:
   - `.teams-chat-head`
   - `.teams-member-unread`

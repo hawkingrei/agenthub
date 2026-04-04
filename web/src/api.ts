@@ -494,28 +494,103 @@ function buildApiHeaders(
   return headers;
 }
 
+type ApiFetchInit = RequestInit & {
+  networkRetry?: "auto" | "never" | "always";
+};
+
+const NETWORK_RETRY_DELAYS_MS = [150, 350] as const;
+
+function normalizeRequestMethod(init?: ApiFetchInit): string {
+  return (init?.method ?? "GET").toUpperCase();
+}
+
+function shouldRetryNetworkFailure(init?: ApiFetchInit): boolean {
+  const policy = init?.networkRetry ?? "auto";
+  if (policy === "always") {
+    return true;
+  }
+  if (policy === "never") {
+    return false;
+  }
+  const method = normalizeRequestMethod(init);
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+function isNetworkJitterError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  if (err.name === "AbortError") {
+    return false;
+  }
+  const message = err.message.trim().toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("networkerror") ||
+    message.includes("network error") ||
+    message.includes("load failed") ||
+    message.includes("connection reset") ||
+    message.includes("connection aborted") ||
+    message.includes("connection refused") ||
+    message.includes("network request failed")
+  );
+}
+
+function shouldRetryNetworkJitter(
+  err: unknown,
+  init?: ApiFetchInit
+): boolean {
+  if (!isNetworkJitterError(err) || !shouldRetryNetworkFailure(init)) {
+    return false;
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return false;
+  }
+  return true;
+}
+
+function waitForBackoff(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 async function apiFetch<T>(
   path: string,
   token: string | null,
-  init?: RequestInit
+  init?: ApiFetchInit
 ): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: buildApiHeaders(token, init),
-  });
-  if (!res.ok) {
-    const raw = await res.text();
-    const msg = parseApiErrorText(raw);
-    if (shouldRedirectOnAuthError(res.status, token, msg)) {
-      clearAuthAndRedirect();
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await fetch(path, {
+        ...init,
+        headers: buildApiHeaders(token, init),
+      });
+      if (!res.ok) {
+        const raw = await res.text();
+        const msg = parseApiErrorText(raw);
+        if (shouldRedirectOnAuthError(res.status, token, msg)) {
+          clearAuthAndRedirect();
+        }
+        const error = new Error(msg || raw || res.statusText) as Error & {
+          status?: number;
+        };
+        error.status = res.status;
+        throw error;
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      if (
+        shouldRetryNetworkJitter(err, init) &&
+        attempt < NETWORK_RETRY_DELAYS_MS.length
+      ) {
+        await waitForBackoff(NETWORK_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      throw err;
     }
-    const error = new Error(msg || raw || res.statusText) as Error & {
-      status?: number;
-    };
-    error.status = res.status;
-    throw error;
   }
-  return (await res.json()) as T;
 }
 
 function encodePathSegment(value: string | number): string {
