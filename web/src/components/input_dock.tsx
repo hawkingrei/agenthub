@@ -328,7 +328,7 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className="input-dock-shell flex flex-col gap-1.5" ref={inputDockRef}>
+    <div className="input-dock-shell flex self-stretch flex-col gap-1.5" ref={inputDockRef}>
       {showConversationJump && (
         <button
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}

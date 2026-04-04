@@ -234,7 +234,8 @@ describe("AcpConversation rendering", () => {
       }
     );
 
-    expect(html).toContain("Codex needs input before continuing");
+    expect(html).toContain("Input Required");
+    expect(html).toContain("Submit your answer to continue execution.");
     expect(html).toContain("Submit Answer");
     expect(html).toContain("Plan only");
     expect(html).toContain('aria-labelledby="request-user-input:call-1:scope:header request-user-input:call-1:scope:prompt"');
@@ -361,6 +362,7 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("Tool Call: Analyze");
     expect(html).toContain("<h2>Findings</h2>");
     expect(html).toContain("<li>one</li>");
+    expect(html).not.toContain("## Findings");
   });
 
   it("renders unified diff payloads with visual diff classes", () => {

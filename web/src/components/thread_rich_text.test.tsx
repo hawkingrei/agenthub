@@ -1,4 +1,7 @@
+// @vitest-environment jsdom
 import React from "react";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -14,7 +17,7 @@ describe("thread_rich_text", () => {
     resetThreadMarkdownCache();
   });
 
-  it("normalizes skill blocks before fallback rich text rendering", () => {
+  it("normalizes skill blocks before markdown rendering", () => {
     const html = renderToStaticMarkup(
       <ThreadRichText
         text={[
@@ -29,7 +32,7 @@ describe("thread_rich_text", () => {
     );
 
     expect(html).toContain("Review these references:");
-    expect(html).toContain("**Skill**");
+    expect(html).toContain("<strong>Skill</strong>");
     expect(html).toContain("team-actor-mailbox");
     expect(html).toContain("skills/team/team-actor-mailbox.SKILL.md");
     expect(html).not.toContain("&lt;skill&gt;");
@@ -61,5 +64,40 @@ describe("thread_rich_text", () => {
 
     expect(stats.markdownMisses).toBe(2);
     expect(stats.markdownHits).toBe(0);
+  });
+
+  it("rerenders mounted rich text with markdown after assets finish loading", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <ThreadRichText
+            text={[
+              "Markdown ready:",
+              "",
+              "- first item",
+              "- `inline-code`",
+            ].join("\n")}
+          />
+        );
+      });
+
+      await act(async () => {
+        await preloadThreadMarkdownAssets();
+        await Promise.resolve();
+      });
+
+      expect(container.innerHTML).toContain("<p>Markdown ready:</p>");
+      expect(container.innerHTML).toContain("<ul>");
+      expect(container.innerHTML).toContain("<code>inline-code</code>");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
   });
 });

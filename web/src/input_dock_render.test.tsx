@@ -101,4 +101,12 @@ describe("InputDock interrupt placement", () => {
     expect(jumpPos).toBeLessThan(editorRowPos);
     expect(textareaPos).toBeGreaterThan(editorRowPos);
   });
+
+  it("stretches the dock to the panel edges instead of using a fixed centered width", () => {
+    expect(renderDock()).toContain("input-dock-shell flex self-stretch");
+    expect(renderDock()).toContain("mx-4");
+    expect(renderDock()).toContain("w-full");
+    expect(renderDock()).not.toContain("left-1/2");
+    expect(renderDock()).not.toContain("-translate-x-1/2");
+  });
 });

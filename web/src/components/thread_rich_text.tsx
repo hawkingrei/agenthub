@@ -1,5 +1,6 @@
 import React from "react";
-import { escapeHtml } from "../html_escape";
+import { renderMarkdown } from "../markdown";
+import "highlight.js/styles/github-dark.css";
 
 const MARKDOWN_CACHE_LIMIT = 512;
 const MARKDOWN_CACHE_MAX_BYTES = 8 * 1024 * 1024;
@@ -11,12 +12,6 @@ const markdownHtmlCacheSize = new Map<string, number>();
 let markdownCacheBytes = 0;
 let markdownCacheHitCount = 0;
 let markdownCacheMissCount = 0;
-let markdownRenderer:
-  | null
-  | {
-      renderMarkdown: (input: string) => string;
-    } = null;
-let markdownAssetsPromise: Promise<void> | null = null;
 
 export type ThreadMarkdownCacheStats = {
   markdownHits: number;
@@ -40,13 +35,9 @@ export function getThreadMarkdownCacheStats(): ThreadMarkdownCacheStats {
 
 export function renderThreadMarkdownCached(text: string): string {
   const normalized = normalizeSkillBlocksForMarkdown(text);
-  if (!markdownRenderer) {
-    markdownCacheMissCount += 1;
-    return renderPlainRichText(normalized);
-  }
   if (text.length > MARKDOWN_CACHE_MAX_ENTRY_CHARS) {
     markdownCacheMissCount += 1;
-    return markdownRenderer.renderMarkdown(normalized);
+    return renderMarkdown(normalized);
   }
   const cached = markdownHtmlCache.get(text);
   if (cached != null) {
@@ -55,7 +46,7 @@ export function renderThreadMarkdownCached(text: string): string {
     return cached;
   }
   markdownCacheMissCount += 1;
-  const rendered = markdownRenderer.renderMarkdown(normalized);
+  const rendered = renderMarkdown(normalized);
   const estimatedBytes =
     estimateStringBytes(text) + estimateStringBytes(rendered);
   return cacheWithLruBudget(
@@ -82,29 +73,6 @@ export function ThreadRichText({
   className?: string;
   renderHtml?: (text: string) => string;
 }) {
-  const [, setRenderVersion] = React.useState(0);
-
-  React.useEffect(() => {
-    if (markdownRenderer) {
-      return;
-    }
-    let cancelled = false;
-    void ensureThreadMarkdownAssets()
-      .then(() => {
-        if (!cancelled) {
-          setRenderVersion((current) => current + 1);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRenderVersion((current) => current + 1);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const html = renderHtml(text);
   return (
     <div
@@ -115,37 +83,7 @@ export function ThreadRichText({
 }
 
 export async function preloadThreadMarkdownAssets(): Promise<void> {
-  await ensureThreadMarkdownAssets();
-}
-
-async function ensureThreadMarkdownAssets(): Promise<void> {
-  if (markdownRenderer) {
-    return;
-  }
-  if (!markdownAssetsPromise) {
-    markdownAssetsPromise = Promise.all([
-      import("../markdown"),
-      import("highlight.js/styles/github-dark.css"),
-    ])
-      .then(([markdownModule]) => {
-        markdownRenderer = {
-          renderMarkdown: markdownModule.renderMarkdown,
-        };
-      })
-      .catch((error) => {
-        markdownAssetsPromise = null;
-        throw error;
-      });
-  }
-  await markdownAssetsPromise;
-}
-
-function renderPlainRichText(text: string): string {
-  const normalized = text.replace(/\r\n?/g, "\n");
-  return normalized
-    .split(/\n\s*\n/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`)
-    .join("");
+  return Promise.resolve();
 }
 
 function normalizeSkillBlocksForMarkdown(text: string): string {

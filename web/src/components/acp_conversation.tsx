@@ -42,6 +42,7 @@ import {
 } from "../request_user_input";
 import {
   getThreadMarkdownCacheStats,
+  preloadThreadMarkdownAssets,
   renderThreadMarkdownCached,
   resetThreadMarkdownCache,
   ThreadRichText,
@@ -224,6 +225,22 @@ export function AcpConversation({
   ansi,
   onSubmitRequestUserInput,
 }: AcpConversationProps) {
+  const [markdownRenderVersion, setMarkdownRenderVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void preloadThreadMarkdownAssets()
+      .then(() => {
+        if (!cancelled) {
+          setMarkdownRenderVersion(1);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const bottomClearance = Number.isFinite(bottomClearancePx)
     ? Math.max(0, Math.round(bottomClearancePx))
     : 0;
@@ -274,6 +291,7 @@ export function AcpConversation({
                 isFrozenView={isFrozenView}
                 runStatus={runStatus}
                 ansi={ansi}
+                markdownRenderVersion={markdownRenderVersion}
                 onSubmitRequestUserInput={onSubmitRequestUserInput}
               />
             </div>
@@ -306,6 +324,7 @@ type ConversationBubbleProps = {
   isFrozenView: boolean;
   runStatus?: string | null;
   ansi: (input: string) => string;
+  markdownRenderVersion: number;
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
@@ -318,6 +337,7 @@ const ConversationBubble = React.memo(
     isFrozenView,
     runStatus,
     ansi,
+    markdownRenderVersion,
     onSubmitRequestUserInput,
   }: ConversationBubbleProps) {
     const autoCollapse =
@@ -367,10 +387,22 @@ const ConversationBubble = React.memo(
     }
 
     if (msg.kind === "agent_message") {
-      return <MarkdownBubble className="agent_message" text={msg.text} />;
+      return (
+        <MarkdownBubble
+          className="agent_message"
+          text={msg.text}
+          markdownRenderVersion={markdownRenderVersion}
+        />
+      );
     }
 
-    return <MarkdownBubble className="user_message" text={msg.text} />;
+    return (
+      <MarkdownBubble
+        className="user_message"
+        text={msg.text}
+        markdownRenderVersion={markdownRenderVersion}
+      />
+    );
   },
   areConversationBubblePropsEqual
 );
@@ -385,6 +417,7 @@ function areConversationBubblePropsEqual(
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
   if (prev.ansi !== next.ansi) return false;
+  if (prev.markdownRenderVersion !== next.markdownRenderVersion) return false;
   if (prev.onSubmitRequestUserInput !== next.onSubmitRequestUserInput) return false;
   if (
     prev.msg.kind === "tool_call" ||
@@ -399,6 +432,7 @@ function areConversationBubblePropsEqual(
 type MarkdownBubbleProps = {
   className: "agent_message" | "user_message";
   text: string;
+  markdownRenderVersion: number;
 };
 
 const ACP_TOOL_ROW_CLASS = "flex w-full px-4 py-1.5 sm:px-8";
@@ -415,6 +449,7 @@ const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-2 px-3 pb-3";
 const MarkdownBubble = React.memo(function MarkdownBubble({
   className,
   text,
+  markdownRenderVersion,
 }: MarkdownBubbleProps) {
   const isAgent = className === "agent_message";
   return (
@@ -423,7 +458,7 @@ const MarkdownBubble = React.memo(function MarkdownBubble({
         data-acp-message-bubble={isAgent ? "agent" : "user"}
         className={`${ACP_MESSAGE_BUBBLE_CLASS} ${isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}`}
       >
-        <ThreadRichText text={text} />
+        <ThreadRichText key={markdownRenderVersion} text={text} />
       </div>
     </div>
   );
@@ -472,6 +507,14 @@ const ToolCallBubble = React.memo(
           ? formatRequestUserInputSummary(requestUserInputQuestions)
           : "",
       [requestUserInputQuestions]
+    );
+    const contentText = React.useMemo(
+      () => (msg.content ? unescapeLineBreaks(msg.content) : ""),
+      [msg.content]
+    );
+    const contentShouldDefaultOpen = React.useMemo(
+      () => shouldAutoExpandToolContent(contentText),
+      [contentText]
     );
     const inputPayload = React.useMemo(
       () => normalizeToolPayload(msg.raw_input),
@@ -569,11 +612,6 @@ const ToolCallBubble = React.memo(
             )}
           </summary>
           <div className="px-3 pb-3">
-            {msg.content ? (
-              <div className="px-1 pb-1 text-[13px] leading-relaxed text-notion-text-muted">
-                {unescapeLineBreaks(msg.content)}
-              </div>
-            ) : null}
             {showPendingRequestUserInputCard && requestUserInputQuestions ? (
               <RequestUserInputCard
                 toolCallId={msg.id}
@@ -593,12 +631,12 @@ const ToolCallBubble = React.memo(
               <FoldSection
                 key="content"
                 label="Content"
-                preview={formatConversationPreview(unescapeLineBreaks(msg.content), 88)}
-                defaultOpen={false}
+                preview={formatConversationPreview(contentText, 88)}
+                defaultOpen={contentShouldDefaultOpen}
                 lazyRender={true}
               >
                 <ToolTextContent
-                  text={unescapeLineBreaks(msg.content)}
+                  text={contentText}
                   markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
                 />
               </FoldSection>
@@ -2274,6 +2312,15 @@ function ToolTextContent({
     );
   }
   return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
+}
+
+function shouldAutoExpandToolContent(text: string): boolean {
+  if (!text) return false;
+  if (!shouldRenderMarkdownText(text)) return false;
+  if (shouldRenderDiffText(text)) return false;
+  if (countLines(text) > TOOL_TEXT_MARKDOWN_FALLBACK_LINES) return false;
+  if (text.length > TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH) return false;
+  return true;
 }
 
 function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boolean }) {
