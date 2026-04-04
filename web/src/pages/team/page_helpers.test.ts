@@ -28,6 +28,9 @@ import {
   resolveTaskMessageSeenByActors,
   refreshTeamConversationMailboxAfterSend,
   sortTasksByActivity,
+  TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT,
+  TEAM_MEMBER_EVENT_RETENTION_LIMIT,
+  TEAM_RUN_EVENT_RETENTION_LIMIT,
   toPrettyJson,
   updateCachedTeamRuntimeStatus,
   upsertAgentEventList,
@@ -295,6 +298,25 @@ describe("team page helpers", () => {
     expect(merged).toBe(prev);
   });
 
+  it("trims shared conversation state to the newest recent window", () => {
+    const prev = Array.from(
+      { length: TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT },
+      (_, index) => buildConversationMessage(index + 1)
+    );
+
+    const merged = mergeConversationMessages(
+      prev,
+      Array.from(
+        { length: TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT + 5 },
+        (_, index) => buildConversationMessage(index + 1)
+      )
+    );
+
+    expect(merged).toHaveLength(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT);
+    expect(merged[0]?.message_id).toBe(6);
+    expect(merged.at(-1)?.message_id).toBe(25);
+  });
+
   it("upserts run by id and keeps latest-first sort order", () => {
     const list = [buildRun("run-1", 100), buildRun("run-2", 120)];
     const updated = upsertRun(list, buildRun("run-1", 140, "working"));
@@ -318,6 +340,37 @@ describe("team page helpers", () => {
     );
     expect(prepend.map((event) => event.event_id)).toEqual([2, 3, 4]);
     expect(prepend.find((event) => event.event_id === 3)?.payload).toEqual({});
+  });
+
+  it("caps replace-refreshed team run events to the newest retained window", () => {
+    const replace = upsertEventList(
+      [],
+      Array.from(
+        { length: TEAM_RUN_EVENT_RETENTION_LIMIT + 5 },
+        (_, index) => buildRunEvent(index + 1)
+      ),
+      "replace"
+    );
+
+    expect(replace).toHaveLength(TEAM_RUN_EVENT_RETENTION_LIMIT);
+    expect(replace[0]?.event_id).toBe(6);
+    expect(replace.at(-1)?.event_id).toBe(105);
+  });
+
+  it("keeps explicit older team run history when prepending older pages", () => {
+    const prepend = upsertEventList(
+      Array.from({ length: TEAM_RUN_EVENT_RETENTION_LIMIT }, (_, index) =>
+        buildRunEvent(index + 101)
+      ),
+      Array.from({ length: TEAM_RUN_EVENT_RETENTION_LIMIT }, (_, index) =>
+        buildRunEvent(index + 1)
+      ),
+      "prepend"
+    );
+
+    expect(prepend).toHaveLength(TEAM_RUN_EVENT_RETENTION_LIMIT * 2);
+    expect(prepend[0]?.event_id).toBe(1);
+    expect(prepend.at(-1)?.event_id).toBe(200);
   });
 
   it("upserts agent events with dedupe and monotonic ordering", () => {
@@ -353,6 +406,21 @@ describe("team page helpers", () => {
       "replace"
     );
     expect(refreshed.map((event) => event.event_id)).toEqual([3, 4]);
+  });
+
+  it("caps replace-refreshed member events to the newest retained window", () => {
+    const refreshed = upsertAgentEventList(
+      [],
+      Array.from(
+        { length: TEAM_MEMBER_EVENT_RETENTION_LIMIT + 4 },
+        (_, index) => buildAgentEvent(index + 1, `event-${index + 1}`)
+      ),
+      "replace"
+    );
+
+    expect(refreshed).toHaveLength(TEAM_MEMBER_EVENT_RETENTION_LIMIT);
+    expect(refreshed[0]?.event_id).toBe(5);
+    expect(refreshed.at(-1)?.event_id).toBe(304);
   });
 
   it("builds readable agent labels with model metadata", () => {
