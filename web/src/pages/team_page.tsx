@@ -908,10 +908,10 @@ export function TeamPage(props: TeamPageProps) {
   }, [routeTeamId, teams.length]);
   useEffect(() => {
     sharedConversationRequestScopeRef.current = {
-      teamId: selectedTeamId?.trim() ?? "",
+      teamId: effectiveSelectedTeamId?.trim() ?? "",
       requestSeq: sharedConversationRequestScopeRef.current.requestSeq + 1,
     };
-  }, [selectedTeamId]);
+  }, [effectiveSelectedTeamId]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -926,7 +926,7 @@ export function TeamPage(props: TeamPageProps) {
     setTaskMessageDraft("");
     setSelectedMemberId("");
     setFocusedAgentMemberId("");
-  }, [selectedTeamId, setSelectedMemberId]);
+  }, [effectiveSelectedTeamId, setSelectedMemberId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
     for (const team of teams) {
@@ -1101,14 +1101,14 @@ export function TeamPage(props: TeamPageProps) {
     [runs, activeRunId]
   );
   const activeRunForSelectedTeam = useMemo(() => {
-    if (!activeRun || !selectedTeamId) {
+    if (!activeRun || !effectiveSelectedTeamId) {
       return null;
     }
-    if (activeRun.team_id !== selectedTeamId) {
+    if (activeRun.team_id !== effectiveSelectedTeamId) {
       return null;
     }
     return activeRun;
-  }, [activeRun, selectedTeamId]);
+  }, [activeRun, effectiveSelectedTeamId]);
   const activeRunIdForSelectedTeam = activeRunForSelectedTeam?.id ?? null;
   const canResumeActiveRun = useMemo(() => {
     if (!activeRunForSelectedTeam) return false;
@@ -1126,32 +1126,32 @@ export function TeamPage(props: TeamPageProps) {
     );
   }, [activeRunForSelectedTeam]);
   const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return DEFAULT_TEAM_RUN_BROWSER_STATE;
     }
-    return teamRunBrowserByTeam[selectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
-  }, [selectedTeamId, teamRunBrowserByTeam]);
+    return teamRunBrowserByTeam[effectiveSelectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
+  }, [effectiveSelectedTeamId, teamRunBrowserByTeam]);
   const runStatusFilter = selectedTeamRunBrowserState.statusFilter;
   const runsHasMore = selectedTeamRunBrowserState.hasMore;
   const runsBeforeCreatedAt = selectedTeamRunBrowserState.beforeCreatedAt;
   const totalLoadedRunsForTeam = useMemo(() => {
-    if (!selectedTeamId) return 0;
-    return runs.filter((run) => run.team_id === selectedTeamId).length;
-  }, [runs, selectedTeamId]);
+    if (!effectiveSelectedTeamId) return 0;
+    return runs.filter((run) => run.team_id === effectiveSelectedTeamId).length;
+  }, [effectiveSelectedTeamId, runs]);
 
   const visibleRuns = useMemo(() => {
-    if (!selectedTeamId) return [];
+    if (!effectiveSelectedTeamId) return [];
     return runs.filter((run) => {
-      if (run.team_id !== selectedTeamId) return false;
+      if (run.team_id !== effectiveSelectedTeamId) return false;
       if (runStatusFilter === "all") return true;
       return run.status === runStatusFilter;
     });
-  }, [runStatusFilter, runs, selectedTeamId]);
+  }, [effectiveSelectedTeamId, runStatusFilter, runs]);
   const isActiveRunHiddenByFilter = useMemo(() => {
-    if (!activeRunForSelectedTeam || !selectedTeamId) return false;
+    if (!activeRunForSelectedTeam || !effectiveSelectedTeamId) return false;
     if (runStatusFilter === "all") return false;
     return activeRunForSelectedTeam.status !== runStatusFilter;
-  }, [activeRunForSelectedTeam, runStatusFilter, selectedTeamId]);
+  }, [activeRunForSelectedTeam, effectiveSelectedTeamId, runStatusFilter]);
 
   const selectedMemberSnapshot = useMemo(
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
@@ -1486,7 +1486,7 @@ export function TeamPage(props: TeamPageProps) {
     onRestartRun,
   } = useTeamActions({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     runContextId,
     runInput,
     runLookupId,
@@ -1641,7 +1641,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useTeamRunLifecycleEffects({
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
@@ -2173,17 +2173,17 @@ export function TeamPage(props: TeamPageProps) {
 
   const onRunStatusFilterChange = useCallback(
     (nextFilter: TeamRunStatusFilter) => {
-      if (!selectedTeamId) return;
+      if (!effectiveSelectedTeamId) return;
       setTeamRunBrowserByTeam((prev) => ({
         ...prev,
-        [selectedTeamId]: {
+        [effectiveSelectedTeamId]: {
           statusFilter: nextFilter,
           beforeCreatedAt: undefined,
           hasMore: false,
         },
       }));
     },
-    [selectedTeamId]
+    [effectiveSelectedTeamId]
   );
 
   const onApplyMessageTemplate = () => {
@@ -2193,7 +2193,7 @@ export function TeamPage(props: TeamPageProps) {
   const selectedConversation = sharedConversation;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
-      selectedTeamId &&
+      effectiveSelectedTeamId &&
       (selectedConversation?.id ?? "").trim()
   );
   const connectionBadge = useMemo(
@@ -2206,18 +2206,18 @@ export function TeamPage(props: TeamPageProps) {
     [conversationSseState, hasConversationStreamTarget, networkOnline]
   );
   const workspaceTasks = useMemo(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return [];
     }
-    return listTeamWorkspaceTasks(taskList, selectedTeamId);
-  }, [selectedTeamId, taskList]);
+    return listTeamWorkspaceTasks(taskList, effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, taskList]);
 
   const selectedTask = useMemo(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return null;
     }
-    return resolveSelectedTeamTask(taskList, selectedTaskId, selectedTeamId);
-  }, [selectedTaskId, selectedTeamId, taskList]);
+    return resolveSelectedTeamTask(taskList, selectedTaskId, effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, selectedTaskId, taskList]);
 
   const refreshTasks = useCallback(
     async (teamId: string) => {
@@ -2277,22 +2277,22 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
-  }, [selectedTaskId, selectedTeamId]);
+  }, [selectedTaskId, effectiveSelectedTeamId]);
 
   useEffect(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return;
     }
-    void refreshTasks(selectedTeamId);
-    void refreshSharedConversation(selectedTeamId);
-  }, [refreshSharedConversation, refreshTasks, selectedTeamId]);
+    void refreshTasks(effectiveSelectedTeamId);
+    void refreshSharedConversation(effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, refreshSharedConversation, refreshTasks]);
 
   const {
     refreshTaskMessages,
     sendTaskMessage: onSendTaskMessage,
   } = useTeamConversationActions({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     selectedConversation,
     latestRunForSharedConversation: sharedConversationLatestRun,
     activeRunIdForSelectedTeam,
@@ -2311,7 +2311,7 @@ export function TeamPage(props: TeamPageProps) {
 
   useTeamConversationEffects({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     selectedConversationId: selectedConversation?.id ?? null,
     tab,
     eventsAutoRefresh,
