@@ -617,6 +617,7 @@ export function TeamPage(props: TeamPageProps) {
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [teamSelectorFilter, setTeamSelectorFilter] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(routeTeamId);
+  const effectiveSelectedTeamId = isSelectorRoute ? null : routeTeamId ?? selectedTeamId;
   const sharedConversationRequestScopeRef = useRef({
     teamId: routeTeamId ?? "",
     requestSeq: 0,
@@ -885,8 +886,8 @@ export function TeamPage(props: TeamPageProps) {
   const [teamCatalogSettled, setTeamCatalogSettled] = useState(() => isSelectorRoute);
 
   const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === selectedTeamId) ?? null,
-    [teams, selectedTeamId]
+    () => teams.find((team) => team.id === effectiveSelectedTeamId) ?? null,
+    [effectiveSelectedTeamId, teams]
   );
   useEffect(() => {
     if (isSelectorRoute || teams.length > 0) {
@@ -3461,12 +3462,12 @@ export function TeamPage(props: TeamPageProps) {
   const showWorkbenchPane = !isCompactWorkbench || teamsSidebarCollapsed;
   const showTeamBootstrapLoading =
     !isSelectorRoute &&
-    Boolean(selectedTeamId) &&
+    Boolean(effectiveSelectedTeamId) &&
     !selectedTeam &&
     !teamCatalogSettled;
   const showTeamUnavailable =
     !isSelectorRoute &&
-    Boolean(selectedTeamId) &&
+    Boolean(effectiveSelectedTeamId) &&
     !selectedTeam &&
     teamCatalogSettled;
   const teamPanelToggleLabel = isCompactWorkbench
@@ -3673,7 +3674,7 @@ export function TeamPage(props: TeamPageProps) {
               configuredWorkerCount={selectedTeamWorkerCount}
               teams={teams}
               selectedTeam={selectedTeam}
-              selectedTeamId={selectedTeamId}
+              selectedTeamId={effectiveSelectedTeamId}
               selectedTeamRuntimeStatus={selectedTeamRuntimeStatus}
               selectedTeamMemberCount={selectedTeamMembers.length}
               selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
@@ -3682,7 +3683,7 @@ export function TeamPage(props: TeamPageProps) {
               focusedAgentMemberId={focusedAgentMemberId}
               tab={tab}
               onSelectTeam={(teamId) => {
-                if (teamId !== selectedTeamId) {
+                if (teamId !== effectiveSelectedTeamId) {
                   navigateToTeamDetail(teamId);
                 }
               }}
@@ -4103,7 +4104,7 @@ export function TeamPage(props: TeamPageProps) {
                   activeRun={activeRunForSelectedTeam}
                   totalLoadedRunsForTeam={totalLoadedRunsForTeam}
                   runsHasMore={runsHasMore}
-                  selectedTeamId={selectedTeamId}
+                  selectedTeamId={effectiveSelectedTeamId}
                   onLoadMoreRuns={onLoadMoreRuns}
                 />
               )}

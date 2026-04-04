@@ -241,6 +241,78 @@ describe("TeamPage smoke render", () => {
     expect(markup).not.toContain("This team is unavailable");
   });
 
+  it("renders team detail content immediately when routing from selector to an already-loaded team", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+            />
+          </MantineProvider>
+        );
+      });
+
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+      });
+
+      expect(container.textContent).toContain("No agents have joined this team yet.");
+      expect(container.textContent).not.toContain("This team is unavailable.");
+      expect(container.textContent).not.toContain("Loading team workspace...");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("ignores stale shared-thread responses after switching teams", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
