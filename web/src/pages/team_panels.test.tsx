@@ -2529,7 +2529,7 @@ describe("team panels interactions", () => {
       });
 
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
@@ -2555,7 +2555,7 @@ describe("team panels interactions", () => {
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
       expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
@@ -2603,7 +2603,7 @@ describe("team panels interactions", () => {
 
       const initialTexts = markdownSpy.mock.calls.map((call) => call[0]);
       expect(initialTexts).not.toContain("message 1");
-      expect(initialTexts).toContain("message 14");
+      expect(initialTexts).toContain("message 204");
       expect(initialTexts).toContain("message 213");
 
       const scrollNode = required(
@@ -2681,6 +2681,41 @@ describe("team panels interactions", () => {
 
     expect(container.querySelector('[data-team-channel-bubble="human"]')).not.toBeNull();
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
+  });
+
+  it("TeamTaskPanel keeps rendered channel messages visible during background refresh", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Existing shared-thread message" },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={true}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    expect(container.textContent).toContain("Existing shared-thread message");
+    expect(container.textContent).not.toContain("Loading thread...");
   });
 
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {

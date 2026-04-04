@@ -21,8 +21,8 @@ import {
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 
-const TEAM_CONVERSATION_MESSAGE_LIMIT = 20;
-const TEAM_CONVERSATION_MAILBOX_LIMIT = 20;
+const TEAM_CONVERSATION_MESSAGE_LIMIT = 10;
+const TEAM_CONVERSATION_MAILBOX_LIMIT = 10;
 
 type SharedConversationTarget = {
   task: TeamTaskRecord;

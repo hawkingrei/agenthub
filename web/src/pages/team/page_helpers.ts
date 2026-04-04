@@ -25,7 +25,7 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
 export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
-export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20;
+export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10;
 export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
 export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
 

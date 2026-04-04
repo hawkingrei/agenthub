@@ -115,3 +115,27 @@
 - Moved the mobile ACP input dock anchor to `bottom: 0` so the dock now stays flush with the viewport bottom on mobile instead of keeping the previous `20px` inset.
 - Tightened the Team overview member snapshot layout with `min-w-0`, wrapped member titles, and a non-scrolling member list container so long member metadata no longer produces desktop horizontal overflow.
 - Revalidated the shared `web_assets` runtime-shell contract locally after the font-stack migration to keep Bazel root tests and Rust coverage aligned with the current CSS baseline.
+
+## 2026-04-04 conversation default window follow-up
+
+- Reduced the default ACP conversation tail window from `200` items to `10`, so the first view now lands directly on the newest recent messages instead of rendering a much larger tail by default.
+- Matched the Team shared-thread conversation defaults to the same recent-10 policy:
+  - `TEAM_CONVERSATION_MESSAGE_LIMIT = 10`
+  - `TEAM_CONVERSATION_MAILBOX_LIMIT = 10`
+  - `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10`
+- Tightened ACP auto-history expansion so a fresh conversation does not immediately auto-load older history just because the visible tail window is now smaller.
+
+## 2026-04-04 conversation default window verification
+
+- `cd web && npm run test -- src/conversation_window.test.ts src/hooks/use_acp_conversation.test.ts src/pages/team/use_team_conversation_actions.test.tsx src/pages/team/page_helpers.test.ts src/pages/team_panels.test.tsx`
+- `cd web && npm run build`
+
+## 2026-04-04 team channel refresh flicker follow-up
+
+- Stopped rendering the `Loading thread...` placeholder during background channel refreshes when messages are already present.
+- The Team shared-thread panel now keeps the current message list visible while `messagesLoading` is true and only shows the loading placeholder for an initial empty-state load.
+
+## 2026-04-04 team channel refresh flicker verification
+
+- `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team/use_team_conversation_actions.test.tsx`
+- `cd web && npm run build`

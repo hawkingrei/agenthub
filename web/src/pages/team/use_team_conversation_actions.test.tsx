@@ -247,13 +247,13 @@ describe("useTeamConversationActions", () => {
         "token-1",
         "team-1",
         "task-all",
-        { limit: 20 }
+        { limit: 10 }
       );
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
         1,
         "token-1",
         "run-1",
-        { event_limit: 1, message_limit: 20 }
+        { event_limit: 1, message_limit: 10 }
       );
       expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(1);
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledTimes(1);

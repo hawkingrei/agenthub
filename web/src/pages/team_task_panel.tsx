@@ -905,6 +905,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading || orderedMessages.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
+  const showInitialThreadLoading = messagesLoading && orderedMessages.length === 0;
   const latestWaterfallKey =
     orderedMessages.length > 0
       ? `conversation-${orderedMessages[orderedMessages.length - 1]?.message_id ?? "empty"}`
@@ -1299,12 +1300,12 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               </div>
             );
           })}
-          {messagesLoading && (
+          {showInitialThreadLoading && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               Loading thread...
             </div>
           )}
-          {!messagesLoading && orderedMessages.length === 0 && (
+          {!showInitialThreadLoading && orderedMessages.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               No channel messages yet.
             </div>

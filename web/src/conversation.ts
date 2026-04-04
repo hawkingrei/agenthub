@@ -67,7 +67,7 @@ export type ConversationWindow<T = ConversationItem> = {
   total: number;
 };
 
-export const DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE = 200;
+export const DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE = 10;
 
 export function isToolCallLive(status?: string): boolean {
   if (!status) return false;
