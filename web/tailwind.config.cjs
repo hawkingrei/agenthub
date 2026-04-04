@@ -14,13 +14,13 @@ module.exports = {
         },
         notion: {
           bg: "#ffffff",
-          sidebar: "#fbfbfa",
+          sidebar: "#f7f7f5",
           text: "#37352f",
           "text-muted": "#787774",
-          border: "#e2e8f0",
-          hover: "#efefee",
+          border: "#e9e9e7",
+          hover: "#f1f1ef",
           accent: "#2383e2",
-          "accent-bg": "rgba(35, 131, 226, 0.05)",
+          "accent-bg": "#e8f2fd",
         },
         ui: {
           surface: "#ffffff",

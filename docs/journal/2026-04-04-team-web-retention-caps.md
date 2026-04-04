@@ -9,10 +9,10 @@
 ## Details
 
 - `web/src/pages/team/page_helpers.ts`
-  - `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20`
+  - `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10`
   - `TEAM_RUN_EVENT_RETENTION_LIMIT = 100`
   - `TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300`
-  - `mergeConversationMessages(...)` now trims to the newest recent-20 shared-thread messages.
+  - `mergeConversationMessages(...)` now trims to the newest recent-10 shared-thread messages.
   - `upsertEventList(..., "replace")` now trims run events to the newest retained window after dedupe and sort.
   - `upsertAgentEventList(..., "replace")` now trims member event state to the newest retained window after merge.
 - `web/src/pages/team/page_helpers.test.ts`

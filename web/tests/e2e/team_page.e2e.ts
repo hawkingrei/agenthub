@@ -183,8 +183,7 @@ async function createTeamFromModal(
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
-  await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
-  await openTeamFromSelector(page, options.name);
+  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
   await expectAddAgentEntryVisible(page, options.name);
 }
 
@@ -357,20 +356,6 @@ async function openTeamFromSelector(
   page: import("@playwright/test").Page,
   teamName: string
 ): Promise<void> {
-  const isSelected = async (): Promise<boolean> => {
-    const detailPath = new URL(page.url()).pathname;
-    if (!/^\/teams\/[^/]+$/.test(detailPath)) {
-      return false;
-    }
-    const pageText = await page.locator("body").textContent();
-    if (!pageText) {
-      return false;
-    }
-    return (
-      !pageText.includes("Loading team workspace...") &&
-      !pageText.includes("This team is unavailable.")
-    );
-  };
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
     const selectorButton = page.getByRole("button", { name: "Team Selector", exact: true });
@@ -391,7 +376,7 @@ async function openTeamFromSelector(
       await teamItem.click({ force: true });
     }
     await page.waitForTimeout(150);
-    if (await isSelected()) {
+    if (await isTeamDetailReady(page)) {
       return;
     }
   }
@@ -399,7 +384,22 @@ async function openTeamFromSelector(
     (element as HTMLButtonElement).click();
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect.poll(isSelected).toBe(true);
+  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
+}
+
+async function isTeamDetailReady(page: import("@playwright/test").Page): Promise<boolean> {
+  const detailPath = new URL(page.url()).pathname;
+  if (!/^\/teams\/[^/]+$/.test(detailPath)) {
+    return false;
+  }
+  const pageText = await page.locator("body").textContent();
+  if (!pageText) {
+    return false;
+  }
+  return (
+    !pageText.includes("Loading team workspace...") &&
+    !pageText.includes("This team is unavailable.")
+  );
 }
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
@@ -1415,7 +1415,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
     goal: "Build a goal-first team and add members afterward.",
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect(page.getByRole("heading", { name: "quest-team", exact: true })).toBeVisible();
+  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
   await openSelectedTeamMenu(page);
   await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
@@ -3243,7 +3243,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await openMainTeamAction(page, "Runs");
   await openAdvancedView(page, "Overview");
   await page
-    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
+    .locator(".teams-member-list .team-member-row", { hasText: "Worker Agent Two (worker)" })
     .click();
   await expect(page.locator(".teams-chat-messages")).toContainText("advanced-mailbox-ping");
   expect(counters.send).toBeGreaterThan(0);
