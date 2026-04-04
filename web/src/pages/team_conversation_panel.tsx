@@ -49,13 +49,14 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col">
       <TeamTaskPanel
         developerMode={props.developerMode}
         token={props.token}
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}
+        onRefreshMessages={props.onRefreshMessages}
         messages={messages}
         seenByMessageId={seenByMessageId}
         humanActorId={humanActorId}

@@ -191,4 +191,31 @@ describe("AcpDebug", () => {
     expect(html).toContain("GPT-5");
     expect(html).not.toContain('placeholder="Model ID"');
   });
+
+  it("renders fallback mode and model inputs with the resolved current values", () => {
+    const html = renderToStaticMarkup(
+      <AcpDebug
+        {...baseProps}
+        configOptions={[
+          {
+            id: "mode",
+            label: "Mode",
+            currentValueId: "workspace_write",
+            selectOptions: [],
+          },
+          {
+            id: "model",
+            label: "Model",
+            currentValueId: "gemini-2.5-pro",
+            selectOptions: [],
+          },
+        ]}
+      />
+    );
+
+    expect(html).toContain('name="acp-mode"');
+    expect(html).toContain('value="workspace_write"');
+    expect(html).toContain('name="acp-model"');
+    expect(html).toContain('value="gemini-2.5-pro"');
+  });
 });

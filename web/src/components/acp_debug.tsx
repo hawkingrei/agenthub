@@ -58,6 +58,11 @@ type AcpDebugProps = {
   onAcpConfigIdChange: (value: string) => void;
   onAcpConfigValueChange: (value: string) => void;
   canControlAcp: boolean;
+  canSetMode?: boolean;
+  canSetModel?: boolean;
+  canSetConfig?: boolean;
+  canCancelRun?: boolean;
+  canClearSession?: boolean;
   onAcpSetMode: (value: string) => void;
   onAcpSetModel: (value: string) => void;
   onAcpSetConfig: () => void;
@@ -91,6 +96,11 @@ export function AcpDebug({
   onAcpConfigIdChange,
   onAcpConfigValueChange,
   canControlAcp,
+  canSetMode,
+  canSetModel,
+  canSetConfig,
+  canCancelRun,
+  canClearSession,
   onAcpSetMode,
   onAcpSetModel,
   onAcpSetConfig,
@@ -136,6 +146,11 @@ export function AcpDebug({
   );
   const resolvedModeId = acpModeId || modeConfigOption?.currentValueId || "";
   const resolvedModelId = acpModelId || modelConfigOption?.currentValueId || "";
+  const canApplyMode = canSetMode ?? canControlAcp;
+  const canApplyModel = canSetModel ?? canControlAcp;
+  const canApplyConfig = canSetConfig ?? canControlAcp;
+  const canCancel = canCancelRun ?? canControlAcp;
+  const canClear = canClearSession ?? true;
   const terminalCounts = React.useMemo(() => {
     let stdout = 0;
     let stderr = 0;
@@ -312,14 +327,14 @@ export function AcpDebug({
                 className={debugInputClassName}
                 name="acp-mode"
                 placeholder="Mode ID"
-                value={acpModeId}
+                value={resolvedModeId}
                 onChange={(e) => onAcpModeIdChange(e.target.value)}
               />
             )}
             <button
               className={debugSecondaryButtonClassName}
               onClick={() => onAcpSetMode(resolvedModeId)}
-              disabled={!canControlAcp || !resolvedModeId}
+              disabled={!canApplyMode || !resolvedModeId}
             >
               Set Mode
             </button>
@@ -345,14 +360,14 @@ export function AcpDebug({
                 className={debugInputClassName}
                 name="acp-model"
                 placeholder="Model ID"
-                value={acpModelId}
+                value={resolvedModelId}
                 onChange={(e) => onAcpModelIdChange(e.target.value)}
               />
             )}
             <button
               className={debugSecondaryButtonClassName}
               onClick={() => onAcpSetModel(resolvedModelId)}
-              disabled={!canControlAcp || !resolvedModelId}
+              disabled={!canApplyModel || !resolvedModelId}
             >
               Set Model
             </button>
@@ -370,15 +385,15 @@ export function AcpDebug({
               value={acpConfigValue}
               onChange={(e) => onAcpConfigValueChange(e.target.value)}
             />
-            <button className={debugSecondaryButtonClassName} onClick={onAcpSetConfig} disabled={!canControlAcp}>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpSetConfig} disabled={!canApplyConfig}>
               Set Config
             </button>
           </div>
           <div className="form-row flex flex-wrap gap-2">
-            <button className={debugPrimaryButtonClassName} onClick={onAcpCancel} disabled={!canControlAcp}>
+            <button className={debugPrimaryButtonClassName} onClick={onAcpCancel} disabled={!canCancel}>
               Cancel Run
             </button>
-            <button className={debugSecondaryButtonClassName} onClick={onAcpClearSession}>
+            <button className={debugSecondaryButtonClassName} onClick={onAcpClearSession} disabled={!canClear}>
               {acpClearSessionLabel ?? "Clear Session"}
             </button>
           </div>

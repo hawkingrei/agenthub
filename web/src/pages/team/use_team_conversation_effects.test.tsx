@@ -229,6 +229,32 @@ describe("useTeamConversationEffects", () => {
     expect(onSseStateChange).toHaveBeenCalledWith("reconnecting");
   });
 
+  it("keeps the shared-thread sse stream active outside the conversation tab", async () => {
+    const onSseStateChange = vi.fn<(nextState: SseConnectionState) => void>();
+    const params = createParams({
+      eventsAutoRefresh: true,
+      tab: "agent_acp",
+      onSseStateChange,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(onSseStateChange).toHaveBeenCalledWith("connecting");
+
+    await act(async () => {
+      MockEventSource.instances[0].emitOpen();
+      await Promise.resolve();
+    });
+
+    expect(onSseStateChange).toHaveBeenCalledWith("connected");
+  });
+
   it("does not poll when the workspace is not on the conversation tab", async () => {
     vi.useFakeTimers();
     const params = createParams({
@@ -243,6 +269,7 @@ describe("useTeamConversationEffects", () => {
       await Promise.resolve();
     });
 
+    expect(MockEventSource.instances).toHaveLength(1);
     const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
 
     await act(async () => {

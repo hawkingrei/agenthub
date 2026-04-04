@@ -1650,6 +1650,60 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("running");
   });
 
+  it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(1, {
+            from_actor_id: "leader-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: { type: "chat_message", text: "Keep the composer docked." },
+          }),
+        ]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={toPrettyJson}
+      />
+    );
+
+    const rootCard = required(
+      container.querySelector('[data-team-surface="conversation"]') as HTMLDivElement | null,
+      "team task panel root missing"
+    );
+    expect(rootCard.classList.contains("flex")).toBe(true);
+    expect(rootCard.classList.contains("flex-col")).toBe(true);
+    expect(rootCard.classList.contains("flex-1")).toBe(true);
+    expect(rootCard.classList.contains("overflow-hidden")).toBe(true);
+
+    const bodyShell = required(
+      container.querySelector('[data-team-channel-body="true"]') as HTMLDivElement | null,
+      "team channel body shell missing"
+    );
+    expect(bodyShell.classList.contains("min-h-0")).toBe(true);
+    expect(bodyShell.classList.contains("flex")).toBe(true);
+    expect(bodyShell.classList.contains("flex-1")).toBe(true);
+    expect(bodyShell.classList.contains("flex-col")).toBe(true);
+    expect(bodyShell.classList.contains("overflow-hidden")).toBe(true);
+
+    const composer = required(
+      container.querySelector('[data-team-channel-composer="true"]') as HTMLDivElement | null,
+      "team channel composer missing"
+    );
+    expect(composer.classList.contains("shrink-0")).toBe(true);
+
+    expect(rootCard.lastElementChild).toBe(composer);
+    expect(bodyShell.nextElementSibling).toBe(composer);
+  });
+
   it("TeamTaskPanel renders canonical agent replies already persisted in shared thread", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
@@ -3011,6 +3065,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
         developerMode={true}
         selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
         selectedMemberSnapshot={buildMemberSnapshot({
           member_id: "worker-agent",
           role: "worker",
@@ -3028,13 +3083,46 @@ describe("team panels interactions", () => {
       />
     );
 
-    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("Worker agent");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
-    expect(container.textContent).toContain("Role worker");
-    expect(container.textContent).toContain("member=worker-agent");
-    expect(container.textContent).toContain("role=worker");
-    expect(container.textContent).toContain("session=task-77");
+    expect(container.textContent).toContain("role");
+    expect(container.textContent).toContain("worker");
+    expect(container.textContent).toContain("Details");
+    expect(container.textContent).not.toContain("member");
+    expect(container.textContent).not.toContain("session");
+    expect(container.textContent).not.toContain("role=worker");
+    expect(container.textContent).not.toContain("worker-agent");
+  });
+
+  it("TeamMemberAcpPanel can hide the inner member title when the outer workspace already shows it", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        hideMemberTitle={true}
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          model: "gpt-5",
+          status: "working",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+        })}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).not.toContain("Worker agent");
+    expect(container.textContent).toContain("gpt-5");
+    expect(container.textContent).toContain("working");
   });
 
   it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
@@ -3092,6 +3180,42 @@ describe("team panels interactions", () => {
     expect(container.querySelector("textarea")).not.toBeNull();
   });
 
+  it("TeamTaskPanel keeps the composer pinned while exposing channel refresh", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onRefreshMessages={vi.fn()}
+        messages={[
+          buildTaskMessage(21, {
+            from_actor_id: "leader-agent",
+            payload: { type: "chat_message", text: "latest message" },
+          }),
+        ]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    const channelBody = required(
+      container.querySelector('[data-team-channel-body="true"]') as HTMLDivElement | null,
+      "channel body missing"
+    );
+    const composer = required(
+      container.querySelector('[data-team-channel-composer="true"]') as HTMLDivElement | null,
+      "channel composer missing"
+    );
+
+    expect(findButtonByText(container, "Refresh")).not.toBeNull();
+    expect(channelBody.classList.contains("flex")).toBe(true);
+    expect(composer.classList.contains("shrink-0")).toBe(true);
+  });
+
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
     const onForceNewSession = vi.fn();
 
@@ -3118,6 +3242,85 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Force New Session"));
     expect(onForceNewSession).toHaveBeenCalledTimes(1);
   });
+
+  it("TeamMemberAcpPanel disables ACP debug actions when the corresponding handlers are unavailable", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedSessionId="runtime-session-1"
+        memberEvents={[
+          {
+            event_id: 33,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "33",
+            ts: 1_700_000_333,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "config_option_update",
+              config_options: [
+                {
+                  id: "mode",
+                  label: "Mode",
+                  current_value: { type: "value_id", value: "workspace_write" },
+                  select_options: [
+                    { value_id: "workspace_write", label: "Workspace Write" },
+                  ],
+                },
+              ],
+            }),
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        canControlAcp={true}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Debug"));
+
+    expect(findButtonByText(container, "Set Mode").disabled).toBe(true);
+    expect(findButtonByText(container, "Set Model").disabled).toBe(true);
+    expect(findButtonByText(container, "Set Config").disabled).toBe(true);
+    expect(findButtonByText(container, "Cancel Run").disabled).toBe(true);
+    expect(findButtonByText(container, "Clear Session").disabled).toBe(true);
+  });
+
+  it("TeamMemberAcpPanel disables Cancel Run when no ACP run is interruptible", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedSessionId="runtime-session-1"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        canControlAcp={true}
+        canInterrupt={true}
+        onInterrupt={vi.fn()}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Debug"));
+
+    expect(findButtonByText(container, "Cancel Run").disabled).toBe(true);
+  });
+
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
     const onLoadOlder = vi.fn();
 
@@ -3256,6 +3459,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).not.toContain("Debug");
     expect(container.textContent).toContain("Refresh");
+    expect(container.textContent).toContain("Details");
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
     expect(container.textContent).not.toContain("session=task-77");
@@ -3267,6 +3471,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={true}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           selectedSessionId="runtime-session-1"
@@ -3302,6 +3507,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           memberEvents={[]}
@@ -3325,6 +3531,7 @@ describe("team panels interactions", () => {
       <TeamMemberAcpPanel
           developerMode={false}
           selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
           selectedMemberSnapshot={null}
           selectedMemberRole="worker"
           selectedSessionId="runtime-session-1"
@@ -3338,7 +3545,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("session runtime-session-1 · no thread events yet");
+    expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
   });

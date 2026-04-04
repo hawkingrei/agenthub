@@ -170,13 +170,11 @@ describe("useTeamConversationActions", () => {
     vi.clearAllMocks();
   });
 
-  it("loads a small tail window first, then hydrates a larger shared-thread window", async () => {
-    mockedApi.listTeamTaskMessages
-      .mockResolvedValueOnce([buildTaskMessage(41, "latest tail")])
-      .mockResolvedValueOnce([
-        buildTaskMessage(1, "older"),
-        buildTaskMessage(41, "latest tail"),
-      ]);
+  it("loads only the recent shared-thread tail window", async () => {
+    mockedApi.listTeamTaskMessages.mockResolvedValueOnce([
+      buildTaskMessage(22, "tail-1"),
+      buildTaskMessage(41, "tail-2"),
+    ]);
     mockedApi.getTeamTask.mockResolvedValue({
       task: buildSharedThreadTask(),
       conversation: {
@@ -199,70 +197,36 @@ describe("useTeamConversationActions", () => {
         ended_at: null,
       },
     });
-    mockedApi.getTeamRunSnapshot
-      .mockResolvedValueOnce({
-        run: {
-          id: "run-1",
-          team_id: "team-1",
-          context_id: "ctx-1",
-          status: "working",
-          input: {},
-          created_at: 1,
-          started_at: null,
-          ended_at: null,
-        },
-        team: {
-          id: "team-1",
-          name: "Team One",
-          description: null,
-          spec: {},
-          created_at: 1,
-          updated_at: 1,
-        },
-        leader_member_id: "leader",
-        members: [],
-        steps: [],
-        latest_events: [],
-        mailbox: {
-          pending: 0,
-          delivered: 0,
-          dead_letter: 0,
-          recent_messages: [buildMailboxMessage(90, "latest mailbox")],
-        },
-      } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>)
-      .mockResolvedValueOnce({
-        run: {
-          id: "run-1",
-          team_id: "team-1",
-          context_id: "ctx-1",
-          status: "working",
-          input: {},
-          created_at: 1,
-          started_at: null,
-          ended_at: null,
-        },
-        team: {
-          id: "team-1",
-          name: "Team One",
-          description: null,
-          spec: {},
-          created_at: 1,
-          updated_at: 1,
-        },
-        leader_member_id: "leader",
-        members: [],
-        steps: [],
-        latest_events: [],
-        mailbox: {
-          pending: 0,
-          delivered: 0,
-          dead_letter: 0,
-          recent_messages: [
-            buildMailboxMessage(80, "older mailbox"),
-            buildMailboxMessage(90, "latest mailbox"),
-          ],
-        },
-      } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>);
+    mockedApi.getTeamRunSnapshot.mockResolvedValueOnce({
+      run: {
+        id: "run-1",
+        team_id: "team-1",
+        context_id: "ctx-1",
+        status: "working",
+        input: {},
+        created_at: 1,
+        started_at: null,
+        ended_at: null,
+      },
+      team: {
+        id: "team-1",
+        name: "Team One",
+        description: null,
+        spec: {},
+        created_at: 1,
+        updated_at: 1,
+      },
+      leader_member_id: "leader",
+      members: [],
+      steps: [],
+      latest_events: [],
+      mailbox: {
+        pending: 0,
+        delivered: 0,
+        dead_letter: 0,
+        recent_messages: [buildMailboxMessage(90, "latest mailbox")],
+      },
+    } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>);
 
     let captured: TeamConversationActions | null = null;
     const options = createOptions();
@@ -283,27 +247,16 @@ describe("useTeamConversationActions", () => {
         "token-1",
         "team-1",
         "task-all",
-        { limit: 60 }
-      );
-      expect(mockedApi.listTeamTaskMessages).toHaveBeenNthCalledWith(
-        2,
-        "token-1",
-        "team-1",
-        "task-all",
-        { limit: 200 }
+        { limit: 20 }
       );
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
         1,
         "token-1",
         "run-1",
-        { event_limit: 1, message_limit: 60 }
+        { event_limit: 1, message_limit: 20 }
       );
-      expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
-        2,
-        "token-1",
-        "run-1",
-        { event_limit: 1, message_limit: 200 }
-      );
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(1);
+      expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledTimes(1);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(true);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(false);
     } finally {

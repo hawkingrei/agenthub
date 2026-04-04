@@ -2,18 +2,54 @@ import React from "react";
 import { AgentRecord } from "../api";
 import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
 import {
+  OUTPUT_HEADER_DETAILS_ITEM_CLASS,
+  OUTPUT_HEADER_DETAILS_LABEL_CLASS,
+  OUTPUT_HEADER_DETAILS_LIST_CLASS,
+  OUTPUT_HEADER_DETAILS_PANEL_CLASS,
+  OUTPUT_HEADER_DETAILS_ROOT_CLASS,
+  OUTPUT_HEADER_DETAILS_SUMMARY_CLASS,
+  OUTPUT_HEADER_DETAILS_VALUE_CLASS,
   OUTPUT_HEADER_META_CLASS,
-  OUTPUT_HEADER_PILL_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
-  OUTPUT_HEADER_SESSION_CLASS,
   OUTPUT_HEADER_SUBTITLE_CLASS,
   OUTPUT_HEADER_SUBTITLE_ROW_CLASS,
   OUTPUT_HEADER_TITLE_CLASS,
   OUTPUT_HEADER_TITLE_HEADING_CLASS,
   OUTPUT_HEADER_TITLE_MAIN_CLASS,
   OUTPUT_HEADER_TITLE_TEXT_CLASS,
-  OUTPUT_HEADER_UPDATED_CLASS,
 } from "../ui/tailwind_classes";
+
+type OutputHeaderDetailsItem = {
+  label: string;
+  value: string;
+};
+
+export function OutputHeaderDetails({
+  items,
+  summary = "Details",
+}: {
+  items: OutputHeaderDetailsItem[];
+  summary?: string;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <details className={OUTPUT_HEADER_DETAILS_ROOT_CLASS}>
+      <summary className={OUTPUT_HEADER_DETAILS_SUMMARY_CLASS}>{summary}</summary>
+      <div className={OUTPUT_HEADER_DETAILS_PANEL_CLASS}>
+        <div className={OUTPUT_HEADER_DETAILS_LIST_CLASS}>
+          {items.map((item) => (
+            <div key={item.label} className={OUTPUT_HEADER_DETAILS_ITEM_CLASS}>
+              <span className={OUTPUT_HEADER_DETAILS_LABEL_CLASS}>{item.label}</span>
+              <span className={OUTPUT_HEADER_DETAILS_VALUE_CLASS}>{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 type OutputHeaderProps = {
   activeAgent: AgentRecord | null;
@@ -27,18 +63,18 @@ type OutputHeaderProps = {
 
 export const OutputHeader = React.memo(function OutputHeader({
   activeAgent,
-  activeSessionId,
+  activeSessionId: _activeSessionId,
   developerMode,
   hasAcp,
   thinkingStartTs,
   runStatus,
   modelLabel,
 }: OutputHeaderProps) {
+  void _activeSessionId;
   const titleText = activeAgent ? activeAgent.name : "No agent selected";
   const subtitleText = activeAgent
     ? activeAgent.workdir
     : "Select an agent to continue.";
-  const sessionLabel = activeSessionId ? activeSessionId.slice(0, 8) : null;
   const updatedLabel = activeAgent
     ? new Date(activeAgent.updated_at * 1000).toLocaleString()
     : null;
@@ -55,6 +91,16 @@ export const OutputHeader = React.memo(function OutputHeader({
     ? `${mergedStatus} · ${thinkingLabel}`
     : mergedStatus;
   const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
+  const detailsItems = [
+    { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
+    ...(
+      developerMode
+        ? [
+        ...(updatedLabel ? [{ label: "updated", value: updatedLabel }] : []),
+          ]
+        : []
+    ),
+  ];
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
       <div className={OUTPUT_HEADER_TITLE_CLASS}>
@@ -75,15 +121,7 @@ export const OutputHeader = React.memo(function OutputHeader({
             className={`agent-status status-${mergedStatusClassToken}`}
             title={`status: ${mergedStatusLabel}`}
           />
-          <span className={OUTPUT_HEADER_PILL_CLASS}>
-            Code mode {activeAgent.code_mode ? "on" : "off"}
-          </span>
-          {developerMode && sessionLabel && (
-            <span className={OUTPUT_HEADER_SESSION_CLASS}>Session {sessionLabel}</span>
-          )}
-          {developerMode && updatedLabel && (
-            <span className={OUTPUT_HEADER_UPDATED_CLASS}>Updated {updatedLabel}</span>
-          )}
+          <OutputHeaderDetails items={detailsItems} />
         </div>
       ) : null}
       {!hasAcp ? (
