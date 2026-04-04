@@ -127,6 +127,9 @@ subject = "mailto:ops@company.com"
 keys_path = "/etc/agenthub/vapid.json"
 ```
 
+Push delivery still depends on a browser that supports service workers and the
+Push API. Outside `localhost`, use HTTPS.
+
 ### `[internal_grpc]` Section
 
 Internal gRPC control plane for remote nodes and actor CLI.

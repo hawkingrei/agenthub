@@ -31,6 +31,8 @@ debug artifacts. They are not the primary planning surface.
   - shared conversation thread, usually `# all`
   - `# all` is a stable Team-level conversation target resolved by the backend, not whichever task
     happens to be visible first in the Kanban list
+  - optimized for live coordination: the composer stays pinned to the bottom and the workbench
+    prioritizes a fast recent slice before hydrating a larger recent tail in the background
   - human goals, constraints, approvals, and `@member_id` coordination requests
 - **Kanban**:
   - task ownership and lifecycle
@@ -106,6 +108,18 @@ The workbench also refreshes more aggressively on resume:
 This keeps context attached to the task instead of fragmenting it across many
 small execution steps.
 
+## Shared Channel Connection Model
+
+The Team header exposes the shared-thread connection state directly:
+
+- `ONLINE · SSE CONNECTED` means the Team-level shared conversation stream is live
+- a manual channel refresh action is still available when you want to force a fresh pull
+
+The shared channel is intentionally tuned for live coordination, not infinite
+log browsing. If you need deeper execution history or raw event detail, drop
+into `Agent ACP`, `Runs`, or other debug surfaces instead of treating `# all`
+as the primary archive.
+
 ## What To Watch Operationally
 
 - whether the Team runtime is started or stopped
@@ -122,9 +136,15 @@ Use `Teams -> Agents -> Agent ACP` when you need to inspect one member deeply:
 - ACP conversation and tool-call history
 - detailed debugging
 - member-specific prompt or runtime behavior
+- session controls such as `Set Mode`, `Set Model`, `Set Config`, `Cancel Run`,
+  and `Force New Session` when the active ACP runtime exposes them
 
 Use this sparingly during normal Team work. The primary human workflow should
 still live in `Conversation` and `Kanban`.
+
+When a provider returns structured selector options, AgentHub uses those
+provider-driven choices instead of forcing you to type raw model or mode IDs by
+hand.
 
 ## Permission Review In Teams
 
@@ -136,6 +156,8 @@ prompt:
 - the requester never self-reviews
 - if agent review does not complete in time, the shared Team surface falls back
   to a human-visible review card
+- resolved or timed-out review cards collapse to compact status cards so the
+  shared channel keeps more space for active content
 
 ## Managed Runtime Vs Local Development
 
