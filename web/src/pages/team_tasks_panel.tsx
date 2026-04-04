@@ -21,7 +21,16 @@ import {
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
+  TASKS_BOARD_LANES_CLASS,
+  TASKS_BOARD_COLUMN_CLASS,
+  TASKS_BOARD_COLUMN_HEADER_CLASS,
+  TASKS_BOARD_CARD_CLASS,
+  TASKS_BOARD_CARD_ACTIVE_CLASS,
+  TASKS_DETAIL_PANEL_CLASS,
+  TASKS_DETAIL_META_ITEM_CLASS,
 } from "../ui/tailwind_classes";
+import { DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE } from "../conversation";
+import { windowConversation } from "../acp_window";
 
 type TaskStatusFilter = "all" | TeamTaskStatus;
 
@@ -50,49 +59,42 @@ type TeamTasksPanelProps = {
 };
 
 const TASKS_FILTER_BAR_CLASS =
-  "rounded-[16px] border border-black/[0.06] bg-white/82 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
-const TASKS_WORKSPACE_STACK_CLASS = "mt-4 flex flex-col gap-4";
-const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-1";
-const TASKS_BOARD_LANES_CLASS =
-  "grid min-w-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-4";
-const TASKS_BOARD_COLUMN_CLASS =
-  "flex min-h-[320px] flex-col rounded-[18px] border border-black/[0.05] bg-white/84 p-3 shadow-[0_1px_4px_rgba(15,23,42,0.04)]";
-const TASKS_BOARD_COLUMN_HEADER_CLASS =
-  "flex items-start justify-between gap-2.5 border-b border-black/[0.05] pb-2.5";
+  "rounded-lg border border-notion-border bg-notion-sidebar/50 p-1 shadow-sm";
+const TASKS_WORKSPACE_STACK_CLASS = "mt-6 flex flex-col gap-8";
+const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-4";
+const TASKS_BOARD_LANES_CLASS_LOCAL = TASKS_BOARD_LANES_CLASS;
+const TASKS_BOARD_COLUMN_CLASS_LOCAL = TASKS_BOARD_COLUMN_CLASS;
+const TASKS_BOARD_COLUMN_HEADER_CLASS_LOCAL = TASKS_BOARD_COLUMN_HEADER_CLASS;
 const TASKS_BOARD_COLUMN_META_CLASS =
-  "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
-const TASKS_BOARD_STACK_CLASS = "mt-3 flex min-h-0 flex-1 flex-col gap-2.5";
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+const TASKS_BOARD_STACK_CLASS = "mt-4 flex min-h-0 flex-1 flex-col gap-2";
 const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-[14px] border border-dashed border-black/[0.12] bg-white/72 px-2.5 py-2.5 text-sm text-ui-text-muted";
-const TASKS_BOARD_CARD_ACTIVE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.08] bg-white/94 px-3 py-3 text-left text-ui-text-primary shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition";
-const TASKS_BOARD_CARD_IDLE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1.5 rounded-[14px] border border-black/[0.05] bg-white/90 px-3 py-3 text-left text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-black/[0.08] hover:bg-black/[0.02]";
+  "rounded-md border border-dashed border-notion-border bg-white/50 px-3 py-4 text-sm text-notion-text-muted italic text-center";
+const TASKS_BOARD_CARD_ACTIVE_CLASS_LOCAL = TASKS_BOARD_CARD_ACTIVE_CLASS;
+const TASKS_BOARD_CARD_IDLE_CLASS = TASKS_BOARD_CARD_CLASS;
 const TASKS_BOARD_CARD_META_ROW_CLASS =
-  "flex w-full items-center justify-between gap-2 text-[11px] text-ui-text-muted";
+  "flex w-full items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted opacity-70";
 const TASKS_BOARD_CARD_SELECT_BUTTON_CLASS =
   "flex w-full min-w-0 flex-col items-start gap-1.5 text-left";
-const TASKS_DETAIL_PANEL_CLASS =
-  "rounded-[18px] border border-black/[0.05] bg-white/88 p-4 shadow-[0_1px_4px_rgba(15,23,42,0.04)]";
+const TASKS_DETAIL_PANEL_CLASS_LOCAL = TASKS_DETAIL_PANEL_CLASS;
 const TASKS_DETAIL_META_CLASS =
-  "mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3";
-const TASKS_DETAIL_META_ITEM_CLASS =
-  "rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-2.5 py-2";
+  "mt-4 grid gap-3 text-sm text-notion-text sm:grid-cols-2 xl:grid-cols-3";
+const TASKS_DETAIL_META_ITEM_CLASS_LOCAL = TASKS_DETAIL_META_ITEM_CLASS;
 const TASKS_RUN_CARD_CLASS =
-  "rounded-[14px] border border-black/[0.05] bg-white/90 px-3 py-3";
-const TASKS_RUN_LIST_CLASS = "mt-3.5 space-y-2";
+  "rounded-lg border border-notion-border bg-notion-sidebar/20 p-4 transition-all";
+const TASKS_RUN_LIST_CLASS = "mt-6 space-y-3";
 const TASKS_DEBUG_DISCLOSURE_CLASS =
-  "mt-3.5 rounded-[14px] border border-dashed border-black/[0.1] bg-black/[0.018] px-2.5 py-2.5";
+  "mt-6 rounded-lg border border-dashed border-notion-border bg-notion-sidebar/10 p-4 transition-all";
 const TASKS_DEBUG_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-center justify-between gap-3 text-left";
-const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-sm text-ui-text-muted";
-const TASKS_DEBUG_BODY_CLASS = "mt-3 space-y-3 border-t border-black/[0.05] pt-3";
+const TASKS_DEBUG_SUMMARY_META_CLASS = "mt-1 text-[13px] text-notion-text-muted";
+const TASKS_DEBUG_BODY_CLASS = "mt-4 space-y-4 border-t border-notion-border/50 pt-4";
 
 const SEGMENTED_CONTROL_CLASSNAMES = {
-  root: "rounded-lg border border-black/[0.05] bg-black/[0.02] p-1",
+  root: "rounded-md border border-notion-border bg-white/50 p-0.5",
   control: "flex-1",
   label:
-    "rounded-md px-2.5 py-1.5 text-xs font-medium text-ui-text-muted transition data-[active]:bg-white data-[active]:text-ui-text-primary data-[active]:shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:text-ui-text-primary",
+    "rounded-sm px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted transition data-[active]:bg-white data-[active]:text-notion-text data-[active]:shadow-sm hover:text-notion-text",
   indicator: "hidden",
   innerLabel: "truncate",
 } as const;
@@ -185,7 +187,7 @@ function resolveTaskAssigneeLabel(
   return assigneeLabelById.get(assignedMemberId) ?? assignedMemberId;
 }
 
-export function TeamTasksPanel(props: TeamTasksPanelProps) {
+function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const {
     compactMode = false,
     developerMode,
@@ -289,15 +291,15 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   const boardPanel = (
-    <div className="space-y-2.5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-ui-text-primary">Board lanes</p>
-          <p className="mt-0.5 text-xs text-ui-text-muted">
+          <p className="text-sm font-bold text-notion-text uppercase tracking-widest">Board lanes</p>
+          <p className="mt-1 text-[12px] text-notion-text-muted">
             Grouped by task state.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-ui-text-muted">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">
           <span>{`${visibleColumns.length} lanes`}</span>
           <span aria-hidden="true">·</span>
           <span>{`${visibleTasks.length} tasks`}</span>
@@ -305,18 +307,18 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
       </div>
 
       <div className={TASKS_BOARD_SCROLL_CLASS}>
-        <div className={TASKS_BOARD_LANES_CLASS}>
+        <div className={TASKS_BOARD_LANES_CLASS_LOCAL}>
           {visibleColumns.map((column) => {
             const laneTasks = visibleTasksByStatus.get(column.status) ?? [];
             return (
-              <section key={column.status} className={TASKS_BOARD_COLUMN_CLASS}>
-                <div className={TASKS_BOARD_COLUMN_HEADER_CLASS}>
+              <section key={column.status} className={TASKS_BOARD_COLUMN_CLASS_LOCAL}>
+                <div className={TASKS_BOARD_COLUMN_HEADER_CLASS_LOCAL}>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold text-ui-text-primary">
+                      <h4 className="text-sm font-bold text-notion-text">
                         {column.label}
                       </h4>
-                      <span className="rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                      <span className="rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted">
                         {laneTasks.length}
                       </span>
                     </div>
@@ -338,15 +340,14 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                   )}
                   {!tasksLoading && tasks.length === 0 && (
                     <div className={TASKS_BOARD_EMPTY_CLASS}>
-                      No leader-planned tasks yet. Use # all to request work or clarify goals,
-                      then Kanban will reflect the planned tasks automatically.
+                      No tasks yet.
                     </div>
                   )}
                   {!tasksLoading && tasks.length > 0 && laneTasks.length === 0 && (
                     <div className={TASKS_BOARD_EMPTY_CLASS}>
                       {statusFilter === "all"
                         ? formatTaskEmptyLabel(column.status)
-                        : "No tasks match the selected filter."}
+                        : "No results."}
                     </div>
                   )}
                   {!tasksLoading &&
@@ -355,7 +356,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                         key={task.id}
                         className={
                           task.id === selectedTask?.id
-                            ? TASKS_BOARD_CARD_ACTIVE_CLASS
+                            ? TASKS_BOARD_CARD_ACTIVE_CLASS_LOCAL
                             : TASKS_BOARD_CARD_IDLE_CLASS
                         }
                       >
@@ -364,10 +365,10 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                           className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}
                           onClick={() => onSelectTask(task.id)}
                         >
-                          <span className={TEAM_LIST_ITEM_TITLE_CLASS}>{task.title}</span>
+                          <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>{task.title}</span>
                           <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
-                            <span>{`updated ${formatTs(task.updated_at)}`}</span>
-                            <span>{`created ${formatTs(task.created_at)}`}</span>
+                            <span>{`upd ${formatTs(task.updated_at)}`}</span>
+                            <span>{`cre ${formatTs(task.created_at)}`}</span>
                           </span>
                           <span className={TEAM_LIST_ITEM_META_CLASS}>
                             {`owner ${resolveTaskAssigneeLabel(task, assigneeLabelById)}`}
@@ -388,10 +389,10 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   const detailPanel = (
-    <div className={TASKS_DETAIL_PANEL_CLASS}>
+    <div className={TASKS_DETAIL_PANEL_CLASS_LOCAL}>
       {!selectedTask && (
         <p className={TEAM_MUTED_TEXT_CLASS}>
-          Select a task to inspect linked runs and the latest execution summary.
+          Select a task to inspect.
         </p>
       )}
 
@@ -400,17 +401,15 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               {compactMode && (
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
                   Task detail
                 </p>
               )}
-              <h4 className="text-[15px] font-semibold text-ui-text-primary sm:text-base">
+              <h4 className="text-[18px] font-bold text-notion-text">
                 {selectedTask.title}
               </h4>
-              <p className="mt-1 text-sm text-ui-text-muted">
-                Kanban is the canonical task board. The leader and Team runtime own task
-                planning and lifecycle, while runs capture execution evidence for the selected
-                task.
+              <p className="mt-2 text-[14px] leading-relaxed text-notion-text-muted">
+                Task board summary. The leader and Team runtime manage life-cycle.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -431,42 +430,38 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
           </div>
 
           <div className={TASKS_DETAIL_META_CLASS}>
-            <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-              <strong>Task</strong>
-              <div className="mono mt-1 text-xs text-ui-text-muted">{selectedTask.id}</div>
+            <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+              <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Task</strong>
+              <div className="mono mt-1 text-[12px] font-medium text-notion-text">{selectedTask.id}</div>
             </div>
-            <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-              <strong>Created</strong>
-              <div className="mt-1 text-xs text-ui-text-muted">{formatTs(selectedTask.created_at)}</div>
+            <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+              <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Created</strong>
+              <div className="mt-1 text-[12px] font-medium text-notion-text">{formatTs(selectedTask.created_at)}</div>
             </div>
-            <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-              <strong>Assignee</strong>
-              <div className="mt-1 text-xs text-ui-text-muted">
+            <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+              <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Assignee</strong>
+              <div className="mt-1 text-[12px] font-medium text-notion-text">
                 {resolveTaskAssigneeLabel(selectedTask, assigneeLabelById)}
               </div>
             </div>
-            <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-              <strong>Updated</strong>
-              <div className="mt-1 text-xs text-ui-text-muted">{formatTs(selectedTask.updated_at)}</div>
-            </div>
           </div>
 
-          <div className="mt-4 rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-2.5 py-2 text-sm text-ui-text-muted">
-            Task status and ownership are agent-managed through Team runtime controls.
+          <div className="mt-2 rounded-md bg-notion-sidebar/30 px-3 py-2 text-[13px] text-notion-text-muted italic border border-notion-border/50">
+            Task managed through Team runtime controls.
           </div>
 
           <div className={TASKS_RUN_LIST_CLASS}>
             <div className={TASKS_RUN_CARD_CLASS}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ui-text-primary">Latest run</p>
-                  <p className="mt-1 text-sm text-ui-text-muted">
+                  <p className="text-sm font-bold text-notion-text">Latest run</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
                     {latestRun
                       ? latestRun.summary?.trim() ||
                         (latestRun.status === "completed"
-                          ? "Completed without a structured summary."
-                          : "Execution summary will appear here when the run finishes.")
-                      : "No run recorded yet. The task will execute automatically once the team is ready."}
+                          ? "Completed."
+                          : "Execution in progress.")
+                      : "No run recorded yet."}
                   </p>
                 </div>
                 {latestRun && (
@@ -480,31 +475,31 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
               </div>
               {latestRun && (
                 <>
-                  <div className="mt-3 grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-4">
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Run</strong>
-                      <div className="mono mt-1 text-xs text-ui-text-muted">{latestRun.id}</div>
+                  <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Run</strong>
+                      <div className="mono mt-1 text-[11px] text-notion-text">{latestRun.id}</div>
                     </div>
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Context</strong>
-                      <div className="mono mt-1 text-xs text-ui-text-muted">
+                    <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Context</strong>
+                      <div className="mono mt-1 text-[11px] text-notion-text">
                         {latestRun.context_id}
                       </div>
                     </div>
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Started</strong>
-                      <div className="mt-1 text-xs text-ui-text-muted">
+                    <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Started</strong>
+                      <div className="mt-1 text-[11px] text-notion-text">
                         {formatTs(latestRun.started_at ?? latestRun.created_at)}
                       </div>
                     </div>
-                    <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong>Ended</strong>
-                      <div className="mt-1 text-xs text-ui-text-muted">
+                    <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Ended</strong>
+                      <div className="mt-1 text-[11px] text-notion-text">
                         {latestRun.ended_at ? formatTs(latestRun.ended_at) : "running"}
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
@@ -521,25 +516,22 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
               <div className={TASKS_RUN_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-ui-text-primary">Previous runs</p>
-                    <p className="mt-1 text-sm text-ui-text-muted">
-                      Earlier execution attempts linked to this task.
-                    </p>
+                    <p className="text-sm font-bold text-notion-text">Previous runs</p>
                   </div>
-                  <span className="rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-xs font-semibold text-ui-text-secondary">
+                  <span className="rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted">
                     {relatedRuns.length - 1}
                   </span>
                 </div>
-                <div className="mt-3 space-y-2">
+                <div className="mt-4 space-y-2">
                   {relatedRuns.slice(1, 4).map((run) => (
                     <button
                       key={run.id}
                       type="button"
-                      className="flex w-full flex-col items-start gap-2 rounded-[12px] border border-black/[0.05] bg-white/92 px-3 py-2 text-left transition hover:border-black/[0.08] hover:bg-black/[0.02]"
+                      className="flex w-full flex-col items-start gap-1 rounded-md border border-notion-border bg-white px-3 py-2 text-left transition hover:bg-notion-hover"
                       onClick={() => onOpenRun(run.id)}
                     >
                       <div className="flex w-full flex-wrap items-center justify-between gap-2">
-                        <span className="mono text-xs text-ui-text-muted">{run.id}</span>
+                        <span className="mono text-[11px] text-notion-text-muted font-medium">{run.id}</span>
                         <StatusBadge
                           label={run.status}
                           tone={resolveRunStatusTone(run.status)}
@@ -547,11 +539,8 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                           title={`run status: ${run.status}`}
                         />
                       </div>
-                      <span className="text-sm text-ui-text-primary">
-                        {run.summary?.trim() || "No structured summary recorded."}
-                      </span>
-                      <span className="text-xs text-ui-text-muted">
-                        {`created ${formatTs(run.created_at)}`}
+                      <span className="text-[13px] font-medium text-notion-text">
+                        {run.summary?.trim() || "No summary recorded."}
                       </span>
                     </button>
                   ))}
@@ -570,13 +559,12 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
             >
               <summary className={TASKS_DEBUG_SUMMARY_CLASS}>
                 <div>
-                  <p className="text-sm font-semibold text-ui-text-primary">Developer tools</p>
+                  <p className="text-sm font-bold text-notion-text">Developer tools</p>
                   <p className={TASKS_DEBUG_SUMMARY_META_CLASS}>
-                    Manual compile preview and raw task context stay available here without
-                    taking over the task detail surface.
+                    Raw task context and preview.
                   </p>
                 </div>
-                <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-ui-text-muted">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
                   {debugToolsOpen ? "Hide" : "Show"}
                 </span>
               </summary>
@@ -606,7 +594,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 </div>
 
                 {compiledRunPreview ? (
-                  <div className="space-y-3 rounded-[14px] border border-black/[0.05] bg-black/[0.018] p-3">
+                  <div className="space-y-4 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -626,16 +614,16 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                         Create Run from Preview
                       </button>
                     </div>
-                    <div className="grid gap-2 text-sm text-ui-text-secondary sm:grid-cols-2">
-                      <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                        <strong>Conversation</strong>
-                        <div className="mono mt-1 text-xs text-ui-text-muted">
+                    <div className="grid gap-3 text-sm text-notion-text sm:grid-cols-2">
+                      <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                        <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Conversation</strong>
+                        <div className="mono mt-1 text-[12px] text-notion-text">
                           {compiledRunPreview.conversation_id}
                         </div>
                       </div>
-                      <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                        <strong>Context</strong>
-                        <div className="mono mt-1 text-xs text-ui-text-muted">
+                      <div className={TASKS_DETAIL_META_ITEM_CLASS_LOCAL}>
+                        <strong className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Context</strong>
+                        <div className="mono mt-1 text-[12px] text-notion-text">
                           {compiledRunPreview.run_payload.context_id}
                         </div>
                       </div>
@@ -655,8 +643,8 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
                 {selectedTask.context &&
                   typeof selectedTask.context === "object" &&
                   !Array.isArray(selectedTask.context) && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ui-text-muted">
+                    <div className="mt-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
                         Task context
                       </p>
                       <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2`}>
@@ -673,7 +661,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
   );
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS} data-team-surface="kanban">
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`} data-team-surface="kanban">
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
@@ -693,10 +681,10 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="min-w-[220px] flex-1 rounded-[12px] border border-black/[0.05] bg-black/[0.018] px-3 py-2.5 text-sm text-ui-text-muted">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="min-w-[220px] flex-1 rounded-md border border-notion-border bg-notion-sidebar/30 px-4 py-3 text-[14px] text-notion-text-muted italic">
           Kanban is the canonical Team task surface. Human requests and clarifications should go
-          through <strong className="text-ui-text-primary"># all</strong>; leader planning and Team
+          through <strong className="text-notion-text"># all</strong>; leader planning and Team
           runtime create and advance tasks here.
         </div>
         <button
@@ -708,7 +696,7 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
         </button>
       </div>
 
-      <div className={TASKS_FILTER_BAR_CLASS}>
+      <div className={`${TASKS_FILTER_BAR_CLASS} mt-4`}>
         <SegmentedControl
           fullWidth
           size="xs"
@@ -738,3 +726,6 @@ export function TeamTasksPanel(props: TeamTasksPanelProps) {
     </div>
   );
 }
+
+export const TeamTasksPanel = React.memo(TeamTasksPanelImpl);
+TeamTasksPanel.displayName = "TeamTasksPanel";

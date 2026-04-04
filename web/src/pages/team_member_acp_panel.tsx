@@ -552,7 +552,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const shouldRenderPanel = Boolean(selectedMemberId.trim());
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col rounded-[12px] border-black/[0.06] p-2.5`}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-2.5`}>
       {canShowThreadOptions && (
         <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full shrink-0 justify-end gap-2`}>
           <button

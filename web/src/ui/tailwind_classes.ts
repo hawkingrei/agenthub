@@ -18,25 +18,25 @@ export const AUTH_SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm font-medium text-ui-text-primary transition hover:border-ui-border-emphasis";
 
 export const TEAM_PANEL_CARD_CLASS =
-  "card team-panel-card min-h-0 rounded-[18px] border border-black/[0.05] bg-white/88 shadow-[0_1px_4px_rgba(15,23,42,0.04)] backdrop-blur-sm";
+  "card team-panel-card flex min-h-0 flex-1 flex-col rounded-xl border border-notion-border bg-white shadow-sm transition-all overflow-hidden";
 
 export const TEAM_PANEL_TOOLBAR_CLASS =
-  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-black/[0.05] bg-white/82 px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
+  "mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-notion-border bg-notion-sidebar/50 px-3 py-2";
 
 export const TEAM_PANEL_TOOLBAR_ACTIONS_CLASS =
   "actions flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end";
 
 export const TEAM_PANEL_PRIMARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[14px] border border-brand-primary bg-brand-primary px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-inverse shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition hover:border-brand-primary-hover hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-md bg-notion-accent px-ctrl-x py-ctrl-y text-ui-sm font-bold text-white shadow-sm transition hover:bg-notion-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/20 disabled:cursor-not-allowed disabled:opacity-60 active:translate-y-px";
 
 export const TEAM_PANEL_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-md border border-notion-border bg-white px-ctrl-x py-ctrl-y text-ui-sm font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_GHOST_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-[12px] border border-black/[0.06] bg-white/92 px-ctrl-x py-ctrl-y text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-md px-ctrl-x py-ctrl-y text-ui-sm font-medium text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text disabled:cursor-not-allowed disabled:opacity-60";
 
 export const TEAM_PANEL_REFRESH_BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[12px] border border-black/[0.06] bg-white/92 px-2.5 py-ctrl-y-sm text-ui-sm font-semibold text-ui-text-secondary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border";
+  "inline-flex items-center gap-1.5 rounded-md border border-notion-border bg-white px-2.5 py-ctrl-y-sm text-ui-sm font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text disabled:opacity-60 active:translate-y-px";
 
 export const TEAM_PANEL_INPUT_CLASS =
   "w-full rounded-lg border border-ui-border-strong bg-ui-surface px-ctrl-x py-ctrl-y text-ui-sm text-ui-text-primary outline-none transition focus:border-ui-border-emphasis focus:ring-2 focus:ring-ui-border";
@@ -62,25 +62,24 @@ export const TEAM_TAB_BUTTON_IDLE_CLASS =
   `${TEAM_TAB_BUTTON_BASE_CLASS} text-ui-text-muted hover:bg-black/[0.03] hover:text-ui-text-primary`;
 
 export const TEAM_LIST_ITEM_BASE_CLASS =
-  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-[16px] border border-ui-border/90 bg-white/82 px-ctrl-x py-ctrl-y text-left text-ui-text-primary shadow-[0_4px_12px_rgba(15,23,42,0.03)] transition";
+  "team-item flex w-full min-w-0 flex-col items-start gap-1 rounded-md border border-notion-border bg-white px-3 py-2 text-left text-notion-text shadow-sm transition-all hover:bg-notion-hover hover:border-notion-accent/20";
 
 export const TEAM_LIST_ITEM_ACTIVE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} border-ui-border-strong bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] ring-1 ring-ui-border/70`;
+  `${TEAM_LIST_ITEM_BASE_CLASS} ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md`;
 
-export const TEAM_LIST_ITEM_IDLE_CLASS =
-  `${TEAM_LIST_ITEM_BASE_CLASS} hover:border-ui-border-strong hover:bg-ui-surface-soft`;
+export const TEAM_LIST_ITEM_IDLE_CLASS = TEAM_LIST_ITEM_BASE_CLASS;
 
 export const TEAM_LIST_ITEM_TITLE_CLASS =
-  "team-name w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold";
+  "team-name w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-bold";
 
 export const TEAM_LIST_ITEM_META_CLASS =
-  "team-id mono w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs opacity-90";
+  "team-id mono w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-notion-text-muted opacity-80";
 
 export const TEAM_CREATE_MODAL_BACKDROP_CLASS =
-  "modal-backdrop team-create-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-brand-primary/40 px-3 py-6 sm:py-10";
+  "modal-backdrop team-create-modal-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/20 px-3 py-6 sm:py-10 backdrop-blur-sm";
 
 export const TEAM_CREATE_MODAL_CARD_CLASS =
-  "modal team-create-modal w-full max-w-5xl rounded-2xl border border-ui-border bg-ui-surface p-4 shadow-2xl sm:p-5";
+  "modal team-create-modal w-full max-w-5xl rounded-xl border border-notion-border bg-white p-4 shadow-2xl sm:p-6";
 
 export const TEAM_CREATE_STAGE_BADGE_CLASS =
   "badge rounded-full border border-ui-border-strong bg-ui-surface-muted px-2.5 py-1 text-ui-xs font-medium text-ui-text-secondary";
@@ -340,6 +339,83 @@ export const TEAM_MEMBER_META_CLASS = "mono truncate text-[10px] text-notion-tex
 
 export const TEAM_MEMBER_SUMMARY_CLASS = "flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 
+export const TASKS_BOARD_LANES_CLASS =
+  "grid min-w-full auto-cols-[minmax(280px,1fr)] grid-flow-col gap-4";
+
+export const TASKS_BOARD_COLUMN_CLASS =
+  "flex min-h-[420px] flex-col rounded-lg border border-notion-border bg-notion-sidebar/30 p-3 transition-all";
+
+export const TASKS_BOARD_COLUMN_HEADER_CLASS =
+  "flex items-center justify-between gap-2 pb-3 border-b border-notion-border/50";
+
+export const TASKS_BOARD_CARD_CLASS =
+  "group relative flex w-full min-w-0 flex-col items-start gap-1.5 rounded-md border border-notion-border bg-white px-3 py-2.5 text-left text-notion-text shadow-sm transition-all hover:bg-notion-hover hover:border-notion-accent/20 active:translate-y-px";
+
+export const TASKS_BOARD_CARD_ACTIVE_CLASS =
+  `${TASKS_BOARD_CARD_CLASS} ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md`;
+
+export const TASKS_DETAIL_PANEL_CLASS =
+  "flex flex-col gap-4 rounded-xl border border-notion-border bg-white p-4 sm:p-6 shadow-sm";
+
+export const TASKS_DETAIL_META_ITEM_CLASS =
+  "rounded-md border border-notion-border bg-notion-sidebar/30 px-3 py-2";
+
+export const OVERVIEW_META_CLASS =
+  "mb-4 grid min-w-0 gap-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-4 text-[13px] text-notion-text sm:grid-cols-2 xl:grid-cols-3";
+
+export const OVERVIEW_PLAYBOOK_CLASS =
+  "mb-6 rounded-xl border border-notion-border bg-white p-4 sm:p-6 shadow-sm";
+
+export const OVERVIEW_PLAYBOOK_GRID_CLASS = "grid gap-4 md:grid-cols-2 mt-4";
+
+export const OVERVIEW_PLAYBOOK_CARD_CLASS = "rounded-lg border border-notion-border bg-notion-sidebar/20 p-4";
+
+export const OVERVIEW_PLAYBOOK_TITLE_CLASS =
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
+export const OVERVIEW_PLAYBOOK_LIST_CLASS = "mt-3 list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-notion-text";
+
+export const OVERVIEW_MEMBER_LIST_CLASS = "teams-member-list flex flex-col gap-2 mt-4";
+
+export const MAILBOX_META_CLASS =
+  "mb-4 grid min-w-0 gap-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-4 text-[13px] text-notion-text sm:grid-cols-2 xl:grid-cols-4";
+
+export const MAILBOX_SHELL_CLASS =
+  "teams-chat-shell grid min-w-0 gap-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]";
+
+export const MAILBOX_MEMBER_LIST_CLASS =
+  "teams-chat-members flex max-h-[220px] min-w-0 flex-col gap-1.5 overflow-auto rounded-xl border border-notion-border bg-notion-sidebar/20 p-3 lg:max-h-[640px]";
+
+export const MAILBOX_PANEL_CLASS =
+  "teams-chat-panel flex min-w-0 flex-col gap-4 rounded-xl border border-notion-border bg-white p-4 shadow-sm";
+
+export const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
+
+export const MAILBOX_MESSAGE_LIST_CLASS =
+  "teams-chat-messages m-0 flex max-h-[480px] list-none flex-col gap-3 overflow-auto p-0 pr-1";
+
+export const MAILBOX_MESSAGE_ITEM_CLASS =
+  "group relative flex w-full max-w-full gap-3 rounded-lg border border-notion-border bg-white px-3 py-2.5 transition-all hover:bg-notion-hover/30";
+
+export const MAILBOX_CONVERSATION_EMPTY_CLASS =
+  "py-8 text-center text-sm text-notion-text-muted italic";
+
+export const MAILBOX_MESSAGE_HEAD_CLASS =
+  "mb-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
+export const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-4 lg:grid-cols-2";
+
+export const MAILBOX_ADVANCED_PANEL_CLASS =
+  "teams-message-panel flex min-w-0 flex-col gap-3 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4";
+
+export const EVENTS_LIST_CLASS = "teams-event-list flex flex-col gap-3 mt-4";
+
+export const EVENTS_ITEM_CLASS = "rounded-lg border border-notion-border bg-white p-3 shadow-sm transition-all hover:bg-notion-hover/30";
+
+export const EVENTS_ITEM_HEAD_CLASS =
+  "teams-event-head mb-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+
 export const ADMIN_APP_CLASS =
   "app min-h-screen bg-white text-notion-text";
 
@@ -422,10 +498,10 @@ export const TEAM_SIDEBAR_META_GRID_CLASS =
   "teams-create-launch-meta mono mt-3 grid gap-1 text-[10px] text-notion-text-muted";
 
 export const AGENTS_PANEL_EXPANDED_CLASS =
-  "workspace-left rounded-lg border-r border-notion-border bg-notion-sidebar p-2 text-notion-text backdrop-blur-sm transition-all duration-300";
+  "workspace-left border-r border-notion-border bg-notion-sidebar p-2 text-notion-text backdrop-blur-sm transition-all duration-300";
 
 export const AGENTS_PANEL_COLLAPSED_CLASS =
-  "workspace-left collapsed rounded-lg border-r border-notion-border bg-notion-sidebar p-2 text-notion-text backdrop-blur-sm transition-all duration-300";
+  "workspace-left collapsed border-r border-notion-border bg-notion-sidebar p-2 text-notion-text backdrop-blur-sm transition-all duration-300";
 
 export const AGENTS_TOOLBAR_CLASS = "mb-4 flex items-center justify-between px-2 pt-2";
 export const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-1.5";
@@ -523,7 +599,7 @@ export const INPUT_DOCK_SEND_BUTTON_CLASS =
   "inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-4 py-1 text-[13px] font-bold text-white transition hover:bg-notion-accent/90 disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px";
 
 export const TEAM_PAGE_ROOT_CLASS =
-  "mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-white px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0";
+  "mx-auto flex min-h-0 flex-1 w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-white px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0";
 
 export const TEAM_SECTION_CARD_CLASS =
   "min-h-0 min-w-0 rounded-lg border border-notion-border bg-white px-3 py-2 shadow-sm transition-all";
@@ -562,7 +638,7 @@ export const TEAM_WORKBENCH_HEADER_STATUS_CLASS =
   "inline-flex items-center gap-1.5 rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 
 export const TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS =
-  "rounded-xl border border-notion-border bg-white px-4 py-3 shadow-sm transition-all";
+  "flex min-h-0 flex-1 flex-col rounded-xl border border-notion-border bg-white px-4 py-3 shadow-sm transition-all";
 
 export const TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS =
   "min-w-0 bg-white px-4 py-3 border-r border-notion-border last:border-r-0";

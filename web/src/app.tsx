@@ -3354,10 +3354,10 @@ export function App() {
     >
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
         <div className="hidden min-w-0 sm:block">
-          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-semibold tracking-tight text-black">
+          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-bold tracking-tight text-notion-text">
             AgentHub
           </h1>
-          <p className="mt-1 hidden text-[10px] font-medium uppercase tracking-[0.12em] text-black/55 sm:block">
+          <p className="mt-1 hidden text-[10px] font-bold uppercase tracking-widest text-notion-text-muted sm:block">
             Agent runtime workbench
           </p>
         </div>

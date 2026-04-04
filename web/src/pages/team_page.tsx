@@ -3721,7 +3721,7 @@ export function TeamPage(props: TeamPageProps) {
                     >
                       <div className="min-w-0 flex-1">
                         {workspaceEyebrow && (
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
                             {workspaceEyebrow}
                           </p>
                         )}
@@ -3729,15 +3729,15 @@ export function TeamPage(props: TeamPageProps) {
                           <h2
                             className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
                               isAgentWorkspace
-                                ? "text-[15px] font-semibold leading-[1.1]"
-                                : "text-[17px] font-semibold leading-tight"
-                            } tracking-tight text-black`}
+                                ? "text-[15px] font-bold leading-[1.1]"
+                                : "text-[17px] font-bold leading-tight"
+                            } tracking-tight text-notion-text`}
                           >
                             {workspaceTitle}
                           </h2>
                         ) : null}
                         {workspaceDescription && (
-                          <p className="mt-1 text-[12px] leading-[1.45] text-ui-text-secondary">
+                          <p className="mt-1 text-[12px] leading-relaxed text-notion-text-muted">
                             {workspaceDescription}
                           </p>
                         )}

@@ -79,15 +79,28 @@ html, body {
 }
 
 .workspace.collapsed {
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 56px 0px minmax(0, 1fr);
 }
 
-.workspace-left {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #fbfbfa;
-  border-right: 1px solid var(--border);
+.workspace.collapsed .workspace-splitter {
+  display: none;
+}
+
+/* Ensure images and videos are responsive */
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* More robust resets since preflight is off */
+blockquote, dl, dd, h1, h2, h3, h4, h5, h6, hr, figure, p, pre {
+  margin: 0;
+}
+
+ul, ol {
+  list-node-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .workspace-right {
@@ -109,6 +122,21 @@ html, body {
 .workspace-splitter:hover {
   background: var(--accent);
 }
+
+.session-connection-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.notion-accent .session-connection-dot { background: var(--accent); }
+.success .session-connection-dot { background: #1d6f42; }
+.warning .session-connection-dot { background: #7a541c; }
+.danger .session-connection-dot { background: #9e3a27; }
+.inactive .session-connection-dot { background: #787774; }
 
 /* Custom scrollbar to look more like Notion */
 ::-webkit-scrollbar {

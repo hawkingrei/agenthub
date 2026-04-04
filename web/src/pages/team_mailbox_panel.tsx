@@ -21,6 +21,17 @@ import {
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
+  MAILBOX_META_CLASS,
+  MAILBOX_SHELL_CLASS,
+  MAILBOX_MEMBER_LIST_CLASS,
+  MAILBOX_PANEL_CLASS,
+  MAILBOX_CHAT_JUMP_BUTTON_CLASS,
+  MAILBOX_MESSAGE_LIST_CLASS,
+  MAILBOX_MESSAGE_ITEM_CLASS,
+  MAILBOX_CONVERSATION_EMPTY_CLASS,
+  MAILBOX_MESSAGE_HEAD_CLASS,
+  MAILBOX_ADVANCED_GRID_CLASS,
+  MAILBOX_ADVANCED_PANEL_CLASS,
 } from "../ui/tailwind_classes";
 
 type ChatActors = {
@@ -87,52 +98,12 @@ type TeamMailboxPanelProps = {
   onRefreshInbox: () => Promise<void> | void;
 };
 
-const MAILBOX_META_CLASS =
-  "mb-3 grid min-w-0 gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3 text-ui-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-4";
-const MAILBOX_SHELL_CLASS =
-  "teams-chat-shell grid min-w-0 gap-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]";
-const MAILBOX_MEMBER_LIST_CLASS =
-  "teams-chat-members flex max-h-[220px] min-w-0 flex-col gap-2 overflow-auto rounded-[18px] border border-ui-border bg-ui-surface-soft/60 p-3 lg:max-h-[560px]";
-const MAILBOX_PANEL_CLASS =
-  "teams-chat-panel flex min-w-0 flex-col gap-3 rounded-[18px] border border-ui-border bg-ui-surface-soft/60 p-3";
-const MAILBOX_MEMBER_BUTTON_BASE_CLASS = `${TEAM_LIST_ITEM_BASE_CLASS}`;
-const MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} border-ui-border-strong bg-ui-surface-soft ring-1 ring-ui-border`;
-const MAILBOX_MEMBER_BUTTON_IDLE_CLASS =
-  `${MAILBOX_MEMBER_BUTTON_BASE_CLASS} hover:border-ui-border-strong`;
-const MAILBOX_UNREAD_ACTIVE_CLASS =
-  "teams-member-unread mono inline-flex items-center rounded-full border border-state-warning-border bg-state-warning-bg px-2 py-0.5 text-ui-xs text-[color:var(--status-warning-ink)]";
-const MAILBOX_UNREAD_MUTED_CLASS =
-  "teams-member-unread mono inline-flex items-center rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-ui-xs text-ui-text-muted";
-const MAILBOX_HEAD_CLASS =
-  "teams-chat-head grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start";
-const MAILBOX_HEAD_META_CLASS =
-  "min-w-0 break-words whitespace-normal text-ui-sm leading-5 text-ui-text-secondary";
-const MAILBOX_HEAD_ACTIONS_CLASS =
-  "flex min-w-0 flex-wrap items-center justify-start gap-2 lg:justify-end";
-const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "ghost teams-chat-jump-bottom inline-flex items-center rounded-lg border border-ui-border-strong bg-ui-surface px-3 py-2 text-ui-sm font-medium text-ui-text-secondary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
-const MAILBOX_MESSAGE_LIST_CLASS =
-  "teams-chat-messages m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto p-0";
-const MAILBOX_MESSAGE_BUBBLE_BASE_CLASS =
-  "teams-chat-bubble rounded-[14px] border px-2.5 py-2.5";
-const MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS =
-  `${MAILBOX_MESSAGE_BUBBLE_BASE_CLASS} border-[rgba(59,130,246,0.18)] bg-[linear-gradient(180deg,rgba(239,246,255,0.95),rgba(248,250,252,0.92))]`;
-const MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS =
-  `${MAILBOX_MESSAGE_BUBBLE_BASE_CLASS} border-[rgba(16,185,129,0.14)] bg-[linear-gradient(180deg,rgba(240,253,250,0.94),rgba(248,250,252,0.92))]`;
-const MAILBOX_MESSAGE_HEAD_CLASS =
-  "teams-message-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
-const MAILBOX_CONVERSATION_EMPTY_CLASS =
-  `teams-chat-empty rounded-xl border border-dashed border-ui-border-strong bg-ui-surface px-3 py-3 ${TEAM_MUTED_TEXT_CLASS}`;
-const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-3 lg:grid-cols-2";
-const MAILBOX_ADVANCED_PANEL_CLASS =
-  "teams-message-panel flex min-w-0 flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
-const MAILBOX_SECTION_TITLE_CLASS = "text-ui-sm font-semibold text-ui-text-primary";
-const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-ui-sm text-ui-text-secondary";
+const MAILBOX_SECTION_TITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted px-1";
+const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
 const MAILBOX_ADVANCED_HINT_CLASS =
-  "mt-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
+  "mt-4 rounded-md border border-state-warning-border bg-state-warning-bg px-4 py-3 text-[13px] text-state-warning-text italic";
 const MAILBOX_ADVANCED_ROOT_CLASS =
-  "teams-message-advanced mt-3 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+  "teams-message-advanced mt-6 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
 
 function resolveMailboxActorLabel(
   actorId: string,
@@ -251,10 +222,16 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         ]
       : []),
   ];
+
+  const actorButtonClassName = (isActive: boolean) =>
+    `${TEAM_LIST_ITEM_BASE_CLASS} ${
+      isActive ? "ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md" : ""
+    }`;
+
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
-        <h4>Send Message (JSON)</h4>
+        <h4 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Send Message (JSON)</h4>
         <input
           className={TEAM_PANEL_INPUT_CLASS}
           placeholder="from_actor_id"
@@ -288,7 +265,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           value={msgRoute}
           onChange={(event) => onMsgRouteChange(event.target.value)}
         />
-        <div className="form-row">
+        <div className="flex flex-col gap-2">
           <select
             className={TEAM_PANEL_INPUT_CLASS}
             value={msgTemplate}
@@ -331,7 +308,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       </div>
 
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
-        <h4>Inbox Query (read-only)</h4>
+        <h4 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Inbox Query (read-only)</h4>
         <p className={TEAM_MUTED_TEXT_CLASS}>
           Refresh inspects mailbox state only. Accept pending work from the conversation pane when
           you are taking ownership of it.
@@ -377,7 +354,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
   );
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
       </div>
@@ -385,16 +362,20 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       {showConversation && snapshot && (
         <div className={MAILBOX_META_CLASS}>
           <span>
-            <strong>Pending:</strong> {snapshot.mailbox.pending}
+            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Pending:</strong>
+            <span className="font-bold">{snapshot.mailbox.pending}</span>
           </span>
           <span>
-            <strong>Delivered:</strong> {snapshot.mailbox.delivered}
+            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Delivered:</strong>
+            <span className="font-bold">{snapshot.mailbox.delivered}</span>
           </span>
           <span>
-            <strong>Dead Letter:</strong> {snapshot.mailbox.dead_letter}
+            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Dead Letter:</strong>
+            <span className="font-bold">{snapshot.mailbox.dead_letter}</span>
           </span>
           <span>
-            <strong>Recent Messages:</strong> {snapshot.mailbox.recent_messages.length}
+            <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Recent Messages:</strong>
+            <span className="font-bold">{snapshot.mailbox.recent_messages.length}</span>
           </span>
         </div>
       )}
@@ -409,47 +390,50 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               return (
                 <button
                   key={member.member_id}
-                  className={
-                    selectedMemberId === member.member_id
-                      ? MAILBOX_MEMBER_BUTTON_ACTIVE_CLASS
-                      : MAILBOX_MEMBER_BUTTON_IDLE_CLASS
-                  }
+                  className={actorButtonClassName(selectedMemberId === member.member_id)}
                   onClick={() => onSelectMember(member.member_id)}
                 >
-                  <span className={TEAM_LIST_ITEM_TITLE_CLASS}>
-                    {resolveMailboxActorLabel(
-                      member.member_id,
-                      displayNameByActorId,
-                      normalizedHumanActorId
-                    )}{" "}
-                    ({member.role})
-                  </span>
-                  {isHuman ? (
-                    <span className={TEAM_LIST_ITEM_META_CLASS}>human actor</span>
-                  ) : (
-                    <StatusBadge
-                      label={member.status}
-                      tone={resolveTeamRunStatusTone(member.status)}
-                      className="team-status"
-                      title={`member status: ${member.status}`}
-                    />
-                  )}
-                  <span className={TEAM_LIST_ITEM_META_CLASS}>pending={member.pending_inbox_count}</span>
-                  <span className={unread > 0 ? MAILBOX_UNREAD_ACTIVE_CLASS : MAILBOX_UNREAD_MUTED_CLASS}>
-                    unread={unread}
-                  </span>
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>
+                      {resolveMailboxActorLabel(
+                        member.member_id,
+                        displayNameByActorId,
+                        normalizedHumanActorId
+                      )}{" "}
+                      ({member.role})
+                    </span>
+                    {!isHuman && (
+                      <StatusBadge
+                        label={member.status}
+                        tone={resolveTeamRunStatusTone(member.status)}
+                        className="team-status"
+                        title={`member status: ${member.status}`}
+                      />
+                    )}
+                  </div>
+                  <div className="flex w-full items-center justify-between gap-2 mt-0.5">
+                    <span className={TEAM_LIST_ITEM_META_CLASS}>
+                      {isHuman ? "human actor" : `pending=${member.pending_inbox_count}`}
+                    </span>
+                    {unread > 0 && (
+                      <span className="shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text">
+                        unread={unread}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}
             {mailboxActors.length === 0 && (
-              <p className={TEAM_MUTED_TEXT_CLASS}>No members available.</p>
+              <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No members available.</p>
             )}
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-            <div className={MAILBOX_HEAD_CLASS}>
-              <div className={MAILBOX_HEAD_META_CLASS}>
-                <strong>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-notion-border pb-3">
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Conversation</span>
+                <div className="truncate text-[14px] font-bold text-notion-text mt-0.5">
                   {resolveMailboxActorLabel(
                     chatActors.fromActorId,
                     displayNameByActorId,
@@ -461,19 +445,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     displayNameByActorId,
                     normalizedHumanActorId
                   )}
-                </strong>
+                </div>
               </div>
-              <div className={MAILBOX_HEAD_ACTIONS_CLASS}>
-                {developerMode && (
-                  <>
-                    <div className={`mono ${MAILBOX_HEAD_META_CLASS}`}>
-                      inbox_actor_id={chatActors.inboxActorId || "-"}
-                    </div>
-                    <div className={`mono ${MAILBOX_HEAD_META_CLASS}`}>
-                      auto_follow={chatStickToBottom ? "on" : "off"}
-                    </div>
-                  </>
-                )}
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
@@ -496,14 +470,12 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   disabled={conversationMessages.length === 0}
                   title="Jump to latest message"
                 >
-                  Jump to bottom
+                  <i className="bi bi-chevron-down" aria-hidden="true" />
+                  <span>Jump to bottom</span>
                 </button>
               </div>
             </div>
-            <p className={`mb-3 ${TEAM_MUTED_TEXT_CLASS}`}>
-              Refresh is read-only. Use Accept to consume pending inbox work for{" "}
-              <code>{chatActors.inboxActorId || "-"}</code>.
-            </p>
+
             <ul
               className={MAILBOX_MESSAGE_LIST_CLASS}
               ref={chatMessagesRef}
@@ -516,57 +488,61 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 return (
                   <li
                     key={message.message_id}
-                    className={
-                      isOutgoing
-                        ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS
-                        : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS
-                    }
+                    className={MAILBOX_MESSAGE_ITEM_CLASS}
                   >
-                    <div className={MAILBOX_MESSAGE_HEAD_CLASS}>
-                      <span className="mono">#{message.message_id}</span>
-                      <span>
-                        {resolveMailboxActorLabel(
-                          message.from_actor_id,
-                          displayNameByActorId,
-                          normalizedHumanActorId
-                        )}{" "}
-                        →{" "}
-                        {resolveMailboxActorLabel(
-                          message.to_actor_id,
-                          displayNameByActorId,
-                          normalizedHumanActorId
-                        )}
-                      </span>
-                      <span>{message.status}</span>
-                      <span>{formatTs(message.created_at)}</span>
+                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm mt-1 ${isOutgoing ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
+                      {isOutgoing ? "O" : "I"}
                     </div>
-                    {chatText !== null ? (
-                      <div
-                        className={`${TEAM_PANEL_PRE_CLASS} whitespace-pre-wrap`}
-                        dangerouslySetInnerHTML={{
-                          __html: renderPlainTextWithMentions(payload, displayNameByActorId),
-                        }}
-                      />
-                    ) : (
-                      <pre className={TEAM_PANEL_PRE_CLASS}>{payload}</pre>
-                    )}
-                    {isMessageAcceptableForInbox(
-                      message,
-                      chatActors.inboxActorId,
-                      normalizedHumanActorId
-                    ) && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => {
-                            void onAcceptMessage(message);
-                          }}
-                          disabled={busy !== null}
-                          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                        >
-                          Accept
-                        </button>
+                    <div className="min-w-0 flex-1">
+                      <div className={MAILBOX_MESSAGE_HEAD_CLASS}>
+                        <span className="text-notion-text font-bold">
+                          {resolveMailboxActorLabel(
+                            message.from_actor_id,
+                            displayNameByActorId,
+                            normalizedHumanActorId
+                          )}
+                        </span>
+                        <span>{" → "}</span>
+                        <span className="text-notion-text font-bold">
+                          {resolveMailboxActorLabel(
+                            message.to_actor_id,
+                            displayNameByActorId,
+                            normalizedHumanActorId
+                          )}
+                        </span>
+                        <span>{" · "}</span>
+                        <span>{formatTs(message.created_at)}</span>
+                        <span className="ml-auto mono opacity-60">#{message.message_id}</span>
                       </div>
-                    )}
+                      <div className="text-[14px] leading-relaxed text-notion-text mt-1">
+                        {chatText !== null ? (
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: renderPlainTextWithMentions(payload, displayNameByActorId),
+                            }}
+                          />
+                        ) : (
+                          <pre className="mono whitespace-pre-wrap text-[12px] bg-notion-sidebar/30 p-2 rounded border border-notion-border/50">{payload}</pre>
+                        )}
+                      </div>
+                      {isMessageAcceptableForInbox(
+                        message,
+                        chatActors.inboxActorId,
+                        normalizedHumanActorId
+                      ) && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => {
+                              void onAcceptMessage(message);
+                            }}
+                            disabled={busy !== null}
+                            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                          >
+                            Accept
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -576,7 +552,8 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 </li>
               )}
             </ul>
-            <div className="teams-chat-compose">
+
+            <div className="mt-2 flex flex-col gap-2">
               <textarea
                 className={TEAM_PANEL_TEXTAREA_CLASS}
                 rows={3}
@@ -590,11 +567,11 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   }
                 }}
               />
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex justify-end">
                 <button
                   className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
                   onClick={onSendChatMessage}
-                  disabled={busy === "send-chat"}
+                  disabled={busy === "send-chat" || !chatDraft.trim()}
                 >
                   Send Chat
                 </button>
@@ -618,7 +595,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
 
       {showDeveloperMailboxTools && (
         <div className={MAILBOX_ADVANCED_ROOT_CLASS}>
-          <h4 className={`mb-2 ${MAILBOX_SECTION_TITLE_CLASS}`}>Advanced mailbox controls</h4>
+          <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest mb-4">Advanced mailbox controls</h4>
           {advancedControls}
         </div>
       )}
