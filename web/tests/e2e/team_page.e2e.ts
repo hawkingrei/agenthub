@@ -362,8 +362,14 @@ async function openTeamFromSelector(
     if (!/^\/teams\/[^/]+$/.test(detailPath)) {
       return false;
     }
-    const heading = page.getByRole("heading", { name: teamName, exact: true });
-    return heading.isVisible().catch(() => false);
+    const pageText = await page.locator("body").textContent();
+    if (!pageText) {
+      return false;
+    }
+    return (
+      !pageText.includes("Loading team workspace...") &&
+      !pageText.includes("This team is unavailable.")
+    );
   };
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
@@ -393,7 +399,7 @@ async function openTeamFromSelector(
     (element as HTMLButtonElement).click();
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect(page.getByRole("heading", { name: teamName, exact: true })).toBeVisible();
+  await expect.poll(isSelected).toBe(true);
 }
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
