@@ -96,7 +96,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
 
       {snapshot && (
         <>
-          <div className={OVERVIEW_META_CLASS}>
+          <div className={`teams-overview-meta ${OVERVIEW_META_CLASS}`}>
             <span>
               <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Leader</strong>
               <code className="mono font-bold text-notion-accent">{snapshot.leader_member_id ?? "-"}</code>

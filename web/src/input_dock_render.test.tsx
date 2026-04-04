@@ -80,6 +80,8 @@ describe("InputDock interrupt placement", () => {
   it("renders history as an overlay menu instead of changing dock layout flow", () => {
     const html = renderDock({ historyCommands: ["git status"] });
     expect(html).toContain("input-history relative");
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-label="Show sent command history"');
     expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("absolute");
     expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("bottom-[calc(100%+0.5rem)]");
   });

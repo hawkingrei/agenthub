@@ -131,9 +131,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
+        <div className="teams-run-list-head mt-2 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Runs</h3>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="actions flex flex-wrap items-center gap-2">
             <NativeSelect
               className="w-full sm:w-[164px]"
               aria-label="Run status filter"

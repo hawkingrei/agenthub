@@ -330,6 +330,39 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("hljs-built_in\">echo</span>");
   });
 
+  it("renders markdown lists in tool text sections without falling back to plain pre blocks", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-markdown-list",
+        title: "Summarize",
+        status: "completed",
+        raw_output: "- first item\n- second item\n- third item",
+      },
+    ]);
+
+    expect(html).toContain("Tool Call: Summarize");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>first item</li>");
+    expect(html).not.toContain("acp-payload-text");
+  });
+
+  it("renders markdown in tool content sections", () => {
+    const html = renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-markdown-content",
+        title: "Analyze",
+        status: "completed",
+        content: "## Findings\n- one\n- two",
+      },
+    ]);
+
+    expect(html).toContain("Tool Call: Analyze");
+    expect(html).toContain("<h2>Findings</h2>");
+    expect(html).toContain("<li>one</li>");
+  });
+
   it("renders unified diff payloads with visual diff classes", () => {
     const html = renderConversation([
       {

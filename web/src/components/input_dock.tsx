@@ -366,11 +366,23 @@ export function InputDock({
                 title="Show sent command history"
                 aria-label="Show sent command history"
                 aria-expanded={showHistory}
+                aria-haspopup="menu"
               >
-                History
+                <span className="text-notion-text-muted/80">History</span>
+                <span className="inline-flex min-w-[1.4rem] items-center justify-center rounded-full bg-black/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted">
+                  {visibleHistory.length}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`text-[10px] text-notion-text-muted transition-transform ${
+                    showHistory ? "rotate-180" : ""
+                  }`}
+                >
+                  ▾
+                </span>
               </button>
               {showHistory && (
-                <div className={INPUT_DOCK_HISTORY_MENU_CLASS}>
+                <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
                   {visibleHistory.map((item, idx) => (
                     <button
                       key={`${idx}-${item}`}

@@ -85,11 +85,14 @@ describe("AcpConversation fold interactions", () => {
     if (!toolFold) return;
 
     const findSubfold = (label: string): HTMLDetailsElement => {
-      const fold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+      const wrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
         const firstSpan = node.querySelector("summary span");
         return firstSpan?.textContent?.trim() === label;
-      }) as HTMLDetailsElement | undefined;
-      if (!fold) throw new Error(`subfold not found: ${label}`);
+      }) as HTMLDivElement | undefined;
+      const fold = wrapper?.querySelector("details");
+      if (!(fold instanceof HTMLDetailsElement)) {
+        throw new Error(`subfold not found: ${label}`);
+      }
       return fold;
     };
 
@@ -142,12 +145,13 @@ describe("AcpConversation fold interactions", () => {
       );
     });
 
-    const contentFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+    const contentFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Content";
-    }) as HTMLDetailsElement | undefined;
-    expect(contentFold).not.toBeUndefined();
-    if (!contentFold) return;
+    }) as HTMLDivElement | undefined;
+    const contentFold = contentFoldWrapper?.querySelector("details");
+    expect(contentFold).toBeInstanceOf(HTMLDetailsElement);
+    if (!(contentFold instanceof HTMLDetailsElement)) return;
     setDetailsOpen(contentFold, true);
 
     const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
@@ -222,13 +226,14 @@ describe("AcpConversation fold interactions", () => {
       root.render(<AcpConversation items={secondItems} {...baseProps} />);
     });
 
-    const detailedFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+    const detailedFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Detailed";
-    }) as HTMLDetailsElement | undefined;
+    }) as HTMLDivElement | undefined;
+    const detailedFold = detailedFoldWrapper?.querySelector("details");
 
-    expect(detailedFold).not.toBeUndefined();
-    expect(detailedFold?.open).toBe(false);
+    expect(detailedFold).toBeInstanceOf(HTMLDetailsElement);
+    expect((detailedFold as HTMLDetailsElement | null)?.open).toBe(false);
   });
 
   it("auto-collapses an older live tool call when it crosses the conversation cutoff", () => {

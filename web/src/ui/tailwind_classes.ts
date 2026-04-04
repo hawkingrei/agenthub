@@ -629,7 +629,7 @@ export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
   "acp-interrupt-button input-interrupt-button inline-flex h-8 items-center justify-center rounded-md border border-state-warning-border bg-state-warning-bg px-3 text-[12px] font-semibold text-state-warning-text hover:bg-state-warning-bg/80 transition active:translate-y-px";
 
 export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
-  "history-toggle inline-flex h-8 items-center justify-center rounded-md border border-notion-border bg-white px-3 text-[12px] font-semibold text-notion-text-muted hover:bg-notion-hover transition active:translate-y-px";
+  "history-toggle inline-flex h-8 items-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[12px] font-semibold text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-notion-hover active:translate-y-px";
 
 export const INPUT_DOCK_HISTORY_MENU_CLASS =
   "input-history-menu absolute bottom-[calc(100%+0.5rem)] left-0 z-30 max-h-60 min-w-[15rem] max-w-[min(26rem,calc(100vw-48px))] overflow-y-auto rounded-xl border border-black/[0.06] bg-white/98 p-1.5 shadow-[0_20px_24px_rgba(25,25,25,0.05),0_5px_8px_rgba(25,25,25,0.027),0_0_0_1px_rgba(42,28,0,0.07)] backdrop-blur-md";

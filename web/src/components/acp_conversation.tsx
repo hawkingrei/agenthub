@@ -600,7 +600,6 @@ const ToolCallBubble = React.memo(
                 <ToolTextContent
                   text={unescapeLineBreaks(msg.content)}
                   markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
-                  preferPlainText={true}
                 />
               </FoldSection>
             )}
@@ -2453,6 +2452,17 @@ function shouldRenderMarkdownText(text: string): boolean {
   if (!trimmed) return false;
   if (trimmed.includes("```")) return true;
   if (/`[^`\n]+`/.test(trimmed)) return true;
+  if (/^\s{0,3}#{1,6}\s+\S+/m.test(trimmed)) return true;
+  if (/^\s{0,3}(?:[-*+]\s+|\d+\.\s+|\d+\)\s+)/m.test(trimmed)) return true;
+  if (/^\s{0,3}>\s+[A-Za-z0-9]/m.test(trimmed)) return true;
+  if (/^\s{0,3}[-*+]\s+\[[ xX]\]\s+/m.test(trimmed)) return true;
+  if (/\[[^\]]+\]\([^)]+\)/.test(trimmed)) return true;
+  if (/(^|[\s(])(?:\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)(?=$|[\s).,!?])/m.test(trimmed)) {
+    return true;
+  }
+  if (/^\|.+\|\s*$/m.test(trimmed) && /^\|?[-: ]+\|[-|: ]*$/m.test(trimmed)) {
+    return true;
+  }
   return false;
 }
 

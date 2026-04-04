@@ -31,3 +31,27 @@
 
 - Local Playwright reproduction for the remaining CI-style browser checks was blocked by the configured dev-server startup path because port `5173` was already occupied in the local environment.
 - Chrome DevTools MCP regression checks were performed against the local shell (`http://127.0.0.1:4175/`) and the live Team page. The local shell loaded correctly with the expected backend-less JSON parse warning, and the live Team page still showed the pre-existing `ERR_HTTP2_PROTOCOL_ERROR` / `404` noise but no new frontend exception attributable to this change set.
+
+## 2026-04-04 follow-up
+
+- Restored ACP markdown rendering for tool-call `content` blocks instead of forcing them through plain-text fallback.
+- Broadened markdown detection for tool payload text to cover headings, lists, links, emphasis, and tables while still preserving ASCII-art-like payloads as plain text.
+- Made the dock `History` affordance read as a dropdown selector by adding a count badge, chevron, and explicit menu semantics.
+- Switched the shared `--notion-font` / `--notion-mono` stacks to Notion-like system fonts and removed the Google font import from legacy global CSS.
+- Updated stale unit/E2E assertions and compatibility selectors used by Team page regressions:
+  - `.teams-overview-meta`
+  - `.teams-run-list-head`
+  - `.actions`
+
+## 2026-04-04 follow-up verification
+
+- `cd web && npm run test -- src/acp_conversation.interaction.test.tsx src/acp_conversation_render.test.tsx src/acp_panel.test.tsx src/app.runtime_effects.test.tsx src/input_dock_render.test.tsx`
+- `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run lint`
+- `cd web && npm run build`
+- `make build-web`
+
+## 2026-04-04 follow-up notes
+
+- Chrome DevTools MCP transport was unavailable during this pass (`Transport closed`), so no browser-tree regression snapshot could be captured from MCP for these edits.
+- Local Playwright still cannot be used as a final oracle on this machine because Chromium headless launch aborts with the existing macOS Mach-port permission failure (`bootstrap_check_in ... Permission denied (1100)`), so E2E-facing fixes were verified by code-path review plus the updated unit/build checks rather than a successful local browser run.

@@ -4,10 +4,144 @@ import { fileURLToPath } from "node:url";
 
 const stylesPath = fileURLToPath(new URL("../../src/styles.css", import.meta.url));
 const styles = readFileSync(stylesPath, "utf8");
+const dockFixtureStyles = `
+  .app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .workspace,
+  .workspace.collapsed {
+    display: flex;
+    min-height: 0;
+    width: 100%;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .workspace-left,
+  .workspace-left.collapsed {
+    display: flex;
+    min-height: 0;
+    width: 56px;
+    flex: 0 0 56px;
+  }
+
+  .workspace-right {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .output-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+  }
+
+  .input.docked {
+    position: sticky;
+    bottom: 20px;
+    left: 50%;
+    display: flex;
+    width: min(calc(100vw - 24px), 760px);
+    max-width: 100%;
+    flex-direction: column;
+    gap: 6px;
+    margin: auto auto 0;
+    padding: 10px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(12px);
+  }
+
+  .input-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .input-editor-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .input-history {
+    position: relative;
+  }
+
+  .history-toggle,
+  .input-interrupt-button,
+  .input-send-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .history-toggle,
+  .input-interrupt-button {
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: #fff;
+  }
+
+  .input-send-button {
+    min-height: 44px;
+    padding: 0 14px;
+    border: none;
+    background: #2383e2;
+    color: #fff;
+  }
+
+  .input-history-menu {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    left: 0;
+    z-index: 30;
+    min-width: 15rem;
+    max-width: min(26rem, calc(100vw - 48px));
+    max-height: 15rem;
+    overflow-y: auto;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.98);
+    padding: 6px;
+    box-shadow: 0 20px 24px rgba(25, 25, 25, 0.05);
+  }
+
+  .input-history-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    text-align: left;
+  }
+
+  textarea {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 6px 4px;
+    border: none;
+    background: transparent;
+    resize: none;
+  }
+`;
 
 async function mountInputDock(page: import("@playwright/test").Page): Promise<void> {
   await page.setContent(`
-    <style>${styles}</style>
+    <style>${styles}\n${dockFixtureStyles}</style>
     <main style="padding: 8px;">
       <div class="input docked" style="max-width: 920px;">
         <div class="input-row" role="group" aria-label="Input actions">
@@ -37,7 +171,7 @@ async function mountWorkspaceWithDock(
   const workspaceClass = collapsed ? "workspace collapsed" : "workspace";
   const workspaceLeftClass = collapsed ? "workspace-left collapsed" : "workspace-left";
   await page.setContent(`
-    <style>${styles}</style>
+    <style>${styles}\n${dockFixtureStyles}</style>
     <section class="${workspaceClass}" style="height: var(--agenthub-vh, 760px);">
       <div class="${workspaceLeftClass}">
         <div class="agent-layout">
@@ -69,7 +203,7 @@ async function mountAppShellWithDock(
   const workspaceClass = collapsed ? "workspace collapsed" : "workspace";
   const workspaceLeftClass = collapsed ? "workspace-left collapsed" : "workspace-left";
   await page.setContent(`
-    <style>${styles}</style>
+    <style>${styles}\n${dockFixtureStyles}</style>
     <div class="app">
       <section class="${workspaceClass}" style="height: 100%;">
         <div class="${workspaceLeftClass}">

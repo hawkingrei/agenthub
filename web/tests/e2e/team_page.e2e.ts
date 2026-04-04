@@ -3169,10 +3169,13 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   });
 
   const unreadFor = async (memberId: string): Promise<number> => {
-    const label = await page
+    const badge = page
       .locator(".teams-chat-members .team-item", { hasText: `${memberId} (` })
-      .locator(".teams-member-unread")
-      .innerText();
+      .locator(".teams-member-unread");
+    if ((await badge.count()) === 0) {
+      return 0;
+    }
+    const label = await badge.innerText();
     const match = label.match(/unread=(\d+)/);
     return match ? Number(match[1]) : 0;
   };
