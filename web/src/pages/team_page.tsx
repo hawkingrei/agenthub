@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Group,
+  Loader,
   Menu,
   SegmentedControl,
   Switch,
@@ -75,6 +76,8 @@ import {
   updateTeamMemberProfileInSpec,
   type TeamMemberProfileDraft,
 } from "./team/create_helpers";
+
+const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
 import {
   clearTeamCreateDraft,
   loadTeamCreateDraft,
@@ -443,7 +446,7 @@ const teamWorkbenchHeaderStatusClassName = TEAM_WORKBENCH_HEADER_STATUS_CLASS;
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] lg:items-start bg-white";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] bg-white";
 const teamWorkbenchWorkspaceShellClassName = TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS;
 const teamWorkbenchSetupChecklistClassName =
   "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
@@ -881,14 +884,29 @@ export function TeamPage(props: TeamPageProps) {
   const [memberEventsLoading, setMemberEventsLoading] = useState(false);
   const memberEventsRef = useRef<AgentEvent[]>([]);
   const [focusedAgentMemberId, setFocusedAgentMemberId] = useState("");
+  const [teamCatalogSettled, setTeamCatalogSettled] = useState(() => isSelectorRoute);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) ?? null,
     [teams, selectedTeamId]
   );
   useEffect(() => {
+    if (isSelectorRoute || teams.length > 0) {
+      setTeamCatalogSettled(true);
+    }
+  }, [isSelectorRoute, teams.length]);
+  useEffect(() => {
     setSelectedTeamId(routeTeamId);
   }, [routeTeamId]);
+  useEffect(() => {
+    if (routeTeamId == null) {
+      setTeamCatalogSettled(true);
+      return;
+    }
+    if (teams.length === 0) {
+      setTeamCatalogSettled(false);
+    }
+  }, [routeTeamId, teams.length]);
   useEffect(() => {
     sharedConversationRequestScopeRef.current = {
       teamId: selectedTeamId?.trim() ?? "",
@@ -1512,6 +1530,7 @@ export function TeamPage(props: TeamPageProps) {
     setActiveRunId,
     setRunLookupId,
     onRunCreated,
+    onTeamsRefreshSettled: () => setTeamCatalogSettled(true),
   });
 
   const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
@@ -3442,6 +3461,16 @@ export function TeamPage(props: TeamPageProps) {
   const warningNotice = resolveTeamPageNotice(warning);
   const showSidebarPane = !isSelectorRoute && !teamsSidebarCollapsed;
   const showWorkbenchPane = !isCompactWorkbench || teamsSidebarCollapsed;
+  const showTeamBootstrapLoading =
+    !isSelectorRoute &&
+    Boolean(selectedTeamId) &&
+    !selectedTeam &&
+    !teamCatalogSettled;
+  const showTeamUnavailable =
+    !isSelectorRoute &&
+    Boolean(selectedTeamId) &&
+    !selectedTeam &&
+    teamCatalogSettled;
   const teamPanelToggleLabel = isCompactWorkbench
     ? teamsSidebarCollapsed
       ? "Show teams panel"
@@ -3671,10 +3700,31 @@ export function TeamPage(props: TeamPageProps) {
 
           {showWorkbenchPane && (
           <div
-            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0 [&>*]:shrink-0"
+            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0"
             data-team-surface="workbench"
           >
-            {!selectedTeam && (
+            {showTeamBootstrapLoading && (
+              <div
+                className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}
+                data-team-loading-shell="true"
+              >
+                <span className={teamWorkbenchBadgeClassName}>Loading Team</span>
+                <div className="mt-3 flex items-center gap-3">
+                  <Loader size="sm" color="gray" />
+                  <div className="min-w-0">
+                    <h2 className="text-[22px] font-semibold tracking-tight text-black">
+                      Loading team workspace...
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
+                      AgentHub is loading the team catalog and workspace context. The workbench
+                      will render once the basic Team metadata is ready.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showTeamUnavailable && (
               <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
                 <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
                 <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
@@ -3735,7 +3785,12 @@ export function TeamPage(props: TeamPageProps) {
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {isAgentWorkspace ? (
-                          <Menu withinPortal={false} position="bottom-end" shadow="md">
+                          <Menu
+                            withinPortal={FLOATING_MENU_WITHIN_PORTAL}
+                            position="bottom-end"
+                            shadow="md"
+                            zIndex={400}
+                          >
                             <Menu.Target>
                               <button
                                 type="button"
@@ -3855,7 +3910,12 @@ export function TeamPage(props: TeamPageProps) {
                         ) : null}
                         <div className={workspaceToolbarClassName}>
                           {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
-                            <Menu withinPortal={false} position="bottom-end" shadow="md">
+                            <Menu
+                              withinPortal={FLOATING_MENU_WITHIN_PORTAL}
+                              position="bottom-end"
+                              shadow="md"
+                              zIndex={400}
+                            >
                               <Menu.Target>
                                 <button
                                   type="button"
