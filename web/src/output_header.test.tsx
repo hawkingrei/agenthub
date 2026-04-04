@@ -77,9 +77,8 @@ describe("OutputHeader", () => {
 
   it("hides session metadata when developer mode is off", () => {
     const html = renderHeader({ developerMode: false });
-    expect(html).toContain("Details");
-    expect(html).toContain("mode");
-    expect(html).toContain("on");
+    expect(html).not.toContain("Details");
+    expect(html).not.toContain("mode");
     expect(html).not.toContain("session");
     expect(html).not.toContain("updated");
   });

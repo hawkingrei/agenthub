@@ -103,6 +103,46 @@ describe("buildAcpView", () => {
     expect(view.currentMode).toBeNull();
   });
 
+  it("preserves existing ACP config selectors when config_options is missing", () => {
+    const events = [
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          config_options: [
+            {
+              id: "mode",
+              label: "Mode",
+              current_value: { type: "value_id", value: "workspace_write" },
+              select_options: [
+                { value_id: "workspace_write", label: "Workspace Write" },
+              ],
+            },
+          ],
+        }),
+      },
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "config_option_update",
+          current_mode_id: "danger_full_access",
+        }),
+      },
+    ];
+
+    const view = buildAcpView(events);
+    expect(view.configOptions).toHaveLength(1);
+    expect(view.configOptions[0]).toMatchObject({
+      id: "mode",
+      currentValueId: "workspace_write",
+    });
+    expect(view.currentMode).toBe("danger_full_access");
+  });
+
   it("merges messages within the same session and kind", () => {
     const events = [
       {

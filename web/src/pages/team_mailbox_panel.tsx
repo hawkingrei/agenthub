@@ -154,6 +154,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     unreadByMemberId,
     onSelectMember,
     chatActors,
+    chatStickToBottom,
     chatMessagesRef,
     onConversationScroll,
     onJumpToBottom,
@@ -417,7 +418,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                       {isHuman ? "human actor" : `pending=${member.pending_inbox_count}`}
                     </span>
                     {unread > 0 && (
-                      <span className="shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text">
+                      <span className="teams-member-unread shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text">
                         unread={unread}
                       </span>
                     )}
@@ -431,7 +432,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-notion-border pb-3">
+            <div className="teams-chat-head flex flex-wrap items-center justify-between gap-3 border-b border-notion-border pb-3">
               <div className="min-w-0 flex-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Conversation</span>
                 <div className="truncate text-[14px] font-bold text-notion-text mt-0.5">
@@ -446,6 +447,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                     displayNameByActorId,
                     normalizedHumanActorId
                   )}
+                </div>
+                <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+                  auto_follow={chatStickToBottom ? "on" : "off"}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">

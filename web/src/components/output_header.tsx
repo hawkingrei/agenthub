@@ -91,16 +91,12 @@ export const OutputHeader = React.memo(function OutputHeader({
     ? `${mergedStatus} · ${thinkingLabel}`
     : mergedStatus;
   const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
-  const detailsItems = [
-    { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
-    ...(
-      developerMode
-        ? [
+  const detailsItems = developerMode
+    ? [
+        { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
         ...(updatedLabel ? [{ label: "updated", value: updatedLabel }] : []),
-          ]
-        : []
-    ),
-  ];
+      ]
+    : [];
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
       <div className={OUTPUT_HEADER_TITLE_CLASS}>
@@ -121,7 +117,7 @@ export const OutputHeader = React.memo(function OutputHeader({
             className={`agent-status status-${mergedStatusClassToken}`}
             title={`status: ${mergedStatusLabel}`}
           />
-          <OutputHeaderDetails items={detailsItems} />
+          {developerMode ? <OutputHeaderDetails items={detailsItems} /> : null}
         </div>
       ) : null}
       {!hasAcp ? (

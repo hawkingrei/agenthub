@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { InputDock } from "./components/input_dock";
+import { INPUT_DOCK_HISTORY_MENU_CLASS } from "./ui/tailwind_classes";
 
 const baseProps: React.ComponentProps<typeof InputDock> = {
   input: "",
@@ -46,8 +47,8 @@ describe("InputDock interrupt placement", () => {
       canInterrupt: true,
       historyCommands: ["git status"],
     });
-    const actionsRowPos = html.indexOf('class="input-row"');
-    const editorRowPos = html.indexOf('class="input-editor-row"');
+    const actionsRowPos = html.indexOf('data-input-actions-row="true"');
+    const editorRowPos = html.indexOf('data-input-editor-row="true"');
     expect(actionsRowPos).toBeGreaterThanOrEqual(0);
     expect(editorRowPos).toBeGreaterThanOrEqual(0);
     expect(actionsRowPos).toBeLessThan(editorRowPos);
@@ -62,7 +63,7 @@ describe("InputDock interrupt placement", () => {
 
   it("keeps textarea and send button in the same editor row", () => {
     const html = renderDock();
-    const editorRowStart = html.indexOf('class="input-editor-row"');
+    const editorRowStart = html.indexOf('data-input-editor-row="true"');
     expect(editorRowStart).toBeGreaterThanOrEqual(0);
     const textareaPos = html.indexOf("<textarea", editorRowStart);
     const sendPos = html.indexOf("bg-notion-accent", editorRowStart);
@@ -76,12 +77,19 @@ describe("InputDock interrupt placement", () => {
     expect(html).toMatch(/<textarea[^>]*id="/);
   });
 
+  it("renders history as an overlay menu instead of changing dock layout flow", () => {
+    const html = renderDock({ historyCommands: ["git status"] });
+    expect(html).toContain("input-history relative");
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("absolute");
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("bottom-[calc(100%+0.5rem)]");
+  });
+
   it("keeps jump-to-bottom control outside the editor grid flow", () => {
     const html = renderDock({ showConversationJump: true });
     const shellPos = html.indexOf('class="input-dock-shell');
     const dockRootPos = html.indexOf('class="input docked');
     const jumpPos = html.indexOf('class="acp-jump-bottom');
-    const editorRowPos = html.indexOf('class="input-editor-row"');
+    const editorRowPos = html.indexOf('data-input-editor-row="true"');
     const textareaPos = html.indexOf("<textarea", editorRowPos);
     expect(shellPos).toBeGreaterThanOrEqual(0);
     expect(dockRootPos).toBeGreaterThanOrEqual(0);

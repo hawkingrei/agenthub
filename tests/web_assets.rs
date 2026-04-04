@@ -35,151 +35,78 @@ fn styles_css_path() -> PathBuf {
 }
 
 #[test]
-fn styles_keep_acp_conversation_scoped() {
+fn styles_keep_runtime_shell_constraints() {
     let path = styles_css_path();
     let css = fs::read_to_string(&path).expect("styles.css should be readable");
     assert!(
-        css.contains(".acp-conversation"),
-        "styles.css should define .acp-conversation"
+        css.contains("@import url(\"https://fonts.googleapis.com/css2?family=Inter"),
+        "styles.css should define the shared font import"
+    );
+    assert!(css.contains(":root {"), "styles.css should define root variables");
+    assert!(
+        css.contains("--agenthub-vh: 100vh;"),
+        "styles.css should define viewport height fallback variable"
     );
     assert!(
-        css.contains(".acp {\n  height: 100%;\n  min-height: 0;\n  display: grid;\n  gap: 12px;\n  grid-template-columns: minmax(0, 1fr);\n  grid-template-rows: auto minmax(0, 1fr);\n  flex: 1;\n  overflow: hidden;\n}"),
-        "acp container should be grid and height constrained"
+        css.contains("--agenthub-vw: 100vw;"),
+        "styles.css should define viewport width fallback variable"
     );
     assert!(
-        css.contains(".acp-conversation {\n  overflow: auto;\n  min-height: 0;\n  height: 100%;\n  max-height: 100%;\n  display: block;\n}"),
-        "acp conversation should be scrollable container"
-    );
-    assert!(
-        css.contains(".acp-conversation-inner {\n  min-height: 100%;\n  display: flex;\n  flex-direction: column;\n  justify-content: flex-end;\n}"),
-        "acp conversation inner should bottom-align short content"
-    );
-    assert!(
-        css.contains(".acp-thought-fold pre {\n  margin: 0;\n  white-space: pre-wrap;\n}"),
-        "acp thought pre should preserve formatting"
-    );
-    assert!(
-        css.contains(".acp-bubble.agent_thinking"),
-        "acp thinking bubble should be styled"
-    );
-    assert!(
-        css.contains(".acp-bubble.agent_plan"),
-        "acp plan bubble should be styled"
-    );
-    assert!(
-        css.contains(".output-body {\n  max-height: none;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding-right: 6px;\n  min-height: 0;\n  flex: 1;\n}"),
-        "output body should be height constrained and non-scrollable"
-    );
-    assert!(
-        css.contains(".terminal {\n  font-family: \"Source Code Pro\", monospace;\n  background: #0e1116;\n  color: #c7d0df;\n  padding: 12px;\n  border-radius: 8px;\n  min-height: 220px;\n  overflow: auto;\n  white-space: pre-wrap;\n  min-height: 0;\n  height: 100%;\n}"),
-        "terminal output should be scrollable inside output body"
-    );
-    assert!(css.contains("body {"), "body styles should exist");
-    assert!(
-        css.contains("max-width: var(--agenthub-vw, 100vw);"),
-        "body should clamp max width to runtime viewport width"
-    );
-    assert!(
-        css.contains("min-height: var(--agenthub-vh, 100vh);"),
-        "body should use runtime viewport height"
-    );
-    assert!(
-        css.contains("overflow: hidden;"),
-        "body should hide outer overflow"
-    );
-    assert!(css.contains(".app {"), "app styles should exist");
-    assert!(
-        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);"),
-        "app should clamp width to runtime viewport width"
-    );
-    assert!(
-        css.contains("grid-template-rows: minmax(0, 1fr);"),
-        "workspace grid should reserve full-height row for right panel bottom docking"
-    );
-    assert!(
-        css.contains(".workspace-right {\n  display: flex;\n  flex-direction: column;\n  gap: 10px;\n  min-height: 0;\n  overflow: hidden;\n  align-self: stretch;\n}"),
-        "workspace right panel should stretch and clip overflow for docked input bottom alignment"
-    );
-    assert!(
-        css.contains(".app {\n  width: 100%;\n  max-width: var(--agenthub-vw, 100vw);\n  margin: 0;\n  padding: 2px 8px 0;\n  min-height: var(--agenthub-vh, 100vh);\n  height: var(--agenthub-vh, 100vh);\n  overflow: auto;\n  overflow-x: clip;"),
-        "app should keep fixed-height scroll container behavior"
-    );
-    assert!(
-        css.contains(".input.docked {\n  background: #fff;\n  border: 1px solid #e0e0e0;\n  border-radius: 11px;\n  padding: 8px;\n  box-shadow: 0 6px 20px rgba(18, 26, 35, 0.08);\n  margin-top: auto;\n  position: relative;\n  display: grid;\n  gap: 6px;\n  grid-template-rows: auto auto;\n  align-items: stretch;\n  flex: 0 0 auto;\n}"),
-        "input docked should use grid slots for actions and editor rows"
-    );
-    assert!(
-        css.contains(".input-row {\n  position: static;\n  display: flex;\n  align-items: center;\n  justify-content: flex-start;\n  flex-wrap: wrap;\n  gap: 5px;\n  min-height: 24px;\n}"),
-        "input actions row should be flow layout and left aligned for consistent chip placement"
-    );
-    assert!(
-        css.contains(".input-editor-row {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto;\n  align-items: stretch;\n  gap: 10px;\n  min-width: 0;\n}"),
-        "input editor row should isolate textarea and send button layout"
-    );
-    assert!(
-        css.contains(".input.docked .input-editor-row .input-send-button {\n  height: 44px;\n  min-height: 44px;\n  min-width: 82px;\n  padding: 0 14px;\n  border-radius: 10px;\n  font-size: 13px;\n  line-height: 1.1;\n  align-self: stretch;\n}"),
-        "send button should keep larger tap target size"
-    );
-    assert!(
-        css.contains(".jump-bottom {\n  position: static;\n  justify-self: end;\n  margin-left: auto;\n  width: 28px;\n  height: 28px;"),
-        "jump-bottom should stay inside input dock flow and avoid fixed overlay on send button"
-    );
-    assert!(
-        css.contains(".input.docked .input-editor-row .input-send-button {\n    height: 40px;\n    min-height: 40px;\n    min-width: 78px;\n    padding: 0 12px;\n    font-size: 12px;\n  }"),
-        "mobile send button should keep touch-friendly tap target size"
-    );
-    assert!(
-        css.contains(".input-history-menu {\n  position: absolute;\n  left: 0;\n  right: auto;\n  top: calc(100% + 4px);\n  width: min(560px, calc(100vw - 32px));\n  max-width: min(560px, calc(100vw - 32px));"),
-        "history menu should anchor to left edge with viewport-safe width"
+        css.contains("--agenthub-header-height: 56px;"),
+        "styles.css should define the runtime header height variable"
     );
     assert!(
         css.contains("@supports (height: 100dvh)"),
-        "styles.css should use dynamic viewport height fallback for mobile browsers"
+        "styles.css should keep dynamic viewport height support"
+    );
+    assert!(css.contains("html, body {"), "html/body styles should exist");
+    assert!(
+        css.contains("width: 100%;"),
+        "html/body should fill the viewport width"
     );
     assert!(
-        css.contains(
-            "top: var(--agenthub-workspace-top, calc(56px + env(safe-area-inset-top, 0px)));"
-        ),
-        "mobile workspace drawer should anchor to computed workspace top"
+        css.contains("height: 100%;"),
+        "html/body should fill the viewport height"
     );
     assert!(
-        css.contains(".workspace:not(.collapsed) .output-agents-toggle {\n    display: none;\n  }"),
-        "mobile expanded workspace should hide output header collapse control to avoid duplicate hide-agents actions"
+        css.contains("overflow: hidden;"),
+        "html/body should prevent outer-page scrolling"
+    );
+    assert!(css.contains(".app {"), "app shell styles should exist");
+    assert!(
+        css.contains("display: flex;"),
+        "app shell should be flex-based"
     );
     assert!(
-        css.contains(".admin .card li:not([class*=\"mantine-\"])"),
-        "admin list layout styles should be scoped and not override markdown lists"
+        css.contains("flex-direction: column;"),
+        "app shell should stack header and workspace vertically"
     );
     assert!(
-        css.contains(".acp-head.minimal {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 4px;\n  }"),
-        "mobile ACP head should stack controls for narrow screens"
+        css.contains("height: 100vh;"),
+        "app shell should keep viewport-height fallback"
     );
     assert!(
-        css.contains("--acp-tab-font-size: clamp(10px, 2.8vw, 11px);"),
-        "mobile ACP tabs should use adaptive font sizing"
+        css.contains("height: 100dvh;"),
+        "app shell should keep dynamic viewport-height support"
     );
     assert!(
-        css.contains(".acp-tabs .tab {\n    display: inline-flex;\n    align-items: center;\n    justify-content: center;\n    flex: 1 1 0;\n    min-height: 30px;"),
-        "mobile ACP top tabs should be adaptive and centered"
+        css.contains("::-webkit-scrollbar"),
+        "styles.css should define custom scrollbar styling"
     );
     assert!(
-        css.contains(".acp-debug-tabs {\n    max-width: 100%;\n    flex-wrap: wrap;"),
-        "mobile ACP debug tabs should wrap adaptively on narrow screens"
+        css.contains("font-family: var(--notion-mono);"),
+        "styles.css should keep the shared monospace helper"
     );
     assert!(
-        css.contains(".acp-text {\n  word-break: break-word;\n  white-space: normal;\n  font-size: 14px;\n  line-height: 1.68;\n  color: #18212b;\n}"),
-        "ACP markdown text should keep readable typography defaults"
+        css.contains("button:not([class*=\"mantine-\"])"),
+        "styles.css should keep non-Mantine button resets scoped"
     );
     assert!(
-        css.contains(".acp-text ul,\n.acp-text ol {\n  padding-left: 20px;\n  list-style-position: outside;\n}"),
-        "ACP markdown list spacing should remain scoped and readable"
+        css.contains("textarea:not([class*=\"mantine-\"])"),
+        "styles.css should keep non-Mantine field resets scoped"
     );
     assert!(
-        css.contains(".acp-text table {\n  width: 100%;\n  border-collapse: collapse;\n  font-size: 0.95em;\n}"),
-        "ACP markdown tables should keep layout styling in conversation view"
-    );
-    assert!(
-        css.contains(".acp-text :not(pre) > code,\n.acp-text p code,\n.acp-text li code {\n  background: #f1f4f6;\n  color: #0f172a;"),
-        "ACP inline code style should stay visible in markdown bubbles"
+        !css.contains(".acp-conversation"),
+        "legacy ACP layout selectors should no longer be required in styles.css after Tailwind migration"
     );
 }

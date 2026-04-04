@@ -50,6 +50,7 @@ import {
   buildOutputCacheSlice,
   isSameOutputList,
   limitOutputCacheSessions,
+  mergeOutputsWithLimit,
   mergeOutputsPreserveHistory,
   mergeOutputs,
   replaceAcpCacheSlice,
@@ -117,6 +118,10 @@ import {
   APP_WORKBENCH_HEADER_STATUS_CLASS,
   APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  APP_WORKSPACE_ROOT_CLASS,
+  APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
+  APP_WORKSPACE_RIGHT_CLASS,
+  APP_WORKSPACE_SPLITTER_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
@@ -140,6 +145,8 @@ const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
+const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
 const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
 
@@ -1154,10 +1161,14 @@ export function App() {
       }
 
       if (activeLines.length > 0) {
-        setOutputs((prev) => mergeOutputs(prev, activeLines));
+        setOutputs((prev) =>
+          mergeOutputsWithLimit(prev, activeLines, LIVE_OUTPUT_RETENTION_LIMIT)
+        );
       }
       if (activeAcpLines.length > 0) {
-        setAcpOutputs((prev) => mergeOutputs(prev, activeAcpLines));
+        setAcpOutputs((prev) =>
+          mergeOutputsWithLimit(prev, activeAcpLines, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
+        );
       }
     },
     [updateAcpOutputCacheEntry, updateOutputCacheEntry]
@@ -1506,8 +1517,12 @@ export function App() {
           ? nextOldestEvent.event_id
           : meta.oldestId;
       const hasMore = ordered.length >= eventLimit;
-      setOutputs((prev) => mergeOutputs(prev, ordered));
-      setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
+      setOutputs((prev) =>
+        mergeOutputsWithLimit(prev, ordered, LIVE_OUTPUT_RETENTION_LIMIT)
+      );
+      setAcpOutputs((prev) =>
+        mergeOutputsWithLimit(prev, acpOrdered, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
+      );
       updateOutputCacheEntry(key, ordered);
       if (acpOrdered.length > 0) {
         updateAcpOutputCacheEntry(key, acpOrdered);
@@ -3339,14 +3354,6 @@ export function App() {
       ref={appRootRef}
     >
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
-        <div className="hidden min-w-0 sm:block">
-          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-bold tracking-tight text-notion-text">
-            AgentHub
-          </h1>
-          <p className="mt-1 hidden text-[10px] font-bold uppercase tracking-widest text-notion-text-muted sm:block">
-            Agent runtime workbench
-          </p>
-        </div>
         {auth && (
           <div className="session flex items-center gap-2 sm:gap-3">
             <button
@@ -3449,7 +3456,11 @@ export function App() {
 
       {auth && (
         <main
-          className={agentsCollapsed ? "workspace collapsed" : "workspace"}
+          className={
+            agentsCollapsed
+              ? APP_WORKSPACE_ROOT_COLLAPSED_CLASS
+              : APP_WORKSPACE_ROOT_CLASS
+          }
           ref={workspaceRef}
           style={workspaceStyle}
         >
@@ -3472,14 +3483,14 @@ export function App() {
           />
           {!agentsCollapsed && (
             <div
-              className="workspace-splitter"
+              className={APP_WORKSPACE_SPLITTER_CLASS}
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize agents sidebar"
               onPointerDown={handleAgentsSplitterPointerDown}
             />
           )}
-          <div className="workspace-right">
+          <div className={APP_WORKSPACE_RIGHT_CLASS}>
             <div className={acpView.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"}>
               <OutputHeader
                 activeAgent={activeAgentRecord}

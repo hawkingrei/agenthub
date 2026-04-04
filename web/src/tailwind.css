@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;600&display=swap");
-
 /* Keep preflight disabled in tailwind.config.cjs while the app still carries
    legacy global styles; this file stays as the v4-first Tailwind entrypoint. */
 

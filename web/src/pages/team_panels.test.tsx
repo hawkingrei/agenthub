@@ -43,6 +43,25 @@ function clickElement(element: Element | null): void {
   });
 }
 
+function clickMenuTrigger(element: Element | null): void {
+  const node = required(element, "element not found");
+  act(() => {
+    if (typeof PointerEvent !== "undefined") {
+      node.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+      node.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+    }
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+}
+
+async function flushReactWork(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
     candidate.textContent?.includes(text)
@@ -350,7 +369,7 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders subject rail and triggers navigation callbacks", () => {
+  it("TeamSidebar renders subject rail and triggers navigation callbacks", async () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
@@ -419,7 +438,8 @@ describe("team panels interactions", () => {
 
     expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
-    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
+    await flushReactWork();
     clickElement(findInteractiveByText(document.body, "Create Team"));
     const filterInput = required(
       container.querySelector("input[aria-label='Search teams']"),
@@ -429,7 +449,8 @@ describe("team panels interactions", () => {
     changeInputValue(filterInput, "team-2");
     expect(container.textContent).toContain("Team Two");
     clickElement(findButtonByAriaLabel(container, "Clear filter"));
-    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
+    await flushReactWork();
     clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");
@@ -1699,6 +1720,14 @@ describe("team panels interactions", () => {
       "team channel composer missing"
     );
     expect(composer.classList.contains("shrink-0")).toBe(true);
+
+    const scrollNode = required(
+      container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+      "team channel scroll container missing"
+    );
+    expect(scrollNode.classList.contains("min-h-0")).toBe(true);
+    expect(scrollNode.classList.contains("flex-1")).toBe(true);
+    expect(scrollNode.classList.contains("overflow-y-auto")).toBe(true);
 
     expect(rootCard.lastElementChild).toBe(composer);
     expect(bodyShell.nextElementSibling).toBe(composer);
@@ -3839,6 +3868,10 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).toContain("Leader Agent → Worker Agent");
     expect(container.textContent).toContain("Worker Agent (worker)");
+    expect(
+      required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
+    ).toContain("auto_follow=on");
+    expect(container.querySelectorAll(".teams-member-unread")).toHaveLength(2);
 
     act(() => {
       root.render(

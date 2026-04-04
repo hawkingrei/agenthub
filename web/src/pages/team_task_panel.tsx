@@ -139,7 +139,7 @@ type TeamTaskPanelAudioWindow = Window &
 
 const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-bold uppercase tracking-wider text-notion-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
-  "flex flex-wrap items-center justify-between gap-2 mt-1";
+  "mt-0.5 flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
@@ -1335,8 +1335,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           id="team-task-panel-message"
           name="team_task_message"
           ref={messageTextareaRef}
-          className={TEAM_PANEL_TEXTAREA_CLASS}
-          rows={3}
+          className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[44px] px-3 py-2 text-[14px] leading-6`}
+          rows={2}
           placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {
@@ -1425,7 +1425,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           </span>
           <button
             type="button"
-            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+            className="inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px"
             onClick={() => {
               sendCurrentMessage();
             }}

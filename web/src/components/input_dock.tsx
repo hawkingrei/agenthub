@@ -340,7 +340,13 @@ export function InputDock({
         </button>
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
-        <div className="input-row" role="group" aria-label="Input actions">
+        <div
+          className="input-row flex flex-wrap items-center justify-between gap-2"
+          role="group"
+          aria-label="Input actions"
+          data-input-actions-row="true"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
           {showInterrupt && (
             <button
               className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
@@ -353,7 +359,7 @@ export function InputDock({
             </button>
           )}
           {historyCommands.length > 0 && (
-            <div className="input-history" ref={historyContainerRef}>
+            <div className="input-history relative" ref={historyContainerRef}>
               <button
                 className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
                 onClick={() => setShowHistory((prev) => !prev)}
@@ -382,12 +388,13 @@ export function InputDock({
               )}
             </div>
           )}
+          </div>
         </div>
-        <div className="input-editor-row">
+        <div className="input-editor-row flex items-end gap-2" data-input-editor-row="true">
           <textarea
             id={textareaId}
             name="acp_input"
-            className={INPUT_DOCK_TEXTAREA_CLASS}
+            className={`${INPUT_DOCK_TEXTAREA_CLASS} flex-1`}
             ref={textareaRef}
             placeholder={inputPlaceholder}
             value={input}

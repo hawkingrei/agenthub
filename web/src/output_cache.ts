@@ -63,6 +63,21 @@ export function mergeOutputs(
   return Array.from(byEventId.values()).sort(compareOutputLines);
 }
 
+export function mergeOutputsWithLimit(
+  existing: OutputLine[],
+  incoming: OutputLine[],
+  maxRetainedEvents: number
+): OutputLine[] {
+  const merged = mergeOutputs(existing, incoming);
+  if (maxRetainedEvents <= 0) {
+    return merged;
+  }
+  if (merged.length <= maxRetainedEvents) {
+    return merged;
+  }
+  return merged.slice(merged.length - maxRetainedEvents);
+}
+
 export function appendOutputLine(
   existing: OutputLine[],
   line: OutputLine

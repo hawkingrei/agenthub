@@ -25,9 +25,29 @@ const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
   "inline-flex h-7 w-7 items-center justify-center rounded-md bg-notion-accent-bg text-[13px] text-notion-accent transition hover:bg-notion-accent/10 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
   "inline-flex h-7 w-7 items-center justify-center rounded-md text-[13px] text-notion-text-muted transition hover:bg-red-50 hover:text-red-600 active:translate-y-px sm:h-8 sm:w-8 sm:text-[14px]";
+const AGENTS_WORKBENCH_ROW_HEAD_CLASS =
+  "agents-workbench-row-head flex min-w-0 items-start justify-between gap-2";
+const AGENTS_WORKBENCH_ROW_TITLE_CLASS =
+  "agents-workbench-row-title flex min-w-0 flex-1 flex-wrap items-center gap-1.5";
+const AGENTS_WORKBENCH_NAME_CLASS =
+  "agents-workbench-name min-w-0 flex-1 truncate text-[14px] font-bold tracking-tight text-notion-text";
+const AGENTS_WORKBENCH_PERMISSION_DOT_CLASS =
+  "agents-workbench-permission-dot inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
+const AGENTS_WORKBENCH_TAG_CLASS =
+  "agents-workbench-tag inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+const AGENTS_WORKBENCH_ROW_ACTIONS_CLASS =
+  "agents-workbench-row-actions inline-flex shrink-0 items-center gap-1";
+const AGENTS_WORKBENCH_ROW_META_CLASS =
+  "agents-workbench-row-meta mt-1.5 hidden flex-col gap-0.5 sm:flex";
+const AGENTS_WORKBENCH_WORKDIR_CLASS =
+  "agents-workbench-workdir truncate text-[11px] leading-relaxed text-notion-text";
+const AGENTS_WORKBENCH_CODE_MODE_CLASS =
+  "agents-workbench-code-mode text-[10px] font-medium uppercase tracking-wider text-notion-text-muted";
 const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4 py-4 bg-notion-sidebar border-r border-notion-border";
 const AGENTS_WORKBENCH_METRIC_CLASS =
   "relative grid gap-1 justify-items-center rounded-lg border border-notion-border bg-white px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-notion-text-muted shadow-sm";
+const AGENTS_WORKBENCH_RAIL_DOT_CLASS =
+  "agents-rail-dot absolute right-1.5 top-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
 const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
   "text-sm font-bold uppercase tracking-widest text-notion-text-muted px-2";
@@ -98,7 +118,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               <span className="label">Agents</span>
               {hasPendingPermissions ? (
                 <span
-                  className="agents-rail-dot"
+                  className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
                   role="img"
                   aria-label="Pending permissions"
                   title="Pending permissions"
@@ -184,29 +204,29 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                       }}
                       title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
-                      <div className="agents-workbench-row-head">
-                        <div className="agents-workbench-row-title">
-                          <span className="agents-workbench-name">{agent.name}</span>
+                      <div className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
+                        <div className={AGENTS_WORKBENCH_ROW_TITLE_CLASS}>
+                          <span className={AGENTS_WORKBENCH_NAME_CLASS}>{agent.name}</span>
                           {pendingPermissionCount > 0 ? (
                             <span
-                              className="agents-workbench-permission-dot"
+                              className={AGENTS_WORKBENCH_PERMISSION_DOT_CLASS}
                               role="img"
                               aria-label={pendingPermissionLabel}
                               title={pendingPermissionLabel}
                             />
                           ) : null}
                           {modelLabel ? (
-                            <span className="agents-workbench-tag hidden sm:inline-flex">
+                            <span className={`${AGENTS_WORKBENCH_TAG_CLASS} hidden sm:inline-flex`}>
                               {modelLabel}
                             </span>
                           ) : null}
                           {isRemoteTarget ? (
-                            <span className="agents-workbench-tag hidden sm:inline-flex">
+                            <span className={`${AGENTS_WORKBENCH_TAG_CLASS} hidden sm:inline-flex`}>
                               node:{agent.target_node_id}
                             </span>
                           ) : null}
                         </div>
-                        <div className="agents-workbench-row-actions">
+                        <div className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
                           <button
                             className={
                               agent.code_mode
@@ -280,9 +300,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           </button>
                         </div>
                       </div>
-                      <div className="agents-workbench-row-meta hidden sm:flex">
-                        <span className="agents-workbench-workdir">{agent.workdir}</span>
-                        <span className="agents-workbench-code-mode">
+                      <div className={AGENTS_WORKBENCH_ROW_META_CLASS}>
+                        <span className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</span>
+                        <span className={AGENTS_WORKBENCH_CODE_MODE_CLASS}>
                           Code mode: {agent.code_mode ? "on" : "off"}
                         </span>
                       </div>

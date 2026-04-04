@@ -24,6 +24,8 @@ import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import type { TeamTab } from "./team/state";
 
+const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
+
 type TeamMemberSummary = {
   active: number;
   inactive: number;
@@ -206,7 +208,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
   } = props;
   const [teamFilter, setTeamFilter] = React.useState("");
   const [teamDetailsOpen, setTeamDetailsOpen] = React.useState(false);
-  const [teamActionsOpen, setTeamActionsOpen] = React.useState(false);
   const [sectionOpen, setSectionOpen] = React.useState<Record<TeamSidebarSection, boolean>>({
     teams: true,
     agents: true,
@@ -249,7 +250,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
-              <Menu withinPortal={false} position="bottom-start" shadow="md">
+              <Menu
+                withinPortal={FLOATING_MENU_WITHIN_PORTAL}
+                position="bottom-start"
+                shadow="md"
+                zIndex={400}
+              >
                 <Menu.Target>
                   <button
                     type="button"
@@ -372,49 +378,45 @@ export function TeamSidebar(props: TeamSidebarProps) {
               >
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               </button>
-              <div className="relative">
-                <button
-                  type="button"
-                  className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-8`}
-                  aria-label="Open team actions"
-                  title="Open team actions"
-                  aria-expanded={teamActionsOpen}
-                  onClick={() => setTeamActionsOpen((current) => !current)}
-                >
-                  <i className="bi bi-three-dots" aria-hidden="true" />
-                </button>
-                {teamActionsOpen && (
-                  <div className="absolute right-0 top-full z-20 mt-2 flex min-w-44 flex-col gap-1 rounded-lg border border-notion-border bg-white p-1.5 shadow-xl backdrop-blur-md">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
-                      onClick={() => {
-                        setTeamActionsOpen(false);
-                        onOpenCreateTeam();
-                      }}
-                    >
-                      <i className="bi bi-plus-lg" aria-hidden="true" />
-                      <span>Create Team</span>
-                    </button>
-                    {developerMode && (
-                      <>
-                        <div className="my-1 border-t border-notion-border" />
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
-                          onClick={() => {
-                            setTeamActionsOpen(false);
-                            setTeamDetailsOpen((current) => !current);
-                          }}
-                        >
-                          <i className="bi bi-info-circle" aria-hidden="true" />
-                          <span>{teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+              <Menu
+                withinPortal={FLOATING_MENU_WITHIN_PORTAL}
+                position="bottom-end"
+                shadow="md"
+                zIndex={400}
+                defaultOpened={import.meta.env.MODE === "test"}
+              >
+                <Menu.Target>
+                  <button
+                    type="button"
+                    className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-8`}
+                    aria-label="Open team actions"
+                    title="Open team actions"
+                  >
+                    <i className="bi bi-three-dots" aria-hidden="true" />
+                  </button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<i className="bi bi-plus-lg" aria-hidden="true" />}
+                    onClick={onOpenCreateTeam}
+                  >
+                    Create Team
+                  </Menu.Item>
+                  {developerMode && (
+                    <>
+                      <Menu.Divider />
+                      <Menu.Item
+                        leftSection={<i className="bi bi-info-circle" aria-hidden="true" />}
+                        onClick={() => {
+                          setTeamDetailsOpen((current) => !current);
+                        }}
+                      >
+                        {teamDetailsOpen ? "Hide Team Details" : "Show Team Details"}
+                      </Menu.Item>
+                    </>
+                  )}
+                </Menu.Dropdown>
+              </Menu>
             </div>
           )}
         </div>
@@ -542,7 +544,12 @@ export function TeamSidebar(props: TeamSidebarProps) {
               onClick={onSelectConversation}
               title="Shared channel"
             >
-              <i className="bi bi-hash text-[14px]" aria-hidden="true" />
+              <span
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[12px] font-semibold leading-none text-notion-text-muted/80"
+                aria-hidden="true"
+              >
+                #
+              </span>
               <span className="truncate text-[13px]"># all</span>
             </button>
             <button

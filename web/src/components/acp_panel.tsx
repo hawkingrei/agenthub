@@ -9,6 +9,7 @@ import {
   ACP_PANEL_ROOT_CLASS,
   ACP_PANEL_TABS_CLASS,
   ACP_TAB_BADGE_CLASS,
+  ACP_TAB_BUTTON_BASE_CLASS,
   ACP_TAB_BUTTON_ACTIVE_CLASS,
   ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
@@ -51,7 +52,7 @@ function AcpPanelView({
 }: AcpPanelProps) {
   const effectiveTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const tabButtonClassName = (selected: boolean, withGap = false) =>
-    `acp-tab-button ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
+    `${ACP_TAB_BUTTON_BASE_CLASS} ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
   const tabsNode = (
     <div className={ACP_PANEL_TABS_CLASS}>
       <button
