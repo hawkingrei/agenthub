@@ -243,12 +243,6 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           >
                             <i className="bi bi-code-slash" aria-hidden="true" />
                           </button>
-                          <StatusBadge
-                            label={agent.status}
-                            tone={resolveAgentStatusTone(agent.status)}
-                            className={`agents-workbench-status status-${agent.status} hidden sm:inline-flex px-2 py-0.5 text-[10px]`}
-                            title={`status: ${agent.status}`}
-                          />
                           <button
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                             disabled={isActive || isStarting}

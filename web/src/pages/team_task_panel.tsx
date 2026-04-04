@@ -12,6 +12,7 @@ import {
   windowConversation,
 } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
+import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -165,7 +166,7 @@ const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
   "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
-  "min-w-[220px] rounded-lg border border-notion-border bg-white p-3 shadow-xl backdrop-blur-md";
+  `min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
   "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =
@@ -1335,8 +1336,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           id="team-task-panel-message"
           name="team_task_message"
           ref={messageTextareaRef}
-          className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[44px] px-3 py-2 text-[14px] leading-6`}
-          rows={2}
+          className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}
+          rows={1}
           placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {

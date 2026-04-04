@@ -87,3 +87,25 @@
 
 - Reflowed the Agents sidebar row so the first line keeps only the agent name, pending-permission dot, and action buttons.
 - Moved model / node / status badges onto a dedicated second row to stop long names from being squeezed out by tags on both desktop and mobile widths.
+
+## 2026-04-04 Tailwind theme token fix
+
+- Added the missing Tailwind v4 `@theme` color tokens for the shared `notion-*` palette (`text`, `text-muted`, `border`, `hover`, `sidebar`, `accent`, `accent-bg`).
+- This restores utility classes such as `bg-notion-accent`, `text-notion-text`, and `border-notion-border` so controls like the login button no longer degrade into transparent backgrounds with white text.
+
+## 2026-04-04 floating surface primitives
+
+- Reintroduced `web/src/ui/floating_surfaces.ts` as a real shared primitive instead of scattered one-off dropdown styling.
+- Unified the following click-triggered surfaces onto the same Notion-style floating tokens:
+  - Mantine `Menu` dropdowns in agents/team workbench chrome
+  - ACP output `Details`
+  - Input dock `History`
+  - Team message read-state hover card
+  - Mantine modals used by create-agent and permission review flows
+
+## 2026-04-04 workbench chrome follow-up
+
+- Removed the global Team detail header title so the selected team name no longer repeats above the workbench chrome.
+- Slimmed the Team shared-channel composer shell and textarea density to keep the bottom tool area lighter.
+- Raised `OutputHeader` status/details onto the same horizontal row as the agent title and promoted the `Details` panel to a higher floating z-layer.
+- Anchored the ACP dock-local jump-to-bottom button to the dock shell (`bottom: calc(100% + 0.75rem)`) so it no longer sits under the dock when the input area is visible.

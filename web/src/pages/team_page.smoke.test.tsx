@@ -464,6 +464,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
+      expect(container.querySelector("h1")).toBeNull();
       expect(container.textContent).toContain("# all");
       expect(container.textContent).toContain("Shared channel for human requests");
       expect(container.textContent).not.toContain("Toggle agents section");

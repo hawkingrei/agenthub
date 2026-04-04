@@ -1,6 +1,7 @@
 import React from "react";
 import { CloseButton, Menu, TextInput } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
+import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
@@ -23,8 +24,6 @@ import {
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import type { TeamTab } from "./team/state";
-
-const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
 
 type TeamMemberSummary = {
   active: number;
@@ -251,10 +250,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
               </div>
             ) : selectedTeam ? (
               <Menu
-                withinPortal={FLOATING_MENU_WITHIN_PORTAL}
                 position="bottom-start"
-                shadow="md"
-                zIndex={400}
+                {...NOTION_FLOATING_MENU_PROPS}
               >
                 <Menu.Target>
                   <button
@@ -379,10 +376,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               </button>
               <Menu
-                withinPortal={FLOATING_MENU_WITHIN_PORTAL}
                 position="bottom-end"
-                shadow="md"
-                zIndex={400}
+                {...NOTION_FLOATING_MENU_PROPS}
                 defaultOpened={import.meta.env.MODE === "test"}
               >
                 <Menu.Target>

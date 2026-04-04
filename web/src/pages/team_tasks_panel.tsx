@@ -252,6 +252,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     [runs, selectedTask]
   );
   const latestRun = relatedRuns[0] ?? null;
+  const showInitialLoadingState = tasksLoading && tasks.length === 0;
 
   React.useEffect(() => {
     if (!compactMode) {
@@ -327,22 +328,22 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 </div>
 
                 <div className={TASKS_BOARD_STACK_CLASS}>
-                  {tasksLoading && (
+                  {showInitialLoadingState && (
                     <div className={TASKS_BOARD_EMPTY_CLASS}>Loading tasks...</div>
                   )}
-                  {!tasksLoading && tasks.length === 0 && (
+                  {!showInitialLoadingState && tasks.length === 0 && (
                     <div className={TASKS_BOARD_EMPTY_CLASS}>
                       No tasks yet.
                     </div>
                   )}
-                  {!tasksLoading && tasks.length > 0 && laneTasks.length === 0 && (
+                  {!showInitialLoadingState && tasks.length > 0 && laneTasks.length === 0 && (
                     <div className={TASKS_BOARD_EMPTY_CLASS}>
                       {statusFilter === "all"
                         ? formatTaskEmptyLabel(column.status)
                         : "No results."}
                     </div>
                   )}
-                  {!tasksLoading &&
+                  {!showInitialLoadingState &&
                     laneTasks.map((task) => (
                       <div
                         key={task.id}

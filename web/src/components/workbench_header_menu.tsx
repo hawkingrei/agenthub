@@ -1,7 +1,6 @@
 import React from "react";
 import { Menu } from "@mantine/core";
-
-const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
+import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 
 type WorkbenchHeaderMenuProps = {
   active: "agents" | "teams";
@@ -24,11 +23,9 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
 }: WorkbenchHeaderMenuProps) {
   return (
     <Menu
-      withinPortal={FLOATING_MENU_WITHIN_PORTAL}
       position="bottom-end"
-      shadow="md"
-      zIndex={400}
       defaultOpened={defaultOpened}
+      {...NOTION_FLOATING_MENU_PROPS}
     >
       <Menu.Target>
         <button

@@ -328,10 +328,13 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className="input-dock-shell flex self-stretch flex-col gap-1.5" ref={inputDockRef}>
+    <div
+      className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      ref={inputDockRef}
+    >
       {showConversationJump && (
         <button
-          className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
+          className={`${ACP_JUMP_BOTTOM_BUTTON_CLASS} bottom-[calc(100%+0.75rem)] right-0`}
           onClick={onJumpToBottom}
           title="Jump to bottom"
           aria-label="Jump to bottom"

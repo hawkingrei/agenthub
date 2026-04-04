@@ -3004,6 +3004,46 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
   });
 
+  it("TeamTasksPanel keeps rendered task cards visible during background refresh", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={true}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Prepare rollout");
+    expect(container.textContent).not.toContain("Loading tasks...");
+  });
+
   it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {
     function CompactTaskHarness() {
       const [selectedTaskId, setSelectedTaskId] = React.useState("");

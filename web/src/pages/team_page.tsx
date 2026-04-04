@@ -13,6 +13,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -76,8 +77,6 @@ import {
   updateTeamMemberProfileInSpec,
   type TeamMemberProfileDraft,
 } from "./team/create_helpers";
-
-const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
 import {
   clearTeamCreateDraft,
   loadTeamCreateDraft,
@@ -3500,14 +3499,14 @@ export function TeamPage(props: TeamPageProps) {
               />
             </button>
           )}
-          <div className="min-w-0">
-            <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
-              {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
-            </h1>
-            {isSelectorRoute ? (
+          {isSelectorRoute ? (
+            <div className="min-w-0">
+              <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
+                Team Selector
+              </h1>
               <p className="mt-0.5 text-[12px] text-black/55">Choose a team</p>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {!isSelectorRoute && (
@@ -3785,10 +3784,8 @@ export function TeamPage(props: TeamPageProps) {
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {isAgentWorkspace ? (
                           <Menu
-                            withinPortal={FLOATING_MENU_WITHIN_PORTAL}
                             position="bottom-end"
-                            shadow="md"
-                            zIndex={400}
+                            {...NOTION_FLOATING_MENU_PROPS}
                           >
                             <Menu.Target>
                               <button
@@ -3910,10 +3907,8 @@ export function TeamPage(props: TeamPageProps) {
                         <div className={workspaceToolbarClassName}>
                           {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
                             <Menu
-                              withinPortal={FLOATING_MENU_WITHIN_PORTAL}
                               position="bottom-end"
-                              shadow="md"
-                              zIndex={400}
+                              {...NOTION_FLOATING_MENU_PROPS}
                             >
                               <Menu.Target>
                                 <button

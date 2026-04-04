@@ -1,6 +1,10 @@
 import React from "react";
 import { Badge, Button, Card, Group, Modal, Stack, Text } from "@mantine/core";
 import { AcpPermissionRecord } from "../api";
+import {
+  NOTION_MODAL_CLASSNAMES,
+  NOTION_MODAL_OVERLAY_PROPS,
+} from "../ui/floating_surfaces";
 
 type PermissionModalProps = {
   permissions: AcpPermissionRecord[];
@@ -23,6 +27,7 @@ export function PermissionModal({
       closeOnClickOutside={false}
       closeOnEscape={false}
       withinPortal={withinPortal}
+      classNames={NOTION_MODAL_CLASSNAMES}
       title={
         <Group gap="xs">
           <Text fw={600}>Permission Requests</Text>
@@ -31,7 +36,7 @@ export function PermissionModal({
       }
       size="lg"
       radius="md"
-      overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
+      overlayProps={NOTION_MODAL_OVERLAY_PROPS}
     >
       <Stack gap="sm">
         {permissions.map((perm) => {

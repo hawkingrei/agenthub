@@ -3,6 +3,16 @@
 /* Keep preflight disabled in tailwind.config.cjs while the app still carries
    legacy global styles; this file stays as the v4-first Tailwind entrypoint. */
 
+@theme {
+  --color-notion-text: #37352f;
+  --color-notion-text-muted: #787774;
+  --color-notion-border: #e9e9e7;
+  --color-notion-hover: #f1f1ef;
+  --color-notion-sidebar: #f7f7f5;
+  --color-notion-accent: #2383e2;
+  --color-notion-accent-bg: #e8f2fd;
+}
+
 @layer base {
   :root {
     --notion-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",

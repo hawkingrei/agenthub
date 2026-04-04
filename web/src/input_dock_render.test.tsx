@@ -100,10 +100,13 @@ describe("InputDock interrupt placement", () => {
     expect(jumpPos).toBeLessThan(dockRootPos);
     expect(jumpPos).toBeLessThan(editorRowPos);
     expect(textareaPos).toBeGreaterThan(editorRowPos);
+    expect(html).toContain("input-dock-shell relative");
+    expect(html).toContain("bottom-[calc(100%+0.75rem)]");
+    expect(html).toContain("right-0");
   });
 
   it("stretches the dock to the panel edges instead of using a fixed centered width", () => {
-    expect(renderDock()).toContain("input-dock-shell flex self-stretch");
+    expect(renderDock()).toContain("input-dock-shell relative flex self-stretch");
     expect(renderDock()).toContain("w-full");
     expect(renderDock()).not.toContain("mx-4");
     expect(renderDock()).not.toContain("sm:mx-6");

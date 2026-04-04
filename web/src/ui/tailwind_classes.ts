@@ -1,3 +1,8 @@
+import {
+  NOTION_FLOATING_LIST_PANEL_CLASS,
+  NOTION_FLOATING_PANEL_CLASS,
+} from "./floating_surfaces";
+
 export const NOTION_TEXT_COLOR = "text-notion-text";
 export const NOTION_TEXT_MUTED_COLOR = "text-notion-text-muted";
 export const NOTION_BORDER_COLOR = "border-notion-border";
@@ -50,7 +55,7 @@ export const ACP_TAB_BADGE_CLASS =
   "acp-tab-badge ml-1 rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted";
 
 export const ACP_JUMP_BOTTOM_BUTTON_CLASS =
-  "acp-jump-bottom absolute bottom-24 right-6 z-40 inline-flex h-9 w-9 items-center justify-center rounded-full border border-notion-border bg-white shadow-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
+  "acp-jump-bottom absolute bottom-24 right-6 z-[70] inline-flex h-9 w-9 items-center justify-center rounded-full border border-notion-border bg-white shadow-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
 
 export const ACP_DEBUG_ROOT_CLASS =
   "acp-debug flex min-h-0 flex-1 flex-col gap-6 p-4 sm:mx-auto sm:max-w-4xl sm:p-8";
@@ -248,7 +253,7 @@ export const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "relative min-h-0 flex flex-1 flex-col gap-4 overflow-y-auto overscroll-y-contain pr-1 before:absolute before:left-[11px] before:top-2 before:h-[calc(100%-16px)] before:w-0.5 before:bg-notion-hover";
 
 export const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "flex shrink-0 flex-col gap-1.5 border-t border-black/[0.05] bg-[#fbfbfa]/94 px-3 py-2.5 shadow-[0_-1px_0_rgba(15,23,42,0.05)] backdrop-blur-md sm:px-4";
+  "flex shrink-0 flex-col gap-1 border-t border-black/[0.05] bg-[#fbfbfa]/94 px-2.5 py-1.5 shadow-[0_-1px_0_rgba(15,23,42,0.04)] backdrop-blur-md sm:px-3 sm:py-2";
 
 export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-3";
 
@@ -561,10 +566,10 @@ export const AGENTS_ROW_ACTIVE_CLASS =
   "agents-workbench-row active group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-notion-accent/10 bg-notion-hover px-3 py-2.5 text-notion-text ring-1 ring-notion-accent/20 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
-  "output-header sticky top-0 z-30 flex flex-col gap-2 bg-white/88 px-4 py-3 backdrop-blur-md transition-all sm:px-6 sm:py-4";
+  "output-header sticky top-0 z-30 flex flex-col gap-1.5 bg-white/88 px-4 py-2.5 backdrop-blur-md transition-all sm:px-6 sm:py-3";
 
 export const OUTPUT_HEADER_TITLE_CLASS =
-  "output-title min-w-0 flex items-start justify-between gap-3";
+  "output-title flex min-w-0 flex-1 items-start gap-3";
 
 export const OUTPUT_HEADER_TITLE_TEXT_CLASS =
   "output-title-text flex min-w-0 flex-1 flex-col gap-0.5";
@@ -576,15 +581,15 @@ export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
   "truncate text-sm font-semibold leading-tight text-notion-text sm:text-base";
 
 export const OUTPUT_HEADER_META_CLASS =
-  "output-meta flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-notion-text-muted [&>*]:min-w-0";
+  "output-meta flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px] text-notion-text-muted [&>*]:min-w-0";
 
-export const OUTPUT_HEADER_DETAILS_ROOT_CLASS = "output-header-details relative";
+export const OUTPUT_HEADER_DETAILS_ROOT_CLASS = "output-header-details relative z-[70]";
 
 export const OUTPUT_HEADER_DETAILS_SUMMARY_CLASS =
   "inline-flex cursor-pointer list-none items-center rounded-md border border-notion-border bg-white/72 px-2 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:border-notion-accent/30 hover:bg-notion-hover hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10";
 
 export const OUTPUT_HEADER_DETAILS_PANEL_CLASS =
-  "absolute right-0 top-[calc(100%+8px)] z-20 min-h-0 min-w-[220px] rounded-lg border border-notion-border bg-white/95 px-3 py-2 shadow-xl backdrop-blur-md";
+  `absolute right-0 top-[calc(100%+8px)] z-[80] min-h-0 min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
 
 export const OUTPUT_HEADER_DETAILS_LIST_CLASS = "flex flex-col gap-1.5";
 
@@ -632,7 +637,7 @@ export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
   "history-toggle inline-flex h-8 items-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[12px] font-semibold text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-notion-hover active:translate-y-px";
 
 export const INPUT_DOCK_HISTORY_MENU_CLASS =
-  "input-history-menu absolute bottom-[calc(100%+0.5rem)] left-0 z-30 max-h-60 min-w-[15rem] max-w-[min(26rem,calc(100vw-48px))] overflow-y-auto rounded-xl border border-black/[0.06] bg-white/98 p-1.5 shadow-[0_20px_24px_rgba(25,25,25,0.05),0_5px_8px_rgba(25,25,25,0.027),0_0_0_1px_rgba(42,28,0,0.07)] backdrop-blur-md";
+  `input-history-menu absolute bottom-[calc(100%+0.5rem)] left-0 z-30 max-h-60 min-w-[15rem] max-w-[min(26rem,calc(100vw-48px))] overflow-y-auto ${NOTION_FLOATING_LIST_PANEL_CLASS}`;
 
 export const INPUT_DOCK_HISTORY_ITEM_CLASS =
   "input-history-item block w-full rounded-lg px-3 py-2 text-left text-[13px] text-notion-text hover:bg-notion-hover transition";
