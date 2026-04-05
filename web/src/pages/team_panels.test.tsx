@@ -1528,46 +1528,48 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMemberConsolePanel
-          snapshot={buildSnapshot()}
-          selectedMemberId="worker-agent"
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
-          })}
-          memberEvents={[memberEvent]}
-          memberEventsHasMore={true}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={1}
-          displayedRunEvents={[]}
-          previewLimit={5}
-          memberDiscoveryCard={{
-            card_id: "agenthub://agents/worker-agent",
-            schema_version: "agenthub.a2a.discovery_card.v1",
-            description:
-              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
-            identity: {
-              agent_id: "worker-agent",
-              name: "worker-agent",
-              status: "running",
-            },
-            runtime: {
-              acp_provider: "codex",
-              code_mode: true,
-              worktree_mode: "create_worktree",
-              worktree_repo: "/tmp/repo",
-              worktree_ref: "main",
-            },
-            capability_tags: ["team_mailbox_v1", "acp_codex"],
-          }}
-          onRefresh={onRefresh}
-          onLoadOlder={onLoadOlder}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-        />
+        <MantineProvider>
+          <TeamMemberConsolePanel
+            snapshot={buildSnapshot()}
+            selectedMemberId="worker-agent"
+            onSelectedMemberIdChange={onSelectedMemberIdChange}
+            selectedMemberSnapshot={buildMemberSnapshot({
+              member_id: "worker-agent",
+              role: "worker",
+              latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+            })}
+            memberEvents={[memberEvent]}
+            memberEventsHasMore={true}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={1}
+            displayedRunEvents={[]}
+            previewLimit={5}
+            memberDiscoveryCard={{
+              card_id: "agenthub://agents/worker-agent",
+              schema_version: "agenthub.a2a.discovery_card.v1",
+              description:
+                "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
+              identity: {
+                agent_id: "worker-agent",
+                name: "worker-agent",
+                status: "running",
+              },
+              runtime: {
+                acp_provider: "codex",
+                code_mode: true,
+                worktree_mode: "create_worktree",
+                worktree_repo: "/tmp/repo",
+                worktree_ref: "main",
+              },
+              capability_tags: ["team_mailbox_v1", "acp_codex"],
+            }}
+            onRefresh={onRefresh}
+            onLoadOlder={onLoadOlder}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+          />
+        </MantineProvider>
       );
     });
 
