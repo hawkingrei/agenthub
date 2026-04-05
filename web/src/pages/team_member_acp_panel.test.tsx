@@ -137,6 +137,74 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
   });
 
+  it("pads the ACP conversation above the measured input dock height", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+
+    class MockResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if ((this as HTMLElement).classList?.contains("input-dock-shell")) {
+        return {
+          x: 0,
+          y: 0,
+          width: 640,
+          height: 156,
+          top: 0,
+          right: 640,
+          bottom: 156,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedSessionId="runtime-session-1"
+          selectedMemberRole="worker"
+          selectedMemberSnapshot={null}
+          memberEvents={buildAcpEvents()}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onSendInput={vi.fn()}
+          onRefresh={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+
+      act(() => {
+        resizeCallback?.([], {} as ResizeObserver);
+      });
+
+      const conversation = required(
+        container.querySelector('[data-acp-conversation-scroll="true"]') as HTMLDivElement | null,
+        "acp conversation scroll container missing"
+      );
+      expect(conversation.style.paddingBottom).toBe("");
+      expect(conversation.style.scrollPaddingBottom).toBe("168px");
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver;
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
   it("shows an interrupt action for a running team member ACP session", () => {
     const onInterrupt = vi.fn();
 

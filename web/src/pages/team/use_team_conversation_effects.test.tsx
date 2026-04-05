@@ -172,7 +172,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
   });
 
-  it("keeps polling while the sse connection is open as a fallback", async () => {
+  it("stops polling once the sse connection is open", async () => {
     vi.useFakeTimers();
     const params = createParams({
       eventsAutoRefresh: true,
@@ -190,6 +190,45 @@ describe("useTeamConversationEffects", () => {
 
     await act(async () => {
       source.emitOpen();
+      await Promise.resolve();
+    });
+
+    const callsAfterOpen = (
+      params.refreshTaskMessages as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(callsAfterOpen).toBe(baseCalls);
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterOpen);
+  });
+
+  it("resumes polling after the sse connection drops", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      source.emitOpen();
+      source.emitError();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
       vi.advanceTimersByTime(4000);
       await Promise.resolve();
     });

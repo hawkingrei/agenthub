@@ -76,6 +76,8 @@ type TeamTaskPanelProps = {
   humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
+  conversationTitle?: string;
+  isSharedConversation?: boolean;
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -644,6 +646,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     humanActorId = "user",
     memberLiveStates = [],
     memberIds = [],
+    conversationTitle = "all",
+    isSharedConversation = true,
     messagesLoading,
     busy,
     formatTs,
@@ -708,6 +712,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       )
       .slice(0, 8);
   }, [activeMention, mentionCandidates]);
+  const normalizedConversationTitle =
+    conversationTitle.trim().length > 0 ? conversationTitle.trim() : "all";
+  const refreshLabel = isSharedConversation ? "Refresh channel" : "Refresh thread";
+  const emptyStateText = isSharedConversation
+    ? "No channel messages yet."
+    : "No thread messages yet.";
+  const messagePlaceholder = isSharedConversation
+    ? `Message #${normalizedConversationTitle}`
+    : "Reply in thread";
 
   const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
     if (cursor === null || Number.isNaN(cursor)) {
@@ -1077,8 +1090,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 void onRefreshMessages();
               }}
               disabled={messagesLoading}
-              title="Refresh channel"
-              aria-label="Refresh channel"
+              title={refreshLabel}
+              aria-label={refreshLabel}
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               <span>Refresh</span>
@@ -1329,7 +1342,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           )}
           {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              No channel messages yet.
+              {emptyStateText}
             </div>
           )}
             </div>
@@ -1361,7 +1374,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           ref={messageTextareaRef}
           className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}
           rows={1}
-          placeholder="Message #all"
+          placeholder={messagePlaceholder}
           value={messageDraft}
           onChange={(event) => {
             const nextDraft = event.target.value;

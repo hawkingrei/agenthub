@@ -31,6 +31,7 @@ import {
   TeamActorMessageRecord,
   TeamDefinitionRecord,
   TeamRuntimeRecord,
+  TeamTaskDetailResponse,
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
   TeamRunEventRecord,
@@ -116,6 +117,7 @@ import {
 import {
   DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
+  isSharedThreadTask,
   listTeamWorkspaceTasks,
   resolveAgentWorkspaceStatusView,
   resolveTeamPageNotice,
@@ -772,6 +774,9 @@ export function TeamPage(props: TeamPageProps) {
   const [sharedConversation, setSharedConversation] = useState<TeamTaskRecord | null>(null);
   const [sharedConversationLatestRun, setSharedConversationLatestRun] =
     useState<TeamRunRecord | null>(null);
+  const [selectedConversationTaskId, setSelectedConversationTaskId] = useState("");
+  const [selectedConversationDetail, setSelectedConversationDetail] =
+    useState<TeamTaskDetailResponse | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [taskMessages, setTaskMessages] = useState<TeamConversationMessageRecord[]>([]);
@@ -891,6 +896,9 @@ export function TeamPage(props: TeamPageProps) {
   const memberEventsRef = useRef<AgentEvent[]>([]);
   const [focusedAgentMemberId, setFocusedAgentMemberId] = useState("");
   const [teamCatalogSettled, setTeamCatalogSettled] = useState(() => isSelectorRoute);
+  const handleTeamsRefreshSettled = useCallback(() => {
+    setTeamCatalogSettled(true);
+  }, []);
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === effectiveSelectedTeamId) ?? null,
@@ -925,6 +933,8 @@ export function TeamPage(props: TeamPageProps) {
     setTaskList([]);
     setSharedConversation(null);
     setSharedConversationLatestRun(null);
+    setSelectedConversationTaskId("");
+    setSelectedConversationDetail(null);
     setTasksLoading(false);
     setSelectedTaskId("");
     setTaskMessages([]);
@@ -1536,7 +1546,7 @@ export function TeamPage(props: TeamPageProps) {
     setActiveRunId,
     setRunLookupId,
     onRunCreated,
-    onTeamsRefreshSettled: () => setTeamCatalogSettled(true),
+    onTeamsRefreshSettled: handleTeamsRefreshSettled,
   });
 
   const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
@@ -2198,11 +2208,45 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   };
 
-  const selectedConversation = sharedConversation;
+  const resolvedSelectedConversationTaskId = selectedConversationTaskId.trim();
+  const selectedConversation = useMemo(() => {
+    if (!effectiveSelectedTeamId) {
+      return null;
+    }
+    if (!resolvedSelectedConversationTaskId) {
+      return sharedConversation;
+    }
+    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
+      return sharedConversation;
+    }
+    return (
+      taskList.find((task) => task.id === resolvedSelectedConversationTaskId) ?? null
+    );
+  }, [
+    effectiveSelectedTeamId,
+    resolvedSelectedConversationTaskId,
+    sharedConversation,
+    taskList,
+  ]);
+  const selectedConversationLatestRun = useMemo(() => {
+    if (!resolvedSelectedConversationTaskId) {
+      return sharedConversationLatestRun;
+    }
+    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
+      return sharedConversationLatestRun;
+    }
+    return selectedConversationDetail?.latest_run ?? null;
+  }, [
+    resolvedSelectedConversationTaskId,
+    selectedConversationDetail,
+    sharedConversation?.id,
+    sharedConversationLatestRun,
+  ]);
+  const selectedConversationId = selectedConversation?.id ?? null;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
       effectiveSelectedTeamId &&
-      (selectedConversation?.id ?? "").trim()
+      (selectedConversationId ?? "").trim()
   );
   const connectionBadge = useMemo(
     () =>
@@ -2283,6 +2327,61 @@ export function TeamPage(props: TeamPageProps) {
   );
 
   useEffect(() => {
+    if (!effectiveSelectedTeamId) {
+      return;
+    }
+    const taskId = resolvedSelectedConversationTaskId;
+    if (!taskId) {
+      setSelectedConversationDetail(null);
+      return;
+    }
+    if (sharedConversation?.id === taskId) {
+      setSelectedConversationDetail(null);
+      return;
+    }
+    let active = true;
+    void api
+      .getTeamTask(props.token, effectiveSelectedTeamId, taskId)
+      .then((detail) => {
+        if (!active) {
+          return;
+        }
+        setSelectedConversationDetail(detail);
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setSelectedConversationDetail(null);
+        setError(parseErrorMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    effectiveSelectedTeamId,
+    props.token,
+    resolvedSelectedConversationTaskId,
+    setError,
+    sharedConversation?.id,
+  ]);
+
+  useEffect(() => {
+    if (!resolvedSelectedConversationTaskId) {
+      return;
+    }
+    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
+      return;
+    }
+    const stillExists = taskList.some((task) => task.id === resolvedSelectedConversationTaskId);
+    if (stillExists) {
+      return;
+    }
+    setSelectedConversationTaskId("");
+    setSelectedConversationDetail(null);
+  }, [resolvedSelectedConversationTaskId, sharedConversation?.id, taskList]);
+
+  useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
   }, [selectedTaskId, effectiveSelectedTeamId]);
@@ -2302,7 +2401,7 @@ export function TeamPage(props: TeamPageProps) {
     token: props.token,
     selectedTeamId: effectiveSelectedTeamId,
     selectedConversation,
-    latestRunForSharedConversation: sharedConversationLatestRun,
+    selectedConversationLatestRun,
     activeRunIdForSelectedTeam,
     refreshSnapshot,
     refreshEvents,
@@ -2320,7 +2419,7 @@ export function TeamPage(props: TeamPageProps) {
   useTeamConversationEffects({
     token: props.token,
     selectedTeamId: effectiveSelectedTeamId,
-    selectedConversationId: selectedConversation?.id ?? null,
+    selectedConversationId,
     tab,
     eventsAutoRefresh,
     refreshTaskMessages,
@@ -2413,8 +2512,9 @@ export function TeamPage(props: TeamPageProps) {
       setTeamsSidebarCollapsed(true);
     }
   }, [isCompactWorkbench, setSelectedMemberId, setTab]);
-  const onSelectConversationSubject = useCallback(() => {
+  const onSelectConversationSubject = useCallback((taskId?: string | null) => {
     setFocusedAgentMemberId("");
+    setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
     setTab("conversation");
     if (isCompactWorkbench) {
       setTeamsSidebarCollapsed(true);
@@ -2554,6 +2654,10 @@ export function TeamPage(props: TeamPageProps) {
     () => selectedConversation?.title?.trim() || DEFAULT_TEAM_THREAD_TITLE,
     [selectedConversation]
   );
+  const selectedConversationIsShared = useMemo(
+    () => (selectedConversation ? isSharedThreadTask(selectedConversation) : true),
+    [selectedConversation]
+  );
   const currentWorkspaceTabLabel = useMemo(
     () => TEAM_TAB_ITEMS.find((item) => item.value === tab)?.label ?? selectedTeam?.name ?? "Team",
     [selectedTeam?.name, tab]
@@ -2563,7 +2667,9 @@ export function TeamPage(props: TeamPageProps) {
     : isAgentWorkspace
       ? selectedAgentLabel
     : tab === "conversation"
-      ? `# ${activeConversationTitle}`
+      ? selectedConversationIsShared
+        ? `# ${activeConversationTitle}`
+        : activeConversationTitle
     : tab === "tasks"
       ? "Kanban"
     : tab === "mailbox"
@@ -2578,7 +2684,9 @@ export function TeamPage(props: TeamPageProps) {
     : isAgentWorkspace
       ? null
     : tab === "conversation"
-      ? "Shared channel for human requests, planning discussion, and team-visible progress updates."
+      ? selectedConversationIsShared
+        ? "Shared channel for human requests, planning discussion, and team-visible progress updates."
+        : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
     : tab === "tasks"
         ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
       : tab === "mailbox"
@@ -3279,6 +3387,8 @@ export function TeamPage(props: TeamPageProps) {
       humanActorId={HUMAN_MAILBOX_ACTOR_ID}
       memberLiveStates={selectedTeamMemberLiveStates}
       memberIds={taskConversationMemberIds}
+      conversationTitle={activeConversationTitle}
+      isSharedConversation={selectedConversationIsShared}
       messagesLoading={taskMessagesLoading}
       busy={busy}
       formatTs={formatTs}

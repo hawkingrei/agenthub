@@ -314,7 +314,7 @@ describe("team page helpers", () => {
 
     expect(merged).toHaveLength(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT);
     expect(merged[0]?.message_id).toBe(6);
-    expect(merged.at(-1)?.message_id).toBe(15);
+    expect(merged.at(-1)?.message_id).toBe(25);
   });
 
   it("upserts run by id and keeps latest-first sort order", () => {

@@ -16,6 +16,7 @@ type InputDockProps = {
   showInterrupt: boolean;
   canInterrupt: boolean;
   sendDisabled?: boolean;
+  onHeightChange?: (height: number) => void;
   onInputChange: (value: string) => void;
   onSendInput: () => void;
   onInterrupt: () => void;
@@ -234,6 +235,7 @@ export function InputDock({
   showInterrupt,
   canInterrupt,
   sendDisabled = false,
+  onHeightChange,
   onInputChange,
   onSendInput,
   onInterrupt,
@@ -249,9 +251,23 @@ export function InputDock({
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const inputDockRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const lastReportedHeightRef = React.useRef<number | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
   const mobileInputViewport = useMobileInputViewport();
   const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
+
+  const reportDockHeight = React.useCallback(() => {
+    if (!onHeightChange) return;
+    const dockElement = inputDockRef.current;
+    const nextHeight = dockElement
+      ? Math.max(0, Math.ceil(dockElement.getBoundingClientRect().height))
+      : 0;
+    if (lastReportedHeightRef.current === nextHeight) {
+      return;
+    }
+    lastReportedHeightRef.current = nextHeight;
+    onHeightChange(nextHeight);
+  }, [onHeightChange]);
 
   const ensureInputVisible = React.useCallback(() => {
     if (!mobileInputViewport) return;
@@ -327,9 +343,26 @@ export function InputDock({
     });
   }, [showHistory]);
 
+  React.useEffect(() => {
+    if (!onHeightChange) return;
+    reportDockHeight();
+    const dockElement = inputDockRef.current;
+    if (!dockElement || typeof ResizeObserver !== "function") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      reportDockHeight();
+    });
+    observer.observe(dockElement);
+    return () => {
+      observer.disconnect();
+    };
+  }, [onHeightChange, reportDockHeight]);
+
   return (
     <div
       className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      data-acp-input-dock="true"
       ref={inputDockRef}
     >
       {showConversationJump && (

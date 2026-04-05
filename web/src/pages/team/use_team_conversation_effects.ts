@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type { TeamActorMessageRecord, TeamConversationMessageRecord } from "../../api";
 import type { SseConnectionState } from "../../connection_status";
 import type { TeamTab } from "./state";
@@ -32,6 +39,7 @@ export function useTeamConversationEffects({
   const latestSelectionRef = useRef({ teamId: "", conversationId: "" });
   const refreshTaskMessagesRef = useRef(refreshTaskMessages);
   const sseConnectedRef = useRef(false);
+  const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
   const updateSseState = useCallback(
     (nextState: SseConnectionState) => {
       onSseStateChange?.(nextState);
@@ -86,16 +94,20 @@ export function useTeamConversationEffects({
     if (!selectedTeamId || !conversationId) {
       setTaskMessages([]);
       setConversationMailboxMessages([]);
+      setPollFallbackEnabled(false);
       updateSseState("idle");
       return;
     }
+    setPollFallbackEnabled(tab === "conversation" && eventsAutoRefresh);
     void refreshSelectedConversation();
   }, [
+    eventsAutoRefresh,
     refreshSelectedConversation,
     selectedConversationId,
     selectedTeamId,
     setConversationMailboxMessages,
     setTaskMessages,
+    tab,
     updateSseState,
   ]);
 
@@ -105,7 +117,8 @@ export function useTeamConversationEffects({
       (selectedTeamId?.trim() ?? "") &&
       (selectedConversationId?.trim() ?? "")
   );
-  const conversationRefreshEnabled = conversationSelectionEnabled && tab === "conversation";
+  const conversationRefreshEnabled =
+    conversationSelectionEnabled && tab === "conversation" && pollFallbackEnabled;
 
   useResumeRefresh({
     enabled: conversationRefreshEnabled,
@@ -120,6 +133,7 @@ export function useTeamConversationEffects({
       typeof EventSource === "undefined"
     ) {
       sseConnectedRef.current = false;
+      setPollFallbackEnabled(conversationSelectionEnabled && tab === "conversation");
       updateSseState("idle");
       return;
     }
@@ -144,6 +158,7 @@ export function useTeamConversationEffects({
     const scheduleReconnect = () => {
       if (cancelled) return;
       clearReconnectTimer();
+      setPollFallbackEnabled(tab === "conversation");
       updateSseState("reconnecting");
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
@@ -167,6 +182,7 @@ export function useTeamConversationEffects({
       nextSource.onopen = () => {
         reconnectAttempt = 0;
         sseConnectedRef.current = true;
+        setPollFallbackEnabled(false);
         updateSseState("connected");
       };
       nextSource.onmessage = (event) => {
@@ -191,6 +207,7 @@ export function useTeamConversationEffects({
       cancelled = true;
       clearReconnectTimer();
       closeSource();
+      setPollFallbackEnabled(false);
       updateSseState("idle");
     };
   }, [
@@ -199,6 +216,7 @@ export function useTeamConversationEffects({
     refreshSelectedConversation,
     selectedConversationId,
     selectedTeamId,
+    tab,
     token,
     updateSseState,
   ]);

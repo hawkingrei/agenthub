@@ -245,6 +245,7 @@ export function AcpConversation({
   return (
     <div
       className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-1.5"
+      data-acp-conversation-scroll="true"
       ref={containerRef}
       onScroll={onScroll}
       style={conversationScrollStyle}

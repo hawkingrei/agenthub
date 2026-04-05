@@ -1,7 +1,12 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AcpPanel, AcpPanelProps, AcpPanelView } from "./components/acp_panel";
+import {
+  AcpPanel,
+  AcpPanelProps,
+  AcpPanelView,
+  resolveAcpInputDockConversationClearance,
+} from "./components/acp_panel";
 import { AcpView } from "./acp";
 
 const baseView: AcpView = {
@@ -141,6 +146,17 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("+3");
   });
 
+  it("pads the conversation scroll region above a visible input dock", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        conversationBottomClearance={168}
+      />
+    );
+    expect(html).toContain("scroll-padding-bottom:168px");
+    expect(html).toContain('data-acp-conversation-scroll="true"');
+  });
+
   it("renders mobile title inline with tabs when provided", () => {
     const html = renderToStaticMarkup(
       <AcpPanel
@@ -233,6 +249,11 @@ describe("AcpPanel layout", () => {
 
     expect(html).toContain("Plan");
     expect(html).toContain("1 active");
+  });
+
+  it("keeps a minimum bottom clearance even before the dock reports its height", () => {
+    expect(resolveAcpInputDockConversationClearance(0)).toBe(104);
+    expect(resolveAcpInputDockConversationClearance(156)).toBe(168);
   });
 
   it("shows done state on the plan tab when all entries are completed", () => {

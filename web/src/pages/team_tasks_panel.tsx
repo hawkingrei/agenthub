@@ -40,7 +40,7 @@ type TeamTasksPanelProps = {
   selectedTaskId: string;
   onSelectedTaskIdChange: (taskId: string) => void;
   onRefreshTasks: () => Promise<void> | void;
-  onOpenConversation: () => void;
+  onOpenConversation: (taskId?: string | null) => void;
   busy: string | null;
   runs: TeamRunRecord[];
   onOpenRun: (runId: string) => void;
@@ -443,6 +443,16 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
             Task managed through Team runtime controls.
           </div>
 
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              onClick={() => onOpenConversation(selectedTask.id)}
+            >
+              Open thread
+            </button>
+          </div>
+
           <div className={TASKS_RUN_LIST_CLASS}>
             <div className={TASKS_RUN_CARD_CLASS}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -686,7 +696,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
         <button
           type="button"
           className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          onClick={onOpenConversation}
+          onClick={() => onOpenConversation()}
         >
           Open # all
         </button>

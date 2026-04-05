@@ -2680,6 +2680,113 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
   });
 
+  it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "chat_message",
+                text: [
+                  "Long planner note with averyveryveryveryveryveryveryverylongtoken",
+                  "",
+                  "```sql",
+                  "select * from some_really_long_table_name where planner_warning_code = 'averyveryveryveryveryveryveryverylongtoken';",
+                  "```",
+                ].join("\n"),
+              },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const agentBubble = required(
+      container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
+      "agent bubble missing"
+    );
+    const richText = required(
+      agentBubble.querySelector(".acp-text") as HTMLDivElement | null,
+      "thread rich text missing"
+    );
+
+    expect(agentBubble.className).toContain("overflow-hidden");
+    expect(richText.className).toContain("max-w-full");
+    expect(richText.className).toContain("[overflow-wrap:anywhere]");
+    expect(richText.className).toContain("[&_pre]:whitespace-pre-wrap");
+    expect(richText.className).toContain("[&_pre_code]:break-words");
+  });
+
+  it("TeamTaskPanel wraps command-style bubbles without exceeding the mobile bubble width", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "chat_message",
+                text: "$ agenthub actor team-task-note --shared-thread --text averyveryveryveryveryveryveryverylongtoken",
+              },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const commandBody = required(
+      container.querySelector('[data-team-channel-bubble="agent"] pre') as HTMLPreElement | null,
+      "command-style bubble missing"
+    );
+
+    expect(commandBody.className).toContain("whitespace-pre-wrap");
+    expect(commandBody.className).toContain("break-words");
+  });
+
   it("TeamTaskPanel keeps rendered channel messages visible during background refresh", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
@@ -3000,6 +3107,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
+    clickElement(findButtonByText(container, "Open thread"));
     clickElement(findButtonByText(container, "Open # all"));
     clickElement(findInteractiveByText(container, "Developer tools", "summary"));
     changeInputValue(
@@ -3019,7 +3127,8 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-compile-preview="true"]')).not.toBeNull();
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
-    expect(onOpenConversation).toHaveBeenCalledTimes(1);
+    expect(onOpenConversation).toHaveBeenNthCalledWith(1, "task-2");
+    expect(onOpenConversation).toHaveBeenNthCalledWith(2);
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
     expect(onUseCompiledRunPayload).toHaveBeenCalledTimes(1);
@@ -3034,6 +3143,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
+    expect(container.textContent).toContain("Open thread");
     expect(container.textContent).toContain("Open # all");
     expect(container.textContent).toContain("Latest run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
@@ -3189,7 +3299,6 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel renders ACP conversation for selected member", () => {
-    const onRefresh = vi.fn();
     const onLoadOlder = vi.fn();
     const acpEvents: AgentEvent[] = [
       {
@@ -3233,19 +3342,16 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={20}
-          onRefresh={onRefresh}
           onLoadOlder={onLoadOlder}
         />
     );
 
-    clickElement(findButtonByText(container, "Refresh"));
     expect(container.querySelector("h3")).toBeNull();
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).toContain("Debug");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
-    expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
   });
   it("TeamMemberAcpPanel mirrors member header status and model metadata", () => {
@@ -3358,7 +3464,9 @@ describe("team panels interactions", () => {
       "team member acp shell missing"
     );
     expect(acpShell.classList.contains("min-h-0")).toBe(true);
+    expect(acpShell.classList.contains("flex")).toBe(true);
     expect(acpShell.classList.contains("flex-1")).toBe(true);
+    expect(acpShell.classList.contains("flex-col")).toBe(true);
     expect(acpShell.classList.contains("overflow-hidden")).toBe(true);
 
     const header = required(
@@ -3367,6 +3475,8 @@ describe("team panels interactions", () => {
     );
     expect(header.className).toContain("output-header");
     expect(container.querySelector("textarea")).not.toBeNull();
+    expect(container.textContent).not.toContain("Refresh");
+    expect(container.textContent).not.toContain("Load Older");
   });
 
   it("TeamTaskPanel keeps the composer pinned while exposing channel refresh", () => {
@@ -3647,7 +3757,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).not.toContain("Debug");
-    expect(container.textContent).toContain("Refresh");
+    expect(container.textContent).not.toContain("Refresh");
     expect(container.textContent).toContain("Details");
     expect(container.textContent).not.toContain("member=worker-agent");
     expect(container.textContent).not.toContain("role=worker");
