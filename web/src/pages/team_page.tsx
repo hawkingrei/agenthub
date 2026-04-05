@@ -616,6 +616,7 @@ export function TeamPage(props: TeamPageProps) {
   >({});
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [teamSelectorFilter, setTeamSelectorFilter] = useState("");
+  const wasSelectorRouteRef = useRef(isSelectorRoute);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(routeTeamId);
   const effectiveSelectedTeamId = isSelectorRoute ? null : routeTeamId ?? selectedTeamId;
   const sharedConversationRequestScopeRef = useRef({
@@ -637,6 +638,12 @@ export function TeamPage(props: TeamPageProps) {
     },
     [isSelectorRoute, routeTeamId]
   );
+  useEffect(() => {
+    if (isSelectorRoute && !wasSelectorRouteRef.current) {
+      setTeamSelectorFilter("");
+    }
+    wasSelectorRouteRef.current = isSelectorRoute;
+  }, [isSelectorRoute]);
 
   const [teamCreateState, dispatchTeamCreate] = useReducer(
     reduceTeamCreateState,

@@ -174,6 +174,26 @@ if (typeof globalThis.ResizeObserver !== "function") {
 describe("TeamPage smoke render", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn> | null = null;
 
+  const flushEffects = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  const changeInputValue = async (element: HTMLInputElement, value: string) => {
+    await act(async () => {
+      const prototype = Object.getPrototypeOf(element) as { value?: unknown };
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+      if (descriptor?.set) {
+        descriptor.set.call(element, value);
+      } else {
+        element.value = value;
+      }
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      await flushEffects();
+    });
+  };
+
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     getRuntimeDefaults.mockClear();
@@ -305,6 +325,111 @@ describe("TeamPage smoke render", () => {
       expect(container.textContent).toContain("No agents have joined this team yet.");
       expect(container.textContent).not.toContain("This team is unavailable.");
       expect(container.textContent).not.toContain("Loading team workspace...");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("clears the selector filter when returning from team detail to the selector route", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-a", "Team A"), buildTeam("team-b", "Team B")];
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      const filterInput = container.querySelector(
+        'input[aria-label="Filter teams"]'
+      ) as HTMLInputElement | null;
+      expect(filterInput).not.toBeNull();
+      await changeInputValue(filterInput!, "Team B");
+      expect(container.textContent).not.toContain("Team A");
+      expect(container.textContent).toContain("Team B");
+
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-b"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(container.textContent).toContain("Team A");
+      expect(container.textContent).toContain("Team B");
+      const resetFilterInput = container.querySelector(
+        'input[aria-label="Filter teams"]'
+      ) as HTMLInputElement | null;
+      expect(resetFilterInput?.value).toBe("");
     } finally {
       act(() => {
         root.unmount();
