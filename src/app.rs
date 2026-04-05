@@ -322,7 +322,9 @@ pub async fn run() -> anyhow::Result<()> {
 mod tests {
     use std::future;
 
-    use agenthub_config::{AppConfig, InternalGrpcConfig, ServerConfig, ServerRole};
+    use agenthub_config::{
+        AppConfig, ConfigLoadInfo, InternalGrpcConfig, PushConfig, ServerConfig, ServerRole,
+    };
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode, header},
@@ -358,6 +360,40 @@ mod tests {
     }
 
     #[test]
+    fn log_config_details_handles_node_mode_branches() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: Some("127.0.0.1:18080".to_string()),
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some("/tmp/agenthub/vapid.json".to_string()),
+            }),
+            web_dir: Some("web/custom".to_string()),
+            ..Default::default()
+        };
+        let info = ConfigLoadInfo {
+            path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
+            file_exists: true,
+            env_overrides: vec![],
+        };
+        let spec = (
+            std::path::PathBuf::from("/tmp/agenthub/logs"),
+            "node.log".to_string(),
+        );
+
+        super::log_config_details(
+            &config,
+            &info,
+            Some("/tmp/agenthub/logs/node.log"),
+            Some(&spec),
+            None,
+        );
+    }
+
+    #[test]
     fn validate_startup_config_rejects_node_mode_without_internal_grpc() {
         let config = AppConfig {
             server: Some(ServerConfig {
@@ -372,6 +408,31 @@ mod tests {
                 .expect_err("node role should require internal grpc")
                 .to_string(),
             "server.role = \"node\" requires internal_grpc.enabled = true"
+        );
+    }
+
+    #[test]
+    fn validate_startup_config_rejects_reserved_main_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("main".to_string()),
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: None,
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            super::validate_startup_config(&config)
+                .expect_err("reserved node id should fail validation")
+                .to_string(),
+            "server.node_id must not be \"main\" when server.role = \"node\""
         );
     }
 
@@ -393,6 +454,12 @@ mod tests {
             ..Default::default()
         };
         super::validate_startup_config(&config).expect("node role should validate");
+    }
+
+    #[test]
+    fn validate_startup_config_accepts_main_role_without_internal_grpc() {
+        super::validate_startup_config(&AppConfig::default())
+            .expect("main role should not require internal grpc");
     }
 
     #[tokio::test]
