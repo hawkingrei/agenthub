@@ -6,6 +6,8 @@ const MARKDOWN_CACHE_LIMIT = 512;
 const MARKDOWN_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const MARKDOWN_CACHE_MAX_ENTRY_CHARS = 120_000;
 const SKILL_BLOCK_PATTERN = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
+const THREAD_RICH_TEXT_BASE_CLASS =
+  "acp-text min-w-0 max-w-full text-sm leading-6 [overflow-wrap:anywhere] [&_code]:break-words [&_li]:break-words [&_ol]:max-w-full [&_p]:break-words [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:break-words [&_th]:break-words [&_ul]:max-w-full";
 
 const markdownHtmlCache = new Map<string, string>();
 const markdownHtmlCacheSize = new Map<string, number>();
@@ -76,7 +78,7 @@ export function ThreadRichText({
   const html = renderHtml(text);
   return (
     <div
-      className={`acp-text text-sm leading-6 ${className ?? ""}`.trim()}
+      className={`${THREAD_RICH_TEXT_BASE_CLASS} ${className ?? ""}`.trim()}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

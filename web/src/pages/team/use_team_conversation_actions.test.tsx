@@ -163,6 +163,16 @@ function cleanupHarness(root: Root, container: HTMLDivElement): void {
   container.remove();
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("useTeamConversationActions", () => {
   const mockedApi = vi.mocked(api);
 
@@ -300,6 +310,7 @@ describe("useTeamConversationActions", () => {
         "team-1",
         "task-all",
         {
+          idempotency_key: expect.any(String),
           payload: {
             type: "chat_message",
             text: "<at>worker-1</at> please inspect the patch",
@@ -409,6 +420,7 @@ describe("useTeamConversationActions", () => {
         "team-1",
         "task-all",
         {
+          idempotency_key: expect.any(String),
           payload: {
             type: "chat_message",
             text: "hello shared thread",
@@ -417,6 +429,87 @@ describe("useTeamConversationActions", () => {
         }
       );
       expect(options.setSharedConversationLatestRun).toHaveBeenCalledWith(buildRun("run-new-shared"));
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("optimistically echoes a pending channel send and ignores duplicate submits while in flight", async () => {
+    const deferred = createDeferred<TeamConversationMessageRecord>();
+    mockedApi.sendTeamTaskMessage.mockReturnValueOnce(deferred.promise);
+
+    let captured: TeamConversationActions | null = null;
+    const draft = createStateSetter("hello team");
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const options = createOptions({
+      setTaskMessages: taskMessages.setter,
+      setTaskMessageDraft: draft.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        void captured?.sendTaskMessage({
+          text: "hello team",
+          mentionActorIds: [],
+        });
+        void captured?.sendTaskMessage({
+          text: "hello team",
+          mentionActorIds: [],
+        });
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.sendTeamTaskMessage).toHaveBeenCalledTimes(1);
+      expect(draft.state.current).toBe("");
+      expect(taskMessages.state.current).toHaveLength(1);
+      expect(taskMessages.state.current[0]?.from_actor_id).toBe("user");
+      expect(taskMessages.state.current[0]?.payload).toEqual({
+        type: "chat_message",
+        text: "hello team",
+        source: "team_workbench",
+      });
+
+      deferred.resolve(buildTaskMessage(91, "hello team"));
+      await act(async () => {
+        await deferred.promise;
+        await Promise.resolve();
+      });
+
+      expect(taskMessages.state.current).toEqual([buildTaskMessage(91, "hello team")]);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("restores the draft and removes the optimistic echo when sending fails", async () => {
+    mockedApi.sendTeamTaskMessage.mockRejectedValueOnce(new Error("network broke"));
+
+    let captured: TeamConversationActions | null = null;
+    const draft = createStateSetter("need retry");
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const options = createOptions({
+      setTaskMessages: taskMessages.setter,
+      setTaskMessageDraft: draft.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.sendTaskMessage({
+          text: "need retry",
+          mentionActorIds: [],
+        });
+        await Promise.resolve();
+      });
+
+      expect(taskMessages.state.current).toEqual([]);
+      expect(draft.state.current).toBe("need retry");
+      expect(options.setError).toHaveBeenCalledWith("network broke");
     } finally {
       cleanupHarness(root, container);
     }

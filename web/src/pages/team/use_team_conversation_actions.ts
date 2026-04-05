@@ -20,9 +20,11 @@ import {
   refreshTeamConversationMailboxAfterSend,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
+import { uuidV7 } from "../../uuid";
 
 const TEAM_CONVERSATION_MESSAGE_LIMIT = 10;
 const TEAM_CONVERSATION_MAILBOX_LIMIT = 10;
+const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
 
 type SharedConversationTarget = {
   task: TeamTaskRecord;
@@ -67,6 +69,8 @@ export function useTeamConversationActions({
   token,
 }: UseTeamConversationActionsOptions) {
   const taskMessageRequestSeqRef = useRef(0);
+  const optimisticTaskMessageSeqRef = useRef(0);
+  const sendTaskMessageInFlightRef = useRef(false);
   const taskMessageScopeRef = useRef<{ teamId: string; taskId: string }>({
     teamId: "",
     taskId: "",
@@ -201,14 +205,19 @@ export function useTeamConversationActions({
         setError("Select a team first");
         return;
       }
+      if (sendTaskMessageInFlightRef.current) {
+        return;
+      }
       const text = payload.text.trim();
       if (!text) {
         setError("Conversation message is required");
         return;
       }
+      sendTaskMessageInFlightRef.current = true;
       setBusy("send-task-message");
       setError(null);
       setWarning(null);
+      let optimisticMessageId: number | null = null;
       try {
         const conversation = await ensureSharedConversation();
         const taskId = conversation?.task.id;
@@ -216,11 +225,37 @@ export function useTeamConversationActions({
           mention_actor_ids: payload.mentionActorIds,
         });
         if (taskId) {
+          const idempotencyKey = `team-task-message:${uuidV7()}`;
+          optimisticMessageId =
+            TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID +
+            ++optimisticTaskMessageSeqRef.current;
+          setTaskMessageDraft("");
+          setTaskMessages((prev) =>
+            mergeConversationMessages(
+              prev,
+              sortConversationMessages([
+                ...prev,
+                buildOptimisticConversationMessage({
+                  messageId: optimisticMessageId!,
+                  taskId,
+                  payload: chatPayload,
+                  mentionActorIds: payload.mentionActorIds,
+                }),
+              ])
+            )
+          );
           const message = await api.sendTeamTaskMessage(token, selectedTeamId, taskId, {
             payload: chatPayload,
+            idempotency_key: idempotencyKey,
           });
           setTaskMessages((prev) =>
-            mergeConversationMessages(prev, [...prev, message].sort((left, right) => left.message_id - right.message_id))
+            mergeConversationMessages(
+              prev.filter((item) => item.message_id !== optimisticMessageId),
+              sortConversationMessages([
+                ...prev.filter((item) => item.message_id !== optimisticMessageId),
+                message,
+              ])
+            )
           );
           await refreshTeamConversationMailboxAfterSend({
             activeRunId: activeRunIdForSelectedTeam ?? conversation?.latestRunId,
@@ -229,13 +264,21 @@ export function useTeamConversationActions({
             refreshEvents,
             refreshTaskMessages,
           });
-          setTaskMessageDraft("");
           return;
         }
         setWarning("Unable to initialize shared team thread.");
       } catch (err) {
+        if (optimisticMessageId != null) {
+          setTaskMessages((prev) =>
+            prev.filter((message) => message.message_id !== optimisticMessageId)
+          );
+          setTaskMessageDraft((current) =>
+            current.trim().length > 0 ? current : text
+          );
+        }
         setError(parseErrorMessage(err));
       } finally {
+        sendTaskMessageInFlightRef.current = false;
         setBusy(null);
       }
     },
@@ -259,5 +302,42 @@ export function useTeamConversationActions({
     ensureSharedConversation,
     refreshTaskMessages,
     sendTaskMessage,
+  };
+}
+
+function sortConversationMessages(
+  messages: TeamConversationMessageRecord[]
+): TeamConversationMessageRecord[] {
+  return [...messages].sort((left, right) => {
+    if (left.created_at !== right.created_at) {
+      return left.created_at - right.created_at;
+    }
+    if (left.message_id !== right.message_id) {
+      return left.message_id - right.message_id;
+    }
+    return left.from_actor_id.localeCompare(right.from_actor_id);
+  });
+}
+
+function buildOptimisticConversationMessage({
+  messageId,
+  taskId,
+  payload,
+  mentionActorIds,
+}: {
+  messageId: number;
+  taskId: string;
+  payload: ReturnType<typeof buildMailboxChatPayload>;
+  mentionActorIds: string[];
+}): TeamConversationMessageRecord {
+  return {
+    message_id: messageId,
+    conversation_id: taskId,
+    task_id: taskId,
+    from_actor_id: "user",
+    to_actor_id: mentionActorIds.length === 1 ? mentionActorIds[0] ?? null : null,
+    route: mentionActorIds.length === 1 ? "to_member" : "group_chat",
+    payload,
+    created_at: Math.floor(Date.now() / 1000),
   };
 }

@@ -22,9 +22,9 @@ import {
   parseStructuredTeamPayload,
   type MentionCandidate,
   renderMarkdownWithMentions,
+  resolveChatMessageText,
   resolveMentionDraftQuery,
   resolveDisplayName,
-  resolveVisibleTeamPayloadText,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import {
@@ -225,14 +225,9 @@ async function playHumanReviewFallbackTone(): Promise<void> {
 }
 
 function resolveMessageText(
-  message: TeamConversationMessageRecord,
-  toPrettyJson: (value: unknown) => string
-): string {
-  const visibleText = resolveVisibleTeamPayloadText(message.payload);
-  if (visibleText !== null) {
-    return visibleText;
-  }
-  return toPrettyJson(message.payload);
+  message: TeamConversationMessageRecord
+): string | null {
+  return resolveChatMessageText(message.payload);
 }
 
 function resolveThreadAuthorLabel(
@@ -652,7 +647,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading,
     busy,
     formatTs,
-    toPrettyJson,
   } = props;
 
   React.useEffect(() => {
@@ -873,13 +867,40 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     }
   }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
-    () => windowConversation(orderedMessages, stickToBottom, TEAM_TASK_TAIL_WINDOW_SIZE),
+    () =>
+      windowConversation(
+        orderedMessages.flatMap((message) => {
+          const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
+          if (permissionCardPayload) {
+            return [
+              {
+                message,
+                permissionCardPayload,
+                text: "",
+              },
+            ];
+          }
+          const visibleText = resolveMessageText(message);
+          if (visibleText === null) {
+            return [];
+          }
+          return [
+            {
+              message,
+              permissionCardPayload: null,
+              text: visibleText,
+            },
+          ];
+        }),
+        stickToBottom,
+        TEAM_TASK_TAIL_WINDOW_SIZE
+      ),
     [orderedMessages, stickToBottom]
   );
   const visibleWaterfallItems = React.useMemo(
     () =>
-      activityWindow.items.map((message) => {
-        const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
+      activityWindow.items.map((item) => {
+        const message = item.message;
         return {
           key: `conversation-${message.message_id}`,
           sequence: message.message_id,
@@ -889,10 +910,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           routeOrStatus: message.route,
           streamLabel: "conversation",
           payload: message.payload,
-          text: permissionCardPayload ? "" : resolveMessageText(message, toPrettyJson),
+          text: item.text,
+          permissionCardPayload: item.permissionCardPayload,
         };
       }),
-    [activityWindow.items, toPrettyJson]
+    [activityWindow.items]
   );
   const hiddenWaterfallCount = activityWindow.offset;
   const hiddenWaterfallSpacerHeight = React.useMemo(() => {
@@ -902,22 +924,22 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     return hiddenWaterfallCount * TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT;
   }, [hiddenWaterfallCount, stickToBottom]);
   const activityListClassName =
-    messagesLoading || orderedMessages.length > 0
+    messagesLoading || visibleWaterfallItems.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
-  const showInitialThreadLoading = messagesLoading && orderedMessages.length === 0;
+  const showInitialThreadLoading = messagesLoading && visibleWaterfallItems.length === 0;
   const latestWaterfallKey =
-    orderedMessages.length > 0
-      ? `conversation-${orderedMessages[orderedMessages.length - 1]?.message_id ?? "empty"}`
+    visibleWaterfallItems.length > 0
+      ? visibleWaterfallItems[visibleWaterfallItems.length - 1]?.key ?? "empty"
       : "empty";
   const activityJumpState = React.useMemo(
     () =>
       deriveThreadJumpState({
-        active: orderedMessages.length > 0,
+        active: visibleWaterfallItems.length > 0,
         stickToBottom,
         pendingCount: 0,
       }),
-    [orderedMessages.length, stickToBottom]
+    [stickToBottom, visibleWaterfallItems.length]
   );
   const renderTeamMessageHtml = React.useCallback(
     (text: string) => renderMarkdownWithMentions(text, memberDisplayNamesById),
@@ -1086,7 +1108,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               humanActorId,
               liveStateByMemberId
             );
-            const permissionCardPayload = parsePermissionReviewCardPayload(item.payload);
+            const permissionCardPayload = item.permissionCardPayload;
             const seenActorIds = seenByMessageId[item.sequence] ?? [];
             const seenProgress = resolveSeenProgressState(
               seenActorIds,
@@ -1305,7 +1327,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               Loading thread...
             </div>
           )}
-          {!showInitialThreadLoading && orderedMessages.length === 0 && (
+          {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               No channel messages yet.
             </div>
@@ -1388,9 +1410,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 return;
               }
             }
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSendMessage) {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              canSendMessage
+            ) {
               event.preventDefault();
               sendCurrentMessage();
+              return;
             }
           }}
         />
@@ -1423,7 +1453,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         )}
         <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
-            {`@name for direct replies · Ctrl/Cmd + Enter sends`}
+            {`@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline`}
           </span>
           <button
             type="button"

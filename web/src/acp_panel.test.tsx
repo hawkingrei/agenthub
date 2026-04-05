@@ -215,6 +215,45 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("Apply patch");
   });
 
+  it("shows plan status on the tab when a plan exists", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        plan={{
+          plan: {
+            entries: [
+              { content: "Analyze issue", status: "completed", priority: "high" },
+              { content: "Apply patch", status: "in_progress" },
+              { content: "Verify result" },
+            ],
+          },
+        }}
+      />
+    );
+
+    expect(html).toContain("Plan");
+    expect(html).toContain("1 active");
+  });
+
+  it("shows done state on the plan tab when all entries are completed", () => {
+    const html = renderToStaticMarkup(
+      <AcpPanel
+        {...baseProps}
+        plan={{
+          plan: {
+            entries: [
+              { content: "Analyze issue", status: "completed" },
+              { content: "Apply patch", status: "finished" },
+            ],
+          },
+        }}
+      />
+    );
+
+    expect(html).toContain("Plan");
+    expect(html).toContain("done");
+  });
+
   it("renders debug view when acpTab is debug", () => {
     const html = renderToStaticMarkup(
       <AcpPanel {...baseProps} acpTab="debug" />

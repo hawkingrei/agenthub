@@ -1587,7 +1587,7 @@ describe("team panels interactions", () => {
               from_actor_id: "leader-agent",
               to_actor_id: null,
               route: "group_chat",
-              payload: { type: "status_update", done: true },
+              payload: { type: "chat_message", text: "leader reply visible in all" },
             }),
           ]}
           memberLiveStates={[
@@ -1645,7 +1645,7 @@ describe("team panels interactions", () => {
       mentionActorIds: ["worker-agent"],
     });
     expect(onMessageDraftChange).toHaveBeenCalledWith("please continue @Worker Agent and review");
-    expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
+    expect(toPrettyJson).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("(task-1)");
     expect(container.textContent).not.toContain("conversation_id=task-1");
     expect(container.querySelector("h3")).toBeNull();
@@ -1653,9 +1653,9 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "@name for direct replies · Ctrl/Cmd + Enter sends"
+      "@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline"
     );
-    expect(container.textContent).not.toContain("worker update");
+    expect(container.textContent).not.toContain("status_update");
     expect(container.textContent).not.toContain("work:working");
     expect(container.textContent).not.toContain("agent:working");
     const detailButtons = Array.from(container.querySelectorAll("button")).filter((candidate) =>
@@ -2752,7 +2752,7 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
-  it("TeamTaskPanel renders task_note payloads as visible text instead of raw JSON", () => {
+  it("TeamTaskPanel hides task_note payloads from the channel stream", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     renderWithMantine(
@@ -2787,9 +2787,51 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("idle update:");
-    expect(container.textContent).toContain("Awaiting next task.");
+    expect(container.textContent).toContain("No channel messages yet.");
+    expect(container.textContent).not.toContain("idle update:");
+    expect(container.textContent).not.toContain("Awaiting next task.");
     expect(container.textContent).not.toContain('"type": "task_note"');
+    expect(toPrettyJson).not.toHaveBeenCalled();
+  });
+
+  it("TeamTaskPanel hides non-chat ACP payloads instead of dumping raw JSON into the channel", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(13, {
+              from_actor_id: "worker-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "status_update",
+                stream: "acp",
+                current_work: "running compile preview",
+              },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    expect(container.textContent).toContain("No channel messages yet.");
+    expect(container.textContent).not.toContain("status_update");
+    expect(container.textContent).not.toContain("running compile preview");
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 

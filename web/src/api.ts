@@ -805,6 +805,7 @@ export const api = {
       to_actor_id?: string;
       route?: "to_leader" | "to_member" | "group_chat";
       payload: unknown;
+      idempotency_key?: string;
     }
   ) =>
     apiFetch<TeamConversationMessageRecord>(
