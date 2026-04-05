@@ -106,6 +106,7 @@ export function useTeamConversationActions({
     async (taskIdOverride?: string) => {
       const teamId = selectedTeamId?.trim() ?? "";
       const taskId = (taskIdOverride ?? selectedConversation?.id ?? "").trim();
+      const selectedConversationRunId = selectedConversationLatestRun?.id?.trim() ?? "";
       const requestSeq = ++taskMessageRequestSeqRef.current;
       taskMessageScopeRef.current = { teamId, taskId };
       const isCurrentRequest = () =>
@@ -119,11 +120,14 @@ export function useTeamConversationActions({
       }
       setTaskMessagesLoading(true);
       try {
+        const shouldFetchConversationDetail =
+          Boolean(selectedConversation && selectedConversation.id === taskId) &&
+          selectedConversationRunId.length === 0;
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
             limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
           }),
-          selectedConversation && selectedConversation.id === taskId
+          shouldFetchConversationDetail
             ? api.getTeamTask(token, teamId, taskId)
             : Promise.resolve(null),
         ]);
@@ -133,7 +137,8 @@ export function useTeamConversationActions({
         startTransition(() => {
           setTaskMessages((prev) => mergeConversationMessages(prev, messages));
         });
-        const conversationRunId = taskDetail?.latest_run?.id?.trim() ?? "";
+        const conversationRunId =
+          selectedConversationRunId || taskDetail?.latest_run?.id?.trim() || "";
         if (conversationRunId) {
           const conversationSnapshot = await api.getTeamRunSnapshot(token, conversationRunId, {
             event_limit: 1,
@@ -166,6 +171,7 @@ export function useTeamConversationActions({
     },
     [
       selectedConversation,
+      selectedConversationLatestRun,
       selectedTeamId,
       setConversationMailboxMessages,
       setError,

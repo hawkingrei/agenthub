@@ -303,6 +303,60 @@ describe("useTeamConversationActions", () => {
     }
   });
 
+  it("reuses the selected conversation latest run when refreshing messages", async () => {
+    mockedApi.listTeamTaskMessages.mockResolvedValueOnce([
+      buildTaskMessage(28, "tail-1"),
+      buildTaskMessage(31, "tail-2"),
+    ]);
+    mockedApi.getTeamRunSnapshot.mockResolvedValueOnce({
+      run: buildRun("run-selected"),
+      team: {
+        id: "team-1",
+        name: "Team One",
+        description: null,
+        spec: {},
+        created_at: 1,
+        updated_at: 1,
+      },
+      leader_member_id: "leader",
+      members: [],
+      steps: [],
+      latest_events: [],
+      mailbox: {
+        pending: 0,
+        delivered: 0,
+        dead_letter: 0,
+        recent_messages: [buildMailboxMessage(99, "latest mailbox")],
+      },
+    } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>);
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversationLatestRun: buildRun("run-selected"),
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.getTeamTask).not.toHaveBeenCalled();
+      expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledWith(
+        "token-1",
+        "run-selected",
+        { event_limit: 1, message_limit: 20 }
+      );
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("clears stale messages immediately when switching conversation scope", async () => {
     let captured: TeamConversationActions | null = null;
     const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);

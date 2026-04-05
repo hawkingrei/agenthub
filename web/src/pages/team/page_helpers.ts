@@ -502,6 +502,31 @@ export function resolveSelectedTeamTask(
   return teamTasks[0] ?? null;
 }
 
+export function resolveSelectedConversationTask({
+  taskList,
+  selectedTaskId,
+  sharedConversation,
+  fallbackTask,
+}: {
+  taskList: TeamTaskRecord[];
+  selectedTaskId: string;
+  sharedConversation: TeamTaskRecord | null;
+  fallbackTask?: TeamTaskRecord | null;
+}): TeamTaskRecord | null {
+  const resolvedSelectedTaskId = selectedTaskId.trim();
+  if (!resolvedSelectedTaskId) {
+    return sharedConversation;
+  }
+  if (sharedConversation?.id === resolvedSelectedTaskId) {
+    return sharedConversation;
+  }
+  return (
+    taskList.find((task) => task.id === resolvedSelectedTaskId) ??
+    fallbackTask ??
+    null
+  );
+}
+
 function parseMailboxPayload(payload: unknown): unknown {
   if (typeof payload !== "string") {
     return payload;

@@ -13,6 +13,7 @@ import type {
 import {
   resolveAgentWorkspaceStatusView,
   resolveSelectedAgentWorkspaceLabel,
+  resolveSelectedConversationTask,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
   DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
@@ -469,6 +470,22 @@ describe("team page helpers", () => {
     );
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
     expect(DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND).toBe("shared_thread");
+  });
+
+  it("falls back to the fetched conversation detail task when the visible task list is stale", () => {
+    const fallbackTask = buildTask("task-thread", 120, 140, {
+      title: "Recovered thread",
+      status: "in_progress",
+    });
+
+    expect(
+      resolveSelectedConversationTask({
+        taskList: [],
+        selectedTaskId: "task-thread",
+        sharedConversation: null,
+        fallbackTask,
+      })
+    ).toEqual(fallbackTask);
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {

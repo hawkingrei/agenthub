@@ -122,6 +122,7 @@ import {
   resolveAgentWorkspaceStatusView,
   resolveTeamPageNotice,
   resolveSelectedAgentWorkspaceLabel,
+  resolveSelectedConversationTask,
   resolveSelectedTeamTask,
   resolveTaskConversationMemberIds,
   removeTeamMemberLookupEntry,
@@ -2213,18 +2214,16 @@ export function TeamPage(props: TeamPageProps) {
     if (!effectiveSelectedTeamId) {
       return null;
     }
-    if (!resolvedSelectedConversationTaskId) {
-      return sharedConversation;
-    }
-    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
-      return sharedConversation;
-    }
-    return (
-      taskList.find((task) => task.id === resolvedSelectedConversationTaskId) ?? null
-    );
+    return resolveSelectedConversationTask({
+      taskList,
+      selectedTaskId: resolvedSelectedConversationTaskId,
+      sharedConversation,
+      fallbackTask: selectedConversationDetail?.task ?? null,
+    });
   }, [
     effectiveSelectedTeamId,
     resolvedSelectedConversationTaskId,
+    selectedConversationDetail?.task,
     sharedConversation,
     taskList,
   ]);
