@@ -587,7 +587,10 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 </div>
 
                 {compiledRunPreview ? (
-                  <div className="space-y-4 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4">
+                  <div
+                    className="space-y-4 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4"
+                    data-team-compile-preview="true"
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"

@@ -1397,6 +1397,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-panel="member-console"]')).not.toBeNull();
     changeSelectValue(
       required(container.querySelector("select") as HTMLSelectElement | null, "member select missing"),
       "worker-agent"
@@ -2973,6 +2974,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Create Run from Preview"));
     clickElement(findButtonByText(container, "Open Run"));
 
+    expect(container.querySelector('[data-team-compile-preview="true"]')).not.toBeNull();
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
     expect(onOpenConversation).toHaveBeenCalledTimes(1);

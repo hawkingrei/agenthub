@@ -156,6 +156,7 @@ describe("AcpConversation fold interactions", () => {
 
     const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
     expect(beforePre).not.toBeNull();
+    expect(beforePre?.className).toContain("acp-terminal-pre");
     const preTextBeforeExpand = beforePre?.textContent ?? "";
     expect(preTextBeforeExpand).toContain("line-259");
     expect(preTextBeforeExpand).not.toContain("line-0");
@@ -176,6 +177,44 @@ describe("AcpConversation fold interactions", () => {
     expect(preTextAfterExpand).toContain("line-104");
     expect(preTextAfterExpand).toContain("line-259");
     expect(preTextAfterExpand).not.toContain("line-0");
+  });
+
+  it("renders markdown content folds with terminal tone", () => {
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-terminal-markdown",
+        title: "Shell",
+        status: "completed",
+        content: "## Heading\n\n`tidb-server`\n\n- line one",
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+        />
+      );
+    });
+
+    const contentNode = container.querySelector(".acp-content-markdown") as HTMLDivElement | null;
+    expect(contentNode).not.toBeNull();
+    expect(contentNode?.textContent).toContain("Heading");
+    expect(contentNode?.textContent).toContain("tidb-server");
   });
 
   it("keeps Detailed collapsed by default after output fold disappears on rerender", () => {

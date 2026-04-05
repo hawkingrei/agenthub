@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "./api";
+import { __testOnlyApiInternals, api } from "./api";
 
 describe("api request headers", () => {
   afterEach(() => {
@@ -99,5 +99,40 @@ describe("api request headers", () => {
       })
     ).rejects.toThrow("Failed to fetch");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry HTTP status errors surfaced from responses", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.listTeams("token-1")).rejects.toMatchObject({
+      message: "forbidden",
+      status: 403,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips networkRetry before forwarding request init to fetch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await __testOnlyApiInternals.apiFetch<{ ok: boolean }>("/api/test", "token-1", {
+      method: "GET",
+      networkRetry: "always",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit & { networkRetry?: string }];
+    expect("networkRetry" in init).toBe(false);
   });
 });

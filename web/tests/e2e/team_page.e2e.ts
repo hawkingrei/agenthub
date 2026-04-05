@@ -376,7 +376,7 @@ async function openTeamFromSelector(
       await teamItem.click({ force: true });
     }
     await page.waitForTimeout(150);
-    if (await isTeamDetailReady(page)) {
+    if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
@@ -384,13 +384,25 @@ async function openTeamFromSelector(
     (element as HTMLButtonElement).click();
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
+  await expect.poll(() => isTeamDetailReady(page, teamName)).toBe(true);
 }
 
-async function isTeamDetailReady(page: import("@playwright/test").Page): Promise<boolean> {
+async function isTeamDetailReady(
+  page: import("@playwright/test").Page,
+  expectedTeamName?: string
+): Promise<boolean> {
   const detailPath = new URL(page.url()).pathname;
   if (!/^\/teams\/[^/]+$/.test(detailPath)) {
     return false;
+  }
+  if (expectedTeamName) {
+    const selectedTeamText = await page
+      .locator('.team-item[data-team-selected="true"]')
+      .first()
+      .textContent();
+    if (!selectedTeamText?.includes(expectedTeamName)) {
+      return false;
+    }
   }
   const pageText = await page.locator("body").textContent();
   if (!pageText) {
@@ -1741,7 +1753,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await selectAgentFromSidebar(page, longLeaderId);
   await openAdvancedView(page, "Member Console");
-  const memberConsoleCard = page.locator(".card", { hasText: "Member Console" });
+  const memberConsoleCard = page.locator('[data-team-panel="member-console"]');
   await expect(memberConsoleCard).toBeVisible();
   await memberConsoleCard.locator("select").first().selectOption(longLeaderId);
   await expect(memberConsoleCard).toContainText("mcp_skills");
@@ -2228,8 +2240,10 @@ test("team debug run ops compiles task preview and applies payload to create-run
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
 
-  await expect(page.getByText("conversation-compile-1", { exact: true })).toBeVisible();
-  await expect(page.getByText("ctx-task-compile-1", { exact: true })).toBeVisible();
+  const compilePreview = page.locator('[data-team-compile-preview="true"]');
+  await expect(compilePreview).toBeVisible();
+  await expect(compilePreview).toContainText("conversation-compile-1");
+  await expect(compilePreview).toContainText("ctx-task-compile-1");
   expect(compileRequests).toEqual([{}]);
 
   await page.getByRole("button", { name: "Use Payload in Create Run" }).click();

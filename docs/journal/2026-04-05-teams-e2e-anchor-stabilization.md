@@ -1,0 +1,19 @@
+# Teams E2E Anchor Stabilization
+
+## Summary
+
+- Added stable `data-*` anchors for the Team member console panel and compiled task preview.
+- Updated Playwright selectors to target the new anchors instead of brittle layout classes.
+- Extended `team_panels` coverage so the new anchors are exercised in unit tests.
+
+## Why
+
+The Notion-style Team UI refresh changed panel wrappers and preview layout. Existing E2E cases still
+depended on legacy `.card` containers and direct global text matches, which made `Web E2E` fail even
+though the underlying features still worked.
+
+## Validation
+
+- `cd web && npx vitest run src/pages/team_panels.test.tsx --pool=threads --maxWorkers=1`
+- `cd web && npm run lint -- src/pages/team_member_console_panel.tsx src/pages/team_tasks_panel.tsx tests/e2e/team_page.e2e.ts src/pages/team_panels.test.tsx`
+- `cd web && npx playwright test tests/e2e/team_page.e2e.ts -g "team page desktop keeps long metadata blocks non-overlapping|team debug run ops compiles task preview and applies payload to create-run form"`

@@ -132,6 +132,12 @@ const ACP_PAYLOAD_TEXT_BASE_CLASS =
   "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.45] text-slate-800";
 const ACP_PAYLOAD_TEXT_ASCII_CLASS =
   `${ACP_PAYLOAD_TEXT_BASE_CLASS} acp-payload-ascii overflow-x-auto whitespace-pre`;
+const ACP_CONTENT_TEXT_BASE_CLASS =
+  `${ACP_TERMINAL_PRE_CLASS} acp-content acp-payload-text`;
+const ACP_CONTENT_TEXT_ASCII_CLASS =
+  `${ACP_CONTENT_TEXT_BASE_CLASS} acp-payload-ascii whitespace-pre`;
+const ACP_CONTENT_MARKDOWN_CLASS =
+  "acp-content-markdown rounded-lg border border-notion-border bg-[#1e1e1e] px-4 py-3 text-[13px] leading-relaxed text-slate-200 shadow-inner [&_.hljs]:bg-transparent [&_a]:text-sky-300 [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-3 [&_blockquote]:text-slate-300 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:text-slate-100 [&_li]:marker:text-slate-500 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:my-3 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-inherit [&_strong]:text-white";
 const ACP_PAYLOAD_SEGMENTED_CLASS = "acp-payload-segmented grid gap-1.5";
 const ACP_PAYLOAD_LIST_CLASS = "acp-payload-list m-0 grid list-none gap-1.5 pl-0";
 const ACP_PAYLOAD_LIST_ITEM_CLASS = "m-0 min-w-0";
@@ -637,7 +643,8 @@ const ToolCallBubble = React.memo(
               >
                 <ToolTextContent
                   text={contentText}
-                  markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS}
+                  markdownClassName={ACP_CONTENT_MARKDOWN_CLASS}
+                  tone="terminal"
                 />
               </FoldSection>
             )}
@@ -2280,10 +2287,12 @@ function ToolTextContent({
   text,
   markdownClassName,
   preferPlainText = false,
+  tone = "default",
 }: {
   text: string;
   markdownClassName?: string;
   preferPlainText?: boolean;
+  tone?: "default" | "terminal";
 }) {
   if (shouldRenderDiffText(text)) {
     return <ToolDiffView text={text} />;
@@ -2307,11 +2316,17 @@ function ToolTextContent({
         <div className={ACP_SEGMENTED_NOTE_WARNING_CLASS}>
           Large markdown payload is rendered as plain text for performance.
         </div>
-        <ToolPlainTextView text={text} asciiLike={false} />
+        <ToolPlainTextView text={text} asciiLike={false} tone={tone} />
       </div>
     );
   }
-  return <ToolPlainTextView text={text} asciiLike={shouldPreserveAsciiText(text)} />;
+  return (
+    <ToolPlainTextView
+      text={text}
+      asciiLike={shouldPreserveAsciiText(text)}
+      tone={tone}
+    />
+  );
 }
 
 function shouldAutoExpandToolContent(text: string): boolean {
@@ -2323,7 +2338,15 @@ function shouldAutoExpandToolContent(text: string): boolean {
   return true;
 }
 
-function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boolean }) {
+function ToolPlainTextView({
+  text,
+  asciiLike,
+  tone = "default",
+}: {
+  text: string;
+  asciiLike: boolean;
+  tone?: "default" | "terminal";
+}) {
   const lines = React.useMemo(() => text.split("\n"), [text]);
   const { startIndex, endIndex, hasMore, remaining, showMore } = useProgressiveTailWindow(
     lines.length,
@@ -2335,8 +2358,12 @@ function ToolPlainTextView({ text, asciiLike }: { text: string; asciiLike: boole
     [lines, startIndex, endIndex]
   );
   const className = asciiLike
-    ? ACP_PAYLOAD_TEXT_ASCII_CLASS
-    : ACP_PAYLOAD_TEXT_BASE_CLASS;
+    ? tone === "terminal"
+      ? ACP_CONTENT_TEXT_ASCII_CLASS
+      : ACP_PAYLOAD_TEXT_ASCII_CLASS
+    : tone === "terminal"
+      ? ACP_CONTENT_TEXT_BASE_CLASS
+      : ACP_PAYLOAD_TEXT_BASE_CLASS;
   return (
     <div className={ACP_SEGMENTED_BLOCK_CLASS}>
       <pre className={className}>{visibleText}</pre>

@@ -498,6 +498,10 @@ type ApiFetchInit = RequestInit & {
   networkRetry?: "auto" | "never" | "always";
 };
 
+type HttpStatusError = Error & {
+  status?: number;
+};
+
 const NETWORK_RETRY_DELAYS_MS = [150, 350] as const;
 
 function normalizeRequestMethod(init?: ApiFetchInit): string {
@@ -541,6 +545,12 @@ function shouldRetryNetworkJitter(
   err: unknown,
   init?: ApiFetchInit
 ): boolean {
+  if (
+    err instanceof Error &&
+    typeof (err as HttpStatusError).status === "number"
+  ) {
+    return false;
+  }
   if (!isNetworkJitterError(err) || !shouldRetryNetworkFailure(init)) {
     return false;
   }
@@ -563,8 +573,10 @@ async function apiFetch<T>(
 ): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
     try {
+      const { networkRetry: _networkRetry, ...fetchInit } = init ?? {};
+      void _networkRetry;
       const res = await fetch(path, {
-        ...init,
+        ...fetchInit,
         headers: buildApiHeaders(token, init),
       });
       if (!res.ok) {
@@ -592,6 +604,10 @@ async function apiFetch<T>(
     }
   }
 }
+
+export const __testOnlyApiInternals = {
+  apiFetch,
+};
 
 function encodePathSegment(value: string | number): string {
   return encodeURIComponent(String(value));
