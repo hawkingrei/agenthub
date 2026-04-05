@@ -96,7 +96,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
             <div className={EVENTS_ITEM_HEAD_CLASS}>
               <span className="text-notion-accent font-bold">#{event.event_id}</span>
               <span className="text-notion-text">{event.event_type}</span>
-              <span>·</span>
+              <span aria-hidden="true">·</span>
               <span>{formatTs(event.ts)}</span>
             </div>
             <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2 text-[12px] bg-notion-sidebar/30 border-notion-border/50`}>{toPrettyJson(event.payload)}</pre>

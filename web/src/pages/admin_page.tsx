@@ -3,35 +3,6 @@ import { Switch } from "@mantine/core";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
-
-type AdminProps = {
-  auth: AuthState;
-  error: string | null;
-  setError: (value: string | null) => void;
-  safePaths: SafePath[];
-  selectedSafePaths: Set<string>;
-  onToggleSafePath: (path: string) => void;
-  onToggleAllSafePaths: () => void;
-  onDeleteSelectedSafePaths: () => void;
-  devices: DeviceRecord[];
-  audits: AuditRecord[];
-  vapidInfo: VapidInfo | null;
-  onRotateVapid: () => void;
-  onAddSafePath: () => void;
-  onDeleteSafePath: (path: string) => void;
-  onRevokeDevice: (id: string) => void;
-  onCreateJoin: () => void;
-  joinQr: string | null;
-  joinToken: string | null;
-  joinPin: string | null;
-  safePathInput: string;
-  setSafePathInput: (value: string) => void;
-  developerMode: boolean;
-  onDeveloperModeChange: (value: boolean) => void;
-  passkeyEnabled: boolean | null;
-  onPasskeyEnabledChange: (value: boolean) => void;
-};
-
 import {
   ADMIN_APP_CLASS,
   ADMIN_CARD_CLASS,
@@ -60,6 +31,34 @@ import {
   ADMIN_TOOLBAR_CLASS,
   ADMIN_VALUE_CLASS,
 } from "../ui/tailwind_classes";
+
+type AdminProps = {
+  auth: AuthState;
+  error: string | null;
+  setError: (value: string | null) => void;
+  safePaths: SafePath[];
+  selectedSafePaths: Set<string>;
+  onToggleSafePath: (path: string) => void;
+  onToggleAllSafePaths: () => void;
+  onDeleteSelectedSafePaths: () => void;
+  devices: DeviceRecord[];
+  audits: AuditRecord[];
+  vapidInfo: VapidInfo | null;
+  onRotateVapid: () => void;
+  onAddSafePath: () => void;
+  onDeleteSafePath: (path: string) => void;
+  onRevokeDevice: (id: string) => void;
+  onCreateJoin: () => void;
+  joinQr: string | null;
+  joinToken: string | null;
+  joinPin: string | null;
+  safePathInput: string;
+  setSafePathInput: (value: string) => void;
+  developerMode: boolean;
+  onDeveloperModeChange: (value: boolean) => void;
+  passkeyEnabled: boolean | null;
+  onPasskeyEnabledChange: (value: boolean) => void;
+};
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"

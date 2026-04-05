@@ -402,7 +402,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 {selectedTask.title}
               </h4>
               <p className="mt-2 text-[14px] leading-relaxed text-notion-text-muted">
-                Task board summary. The leader and Team runtime manage life-cycle.
+                Task board summary. The leader and Team runtime manage lifecycle.
               </p>
             </div>
             <div className="flex items-center gap-2">
