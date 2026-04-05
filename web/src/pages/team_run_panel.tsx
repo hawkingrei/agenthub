@@ -1,3 +1,4 @@
+import React from "react";
 import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
@@ -53,7 +54,7 @@ type TeamRunPanelProps = {
   onLoadMoreRuns: () => Promise<void> | void;
 };
 
-export function TeamRunPanel(props: TeamRunPanelProps) {
+function TeamRunPanelImpl(props: TeamRunPanelProps) {
   const {
     selectedTeam,
     developerMode,
@@ -209,3 +210,6 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     </SurfaceCard>
   );
 }
+
+export const TeamRunPanel = React.memo(TeamRunPanelImpl);
+TeamRunPanel.displayName = "TeamRunPanel";

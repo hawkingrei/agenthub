@@ -1,6 +1,7 @@
 # TODO
 
 Active backlog only. Keep this file small and current.
+- [ ] Verify the agents workbench lazy-split LCP improvement after merge: `agents` route should ship a small primary shell chunk while `OutputBody`/`InputDock`/ACP workbench code loads lazily, the deployed site should show a lower LCP than the previous monolithic route, and `AcpDebug` should be evaluated as a separate follow-up split if the workbench chunk still dominates. Record focused notes and push/PR CI run IDs in `docs/journal/2026-04-06-agents-lcp-workbench-split.md`.
 - [ ] Verify explicit node startup boundaries after merge: `server.role = "node"` should boot internal gRPC only, skip main-only startup side effects (`ensure_root`, push/VAPID initialization), and fail fast when `server.node_id` is missing or `internal_grpc.enabled` is false. Record focused notes and push/PR CI run IDs in `docs/journal/2026-04-05-node-mode-startup-boundary.md`.
 - [ ] Extend shared-thread Team message sends to honor an explicit server-side `idempotency_key` on `POST /api/teams/:team_id/tasks/:task_id/messages` so repeated submits dedupe across tabs/retries, not just inside one page session. Record follow-up notes in `docs/journal/2026-04-05-team-channel-send-feedback-and-visibility.md`.
 - [ ] **Design System & Tailwind Optimization**: Migrate hardcoded hex colors (e.g., `#f7f7f5`, `#edf2ff`) from `tailwind_classes.ts` into `tailwind.config.cjs` as semantic theme tokens (e.g., `notion-bg-subtle`, `notion-bubble-user`). Reduce redundancy by using composed Tailwind classes for shared bubble patterns.

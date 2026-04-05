@@ -177,7 +177,7 @@ export function resolveMemberIndicatorClassName(
   return "bg-slate-300";
 }
 
-export function TeamSidebar(props: TeamSidebarProps) {
+function TeamSidebarImpl(props: TeamSidebarProps) {
   const {
     showTeamSelector = true,
     developerMode,
@@ -632,3 +632,6 @@ export function TeamSidebar(props: TeamSidebarProps) {
     </aside>
   );
 }
+
+export const TeamSidebar = React.memo(TeamSidebarImpl);
+TeamSidebar.displayName = "TeamSidebar";

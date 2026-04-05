@@ -2205,9 +2205,9 @@ export function TeamPage(props: TeamPageProps) {
     [effectiveSelectedTeamId]
   );
 
-  const onApplyMessageTemplate = () => {
+  const onApplyMessageTemplate = useCallback(() => {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
-  };
+  }, [msgTemplate, setMsgPayload]);
 
   const resolvedSelectedConversationTaskId = selectedConversationTaskId.trim();
   const selectedConversation = useMemo(() => {
@@ -2547,6 +2547,23 @@ export function TeamPage(props: TeamPageProps) {
     },
     [isCompactWorkbench, setTab]
   );
+  const onSelectSidebarTeam = useCallback(
+    (teamId: string) => {
+      if (teamId !== effectiveSelectedTeamId) {
+        navigateToTeamDetail(teamId);
+      }
+    },
+    [effectiveSelectedTeamId, navigateToTeamDetail]
+  );
+  const onRefreshActiveRunSteps = useCallback(async () => {
+    if (!activeRunForSelectedTeam) {
+      return;
+    }
+    await refreshSteps(activeRunForSelectedTeam.id);
+  }, [activeRunForSelectedTeam, refreshSteps]);
+  const onMailboxTemplateChange = useCallback((value: string) => {
+    setMsgTemplate(value as MailboxTemplateKey);
+  }, [setMsgTemplate]);
 
   const onRefreshEventsPanel = useCallback(async () => {
     if (!activeRunForSelectedTeam) return;
@@ -3802,11 +3819,7 @@ export function TeamPage(props: TeamPageProps) {
               memberLiveStates={selectedTeamMemberLiveStates}
               focusedAgentMemberId={focusedAgentMemberId}
               tab={tab}
-              onSelectTeam={(teamId) => {
-                if (teamId !== effectiveSelectedTeamId) {
-                  navigateToTeamDetail(teamId);
-                }
-              }}
+              onSelectTeam={onSelectSidebarTeam}
               onSelectConversation={onSelectConversationSubject}
               onSelectKanban={onSelectKanbanSubject}
               onSelectAgentTab={onSelectAgentWorkspace}
@@ -4329,9 +4342,7 @@ export function TeamPage(props: TeamPageProps) {
                       developerMode={props.developerMode}
                       mode="list_only"
                       steps={steps}
-                      onRefreshSteps={async () => {
-                        await refreshSteps(activeRunForSelectedTeam.id);
-                      }}
+                      onRefreshSteps={onRefreshActiveRunSteps}
                       stepKey={stepKey}
                       onStepKeyChange={setStepKey}
                       stepMemberId={stepMemberId}
@@ -4420,9 +4431,7 @@ export function TeamPage(props: TeamPageProps) {
                       onMsgRouteChange={setMsgRoute}
                       mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
                       msgTemplate={msgTemplate}
-                      onMsgTemplateChange={(value) =>
-                        setMsgTemplate(value as MailboxTemplateKey)
-                      }
+                      onMsgTemplateChange={onMailboxTemplateChange}
                       onApplyMessageTemplate={onApplyMessageTemplate}
                       msgPayload={msgPayload}
                       onMsgPayloadChange={setMsgPayload}
@@ -4530,9 +4539,7 @@ export function TeamPage(props: TeamPageProps) {
                           developerMode={props.developerMode}
                           mode="controls_only"
                           steps={steps}
-                          onRefreshSteps={async () => {
-                            await refreshSteps(activeRunForSelectedTeam.id);
-                          }}
+                          onRefreshSteps={onRefreshActiveRunSteps}
                           stepKey={stepKey}
                           onStepKeyChange={setStepKey}
                           stepMemberId={stepMemberId}
@@ -4618,9 +4625,7 @@ export function TeamPage(props: TeamPageProps) {
                           onMsgRouteChange={setMsgRoute}
                           mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
                           msgTemplate={msgTemplate}
-                          onMsgTemplateChange={(value) =>
-                            setMsgTemplate(value as MailboxTemplateKey)
-                          }
+                          onMsgTemplateChange={onMailboxTemplateChange}
                           onApplyMessageTemplate={onApplyMessageTemplate}
                           msgPayload={msgPayload}
                           onMsgPayloadChange={setMsgPayload}

@@ -28,7 +28,7 @@ type TeamEventsPanelProps = {
 const EVENTS_CHECKBOX_LABEL_CLASS =
   "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
 
-export function TeamEventsPanel(props: TeamEventsPanelProps) {
+function TeamEventsPanelImpl(props: TeamEventsPanelProps) {
   const {
     eventsAutoRefresh,
     onEventsAutoRefreshChange,
@@ -104,3 +104,6 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
     </SurfaceCard>
   );
 }
+
+export const TeamEventsPanel = React.memo(TeamEventsPanelImpl);
+TeamEventsPanel.displayName = "TeamEventsPanel";

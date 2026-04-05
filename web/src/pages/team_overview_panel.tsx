@@ -31,7 +31,7 @@ type TeamOverviewPanelProps = {
   displayNameByActorId?: Record<string, string>;
 };
 
-export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
+function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
   const {
     snapshot,
     snapshotLoading,
@@ -155,3 +155,6 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
     </SurfaceCard>
   );
 }
+
+export const TeamOverviewPanel = React.memo(TeamOverviewPanelImpl);
+TeamOverviewPanel.displayName = "TeamOverviewPanel";

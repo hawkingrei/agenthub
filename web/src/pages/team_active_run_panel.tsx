@@ -1,3 +1,4 @@
+import React from "react";
 import type { TeamRunRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import { ActionButton, ToolbarRow } from "../ui/primitives";
@@ -17,7 +18,7 @@ type TeamActiveRunPanelProps = {
   metaItemClassName: string;
 };
 
-export function TeamActiveRunPanel(props: TeamActiveRunPanelProps) {
+function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
   const {
     run,
     busy,
@@ -113,3 +114,6 @@ export function TeamActiveRunPanel(props: TeamActiveRunPanelProps) {
     </div>
   );
 }
+
+export const TeamActiveRunPanel = React.memo(TeamActiveRunPanelImpl);
+TeamActiveRunPanel.displayName = "TeamActiveRunPanel";

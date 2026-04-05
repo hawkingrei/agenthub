@@ -357,6 +357,76 @@ describe("useTeamConversationActions", () => {
     }
   });
 
+  it("keeps shared-thread message state bounded to recent-20 across repeated refreshes", async () => {
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const mailboxMessages = createStateSetter<TeamActorMessageRecord[]>([]);
+    mockedApi.listTeamTaskMessages
+      .mockResolvedValueOnce(
+        Array.from({ length: 20 }, (_, index) => buildTaskMessage(index + 1, `wave-1-${index + 1}`))
+      )
+      .mockResolvedValueOnce(
+        Array.from({ length: 20 }, (_, index) => buildTaskMessage(index + 11, `wave-2-${index + 11}`))
+      );
+    mockedApi.getTeamTask.mockResolvedValue(
+      buildSharedThreadDetail({
+        latest_run: buildRun("run-1"),
+      })
+    );
+    mockedApi.getTeamRunSnapshot.mockResolvedValue({
+      run: buildRun("run-1"),
+      team: {
+        id: "team-1",
+        name: "Team One",
+        description: null,
+        spec: {},
+        created_at: 1,
+        updated_at: 1,
+      },
+      leader_member_id: "leader",
+      members: [],
+      steps: [],
+      latest_events: [],
+      mailbox: {
+        pending: 0,
+        delivered: 0,
+        dead_letter: 0,
+        recent_messages: [buildMailboxMessage(90, "latest mailbox")],
+      },
+    } as Awaited<ReturnType<typeof api.getTeamRunSnapshot>>);
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      setTaskMessages: taskMessages.setter,
+      setConversationMailboxMessages: mailboxMessages.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(taskMessages.state.current).toHaveLength(20);
+      expect(taskMessages.state.current[0]?.message_id).toBe(1);
+      expect(taskMessages.state.current.at(-1)?.message_id).toBe(20);
+
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(taskMessages.state.current).toHaveLength(20);
+      expect(taskMessages.state.current[0]?.message_id).toBe(11);
+      expect(taskMessages.state.current.at(-1)?.message_id).toBe(30);
+      expect(mailboxMessages.state.current).toHaveLength(1);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("clears stale messages immediately when switching conversation scope", async () => {
     let captured: TeamConversationActions | null = null;
     const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);

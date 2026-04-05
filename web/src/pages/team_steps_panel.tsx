@@ -59,7 +59,7 @@ const STEPS_ITEM_BODY_CLASS =
 const STEPS_LIST_ONLY_NOTE_CLASS =
   "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
-export function TeamStepsPanel(props: TeamStepsPanelProps) {
+function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const {
     steps,
     developerMode,
@@ -283,3 +283,6 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
     </div>
   );
 }
+
+export const TeamStepsPanel = React.memo(TeamStepsPanelImpl);
+TeamStepsPanel.displayName = "TeamStepsPanel";

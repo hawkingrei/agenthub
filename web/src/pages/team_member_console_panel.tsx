@@ -60,7 +60,7 @@ const MEMBER_CONSOLE_PROMPT_DETAILS_CLASS = "rounded-lg border border-ui-border 
 const MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS =
   "cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
 
-export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
+function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
   const {
     snapshot,
     selectedMemberId,
@@ -322,3 +322,6 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
     </SurfaceCard>
   );
 }
+
+export const TeamMemberConsolePanel = React.memo(TeamMemberConsolePanelImpl);
+TeamMemberConsolePanel.displayName = "TeamMemberConsolePanel";

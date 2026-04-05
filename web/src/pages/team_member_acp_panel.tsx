@@ -52,7 +52,7 @@ type TeamMemberAcpTab = "conversation" | "plan" | "debug";
 
 const NOOP = () => {};
 
-export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
+function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const {
     selectedMemberId,
     developerMode,
@@ -618,3 +618,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     </div>
   );
 }
+
+export const TeamMemberAcpPanel = React.memo(TeamMemberAcpPanelImpl);
+TeamMemberAcpPanel.displayName = "TeamMemberAcpPanel";

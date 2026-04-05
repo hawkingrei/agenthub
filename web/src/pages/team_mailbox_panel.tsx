@@ -140,7 +140,7 @@ function isMessageAcceptableForInbox(
   );
 }
 
-export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
+function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
     developerMode,
@@ -599,3 +599,6 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     </div>
   );
 }
+
+export const TeamMailboxPanel = React.memo(TeamMailboxPanelImpl);
+TeamMailboxPanel.displayName = "TeamMailboxPanel";

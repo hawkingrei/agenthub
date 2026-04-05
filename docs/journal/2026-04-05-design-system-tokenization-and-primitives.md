@@ -35,6 +35,11 @@
 - Switched the ACP Debug permission history jump affordance off the last remaining raw `button`.
 - Switched `InputDock` jump/interrupt/history/send controls to Mantine `UnstyledButton` while preserving the existing Tailwind affordance classes and overlay layout.
 - Aligned ACP Debug tests to the shared Mantine jsdom helper so primitive-backed controls keep a stable test harness.
+- Wrapped `TeamSidebar`, `TeamMailboxPanel`, `TeamMemberAcpPanel`, `TeamTabsBar`, and `TeamStepsPanel` in `React.memo` to stop unrelated Team workbench state from re-running the heaviest sidebar/mailbox/ACP render trees.
+- Wrapped `TeamRunPanel`, `TeamEventsPanel`, `TeamOverviewPanel`, `TeamMemberConsolePanel`, and `TeamActiveRunPanel` in `React.memo` so toolbar/runtime/detail state changes no longer fan out across inactive Team surfaces.
+- Added a focused `TeamMemberAcpPanel` regression test that verifies unrelated parent state changes no longer rebuild ACP view state.
+- Wrapped `AcpDebug` in `React.memo` so parent chrome/output state churn no longer re-renders the ACP debug terminal/session/runtime subtree unless debug props actually change.
+- Stabilized `team_page.tsx` callback props that were defeating memo boundaries (`onSelectTeam`, `onRefreshSteps`, mailbox template handlers), so the new Team panel memoization actually short-circuits parent workbench rerenders.
 
 ## Validation
 

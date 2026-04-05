@@ -9,14 +9,16 @@
 ## Details
 
 - `web/src/pages/team/page_helpers.ts`
-  - `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10`
+  - `TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20`
   - `TEAM_RUN_EVENT_RETENTION_LIMIT = 100`
   - `TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300`
-  - `mergeConversationMessages(...)` now trims to the newest recent-10 shared-thread messages.
+  - `mergeConversationMessages(...)` now trims to the newest recent-20 shared-thread messages.
   - `upsertEventList(..., "replace")` now trims run events to the newest retained window after dedupe and sort.
   - `upsertAgentEventList(..., "replace")` now trims member event state to the newest retained window after merge.
 - `web/src/pages/team/page_helpers.test.ts`
   - Added focused regression coverage for all three retention paths.
+- `web/src/pages/team/use_team_conversation_actions.test.tsx`
+  - Added a repeated-refresh regression test that verifies shared-thread state stays capped at recent-20 instead of growing across multiple refreshes.
 
 ## Why Not Browser HTTP Cache
 
