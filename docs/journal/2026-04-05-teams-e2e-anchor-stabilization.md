@@ -9,6 +9,8 @@
   required-field contract.
 - Switched team-detail readiness checks to the stable selected-team menu trigger and removed an
   extra mobile-only scroll dependency from selector navigation.
+- Narrowed selector-route team picking by filling the team filter first, then matching the visible
+  `.team-item` text so mobile layout differences do not break team selection.
 - Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
   timing around developer tools updates.
 

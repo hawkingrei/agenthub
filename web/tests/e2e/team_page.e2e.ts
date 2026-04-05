@@ -371,13 +371,13 @@ async function openTeamFromSelector(
     }
   }
   await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
-  const teamItem = page
-    .locator("button.team-item", {
-      has: page.getByText(teamName, { exact: true }),
-    })
-    .first();
-  await expect(teamItem).toBeVisible();
+  const filterInput = page.getByLabel("Filter teams");
+  if ((await filterInput.count()) > 0) {
+    await filterInput.fill(teamName);
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const teamItem = page.locator(".team-item", { hasText: teamName }).first();
+    await expect(teamItem).toBeVisible();
     try {
       await teamItem.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
