@@ -1,3 +1,4 @@
+import { MantineProvider } from "@mantine/core";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -97,6 +98,10 @@ const baseProps: AcpPanelProps = {
   },
 };
 
+function renderPanel(node: React.ReactNode): string {
+  return renderToStaticMarkup(<MantineProvider>{node}</MantineProvider>);
+}
+
 function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): React.ReactElement[] {
   if (node == null || typeof node === "string" || typeof node === "number") {
     return out;
@@ -106,7 +111,12 @@ function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): 
     return out;
   }
   if (!React.isValidElement(node)) return out;
-  if (node.type === "button") {
+  if (
+    (node.type === "button" ||
+      ((node.props as { type?: string; onClick?: unknown }).type === "button" &&
+        typeof (node.props as { onClick?: unknown }).onClick === "function")) &&
+    typeof (node.props as { className?: unknown }).className === "string"
+  ) {
     out.push(node);
   }
   collectButtons((node.props as { children?: React.ReactNode }).children, out);
@@ -115,7 +125,7 @@ function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): 
 
 describe("AcpPanel layout", () => {
   it("renders subtitle and tabs in header", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel {...baseProps} subtitle="/repo/workdir" />
     );
     expect(html).toContain("/repo/workdir");
@@ -126,7 +136,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("hides debug tab and falls back to conversation when developer mode is off", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel {...baseProps} developerMode={false} acpTab="debug" />
     );
     expect(html).toContain("Conversation");
@@ -136,7 +146,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("shows pending badge when conversation badge is enabled", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         showConversationBadge={true}
@@ -147,7 +157,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("pads the conversation scroll region above a visible input dock", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         conversationBottomClearance={168}
@@ -158,7 +168,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("renders mobile title inline with tabs when provided", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         subtitle="/repo/workdir"
@@ -212,7 +222,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("renders plan view when acpTab is plan", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         acpTab="plan"
@@ -232,7 +242,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("shows plan status on the tab when a plan exists", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         plan={{
@@ -257,7 +267,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("shows done state on the plan tab when all entries are completed", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         plan={{
@@ -276,7 +286,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("renders debug view when acpTab is debug", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel {...baseProps} acpTab="debug" />
     );
     expect(html).toContain("Session");
@@ -285,7 +295,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("renders conversation jump button on ACP panel container layer", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         showConversationJump={true}
@@ -293,17 +303,16 @@ describe("AcpPanel layout", () => {
     );
     const panelPos = html.indexOf('class="acp acp-panel');
     const conversationPos = html.indexOf('class="acp-conversation');
-    const jumpPos = html.indexOf('class="acp-jump-bottom');
+    const jumpPos = html.indexOf('aria-label="Jump to bottom"');
     expect(panelPos).toBeGreaterThanOrEqual(0);
     expect(conversationPos).toBeGreaterThanOrEqual(0);
     expect(jumpPos).toBeGreaterThanOrEqual(0);
     expect(jumpPos).toBeGreaterThan(conversationPos);
     expect(html).not.toContain("acp-conversation-jump-bottom");
-    expect(html).toContain('aria-label="Jump to bottom"');
   });
 
   it("passes bottom clearance into the conversation scroll area when input dock is present", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         conversationBottomClearance={104}
@@ -314,7 +323,7 @@ describe("AcpPanel layout", () => {
   });
 
   it("hides conversation jump button when debug tab is active", () => {
-    const html = renderToStaticMarkup(
+    const html = renderPanel(
       <AcpPanel
         {...baseProps}
         acpTab="debug"

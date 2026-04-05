@@ -31,6 +31,8 @@
 - Switched `TeamSidebar` high-frequency controls from raw buttons to Mantine-backed `IconButton`, `ActionButton`, or `UnstyledButton`.
 - Switched `TeamMailboxPanel` toolbar, accept, send, and advanced raw-mailbox actions to shared `ActionButton`/`ToolbarRow`.
 - Switched `AcpDebug` tabs to Mantine `UnstyledButton`, session-control actions to shared `ActionButton`, and mode/model/config inputs to Mantine `NativeSelect`/`TextInput`.
+- Switched `AcpPanel` tab chrome and jump-to-bottom affordance to Mantine `UnstyledButton`.
+- Switched the ACP Debug permission history jump affordance off the last remaining raw `button`.
 - Aligned ACP Debug tests to the shared Mantine jsdom helper so primitive-backed controls keep a stable test harness.
 
 ## Validation

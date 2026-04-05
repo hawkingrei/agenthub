@@ -504,7 +504,7 @@ export function AcpDebug({
             return (
               <div key={permission.id} className="acp-permission rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
                 <div className="head flex items-start justify-between gap-2">
-                  <button
+                  <UnstyledButton
                     className={ACP_DEBUG_PERMISSION_TOGGLE_CLASS}
                     type="button"
                     onClick={() => onJumpToPermissionHistory(permission)}
@@ -514,7 +514,7 @@ export function AcpDebug({
                       {derivePermissionTitle(permission, toolCall)}
                     </span>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">{permission.status}</span>
-                  </button>
+                  </UnstyledButton>
                   <ActionButton
                     className="acp-permission-copy"
                     size="sm"

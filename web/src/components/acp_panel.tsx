@@ -1,8 +1,10 @@
+import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import { AcpView } from "../acp";
 import { AcpDebug, AcpDebugProps } from "./acp_debug";
 import { AcpConversation, AcpConversationProps } from "./acp_conversation";
 import { AcpPlan, AcpPlanProps, summarizePlanEntries } from "./acp_plan";
+import { cx } from "../ui/primitives";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   ACP_PANEL_HEAD_CLASS,
@@ -86,10 +88,15 @@ function AcpPanelView({
             }
           : null;
   const tabButtonClassName = (selected: boolean, withGap = false) =>
-    `${ACP_TAB_BUTTON_BASE_CLASS} ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
+    cx(
+      "acp-tab-button",
+      ACP_TAB_BUTTON_BASE_CLASS,
+      withGap && "gap-2",
+      selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS
+    );
   const tabsNode = (
     <div className={ACP_PANEL_TABS_CLASS}>
-      <button
+      <UnstyledButton
         type="button"
         className={tabButtonClassName(effectiveTab === "conversation", true)}
         onClick={() => onSelectTab("conversation")}
@@ -100,8 +107,8 @@ function AcpPanelView({
             +{conversation.pendingCount}
           </span>
         )}
-      </button>
-      <button
+      </UnstyledButton>
+      <UnstyledButton
         type="button"
         className={tabButtonClassName(effectiveTab === "plan")}
         onClick={() => onSelectTab("plan")}
@@ -112,15 +119,15 @@ function AcpPanelView({
             {planStatus.label}
           </span>
         ) : null}
-      </button>
+      </UnstyledButton>
       {developerMode && (
-        <button
+        <UnstyledButton
           type="button"
           className={tabButtonClassName(effectiveTab === "debug")}
           onClick={() => onSelectTab("debug")}
         >
           Debug
-        </button>
+        </UnstyledButton>
       )}
     </div>
   );
@@ -161,7 +168,7 @@ function AcpPanelView({
       {effectiveTab === "conversation" &&
       showConversationJump &&
       showFloatingConversationJump ? (
-        <button
+        <UnstyledButton
           type="button"
           className={ACP_JUMP_BOTTOM_BUTTON_CLASS}
           onClick={onJumpToConversationBottom}
@@ -169,7 +176,7 @@ function AcpPanelView({
           aria-label="Jump to bottom"
         >
           <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
-        </button>
+        </UnstyledButton>
       ) : null}
     </div>
   );
