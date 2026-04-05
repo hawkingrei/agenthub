@@ -5,6 +5,12 @@
 - Added stable `data-*` anchors for the Team member console panel and compiled task preview.
 - Updated Playwright selectors to target the new anchors instead of brittle layout classes.
 - Extended `team_panels` coverage so the new anchors are exercised in unit tests.
+- Auto-filled `Agent name` in the E2E forge helper so the Mantine modal can submit under the new
+  required-field contract.
+- Switched team-detail readiness checks to the stable selected-team menu trigger and removed an
+  extra mobile-only scroll dependency from selector navigation.
+- Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
+  timing around developer tools updates.
 
 ## Why
 
@@ -17,3 +23,4 @@ though the underlying features still worked.
 - `cd web && npx vitest run src/pages/team_panels.test.tsx --pool=threads --maxWorkers=1`
 - `cd web && npm run lint -- src/pages/team_member_console_panel.tsx src/pages/team_tasks_panel.tsx tests/e2e/team_page.e2e.ts src/pages/team_panels.test.tsx`
 - `cd web && npx playwright test tests/e2e/team_page.e2e.ts -g "team page desktop keeps long metadata blocks non-overlapping|team debug run ops compiles task preview and applies payload to create-run form"`
+- `cd web && npm run lint -- tests/e2e/team_page.e2e.ts`

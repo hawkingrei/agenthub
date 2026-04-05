@@ -339,6 +339,11 @@ async function createTeamMemberFromModal(
     }
   }
   await expect(dialog).toBeVisible();
+  const derivedAgentName =
+    options.identity?.trim() ||
+    options.workdir.split("/").filter(Boolean).at(-1)?.replace(/[-_]+/g, " ") ||
+    "team member";
+  await dialog.getByLabel("Agent name").fill(derivedAgentName);
   if (options.identity) {
     await dialog.getByLabel("Identity").fill(options.identity);
   }
@@ -366,10 +371,13 @@ async function openTeamFromSelector(
     }
   }
   await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
-  const teamItem = page.locator(".team-item", { hasText: teamName }).first();
+  const teamItem = page
+    .locator("button.team-item", {
+      has: page.getByText(teamName, { exact: true }),
+    })
+    .first();
   await expect(teamItem).toBeVisible();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await teamItem.scrollIntoViewIfNeeded();
     try {
       await teamItem.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
@@ -2243,6 +2251,7 @@ test("team debug run ops compiles task preview and applies payload to create-run
   await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await expect.poll(() => compileRequests.length).toBe(1);
 
   const compilePreview = page.locator('[data-team-compile-preview="true"]');
   await expect(compilePreview).toBeVisible();
