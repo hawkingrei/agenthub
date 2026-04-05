@@ -66,7 +66,7 @@ Every participating node still runs the same `agenthub` binary. The difference
 is which node acts as the main control plane and which nodes are registered as
 remote execution targets.
 
-Recommended shared baseline on every node:
+Recommended remote-node baseline:
 
 ```toml
 [server]
@@ -94,6 +94,9 @@ token = "replace-me-for-bootstrap"
 
 Operational notes:
 
+- The main control-plane instance should keep the default `server.role = "main"`
+  (or omit `server.role` entirely) so it continues to serve the public web/UI
+  and API surface.
 - `server.role = "node"` turns the process into a node-only runtime. In this
   mode AgentHub serves internal gRPC only and does not boot the public web/UI
   HTTP surface.

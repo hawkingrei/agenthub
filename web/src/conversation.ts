@@ -87,6 +87,14 @@ export function formatConversationPreview(text: string, limit: number): string {
   return `${normalized.slice(0, limit)}…`;
 }
 
+export function unescapeLineBreaks(text: string): string {
+  return text
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\r/g, "\n");
+}
+
 export function isExploreThinkingText(text: string): boolean {
   const firstLine = text
     .split("\n")

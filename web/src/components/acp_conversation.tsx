@@ -8,6 +8,7 @@ import {
   flattenExploreGroupToolCalls,
   formatConversationPreview,
   isToolCallLive,
+  unescapeLineBreaks,
 } from "../conversation";
 import {
   ACP_CONVERSATION_TOP_HINT_CLASS,
@@ -1549,14 +1550,6 @@ function deriveToolCallHint(title: string, rawInput: unknown, content?: string):
     if (goal) return formatConversationPreview(goal, 60);
   }
   return "";
-}
-
-function unescapeLineBreaks(text: string): string {
-  return text
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\\t/g, "\t")
-    .replace(/\\r/g, "\n");
 }
 
 type NormalizedToolPayload =

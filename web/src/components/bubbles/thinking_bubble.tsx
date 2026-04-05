@@ -1,5 +1,8 @@
 import React from "react";
-import { formatConversationPreview } from "../../conversation";
+import {
+  formatConversationPreview,
+  unescapeLineBreaks,
+} from "../../conversation";
 import { ACP_BUBBLE_THINKING_CLASS } from "../../ui/tailwind_classes";
 import { ThreadRichText } from "../thread_rich_text";
 
@@ -71,12 +74,4 @@ function normalizeThinkingSummaryLine(line: string): string {
     .replace(/\s+/g, " ")
     .trim();
   return normalized || line.trim();
-}
-
-function unescapeLineBreaks(text: string): string {
-  return text
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\\t/g, "\t")
-    .replace(/\\r/g, "\n");
 }
