@@ -396,10 +396,14 @@ async function isTeamDetailReady(
     return false;
   }
   if (expectedTeamName) {
-    const selectedTeamText = await page
-      .locator('.team-item[data-team-selected="true"]')
-      .first()
-      .textContent();
+    const selectedTeamMenu = page.getByRole("button", {
+      name: "Open selected team menu",
+      exact: true,
+    });
+    if ((await selectedTeamMenu.count()) === 0) {
+      return false;
+    }
+    const selectedTeamText = await selectedTeamMenu.first().textContent();
     if (!selectedTeamText?.includes(expectedTeamName)) {
       return false;
     }

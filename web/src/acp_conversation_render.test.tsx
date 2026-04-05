@@ -610,7 +610,8 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("Show more");
     expect(html).toContain("more lines");
-    expect(html).toContain('<pre class="acp-content acp-payload-text');
+    expect(html).toContain("acp-terminal-pre");
+    expect(html).toContain("acp-content acp-payload-text");
     expect(html).toContain(">line-364");
     expect(html).toContain("line-399");
     expect(html).not.toContain(">line-363");
