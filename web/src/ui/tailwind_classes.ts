@@ -274,7 +274,7 @@ export const TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS = "items-end";
 export const TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS = "items-start";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS =
-  "mt-1 min-w-0 max-w-full rounded-[18px] border px-3.5 py-2.25 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
+  "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS =
   "border-notion-accent/15 bg-notion-accent-bg/72";
@@ -300,10 +300,10 @@ export const TEAM_TASK_ACTIVITY_TIME_CLASS =
   "text-[10px] font-bold uppercase tracking-wider text-notion-text-muted opacity-0 group-hover:opacity-100 transition-opacity";
 
 export const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "text-[15px] leading-relaxed text-notion-text";
+  "min-w-0 max-w-full break-words text-[15px] leading-relaxed text-notion-text [overflow-wrap:anywhere] [&_code]:break-words [&_li]:break-words [&_ol]:max-w-full [&_p]:break-words [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:break-words [&_th]:break-words [&_ul]:max-w-full";
 
 export const TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS =
-  "mono m-0 max-w-full overflow-x-auto whitespace-pre text-[12px] leading-relaxed text-notion-text";
+  "mono m-0 max-w-full whitespace-pre-wrap break-words text-[12px] leading-relaxed text-notion-text [overflow-wrap:anywhere]";
 
 export const TEAM_TASK_PERMISSION_CARD_CLASS =
   "mt-1 max-w-full rounded-[18px] border border-black/[0.06] bg-white/94 p-4 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
