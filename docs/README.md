@@ -17,12 +17,16 @@ Use this checklist for every non-trivial change:
 
 1. Update the canonical feature spec in `docs/features/` when contracts or
    behavior changed.
+   - For Agents / ACP / Team UI behavior, this usually means
+     `docs/features/frontend-design.md`.
 2. Add or append a dated journal in `docs/journal/` for the implementation
    checkpoint.
 3. Add a follow-up item in `docs/todo.md` only when open work remains.
 4. If API payloads changed, ensure naming still conforms to
    `docs/api_naming.md`.
 5. If behavior is user-visible, update `userdocs/docs/` accordingly.
+   - Team workbench changes should usually update
+     `userdocs/docs/advanced/team-workbench.md`.
 
 ## Journal Convention
 

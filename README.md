@@ -29,6 +29,8 @@ for the operational side of agent workflows:
 - View ACP events such as messages, plans, tool calls, command output, and
   debug streams
 - Run multi-agent Team workflows with leader/worker coordination
+- Install AgentHub as an app-like PWA shell while still picking up fresh web
+  deploys on refresh
 - Register remote execution nodes and start agents on those nodes
 - Persist session history and operational records in SQLite
 - Receive completion notifications in the web UI
@@ -122,6 +124,9 @@ current contract and rollout model.
   - Rust backend serving the API, embedded web UI, and runtime control plane
 - **ACP runtime**
   - Structured event model for plans, tools, output, and history replay
+- **Web workbench**
+  - Mantine primitives plus Tailwind utilities, shared UI primitives, and
+    bounded recent-window conversation views for ACP and Team surfaces
 - **Teams runtime**
   - Leader/worker orchestration, Team tasks, mailbox coordination, and shared
     conversation flow
@@ -141,10 +146,12 @@ current contract and rollout model.
 - Internal docs guide: [docs/README.md](docs/README.md)
 - Project charter and engineering constraints: [AGENTS.md](AGENTS.md)
 - Agent and Team architecture: [docs/features/agents-teams.md](docs/features/agents-teams.md)
+- Frontend/UI architecture: [docs/features/frontend-design.md](docs/features/frontend-design.md)
 - Actor runtime and mailbox model: [docs/features/actor-foundation.md](docs/features/actor-foundation.md)
 - ACP runtime contract: [docs/features/acp-runtime.md](docs/features/acp-runtime.md)
 - Remote execution nodes: [docs/features/agent-nodes.md](docs/features/agent-nodes.md)
 - Distributed node architecture: [docs/features/distributed-node-architecture.md](docs/features/distributed-node-architecture.md)
+- Team workbench user guide: [userdocs/docs/advanced/team-workbench.md](userdocs/docs/advanced/team-workbench.md)
 - Active follow-up backlog: [docs/todo.md](docs/todo.md)
 - API payload naming rules: [docs/api_naming.md](docs/api_naming.md)
 

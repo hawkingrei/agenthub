@@ -32,7 +32,7 @@ debug artifacts. They are not the primary planning surface.
   - `# all` is a stable Team-level conversation target resolved by the backend, not whichever task
     happens to be visible first in the Kanban list
   - optimized for live coordination: the composer stays pinned to the bottom and the workbench
-    prioritizes a fast recent slice before hydrating a larger recent tail in the background
+    shows a bounded recent-10 message window by default
   - human goals, constraints, approvals, and `@member_id` coordination requests
 - **Kanban**:
   - task ownership and lifecycle
@@ -116,9 +116,10 @@ The Team header exposes the shared-thread connection state directly:
 - a manual channel refresh action is still available when you want to force a fresh pull
 
 The shared channel is intentionally tuned for live coordination, not infinite
-log browsing. If you need deeper execution history or raw event detail, drop
-into `Agent ACP`, `Runs`, or other debug surfaces instead of treating `# all`
-as the primary archive.
+log browsing. The default Team surface keeps only a small recent window in
+memory so the workbench stays responsive. If you need deeper execution history
+or raw event detail, drop into `Agent ACP`, `Runs`, or other debug surfaces
+instead of treating `# all` as the primary archive.
 
 ## What To Watch Operationally
 

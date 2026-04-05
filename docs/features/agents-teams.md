@@ -241,6 +241,9 @@ Constraint:
 - `Conversation` does not require an active run.
 - `Conversation` is not a task list; task creation is an internal Team planning/runtime decision.
 - Humans are not required to phrase requests in task form before the Team can act on them.
+- Human-facing `Conversation` is a bounded recent window, not an unbounded
+  archive; operators should use ACP / Runs / other debug lanes for deeper
+  history.
 - `Kanban` is task-first and should show task state plus linked run history/summary.
 - Leader owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
