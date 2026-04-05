@@ -50,6 +50,7 @@ import {
   buildOutputCacheSlice,
   isSameOutputList,
   limitOutputCacheSessions,
+  mergeOutputsPreserveOlderWithLimit,
   mergeOutputsWithLimit,
   mergeOutputsPreserveHistory,
   mergeOutputs,
@@ -1518,10 +1519,10 @@ export function App() {
           : meta.oldestId;
       const hasMore = ordered.length >= eventLimit;
       setOutputs((prev) =>
-        mergeOutputsWithLimit(prev, ordered, LIVE_OUTPUT_RETENTION_LIMIT)
+        mergeOutputsPreserveOlderWithLimit(prev, ordered, LIVE_OUTPUT_RETENTION_LIMIT)
       );
       setAcpOutputs((prev) =>
-        mergeOutputsWithLimit(prev, acpOrdered, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
+        mergeOutputsPreserveOlderWithLimit(prev, acpOrdered, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
       );
       updateOutputCacheEntry(key, ordered);
       if (acpOrdered.length > 0) {

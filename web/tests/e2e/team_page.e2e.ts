@@ -5,6 +5,19 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function deriveAgentName(identity: string | undefined, workdir: string): string {
+  const normalizedIdentity = identity?.trim();
+  if (normalizedIdentity) {
+    return normalizedIdentity;
+  }
+  const basename = workdir
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/[-_]+/g, " ");
+  return basename || "team member";
+}
+
 type StoredAuthState = {
   token: string;
   userId: string;
@@ -343,17 +356,14 @@ async function createTeamMemberFromModal(
     }
   }
   await expect(dialog).toBeVisible();
-  const derivedAgentName =
-    options.identity?.trim() ||
-    options.workdir.split("/").filter(Boolean).at(-1)?.replace(/[-_]+/g, " ") ||
-    "team member";
-  await dialog.getByLabel("Agent name").fill(derivedAgentName);
+  await dialog.getByLabel("Agent name").fill(deriveAgentName(options.identity, options.workdir));
   if (options.identity) {
     await dialog.getByLabel("Identity").fill(options.identity);
   }
-  if (options.model) {
+  if (options.model && options.model !== "codex") {
     const optionLabel = roleModelLabels[options.model] ?? options.model;
-    await dialog.getByLabel("Role model").click();
+    const modelControl = dialog.getByRole("textbox", { name: "Role model" });
+    await modelControl.click();
     await page.getByRole("option", { name: optionLabel, exact: true }).click();
   }
   await dialog.getByLabel(/Workdir/).fill(options.workdir);
@@ -375,19 +385,24 @@ async function openTeamFromSelector(
     }
   }
   await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
-  const filterInput = page.getByLabel("Filter teams");
+  const selectorPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Teams", exact: true }),
+  });
+  await expect(selectorPanel).toBeVisible();
+  const filterInput = selectorPanel.getByLabel(/Filter teams|Search teams/);
   if ((await filterInput.count()) > 0) {
     await filterInput.fill(teamName);
   }
-  const selectorTeamButton = page
-    .getByRole("button", {
-      name: new RegExp(escapeRegex(teamName), "i"),
-    })
-    .first();
-  const resolveTeamItem = async () =>
-    (await selectorTeamButton.isVisible().catch(() => false))
-      ? selectorTeamButton
-      : page.locator(".team-item", { hasText: teamName }).first();
+  const selectorTeamButton = selectorPanel.locator("button.team-item", { hasText: teamName }).first();
+  const selectorFallbackButton = selectorPanel.getByRole("button", {
+    name: new RegExp(escapeRegex(teamName), "i"),
+  }).first();
+  const resolveTeamItem = async () => {
+    if (await selectorTeamButton.count()) {
+      return selectorTeamButton;
+    }
+    return selectorFallbackButton;
+  };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const teamItem = await resolveTeamItem();
     await expect(teamItem).toBeVisible();

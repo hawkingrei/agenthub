@@ -4,6 +4,7 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   limitOutputCacheSessions,
+  mergeOutputsPreserveOlderWithLimit,
   mergeOutputsWithLimit,
   mergeOutputsPreserveHistory,
   replaceAcpCacheSlice,
@@ -112,6 +113,27 @@ describe("mergeOutputsWithLimit", () => {
     const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
     const incoming = [makeEvent(3, "stdout")];
     const next = mergeOutputsWithLimit(existing, incoming, 0);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("mergeOutputsPreserveOlderWithLimit", () => {
+  it("keeps the older edge visible when explicit history loads exceed the cap", () => {
+    const existing = [
+      makeEvent(4, "stdout"),
+      makeEvent(5, "stdout"),
+      makeEvent(6, "stdout"),
+      makeEvent(7, "stdout"),
+    ];
+    const incoming = [makeEvent(1, "stdout"), makeEvent(2, "stdout"), makeEvent(3, "stdout")];
+    const next = mergeOutputsPreserveOlderWithLimit(existing, incoming, 4);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("keeps the full merged list when the limit is non-positive", () => {
+    const existing = [makeEvent(2, "stdout"), makeEvent(3, "stdout")];
+    const incoming = [makeEvent(1, "stdout")];
+    const next = mergeOutputsPreserveOlderWithLimit(existing, incoming, 0);
     expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
   });
 });

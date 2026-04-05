@@ -13,6 +13,11 @@
   `.team-item` text so mobile layout differences do not break team selection.
 - Added a selector-route fallback that resolves the team entry by accessible button name before
   falling back to `.team-item`, which keeps team selection stable across compact layouts.
+- Scoped selector-route team picking to the `Teams` panel, accepted both `Filter teams` and
+  `Search teams` labels, and made the fallback locator recreate the team button instead of
+  reusing an out-of-scope variable.
+- Normalized derived agent names with both `/` and `\\` path separators so the forge helper stays
+  portable across path styles.
 - Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
   timing around developer tools updates.
 
