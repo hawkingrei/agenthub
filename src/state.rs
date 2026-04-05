@@ -310,10 +310,10 @@ mod tests {
     use sqlx::Row;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::ffi::OsString;
-    use std::sync::Mutex;
+    use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     struct EnvGuard {
         key: &'static str,
@@ -471,9 +471,9 @@ mod tests {
         assert_eq!(path, expected);
     }
 
-    #[test]
-    fn ensure_global_gitignore_contains_agenthubmemory_entry() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+    #[tokio::test]
+    async fn ensure_global_gitignore_contains_agenthubmemory_entry() {
+        let _guard = ENV_LOCK.lock().await;
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
         let _home_guard = set_env_var("HOME", &temp_home);
@@ -493,9 +493,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_home);
     }
 
-    #[test]
-    fn ensure_global_gitignore_keeps_agenthubmemory_entry_idempotent() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+    #[tokio::test]
+    async fn ensure_global_gitignore_keeps_agenthubmemory_entry_idempotent() {
+        let _guard = ENV_LOCK.lock().await;
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
         let gitignore_path = temp_home.join(GLOBAL_GITIGNORE_FILENAME);
@@ -518,9 +518,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_home);
     }
 
-    #[test]
-    fn ensure_global_gitignore_prefers_xdg_config_home_when_present() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+    #[tokio::test]
+    async fn ensure_global_gitignore_prefers_xdg_config_home_when_present() {
+        let _guard = ENV_LOCK.lock().await;
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         let temp_xdg = std::env::temp_dir().join(format!("agenthub-xdg-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
@@ -593,7 +593,7 @@ mod tests {
 
     #[tokio::test]
     async fn setup_database_skips_root_user_for_node_role() {
-        let _guard = ENV_LOCK.lock().expect("env lock");
+        let _guard = ENV_LOCK.lock().await;
         let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&temp_home).expect("create temp home");
         let _home_guard = set_env_var("HOME", &temp_home);
