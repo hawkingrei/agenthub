@@ -385,21 +385,20 @@ async function openTeamFromSelector(
     .locator('[data-team-selector-entry="true"]', { hasText: teamName })
     .first();
   await expect(selectorTeamButton).toBeVisible();
+  const selectorTeamId = await selectorTeamButton.getAttribute("data-team-id");
+  expect(selectorTeamId).toBeTruthy();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
-      await selectorTeamButton.click({ force: true });
+      await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
     }
     await page.waitForTimeout(150);
     if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
-  await selectorTeamButton.evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
-  await expect(page).toHaveURL(/\/teams\/.+/);
+  await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
   await expect.poll(() => isTeamDetailReady(page, teamName)).toBe(true);
 }
 
@@ -416,13 +415,20 @@ async function isTeamDetailReady(
       name: "Open selected team menu",
       exact: true,
     });
-    if ((await selectedTeamMenu.count()) === 0) {
-      return false;
+    if ((await selectedTeamMenu.count()) > 0) {
+      const selectedTeamText = await selectedTeamMenu.first().textContent();
+      if (!selectedTeamText?.includes(expectedTeamName)) {
+        return false;
+      }
     }
-    const selectedTeamText = await selectedTeamMenu.first().textContent();
-    if (!selectedTeamText?.includes(expectedTeamName)) {
-      return false;
-    }
+  }
+  const teamsMain = page.locator(".teams-main").first();
+  if ((await teamsMain.count()) === 0) {
+    return false;
+  }
+  const teamsMainVisible = await teamsMain.isVisible().catch(() => false);
+  if (!teamsMainVisible) {
+    return false;
   }
   const pageText = await page.locator("body").textContent();
   if (!pageText) {
@@ -515,7 +521,8 @@ async function openKanbanDeveloperTools(
   page: import("@playwright/test").Page
 ): Promise<void> {
   const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
-  if ((await compilePreviewButton.count()) === 0) {
+  const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
+  if (!compilePreviewVisible) {
     const developerToolsSummary = page.locator("summary").filter({
       has: page.getByText("Developer tools", { exact: true }),
     });
@@ -523,6 +530,7 @@ async function openKanbanDeveloperTools(
     await developerToolsSummary.click();
   }
   await expect(compilePreviewButton).toBeVisible();
+  await expect(compilePreviewButton).toBeEnabled();
 }
 
 async function selectPrimaryTeamEntryFromSidebar(

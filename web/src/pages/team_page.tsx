@@ -2163,6 +2163,7 @@ export function TeamPage(props: TeamPageProps) {
         current && remainingRuns.some((run) => run.id === current) ? current : null
       );
       setRunLookupId("");
+      setTeamSelectorFilter("");
       navigateToTeamSelector();
     } catch (err) {
       setError(parseErrorMessage(err));

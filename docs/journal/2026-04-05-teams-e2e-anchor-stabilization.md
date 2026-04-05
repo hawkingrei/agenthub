@@ -13,6 +13,8 @@
   `.team-item` text so mobile layout differences do not break team selection.
 - Added a selector-route fallback that resolves the team entry by accessible button name before
   falling back to `.team-item`, which keeps team selection stable across compact layouts.
+- Added a route-level fallback for selector navigation when CI/mobile layout re-renders make the
+  visible team button click unstable, so team-detail E2E no longer depends on a flaky mobile click.
 - Scoped selector-route team picking to the `Teams` panel, accepted both `Filter teams` and
   `Search teams` labels, and made the fallback locator recreate the team button instead of
   reusing an out-of-scope variable.
@@ -23,6 +25,10 @@
   instead of forcing E2E to infer internal Mantine structure.
 - Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
   timing around developer tools updates.
+- Waited for the Kanban `Compile Preview` button to become enabled before clicking, which removes
+  a remaining race between task hydration and developer-tool actions.
+- Cleared the Team selector filter after deleting the selected team so returning to the selector
+  shows the remaining teams instead of preserving a now-stale team-name filter.
 
 ## Why
 
