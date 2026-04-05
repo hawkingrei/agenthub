@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { SelectableListItem } from "../ui/primitives";
 import {
   isHumanMailboxActor,
   resolveDisplayName,
@@ -10,7 +11,6 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
-  TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
@@ -225,11 +225,6 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       : []),
   ];
 
-  const actorButtonClassName = (isActive: boolean) =>
-    `${TEAM_LIST_ITEM_BASE_CLASS} ${
-      isActive ? "ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md" : ""
-    }`;
-
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
@@ -390,9 +385,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               const unread = unreadByMemberId[member.member_id] ?? 0;
               const isHuman = member.role === "human";
               return (
-                <button
+                <SelectableListItem
                   key={member.member_id}
-                  className={actorButtonClassName(selectedMemberId === member.member_id)}
+                  active={selectedMemberId === member.member_id}
                   onClick={() => onSelectMember(member.member_id)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
@@ -423,7 +418,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                       </span>
                     )}
                   </div>
-                </button>
+                </SelectableListItem>
               );
             })}
             {mailboxActors.length === 0 && (

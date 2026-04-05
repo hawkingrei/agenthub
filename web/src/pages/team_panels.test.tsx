@@ -957,20 +957,22 @@ describe("team panels interactions", () => {
     const onRestart = vi.fn();
     act(() => {
       root.render(
-        <TeamActiveRunPanel
-          run={buildRun({ status: "failed" })}
-          busy={null}
-          canResumeRun={true}
-          canRestartRun={true}
-          onRefresh={onRefresh}
-          onCancel={onCancel}
-          onResume={onResume}
-          onRestart={onRestart}
-          formatTs={(value) => (value == null ? "-" : String(value))}
-          cardClassName="card"
-          titleClassName="title"
-          metaItemClassName="meta"
-        />
+        <MantineProvider>
+          <TeamActiveRunPanel
+            run={buildRun({ status: "failed" })}
+            busy={null}
+            canResumeRun={true}
+            canRestartRun={true}
+            onRefresh={onRefresh}
+            onCancel={onCancel}
+            onResume={onResume}
+            onRestart={onRestart}
+            formatTs={(value) => (value == null ? "-" : String(value))}
+            cardClassName="card"
+            titleClassName="title"
+            metaItemClassName="meta"
+          />
+        </MantineProvider>
       );
     });
 
@@ -1276,20 +1278,22 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamEventsPanel
-          eventsAutoRefresh={true}
-          onEventsAutoRefreshChange={onEventsAutoRefreshChange}
-          onRefreshEvents={onRefreshEvents}
-          onLoadOlderEvents={onLoadOlderEvents}
-          eventsLoading={false}
-          previewMode={false}
-          previewLimit={3}
-          eventsHasMore={true}
-          oldestEventId={1}
-          displayedRunEvents={[buildRunEvent(7, { k: "v" })]}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamEventsPanel
+            eventsAutoRefresh={true}
+            onEventsAutoRefreshChange={onEventsAutoRefreshChange}
+            onRefreshEvents={onRefreshEvents}
+            onLoadOlderEvents={onLoadOlderEvents}
+            eventsLoading={false}
+            previewMode={false}
+            previewLimit={3}
+            eventsHasMore={true}
+            oldestEventId={1}
+            displayedRunEvents={[buildRunEvent(7, { k: "v" })]}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1306,20 +1310,22 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamEventsPanel
-          eventsAutoRefresh={true}
-          onEventsAutoRefreshChange={() => {}}
-          onRefreshEvents={() => {}}
-          onLoadOlderEvents={() => {}}
-          eventsLoading={false}
-          previewMode={true}
-          previewLimit={5}
-          eventsHasMore={false}
-          oldestEventId={null}
-          displayedRunEvents={[]}
-          formatTs={(ts) => String(ts)}
-          toPrettyJson={(value) => JSON.stringify(value)}
-        />
+        <MantineProvider>
+          <TeamEventsPanel
+            eventsAutoRefresh={true}
+            onEventsAutoRefreshChange={() => {}}
+            onRefreshEvents={() => {}}
+            onLoadOlderEvents={() => {}}
+            eventsLoading={false}
+            previewMode={true}
+            previewLimit={5}
+            eventsHasMore={false}
+            oldestEventId={null}
+            displayedRunEvents={[]}
+            formatTs={(ts) => String(ts)}
+            toPrettyJson={(value) => JSON.stringify(value)}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1333,13 +1339,15 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamOverviewPanel
-          snapshot={buildSnapshot()}
-          snapshotLoading={false}
-          onRefreshSnapshot={onRefreshSnapshot}
-          selectedMemberId="leader-agent"
-          onOpenMailboxForMember={onOpenMailboxForMember}
-        />
+        <MantineProvider>
+          <TeamOverviewPanel
+            snapshot={buildSnapshot()}
+            snapshotLoading={false}
+            onRefreshSnapshot={onRefreshSnapshot}
+            selectedMemberId="leader-agent"
+            onOpenMailboxForMember={onOpenMailboxForMember}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1357,13 +1365,15 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamOverviewPanel
-          snapshot={null}
-          snapshotLoading={false}
-          onRefreshSnapshot={() => {}}
-          selectedMemberId=""
-          onOpenMailboxForMember={() => {}}
-        />
+        <MantineProvider>
+          <TeamOverviewPanel
+            snapshot={null}
+            snapshotLoading={false}
+            onRefreshSnapshot={() => {}}
+            selectedMemberId=""
+            onOpenMailboxForMember={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1377,23 +1387,25 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMemberConsolePanel
-          snapshot={buildSnapshot()}
-          selectedMemberId=""
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
-          selectedMemberSnapshot={null}
-          memberEvents={[]}
-          memberEventsHasMore={false}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={null}
-          displayedRunEvents={[buildRunEvent(9, { run: "preview" })]}
-          previewLimit={5}
-          onRefresh={onRefresh}
-          onLoadOlder={onLoadOlder}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-        />
+        <MantineProvider>
+          <TeamMemberConsolePanel
+            snapshot={buildSnapshot()}
+            selectedMemberId=""
+            onSelectedMemberIdChange={onSelectedMemberIdChange}
+            selectedMemberSnapshot={null}
+            memberEvents={[]}
+            memberEventsHasMore={false}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={null}
+            displayedRunEvents={[buildRunEvent(9, { run: "preview" })]}
+            previewLimit={5}
+            onRefresh={onRefresh}
+            onLoadOlder={onLoadOlder}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1406,47 +1418,49 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMemberConsolePanel
-          snapshot={buildSnapshot()}
-          selectedMemberId="worker-agent"
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: null }),
-            skills: ["team-worker-executor"],
-          })}
-          memberEvents={[]}
-          memberEventsHasMore={true}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={1}
-          displayedRunEvents={[]}
-          previewLimit={5}
-          memberDiscoveryCard={{
-            card_id: "agenthub://agents/worker-agent",
-            schema_version: "agenthub.a2a.discovery_card.v1",
-            description:
-              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
-            identity: {
-              agent_id: "worker-agent",
-              name: "worker-agent",
-              status: "running",
-            },
-            runtime: {
-              acp_provider: "codex",
-              code_mode: true,
-              worktree_mode: "create_worktree",
-              worktree_repo: "/tmp/repo",
-              worktree_ref: "main",
-            },
-            capability_tags: ["team_mailbox_v1", "acp_codex"],
-          }}
-          onRefresh={onRefresh}
-          onLoadOlder={onLoadOlder}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-        />
+        <MantineProvider>
+          <TeamMemberConsolePanel
+            snapshot={buildSnapshot()}
+            selectedMemberId="worker-agent"
+            onSelectedMemberIdChange={onSelectedMemberIdChange}
+            selectedMemberSnapshot={buildMemberSnapshot({
+              member_id: "worker-agent",
+              role: "worker",
+              latest_step: buildStep({ member_id: "worker-agent", remote_task_id: null }),
+              skills: ["team-worker-executor"],
+            })}
+            memberEvents={[]}
+            memberEventsHasMore={true}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={1}
+            displayedRunEvents={[]}
+            previewLimit={5}
+            memberDiscoveryCard={{
+              card_id: "agenthub://agents/worker-agent",
+              schema_version: "agenthub.a2a.discovery_card.v1",
+              description:
+                "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
+              identity: {
+                agent_id: "worker-agent",
+                name: "worker-agent",
+                status: "running",
+              },
+              runtime: {
+                acp_provider: "codex",
+                code_mode: true,
+                worktree_mode: "create_worktree",
+                worktree_repo: "/tmp/repo",
+                worktree_ref: "main",
+              },
+              capability_tags: ["team_mailbox_v1", "acp_codex"],
+            }}
+            onRefresh={onRefresh}
+            onLoadOlder={onLoadOlder}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+          />
+        </MantineProvider>
       );
     });
 
@@ -1455,46 +1469,48 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMemberConsolePanel
-          snapshot={buildSnapshot()}
-          selectedMemberId="worker-agent"
-          onSelectedMemberIdChange={onSelectedMemberIdChange}
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
-          })}
-          memberEvents={[]}
-          memberEventsHasMore={true}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={1}
-          displayedRunEvents={[]}
-          previewLimit={5}
-          memberDiscoveryCard={{
-            card_id: "agenthub://agents/worker-agent",
-            schema_version: "agenthub.a2a.discovery_card.v1",
-            description:
-              "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
-            identity: {
-              agent_id: "worker-agent",
-              name: "worker-agent",
-              status: "running",
-            },
-            runtime: {
-              acp_provider: "codex",
-              code_mode: true,
-              worktree_mode: "create_worktree",
-              worktree_repo: "/tmp/repo",
-              worktree_ref: "main",
-            },
-            capability_tags: ["team_mailbox_v1", "acp_codex"],
-          }}
-          onRefresh={onRefresh}
-          onLoadOlder={onLoadOlder}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-        />
+        <MantineProvider>
+          <TeamMemberConsolePanel
+            snapshot={buildSnapshot()}
+            selectedMemberId="worker-agent"
+            onSelectedMemberIdChange={onSelectedMemberIdChange}
+            selectedMemberSnapshot={buildMemberSnapshot({
+              member_id: "worker-agent",
+              role: "worker",
+              latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+            })}
+            memberEvents={[]}
+            memberEventsHasMore={true}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={1}
+            displayedRunEvents={[]}
+            previewLimit={5}
+            memberDiscoveryCard={{
+              card_id: "agenthub://agents/worker-agent",
+              schema_version: "agenthub.a2a.discovery_card.v1",
+              description:
+                "AgentHub team member worker-agent (provider: codex) supports team_mailbox_v1, acp_codex",
+              identity: {
+                agent_id: "worker-agent",
+                name: "worker-agent",
+                status: "running",
+              },
+              runtime: {
+                acp_provider: "codex",
+                code_mode: true,
+                worktree_mode: "create_worktree",
+                worktree_repo: "/tmp/repo",
+                worktree_ref: "main",
+              },
+              capability_tags: ["team_mailbox_v1", "acp_codex"],
+            }}
+            onRefresh={onRefresh}
+            onLoadOlder={onLoadOlder}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+          />
+        </MantineProvider>
       );
     });
 
@@ -3978,68 +3994,70 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          snapshot={buildSnapshot()}
-          humanActorId="user"
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-            user: "You",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{ "worker-agent": 2, user: 1 }}
-          onSelectMember={onSelectMember}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={onConversationScroll}
-          onJumpToBottom={onJumpToBottom}
-          conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
-          toPrettyJson={toPrettyJson}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={onAcceptMessage}
-          onAcceptVisibleMessages={onAcceptVisibleMessages}
-          chatDraft="draft"
-          onChatDraftChange={onChatDraftChange}
-          onSendChatMessage={onSendChatMessage}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={onMsgFromActorIdChange}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={onMsgToActorIdChange}
-          msgChannel="default"
-          onMsgChannelChange={onMsgChannelChange}
-          msgTransport="local"
-          onMsgTransportChange={onMsgTransportChange}
-          msgRoute="{}"
-          onMsgRouteChange={onMsgRouteChange}
-          mailboxTemplateOptions={[
-            { value: "leader_task_assignment", label: "Leader Assignment" },
-            { value: "worker_done", label: "Worker Done" },
-          ]}
-          msgTemplate="leader_task_assignment"
-          onMsgTemplateChange={onMsgTemplateChange}
-          onApplyMessageTemplate={onApplyMessageTemplate}
-          msgPayload="{}"
-          onMsgPayloadChange={onMsgPayloadChange}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
-          onSendMessage={onSendMessage}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={onInboxActorIdChange}
-          inboxLimit="20"
-          onInboxLimitChange={onInboxLimitChange}
-          inboxAfterId=""
-          onInboxAfterIdChange={onInboxAfterIdChange}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
-          onRefreshInbox={onRefreshInbox}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            snapshot={buildSnapshot()}
+            humanActorId="user"
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+              user: "You",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{ "worker-agent": 2, user: 1 }}
+            onSelectMember={onSelectMember}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={onConversationScroll}
+            onJumpToBottom={onJumpToBottom}
+            conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
+            toPrettyJson={toPrettyJson}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={onAcceptMessage}
+            onAcceptVisibleMessages={onAcceptVisibleMessages}
+            chatDraft="draft"
+            onChatDraftChange={onChatDraftChange}
+            onSendChatMessage={onSendChatMessage}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={onMsgFromActorIdChange}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={onMsgToActorIdChange}
+            msgChannel="default"
+            onMsgChannelChange={onMsgChannelChange}
+            msgTransport="local"
+            onMsgTransportChange={onMsgTransportChange}
+            msgRoute="{}"
+            onMsgRouteChange={onMsgRouteChange}
+            mailboxTemplateOptions={[
+              { value: "leader_task_assignment", label: "Leader Assignment" },
+              { value: "worker_done", label: "Worker Done" },
+            ]}
+            msgTemplate="leader_task_assignment"
+            onMsgTemplateChange={onMsgTemplateChange}
+            onApplyMessageTemplate={onApplyMessageTemplate}
+            msgPayload="{}"
+            onMsgPayloadChange={onMsgPayloadChange}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
+            onSendMessage={onSendMessage}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={onInboxActorIdChange}
+            inboxLimit="20"
+            onInboxLimitChange={onInboxLimitChange}
+            inboxAfterId=""
+            onInboxAfterIdChange={onInboxAfterIdChange}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
+            onRefreshInbox={onRefreshInbox}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4100,67 +4118,69 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          mode="advanced_only"
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{ "worker-agent": 2 }}
-          onSelectMember={onSelectMember}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={onConversationScroll}
-          onJumpToBottom={onJumpToBottom}
-          conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
-          toPrettyJson={toPrettyJson}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={onAcceptMessage}
-          onAcceptVisibleMessages={onAcceptVisibleMessages}
-          chatDraft="draft"
-          onChatDraftChange={onChatDraftChange}
-          onSendChatMessage={onSendChatMessage}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={onMsgFromActorIdChange}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={onMsgToActorIdChange}
-          msgChannel="default"
-          onMsgChannelChange={onMsgChannelChange}
-          msgTransport="local"
-          onMsgTransportChange={onMsgTransportChange}
-          msgRoute="{}"
-          onMsgRouteChange={onMsgRouteChange}
-          mailboxTemplateOptions={[
-            { value: "leader_task_assignment", label: "Leader Assignment" },
-            { value: "worker_done", label: "Worker Done" },
-          ]}
-          msgTemplate="leader_task_assignment"
-          onMsgTemplateChange={onMsgTemplateChange}
-          onApplyMessageTemplate={onApplyMessageTemplate}
-          msgPayload="{}"
-          onMsgPayloadChange={onMsgPayloadChange}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
-          onSendMessage={onSendMessage}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={onInboxActorIdChange}
-          inboxLimit="20"
-          onInboxLimitChange={onInboxLimitChange}
-          inboxAfterId=""
-          onInboxAfterIdChange={onInboxAfterIdChange}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
-          onRefreshInbox={onRefreshInbox}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            mode="advanced_only"
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{ "worker-agent": 2 }}
+            onSelectMember={onSelectMember}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={onConversationScroll}
+            onJumpToBottom={onJumpToBottom}
+            conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
+            toPrettyJson={toPrettyJson}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={onAcceptMessage}
+            onAcceptVisibleMessages={onAcceptVisibleMessages}
+            chatDraft="draft"
+            onChatDraftChange={onChatDraftChange}
+            onSendChatMessage={onSendChatMessage}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={onMsgFromActorIdChange}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={onMsgToActorIdChange}
+            msgChannel="default"
+            onMsgChannelChange={onMsgChannelChange}
+            msgTransport="local"
+            onMsgTransportChange={onMsgTransportChange}
+            msgRoute="{}"
+            onMsgRouteChange={onMsgRouteChange}
+            mailboxTemplateOptions={[
+              { value: "leader_task_assignment", label: "Leader Assignment" },
+              { value: "worker_done", label: "Worker Done" },
+            ]}
+            msgTemplate="leader_task_assignment"
+            onMsgTemplateChange={onMsgTemplateChange}
+            onApplyMessageTemplate={onApplyMessageTemplate}
+            msgPayload="{}"
+            onMsgPayloadChange={onMsgPayloadChange}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={onMsgIdempotencyKeyChange}
+            onSendMessage={onSendMessage}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={onInboxActorIdChange}
+            inboxLimit="20"
+            onInboxLimitChange={onInboxLimitChange}
+            inboxAfterId=""
+            onInboxAfterIdChange={onInboxAfterIdChange}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={onInboxIncludeDeliveredChange}
+            onRefreshInbox={onRefreshInbox}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4246,54 +4266,56 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          snapshot={null}
-          selectedMemberId=""
-          unreadByMemberId={{}}
-          onSelectMember={() => {}}
-          chatActors={{ fromActorId: "", toActorId: "", inboxActorId: "" }}
-          chatStickToBottom={false}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={() => {}}
-          onJumpToBottom={() => {}}
-          conversationMessages={[]}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => String(ts)}
-          busy={null}
-          onAcceptMessage={() => {}}
-          chatDraft=""
-          onChatDraftChange={() => {}}
-          onSendChatMessage={() => {}}
-          msgFromActorId=""
-          onMsgFromActorIdChange={() => {}}
-          msgToActorId=""
-          onMsgToActorIdChange={() => {}}
-          msgChannel=""
-          onMsgChannelChange={() => {}}
-          msgTransport="local"
-          onMsgTransportChange={() => {}}
-          msgRoute=""
-          onMsgRouteChange={() => {}}
-          mailboxTemplateOptions={[{ value: "leader_task_assignment", label: "Leader Assignment" }]}
-          msgTemplate="leader_task_assignment"
-          onMsgTemplateChange={() => {}}
-          onApplyMessageTemplate={() => {}}
-          msgPayload="{}"
-          onMsgPayloadChange={() => {}}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={() => {}}
-          onSendMessage={() => {}}
-          inboxActorId=""
-          onInboxActorIdChange={() => {}}
-          inboxLimit="20"
-          onInboxLimitChange={() => {}}
-          inboxAfterId=""
-          onInboxAfterIdChange={() => {}}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={() => {}}
-          onRefreshInbox={() => {}}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            snapshot={null}
+            selectedMemberId=""
+            unreadByMemberId={{}}
+            onSelectMember={() => {}}
+            chatActors={{ fromActorId: "", toActorId: "", inboxActorId: "" }}
+            chatStickToBottom={false}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={() => {}}
+            onJumpToBottom={() => {}}
+            conversationMessages={[]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => String(ts)}
+            busy={null}
+            onAcceptMessage={() => {}}
+            chatDraft=""
+            onChatDraftChange={() => {}}
+            onSendChatMessage={() => {}}
+            msgFromActorId=""
+            onMsgFromActorIdChange={() => {}}
+            msgToActorId=""
+            onMsgToActorIdChange={() => {}}
+            msgChannel=""
+            onMsgChannelChange={() => {}}
+            msgTransport="local"
+            onMsgTransportChange={() => {}}
+            msgRoute=""
+            onMsgRouteChange={() => {}}
+            mailboxTemplateOptions={[{ value: "leader_task_assignment", label: "Leader Assignment" }]}
+            msgTemplate="leader_task_assignment"
+            onMsgTemplateChange={() => {}}
+            onApplyMessageTemplate={() => {}}
+            msgPayload="{}"
+            onMsgPayloadChange={() => {}}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={() => {}}
+            onSendMessage={() => {}}
+            inboxActorId=""
+            onInboxActorIdChange={() => {}}
+            inboxLimit="20"
+            onInboxLimitChange={() => {}}
+            inboxAfterId=""
+            onInboxAfterIdChange={() => {}}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={() => {}}
+            onRefreshInbox={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4306,63 +4328,65 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{ "worker-agent": 1 }}
-          onSelectMember={() => {}}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={() => {}}
-          onJumpToBottom={() => {}}
-          conversationMessages={[pendingMessage]}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => String(ts)}
-          busy="accept-visible"
-          onAcceptMessage={vi.fn()}
-          onAcceptVisibleMessages={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={() => {}}
-          onSendChatMessage={() => {}}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={() => {}}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={() => {}}
-          msgChannel="default"
-          onMsgChannelChange={() => {}}
-          msgTransport="local"
-          onMsgTransportChange={() => {}}
-          msgRoute="{}"
-          onMsgRouteChange={() => {}}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={() => {}}
-          onApplyMessageTemplate={() => {}}
-          msgPayload="{}"
-          onMsgPayloadChange={() => {}}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={() => {}}
-          onSendMessage={() => {}}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={() => {}}
-          inboxLimit="20"
-          onInboxLimitChange={() => {}}
-          inboxAfterId=""
-          onInboxAfterIdChange={() => {}}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={() => {}}
-          onRefreshInbox={() => {}}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{ "worker-agent": 1 }}
+            onSelectMember={() => {}}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={() => {}}
+            onJumpToBottom={() => {}}
+            conversationMessages={[pendingMessage]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => String(ts)}
+            busy="accept-visible"
+            onAcceptMessage={vi.fn()}
+            onAcceptVisibleMessages={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={() => {}}
+            onSendChatMessage={() => {}}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={() => {}}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={() => {}}
+            msgChannel="default"
+            onMsgChannelChange={() => {}}
+            msgTransport="local"
+            onMsgTransportChange={() => {}}
+            msgRoute="{}"
+            onMsgRouteChange={() => {}}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={() => {}}
+            onApplyMessageTemplate={() => {}}
+            msgPayload="{}"
+            onMsgPayloadChange={() => {}}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={() => {}}
+            onSendMessage={() => {}}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={() => {}}
+            inboxLimit="20"
+            onInboxLimitChange={() => {}}
+            inboxAfterId=""
+            onInboxAfterIdChange={() => {}}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={() => {}}
+            onRefreshInbox={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4373,64 +4397,66 @@ describe("team panels interactions", () => {
   it("TeamMailboxPanel disables refresh while any mailbox action is busy", () => {
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          mode="advanced_only"
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{}}
-          onSelectMember={() => {}}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={() => {}}
-          onJumpToBottom={() => {}}
-          conversationMessages={[]}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => String(ts)}
-          busy="send-message"
-          onAcceptMessage={vi.fn()}
-          onAcceptVisibleMessages={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={() => {}}
-          onSendChatMessage={() => {}}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={() => {}}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={() => {}}
-          msgChannel="default"
-          onMsgChannelChange={() => {}}
-          msgTransport="local"
-          onMsgTransportChange={() => {}}
-          msgRoute="{}"
-          onMsgRouteChange={() => {}}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={() => {}}
-          onApplyMessageTemplate={() => {}}
-          msgPayload="{}"
-          onMsgPayloadChange={() => {}}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={() => {}}
-          onSendMessage={() => {}}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={() => {}}
-          inboxLimit="20"
-          onInboxLimitChange={() => {}}
-          inboxAfterId=""
-          onInboxAfterIdChange={() => {}}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={() => {}}
-          onRefreshInbox={() => {}}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            mode="advanced_only"
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={() => {}}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={() => {}}
+            onJumpToBottom={() => {}}
+            conversationMessages={[]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => String(ts)}
+            busy="send-message"
+            onAcceptMessage={vi.fn()}
+            onAcceptVisibleMessages={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={() => {}}
+            onSendChatMessage={() => {}}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={() => {}}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={() => {}}
+            msgChannel="default"
+            onMsgChannelChange={() => {}}
+            msgTransport="local"
+            onMsgTransportChange={() => {}}
+            msgRoute="{}"
+            onMsgRouteChange={() => {}}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={() => {}}
+            onApplyMessageTemplate={() => {}}
+            msgPayload="{}"
+            onMsgPayloadChange={() => {}}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={() => {}}
+            onSendMessage={() => {}}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={() => {}}
+            inboxLimit="20"
+            onInboxLimitChange={() => {}}
+            inboxAfterId=""
+            onInboxAfterIdChange={() => {}}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={() => {}}
+            onRefreshInbox={() => {}}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4442,70 +4468,72 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{}}
-          onSelectMember={vi.fn()}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={vi.fn()}
-          onJumpToBottom={vi.fn()}
-          conversationMessages={[
-            buildMailboxMessage(30, {
-              from_actor_id: "worker-agent",
-              to_actor_id: "leader-agent",
-              status: "delivered",
-              payload:
-                '{"type":"chat_message","text":"mailbox string payload text","source":"team_workbench"}',
-            }),
-          ]}
-          toPrettyJson={toPrettyJson}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={vi.fn()}
-          onSendChatMessage={vi.fn()}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={vi.fn()}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={vi.fn()}
-          msgChannel="default"
-          onMsgChannelChange={vi.fn()}
-          msgTransport="local"
-          onMsgTransportChange={vi.fn()}
-          msgRoute="{}"
-          onMsgRouteChange={vi.fn()}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={vi.fn()}
-          onApplyMessageTemplate={vi.fn()}
-          msgPayload="{}"
-          onMsgPayloadChange={vi.fn()}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={vi.fn()}
-          inboxLimit="20"
-          onInboxLimitChange={vi.fn()}
-          inboxAfterId=""
-          onInboxAfterIdChange={vi.fn()}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={vi.fn()}
-          onRefreshInbox={vi.fn()}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={vi.fn()}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[
+              buildMailboxMessage(30, {
+                from_actor_id: "worker-agent",
+                to_actor_id: "leader-agent",
+                status: "delivered",
+                payload:
+                  '{"type":"chat_message","text":"mailbox string payload text","source":"team_workbench"}',
+              }),
+            ]}
+            toPrettyJson={toPrettyJson}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel="default"
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute="{}"
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4520,69 +4548,71 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={true}
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{}}
-          onSelectMember={vi.fn()}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={vi.fn()}
-          onJumpToBottom={vi.fn()}
-          conversationMessages={[
-            buildMailboxMessage(31, {
-              from_actor_id: "worker-agent",
-              to_actor_id: "leader-agent",
-              status: "delivered",
-              payload: "line one\n\n- line two",
-            }),
-          ]}
-          toPrettyJson={toPrettyJson}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={vi.fn()}
-          onSendChatMessage={vi.fn()}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={vi.fn()}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={vi.fn()}
-          msgChannel="default"
-          onMsgChannelChange={vi.fn()}
-          msgTransport="local"
-          onMsgTransportChange={vi.fn()}
-          msgRoute="{}"
-          onMsgRouteChange={vi.fn()}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={vi.fn()}
-          onApplyMessageTemplate={vi.fn()}
-          msgPayload="{}"
-          onMsgPayloadChange={vi.fn()}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={vi.fn()}
-          inboxLimit="20"
-          onInboxLimitChange={vi.fn()}
-          inboxAfterId=""
-          onInboxAfterIdChange={vi.fn()}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={vi.fn()}
-          onRefreshInbox={vi.fn()}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={true}
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={vi.fn()}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[
+              buildMailboxMessage(31, {
+                from_actor_id: "worker-agent",
+                to_actor_id: "leader-agent",
+                status: "delivered",
+                payload: "line one\n\n- line two",
+              }),
+            ]}
+            toPrettyJson={toPrettyJson}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel="default"
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute="{}"
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4595,69 +4625,71 @@ describe("team panels interactions", () => {
   it("TeamMailboxPanel renders user sub-identities as You", () => {
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={false}
-          snapshot={buildSnapshot()}
-          humanActorId="user"
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-          }}
-          selectedMemberId="user"
-          unreadByMemberId={{ user: 1 }}
-          onSelectMember={vi.fn()}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "user:root",
-            inboxActorId: "user:root",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={vi.fn()}
-          onJumpToBottom={vi.fn()}
-          conversationMessages={[
-            buildMailboxMessage(31, {
-              from_actor_id: "leader-agent",
-              to_actor_id: "user:root",
-              status: "delivered",
-              payload: { type: "chat_message", text: "hello" },
-            }),
-          ]}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={vi.fn()}
-          onSendChatMessage={vi.fn()}
-          msgFromActorId=""
-          onMsgFromActorIdChange={vi.fn()}
-          msgToActorId=""
-          onMsgToActorIdChange={vi.fn()}
-          msgChannel=""
-          onMsgChannelChange={vi.fn()}
-          msgTransport="local"
-          onMsgTransportChange={vi.fn()}
-          msgRoute=""
-          onMsgRouteChange={vi.fn()}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={vi.fn()}
-          onApplyMessageTemplate={vi.fn()}
-          msgPayload="{}"
-          onMsgPayloadChange={vi.fn()}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          inboxActorId=""
-          onInboxActorIdChange={vi.fn()}
-          inboxLimit="20"
-          onInboxLimitChange={vi.fn()}
-          inboxAfterId=""
-          onInboxAfterIdChange={vi.fn()}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={vi.fn()}
-          onRefreshInbox={vi.fn()}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={false}
+            snapshot={buildSnapshot()}
+            humanActorId="user"
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+            }}
+            selectedMemberId="user"
+            unreadByMemberId={{ user: 1 }}
+            onSelectMember={vi.fn()}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "user:root",
+              inboxActorId: "user:root",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[
+              buildMailboxMessage(31, {
+                from_actor_id: "leader-agent",
+                to_actor_id: "user:root",
+                status: "delivered",
+                payload: { type: "chat_message", text: "hello" },
+              }),
+            ]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId=""
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId=""
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel=""
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute=""
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId=""
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
       );
     });
 
@@ -4667,63 +4699,65 @@ describe("team panels interactions", () => {
   it("TeamMailboxPanel hides raw mailbox tools when developer mode is off", () => {
     act(() => {
       root.render(
-        <TeamMailboxPanel
-          developerMode={false}
-          mode="advanced_only"
-          snapshot={buildSnapshot()}
-          displayNameByActorId={{
-            "leader-agent": "Leader Agent",
-            "worker-agent": "Worker Agent",
-          }}
-          selectedMemberId="worker-agent"
-          unreadByMemberId={{}}
-          onSelectMember={vi.fn()}
-          chatActors={{
-            fromActorId: "leader-agent",
-            toActorId: "worker-agent",
-            inboxActorId: "worker-agent",
-          }}
-          chatStickToBottom={true}
-          chatMessagesRef={React.createRef<HTMLUListElement>()}
-          onConversationScroll={vi.fn()}
-          onJumpToBottom={vi.fn()}
-          conversationMessages={[]}
-          toPrettyJson={(value) => JSON.stringify(value)}
-          formatTs={(ts) => `ts-${String(ts)}`}
-          busy={null}
-          onAcceptMessage={vi.fn()}
-          chatDraft=""
-          onChatDraftChange={vi.fn()}
-          onSendChatMessage={vi.fn()}
-          msgFromActorId="leader-agent"
-          onMsgFromActorIdChange={vi.fn()}
-          msgToActorId="worker-agent"
-          onMsgToActorIdChange={vi.fn()}
-          msgChannel="default"
-          onMsgChannelChange={vi.fn()}
-          msgTransport="local"
-          onMsgTransportChange={vi.fn()}
-          msgRoute="{}"
-          onMsgRouteChange={vi.fn()}
-          mailboxTemplateOptions={[]}
-          msgTemplate=""
-          onMsgTemplateChange={vi.fn()}
-          onApplyMessageTemplate={vi.fn()}
-          msgPayload="{}"
-          onMsgPayloadChange={vi.fn()}
-          msgIdempotencyKey=""
-          onMsgIdempotencyKeyChange={vi.fn()}
-          onSendMessage={vi.fn()}
-          inboxActorId="worker-agent"
-          onInboxActorIdChange={vi.fn()}
-          inboxLimit="20"
-          onInboxLimitChange={vi.fn()}
-          inboxAfterId=""
-          onInboxAfterIdChange={vi.fn()}
-          inboxIncludeDelivered={false}
-          onInboxIncludeDeliveredChange={vi.fn()}
-          onRefreshInbox={vi.fn()}
-        />
+        <MantineProvider>
+          <TeamMailboxPanel
+            developerMode={false}
+            mode="advanced_only"
+            snapshot={buildSnapshot()}
+            displayNameByActorId={{
+              "leader-agent": "Leader Agent",
+              "worker-agent": "Worker Agent",
+            }}
+            selectedMemberId="worker-agent"
+            unreadByMemberId={{}}
+            onSelectMember={vi.fn()}
+            chatActors={{
+              fromActorId: "leader-agent",
+              toActorId: "worker-agent",
+              inboxActorId: "worker-agent",
+            }}
+            chatStickToBottom={true}
+            chatMessagesRef={React.createRef<HTMLUListElement>()}
+            onConversationScroll={vi.fn()}
+            onJumpToBottom={vi.fn()}
+            conversationMessages={[]}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            busy={null}
+            onAcceptMessage={vi.fn()}
+            chatDraft=""
+            onChatDraftChange={vi.fn()}
+            onSendChatMessage={vi.fn()}
+            msgFromActorId="leader-agent"
+            onMsgFromActorIdChange={vi.fn()}
+            msgToActorId="worker-agent"
+            onMsgToActorIdChange={vi.fn()}
+            msgChannel="default"
+            onMsgChannelChange={vi.fn()}
+            msgTransport="local"
+            onMsgTransportChange={vi.fn()}
+            msgRoute="{}"
+            onMsgRouteChange={vi.fn()}
+            mailboxTemplateOptions={[]}
+            msgTemplate=""
+            onMsgTemplateChange={vi.fn()}
+            onApplyMessageTemplate={vi.fn()}
+            msgPayload="{}"
+            onMsgPayloadChange={vi.fn()}
+            msgIdempotencyKey=""
+            onMsgIdempotencyKeyChange={vi.fn()}
+            onSendMessage={vi.fn()}
+            inboxActorId="worker-agent"
+            onInboxActorIdChange={vi.fn()}
+            inboxLimit="20"
+            onInboxLimitChange={vi.fn()}
+            inboxAfterId=""
+            onInboxAfterIdChange={vi.fn()}
+            inboxIncludeDelivered={false}
+            onInboxIncludeDeliveredChange={vi.fn()}
+            onRefreshInbox={vi.fn()}
+          />
+        </MantineProvider>
       );
     });
 

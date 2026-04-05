@@ -1,14 +1,10 @@
 import React from "react";
 import { TeamRunEventRecord } from "../api";
+import { ActionButton, SurfaceCard, ToolbarRow } from "../ui/primitives";
 import {
-  TEAM_PANEL_CARD_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
   EVENTS_LIST_CLASS,
   EVENTS_ITEM_CLASS,
   EVENTS_ITEM_HEAD_CLASS,
@@ -49,10 +45,10 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
   } = props;
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+    <SurfaceCard className="p-4">
+      <ToolbarRow>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Run Events</h3>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
+        <div className="flex flex-wrap items-center gap-2">
           <label className={EVENTS_CHECKBOX_LABEL_CLASS}>
             <input
               type="checkbox"
@@ -61,29 +57,31 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
             />
             Auto refresh
           </label>
-          <button
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={() => {
               void onRefreshEvents();
             }}
             disabled={eventsLoading}
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
             title="Refresh events"
             aria-label="Refresh events"
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
-          </button>
-          <button
+          </ActionButton>
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={() => {
               void onLoadOlderEvents();
             }}
             disabled={previewMode || eventsLoading || !eventsHasMore || oldestEventId == null}
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Load Older
-          </button>
+          </ActionButton>
         </div>
-      </div>
+      </ToolbarRow>
       {previewMode && (
         <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
           Showing latest {previewLimit} records.
@@ -103,6 +101,6 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
           </li>
         ))}
       </ul>
-    </div>
+    </SurfaceCard>
   );
 }

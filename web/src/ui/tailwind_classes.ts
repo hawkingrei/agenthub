@@ -371,9 +371,6 @@ export const TASKS_DETAIL_META_ITEM_CLASS =
 export const OVERVIEW_META_CLASS =
   "mb-4 grid min-w-0 gap-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-4 text-[13px] text-notion-text sm:grid-cols-2 xl:grid-cols-3";
 
-export const OVERVIEW_PLAYBOOK_CLASS =
-  "mb-6 rounded-xl border border-notion-border bg-white p-4 sm:p-6 shadow-sm";
-
 export const OVERVIEW_PLAYBOOK_GRID_CLASS = "grid gap-4 md:grid-cols-2 mt-4";
 
 export const OVERVIEW_PLAYBOOK_CARD_CLASS = "rounded-lg border border-notion-border bg-notion-sidebar/20 p-4";

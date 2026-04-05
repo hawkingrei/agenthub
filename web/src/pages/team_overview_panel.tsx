@@ -1,14 +1,19 @@
 import React from "react";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { ActionButton, PanelHeader, StatusPill, SurfaceCard } from "../ui/primitives";
+import {
+  ActionButton,
+  InsetSurface,
+  PanelHeader,
+  SelectableListItem,
+  StatusPill,
+  SurfaceCard,
+} from "../ui/primitives";
 import { resolveDisplayName } from "./team/mailbox_helpers";
 import {
-  TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   OVERVIEW_META_CLASS,
-  OVERVIEW_PLAYBOOK_CLASS,
   OVERVIEW_PLAYBOOK_GRID_CLASS,
   OVERVIEW_PLAYBOOK_CARD_CLASS,
   OVERVIEW_PLAYBOOK_TITLE_CLASS,
@@ -36,11 +41,6 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
     displayNameByActorId = {},
   } = props;
 
-  const memberButtonClassName = (isActive: boolean) =>
-    `team-member-row ${TEAM_LIST_ITEM_BASE_CLASS} ${
-      isActive ? "ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md" : ""
-    }`;
-
   return (
     <SurfaceCard className="p-4">
       <PanelHeader
@@ -62,7 +62,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
         }
       />
 
-      <div className={OVERVIEW_PLAYBOOK_CLASS}>
+      <InsetSurface className="mb-6 bg-white shadow-sm">
         <h4 className="text-[15px] font-bold text-notion-text uppercase tracking-tight">Cold Start Playbook</h4>
         <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>
           On each process start, roles should check unfinished TODOs.
@@ -87,7 +87,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
             </ol>
           </section>
         </div>
-      </div>
+      </InsetSurface>
 
       {!snapshot && <p className={TEAM_MUTED_TEXT_CLASS}>No snapshot yet.</p>}
 
@@ -124,9 +124,10 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
 
           <div className={OVERVIEW_MEMBER_LIST_CLASS}>
             {snapshot.members.map((member) => (
-              <button
+              <SelectableListItem
                 key={member.member_id}
-                className={memberButtonClassName(selectedMemberId === member.member_id)}
+                className="team-member-row"
+                active={selectedMemberId === member.member_id}
                 onClick={() => onOpenMailboxForMember(member.member_id)}
               >
                 <div className="flex w-full min-w-0 items-start justify-between gap-2">
@@ -146,7 +147,7 @@ export function TeamOverviewPanel(props: TeamOverviewPanelProps) {
                 <span className={`${TEAM_LIST_ITEM_META_CLASS} break-words whitespace-normal`}>
                   {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
                 </span>
-              </button>
+              </SelectableListItem>
             ))}
           </div>
         </>

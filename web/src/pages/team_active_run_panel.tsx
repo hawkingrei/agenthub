@@ -1,6 +1,6 @@
 import type { TeamRunRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { TEAM_PANEL_REFRESH_BUTTON_CLASS, TEAM_PANEL_SECONDARY_BUTTON_CLASS } from "../ui/tailwind_classes";
+import { ActionButton, ToolbarRow } from "../ui/primitives";
 
 type TeamActiveRunPanelProps = {
   run: TeamRunRecord;
@@ -35,27 +35,30 @@ export function TeamActiveRunPanel(props: TeamActiveRunPanelProps) {
 
   return (
     <div className={cardClassName}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <ToolbarRow className="mb-3">
         <h3 className={titleClassName}>Active Run</h3>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+          <ActionButton
+            tone="secondary"
+            size="sm"
             title="Refresh active run"
             aria-label="Refresh active run"
             onClick={onRefresh}
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
-          </button>
-          <button
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+          </ActionButton>
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={onCancel}
             disabled={busy === "cancel-run" || run.status === "canceled"}
           >
             Cancel Run
-          </button>
-          <button
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+          </ActionButton>
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={onResume}
             disabled={busy === "resume-run" || !canResumeRun}
             title={
@@ -65,9 +68,10 @@ export function TeamActiveRunPanel(props: TeamActiveRunPanelProps) {
             }
           >
             Resume Run
-          </button>
-          <button
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+          </ActionButton>
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={onRestart}
             disabled={busy === "restart-run" || !canRestartRun}
             title={
@@ -77,9 +81,9 @@ export function TeamActiveRunPanel(props: TeamActiveRunPanelProps) {
             }
           >
             Restart Run
-          </button>
+          </ActionButton>
         </div>
-      </div>
+      </ToolbarRow>
       <div className="mt-3 grid min-w-0 gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
         <span className={metaItemClassName}>
           <strong>ID:</strong> <code>{run.id}</code>

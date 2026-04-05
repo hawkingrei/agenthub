@@ -1,3 +1,4 @@
+import { Box, UnstyledButton } from "@mantine/core";
 import React from "react";
 
 export function cx(...values: Array<string | false | null | undefined>): string {
@@ -6,6 +7,14 @@ export function cx(...values: Array<string | false | null | undefined>): string 
 
 const SURFACE_CARD_BASE_CLASS =
   "min-h-0 rounded-xl border border-notion-border bg-white shadow-sm transition-all";
+const INSET_SURFACE_BASE_CLASS =
+  "min-h-0 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
+const TOOLBAR_ROW_BASE_CLASS =
+  "flex flex-wrap items-center justify-between gap-3";
+const SELECTABLE_LIST_ITEM_BASE_CLASS =
+  "team-item group relative flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white p-4 text-left shadow-sm transition-all hover:border-notion-accent/20 hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60";
+const SELECTABLE_LIST_ITEM_ACTIVE_CLASS =
+  "border-notion-accent/30 bg-notion-hover shadow-md ring-1 ring-notion-accent/30";
 
 const PANEL_HEADER_ROOT_CLASS =
   "flex flex-wrap items-start justify-between gap-3 border-b border-notion-border/60 pb-4";
@@ -60,6 +69,18 @@ export function SurfaceCard({ className, ...props }: SurfaceCardProps) {
   return <div className={cx(SURFACE_CARD_BASE_CLASS, className)} {...props} />;
 }
 
+type InsetSurfaceProps = React.HTMLAttributes<HTMLDivElement>;
+
+export function InsetSurface({ className, ...props }: InsetSurfaceProps) {
+  return <Box className={cx(INSET_SURFACE_BASE_CLASS, className)} {...props} />;
+}
+
+type ToolbarRowProps = React.HTMLAttributes<HTMLDivElement>;
+
+export function ToolbarRow({ className, ...props }: ToolbarRowProps) {
+  return <Box className={cx(TOOLBAR_ROW_BASE_CLASS, className)} {...props} />;
+}
+
 type PanelHeaderProps = {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -95,6 +116,27 @@ export function PanelHeader({
         <div className={cx(PANEL_HEADER_ACTIONS_CLASS, actionsClassName)}>{actions}</div>
       ) : null}
     </div>
+  );
+}
+
+type SelectableListItemProps = React.ComponentPropsWithoutRef<typeof UnstyledButton> & {
+  active?: boolean;
+};
+
+export function SelectableListItem({
+  active = false,
+  className,
+  ...props
+}: SelectableListItemProps) {
+  return (
+    <UnstyledButton
+      className={cx(
+        SELECTABLE_LIST_ITEM_BASE_CLASS,
+        active && SELECTABLE_LIST_ITEM_ACTIVE_CLASS,
+        className
+      )}
+      {...props}
+    />
   );
 }
 
