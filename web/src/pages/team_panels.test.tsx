@@ -43,6 +43,13 @@ function clickElement(element: Element | null): void {
   });
 }
 
+async function openDebugTabAndWait(container: HTMLElement): Promise<void> {
+  clickElement(findButtonByText(container, "Debug"));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+}
+
 function clickMenuTrigger(element: Element | null): void {
   const node = required(element, "element not found");
   act(() => {
@@ -3563,7 +3570,7 @@ describe("team panels interactions", () => {
     expect(composer.classList.contains("shrink-0")).toBe(true);
   });
 
-  it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", () => {
+  it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {
     const onForceNewSession = vi.fn();
 
     renderWithMantine(
@@ -3585,12 +3592,12 @@ describe("team panels interactions", () => {
       />
     );
 
-    clickElement(findButtonByText(container, "Debug"));
+    await openDebugTabAndWait(container);
     clickElement(findButtonByText(container, "Force New Session"));
     expect(onForceNewSession).toHaveBeenCalledTimes(1);
   });
 
-  it("TeamMemberAcpPanel disables ACP debug actions when the corresponding handlers are unavailable", () => {
+  it("TeamMemberAcpPanel disables ACP debug actions when the corresponding handlers are unavailable", async () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -3632,7 +3639,7 @@ describe("team panels interactions", () => {
       />
     );
 
-    clickElement(findButtonByText(container, "Debug"));
+    await openDebugTabAndWait(container);
 
     expect(findButtonByText(container, "Set Mode").disabled).toBe(true);
     expect(findButtonByText(container, "Set Model").disabled).toBe(true);
@@ -3641,7 +3648,7 @@ describe("team panels interactions", () => {
     expect(findButtonByText(container, "Clear Session").disabled).toBe(true);
   });
 
-  it("TeamMemberAcpPanel disables Cancel Run when no ACP run is interruptible", () => {
+  it("TeamMemberAcpPanel disables Cancel Run when no ACP run is interruptible", async () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -3663,7 +3670,7 @@ describe("team panels interactions", () => {
       />
     );
 
-    clickElement(findButtonByText(container, "Debug"));
+    await openDebugTabAndWait(container);
 
     expect(findButtonByText(container, "Cancel Run").disabled).toBe(true);
   });
@@ -3943,25 +3950,24 @@ describe("team panels interactions", () => {
         })
     );
 
-    act(() => {
-      root.render(
-        <TeamMemberAcpPanel
-          developerMode={true}
-          selectedMemberId="worker-agent"
-          selectedMemberSnapshot={null}
-          selectedMemberRole="worker"
-          selectedSessionId="runtime-session-1"
-          memberEvents={[]}
-          memberEventsHasMore={false}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={null}
-          onSendInput={onSendInput}
-          onRefresh={vi.fn()}
-          onLoadOlder={vi.fn()}
-        />
-      );
-    });
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedSessionId="runtime-session-1"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={onSendInput}
+        onRefresh={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
 
     const input = required(
       container.querySelector("textarea") as HTMLTextAreaElement | null,

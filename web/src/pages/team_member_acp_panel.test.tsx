@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../api";
+import * as acpModule from "../acp";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import {
@@ -17,6 +18,21 @@ vi.mock("../hooks/use_acp_conversation", () => ({
 }));
 
 installReactDomTestGlobals();
+
+async function openDebugTabAndWait(container: HTMLElement): Promise<void> {
+  act(() => {
+    required(
+      Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Debug")
+      ) as HTMLButtonElement | undefined,
+      "debug tab button missing"
+    ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+}
 
 function buildAcpEvents(extraMessages: Record<string, unknown>[] = []): AgentEvent[] {
   return [
@@ -242,7 +258,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
-  it("submits selected ACP mode and model values for the team member", () => {
+  it("submits selected ACP mode and model values for the team member", async () => {
     const onAcpSetMode = vi.fn();
     const onAcpSetModel = vi.fn();
 
@@ -291,14 +307,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
-    act(() => {
-      required(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Debug")
-        ) as HTMLButtonElement | undefined,
-        "debug tab button missing"
-      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await openDebugTabAndWait(container);
 
     const modeSelect = required(
       container.querySelector('select[name="acp-mode"]') as HTMLSelectElement | null,
@@ -333,5 +342,54 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
 
     expect(onAcpSetMode).toHaveBeenCalledWith("danger_full_access");
     expect(onAcpSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
+  });
+
+  it("does not rebuild ACP view when parent state changes without member ACP prop changes", () => {
+    const buildAcpViewSpy = vi.spyOn(acpModule, "buildAcpView");
+    const sharedEvents = buildAcpEvents();
+    const panelProps = {
+      developerMode: true,
+      selectedMemberId: "worker-agent",
+      selectedSessionId: "runtime-session-1",
+      selectedMemberRole: "worker",
+      selectedMemberSnapshot: null,
+      memberEvents: sharedEvents,
+      memberEventsHasMore: false,
+      memberEventsLoading: false,
+      eventsLoading: false,
+      oldestMemberEventId: null,
+      onSendInput: vi.fn(),
+      onRefresh: vi.fn(),
+      onLoadOlder: vi.fn(),
+    } as const;
+
+    function Wrapper() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick((current) => current + 1)}>
+            bump {tick}
+          </button>
+          <TeamMemberAcpPanel {...panelProps} />
+        </>
+      );
+    }
+
+    renderWithMantine(root, <Wrapper />);
+    const initialCallCount = buildAcpViewSpy.mock.calls.length;
+    expect(initialCallCount).toBeGreaterThan(0);
+
+    const bumpButton = required(
+      Array.from(container.querySelectorAll("button")).find((candidate) =>
+        candidate.textContent?.includes("bump")
+      ) as HTMLButtonElement | undefined,
+      "parent rerender button missing"
+    );
+
+    act(() => {
+      bumpButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(buildAcpViewSpy).toHaveBeenCalledTimes(initialCallCount);
   });
 });

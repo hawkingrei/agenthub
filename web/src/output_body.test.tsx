@@ -1,6 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { MantineProvider } from "@mantine/core";
 import { OutputBody } from "./components/output_body";
 import { AcpPanelProps } from "./components/acp_panel";
 import { AcpView } from "./acp";
@@ -106,14 +107,16 @@ const renderBody = ({
   acpOverride?: Partial<AcpView>;
 }) =>
   renderToStaticMarkup(
-    <OutputBody
-      terminalRef={React.createRef<HTMLDivElement>()}
-      isOutputLoading={isOutputLoading}
-      isConversationLoading={isConversationLoading}
-      outputs={outputs}
-      ansi={(input) => input}
-      acpPanelProps={makeAcpPanelProps(acpOverride)}
-    />
+    <MantineProvider>
+      <OutputBody
+        terminalRef={React.createRef<HTMLDivElement>()}
+        isOutputLoading={isOutputLoading}
+        isConversationLoading={isConversationLoading}
+        outputs={outputs}
+        ansi={(input) => input}
+        acpPanelProps={makeAcpPanelProps(acpOverride)}
+      />
+    </MantineProvider>
   );
 
 describe("OutputBody", () => {
