@@ -1552,7 +1552,6 @@ function deriveToolCallHint(title: string, rawInput: unknown, content?: string):
   }
   return "";
 }
-
 type NormalizedToolPayload =
   | { kind: "empty" }
   | { kind: "text"; text: string }

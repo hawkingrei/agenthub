@@ -3,7 +3,7 @@ import type { MenuProps, ModalProps } from "@mantine/core";
 export const FLOATING_MENU_WITHIN_PORTAL = import.meta.env.MODE !== "test";
 
 export const NOTION_FLOATING_SURFACE_BASE_CLASS =
-  "rounded-xl border border-black/[0.06] bg-white/98 shadow-[0_20px_24px_rgba(25,25,25,0.05),0_5px_8px_rgba(25,25,25,0.027),0_0_0_1px_rgba(42,28,0,0.07)] backdrop-blur-md";
+  "rounded-xl border border-notion-border-subtle bg-notion-surface-overlay-strong shadow-notion-float backdrop-blur-md";
 
 export const NOTION_FLOATING_PANEL_CLASS = `${NOTION_FLOATING_SURFACE_BASE_CLASS} px-3 py-2`;
 export const NOTION_FLOATING_LIST_PANEL_CLASS = `${NOTION_FLOATING_SURFACE_BASE_CLASS} p-1.5`;
@@ -26,7 +26,7 @@ export const NOTION_FLOATING_MENU_PROPS: Partial<MenuProps> = {
 
 export const NOTION_MODAL_CLASSNAMES: NonNullable<ModalProps["classNames"]> = {
   content: NOTION_FLOATING_SURFACE_BASE_CLASS,
-  header: "min-h-0 border-b border-black/[0.06] bg-transparent px-4 py-3",
+  header: "min-h-0 border-b border-notion-border-subtle bg-transparent px-4 py-3",
   title: "text-[12px] font-semibold tracking-tight text-notion-text",
   body: "px-4 py-4",
   close: "rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text",
@@ -34,9 +34,8 @@ export const NOTION_MODAL_CLASSNAMES: NonNullable<ModalProps["classNames"]> = {
 
 export const TEAM_MODAL_CLASSNAMES: NonNullable<ModalProps["classNames"]> = {
   ...NOTION_MODAL_CLASSNAMES,
-  content:
-    "rounded-xl border border-black/[0.06] bg-[#f8f5ee] shadow-[0_20px_24px_rgba(25,25,25,0.05),0_5px_8px_rgba(25,25,25,0.027),0_0_0_1px_rgba(42,28,0,0.07)] backdrop-blur-md",
-  title: "text-[11px] font-bold uppercase tracking-[0.16em] text-[#5b6775]",
+  content: "rounded-xl border border-notion-border-subtle bg-notion-bg-panel shadow-notion-float backdrop-blur-md",
+  title: "text-[11px] font-bold uppercase tracking-[0.16em] text-notion-text-muted",
 };
 
 export const NOTION_MODAL_OVERLAY_PROPS: ModalProps["overlayProps"] = {

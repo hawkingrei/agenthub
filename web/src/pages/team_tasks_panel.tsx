@@ -7,6 +7,11 @@ import type {
   TeamTaskStatus,
 } from "../api";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
+import {
+  ActionButton,
+  SelectableListItem,
+  ToolbarRow,
+} from "../ui/primitives";
 import { selectRunsForTask } from "./team/run_helpers";
 import type { TeamMemberLiveState } from "./team/member_helpers";
 import {
@@ -15,9 +20,6 @@ import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRE_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -285,7 +287,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
 
   const boardPanel = (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <ToolbarRow>
         <div>
           <p className="text-sm font-bold text-notion-text uppercase tracking-widest">Board lanes</p>
           <p className="mt-1 text-[12px] text-notion-text-muted">
@@ -297,7 +299,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           <span aria-hidden="true">·</span>
           <span>{`${visibleTasks.length} tasks`}</span>
         </div>
-      </div>
+      </ToolbarRow>
 
       <div className={TASKS_BOARD_SCROLL_CLASS}>
         <div className={TASKS_BOARD_LANES_CLASS}>
@@ -345,19 +347,17 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                   )}
                   {!showInitialLoadingState &&
                     laneTasks.map((task) => (
-                      <div
+                      <SelectableListItem
                         key={task.id}
                         className={
                           task.id === selectedTask?.id
                             ? TASKS_BOARD_CARD_ACTIVE_CLASS
                             : TASKS_BOARD_CARD_IDLE_CLASS
                         }
+                        active={task.id === selectedTask?.id}
+                        onClick={() => onSelectTask(task.id)}
                       >
-                        <button
-                          type="button"
-                          className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}
-                          onClick={() => onSelectTask(task.id)}
-                        >
+                        <span className={TASKS_BOARD_CARD_SELECT_BUTTON_CLASS}>
                           <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>{task.title}</span>
                           <span className={TASKS_BOARD_CARD_META_ROW_CLASS}>
                             <span>{`upd ${formatTs(task.updated_at)}`}</span>
@@ -369,8 +369,8 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                           {developerMode && (
                             <span className={TEAM_LIST_ITEM_META_CLASS}>{task.id}</span>
                           )}
-                        </button>
-                      </div>
+                        </span>
+                      </SelectableListItem>
                     ))}
                 </div>
               </section>
@@ -444,13 +444,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-              onClick={() => onOpenConversation(selectedTask.id)}
-            >
+            <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation(selectedTask.id)}>
               Open thread
-            </button>
+            </ActionButton>
           </div>
 
           <div className={TASKS_RUN_LIST_CLASS}>
@@ -503,13 +499,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                     </div>
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                      onClick={() => onOpenRun(latestRun.id)}
-                    >
+                    <ActionButton tone="secondary" size="md" onClick={() => onOpenRun(latestRun.id)}>
                       Open Run
-                    </button>
+                    </ActionButton>
                   </div>
                 </>
               )}
@@ -527,9 +519,8 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 </div>
                 <div className="mt-4 space-y-2">
                   {relatedRuns.slice(1, 4).map((run) => (
-                    <button
+                    <SelectableListItem
                       key={run.id}
-                      type="button"
                       className="flex w-full flex-col items-start gap-1 rounded-md border border-notion-border bg-white px-3 py-2 text-left transition hover:bg-notion-hover"
                       onClick={() => onOpenRun(run.id)}
                     >
@@ -545,7 +536,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                       <span className="text-[13px] font-medium text-notion-text">
                         {run.summary?.trim() || "No summary recorded."}
                       </span>
-                    </button>
+                    </SelectableListItem>
                   ))}
                 </div>
               </div>
@@ -573,16 +564,16 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
               </summary>
               <div className={TASKS_DEBUG_BODY_CLASS}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                  <ActionButton
+                    tone="primary"
+                    size="md"
                     onClick={() => {
                       void onCompileTaskRunPreview();
                     }}
                     disabled={!canCompileTask}
                   >
                     Compile Preview
-                  </button>
+                  </ActionButton>
                   <TextInput
                     className="min-w-[220px] flex-1"
                     placeholder="context_id override (optional)"
@@ -602,23 +593,19 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                     data-team-compile-preview="true"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-                        onClick={onUseCompiledRunPayload}
-                      >
+                      <ActionButton tone="secondary" size="md" onClick={onUseCompiledRunPayload}>
                         Use Payload in Create Run
-                      </button>
-                      <button
-                        type="button"
-                        className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                      </ActionButton>
+                      <ActionButton
+                        tone="primary"
+                        size="md"
                         onClick={() => {
                           void onCreateRunFromCompiledPreview();
                         }}
                         disabled={busy === "create-run"}
                       >
                         Create Run from Preview
-                      </button>
+                      </ActionButton>
                     </div>
                     <div className="grid gap-3 text-sm text-notion-text sm:grid-cols-2">
                       <div className={TASKS_DETAIL_META_ITEM_CLASS}>
@@ -668,12 +655,12 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
 
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`} data-team-surface="kanban">
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <button
-            type="button"
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+          <ActionButton
+            tone="secondary"
+            size="md"
             onClick={() => {
               void onRefreshTasks();
             }}
@@ -683,9 +670,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
-          </button>
+          </ActionButton>
         </div>
-      </div>
+      </ToolbarRow>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="min-w-[220px] flex-1 rounded-md border border-notion-border bg-notion-sidebar/30 px-4 py-3 text-[14px] text-notion-text-muted italic">
@@ -693,13 +680,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           through <strong className="text-notion-text"># all</strong>; leader planning and Team
           runtime create and advance tasks here.
         </div>
-        <button
-          type="button"
-          className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-          onClick={() => onOpenConversation()}
-        >
+        <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation()}>
           Open # all
-        </button>
+        </ActionButton>
       </div>
 
       <div className={`${TASKS_FILTER_BAR_CLASS} mt-4`}>

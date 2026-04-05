@@ -937,7 +937,11 @@ describe("team panels interactions", () => {
   it("TeamTabsBar renders product tabs and switches selected tab", () => {
     const onTabChange = vi.fn();
     act(() => {
-      root.render(<TeamTabsBar tab="runs" onTabChange={onTabChange} />);
+      root.render(
+        <MantineProvider>
+          <TeamTabsBar tab="runs" onTabChange={onTabChange} />
+        </MantineProvider>
+      );
     });
 
     expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
@@ -1040,7 +1044,11 @@ describe("team panels interactions", () => {
     };
 
     act(() => {
-      root.render(<TeamStepsPanel {...baseProps} />);
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel {...baseProps} />
+        </MantineProvider>
+      );
     });
 
     clickElement(findButtonByAriaLabel(container, "Refresh steps"));
@@ -1083,7 +1091,11 @@ describe("team panels interactions", () => {
     );
 
     act(() => {
-      root.render(<TeamStepsPanel {...baseProps} stepAction="complete" />);
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel {...baseProps} stepAction="complete" />
+        </MantineProvider>
+      );
     });
     changeInputValue(
       required(
@@ -1094,7 +1106,11 @@ describe("team panels interactions", () => {
     );
 
     act(() => {
-      root.render(<TeamStepsPanel {...baseProps} stepAction="fail" />);
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel {...baseProps} stepAction="fail" />
+        </MantineProvider>
+      );
     });
     changeInputValue(
       required(container.querySelector('input[placeholder="error_text"]') as HTMLInputElement | null, "error_text input missing"),
@@ -1102,7 +1118,11 @@ describe("team panels interactions", () => {
     );
 
     act(() => {
-      root.render(<TeamStepsPanel {...baseProps} stepAction="input_required" />);
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel {...baseProps} stepAction="input_required" />
+        </MantineProvider>
+      );
     });
     changeInputValue(
       required(container.querySelector('input[placeholder="reason (optional)"]') as HTMLInputElement | null, "reason input missing"),
@@ -1117,7 +1137,11 @@ describe("team panels interactions", () => {
     );
 
     act(() => {
-      root.render(<TeamStepsPanel {...baseProps} stepAction="resume" />);
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel {...baseProps} stepAction="resume" />
+        </MantineProvider>
+      );
     });
     changeInputValue(
       required(
@@ -1147,39 +1171,41 @@ describe("team panels interactions", () => {
   it("TeamStepsPanel supports list-only and controls-only modes", () => {
     act(() => {
       root.render(
-        <TeamStepsPanel
-          developerMode={true}
-          mode="list_only"
-          steps={[buildStep({ id: "step-1", status: "working" })]}
-          onRefreshSteps={() => {}}
-          stepKey=""
-          onStepKeyChange={() => {}}
-          stepMemberId=""
-          onStepMemberIdChange={() => {}}
-          stepDependsOn=""
-          onStepDependsOnChange={() => {}}
-          stepInput="{}"
-          onStepInputChange={() => {}}
-          onSubmitStep={() => {}}
-          busy={null}
-          selectedStepId=""
-          onSelectedStepIdChange={() => {}}
-          stepAction="start"
-          onStepActionChange={() => {}}
-          stepRemoteTaskId=""
-          onStepRemoteTaskIdChange={() => {}}
-          stepOutput="{}"
-          onStepOutputChange={() => {}}
-          stepFailText=""
-          onStepFailTextChange={() => {}}
-          stepInputReason=""
-          onStepInputReasonChange={() => {}}
-          stepInputRequiredPayload="{}"
-          onStepInputRequiredPayloadChange={() => {}}
-          stepResumePayload="{}"
-          onStepResumePayloadChange={() => {}}
-          onApplyStepAction={() => {}}
-        />
+        <MantineProvider>
+          <TeamStepsPanel
+            developerMode={true}
+            mode="list_only"
+            steps={[buildStep({ id: "step-1", status: "working" })]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
       );
     });
     expect(container.textContent).toContain("Step operations were moved to Debug -> Step Ops.");
@@ -1192,39 +1218,41 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamStepsPanel
-          developerMode={true}
-          mode="controls_only"
-          steps={[buildStep({ id: "step-1", status: "working" })]}
-          onRefreshSteps={() => {}}
-          stepKey=""
-          onStepKeyChange={() => {}}
-          stepMemberId=""
-          onStepMemberIdChange={() => {}}
-          stepDependsOn=""
-          onStepDependsOnChange={() => {}}
-          stepInput="{}"
-          onStepInputChange={() => {}}
-          onSubmitStep={() => {}}
-          busy={null}
-          selectedStepId=""
-          onSelectedStepIdChange={() => {}}
-          stepAction="start"
-          onStepActionChange={() => {}}
-          stepRemoteTaskId=""
-          onStepRemoteTaskIdChange={() => {}}
-          stepOutput="{}"
-          onStepOutputChange={() => {}}
-          stepFailText=""
-          onStepFailTextChange={() => {}}
-          stepInputReason=""
-          onStepInputReasonChange={() => {}}
-          stepInputRequiredPayload="{}"
-          onStepInputRequiredPayloadChange={() => {}}
-          stepResumePayload="{}"
-          onStepResumePayloadChange={() => {}}
-          onApplyStepAction={() => {}}
-        />
+        <MantineProvider>
+          <TeamStepsPanel
+            developerMode={true}
+            mode="controls_only"
+            steps={[buildStep({ id: "step-1", status: "working" })]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
       );
     });
     expect(findButtonByText(container, "Submit Step")).toBeDefined();
@@ -1232,39 +1260,41 @@ describe("team panels interactions", () => {
 
     act(() => {
       root.render(
-        <TeamStepsPanel
-          developerMode={false}
-          mode="list_only"
-          steps={[buildStep({ id: "step-1", status: "working" })]}
-          onRefreshSteps={() => {}}
-          stepKey=""
-          onStepKeyChange={() => {}}
-          stepMemberId=""
-          onStepMemberIdChange={() => {}}
-          stepDependsOn=""
-          onStepDependsOnChange={() => {}}
-          stepInput="{}"
-          onStepInputChange={() => {}}
-          onSubmitStep={() => {}}
-          busy={null}
-          selectedStepId=""
-          onSelectedStepIdChange={() => {}}
-          stepAction="start"
-          onStepActionChange={() => {}}
-          stepRemoteTaskId=""
-          onStepRemoteTaskIdChange={() => {}}
-          stepOutput="{}"
-          onStepOutputChange={() => {}}
-          stepFailText=""
-          onStepFailTextChange={() => {}}
-          stepInputReason=""
-          onStepInputReasonChange={() => {}}
-          stepInputRequiredPayload="{}"
-          onStepInputRequiredPayloadChange={() => {}}
-          stepResumePayload="{}"
-          onStepResumePayloadChange={() => {}}
-          onApplyStepAction={() => {}}
-        />
+        <MantineProvider>
+          <TeamStepsPanel
+            developerMode={false}
+            mode="list_only"
+            steps={[buildStep({ id: "step-1", status: "working" })]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
       );
     });
     expect(container.textContent).toContain("Step controls are available in Developer Mode.");

@@ -1,4 +1,4 @@
-import { Box, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Box, UnstyledButton } from "@mantine/core";
 import React from "react";
 
 export function cx(...values: Array<string | false | null | undefined>): string {
@@ -63,13 +63,13 @@ const ICON_BUTTON_TONE_CLASS = {
 const STATUS_PILL_BASE_CLASS =
   "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
 
-type SurfaceCardProps = React.HTMLAttributes<HTMLDivElement>;
+type SurfaceCardProps = React.ComponentPropsWithoutRef<typeof Box>;
 
 export function SurfaceCard({ className, ...props }: SurfaceCardProps) {
-  return <div className={cx(SURFACE_CARD_BASE_CLASS, className)} {...props} />;
+  return <Box className={cx(SURFACE_CARD_BASE_CLASS, className)} {...props} />;
 }
 
-type InsetSurfaceProps = React.HTMLAttributes<HTMLDivElement>;
+type InsetSurfaceProps = React.ComponentPropsWithoutRef<typeof Box>;
 
 export function InsetSurface({ className, ...props }: InsetSurfaceProps) {
   return <Box className={cx(INSET_SURFACE_BASE_CLASS, className)} {...props} />;
@@ -103,19 +103,19 @@ export function PanelHeader({
   actionsClassName,
 }: PanelHeaderProps) {
   return (
-    <div className={cx(PANEL_HEADER_ROOT_CLASS, className)}>
-      <div className={cx(PANEL_HEADER_CONTENT_CLASS, contentClassName)}>
-        <div className={cx(PANEL_HEADER_TITLE_CLASS, titleClassName)}>{title}</div>
+    <Box className={cx(PANEL_HEADER_ROOT_CLASS, className)}>
+      <Box className={cx(PANEL_HEADER_CONTENT_CLASS, contentClassName)}>
+        <Box className={cx(PANEL_HEADER_TITLE_CLASS, titleClassName)}>{title}</Box>
         {subtitle ? (
-          <div className={cx(PANEL_HEADER_SUBTITLE_CLASS, subtitleClassName)}>
+          <Box className={cx(PANEL_HEADER_SUBTITLE_CLASS, subtitleClassName)}>
             {subtitle}
-          </div>
+          </Box>
         ) : null}
-      </div>
+      </Box>
       {actions ? (
-        <div className={cx(PANEL_HEADER_ACTIONS_CLASS, actionsClassName)}>{actions}</div>
+        <Box className={cx(PANEL_HEADER_ACTIONS_CLASS, actionsClassName)}>{actions}</Box>
       ) : null}
-    </div>
+    </Box>
   );
 }
 
@@ -140,7 +140,7 @@ export function SelectableListItem({
   );
 }
 
-type ActionButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+type ActionButtonProps = React.ComponentPropsWithoutRef<typeof UnstyledButton> & {
   tone?: keyof typeof ACTION_BUTTON_TONE_CLASS;
   size?: keyof typeof ACTION_BUTTON_SIZE_CLASS;
 };
@@ -153,7 +153,7 @@ export function ActionButton({
   ...props
 }: ActionButtonProps) {
   return (
-    <button
+    <UnstyledButton
       type={type}
       className={cx(
         ACTION_BUTTON_BASE_CLASS,
@@ -166,7 +166,7 @@ export function ActionButton({
   );
 }
 
-type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+type IconButtonProps = React.ComponentPropsWithoutRef<typeof ActionIcon> & {
   tone?: keyof typeof ICON_BUTTON_TONE_CLASS;
   size?: keyof typeof ICON_BUTTON_SIZE_CLASS;
 };
@@ -179,7 +179,8 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   return (
-    <button
+    <ActionIcon
+      unstyled
       type={type}
       className={cx(
         ICON_BUTTON_BASE_CLASS,

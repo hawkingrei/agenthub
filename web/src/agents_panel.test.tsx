@@ -1,3 +1,5 @@
+import type React from "react";
+import { MantineProvider } from "@mantine/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AgentsPanel } from "./components/agents_panel";
@@ -54,8 +56,11 @@ const baseProps = {
 };
 
 describe("AgentsPanel", () => {
+  const renderHtml = (node: React.ReactElement) =>
+    renderToStaticMarkup(<MantineProvider>{node}</MantineProvider>);
+
   it("renders collapsed rail when collapsed", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel {...baseProps} agentsCollapsed={true} />
     );
     expect(html).toContain("agents-rail");
@@ -69,7 +74,7 @@ describe("AgentsPanel", () => {
   });
 
   it("renders collapsed permission indicator when pending permissions exist", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={true}
@@ -82,7 +87,7 @@ describe("AgentsPanel", () => {
   });
 
   it("renders list and actions when expanded", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel {...baseProps} agentsCollapsed={false} />
     );
     expect(html).toContain("agents-backdrop");
@@ -105,7 +110,7 @@ describe("AgentsPanel", () => {
   });
 
   it("renders per-agent permission indicator in expanded mode", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -117,7 +122,7 @@ describe("AgentsPanel", () => {
   });
 
   it("renders singular pending-permission label for one pending item", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -128,7 +133,7 @@ describe("AgentsPanel", () => {
   });
 
   it("omits per-agent indicator when count is zero", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -139,7 +144,7 @@ describe("AgentsPanel", () => {
   });
 
   it("renders spinning start icon when agent is starting", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -152,14 +157,14 @@ describe("AgentsPanel", () => {
   });
 
   it("marks the expanded panel for compact two-line rows when requested", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel {...baseProps} agentsCollapsed={false} compactRows={true} />
     );
     expect(html).toContain("agents-panel-compact-rows");
   });
 
   it("shows remote node badge and renders remote-start affordance copy", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -182,7 +187,7 @@ describe("AgentsPanel", () => {
   });
 
   it("announces starting state before remote-start copy", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}
@@ -204,7 +209,7 @@ describe("AgentsPanel", () => {
   });
 
   it("announces already-running state before remote-start copy", () => {
-    const html = renderToStaticMarkup(
+    const html = renderHtml(
       <AgentsPanel
         {...baseProps}
         agentsCollapsed={false}

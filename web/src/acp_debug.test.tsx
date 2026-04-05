@@ -1,3 +1,4 @@
+import { MantineProvider } from "@mantine/core";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -50,8 +51,15 @@ const baseProps: AcpDebugProps = {
 };
 
 describe("AcpDebug", () => {
+  const renderHtml = (props: AcpDebugProps) =>
+    renderToStaticMarkup(
+      <MantineProvider>
+        <AcpDebug {...props} />
+      </MantineProvider>
+    );
+
   it("defaults to session controls view", () => {
-    const html = renderToStaticMarkup(<AcpDebug {...baseProps} />);
+    const html = renderHtml(baseProps);
     expect(html).toContain("Session Controls");
     expect(html).toContain("Mode ID");
     expect(html).toContain("Model ID");
@@ -63,7 +71,7 @@ describe("AcpDebug", () => {
   });
 
   it("renders debug tabs", () => {
-    const html = renderToStaticMarkup(<AcpDebug {...baseProps} />);
+    const html = renderHtml(baseProps);
     expect(html).toContain("Terminal");
     expect(html).toContain("Runtime");
     expect(html).toContain("Permissions");
@@ -71,11 +79,11 @@ describe("AcpDebug", () => {
   });
 
   it("renders terminal tab with output", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug
-        {...baseProps}
-        initialTab="terminal"
-        terminalOutputs={[
+    const html = renderHtml(
+      {
+        ...baseProps,
+        initialTab: "terminal",
+        terminalOutputs: [
           {
             event_id: 1,
             ts: 1,
@@ -85,8 +93,8 @@ describe("AcpDebug", () => {
             agent_id: "agent-1",
             session_id: "session-1",
           },
-        ]}
-      />
+        ],
+      }
     );
     expect(html).toContain("Terminal");
     expect(html).toContain("hello terminal");
@@ -98,8 +106,8 @@ describe("AcpDebug", () => {
   });
 
   it("renders runtime metrics tab when initial tab is runtime", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug {...baseProps} initialTab="runtime" />
+    const html = renderHtml(
+      { ...baseProps, initialTab: "runtime" }
     );
     expect(html).toContain("Runtime Metrics");
     expect(html).toContain("12");
@@ -111,11 +119,11 @@ describe("AcpDebug", () => {
   });
 
   it("renders permissions tab with jump/copy controls", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug
-        {...baseProps}
-        initialTab="permissions"
-        acpPermissionHistory={[
+    const html = renderHtml(
+      {
+        ...baseProps,
+        initialTab: "permissions",
+        acpPermissionHistory: [
           {
             id: "perm-1",
             agent_id: "agent-1",
@@ -137,8 +145,8 @@ describe("AcpDebug", () => {
             created_at: 3,
             tool_call_id: "",
           },
-        ]}
-      />
+        ],
+      }
     );
     expect(html).toContain("Permissions");
     expect(html).toContain("Read file");
@@ -148,12 +156,12 @@ describe("AcpDebug", () => {
   });
 
   it("renders raw events tab list when initial tab is raw", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug
-        {...baseProps}
-        initialTab="raw"
-        rawEvents={[{ ts: 1, type: "agent_message", payload: { text: "hello" } }]}
-      />
+    const html = renderHtml(
+      {
+        ...baseProps,
+        initialTab: "raw",
+        rawEvents: [{ ts: 1, type: "agent_message", payload: { text: "hello" } }],
+      }
     );
     expect(html).toContain("Raw Events");
     expect(html).toContain("agent_message");
@@ -161,10 +169,10 @@ describe("AcpDebug", () => {
   });
 
   it("renders model and mode selectors from ACP config options", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug
-        {...baseProps}
-        configOptions={[
+    const html = renderHtml(
+      {
+        ...baseProps,
+        configOptions: [
           {
             id: "mode",
             label: "Mode",
@@ -183,8 +191,8 @@ describe("AcpDebug", () => {
               { valueId: "gpt-5", label: "GPT-5" },
             ],
           },
-        ]}
-      />
+        ],
+      }
     );
     expect(html).toContain("Workspace Write");
     expect(html).toContain("Full Access");
@@ -194,10 +202,10 @@ describe("AcpDebug", () => {
   });
 
   it("renders fallback mode and model inputs with the resolved current values", () => {
-    const html = renderToStaticMarkup(
-      <AcpDebug
-        {...baseProps}
-        configOptions={[
+    const html = renderHtml(
+      {
+        ...baseProps,
+        configOptions: [
           {
             id: "mode",
             label: "Mode",
@@ -210,8 +218,8 @@ describe("AcpDebug", () => {
             currentValueId: "gemini-2.5-pro",
             selectOptions: [],
           },
-        ]}
-      />
+        ],
+      }
     );
 
     expect(html).toContain('name="acp-mode"');

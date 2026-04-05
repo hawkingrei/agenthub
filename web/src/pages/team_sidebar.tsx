@@ -1,12 +1,12 @@
 import React from "react";
-import { CloseButton, Menu, TextInput } from "@mantine/core";
+import { CloseButton, Menu, TextInput, UnstyledButton } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
+import { ActionButton, IconButton } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
   TEAM_SIDEBAR_META_GRID_CLASS,
   TEAM_SIDEBAR_ROOT_CLASS,
   TEAM_SIDEBAR_SECTION_CLASS,
@@ -254,8 +254,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 {...NOTION_FLOATING_MENU_PROPS}
               >
                 <Menu.Target>
-                  <button
-                    type="button"
+                  <UnstyledButton
                     className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-left transition hover:bg-notion-hover"
                     aria-label="Open selected team menu"
                     title="Open selected team menu"
@@ -266,7 +265,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                     <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-notion-text-muted">
                       <i className="bi bi-three-dots" aria-hidden="true" />
                     </span>
-                  </button>
+                  </UnstyledButton>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Label>{selectedTeam.name}</Menu.Label>
@@ -364,30 +363,33 @@ export function TeamSidebar(props: TeamSidebarProps) {
           </div>
           {showTeamSelector && (
             <div className="flex items-center gap-1.5 pt-0.5">
-              <button
+              <IconButton
                 onClick={() => {
                   void onRefreshTeams();
                 }}
                 disabled={busy === "refresh-teams"}
-                className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} inline-flex h-8 w-8 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text`}
+                tone="subtle"
+                size="md"
+                className="h-8 w-8 text-notion-text-muted hover:bg-notion-hover hover:text-notion-text"
                 title="Refresh teams"
                 aria-label="Refresh teams"
               >
                 <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              </button>
+              </IconButton>
               <Menu
                 position="bottom-end"
                 {...NOTION_FLOATING_MENU_PROPS}
               >
                 <Menu.Target>
-                  <button
-                    type="button"
+                  <IconButton
+                    tone="default"
+                    size="md"
                     className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-8`}
                     aria-label="Open team actions"
                     title="Open team actions"
                   >
                     <i className="bi bi-three-dots" aria-hidden="true" />
-                  </button>
+                  </IconButton>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Item
@@ -425,8 +427,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
 
       {showTeamSelector && (
         <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-          <button
-            type="button"
+          <UnstyledButton
             className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
             onClick={() => toggleSection("teams")}
             aria-expanded={sectionOpen.teams}
@@ -437,7 +438,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
               className={sectionOpen.teams ? "bi bi-chevron-down" : "bi bi-chevron-right"}
               aria-hidden="true"
             />
-          </button>
+          </UnstyledButton>
           {sectionOpen.teams && (
             <div className="mt-1.5 space-y-1">
               {teams.length > 0 && (
@@ -475,9 +476,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   const summaryLabel = formatTeamMemberSummary(summary);
                   const isSelected = team.id === selectedTeamId;
                   return (
-                    <button
+                    <UnstyledButton
                       key={team.id}
-                      type="button"
                       className={
                         isSelected
                           ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
@@ -500,21 +500,17 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           {summaryLabel}
                         </span>
                       )}
-                    </button>
+                    </UnstyledButton>
                   );
                 })}
               </div>
 
               {teams.length === 0 && (
                 <div className="mt-2 px-2">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-md border border-notion-border bg-white px-3 py-1.5 text-[13px] font-medium text-notion-text transition hover:bg-notion-hover"
-                    onClick={onOpenCreateTeam}
-                  >
+                  <ActionButton tone="secondary" size="md" className="w-full justify-start gap-2 px-3 py-1.5 text-[13px] font-medium" onClick={onOpenCreateTeam}>
                     <i className="bi bi-plus-lg" aria-hidden="true" />
                     <span>New Team</span>
-                  </button>
+                  </ActionButton>
                 </div>
               )}
             </div>
@@ -528,8 +524,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
             <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
               Workflow
             </div>
-            <button
-              type="button"
+            <UnstyledButton
               className={
                 tab === "conversation"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -545,9 +540,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 #
               </span>
               <span className="truncate text-[13px]"># all</span>
-            </button>
-            <button
-              type="button"
+            </UnstyledButton>
+            <UnstyledButton
               className={
                 tab === "tasks"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -558,12 +552,11 @@ export function TeamSidebar(props: TeamSidebarProps) {
             >
               <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
               <span className="truncate text-[13px]">Kanban</span>
-            </button>
+            </UnstyledButton>
           </div>
 
           <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-            <button
-              type="button"
+            <UnstyledButton
               className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
               onClick={() => toggleSection("agents")}
               aria-expanded={sectionOpen.agents}
@@ -574,7 +567,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                 className={sectionOpen.agents ? "bi bi-chevron-down" : "bi bi-chevron-right"}
                 aria-hidden="true"
               />
-            </button>
+            </UnstyledButton>
             {sectionOpen.agents && (
               <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} px-1`}>
                 {memberLiveStates.length === 0 && (
@@ -589,9 +582,8 @@ export function TeamSidebar(props: TeamSidebarProps) {
                   const currentWorkLabel = resolveCurrentWorkLabel(member);
                   const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   return (
-                    <button
+                    <UnstyledButton
                       key={member.member_id}
-                      type="button"
                       className={
                         isActiveMember
                           ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
@@ -629,7 +621,7 @@ export function TeamSidebar(props: TeamSidebarProps) {
                           {currentWorkLabel}
                         </span>
                       )}
-                    </button>
+                    </UnstyledButton>
                   );
                 })}
               </div>
