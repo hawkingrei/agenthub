@@ -20,7 +20,7 @@ type PlanSummary = {
 
 export function AcpPlan({ plan }: AcpPlanProps) {
   const entries = plan?.entries ?? [];
-  const summary = summarizePlan(entries.map((entry) => ({ status: entry.status })));
+  const summary = summarizePlanEntries(entries);
   return (
     <section className="acp-plan-view flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
       <div className="rounded-xl border border-ui-border bg-ui-surface p-3 shadow-sm sm:p-4">
@@ -75,7 +75,7 @@ export function AcpPlan({ plan }: AcpPlanProps) {
   );
 }
 
-function summarizePlan(
+export function summarizePlanEntries(
   entries: Array<{ status?: string }>
 ): PlanSummary {
   const total = entries.length;

@@ -83,7 +83,8 @@ describe("InputDock interrupt placement", () => {
     expect(html).toContain('aria-haspopup="menu"');
     expect(html).toContain('aria-label="Show sent command history"');
     expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("absolute");
-    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("bottom-[calc(100%+0.5rem)]");
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("bottom-[calc(100%+1rem)]");
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("z-[80]");
   });
 
   it("keeps jump-to-bottom control outside the editor grid flow", () => {

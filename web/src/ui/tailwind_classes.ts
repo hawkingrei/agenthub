@@ -638,7 +638,7 @@ export const INPUT_DOCK_HISTORY_BUTTON_CLASS =
   "history-toggle inline-flex h-8 items-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[12px] font-semibold text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-notion-hover active:translate-y-px";
 
 export const INPUT_DOCK_HISTORY_MENU_CLASS =
-  `input-history-menu absolute bottom-[calc(100%+0.5rem)] left-0 z-30 max-h-60 min-w-[15rem] max-w-[min(26rem,calc(100vw-48px))] overflow-y-auto ${NOTION_FLOATING_LIST_PANEL_CLASS}`;
+  `input-history-menu absolute bottom-[calc(100%+1rem)] left-0 z-[80] max-h-60 min-w-[15rem] max-w-[min(26rem,calc(100vw-48px))] overflow-y-auto ${NOTION_FLOATING_LIST_PANEL_CLASS}`;
 
 export const INPUT_DOCK_HISTORY_ITEM_CLASS =
   "input-history-item block w-full rounded-lg px-3 py-2 text-left text-[13px] text-notion-text hover:bg-notion-hover transition";
