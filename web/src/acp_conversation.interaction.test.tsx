@@ -85,11 +85,14 @@ describe("AcpConversation fold interactions", () => {
     if (!toolFold) return;
 
     const findSubfold = (label: string): HTMLDetailsElement => {
-      const fold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+      const wrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
         const firstSpan = node.querySelector("summary span");
         return firstSpan?.textContent?.trim() === label;
-      }) as HTMLDetailsElement | undefined;
-      if (!fold) throw new Error(`subfold not found: ${label}`);
+      }) as HTMLDivElement | undefined;
+      const fold = wrapper?.querySelector("details");
+      if (!(fold instanceof HTMLDetailsElement)) {
+        throw new Error(`subfold not found: ${label}`);
+      }
       return fold;
     };
 
@@ -142,16 +145,18 @@ describe("AcpConversation fold interactions", () => {
       );
     });
 
-    const contentFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+    const contentFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Content";
-    }) as HTMLDetailsElement | undefined;
-    expect(contentFold).not.toBeUndefined();
-    if (!contentFold) return;
+    }) as HTMLDivElement | undefined;
+    const contentFold = contentFoldWrapper?.querySelector("details");
+    expect(contentFold).toBeInstanceOf(HTMLDetailsElement);
+    if (!(contentFold instanceof HTMLDetailsElement)) return;
     setDetailsOpen(contentFold, true);
 
     const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
     expect(beforePre).not.toBeNull();
+    expect(beforePre?.className).toContain("acp-terminal-pre");
     const preTextBeforeExpand = beforePre?.textContent ?? "";
     expect(preTextBeforeExpand).toContain("line-259");
     expect(preTextBeforeExpand).not.toContain("line-0");
@@ -172,6 +177,44 @@ describe("AcpConversation fold interactions", () => {
     expect(preTextAfterExpand).toContain("line-104");
     expect(preTextAfterExpand).toContain("line-259");
     expect(preTextAfterExpand).not.toContain("line-0");
+  });
+
+  it("renders markdown content folds with terminal tone", () => {
+    const items: ConversationItem[] = [
+      {
+        kind: "tool_call",
+        id: "call-terminal-markdown",
+        title: "Shell",
+        status: "completed",
+        content: "## Heading\n\n`tidb-server`\n\n- line one",
+      },
+    ];
+
+    act(() => {
+      root.render(
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => input}
+        />
+      );
+    });
+
+    const contentNode = container.querySelector(".acp-content-markdown") as HTMLDivElement | null;
+    expect(contentNode).not.toBeNull();
+    expect(contentNode?.textContent).toContain("Heading");
+    expect(contentNode?.textContent).toContain("tidb-server");
   });
 
   it("keeps Detailed collapsed by default after output fold disappears on rerender", () => {
@@ -222,13 +265,14 @@ describe("AcpConversation fold interactions", () => {
       root.render(<AcpConversation items={secondItems} {...baseProps} />);
     });
 
-    const detailedFold = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
+    const detailedFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Detailed";
-    }) as HTMLDetailsElement | undefined;
+    }) as HTMLDivElement | undefined;
+    const detailedFold = detailedFoldWrapper?.querySelector("details");
 
-    expect(detailedFold).not.toBeUndefined();
-    expect(detailedFold?.open).toBe(false);
+    expect(detailedFold).toBeInstanceOf(HTMLDetailsElement);
+    expect((detailedFold as HTMLDetailsElement | null)?.open).toBe(false);
   });
 
   it("auto-collapses an older live tool call when it crosses the conversation cutoff", () => {

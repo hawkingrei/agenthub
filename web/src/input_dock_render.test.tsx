@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { InputDock } from "./components/input_dock";
+import { INPUT_DOCK_HISTORY_MENU_CLASS } from "./ui/tailwind_classes";
 
 const baseProps: React.ComponentProps<typeof InputDock> = {
   input: "",
@@ -46,8 +47,8 @@ describe("InputDock interrupt placement", () => {
       canInterrupt: true,
       historyCommands: ["git status"],
     });
-    const actionsRowPos = html.indexOf('class="input-row"');
-    const editorRowPos = html.indexOf('class="input-editor-row"');
+    const actionsRowPos = html.indexOf('data-input-actions-row="true"');
+    const editorRowPos = html.indexOf('data-input-editor-row="true"');
     expect(actionsRowPos).toBeGreaterThanOrEqual(0);
     expect(editorRowPos).toBeGreaterThanOrEqual(0);
     expect(actionsRowPos).toBeLessThan(editorRowPos);
@@ -56,16 +57,16 @@ describe("InputDock interrupt placement", () => {
 
   it("renders a dedicated send button class for larger tap target styling", () => {
     const html = renderDock();
-    expect(html).toContain('class="input-send-button"');
+    expect(html).toContain("bg-notion-accent");
     expect(html).toContain('aria-label="Send input"');
   });
 
   it("keeps textarea and send button in the same editor row", () => {
     const html = renderDock();
-    const editorRowStart = html.indexOf('class="input-editor-row"');
+    const editorRowStart = html.indexOf('data-input-editor-row="true"');
     expect(editorRowStart).toBeGreaterThanOrEqual(0);
     const textareaPos = html.indexOf("<textarea", editorRowStart);
-    const sendPos = html.indexOf('class="input-send-button"', editorRowStart);
+    const sendPos = html.indexOf("bg-notion-accent", editorRowStart);
     expect(textareaPos).toBeGreaterThan(editorRowStart);
     expect(sendPos).toBeGreaterThan(textareaPos);
   });
@@ -76,12 +77,21 @@ describe("InputDock interrupt placement", () => {
     expect(html).toMatch(/<textarea[^>]*id="/);
   });
 
+  it("renders history as an overlay menu instead of changing dock layout flow", () => {
+    const html = renderDock({ historyCommands: ["git status"] });
+    expect(html).toContain("input-history relative");
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-label="Show sent command history"');
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("absolute");
+    expect(INPUT_DOCK_HISTORY_MENU_CLASS).toContain("bottom-[calc(100%+0.5rem)]");
+  });
+
   it("keeps jump-to-bottom control outside the editor grid flow", () => {
     const html = renderDock({ showConversationJump: true });
     const shellPos = html.indexOf('class="input-dock-shell');
     const dockRootPos = html.indexOf('class="input docked');
-    const jumpPos = html.indexOf('class="jump-bottom"');
-    const editorRowPos = html.indexOf('class="input-editor-row"');
+    const jumpPos = html.indexOf('class="acp-jump-bottom');
+    const editorRowPos = html.indexOf('data-input-editor-row="true"');
     const textareaPos = html.indexOf("<textarea", editorRowPos);
     expect(shellPos).toBeGreaterThanOrEqual(0);
     expect(dockRootPos).toBeGreaterThanOrEqual(0);
@@ -90,5 +100,17 @@ describe("InputDock interrupt placement", () => {
     expect(jumpPos).toBeLessThan(dockRootPos);
     expect(jumpPos).toBeLessThan(editorRowPos);
     expect(textareaPos).toBeGreaterThan(editorRowPos);
+    expect(html).toContain("input-dock-shell relative");
+    expect(html).toContain("bottom-[calc(100%+0.75rem)]");
+    expect(html).toContain("right-0");
+  });
+
+  it("stretches the dock to the panel edges instead of using a fixed centered width", () => {
+    expect(renderDock()).toContain("input-dock-shell relative flex self-stretch");
+    expect(renderDock()).toContain("w-full");
+    expect(renderDock()).not.toContain("mx-4");
+    expect(renderDock()).not.toContain("sm:mx-6");
+    expect(renderDock()).not.toContain("left-1/2");
+    expect(renderDock()).not.toContain("-translate-x-1/2");
   });
 });

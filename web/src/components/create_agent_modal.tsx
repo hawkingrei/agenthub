@@ -5,6 +5,7 @@ import {
   Group,
   List,
   Modal,
+  NativeSelect,
   Select,
   SimpleGrid,
   Stack,
@@ -20,6 +21,11 @@ import {
   listAgentPresets,
   type AgentPresetId,
 } from "../agent_presets";
+import {
+  NOTION_MODAL_CLASSNAMES,
+  NOTION_MODAL_OVERLAY_PROPS,
+  TEAM_MODAL_CLASSNAMES,
+} from "../ui/floating_surfaces";
 
 type CreateAgentModalProps = {
   title?: string;
@@ -58,26 +64,6 @@ const worktreeOptions = [
   { value: "create_worktree", label: "Create git worktree" },
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
-const TEAM_AGENT_MODAL_CONTENT_STYLE = {
-  backgroundColor: "#f8f5ee",
-  border: "1px solid rgba(33, 42, 52, 0.12)",
-  boxShadow: "0 28px 60px rgba(15, 23, 42, 0.18)",
-};
-const TEAM_AGENT_MODAL_HEADER_STYLE = {
-  backgroundColor: "transparent",
-  borderBottom: "1px solid rgba(33, 42, 52, 0.12)",
-  paddingBottom: "10px",
-};
-const TEAM_AGENT_MODAL_TITLE_STYLE = {
-  color: "#5b6775",
-  fontSize: "0.78rem",
-  fontWeight: 800,
-  letterSpacing: "0.16em",
-  textTransform: "uppercase" as const,
-};
-const TEAM_AGENT_MODAL_BODY_STYLE = {
-  paddingTop: "14px",
-};
 const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
   "!border !border-ui-border-emphasis !bg-[#243243] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1d2936]";
 const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
@@ -210,17 +196,8 @@ export function CreateAgentModal({
       closeOnEscape={false}
       closeOnClickOutside={false}
       withinPortal={withinPortal}
-      overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
-      styles={
-        teamStyled
-          ? {
-              content: TEAM_AGENT_MODAL_CONTENT_STYLE,
-              header: TEAM_AGENT_MODAL_HEADER_STYLE,
-              title: TEAM_AGENT_MODAL_TITLE_STYLE,
-              body: TEAM_AGENT_MODAL_BODY_STYLE,
-            }
-          : undefined
-      }
+      classNames={teamStyled ? TEAM_MODAL_CLASSNAMES : NOTION_MODAL_CLASSNAMES}
+      overlayProps={NOTION_MODAL_OVERLAY_PROPS}
     >
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -230,14 +207,12 @@ export function CreateAgentModal({
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
-          <Select
+          <NativeSelect
             label={agentPresetLabel}
-            placeholder="Select preset"
             value={agentPresetId}
             data={presetOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              setAgentPresetId(resolveCreateAgentPresetId(value));
+            onChange={(event) => {
+              setAgentPresetId(resolveCreateAgentPresetId(event.currentTarget.value));
             }}
           />
           {showWorkdirInput ? (

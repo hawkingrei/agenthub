@@ -25,6 +25,9 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
 export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
+export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10;
+export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
+export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
 
 function collectMemberIds(
   members?: Array<{ member_id?: string | null }> | null
@@ -333,7 +336,11 @@ export function upsertEventList(
   for (const event of merged) {
     byId.set(event.event_id, event);
   }
-  return [...byId.values()].sort((a, b) => a.event_id - b.event_id);
+  return trimNewestByNumericId(
+    [...byId.values()].sort((a, b) => a.event_id - b.event_id),
+    mode === "replace" ? TEAM_RUN_EVENT_RETENTION_LIMIT : 0,
+    (event) => event.event_id
+  );
 }
 
 export function upsertAgentEventList(
@@ -347,10 +354,18 @@ export function upsertAgentEventList(
       return [];
     }
     if (sessionId == null) {
-      return [...next].sort((a, b) => a.event_id - b.event_id);
+      return trimNewestByNumericId(
+        [...next].sort((a, b) => a.event_id - b.event_id),
+        TEAM_MEMBER_EVENT_RETENTION_LIMIT,
+        (event) => event.event_id
+      );
     }
     const scopedPrev = prev.filter((event) => (event.session_id ?? null) === sessionId);
-    return mergeOutputsPreserveHistory(scopedPrev, next, true);
+    return trimNewestByNumericId(
+      mergeOutputsPreserveHistory(scopedPrev, next, true),
+      TEAM_MEMBER_EVENT_RETENTION_LIMIT,
+      (event) => event.event_id
+    );
   }
   const scopedPrev =
     sessionId == null
@@ -399,7 +414,30 @@ export function mergeConversationMessages(
   if (!changed) {
     return prev;
   }
-  return merged;
+  return trimNewestByNumericId(
+    merged,
+    TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT,
+    (message) => message.message_id
+  );
+}
+
+function trimNewestByNumericId<T>(
+  items: T[],
+  limit: number,
+  selectId: (item: T) => number
+): T[] {
+  if (limit <= 0 || items.length <= limit) {
+    return items;
+  }
+  const startIndex = items.length - limit;
+  const trimmed = items.slice(startIndex);
+  if (trimmed.length === items.length) {
+    return items;
+  }
+  if (trimmed.length > 1) {
+    trimmed.sort((left, right) => selectId(left) - selectId(right));
+  }
+  return trimmed;
 }
 
 export function buildAgentLabel(agent: AgentRecord): string {

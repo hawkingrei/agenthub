@@ -50,6 +50,8 @@ import {
   buildOutputCacheSlice,
   isSameOutputList,
   limitOutputCacheSessions,
+  mergeOutputsPreserveOlderWithLimit,
+  mergeOutputsWithLimit,
   mergeOutputsPreserveHistory,
   mergeOutputs,
   replaceAcpCacheSlice,
@@ -113,6 +115,15 @@ import {
   AUTH_INPUT_CLASS,
   AUTH_PRIMARY_BUTTON_CLASS,
   AUTH_SECONDARY_BUTTON_CLASS,
+  APP_WORKBENCH_HEADER_CLASS,
+  APP_WORKBENCH_HEADER_STATUS_CLASS,
+  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
+  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  APP_WORKSPACE_ROOT_CLASS,
+  APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
+  APP_WORKSPACE_RIGHT_CLASS,
+  APP_WORKSPACE_SPLITTER_CLASS,
+  ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
   loadDeveloperModePreference,
@@ -135,16 +146,8 @@ const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
-const APP_WORKBENCH_HEADER_CLASS =
-  "flex flex-wrap items-center justify-between gap-2 rounded-[14px] border-[2px] border-black bg-[#f3f1eb] px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.12)] sm:gap-3 sm:rounded-[20px] sm:px-3.5 sm:py-3 sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
-const APP_WORKBENCH_HEADER_STATUS_CLASS =
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-black bg-[#fcfbf7] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-black shadow-[0_1px_0_rgba(0,0,0,0.1)] sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[10px] sm:tracking-[0.14em]";
-const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border-[2px] border-black text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] lg:hidden";
-const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[2px] border-black bg-white px-2 text-[12px] font-semibold text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:rounded-[12px] sm:px-3 sm:text-sm";
-const ROUTE_FALLBACK_SHELL_CLASS =
-  "mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center rounded-[16px] border border-black/[0.08] bg-[rgba(252,251,247,0.84)] px-6 py-10 text-sm font-medium text-ui-text-muted shadow-sm";
+const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
+const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
 const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
 
@@ -297,25 +300,12 @@ type RuntimeViewportSize = {
   width: number;
 };
 
-type PermissionJumpDecision = "idle" | "wait" | "clear" | "attempt";
-
-type RuntimeEventHandler = () => void;
-
-type RuntimeEventTargetLike = {
-  addEventListener: (type: string, listener: RuntimeEventHandler) => void;
-  removeEventListener: (type: string, listener: RuntimeEventHandler) => void;
-};
-
-type RuntimeVisualViewportLike = RuntimeEventTargetLike & {
-  height?: number;
-  width?: number;
-  offsetTop?: number;
-};
-
-type RuntimeWindowLike = RuntimeEventTargetLike & {
+type RuntimeWindowLike = {
   innerHeight: number;
   innerWidth: number;
-  visualViewport?: RuntimeVisualViewportLike | null;
+  visualViewport?: VisualViewport | null;
+  addEventListener: (type: string, listener: () => void) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
   requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
   cancelAnimationFrame?: (id: number) => void;
 };
@@ -1172,10 +1162,14 @@ export function App() {
       }
 
       if (activeLines.length > 0) {
-        setOutputs((prev) => mergeOutputs(prev, activeLines));
+        setOutputs((prev) =>
+          mergeOutputsWithLimit(prev, activeLines, LIVE_OUTPUT_RETENTION_LIMIT)
+        );
       }
       if (activeAcpLines.length > 0) {
-        setAcpOutputs((prev) => mergeOutputs(prev, activeAcpLines));
+        setAcpOutputs((prev) =>
+          mergeOutputsWithLimit(prev, activeAcpLines, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
+        );
       }
     },
     [updateAcpOutputCacheEntry, updateOutputCacheEntry]
@@ -1524,8 +1518,12 @@ export function App() {
           ? nextOldestEvent.event_id
           : meta.oldestId;
       const hasMore = ordered.length >= eventLimit;
-      setOutputs((prev) => mergeOutputs(prev, ordered));
-      setAcpOutputs((prev) => mergeOutputs(prev, acpOrdered));
+      setOutputs((prev) =>
+        mergeOutputsPreserveOlderWithLimit(prev, ordered, LIVE_OUTPUT_RETENTION_LIMIT)
+      );
+      setAcpOutputs((prev) =>
+        mergeOutputsPreserveOlderWithLimit(prev, acpOrdered, LIVE_ACP_OUTPUT_RETENTION_LIMIT)
+      );
       updateOutputCacheEntry(key, ordered);
       if (acpOrdered.length > 0) {
         updateAcpOutputCacheEntry(key, acpOrdered);
@@ -1693,8 +1691,6 @@ export function App() {
     api
       .getRuntimeDefaults(token)
       .then((defaults) => {
-        // Backend guarantees a non-empty default root; keep a defensive fallback
-        // in case of malformed responses.
         const root = normalizeRuntimeWorktreeRoot(
           defaults.default_worktree_root,
           DEFAULT_WORKTREE_ROOT
@@ -2640,15 +2636,15 @@ export function App() {
 
   const onAcpSetConfig = useCallback(async () => {
     if (!token || !activeAgent) return;
-    const configId = acpConfigId.trim();
-    const configValue = acpConfigValue.trim();
-    if (!configId || !configValue) {
+    const trimmedId = acpConfigId.trim();
+    const trimmedValue = acpConfigValue.trim();
+    if (!trimmedId || !trimmedValue) {
       setError("config id and value are required");
       return;
     }
     setError(null);
     try {
-      await api.setAcpConfig(token, activeAgent, configId, configValue);
+      await api.setAcpConfig(token, activeAgent, trimmedId, trimmedValue);
     } catch (err) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
@@ -3279,9 +3275,11 @@ export function App() {
 
   if (routeLocation.pathname.startsWith("/join")) {
     return (
-      <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
-        <LazyJoinPage onComplete={(next) => setAuth(next)} />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
+          <LazyJoinPage onComplete={(next) => setAuth(next)} />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3293,35 +3291,37 @@ export function App() {
       return <ForbiddenPage />;
     }
     return (
-      <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
-        <LazyAdminPage
-          auth={auth}
-          error={normalizedError}
-          setError={setError}
-          safePaths={safePaths}
-          selectedSafePaths={selectedSafePaths}
-          onToggleSafePath={onToggleSafePath}
-          onToggleAllSafePaths={onToggleAllSafePaths}
-          onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-          devices={devices}
-          audits={audits}
-          vapidInfo={vapidInfo}
-          onRotateVapid={onRotateVapid}
-          onAddSafePath={onAddSafePath}
-          onDeleteSafePath={onDeleteSafePath}
-          onRevokeDevice={onRevokeDevice}
-          onCreateJoin={onCreateJoin}
-          joinQr={joinQr}
-          joinToken={joinToken}
-          joinPin={joinPin}
-          safePathInput={safePathInput}
-          setSafePathInput={setSafePathInput}
-          developerMode={developerMode}
-          onDeveloperModeChange={handleDeveloperModeChange}
-          passkeyEnabled={passkeyEnabled}
-          onPasskeyEnabledChange={onPasskeyEnabledChange}
-        />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
+          <LazyAdminPage
+            auth={auth}
+            error={normalizedError}
+            setError={setError}
+            safePaths={safePaths}
+            selectedSafePaths={selectedSafePaths}
+            onToggleSafePath={onToggleSafePath}
+            onToggleAllSafePaths={onToggleAllSafePaths}
+            onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+            devices={devices}
+            audits={audits}
+            vapidInfo={vapidInfo}
+            onRotateVapid={onRotateVapid}
+            onAddSafePath={onAddSafePath}
+            onDeleteSafePath={onDeleteSafePath}
+            onRevokeDevice={onRevokeDevice}
+            onCreateJoin={onCreateJoin}
+            joinQr={joinQr}
+            joinToken={joinToken}
+            joinPin={joinPin}
+            safePathInput={safePathInput}
+            setSafePathInput={setSafePathInput}
+            developerMode={developerMode}
+            onDeveloperModeChange={handleDeveloperModeChange}
+            passkeyEnabled={passkeyEnabled}
+            onPasskeyEnabledChange={onPasskeyEnabledChange}
+          />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3331,15 +3331,17 @@ export function App() {
     }
     const teamRoute = resolveTeamRoute(routeLocation.pathname);
     return (
-      <Suspense fallback={<RouteFallback label="Loading teams..." />}>
-        <LazyTeamPage
-          auth={auth}
-          token={token}
-          onLogout={onLogout}
-          developerMode={developerMode}
-          routeTeamId={teamRoute?.teamId ?? null}
-        />
-      </Suspense>
+      <div className="app bg-white" ref={appRootRef}>
+        <Suspense fallback={<RouteFallback label="Loading teams..." />}>
+          <LazyTeamPage
+            auth={auth}
+            token={token}
+            onLogout={onLogout}
+            developerMode={developerMode}
+            routeTeamId={teamRoute?.teamId ?? null}
+          />
+        </Suspense>
+      </div>
     );
   }
 
@@ -3349,22 +3351,14 @@ export function App() {
 
   return (
     <div
-      className="app bg-[radial-gradient(circle_at_top,_#faf9f6_0%,_#ece8df_45%,_#ddd8cd_100%)]"
+      className="app bg-white"
       ref={appRootRef}
     >
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
-        <div className="hidden min-w-0 sm:block">
-          <h1 className="text-[clamp(1.2rem,4vw,1.95rem)] font-semibold tracking-tight text-black">
-            AgentHub
-          </h1>
-          <p className="mt-1 hidden text-[10px] font-medium uppercase tracking-[0.12em] text-black/55 sm:block">
-            Agent runtime workbench
-          </p>
-        </div>
         {auth && (
-          <div className="session">
+          <div className="session flex items-center gap-2 sm:gap-3">
             <button
-              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-[#203b2d] text-white"}`}
+              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
               onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
               title={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
@@ -3403,7 +3397,7 @@ export function App() {
             void onLogin();
           }}
         >
-          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+          <h2 className="text-xl font-bold tracking-tight text-notion-text">
             Login
           </h2>
           <input
@@ -3447,7 +3441,7 @@ export function App() {
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
               >
-                {authBusy === "register" ? "Bootstrapping..." : "Bootstrap Root"}
+                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
               </button>
             )}
             <button
@@ -3462,8 +3456,12 @@ export function App() {
       )}
 
       {auth && (
-        <section
-          className={agentsCollapsed ? "workspace collapsed" : "workspace"}
+        <main
+          className={
+            agentsCollapsed
+              ? APP_WORKSPACE_ROOT_COLLAPSED_CLASS
+              : APP_WORKSPACE_ROOT_CLASS
+          }
           ref={workspaceRef}
           style={workspaceStyle}
         >
@@ -3484,15 +3482,17 @@ export function App() {
             onStopAgent={onStopAgent}
             onDeleteAgent={onDeleteAgent}
           />
-          <div
-            className="workspace-splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize agents sidebar"
-            onPointerDown={handleAgentsSplitterPointerDown}
-          />
-          <div className="workspace-right">
-            <div className={acpView.hasAcp ? "max-[720px]:hidden" : ""}>
+          {!agentsCollapsed && (
+            <div
+              className={APP_WORKSPACE_SPLITTER_CLASS}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize agents sidebar"
+              onPointerDown={handleAgentsSplitterPointerDown}
+            />
+          )}
+          <div className={APP_WORKSPACE_RIGHT_CLASS}>
+            <div className={acpView.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"}>
               <OutputHeader
                 activeAgent={activeAgentRecord}
                 activeSessionId={activeSessionId}
@@ -3503,37 +3503,39 @@ export function App() {
                 modelLabel={activeAgentModelLabel}
               />
             </div>
-            {activeAgent ? (
-              <OutputErrorBoundary>
-                <OutputBody
-                  terminalRef={terminalRef}
-                  onTerminalScroll={handleTerminalScroll}
-                  isOutputLoading={isOutputLoading}
-                  isConversationLoading={isConversationLoading}
-                  outputs={outputs}
-                  ansi={ansi}
-                  acpPanelProps={acpPanelProps}
+            <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
+              {activeAgent ? (
+                <OutputErrorBoundary>
+                  <OutputBody
+                    terminalRef={terminalRef}
+                    onTerminalScroll={handleTerminalScroll}
+                    isOutputLoading={isOutputLoading}
+                    isConversationLoading={isConversationLoading}
+                    outputs={outputs}
+                    ansi={ansi}
+                    acpPanelProps={acpPanelProps}
+                  />
+                </OutputErrorBoundary>
+              ) : null}
+              {showInputDock && (
+                <InputDock
+                  input={input}
+                  historyCommands={inputHistory}
+                  showInterrupt={acpView.hasAcp}
+                  canInterrupt={canInterruptAcpRun}
+                  onInputChange={onInputChange}
+                  onSendInput={onSendInput}
+                  onInterrupt={onAcpCancel}
+                  onNavigateHistory={onNavigateInputHistory}
+                  onSelectHistoryCommand={onSelectInputHistory}
+                  onJumpToBottom={inputDockJumpMode.onJumpToBottom}
+                  showConversationJump={inputDockJumpMode.showConversationJump}
+                  isComposingRef={isComposingRef}
                 />
-              </OutputErrorBoundary>
-            ) : null}
-            {showInputDock && (
-              <InputDock
-                input={input}
-                historyCommands={inputHistory}
-                showInterrupt={acpView.hasAcp}
-                canInterrupt={canInterruptAcpRun}
-                onInputChange={onInputChange}
-                onSendInput={onSendInput}
-                onInterrupt={onAcpCancel}
-                onNavigateHistory={onNavigateInputHistory}
-                onSelectHistoryCommand={onSelectInputHistory}
-                onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                showConversationJump={inputDockJumpMode.showConversationJump}
-                isComposingRef={isComposingRef}
-              />
-            )}
+              )}
+            </div>
           </div>
-        </section>
+        </main>
       )}
 
       {auth && showCreateAgent && (
@@ -3839,7 +3841,7 @@ export function resolveLiveSessionSwitch(
 export function dispatchLiveOutputBatch(params: {
   cursorRef: CursorRef;
   lines: OutputLine[];
-  activeAgent: string | null;
+  activeAgent: string | null,
   activeSessionId: string | null;
   onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
   onOutputGroup: (key: string, grouped: OutputLine[]) => void;

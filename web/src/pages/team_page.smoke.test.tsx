@@ -237,7 +237,80 @@ describe("TeamPage smoke render", () => {
         </MantineProvider>
       );
 
-    expect(markup).toContain("Team");
+    expect(markup).toContain("Loading team workspace");
+    expect(markup).not.toContain("This team is unavailable");
+  });
+
+  it("renders team detail content immediately when routing from selector to an already-loaded team", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+            />
+          </MantineProvider>
+        );
+      });
+
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+      });
+
+      expect(container.textContent).toContain("No agents have joined this team yet.");
+      expect(container.textContent).not.toContain("This team is unavailable.");
+      expect(container.textContent).not.toContain("Loading team workspace...");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
   });
 
   it("ignores stale shared-thread responses after switching teams", async () => {
@@ -463,6 +536,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
+      expect(container.querySelector("h1")).toBeNull();
       expect(container.textContent).toContain("# all");
       expect(container.textContent).toContain("Shared channel for human requests");
       expect(container.textContent).not.toContain("Toggle agents section");
@@ -471,6 +545,88 @@ describe("TeamPage smoke render", () => {
       );
       expect(buttonLabels).toContain("More");
       expect(buttonLabels).not.toContain("Runs");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("keeps the desktop workbench as a fixed-height shell with internal scrolling", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    useMediaQueryMock.mockReturnValue(false);
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const workbench = container.querySelector('[data-team-surface="workbench"]');
+      expect(workbench?.className).toContain("overflow-hidden");
+      expect(workbench?.className).not.toContain("overflow-y-auto");
+
+      const layout = container.querySelector(".teams-layout");
+      expect(layout?.className).not.toContain("items-start");
     } finally {
       act(() => {
         root.unmount();

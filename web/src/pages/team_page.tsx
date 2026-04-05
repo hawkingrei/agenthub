@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Group,
+  Loader,
   Menu,
   SegmentedControl,
   Switch,
@@ -12,6 +13,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -152,7 +154,6 @@ import {
   MAILBOX_TEMPLATE_OPTIONS,
   TEAM_TAB_ITEMS,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
-  TEAM_RUN_PAGE_LIMIT,
   tabRequiresActiveRun,
   createInitialTeamCreateState,
   reduceTeamControlState,
@@ -173,7 +174,26 @@ import {
   TEAM_CREATE_MODAL_CARD_CLASS,
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
+  TEAM_DEBUG_TABS_CLASS,
+  TEAM_DEBUG_TAB_ACTIVE_CLASS,
+  TEAM_DEBUG_TAB_IDLE_CLASS,
+  TEAM_PAGE_ROOT_CLASS,
   TEAM_PANEL_CARD_CLASS,
+  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
+  TEAM_SECTION_BODY_TEXT_CLASS,
+  TEAM_SECTION_CARD_CLASS,
+  TEAM_SECTION_CARD_LARGE_CLASS,
+  TEAM_SECTION_HEADING_CLASS,
+  TEAM_SECTION_HINT_TEXT_CLASS,
+  TEAM_SECTION_TITLE_CLASS,
+  TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
+  TEAM_WORKBENCH_HEADER_SHELL_CLASS,
+  TEAM_WORKBENCH_HEADER_STATUS_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
+  TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
+  TEAM_WORKBENCH_PANEL_CLASS,
+  TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
 } from "../ui/tailwind_classes";
 
 export {
@@ -338,48 +358,37 @@ export function validateRunInputJson(raw: string): RunInputValidation {
   }
 }
 
-const panelSecondaryButtonClassName =
-  "inline-flex items-center justify-center rounded-[14px] border border-ui-border-strong bg-white/88 px-2.5 py-1.5 text-[13px] font-semibold text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)] transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft disabled:cursor-not-allowed disabled:opacity-60";
-const teamSectionCardClassName =
-  "min-h-0 min-w-0 rounded-[14px] border border-black/[0.06] bg-white/88 px-2.5 py-2 shadow-[0_1px_3px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2.5";
-const teamSectionCardLargeClassName =
-  "min-h-0 rounded-[20px] border border-black/[0.06] bg-white/90 p-3 shadow-[0_1px_4px_rgba(15,23,42,0.04)] sm:p-3.5";
-const teamSectionHeadingClassName =
-  "text-[10px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
-const teamSectionTitleClassName = "text-base font-semibold tracking-tight text-black";
-const teamSectionBodyTextClassName = "mt-2 text-[13px] leading-5 text-ui-text-secondary";
-const teamSectionHintTextClassName = "mt-2 text-[12px] leading-5 text-ui-text-muted";
-const teamDebugTabsClassName =
-  "flex flex-wrap items-center gap-2 border-b border-ui-border pb-1";
-const teamDebugTabBaseClassName =
-  "rounded-none border-b-2 border-transparent px-0.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] transition";
-const teamDebugTabActiveClassName =
-  `${teamDebugTabBaseClassName} border-brand-primary bg-transparent text-ui-text-primary`;
-const teamDebugTabIdleClassName =
-  `${teamDebugTabBaseClassName} bg-transparent text-ui-text-muted hover:border-ui-border hover:text-ui-text-primary`;
+const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
+const teamSectionCardClassName = TEAM_SECTION_CARD_CLASS;
+const teamSectionCardLargeClassName = TEAM_SECTION_CARD_LARGE_CLASS;
+const teamSectionHeadingClassName = TEAM_SECTION_HEADING_CLASS;
+const teamSectionTitleClassName = TEAM_SECTION_TITLE_CLASS;
+const teamSectionBodyTextClassName = TEAM_SECTION_BODY_TEXT_CLASS;
+const teamSectionHintTextClassName = TEAM_SECTION_HINT_TEXT_CLASS;
+const teamDebugTabsClassName = TEAM_DEBUG_TABS_CLASS;
+const teamDebugTabActiveClassName = TEAM_DEBUG_TAB_ACTIVE_CLASS;
+const teamDebugTabIdleClassName = TEAM_DEBUG_TAB_IDLE_CLASS;
 const teamCreateModalHeaderClassName =
-  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-ui-border pb-4";
+  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4";
 const teamRunMetaItemClassName =
-  "rounded-[14px] border border-ui-border-strong bg-white/88 px-2.5 py-1.5 text-[11px] text-ui-text-primary shadow-[0_6px_14px_rgba(15,23,42,0.04)]";
+  "rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] text-notion-text-muted";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1 rounded-[12px] border border-black/[0.06] bg-black/[0.02] p-1";
-const workspaceToolbarButtonBaseClassName =
-  "inline-flex items-center gap-1 rounded-[12px] border border-transparent px-2.5 py-1.5 text-[12px] font-semibold transition";
+  "flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-lg border border-notion-border";
 const workspaceToolbarButtonActiveClassName =
-  `${workspaceToolbarButtonBaseClassName} border border-black/[0.06] bg-white text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]`;
+  "inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-[12px] font-bold text-notion-text shadow-sm";
 const workspaceToolbarButtonIdleClassName =
-  `${workspaceToolbarButtonBaseClassName} bg-transparent text-ui-text-muted hover:bg-black/[0.04] hover:text-ui-text-primary`;
+  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-bold text-notion-text-muted transition hover:text-notion-text hover:bg-notion-hover";
 const workspaceNoticeClassName =
-  "mt-1 flex flex-wrap items-center justify-between gap-2";
+  "mt-1 flex flex-wrap items-center justify-between gap-2 px-1";
 const workspaceNoticeTextClassName =
-  "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-ui-text-muted";
+  "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-notion-text-muted";
 const workspaceNoticeDotBaseClassName =
   "inline-flex h-2 w-2 shrink-0 rounded-full";
 const teamRuntimeNoticeClassName =
-  "mb-4 flex items-start justify-between gap-3 rounded-[16px] border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-emerald-950 shadow-sm";
+  "mb-4 flex items-start justify-between gap-3 rounded-lg border border-state-success-border bg-state-success-bg px-4 py-3 text-state-success-text shadow-sm";
 const teamRuntimeNoticeTitleClassName =
-  "text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800";
-const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-5 text-emerald-900";
+  "text-[11px] font-bold uppercase tracking-wider text-state-success-text opacity-80";
+const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-relaxed font-medium";
 const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
   TeamCreateNoteTone,
   { color: "blue" | "yellow"; title: string; iconClassName: string }
@@ -410,49 +419,40 @@ const TeamCreateNote = React.memo(function TeamCreateNote({
     <Alert
       color={config.color}
       variant="light"
-      radius="xl"
+      radius="md"
       mt="md"
       title={config.title}
       icon={<i className={config.iconClassName} aria-hidden="true" />}
     >
-      <div className="text-sm text-ui-text-secondary">{children}</div>
+      <div className="text-sm">{children}</div>
       {action ? <div className="mt-3">{action}</div> : null}
     </Alert>
   );
 });
 
-const teamWorkbenchPanelClassName =
-  "rounded-[18px] border border-black/[0.05] bg-white/84 p-2 shadow-[0_1px_4px_rgba(15,23,42,0.04)] backdrop-blur-md";
+const teamWorkbenchPanelClassName = TEAM_WORKBENCH_PANEL_CLASS;
 const teamWorkbenchAccentButtonClassName =
-  "!border !border-ui-border-emphasis !bg-[#203b2d] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1b3126]";
+  "!bg-notion-accent !text-white !border-transparent hover:!bg-notion-accent/90 transition shadow-sm active:!translate-y-px";
 const teamWorkbenchMutedButtonClassName =
-  "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
+  "!bg-white !text-notion-text !border-notion-border hover:!bg-notion-hover transition shadow-sm active:!translate-y-px";
 const teamWorkbenchHeaderActionButtonClassName = "!shrink-0 !whitespace-nowrap";
 const teamWorkbenchBadgeClassName =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-[#f4f2ed] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-ui-text-muted";
-const teamWorkbenchHeaderShellClassName =
-  "flex flex-wrap items-center justify-between gap-1.5 rounded-[16px] border border-black/[0.05] bg-white/78 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] backdrop-blur-sm";
-const teamWorkbenchHeaderIconButtonClassName =
-  "inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px] border border-black/[0.06] bg-white/90 text-ui-text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-black/[0.1] hover:bg-black/[0.03]";
-const teamWorkbenchHeaderStatusClassName =
-  "inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/92 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
+  "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+const teamWorkbenchHeaderShellClassName = TEAM_WORKBENCH_HEADER_SHELL_CLASS;
+const teamWorkbenchHeaderIconButtonClassName = TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS;
+const teamWorkbenchHeaderStatusClassName = TEAM_WORKBENCH_HEADER_STATUS_CLASS;
 const teamWorkbenchDetailLayoutCollapsedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
-  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(232px,252px)_minmax(0,1fr)] lg:items-start";
-const teamWorkbenchWorkspaceShellClassName =
-  "rounded-[14px] border border-black/[0.05] bg-white/88 px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.03)]";
+  "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] bg-white";
+const teamWorkbenchWorkspaceShellClassName = TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS;
 const teamWorkbenchSetupChecklistClassName =
-  "overflow-hidden rounded-[22px] border border-ui-border/90 bg-white/88 shadow-[0_10px_24px_rgba(15,23,42,0.05)]";
+  "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
 const teamWorkbenchInfoStripGridClassName =
-  "grid gap-px bg-ui-border/80 lg:grid-cols-3";
-const teamWorkbenchInfoStripItemClassName =
-  "min-w-0 bg-white/92 px-3.5 py-3";
-const teamWorkbenchInfoStripLabelClassName =
-  "text-[10px] font-semibold uppercase tracking-[0.14em] text-ui-text-muted";
-const teamWorkbenchInfoStripValueClassName =
-  "mt-1.5 text-[13px] leading-5 text-ui-text-primary";
-
+  "grid gap-px bg-notion-border lg:grid-cols-3";
+const teamWorkbenchInfoStripItemClassName = TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS;
+const teamWorkbenchInfoStripLabelClassName = TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS;
+const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS;
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const isSelectorRoute = routeTeamId == null;
@@ -617,6 +617,7 @@ export function TeamPage(props: TeamPageProps) {
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [teamSelectorFilter, setTeamSelectorFilter] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(routeTeamId);
+  const effectiveSelectedTeamId = isSelectorRoute ? null : routeTeamId ?? selectedTeamId;
   const sharedConversationRequestScopeRef = useRef({
     teamId: routeTeamId ?? "",
     requestSeq: 0,
@@ -882,20 +883,35 @@ export function TeamPage(props: TeamPageProps) {
   const [memberEventsLoading, setMemberEventsLoading] = useState(false);
   const memberEventsRef = useRef<AgentEvent[]>([]);
   const [focusedAgentMemberId, setFocusedAgentMemberId] = useState("");
+  const [teamCatalogSettled, setTeamCatalogSettled] = useState(() => isSelectorRoute);
 
   const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === selectedTeamId) ?? null,
-    [teams, selectedTeamId]
+    () => teams.find((team) => team.id === effectiveSelectedTeamId) ?? null,
+    [effectiveSelectedTeamId, teams]
   );
+  useEffect(() => {
+    if (isSelectorRoute || teams.length > 0) {
+      setTeamCatalogSettled(true);
+    }
+  }, [isSelectorRoute, teams.length]);
   useEffect(() => {
     setSelectedTeamId(routeTeamId);
   }, [routeTeamId]);
   useEffect(() => {
+    if (routeTeamId == null) {
+      setTeamCatalogSettled(true);
+      return;
+    }
+    if (teams.length === 0) {
+      setTeamCatalogSettled(false);
+    }
+  }, [routeTeamId, teams.length]);
+  useEffect(() => {
     sharedConversationRequestScopeRef.current = {
-      teamId: selectedTeamId?.trim() ?? "",
+      teamId: effectiveSelectedTeamId?.trim() ?? "",
       requestSeq: sharedConversationRequestScopeRef.current.requestSeq + 1,
     };
-  }, [selectedTeamId]);
+  }, [effectiveSelectedTeamId]);
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
@@ -910,7 +926,7 @@ export function TeamPage(props: TeamPageProps) {
     setTaskMessageDraft("");
     setSelectedMemberId("");
     setFocusedAgentMemberId("");
-  }, [selectedTeamId, setSelectedMemberId]);
+  }, [effectiveSelectedTeamId, setSelectedMemberId]);
   const teamSpecMemberIds = useMemo(() => {
     const ids = new Set<string>();
     for (const team of teams) {
@@ -1085,14 +1101,14 @@ export function TeamPage(props: TeamPageProps) {
     [runs, activeRunId]
   );
   const activeRunForSelectedTeam = useMemo(() => {
-    if (!activeRun || !selectedTeamId) {
+    if (!activeRun || !effectiveSelectedTeamId) {
       return null;
     }
-    if (activeRun.team_id !== selectedTeamId) {
+    if (activeRun.team_id !== effectiveSelectedTeamId) {
       return null;
     }
     return activeRun;
-  }, [activeRun, selectedTeamId]);
+  }, [activeRun, effectiveSelectedTeamId]);
   const activeRunIdForSelectedTeam = activeRunForSelectedTeam?.id ?? null;
   const canResumeActiveRun = useMemo(() => {
     if (!activeRunForSelectedTeam) return false;
@@ -1110,32 +1126,32 @@ export function TeamPage(props: TeamPageProps) {
     );
   }, [activeRunForSelectedTeam]);
   const selectedTeamRunBrowserState = useMemo<TeamRunBrowserState>(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return DEFAULT_TEAM_RUN_BROWSER_STATE;
     }
-    return teamRunBrowserByTeam[selectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
-  }, [selectedTeamId, teamRunBrowserByTeam]);
+    return teamRunBrowserByTeam[effectiveSelectedTeamId] ?? DEFAULT_TEAM_RUN_BROWSER_STATE;
+  }, [effectiveSelectedTeamId, teamRunBrowserByTeam]);
   const runStatusFilter = selectedTeamRunBrowserState.statusFilter;
   const runsHasMore = selectedTeamRunBrowserState.hasMore;
   const runsBeforeCreatedAt = selectedTeamRunBrowserState.beforeCreatedAt;
   const totalLoadedRunsForTeam = useMemo(() => {
-    if (!selectedTeamId) return 0;
-    return runs.filter((run) => run.team_id === selectedTeamId).length;
-  }, [runs, selectedTeamId]);
+    if (!effectiveSelectedTeamId) return 0;
+    return runs.filter((run) => run.team_id === effectiveSelectedTeamId).length;
+  }, [effectiveSelectedTeamId, runs]);
 
   const visibleRuns = useMemo(() => {
-    if (!selectedTeamId) return [];
+    if (!effectiveSelectedTeamId) return [];
     return runs.filter((run) => {
-      if (run.team_id !== selectedTeamId) return false;
+      if (run.team_id !== effectiveSelectedTeamId) return false;
       if (runStatusFilter === "all") return true;
       return run.status === runStatusFilter;
     });
-  }, [runStatusFilter, runs, selectedTeamId]);
+  }, [effectiveSelectedTeamId, runStatusFilter, runs]);
   const isActiveRunHiddenByFilter = useMemo(() => {
-    if (!activeRunForSelectedTeam || !selectedTeamId) return false;
+    if (!activeRunForSelectedTeam || !effectiveSelectedTeamId) return false;
     if (runStatusFilter === "all") return false;
     return activeRunForSelectedTeam.status !== runStatusFilter;
-  }, [activeRunForSelectedTeam, runStatusFilter, selectedTeamId]);
+  }, [activeRunForSelectedTeam, effectiveSelectedTeamId, runStatusFilter]);
 
   const selectedMemberSnapshot = useMemo(
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
@@ -1470,7 +1486,7 @@ export function TeamPage(props: TeamPageProps) {
     onRestartRun,
   } = useTeamActions({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     runContextId,
     runInput,
     runLookupId,
@@ -1513,6 +1529,7 @@ export function TeamPage(props: TeamPageProps) {
     setActiveRunId,
     setRunLookupId,
     onRunCreated,
+    onTeamsRefreshSettled: () => setTeamCatalogSettled(true),
   });
 
   const { onSubmitStep, onApplyStepAction } = useTeamStepActions({
@@ -1624,7 +1641,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useTeamRunLifecycleEffects({
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
@@ -2146,6 +2163,7 @@ export function TeamPage(props: TeamPageProps) {
         current && remainingRuns.some((run) => run.id === current) ? current : null
       );
       setRunLookupId("");
+      setTeamSelectorFilter("");
       navigateToTeamSelector();
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -2156,17 +2174,17 @@ export function TeamPage(props: TeamPageProps) {
 
   const onRunStatusFilterChange = useCallback(
     (nextFilter: TeamRunStatusFilter) => {
-      if (!selectedTeamId) return;
+      if (!effectiveSelectedTeamId) return;
       setTeamRunBrowserByTeam((prev) => ({
         ...prev,
-        [selectedTeamId]: {
+        [effectiveSelectedTeamId]: {
           statusFilter: nextFilter,
           beforeCreatedAt: undefined,
           hasMore: false,
         },
       }));
     },
-    [selectedTeamId]
+    [effectiveSelectedTeamId]
   );
 
   const onApplyMessageTemplate = () => {
@@ -2176,7 +2194,7 @@ export function TeamPage(props: TeamPageProps) {
   const selectedConversation = sharedConversation;
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
-      selectedTeamId &&
+      effectiveSelectedTeamId &&
       (selectedConversation?.id ?? "").trim()
   );
   const connectionBadge = useMemo(
@@ -2189,18 +2207,18 @@ export function TeamPage(props: TeamPageProps) {
     [conversationSseState, hasConversationStreamTarget, networkOnline]
   );
   const workspaceTasks = useMemo(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return [];
     }
-    return listTeamWorkspaceTasks(taskList, selectedTeamId);
-  }, [selectedTeamId, taskList]);
+    return listTeamWorkspaceTasks(taskList, effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, taskList]);
 
   const selectedTask = useMemo(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return null;
     }
-    return resolveSelectedTeamTask(taskList, selectedTaskId, selectedTeamId);
-  }, [selectedTaskId, selectedTeamId, taskList]);
+    return resolveSelectedTeamTask(taskList, selectedTaskId, effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, selectedTaskId, taskList]);
 
   const refreshTasks = useCallback(
     async (teamId: string) => {
@@ -2260,22 +2278,22 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     setCompiledRunPreview(null);
     setCompilePreviewContextId("");
-  }, [selectedTaskId, selectedTeamId]);
+  }, [selectedTaskId, effectiveSelectedTeamId]);
 
   useEffect(() => {
-    if (!selectedTeamId) {
+    if (!effectiveSelectedTeamId) {
       return;
     }
-    void refreshTasks(selectedTeamId);
-    void refreshSharedConversation(selectedTeamId);
-  }, [refreshSharedConversation, refreshTasks, selectedTeamId]);
+    void refreshTasks(effectiveSelectedTeamId);
+    void refreshSharedConversation(effectiveSelectedTeamId);
+  }, [effectiveSelectedTeamId, refreshSharedConversation, refreshTasks]);
 
   const {
     refreshTaskMessages,
     sendTaskMessage: onSendTaskMessage,
   } = useTeamConversationActions({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     selectedConversation,
     latestRunForSharedConversation: sharedConversationLatestRun,
     activeRunIdForSelectedTeam,
@@ -2294,7 +2312,7 @@ export function TeamPage(props: TeamPageProps) {
 
   useTeamConversationEffects({
     token: props.token,
-    selectedTeamId,
+    selectedTeamId: effectiveSelectedTeamId,
     selectedConversationId: selectedConversation?.id ?? null,
     tab,
     eventsAutoRefresh,
@@ -3443,6 +3461,16 @@ export function TeamPage(props: TeamPageProps) {
   const warningNotice = resolveTeamPageNotice(warning);
   const showSidebarPane = !isSelectorRoute && !teamsSidebarCollapsed;
   const showWorkbenchPane = !isCompactWorkbench || teamsSidebarCollapsed;
+  const showTeamBootstrapLoading =
+    !isSelectorRoute &&
+    Boolean(effectiveSelectedTeamId) &&
+    !selectedTeam &&
+    !teamCatalogSettled;
+  const showTeamUnavailable =
+    !isSelectorRoute &&
+    Boolean(effectiveSelectedTeamId) &&
+    !selectedTeam &&
+    teamCatalogSettled;
   const teamPanelToggleLabel = isCompactWorkbench
     ? teamsSidebarCollapsed
       ? "Show teams panel"
@@ -3457,7 +3485,7 @@ export function TeamPage(props: TeamPageProps) {
       : teamWorkbenchDetailLayoutExpandedClassName;
 
   return (
-    <div className="mx-auto flex h-[var(--agenthub-vh,100vh)] w-full max-w-[1680px] flex-col gap-3 overflow-y-auto overscroll-y-contain bg-[linear-gradient(180deg,#f7f6f3_0%,#f3f1ec_100%)] px-3 py-2 sm:px-4 lg:px-6 [&>*]:shrink-0">
+    <div className={TEAM_PAGE_ROOT_CLASS}>
       <header className={teamWorkbenchHeaderShellClassName}>
         <div className="flex min-w-0 items-center gap-3">
           {!isSelectorRoute && (
@@ -3473,14 +3501,14 @@ export function TeamPage(props: TeamPageProps) {
               />
             </button>
           )}
-          <div className="min-w-0">
-            <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
-              {isSelectorRoute ? "Team Selector" : selectedTeam?.name ?? "Team Workbench"}
-            </h1>
-            {isSelectorRoute ? (
+          {isSelectorRoute ? (
+            <div className="min-w-0">
+              <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
+                Team Selector
+              </h1>
               <p className="mt-0.5 text-[12px] text-black/55">Choose a team</p>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {!isSelectorRoute && (
@@ -3604,6 +3632,9 @@ export function TeamPage(props: TeamPageProps) {
                       key={team.id}
                       type="button"
                       className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
+                      data-team-selector-entry="true"
+                      data-team-id={team.id}
+                      data-team-name={team.name}
                       onClick={() => navigateToTeamDetail(team.id)}
                     >
                       <div className="min-w-0 flex-1">
@@ -3647,7 +3678,7 @@ export function TeamPage(props: TeamPageProps) {
               configuredWorkerCount={selectedTeamWorkerCount}
               teams={teams}
               selectedTeam={selectedTeam}
-              selectedTeamId={selectedTeamId}
+              selectedTeamId={effectiveSelectedTeamId}
               selectedTeamRuntimeStatus={selectedTeamRuntimeStatus}
               selectedTeamMemberCount={selectedTeamMembers.length}
               selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
@@ -3656,7 +3687,7 @@ export function TeamPage(props: TeamPageProps) {
               focusedAgentMemberId={focusedAgentMemberId}
               tab={tab}
               onSelectTeam={(teamId) => {
-                if (teamId !== selectedTeamId) {
+                if (teamId !== effectiveSelectedTeamId) {
                   navigateToTeamDetail(teamId);
                 }
               }}
@@ -3672,10 +3703,31 @@ export function TeamPage(props: TeamPageProps) {
 
           {showWorkbenchPane && (
           <div
-            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0 [&>*]:shrink-0"
+            className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0"
             data-team-surface="workbench"
           >
-            {!selectedTeam && (
+            {showTeamBootstrapLoading && (
+              <div
+                className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}
+                data-team-loading-shell="true"
+              >
+                <span className={teamWorkbenchBadgeClassName}>Loading Team</span>
+                <div className="mt-3 flex items-center gap-3">
+                  <Loader size="sm" color="gray" />
+                  <div className="min-w-0">
+                    <h2 className="text-[22px] font-semibold tracking-tight text-black">
+                      Loading team workspace...
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
+                      AgentHub is loading the team catalog and workspace context. The workbench
+                      will render once the basic Team metadata is ready.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showTeamUnavailable && (
               <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
                 <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
                 <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
@@ -3713,7 +3765,7 @@ export function TeamPage(props: TeamPageProps) {
                     >
                       <div className="min-w-0 flex-1">
                         {workspaceEyebrow && (
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/58">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
                             {workspaceEyebrow}
                           </p>
                         )}
@@ -3721,22 +3773,25 @@ export function TeamPage(props: TeamPageProps) {
                           <h2
                             className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
                               isAgentWorkspace
-                                ? "text-[15px] font-semibold leading-[1.1]"
-                                : "text-[17px] font-semibold leading-tight"
-                            } tracking-tight text-black`}
+                                ? "text-[15px] font-bold leading-[1.1]"
+                                : "text-[17px] font-bold leading-tight"
+                            } tracking-tight text-notion-text`}
                           >
                             {workspaceTitle}
                           </h2>
                         ) : null}
                         {workspaceDescription && (
-                          <p className="mt-1 text-[12px] leading-[1.45] text-ui-text-secondary">
+                          <p className="mt-1 text-[12px] leading-relaxed text-notion-text-muted">
                             {workspaceDescription}
                           </p>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {isAgentWorkspace ? (
-                          <Menu withinPortal={false} position="bottom-end" shadow="md">
+                          <Menu
+                            position="bottom-end"
+                            {...NOTION_FLOATING_MENU_PROPS}
+                          >
                             <Menu.Target>
                               <button
                                 type="button"
@@ -3856,7 +3911,10 @@ export function TeamPage(props: TeamPageProps) {
                         ) : null}
                         <div className={workspaceToolbarClassName}>
                           {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
-                            <Menu withinPortal={false} position="bottom-end" shadow="md">
+                            <Menu
+                              position="bottom-end"
+                              {...NOTION_FLOATING_MENU_PROPS}
+                            >
                               <Menu.Target>
                                 <button
                                   type="button"
@@ -4049,9 +4107,8 @@ export function TeamPage(props: TeamPageProps) {
                   isActiveRunHiddenByFilter={isActiveRunHiddenByFilter}
                   activeRun={activeRunForSelectedTeam}
                   totalLoadedRunsForTeam={totalLoadedRunsForTeam}
-                  pageLimit={TEAM_RUN_PAGE_LIMIT}
                   runsHasMore={runsHasMore}
-                  selectedTeamId={selectedTeamId}
+                  selectedTeamId={effectiveSelectedTeamId}
                   onLoadMoreRuns={onLoadMoreRuns}
                 />
               )}
@@ -4827,7 +4884,7 @@ export function TeamPage(props: TeamPageProps) {
                     />
                   </div>
                 </div>
-                <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
+                <div className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
                   <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
                   <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                     Role-bound Team skills come from the system-managed skill path and are shown

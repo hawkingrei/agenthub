@@ -3,6 +3,34 @@ import { Switch } from "@mantine/core";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import {
+  ADMIN_APP_CLASS,
+  ADMIN_CARD_CLASS,
+  ADMIN_CARD_TITLE_CLASS,
+  ADMIN_DANGER_BUTTON_CLASS,
+  ADMIN_EMPTY_TEXT_CLASS,
+  ADMIN_FORM_ROW_CLASS,
+  ADMIN_HEADER_CLASS,
+  ADMIN_INPUT_CLASS,
+  ADMIN_KV_LIST_CLASS,
+  ADMIN_KV_ROW_CLASS,
+  ADMIN_LABEL_CLASS,
+  ADMIN_LIST_CLASS,
+  ADMIN_LIST_ITEM_CLASS,
+  ADMIN_MUTED_TEXT_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_QR_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SECTION_CLASS,
+  ADMIN_SESSION_CLASS,
+  ADMIN_TAB_BAR_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+  ADMIN_TAB_BUTTON_BASE_CLASS,
+  ADMIN_TAB_BUTTON_IDLE_CLASS,
+  ADMIN_TITLE_CLASS,
+  ADMIN_TOOLBAR_CLASS,
+  ADMIN_VALUE_CLASS,
+} from "../ui/tailwind_classes";
 
 type AdminProps = {
   auth: AuthState;
@@ -31,49 +59,6 @@ type AdminProps = {
   passkeyEnabled: boolean | null;
   onPasskeyEnabledChange: (value: boolean) => void;
 };
-
-const ADMIN_APP_CLASS =
-  "app min-h-screen bg-gradient-to-b from-slate-100/80 to-white text-slate-900";
-const ADMIN_HEADER_CLASS =
-  "flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 py-3 backdrop-blur";
-const ADMIN_TITLE_CLASS = "text-lg font-semibold tracking-tight text-slate-900";
-const ADMIN_SESSION_CLASS = "session flex items-center gap-2 text-sm text-slate-700";
-const ADMIN_SECTION_CLASS =
-  "admin mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5";
-const ADMIN_TOOLBAR_CLASS =
-  "admin-toolbar flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm";
-const ADMIN_TAB_BAR_CLASS =
-  "admin-tab-bar flex flex-wrap gap-2 rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm";
-const ADMIN_TAB_BUTTON_BASE_CLASS =
-  "admin-tab-button inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition";
-const ADMIN_TAB_BUTTON_ACTIVE_CLASS =
-  "border border-slate-900 bg-slate-900 text-white shadow-sm";
-const ADMIN_TAB_BUTTON_IDLE_CLASS =
-  "border border-transparent bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900";
-const ADMIN_CARD_CLASS =
-  "admin-card rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-sm";
-const ADMIN_CARD_TITLE_CLASS = "mb-3 text-base font-semibold text-slate-900";
-const ADMIN_FORM_ROW_CLASS = "form-row mb-3 flex flex-wrap items-center gap-2";
-const ADMIN_INPUT_CLASS =
-  "min-w-[16rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
-const ADMIN_PRIMARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60";
-const ADMIN_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-500";
-const ADMIN_DANGER_BUTTON_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100";
-const ADMIN_LIST_CLASS = "space-y-2";
-const ADMIN_LIST_ITEM_CLASS =
-  "flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2";
-const ADMIN_MUTED_TEXT_CLASS = "text-sm text-slate-600";
-const ADMIN_QR_CLASS = "mt-2 max-w-xs rounded-lg border border-slate-200 bg-white p-2";
-const ADMIN_KV_LIST_CLASS = "kv-list space-y-2";
-const ADMIN_KV_ROW_CLASS =
-  "kv-row grid gap-1 sm:grid-cols-[9rem_1fr] sm:items-start";
-const ADMIN_LABEL_CLASS = "label text-sm font-medium text-slate-700";
-const ADMIN_VALUE_CLASS = "value break-all text-sm text-slate-900";
-const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-slate-500";
-
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"

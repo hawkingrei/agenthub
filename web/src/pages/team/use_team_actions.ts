@@ -83,6 +83,7 @@ type UseTeamActionsOptions = {
   setActiveRunId: Dispatch<SetStateAction<string | null>>;
   setRunLookupId: (next: string) => void;
   onRunCreated?: (created: TeamRunRecord) => void;
+  onTeamsRefreshSettled?: () => void;
 };
 
 type TeamApiClient = {
@@ -212,6 +213,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     setActiveRunId,
     setRunLookupId,
     onRunCreated,
+    onTeamsRefreshSettled,
   } = options;
 
   const teamApi = useMemo(() => buildTeamApiClient(token), [token]);
@@ -270,8 +272,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       setError(parseErrorMessage(err));
     } finally {
       setBusy(null);
+      onTeamsRefreshSettled?.();
     }
-  }, [setBusy, setError, setSelectedTeamId, setTeams, teamApi]);
+  }, [onTeamsRefreshSettled, setBusy, setError, setSelectedTeamId, setTeams, teamApi]);
 
   const refreshRun = useCallback(
     async (runId: string) => {

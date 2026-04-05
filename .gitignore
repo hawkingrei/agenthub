@@ -18,3 +18,4 @@ userdocs/node_modules
 userdocs/build
 userdocs/.docusaurus
 .info/
+.tmp/

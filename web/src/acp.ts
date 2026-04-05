@@ -129,9 +129,14 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
       type: String(parsed.type ?? "unknown"),
       payload: parsed,
     });
-    const parsedConfigOptions = parseAcpConfigOptions(parsed);
-    if (parsedConfigOptions) {
-      configOptions = parsedConfigOptions;
+    if (parsed.type === "config_option_update") {
+      const parsedConfigOptions = parseAcpConfigOptions(parsed);
+      if (parsedConfigOptions !== null) {
+        configOptions = parsedConfigOptions;
+      }
+      if (parsed.current_mode_id) {
+        currentMode = String(parsed.current_mode_id);
+      }
     }
     if (
       parsed.type === "agent_message" ||
@@ -428,7 +433,7 @@ function parseAcpConfigOptions(value: unknown): AcpConfigOption[] | null {
   }
   const rawOptions = record.config_options;
   if (!Array.isArray(rawOptions)) {
-    return [];
+    return null;
   }
   return rawOptions
     .map((option) => parseAcpConfigOption(option))

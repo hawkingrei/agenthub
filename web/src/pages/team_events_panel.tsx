@@ -9,6 +9,9 @@ import {
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
+  EVENTS_LIST_CLASS,
+  EVENTS_ITEM_CLASS,
+  EVENTS_ITEM_HEAD_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamEventsPanelProps = {
@@ -26,12 +29,8 @@ type TeamEventsPanelProps = {
   toPrettyJson: (value: unknown) => string;
 };
 
-const EVENTS_LIST_CLASS = "teams-event-list rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const EVENTS_CHECKBOX_LABEL_CLASS =
-  "checkbox inline-flex items-center gap-2 text-ui-sm text-ui-text-secondary";
-const EVENTS_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
-const EVENTS_ITEM_HEAD_CLASS =
-  "teams-event-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
+  "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
 
 export function TeamEventsPanel(props: TeamEventsPanelProps) {
   const {
@@ -50,7 +49,7 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
   } = props;
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Run Events</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
@@ -86,9 +85,8 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
         </div>
       </div>
       {previewMode && (
-        <p className={TEAM_MUTED_TEXT_CLASS}>
-          Showing latest {previewLimit} records. For full event history, select a member in the
-          Member Console tab.
+        <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
+          Showing latest {previewLimit} records.
         </p>
       )}
       {displayedRunEvents.length === 0 && <p className={TEAM_MUTED_TEXT_CLASS}>No events.</p>}
@@ -96,11 +94,12 @@ export function TeamEventsPanel(props: TeamEventsPanelProps) {
         {displayedRunEvents.map((event) => (
           <li key={event.event_id} className={EVENTS_ITEM_CLASS}>
             <div className={EVENTS_ITEM_HEAD_CLASS}>
-              <span className="mono">#{event.event_id}</span>
-              <span>{event.event_type}</span>
+              <span className="text-notion-accent font-bold">#{event.event_id}</span>
+              <span className="text-notion-text">{event.event_type}</span>
+              <span aria-hidden="true">·</span>
               <span>{formatTs(event.ts)}</span>
             </div>
-            <pre className={TEAM_PANEL_PRE_CLASS}>{toPrettyJson(event.payload)}</pre>
+            <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2 text-[12px] bg-notion-sidebar/30 border-notion-border/50`}>{toPrettyJson(event.payload)}</pre>
           </li>
         ))}
       </ul>

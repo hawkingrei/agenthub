@@ -231,7 +231,7 @@ describe("AcpPanel layout", () => {
         showConversationJump={true}
       />
     );
-    const panelPos = html.indexOf('class="acp relative');
+    const panelPos = html.indexOf('class="acp acp-panel');
     const conversationPos = html.indexOf('class="acp-conversation');
     const jumpPos = html.indexOf('class="acp-jump-bottom');
     expect(panelPos).toBeGreaterThanOrEqual(0);

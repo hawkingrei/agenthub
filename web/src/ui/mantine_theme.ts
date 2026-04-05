@@ -1,33 +1,34 @@
 import type { MantineThemeOverride } from "@mantine/core";
 
 export const mantineTheme: MantineThemeOverride = {
-  fontFamily: '"Space Grotesk", system-ui, sans-serif',
+  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
   fontFamilyMonospace:
-    '"Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-  primaryColor: "brand",
-  primaryShade: 6,
+    '"Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+  primaryColor: "notion-accent",
   defaultRadius: "sm",
   radius: {
-    sm: "8px",
-    md: "10px",
-    lg: "16px",
+    xs: "2px",
+    sm: "4px",
+    md: "6px",
+    lg: "8px",
+    xl: "12px",
   },
   colors: {
-    brand: [
-      "#eef4f8",
-      "#d9e7f2",
-      "#b3cde4",
-      "#8cb3d5",
-      "#669ac7",
-      "#3f80b8",
-      "#24689f",
-      "#1b3a57",
-      "#143045",
-      "#0f2435",
+    "notion-accent": [
+      "#e8f2fd",
+      "#d1e5fb",
+      "#a3cbf7",
+      "#75b1f3",
+      "#4797ef",
+      "#2383e2", // notion accent blue
+      "#1c69b5",
+      "#154f88",
+      "#0e355a",
+      "#071a2d",
     ],
   },
   headings: {
-    fontFamily: '"Space Grotesk", system-ui, sans-serif',
-    fontWeight: "600",
+    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+    fontWeight: "700",
   },
 };

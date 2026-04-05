@@ -3,7 +3,10 @@ import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
 import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
+import { ActionButton, IconButton, StatusPill, cx } from "../ui/primitives";
 import {
+  AGENTS_PANEL_BACKDROP_CLASS,
+  AGENTS_PANEL_BODY_CLASS,
   AGENTS_CREATE_BUTTON_CLASS,
   AGENTS_PANEL_COLLAPSED_CLASS,
   AGENTS_PANEL_EXPANDED_CLASS,
@@ -13,22 +16,38 @@ import {
   AGENTS_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
-const AGENTS_WORKBENCH_ICON_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#fcfbf7] text-black shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
-const AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] border-black bg-[#203b2d] text-white shadow-[0_1px_0_rgba(0,0,0,0.14)] transition hover:-translate-y-[1px] sm:h-10 sm:w-10 sm:rounded-[14px] sm:shadow-[0_2px_0_rgba(0,0,0,0.14)]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fcfbf7] text-[13px] text-black shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+  "text-[13px] sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#203b2d] text-[13px] text-white shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
+  "text-[13px] sm:text-[14px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[9px] border-[2px] border-black bg-[#fff4f1] text-[13px] text-[#8d2d20] shadow-[0_1px_0_rgba(0,0,0,0.12)] transition hover:-translate-y-[1px] sm:h-8 sm:w-8 sm:rounded-[11px] sm:text-[14px]";
-const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4";
+  "text-[13px] sm:text-[14px]";
+const AGENTS_WORKBENCH_ROW_HEAD_CLASS =
+  "agents-workbench-row-head flex min-w-0 items-start justify-between gap-2";
+const AGENTS_WORKBENCH_ROW_TITLE_CLASS =
+  "agents-workbench-row-title flex min-w-0 flex-1 items-start gap-1.5";
+const AGENTS_WORKBENCH_NAME_CLASS =
+  "agents-workbench-name min-w-0 flex-1 truncate text-[14px] font-bold tracking-tight text-notion-text";
+const AGENTS_WORKBENCH_ROW_BADGES_CLASS =
+  "agents-workbench-row-badges mt-1 flex min-w-0 flex-wrap items-center gap-1.5";
+const AGENTS_WORKBENCH_PERMISSION_DOT_CLASS =
+  "agents-workbench-permission-dot inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
+const AGENTS_WORKBENCH_ROW_ACTIONS_CLASS =
+  "agents-workbench-row-actions inline-flex shrink-0 items-center gap-1";
+const AGENTS_WORKBENCH_ROW_META_CLASS =
+  "agents-workbench-row-meta mt-1.5 hidden flex-col gap-0.5 sm:flex";
+const AGENTS_WORKBENCH_WORKDIR_CLASS =
+  "agents-workbench-workdir truncate text-[11px] leading-relaxed text-notion-text";
+const AGENTS_WORKBENCH_CODE_MODE_CLASS =
+  "agents-workbench-code-mode text-[10px] font-medium uppercase tracking-wider text-notion-text-muted";
+const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4 py-4 bg-notion-sidebar border-r border-notion-border";
 const AGENTS_WORKBENCH_METRIC_CLASS =
-  "relative grid gap-1 justify-items-center rounded-[14px] border-[2px] border-black/10 bg-[#e9e1d2] px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/60 shadow-[0_1px_0_rgba(0,0,0,0.08)]";
-const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-3 overflow-auto pr-1";
+  "relative grid gap-1 justify-items-center rounded-lg border border-notion-border bg-white px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-notion-text-muted shadow-sm";
+const AGENTS_WORKBENCH_RAIL_DOT_CLASS =
+  "agents-rail-dot absolute right-1.5 top-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
+const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
 const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
-  "text-lg font-semibold tracking-tight text-[#1f252c]";
+  "text-sm font-bold uppercase tracking-widest text-notion-text-muted px-2";
 
 type AgentsPanelProps = {
   agents: AgentRecord[];
@@ -70,7 +89,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   return (
     <>
       {!agentsCollapsed && (
-        <div className="agents-backdrop" onClick={onCollapse} />
+        <div className={AGENTS_PANEL_BACKDROP_CLASS} onClick={onCollapse} />
       )}
       <div
         className={
@@ -83,20 +102,21 @@ export const AgentsPanel = React.memo(function AgentsPanel({
       >
         {agentsCollapsed ? (
           <div className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
-            <button
-              className={AGENTS_WORKBENCH_ICON_BUTTON_CLASS}
+            <IconButton
+              size="md"
+              tone="default"
               onClick={onExpand}
               title="Show agents"
               aria-label="Show agents"
             >
               <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
-            </button>
+            </IconButton>
             <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
               <span className="value">{agents.length}</span>
               <span className="label">Agents</span>
               {hasPendingPermissions ? (
                 <span
-                  className="agents-rail-dot"
+                  className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
                   role="img"
                   aria-label="Pending permissions"
                   title="Pending permissions"
@@ -107,34 +127,42 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               <span className="value">{runningCount}</span>
               <span className="label">Running</span>
             </div>
-            <button
-              className={AGENTS_WORKBENCH_ICON_BUTTON_ACTIVE_CLASS}
+            <IconButton
+              size="md"
+              tone="active"
               onClick={onCreateAgent}
               title="Create agent"
               aria-label="Create agent"
             >
               <i className="bi bi-plus-lg" aria-hidden="true" />
-            </button>
+            </IconButton>
           </div>
         ) : (
           <>
             <div className={AGENTS_TOOLBAR_CLASS}>
               <h2 className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</h2>
               <div className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
-                <button
-                  className={`hidden lg:inline-flex ${AGENTS_WORKBENCH_ICON_BUTTON_CLASS}`}
+                <IconButton
+                  size="md"
+                  tone="default"
+                  className="hidden lg:inline-flex"
                   onClick={onCollapse}
                   title="Hide agents"
                   aria-label="Hide agents"
                 >
                   <i className="bi bi-chevron-left" aria-hidden="true" />
-                </button>
-                <button className={AGENTS_CREATE_BUTTON_CLASS} onClick={onCreateAgent}>
+                </IconButton>
+                <ActionButton
+                  tone="secondary"
+                  size="sm"
+                  className={AGENTS_CREATE_BUTTON_CLASS}
+                  onClick={onCreateAgent}
+                >
                   Create Agent
-                </button>
+                </ActionButton>
               </div>
             </div>
-            <div className="agent-layout">
+            <div className={AGENTS_PANEL_BODY_CLASS}>
               <div className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
@@ -182,30 +210,22 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                       }}
                       title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
-                      <div className="agents-workbench-row-head">
-                        <div className="agents-workbench-row-title">
-                          <span className="agents-workbench-name">{agent.name}</span>
+                      <div className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
+                        <div className={AGENTS_WORKBENCH_ROW_TITLE_CLASS}>
+                          <span className={AGENTS_WORKBENCH_NAME_CLASS}>{agent.name}</span>
                           {pendingPermissionCount > 0 ? (
                             <span
-                              className="agents-workbench-permission-dot"
+                              className={AGENTS_WORKBENCH_PERMISSION_DOT_CLASS}
                               role="img"
                               aria-label={pendingPermissionLabel}
                               title={pendingPermissionLabel}
                             />
                           ) : null}
-                          {modelLabel ? (
-                            <span className="agents-workbench-tag hidden sm:inline-flex">
-                              {modelLabel}
-                            </span>
-                          ) : null}
-                          {isRemoteTarget ? (
-                            <span className="agents-workbench-tag hidden sm:inline-flex">
-                              node:{agent.target_node_id}
-                            </span>
-                          ) : null}
                         </div>
-                        <div className="agents-workbench-row-actions">
-                          <button
+                        <div className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
+                          <IconButton
+                            size="sm"
+                            tone={agent.code_mode ? "active" : "subtle"}
                             className={
                               agent.code_mode
                                 ? AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS
@@ -228,14 +248,10 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             aria-pressed={agent.code_mode}
                           >
                             <i className="bi bi-code-slash" aria-hidden="true" />
-                          </button>
-                          <StatusBadge
-                            label={agent.status}
-                            tone={resolveAgentStatusTone(agent.status)}
-                            className={`agents-workbench-status status-${agent.status} hidden sm:inline-flex px-2 py-0.5 text-[10px]`}
-                            title={`status: ${agent.status}`}
-                          />
-                          <button
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            tone="subtle"
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                             disabled={isActive || isStarting}
                             onClick={(e) => {
@@ -246,14 +262,16 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             }}
                             title={startButtonTitle}
                             aria-label={startButtonAriaLabel}
-                          >
-                            <i
-                              className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}
-                              aria-hidden="true"
-                            />
-                          </button>
+                            >
+                              <i
+                                className={`bi ${isStarting ? "bi-arrow-repeat animate-spin" : "bi-play-fill"}`}
+                                aria-hidden="true"
+                              />
+                          </IconButton>
                           {isAgentActiveStatus(agent.status) && (
-                            <button
+                            <IconButton
+                              size="sm"
+                              tone="subtle"
                               className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -263,9 +281,11 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                               aria-label="Stop"
                             >
                               <i className="bi bi-stop-fill" aria-hidden="true" />
-                            </button>
+                            </IconButton>
                           )}
-                          <button
+                          <IconButton
+                            size="sm"
+                            tone="danger"
                             className={AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -275,12 +295,31 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             aria-label="Delete"
                           >
                             <i className="bi bi-trash" aria-hidden="true" />
-                          </button>
+                          </IconButton>
                         </div>
                       </div>
-                      <div className="agents-workbench-row-meta hidden sm:flex">
-                        <span className="agents-workbench-workdir">{agent.workdir}</span>
-                        <span className="agents-workbench-code-mode">
+                      <div className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
+                        {modelLabel ? (
+                          <StatusPill className="agents-workbench-tag">{modelLabel}</StatusPill>
+                        ) : null}
+                        {isRemoteTarget ? (
+                          <StatusPill className="agents-workbench-tag">
+                            node:{agent.target_node_id}
+                          </StatusPill>
+                        ) : null}
+                        <StatusBadge
+                          label={agent.status}
+                          tone={resolveAgentStatusTone(agent.status)}
+                          className={cx(
+                            `agents-workbench-status status-${agent.status}`,
+                            "px-2 py-0.5 text-[10px]"
+                          )}
+                          title={`status: ${agent.status}`}
+                        />
+                      </div>
+                      <div className={AGENTS_WORKBENCH_ROW_META_CLASS}>
+                        <span className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</span>
+                        <span className={AGENTS_WORKBENCH_CODE_MODE_CLASS}>
                           Code mode: {agent.code_mode ? "on" : "off"}
                         </span>
                       </div>

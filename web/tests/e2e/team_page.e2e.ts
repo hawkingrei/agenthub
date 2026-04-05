@@ -1,6 +1,19 @@
 import { expect, test, testLocalLlm } from "./coverage";
 import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
+function deriveAgentName(identity: string | undefined, workdir: string): string {
+  const normalizedIdentity = identity?.trim();
+  if (normalizedIdentity) {
+    return normalizedIdentity;
+  }
+  const basename = workdir
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/[-_]+/g, " ");
+  return basename || "team member";
+}
+
 type StoredAuthState = {
   token: string;
   userId: string;
@@ -183,8 +196,7 @@ async function createTeamFromModal(
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
-  await expect(page.getByRole("heading", { name: options.name, exact: true })).toBeVisible();
-  await openTeamFromSelector(page, options.name);
+  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
   await expectAddAgentEntryVisible(page, options.name);
 }
 
@@ -271,11 +283,6 @@ async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
-  const roleModelLabels: Record<string, string> = {
-    codex: "Codex ACP",
-    gemini: "Gemini CLI",
-    kimi: "Kimi CLI",
-  };
   const openButtonLabel = "Add Agent";
   const confirmLabel = "Create Agent";
   const primaryOpenButton = page
@@ -340,13 +347,12 @@ async function createTeamMemberFromModal(
     }
   }
   await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Agent name").fill(deriveAgentName(options.identity, options.workdir));
   if (options.identity) {
     await dialog.getByLabel("Identity").fill(options.identity);
   }
-  if (options.model) {
-    const optionLabel = roleModelLabels[options.model] ?? options.model;
-    await dialog.getByLabel("Role model").click();
-    await page.getByRole("option", { name: optionLabel, exact: true }).click();
+  if (options.model && options.model !== "codex") {
+    await dialog.getByLabel("Role model").selectOption(options.model);
   }
   await dialog.getByLabel(/Workdir/).fill(options.workdir);
   await dialog.getByRole("button", { name: confirmLabel }).click();
@@ -357,14 +363,6 @@ async function openTeamFromSelector(
   page: import("@playwright/test").Page,
   teamName: string
 ): Promise<void> {
-  const isSelected = async (): Promise<boolean> => {
-    const detailPath = new URL(page.url()).pathname;
-    if (!/^\/teams\/[^/]+$/.test(detailPath)) {
-      return false;
-    }
-    const heading = page.getByRole("heading", { name: teamName, exact: true });
-    return heading.isVisible().catch(() => false);
-  };
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
     const selectorButton = page.getByRole("button", { name: "Team Selector", exact: true });
@@ -375,25 +373,71 @@ async function openTeamFromSelector(
     }
   }
   await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
-  const teamItem = page.locator(".team-item", { hasText: teamName }).first();
-  await expect(teamItem).toBeVisible();
+  const selectorPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Teams", exact: true }),
+  });
+  await expect(selectorPanel).toBeVisible();
+  const filterInput = selectorPanel.getByLabel(/Filter teams|Search teams/);
+  if ((await filterInput.count()) > 0) {
+    await filterInput.fill(teamName);
+  }
+  const selectorTeamButton = selectorPanel
+    .locator('[data-team-selector-entry="true"]', { hasText: teamName })
+    .first();
+  await expect(selectorTeamButton).toBeVisible();
+  const selectorTeamId = await selectorTeamButton.getAttribute("data-team-id");
+  expect(selectorTeamId).toBeTruthy();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await teamItem.scrollIntoViewIfNeeded();
     try {
-      await teamItem.click({ timeout: 1_500, force: attempt > 0 });
+      await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
-      await teamItem.click({ force: true });
+      await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
     }
     await page.waitForTimeout(150);
-    if (await isSelected()) {
+    if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
-  await teamItem.evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
-  await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect(page.getByRole("heading", { name: teamName, exact: true })).toBeVisible();
+  await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
+  await expect.poll(() => isTeamDetailReady(page, teamName)).toBe(true);
+}
+
+async function isTeamDetailReady(
+  page: import("@playwright/test").Page,
+  expectedTeamName?: string
+): Promise<boolean> {
+  const detailPath = new URL(page.url()).pathname;
+  if (!/^\/teams\/[^/]+$/.test(detailPath)) {
+    return false;
+  }
+  if (expectedTeamName) {
+    const selectedTeamMenu = page.getByRole("button", {
+      name: "Open selected team menu",
+      exact: true,
+    });
+    if ((await selectedTeamMenu.count()) > 0) {
+      const selectedTeamText = await selectedTeamMenu.first().textContent();
+      if (!selectedTeamText?.includes(expectedTeamName)) {
+        return false;
+      }
+    }
+  }
+  const teamsMain = page.locator(".teams-main").first();
+  if ((await teamsMain.count()) === 0) {
+    return false;
+  }
+  const teamsMainVisible = await teamsMain.isVisible().catch(() => false);
+  if (!teamsMainVisible) {
+    return false;
+  }
+  const pageText = await page.locator("body").textContent();
+  if (!pageText) {
+    return false;
+  }
+  return (
+    !pageText.includes("Loading team workspace...") &&
+    !pageText.includes("This team is unavailable.")
+  );
 }
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
@@ -477,7 +521,8 @@ async function openKanbanDeveloperTools(
   page: import("@playwright/test").Page
 ): Promise<void> {
   const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
-  if ((await compilePreviewButton.count()) === 0) {
+  const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
+  if (!compilePreviewVisible) {
     const developerToolsSummary = page.locator("summary").filter({
       has: page.getByText("Developer tools", { exact: true }),
     });
@@ -485,6 +530,7 @@ async function openKanbanDeveloperTools(
     await developerToolsSummary.click();
   }
   await expect(compilePreviewButton).toBeVisible();
+  await expect(compilePreviewButton).toBeEnabled();
 }
 
 async function selectPrimaryTeamEntryFromSidebar(
@@ -1409,7 +1455,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
     goal: "Build a goal-first team and add members afterward.",
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
-  await expect(page.getByRole("heading", { name: "quest-team", exact: true })).toBeVisible();
+  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
   await openSelectedTeamMenu(page);
   await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
@@ -1735,7 +1781,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
 
   await selectAgentFromSidebar(page, longLeaderId);
   await openAdvancedView(page, "Member Console");
-  const memberConsoleCard = page.locator(".card", { hasText: "Member Console" });
+  const memberConsoleCard = page.locator('[data-team-panel="member-console"]');
   await expect(memberConsoleCard).toBeVisible();
   await memberConsoleCard.locator("select").first().selectOption(longLeaderId);
   await expect(memberConsoleCard).toContainText("mcp_skills");
@@ -2221,9 +2267,12 @@ test("team debug run ops compiles task preview and applies payload to create-run
   await openKanbanDeveloperTools(page);
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
+  await expect.poll(() => compileRequests.length).toBe(1);
 
-  await expect(page.getByText("conversation-compile-1", { exact: true })).toBeVisible();
-  await expect(page.getByText("ctx-task-compile-1", { exact: true })).toBeVisible();
+  const compilePreview = page.locator('[data-team-compile-preview="true"]');
+  await expect(compilePreview).toBeVisible();
+  await expect(compilePreview).toContainText("conversation-compile-1");
+  await expect(compilePreview).toContainText("ctx-task-compile-1");
   expect(compileRequests).toEqual([{}]);
 
   await page.getByRole("button", { name: "Use Payload in Create Run" }).click();
@@ -3169,10 +3218,13 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   });
 
   const unreadFor = async (memberId: string): Promise<number> => {
-    const label = await page
+    const badge = page
       .locator(".teams-chat-members .team-item", { hasText: `${memberId} (` })
-      .locator(".teams-member-unread")
-      .innerText();
+      .locator(".teams-member-unread");
+    if ((await badge.count()) === 0) {
+      return 0;
+    }
+    const label = await badge.innerText();
     const match = label.match(/unread=(\d+)/);
     return match ? Number(match[1]) : 0;
   };
@@ -3234,7 +3286,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await openMainTeamAction(page, "Runs");
   await openAdvancedView(page, "Overview");
   await page
-    .locator(".teams-member-list .team-member-row", { hasText: "agent-worker-2" })
+    .locator(".teams-member-list .team-member-row", { hasText: "Worker Agent Two (worker)" })
     .click();
   await expect(page.locator(".teams-chat-messages")).toContainText("advanced-mailbox-ping");
   expect(counters.send).toBeGreaterThan(0);

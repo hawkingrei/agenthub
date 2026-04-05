@@ -1,15 +1,14 @@
 import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { ActionButton, PanelHeader, StatusPill, SurfaceCard } from "../ui/primitives";
 import {
-  TEAM_PANEL_CARD_CLASS,
   TEAM_LIST_ITEM_ACTIVE_CLASS,
   TEAM_LIST_ITEM_IDLE_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
+  TEAM_SECTION_TITLE_CLASS,
+  TEAM_LIST_ITEM_META_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamRunStatusFilter = TeamRunStatus | "all";
@@ -20,24 +19,11 @@ type TeamRunStatusFilterOption = {
 };
 
 const RUN_PANEL_LIST_CLASS =
-  "teams-run-list flex flex-col gap-2 rounded-xl border border-ui-border bg-ui-surface-soft/60 p-4";
-const RUN_PANEL_LIST_HEAD_CLASS =
-  "teams-run-list-head mb-2 flex flex-wrap items-center justify-between gap-2";
+  "teams-run-list flex flex-col gap-4 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
-const RUN_PANEL_SUBTITLE_CLASS = "mb-2 text-xs font-medium uppercase tracking-wide text-ui-text-muted";
-const RUN_PANEL_HINT_TEXT_CLASS = "text-sm text-ui-text-muted";
-const RUN_PANEL_LIST_TITLE_CLASS = "text-sm font-semibold text-ui-text-primary";
-const RUN_PANEL_FOOT_META_CLASS = "mono text-ui-xs text-ui-text-muted";
-const TEAM_WORKBENCH_RUN_PANEL_CLASS =
-  "rounded-[28px] border-[3px] border-black bg-[#f6efe5] p-5 shadow-[0_4px_0_rgba(0,0,0,0.18)]";
-const TEAM_WORKBENCH_RUN_LIST_CLASS =
-  "rounded-[22px] border-[3px] border-black bg-[#fffaf3] p-4 shadow-[0_2px_0_rgba(0,0,0,0.14)]";
-const TEAM_WORKBENCH_ACCENT_BUTTON_CLASS =
-  "rounded-[14px] border-[3px] border-black bg-[#243243] px-3 py-2 text-sm font-semibold text-white shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
-const TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS =
-  "rounded-[14px] border-[3px] border-black bg-white px-3 py-2 text-sm font-semibold text-black shadow-[0_2px_0_rgba(0,0,0,0.16)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
-const TEAM_WORKBENCH_DANGER_BUTTON_CLASS =
-  "rounded-[14px] border-[3px] border-[#8d2d20] bg-[#fff4f1] px-3 py-2 text-sm font-semibold text-[#8d2d20] shadow-[0_2px_0_rgba(141,45,32,0.18)] transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-60";
+const RUN_PANEL_SUBTITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+const RUN_PANEL_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
+const RUN_PANEL_FOOT_META_CLASS = "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -58,7 +44,6 @@ type TeamRunPanelProps = {
   isActiveRunHiddenByFilter: boolean;
   activeRun: TeamRunRecord | null;
   totalLoadedRunsForTeam: number;
-  pageLimit: number;
   runsHasMore: boolean;
   selectedTeamId: string | null;
   onLoadMoreRuns: () => Promise<void> | void;
@@ -84,92 +69,88 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
     isActiveRunHiddenByFilter,
     activeRun,
     totalLoadedRunsForTeam,
-    pageLimit,
     runsHasMore,
     selectedTeamId,
     onLoadMoreRuns,
   } = props;
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} ${TEAM_WORKBENCH_RUN_PANEL_CLASS}`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <div className="text-lg font-semibold tracking-tight text-black">
-          {selectedTeam.name}
-        </div>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <span className="mono rounded-full border-2 border-black bg-white px-3 py-1 text-black">
-            {selectedTeam.id}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              void onDeleteTeam();
-            }}
-            disabled={busy === "delete-team"}
-            className={TEAM_WORKBENCH_DANGER_BUTTON_CLASS}
-          >
-            Delete Team
-          </button>
-        </div>
-      </div>
-      <div className={`${RUN_PANEL_LIST_CLASS} ${TEAM_WORKBENCH_RUN_LIST_CLASS}`}>
-        <p className={`${RUN_PANEL_SUBTITLE_CLASS} text-black/60`}>Run Browser</p>
-        <p className={`${TEAM_MUTED_TEXT_CLASS} text-black/70`}>
-          {developerMode ? (
-            <>
-              Team execution is agent-driven. You can quick-start here, or use{" "}
-              <code>Debug → Run Ops</code> for manual run debugging.
-            </>
-          ) : (
-            "Team execution is agent-driven. You can quick-start here. Manual run debugging is available in Developer Mode."
+    <SurfaceCard className="p-4 sm:p-6">
+      <PanelHeader
+        title={<div className={TEAM_SECTION_TITLE_CLASS}>{selectedTeam.name}</div>}
+        actions={
+          <>
+            <StatusPill className="mono">{selectedTeam.id}</StatusPill>
+          {developerMode && (
+            <ActionButton
+              tone="danger"
+              size="sm"
+              type="button"
+              onClick={() => {
+                void onDeleteTeam();
+              }}
+              disabled={busy === "delete-team"}
+            >
+              Delete Team
+            </ActionButton>
           )}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          </>
+        }
+      />
+
+      <div className={RUN_PANEL_LIST_CLASS}>
+        <div className="flex flex-col gap-1">
+          <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
+          <p className={TEAM_MUTED_TEXT_CLASS}>
+            Team execution is agent-driven.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-notion-border/50 pb-4">
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>
-            {runBlockedReason ?? "Quick start a new run for this team."}
+            {runBlockedReason ?? "Start a new run for this team."}
           </span>
-          <button
+          <ActionButton
+            tone="primary"
+            size="md"
             onClick={() => {
               void onStartRun();
             }}
             disabled={busy === "create-run" || !selectedTeamId || !canStartRun}
-            className={
-              canStartRun
-                ? TEAM_WORKBENCH_ACCENT_BUTTON_CLASS
-                : TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS
-            }
-            title={runBlockedReason ?? "Start a new run for the selected team"}
+            title={runBlockedReason ?? "Start a new run"}
             aria-label="Start run"
           >
             {busy === "create-run" ? "Starting..." : "Start Run"}
-          </button>
+          </ActionButton>
         </div>
-        <div className={RUN_PANEL_LIST_HEAD_CLASS}>
-          <h3 className={RUN_PANEL_LIST_TITLE_CLASS}>Runs</h3>
-          <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
+
+        <div className="teams-run-list-head mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Runs</h3>
+          <div className="actions flex flex-wrap items-center gap-2">
             <NativeSelect
               className="w-full sm:w-[164px]"
               aria-label="Run status filter"
               value={runStatusFilter}
               onChange={(event) => onRunStatusFilterChange(event.currentTarget.value as TeamRunStatusFilter)}
               data={runStatusFilterOptions}
-              size="sm"
-              radius="md"
+              size="xs"
+              radius="sm"
             />
-            <button
+            <ActionButton
+              tone="secondary"
+              size="md"
               onClick={() => {
                 void onRefreshRuns();
               }}
               disabled={runsLoading}
-              className={`${TEAM_PANEL_REFRESH_BUTTON_CLASS} ${TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS}`}
               title="Refresh runs"
               aria-label="Refresh runs"
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              <span>Refresh</span>
-            </button>
+            </ActionButton>
           </div>
         </div>
+
         <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
             <p className={TEAM_MUTED_TEXT_CLASS}>
@@ -179,7 +160,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             </p>
           )}
           {isActiveRunHiddenByFilter && activeRun && (
-            <p className={TEAM_MUTED_TEXT_CLASS}>
+            <p className="text-[12px] text-state-warning-text italic">
               Active run `{activeRun.id}` is hidden by filter `{runStatusFilter}`.
             </p>
           )}
@@ -193,31 +174,38 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               }
               onClick={() => onActiveRunChange(run.id)}
             >
-              <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} mono`}>{run.id}</span>
-              <StatusBadge
-                label={run.status}
-                tone={resolveTeamRunStatusTone(run.status)}
-                className="team-status"
-                title={`run status: ${run.status}`}
-              />
+              <div className="flex w-full items-center justify-between gap-2">
+                <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} mono font-bold`}>{run.id}</span>
+                <StatusBadge
+                  label={run.status}
+                  tone={resolveTeamRunStatusTone(run.status)}
+                  className="team-status"
+                  title={`run status: ${run.status}`}
+                />
+              </div>
+              {run.summary && (
+                <span className={`${TEAM_LIST_ITEM_META_CLASS} line-clamp-1`}>{run.summary}</span>
+              )}
             </button>
           ))}
         </div>
-        <div className="teams-run-list-foot flex flex-wrap items-center justify-between gap-2">
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-notion-border/50">
           <span className={RUN_PANEL_FOOT_META_CLASS}>
-            showing={visibleRuns.length} loaded={totalLoadedRunsForTeam} limit={pageLimit}
+            {visibleRuns.length} of {totalLoadedRunsForTeam}
           </span>
-          <button
+          <ActionButton
+            tone="secondary"
+            size="md"
             onClick={() => {
               void onLoadMoreRuns();
             }}
             disabled={runsLoading || !runsHasMore || !selectedTeamId}
-            className={TEAM_WORKBENCH_NEUTRAL_BUTTON_CLASS}
           >
-            {runsLoading ? "Loading..." : runsHasMore ? "Load More" : "No More Runs"}
-          </button>
+            {runsLoading ? "..." : "Load More"}
+          </ActionButton>
         </div>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

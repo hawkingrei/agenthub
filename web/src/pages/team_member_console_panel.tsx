@@ -99,7 +99,7 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   }, [selectedMemberSnapshot?.skills]);
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <div className={TEAM_PANEL_CARD_CLASS} data-team-panel="member-console">
       <div className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Console</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>

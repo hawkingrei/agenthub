@@ -1,10 +1,12 @@
 import React from "react";
 import {
+  ACP_JUMP_BOTTOM_BUTTON_CLASS,
   INPUT_DOCK_HISTORY_BUTTON_CLASS,
   INPUT_DOCK_HISTORY_ITEM_CLASS,
   INPUT_DOCK_HISTORY_MENU_CLASS,
   INPUT_DOCK_INTERRUPT_BUTTON_CLASS,
   INPUT_DOCK_ROOT_CLASS,
+  INPUT_DOCK_SEND_BUTTON_CLASS,
   INPUT_DOCK_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -326,10 +328,13 @@ export function InputDock({
   }, [showHistory]);
 
   return (
-    <div className="input-dock-shell flex flex-col gap-1.5" ref={inputDockRef}>
+    <div
+      className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      ref={inputDockRef}
+    >
       {showConversationJump && (
         <button
-          className="jump-bottom"
+          className={`${ACP_JUMP_BOTTOM_BUTTON_CLASS} bottom-[calc(100%+0.75rem)] right-0`}
           onClick={onJumpToBottom}
           title="Jump to bottom"
           aria-label="Jump to bottom"
@@ -338,7 +343,13 @@ export function InputDock({
         </button>
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
-        <div className="input-row" role="group" aria-label="Input actions">
+        <div
+          className="input-row flex flex-wrap items-center justify-between gap-2"
+          role="group"
+          aria-label="Input actions"
+          data-input-actions-row="true"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
           {showInterrupt && (
             <button
               className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
@@ -351,18 +362,30 @@ export function InputDock({
             </button>
           )}
           {historyCommands.length > 0 && (
-            <div className="input-history" ref={historyContainerRef}>
+            <div className="input-history relative" ref={historyContainerRef}>
               <button
                 className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
                 onClick={() => setShowHistory((prev) => !prev)}
                 title="Show sent command history"
                 aria-label="Show sent command history"
                 aria-expanded={showHistory}
+                aria-haspopup="menu"
               >
-                History
+                <span className="text-notion-text-muted/80">History</span>
+                <span className="inline-flex min-w-[1.4rem] items-center justify-center rounded-full bg-black/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted">
+                  {visibleHistory.length}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`text-[10px] text-notion-text-muted transition-transform ${
+                    showHistory ? "rotate-180" : ""
+                  }`}
+                >
+                  ▾
+                </span>
               </button>
               {showHistory && (
-                <div className={INPUT_DOCK_HISTORY_MENU_CLASS}>
+                <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
                   {visibleHistory.map((item, idx) => (
                     <button
                       key={`${idx}-${item}`}
@@ -380,12 +403,13 @@ export function InputDock({
               )}
             </div>
           )}
+          </div>
         </div>
-        <div className="input-editor-row">
+        <div className="input-editor-row flex items-end gap-2" data-input-editor-row="true">
           <textarea
             id={textareaId}
             name="acp_input"
-            className={INPUT_DOCK_TEXTAREA_CLASS}
+            className={`${INPUT_DOCK_TEXTAREA_CLASS} flex-1`}
             ref={textareaRef}
             placeholder={inputPlaceholder}
             value={input}
@@ -450,7 +474,7 @@ export function InputDock({
             rows={2}
           />
           <button
-            className="input-send-button"
+            className={INPUT_DOCK_SEND_BUTTON_CLASS}
             onClick={onSendInput}
             disabled={sendDisabled}
             aria-label="Send input"

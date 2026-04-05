@@ -1,5 +1,6 @@
 import React from "react";
 import { Menu } from "@mantine/core";
+import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 
 type WorkbenchHeaderMenuProps = {
   active: "agents" | "teams";
@@ -21,7 +22,11 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
   defaultOpened = false,
 }: WorkbenchHeaderMenuProps) {
   return (
-    <Menu withinPortal={false} position="bottom-end" shadow="md" defaultOpened={defaultOpened}>
+    <Menu
+      position="bottom-end"
+      defaultOpened={defaultOpened}
+      {...NOTION_FLOATING_MENU_PROPS}
+    >
       <Menu.Target>
         <button
           type="button"

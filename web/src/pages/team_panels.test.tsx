@@ -43,6 +43,19 @@ function clickElement(element: Element | null): void {
   });
 }
 
+function clickMenuTrigger(element: Element | null): void {
+  const node = required(element, "element not found");
+  act(() => {
+    if (typeof PointerEvent !== "undefined") {
+      node.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+      node.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+    }
+    node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+}
+
 function findButtonByText(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
     candidate.textContent?.includes(text)
@@ -350,7 +363,7 @@ describe("team panels interactions", () => {
     container.remove();
   });
 
-  it("TeamSidebar renders subject rail and triggers navigation callbacks", () => {
+  it("TeamSidebar renders subject rail and triggers navigation callbacks", async () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
@@ -419,23 +432,27 @@ describe("team panels interactions", () => {
 
     expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
-    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
+    await waitForCondition(() => document.body.textContent?.includes("Create Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Create Team"));
     const filterInput = required(
-      container.querySelector("input[aria-label='Filter teams']"),
+      container.querySelector("input[aria-label='Search teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
     expect(container.textContent).not.toContain("draft_team=alpha");
     changeInputValue(filterInput, "team-2");
-    expect(container.textContent).toContain("filtered=1 total=2");
-    clickElement(findButtonByAriaLabel(container, "Clear team filter"));
-    clickElement(findButtonByAriaLabel(container, "Open team actions"));
+    expect(container.textContent).toContain("Team Two");
+    clickElement(findButtonByAriaLabel(container, "Clear filter"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
+    await waitForCondition(
+      () => document.body.textContent?.includes("Show Team Details") ?? false
+    );
     clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
     expect(container.textContent).toContain("leader=leader-agent");
     expect(container.textContent).toContain("workers=2");
     clickElement(findButtonByText(container, "Team Two"));
-    expect(container.querySelector("input[aria-label='Filter teams']")).not.toBeNull();
+    expect(container.querySelector("input[aria-label='Search teams']")).not.toBeNull();
     expect(container.textContent).toContain("Team One");
     clickElement(findButtonByText(container, "Kanban"));
     clickElement(findButtonByAriaLabel(container, "Toggle agents section"));
@@ -451,9 +468,9 @@ describe("team panels interactions", () => {
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
-    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("Kanban");
-    expect(container.textContent).toContain("Agents");
+    expect(container.textContent).toContain("Agents · 2");
     expect(container.textContent).toContain("Workflow");
     expect(container.textContent).toContain("# all");
     const kanbanButton = findButtonByText(container, "Kanban");
@@ -530,7 +547,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Show Team Details");
     expect(container.textContent).not.toContain("team-1");
 
-    expect(container.textContent).toContain("Teams 2");
+    expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("# all");
     expect(container.textContent).not.toContain("Runs");
     expect(container.textContent).not.toContain("Advanced");
@@ -623,11 +640,11 @@ describe("team panels interactions", () => {
     });
 
     const unmatchedFilterInput = required(
-      container.querySelector("input[aria-label='Filter teams']"),
+      container.querySelector("input[aria-label='Search teams']"),
       "team filter input missing"
     ) as HTMLInputElement;
     changeInputValue(unmatchedFilterInput, "missing-team");
-    expect(container.textContent).toContain("No teams match current filter.");
+    expect(container.textContent).toContain("No results found.");
 
     const noTeamsCreate = vi.fn();
     act(() => {
@@ -762,7 +779,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={false}
             activeRun={activeRun}
             totalLoadedRunsForTeam={1}
-            pageLimit={20}
             runsHasMore={true}
             selectedTeamId="team-1"
             onLoadMoreRuns={onLoadMoreRuns}
@@ -814,7 +830,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={true}
             activeRun={buildRun({ id: "run-hidden" })}
             totalLoadedRunsForTeam={0}
-            pageLimit={20}
             runsHasMore={false}
             selectedTeamId={null}
             onLoadMoreRuns={() => {}}
@@ -902,7 +917,6 @@ describe("team panels interactions", () => {
             isActiveRunHiddenByFilter={false}
             activeRun={null}
             totalLoadedRunsForTeam={0}
-            pageLimit={20}
             runsHasMore={false}
             selectedTeamId="team-1"
             onLoadMoreRuns={() => {}}
@@ -1337,6 +1351,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Cold Start Playbook");
     expect(container.textContent).toContain("Leader startup");
     expect(container.textContent).toContain("Worker startup");
+    expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
+    expect(container.querySelector(".teams-member-list")).not.toBeNull();
+    expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
 
     act(() => {
       root.render(
@@ -1380,6 +1397,7 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.querySelector('[data-team-panel="member-console"]')).not.toBeNull();
     changeSelectValue(
       required(container.querySelector("select") as HTMLSelectElement | null, "member select missing"),
       "worker-agent"
@@ -1699,6 +1717,14 @@ describe("team panels interactions", () => {
       "team channel composer missing"
     );
     expect(composer.classList.contains("shrink-0")).toBe(true);
+
+    const scrollNode = required(
+      container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+      "team channel scroll container missing"
+    );
+    expect(scrollNode.classList.contains("min-h-0")).toBe(true);
+    expect(scrollNode.classList.contains("flex-1")).toBe(true);
+    expect(scrollNode.classList.contains("overflow-y-auto")).toBe(true);
 
     expect(rootCard.lastElementChild).toBe(composer);
     expect(bodyShell.nextElementSibling).toBe(composer);
@@ -2500,7 +2526,7 @@ describe("team panels interactions", () => {
       });
 
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
       expect(
         container.querySelector("[data-team-channel-top-spacer='true']")
       ).not.toBeNull();
@@ -2526,7 +2552,7 @@ describe("team panels interactions", () => {
 
       clickElement(jumpButton);
       expect(scrollNode.scrollTop).toBe(640);
-      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(200);
+      expect(container.querySelectorAll("[data-team-channel-item='true']")).toHaveLength(10);
       expect(queryButtonByAriaLabel(container, "Jump to bottom")).toBeNull();
       expect(queryButtonByAriaLabel(container, "Jump to top")).toBeNull();
     } finally {
@@ -2574,7 +2600,7 @@ describe("team panels interactions", () => {
 
       const initialTexts = markdownSpy.mock.calls.map((call) => call[0]);
       expect(initialTexts).not.toContain("message 1");
-      expect(initialTexts).toContain("message 14");
+      expect(initialTexts).toContain("message 204");
       expect(initialTexts).toContain("message 213");
 
       const scrollNode = required(
@@ -2607,6 +2633,86 @@ describe("team panels interactions", () => {
     } finally {
       markdownSpy.mockRestore();
     }
+  });
+
+  it("TeamTaskPanel renders chat items inside explicit conversation bubbles", async () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "user:u-1",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Need status update." },
+            }),
+            buildTaskMessage(2, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Working on it." },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-team-channel-bubble="human"]')).not.toBeNull();
+    expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
+  });
+
+  it("TeamTaskPanel keeps rendered channel messages visible during background refresh", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(1, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: { type: "chat_message", text: "Existing shared-thread message" },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={true}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={toPrettyJson}
+        />
+    );
+
+    expect(container.textContent).toContain("Existing shared-thread message");
+    expect(container.textContent).not.toContain("Loading thread...");
   });
 
   it("TeamTaskPanel renders canonical stringified chat payloads as thread text", () => {
@@ -2868,6 +2974,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Create Run from Preview"));
     clickElement(findButtonByText(container, "Open Run"));
 
+    expect(container.querySelector('[data-team-compile-preview="true"]')).not.toBeNull();
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
     expect(onOpenConversation).toHaveBeenCalledTimes(1);
@@ -2931,6 +3038,46 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(container, "Open", "button, label"));
     expect(container.textContent).toContain("Investigate bug");
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
+  });
+
+  it("TeamTasksPanel keeps rendered task cards visible during background refresh", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={true}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Prepare rollout");
+    expect(container.textContent).not.toContain("Loading tasks...");
   });
 
   it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {
@@ -3794,6 +3941,10 @@ describe("team panels interactions", () => {
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
     expect(container.textContent).toContain("Leader Agent → Worker Agent");
     expect(container.textContent).toContain("Worker Agent (worker)");
+    expect(
+      required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
+    ).toContain("auto_follow=on");
+    expect(container.querySelectorAll(".teams-member-unread")).toHaveLength(2);
 
     act(() => {
       root.render(

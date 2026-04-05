@@ -205,7 +205,7 @@ export function shouldAutoLoadConversationHistory(
   activeAgent: string | null,
   canLoadOlder: boolean,
   conversationMessageCount: number,
-  minMessages: number = 12
+  minMessages: number = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE
 ): boolean {
   if (acpTab !== "conversation") return false;
   if (!activeAgent) return false;

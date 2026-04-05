@@ -4,6 +4,8 @@ import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   limitOutputCacheSessions,
+  mergeOutputsPreserveOlderWithLimit,
+  mergeOutputsWithLimit,
   mergeOutputsPreserveHistory,
   replaceAcpCacheSlice,
   selectCachedOutputs,
@@ -94,6 +96,45 @@ describe("buildOutputCacheSlice", () => {
     expect(next).not.toBe(existing);
     const updated = next.find((evt) => evt.event_id === 2);
     expect(updated?.message).toBe("stdout-2-updated");
+  });
+});
+
+describe("mergeOutputsWithLimit", () => {
+  it("caps retained live output lines to the most recent window", () => {
+    const existing = Array.from({ length: 5 }, (_, index) =>
+      makeEvent(index + 1, "stdout")
+    );
+    const incoming = [makeEvent(6, "stdout"), makeEvent(7, "stdout")];
+    const next = mergeOutputsWithLimit(existing, incoming, 4);
+    expect(next.map((evt) => evt.event_id)).toEqual([4, 5, 6, 7]);
+  });
+
+  it("keeps the full merged list when the limit is non-positive", () => {
+    const existing = [makeEvent(1, "stdout"), makeEvent(2, "stdout")];
+    const incoming = [makeEvent(3, "stdout")];
+    const next = mergeOutputsWithLimit(existing, incoming, 0);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("mergeOutputsPreserveOlderWithLimit", () => {
+  it("keeps the older edge visible when explicit history loads exceed the cap", () => {
+    const existing = [
+      makeEvent(4, "stdout"),
+      makeEvent(5, "stdout"),
+      makeEvent(6, "stdout"),
+      makeEvent(7, "stdout"),
+    ];
+    const incoming = [makeEvent(1, "stdout"), makeEvent(2, "stdout"), makeEvent(3, "stdout")];
+    const next = mergeOutputsPreserveOlderWithLimit(existing, incoming, 4);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("keeps the full merged list when the limit is non-positive", () => {
+    const existing = [makeEvent(2, "stdout"), makeEvent(3, "stdout")];
+    const incoming = [makeEvent(1, "stdout")];
+    const next = mergeOutputsPreserveOlderWithLimit(existing, incoming, 0);
+    expect(next.map((evt) => evt.event_id)).toEqual([1, 2, 3]);
   });
 });
 

@@ -82,7 +82,7 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
           void onJoin();
         }}
       >
-        <h2 className="text-xl font-semibold tracking-tight text-slate-900">Join Device</h2>
+        <h2 className="text-xl font-bold tracking-tight text-notion-text">Join Device</h2>
         {tokenError && <div className="error">{tokenError}</div>}
         {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
         <input

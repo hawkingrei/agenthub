@@ -91,39 +91,37 @@ export const OutputHeader = React.memo(function OutputHeader({
     ? `${mergedStatus} · ${thinkingLabel}`
     : mergedStatus;
   const mergedStatusClassToken = mergedStatus.replace(/[^a-z0-9_-]+/g, "-");
-  const detailsItems = [
-    { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
-    ...(
-      developerMode
-        ? [
+  const detailsItems = developerMode
+    ? [
+        { label: "mode", value: activeAgent?.code_mode ? "on" : "off" },
         ...(updatedLabel ? [{ label: "updated", value: updatedLabel }] : []),
-          ]
-        : []
-    ),
-  ];
+      ]
+    : [];
   return (
     <div className={OUTPUT_HEADER_ROOT_CLASS}>
-      <div className={OUTPUT_HEADER_TITLE_CLASS}>
-        <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
-          <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
-            <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{titleText}</h2>
-            {modelLabel ? (
-              <span className="agent-tag hidden sm:inline-flex">{modelLabel}</span>
-            ) : null}
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 sm:flex-nowrap">
+        <div className={OUTPUT_HEADER_TITLE_CLASS}>
+          <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
+            <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
+              <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{titleText}</h2>
+              {modelLabel ? (
+                <span className="agent-tag hidden sm:inline-flex">{modelLabel}</span>
+              ) : null}
+            </div>
           </div>
         </div>
+        {activeAgent ? (
+          <div className={OUTPUT_HEADER_META_CLASS}>
+            <StatusBadge
+              label={mergedStatusLabel}
+              tone={resolveAgentStatusTone(mergedStatus)}
+              className={`agent-status status-${mergedStatusClassToken}`}
+              title={`status: ${mergedStatusLabel}`}
+            />
+            {developerMode ? <OutputHeaderDetails items={detailsItems} /> : null}
+          </div>
+        ) : null}
       </div>
-      {activeAgent ? (
-        <div className={OUTPUT_HEADER_META_CLASS}>
-          <StatusBadge
-            label={mergedStatusLabel}
-            tone={resolveAgentStatusTone(mergedStatus)}
-            className={`agent-status status-${mergedStatusClassToken}`}
-            title={`status: ${mergedStatusLabel}`}
-          />
-          <OutputHeaderDetails items={detailsItems} />
-        </div>
-      ) : null}
       {!hasAcp ? (
         <div className={OUTPUT_HEADER_SUBTITLE_ROW_CLASS}>
           <span className={OUTPUT_HEADER_SUBTITLE_CLASS}>{subtitleText}</span>

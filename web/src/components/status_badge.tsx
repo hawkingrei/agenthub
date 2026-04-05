@@ -11,7 +11,7 @@ type StatusBadgeProps = {
 };
 
 const STATUS_BADGE_BASE_CLASS =
-  "status-badge inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold lowercase tracking-[0.01em] sm:text-[11px]";
+  "status-badge inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:text-[11px]";
 
 const STATUS_BADGE_TONE_CLASS: Record<StatusTone, string> = {
   neutral:

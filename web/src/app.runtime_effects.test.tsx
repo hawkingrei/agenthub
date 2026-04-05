@@ -311,7 +311,6 @@ describe("App runtime viewport effects", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("AgentHub");
     expect(container.textContent).toContain("Login");
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vh")

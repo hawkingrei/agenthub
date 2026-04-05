@@ -9,6 +9,7 @@ import {
   ACP_PANEL_ROOT_CLASS,
   ACP_PANEL_TABS_CLASS,
   ACP_TAB_BADGE_CLASS,
+  ACP_TAB_BUTTON_BASE_CLASS,
   ACP_TAB_BUTTON_ACTIVE_CLASS,
   ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
@@ -51,7 +52,7 @@ function AcpPanelView({
 }: AcpPanelProps) {
   const effectiveTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const tabButtonClassName = (selected: boolean, withGap = false) =>
-    `acp-tab-button ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
+    `${ACP_TAB_BUTTON_BASE_CLASS} ${withGap ? "gap-2 " : ""}${selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
   const tabsNode = (
     <div className={ACP_PANEL_TABS_CLASS}>
       <button
@@ -89,7 +90,7 @@ function AcpPanelView({
       <div className={ACP_PANEL_HEAD_CLASS}>
         {mobileTitle ? (
           <div className="flex min-w-0 items-center gap-2 sm:hidden">
-            <div className="min-w-0 max-w-[42%] flex-none overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-[1.15] text-black">
+            <div className="min-w-0 max-w-[42%] flex-none overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-bold text-notion-text">
               {mobileTitle}
             </div>
             <div className="min-w-0 flex-1">
@@ -99,7 +100,7 @@ function AcpPanelView({
         ) : null}
         {subtitle ? (
           <div
-            className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle text-[12px] text-slate-500 max-[720px]:hidden`}
+            className={`${mobileTitle ? "hidden sm:block " : ""}acp-subtitle text-[12px] text-notion-text-muted max-[720px]:hidden`}
           >
             {subtitle}
           </div>

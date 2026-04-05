@@ -12,6 +12,7 @@ import {
   windowConversation,
 } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
+import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -32,6 +33,33 @@ import {
   TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
+  TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS,
+  TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
+  TEAM_TASK_ACTIVITY_BODY_CLASS,
+  TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_CLASS,
+  TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS,
+  TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS,
+  TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS,
+  TEAM_TASK_ACTIVITY_LIST_CLASS,
+  TEAM_TASK_ACTIVITY_SHELL_CLASS,
+  TEAM_TASK_ACTIVITY_STACK_CLASS,
+  TEAM_TASK_ACTIVITY_TIME_CLASS,
+  TEAM_TASK_COMPOSER_PANEL_CLASS,
+  TEAM_TASK_JUMP_BUTTON_CLASS,
+  TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS,
+  TEAM_TASK_PERMISSION_CARD_BODY_CLASS,
+  TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS,
+  TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS,
+  TEAM_TASK_PERMISSION_CARD_HEADER_CLASS,
+  TEAM_TASK_PERMISSION_CARD_REASON_CLASS,
+  TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS,
+  TEAM_TASK_PERMISSION_CARD_STATUS_CLASS,
+  TEAM_TASK_PERMISSION_CARD_TITLE_CLASS,
+  TEAM_TASK_PERMISSION_CARD_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
@@ -110,91 +138,44 @@ type TeamTaskPanelAudioWindow = Window &
     webkitAudioContext?: PermissionToneAudioContextConstructor;
   };
 
-const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "flex shrink-0 flex-col gap-2 border-t border-black/[0.05] bg-white/90 px-3 py-2.5 shadow-[0_-1px_0_rgba(15,23,42,0.02)]";
-const TEAM_TASK_SHORTCUT_CLASS = "text-ui-xs text-ui-text-muted";
+const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-bold uppercase tracking-wider text-notion-text-muted";
 const TEAM_TASK_COMPOSER_META_ROW_CLASS =
-  "flex flex-wrap items-center justify-between gap-2";
+  "mt-0.5 flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
-  "px-1 py-2 text-ui-sm text-ui-text-muted";
-const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "min-h-0 flex-1 overflow-y-auto pr-0.5";
-const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS =
-  "min-h-0 flex-1 overflow-y-auto pr-0.5";
-const TEAM_TASK_ACTIVITY_SHELL_CLASS =
-  "rounded-[14px] border border-black/[0.05] bg-white/88 px-2.5 py-2 shadow-[0_1px_3px_rgba(15,23,42,0.04)] sm:px-3 sm:py-2.5";
-const TEAM_TASK_ACTIVITY_STACK_CLASS =
-  "flex w-full flex-col gap-1.5";
-const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "acp-bubble relative rounded-[13px] border px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:px-3 sm:py-2.5";
-const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-[rgba(59,130,246,0.14)] bg-[rgba(244,248,255,0.94)] text-ui-text-primary`;
-const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS =
-  `${TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS} border-black/[0.06] bg-white/94 text-ui-text-primary`;
+  "px-8 py-4 text-sm text-notion-text-muted italic";
+const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "flex items-start justify-between gap-2";
+  "flex items-center gap-2 mb-0.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
-  "flex min-w-0 flex-wrap items-center gap-1.5";
-const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
-  "text-[13px] font-semibold tracking-tight text-ui-text-primary";
-const TEAM_TASK_ACTIVITY_TIME_CLASS =
-  "text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted/90";
-const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "mt-1.5 min-w-0 break-words text-[12.5px] leading-5 text-ui-text-primary sm:text-[13px] sm:leading-6";
-const TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS =
-  "mono mt-1.5 max-w-full overflow-x-auto whitespace-pre rounded-[10px] border border-black/[0.05] bg-black/[0.028] px-2 py-1.5 text-[10px] leading-[1.35] text-ui-text-secondary sm:px-2.5 sm:py-2 sm:text-[10.5px]";
-const TEAM_TASK_PERMISSION_CARD_CLASS =
-  "mt-1 rounded-[12px] border border-black/[0.06] bg-[rgba(252,250,245,0.94)] px-2.5 py-2.5 sm:px-3 sm:py-3";
-const TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS =
-  "mt-1 rounded-[11px] border border-black/[0.06] bg-[rgba(252,251,247,0.88)] px-2.5 py-1.5";
-const TEAM_TASK_PERMISSION_CARD_HEADER_CLASS =
-  "flex flex-wrap items-center justify-between gap-2";
-const TEAM_TASK_PERMISSION_CARD_TITLE_CLASS =
-  "text-[13px] font-semibold tracking-tight text-ui-text-primary";
-const TEAM_TASK_PERMISSION_CARD_STATUS_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.84] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
-const TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS =
-  "mono mt-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ui-text-muted";
-const TEAM_TASK_PERMISSION_CARD_BODY_CLASS =
-  "mt-2 space-y-2 text-[13px] leading-6 text-ui-text-secondary";
-const TEAM_TASK_PERMISSION_CARD_REASON_CLASS =
-  "text-[11px] font-medium uppercase tracking-[0.12em] text-ui-text-muted";
-const TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS =
-  "mt-3 flex flex-wrap items-center gap-2";
-const TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.86] px-2.5 py-1 text-[11px] font-medium text-ui-text-muted transition hover:border-black/[0.1] hover:bg-black/[0.03] hover:text-ui-text-primary disabled:cursor-not-allowed disabled:opacity-60";
-const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS = "text-xs text-red-600";
+  "flex min-w-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-2 rounded-[11px] border border-black/[0.05] bg-black/[0.018]";
+  "mt-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "mt-1.5 inline-flex items-center rounded-full border border-black/[0.06] bg-white/[0.88] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted transition hover:border-black/[0.1] hover:bg-black/[0.03]";
+  "mt-2 inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
-  "grid gap-1.5 border-t border-black/[0.05] px-2.5 py-2 text-[11px] text-ui-text-muted sm:grid-cols-2";
+  "grid gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
-  "mono font-medium text-ui-text-secondary";
+  "mono font-bold text-notion-text opacity-70";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-black/[0.06] bg-white/[0.88] p-0.5 text-[10px] font-medium text-ui-text-muted transition hover:border-black/[0.1] hover:bg-black/[0.03] hover:text-ui-text-primary";
-const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute bottom-1.5 right-1.5 z-[1]";
+  "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover";
+const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute top-2 right-4 sm:right-8 opacity-0 group-hover:opacity-100 transition-opacity";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
-  "mt-2 flex flex-wrap items-center gap-2 text-xs text-ui-text-muted";
+  "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
-  "inline-flex h-3 w-3 rounded-full border border-black/10 bg-[rgba(55,53,47,0.18)]";
+  "inline-flex h-2.5 w-2.5 rounded-full bg-notion-hover ring-1 ring-notion-border";
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
-  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]";
+  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
-  "min-w-[220px] rounded-[12px] border border-black/[0.06] bg-[rgba(252,251,247,0.96)] p-3 shadow-[0_4px_12px_rgba(15,23,42,0.06)]";
+  `min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
-  "text-[11px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
+  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =
-  "mt-1 text-sm font-semibold tracking-tight text-ui-text-primary";
-const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3";
+  "mt-1 text-[13px] font-bold text-notion-text";
+const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3 pt-2 border-t border-notion-border";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
-  "text-[10px] font-semibold uppercase tracking-[0.12em] text-ui-text-muted";
-const TEAM_TASK_JUMP_BUTTON_CLASS =
-  "inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/[0.08] bg-white/[0.9] text-ui-text-secondary shadow-[0_2px_6px_rgba(15,23,42,0.06)] backdrop-blur transition hover:border-black/[0.1] hover:text-ui-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-strong sm:h-8 sm:w-8";
+  "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE;
-const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 116;
-
+const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -289,6 +270,28 @@ function resolveActivityItemClassName(
   return isHumanMailboxActor(actorId, humanActorId)
     ? TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
+}
+
+function resolveActivityContentClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return `${TEAM_TASK_ACTIVITY_CONTENT_CLASS} ${
+    isHumanMailboxActor(actorId, humanActorId)
+      ? TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS
+      : TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS
+  }`;
+}
+
+function resolveActivityBubbleClassName(
+  actorId: string,
+  humanActorId: string
+): string {
+  return `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} ${
+    isHumanMailboxActor(actorId, humanActorId)
+      ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
+      : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS
+  }`;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -902,6 +905,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading || orderedMessages.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
+  const showInitialThreadLoading = messagesLoading && orderedMessages.length === 0;
   const latestWaterfallKey =
     orderedMessages.length > 0
       ? `conversation-${orderedMessages[orderedMessages.length - 1]?.message_id ?? "empty"}`
@@ -1094,199 +1098,214 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             return (
               <div
                 key={item.key}
-                className={`${resolveActivityItemClassName(item.fromActorId, humanActorId)}${
-                  shouldShowSeenMeta ? " pb-6 pr-7 max-[720px]:pb-5 max-[720px]:pr-6" : ""
-                }`}
+                className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
                 data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
                 data-team-channel-item="true"
               >
-                <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
-                  <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
-                    <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
-                  </div>
-                  <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
+                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm mt-0.5 ${!isHumanAuthor ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
+                  {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
                 </div>
-                {permissionCardPayload ? (
-                  <PermissionReviewCard
-                    payload={permissionCardPayload}
-                    permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
-                    busy={permissionBusyId === permissionCardPayload.permission_id}
-                    errorText={permissionErrorById[permissionCardPayload.permission_id]}
-                    onRespond={onRespondPermission}
-                  />
-                ) : isCompactCommandLikeText(item.text) ? (
-                  <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                ) : (
-                  <ThreadRichText
-                    className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                    text={item.text}
-                    renderHtml={renderTeamMessageHtml}
-                  />
-                )}
-                {shouldShowSeenMeta && (
-                  <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
-                    <HoverCard
-                      openDelay={120}
-                      closeDelay={80}
-                      position="top-end"
-                      shadow="md"
-                      radius="md"
+                <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
+                  <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
+                    <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
+                      <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
+                      <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
+                    </div>
+                  </div>
+                  {permissionCardPayload ? (
+                    <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
+                      <PermissionReviewCard
+                        payload={permissionCardPayload}
+                        permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
+                        busy={permissionBusyId === permissionCardPayload.permission_id}
+                        errorText={permissionErrorById[permissionCardPayload.permission_id]}
+                        onRespond={onRespondPermission}
+                      />
+                    </div>
+                  ) : isCompactCommandLikeText(item.text) ? (
+                    <div
+                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
                     >
-                      <HoverCard.Target>
-                        {seenActorIds.length === 0 ? (
-                          <button
-                            type="button"
-                            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-                            aria-label="Pending delivery"
-                            title="Pending delivery"
-                          >
-                            <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-                            aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-                            title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-                          >
-                            <span
-                              className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
-                              role="progressbar"
-                              aria-valuenow={seenProgress.readCount}
-                              aria-valuemin={0}
-                              aria-valuemax={seenProgress.totalCount}
-                              style={
-                                {
-                                  "--value": seenProgress.progress,
-                                  "--size": "1rem",
-                                  "--thickness": "1rem",
-                                  width: "var(--size)",
-                                  height: "var(--size)",
-                                  background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
-                                } satisfies SeenDialStyle
-                              }
-                            />
-                          </button>
-                        )}
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
-                        {seenActorIds.length === 0 ? (
-                          <>
-                            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
-                            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
-                              Pending delivery
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
-                            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
-                              {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
-                            </div>
-                            {seenProgress.readActorIds.length > 0 && (
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                                  {seenProgress.readActorIds.map((actorId) => (
-                                    <span
-                                      key={`${item.key}-read-${actorId}`}
-                                      className="rounded-full border border-ui-border bg-ui-surface px-2 py-0.5"
-                                    >
-                                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                                    </span>
-                                  ))}
-                                </div>
+                      <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
+                    </div>
+                  ) : (
+                    <div
+                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                    >
+                      <ThreadRichText
+                        className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+                        text={item.text}
+                        renderHtml={renderTeamMessageHtml}
+                      />
+                    </div>
+                  )}
+                  {shouldShowSeenMeta && (
+                    <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
+                      <HoverCard
+                        openDelay={120}
+                        closeDelay={80}
+                        position="top-end"
+                        shadow="md"
+                        radius="md"
+                      >
+                        <HoverCard.Target>
+                          {seenActorIds.length === 0 ? (
+                            <button
+                              type="button"
+                              className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                              aria-label="Pending delivery"
+                              title="Pending delivery"
+                            >
+                              <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                              aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+                              title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+                            >
+                              <span
+                                className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
+                                role="progressbar"
+                                aria-valuenow={seenProgress.readCount}
+                                aria-valuemin={0}
+                                aria-valuemax={seenProgress.totalCount}
+                                style={
+                                  {
+                                    "--value": seenProgress.progress,
+                                    "--size": "1rem",
+                                    "--thickness": "1rem",
+                                    width: "var(--size)",
+                                    height: "var(--size)",
+                                    background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
+                                  } satisfies SeenDialStyle
+                                }
+                              />
+                            </button>
+                          )}
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
+                          {seenActorIds.length === 0 ? (
+                            <>
+                              <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
+                              <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
+                                Pending delivery
                               </div>
-                            )}
-                            {seenProgress.unreadActorIds.length > 0 && (
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                                  {seenProgress.unreadActorIds.map((actorId) => (
-                                    <span
-                                      key={`${item.key}-unread-${actorId}`}
-                                      className="rounded-full border border-dashed border-ui-border bg-transparent px-2 py-0.5"
-                                    >
-                                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                                    </span>
-                                  ))}
-                                </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
+                              <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
+                                {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
                               </div>
-                            )}
-                          </>
-                        )}
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  </div>
-                )}
-                {developerMode && (
-                  <button
-                    type="button"
-                    className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
-                    onClick={() =>
-                      setExpandedItemKeys((current) => ({
-                        ...current,
-                        [item.key]: !current[item.key],
-                      }))
-                    }
-                    aria-expanded={Boolean(expandedItemKeys[item.key])}
-                  >
-                    {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                  </button>
-                )}
-                {developerMode && expandedItemKeys[item.key] && (
-                  <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
-                    <dl className={TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS}>
-                    <div>
-                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>source</dt>
-                      <dd>{item.streamLabel}</dd>
+                              {seenProgress.readActorIds.length > 0 && (
+                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                                    {seenProgress.readActorIds.map((actorId) => (
+                                      <span
+                                        key={`${item.key}-read-${actorId}`}
+                                        className="rounded-full border border-notion-border bg-white px-2 py-0.5"
+                                      >
+                                        {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {seenProgress.unreadActorIds.length > 0 && (
+                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                                    {seenProgress.unreadActorIds.map((actorId) => (
+                                      <span
+                                        key={`${item.key}-unread-${actorId}`}
+                                        className="rounded-full border border-dashed border-notion-border bg-transparent px-2 py-0.5"
+                                      >
+                                        {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </HoverCard.Dropdown>
+                      </HoverCard>
                     </div>
-                    <div>
-                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>seq</dt>
-                      <dd>{item.sequence}</dd>
-                    </div>
-                    <div>
-                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>from</dt>
-                      <dd className="mono">{item.fromActorId}</dd>
-                    </div>
-                    <div>
-                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>to</dt>
-                      <dd className="mono">{item.toActorId ?? "-"}</dd>
-                    </div>
-                    <div>
-                      <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>route</dt>
-                      <dd>{item.routeOrStatus}</dd>
-                    </div>
-                    {state && (
-                      <>
-                        <div>
-                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>work</dt>
-                          <dd>{state.run_status}/{state.step_status}</dd>
-                        </div>
-                        <div>
-                          <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>agent</dt>
-                          <dd>{state.lifecycle_status}</dd>
-                        </div>
-                        {state.current_work && (
-                          <div className="sm:col-span-2">
-                            <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>current_work</dt>
-                            <dd>{state.current_work}</dd>
+                  )}
+                  {developerMode && (
+                    <button
+                      type="button"
+                      className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                      onClick={() =>
+                        setExpandedItemKeys((current) => ({
+                          ...current,
+                          [item.key]: !current[item.key],
+                        }))
+                      }
+                      aria-expanded={Boolean(expandedItemKeys[item.key])}
+                    >
+                      {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
+                    </button>
+                  )}
+                  {developerMode && expandedItemKeys[item.key] && (
+                    <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
+                      <dl className={TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS}>
+                      <div>
+                        <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>source</dt>
+                        <dd>{item.streamLabel}</dd>
+                      </div>
+                      <div>
+                        <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>seq</dt>
+                        <dd>{item.sequence}</dd>
+                      </div>
+                      <div>
+                        <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>from</dt>
+                        <dd className="mono">{item.fromActorId}</dd>
+                      </div>
+                      <div>
+                        <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>to</dt>
+                        <dd className="mono">{item.toActorId ?? "-"}</dd>
+                      </div>
+                      <div>
+                        <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>route</dt>
+                        <dd>{item.routeOrStatus}</dd>
+                      </div>
+                      {state && (
+                        <>
+                          <div>
+                            <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>work</dt>
+                            <dd>{state.run_status}/{state.step_status}</dd>
                           </div>
-                        )}
-                      </>
-                    )}
-                    </dl>
-                  </div>
-                )}
+                          <div>
+                            <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>agent</dt>
+                            <dd>{state.lifecycle_status}</dd>
+                          </div>
+                          {state.current_work && (
+                            <div className="sm:col-span-2">
+                              <dt className={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}>current_work</dt>
+                              <dd>{state.current_work}</dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      </dl>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
-          {messagesLoading && (
+          {showInitialThreadLoading && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               Loading thread...
             </div>
           )}
-          {!messagesLoading && orderedMessages.length === 0 && (
+          {!showInitialThreadLoading && orderedMessages.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
               No channel messages yet.
             </div>
@@ -1318,8 +1337,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           id="team-task-panel-message"
           name="team_task_message"
           ref={messageTextareaRef}
-          className={TEAM_PANEL_TEXTAREA_CLASS}
-          rows={3}
+          className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}
+          rows={1}
           placeholder="Message #all"
           value={messageDraft}
           onChange={(event) => {
@@ -1408,7 +1427,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           </span>
           <button
             type="button"
-            className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+            className="inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px"
             onClick={() => {
               sendCurrentMessage();
             }}
