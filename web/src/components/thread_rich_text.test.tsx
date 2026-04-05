@@ -88,6 +88,12 @@ describe("thread_rich_text", () => {
       expect(container.innerHTML).toContain("<p>Markdown ready:</p>");
       expect(container.innerHTML).toContain("<ul>");
       expect(container.innerHTML).toContain("<code>inline-code</code>");
+      const rootNode = container.querySelector(".acp-text") as HTMLDivElement | null;
+      expect(rootNode).not.toBeNull();
+      expect(rootNode?.className).toContain("max-w-full");
+      expect(rootNode?.className).toContain("[overflow-wrap:anywhere]");
+      expect(rootNode?.className).toContain("[&_pre]:whitespace-pre-wrap");
+      expect(rootNode?.className).toContain("[&_pre_code]:break-words");
     } finally {
       act(() => {
         root.unmount();

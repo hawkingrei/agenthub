@@ -436,7 +436,7 @@ describe("App runtime viewport effects", () => {
 
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-vh")
-    ).toBe("674px");
+    ).toBe("700px");
     expect(
       document.documentElement.style.getPropertyValue("--agenthub-keyboard-inset")
     ).toBe("26px");

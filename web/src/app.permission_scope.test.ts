@@ -727,10 +727,10 @@ describe("app helper decisions", () => {
     expect(style.values.get("--agenthub-keyboard-inset")).toBe("0px");
 
     runtimeWindow.visualViewport.height = 666;
-    runtimeWindow.visualViewport.width = 360;
+    runtimeWindow.visualViewport.width = 390;
     runtimeWindow.visualViewport.emit("resize");
-    expect(style.values.get("--agenthub-vh")).toBe("666px");
-    expect(style.values.get("--agenthub-vw")).toBe("360px");
+    expect(style.values.get("--agenthub-vh")).toBe("700px");
+    expect(style.values.get("--agenthub-vw")).toBe("390px");
     expect(style.values.get("--agenthub-keyboard-inset")).toBe("34px");
 
     cleanup();
@@ -774,13 +774,13 @@ describe("app helper decisions", () => {
     );
 
     runtimeWindow.visualViewport.height = 680;
-    runtimeWindow.visualViewport.width = 370;
+    runtimeWindow.visualViewport.width = 390;
     runtimeWindow.visualViewport.emit("resize");
     runtimeWindow.visualViewport.emit("scroll");
     expect(rafCallbacks.length).toBe(1);
     rafCallbacks[0](0);
-    expect(style.values.get("--agenthub-vh")).toBe("680px");
-    expect(style.values.get("--agenthub-vw")).toBe("370px");
+    expect(style.values.get("--agenthub-vh")).toBe("700px");
+    expect(style.values.get("--agenthub-vw")).toBe("390px");
     expect(style.values.get("--agenthub-keyboard-inset")).toBe("20px");
 
     runtimeWindow.visualViewport.height = 650;
@@ -788,6 +788,40 @@ describe("app helper decisions", () => {
     expect(rafCallbacks.length).toBe(2);
     cleanup();
     expect(cancelSpy).toHaveBeenCalledWith(2);
+  });
+
+  it("keeps the shell viewport stable during keyboard-only viewport shrink", () => {
+    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+      innerHeight: number;
+      innerWidth: number;
+      visualViewport: MockEventTarget & {
+        height: number;
+        width: number;
+        offsetTop: number;
+      };
+    };
+    runtimeWindow.innerHeight = 700;
+    runtimeWindow.innerWidth = 390;
+    runtimeWindow.visualViewport = Object.assign(new MockEventTarget(), {
+      height: 700,
+      width: 390,
+      offsetTop: 0,
+    });
+    const style = createStyleTarget();
+
+    const cleanup = setupRuntimeViewportVarSync(
+      runtimeWindow as unknown as Parameters<typeof setupRuntimeViewportVarSync>[0],
+      style.target
+    );
+
+    runtimeWindow.visualViewport.height = 650;
+    runtimeWindow.visualViewport.offsetTop = 24;
+    runtimeWindow.visualViewport.emit("resize");
+    expect(style.values.get("--agenthub-vh")).toBe("700px");
+    expect(style.values.get("--agenthub-vw")).toBe("390px");
+    expect(style.values.get("--agenthub-keyboard-inset")).toBe("26px");
+
+    cleanup();
   });
 
   it("skips viewport css writes when viewport size does not change", () => {

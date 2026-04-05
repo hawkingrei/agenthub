@@ -601,20 +601,26 @@ export function setupRuntimeViewportVarSync(
   let previousSize: RuntimeViewportSize | null = null;
   let previousKeyboardInset: number | null = null;
   const syncViewportSizeNow = () => {
-    const nextSize = resolveRuntimeViewportSize(
+    const rawNextSize = resolveRuntimeViewportSize(
       viewport,
       runtimeWindow.innerHeight,
       runtimeWindow.innerWidth
     );
+    const nextKeyboardInset = resolveRuntimeKeyboardInset(
+      viewport,
+      runtimeWindow.innerHeight
+    );
+    const nextSize =
+      nextKeyboardInset > 0 &&
+      previousSize &&
+      rawNextSize.width === previousSize.width
+        ? previousSize
+        : rawNextSize;
     if (shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
       previousSize = nextSize;
       styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
       styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
     }
-    const nextKeyboardInset = resolveRuntimeKeyboardInset(
-      viewport,
-      runtimeWindow.innerHeight
-    );
     if (previousKeyboardInset === nextKeyboardInset) {
       return;
     }
