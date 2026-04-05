@@ -1,3 +1,4 @@
+import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
@@ -366,14 +367,15 @@ export function InputDock({
       ref={inputDockRef}
     >
       {showConversationJump && (
-        <button
+        <UnstyledButton
+          type="button"
           className={`${ACP_JUMP_BOTTOM_BUTTON_CLASS} bottom-[calc(100%+0.75rem)] right-0`}
           onClick={onJumpToBottom}
           title="Jump to bottom"
           aria-label="Jump to bottom"
         >
           <i className="bi bi-chevron-down" aria-hidden="true" />
-        </button>
+        </UnstyledButton>
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
         <div
@@ -384,7 +386,8 @@ export function InputDock({
         >
           <div className="flex min-w-0 flex-wrap items-center gap-2">
           {showInterrupt && (
-            <button
+            <UnstyledButton
+              type="button"
               className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
               onClick={onInterrupt}
               disabled={!canInterrupt}
@@ -392,11 +395,12 @@ export function InputDock({
               aria-label="Interrupt current run"
             >
               Interrupt
-            </button>
+            </UnstyledButton>
           )}
           {historyCommands.length > 0 && (
             <div className="input-history relative" ref={historyContainerRef}>
-              <button
+              <UnstyledButton
+                type="button"
                 className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
                 onClick={() => setShowHistory((prev) => !prev)}
                 title="Show sent command history"
@@ -416,12 +420,13 @@ export function InputDock({
                 >
                   ▾
                 </span>
-              </button>
+              </UnstyledButton>
               {showHistory && (
                 <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
                   {visibleHistory.map((item, idx) => (
-                    <button
+                    <UnstyledButton
                       key={`${idx}-${item}`}
+                      type="button"
                       className={INPUT_DOCK_HISTORY_ITEM_CLASS}
                       title={item}
                       onClick={() => {
@@ -430,7 +435,7 @@ export function InputDock({
                       }}
                     >
                       {item}
-                    </button>
+                    </UnstyledButton>
                   ))}
                 </div>
               )}
@@ -506,14 +511,15 @@ export function InputDock({
             }}
             rows={2}
           />
-          <button
+          <UnstyledButton
+            type="button"
             className={INPUT_DOCK_SEND_BUTTON_CLASS}
             onClick={onSendInput}
             disabled={sendDisabled}
             aria-label="Send input"
           >
             Send
-          </button>
+          </UnstyledButton>
         </div>
       </div>
     </div>

@@ -33,6 +33,7 @@
 - Switched `AcpDebug` tabs to Mantine `UnstyledButton`, session-control actions to shared `ActionButton`, and mode/model/config inputs to Mantine `NativeSelect`/`TextInput`.
 - Switched `AcpPanel` tab chrome and jump-to-bottom affordance to Mantine `UnstyledButton`.
 - Switched the ACP Debug permission history jump affordance off the last remaining raw `button`.
+- Switched `InputDock` jump/interrupt/history/send controls to Mantine `UnstyledButton` while preserving the existing Tailwind affordance classes and overlay layout.
 - Aligned ACP Debug tests to the shared Mantine jsdom helper so primitive-backed controls keep a stable test harness.
 
 ## Validation

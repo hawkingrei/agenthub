@@ -1,3 +1,4 @@
+import { MantineProvider } from "@mantine/core";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -20,7 +21,11 @@ const baseProps: React.ComponentProps<typeof InputDock> = {
 };
 
 function renderDock(override?: Partial<React.ComponentProps<typeof InputDock>>): string {
-  return renderToStaticMarkup(<InputDock {...baseProps} {...override} />);
+  return renderToStaticMarkup(
+    <MantineProvider>
+      <InputDock {...baseProps} {...override} />
+    </MantineProvider>
+  );
 }
 
 describe("InputDock interrupt placement", () => {
@@ -91,7 +96,7 @@ describe("InputDock interrupt placement", () => {
     const html = renderDock({ showConversationJump: true });
     const shellPos = html.indexOf('class="input-dock-shell');
     const dockRootPos = html.indexOf('class="input docked');
-    const jumpPos = html.indexOf('class="acp-jump-bottom');
+    const jumpPos = html.indexOf('aria-label="Jump to bottom"');
     const editorRowPos = html.indexOf('data-input-editor-row="true"');
     const textareaPos = html.indexOf("<textarea", editorRowPos);
     expect(shellPos).toBeGreaterThanOrEqual(0);
