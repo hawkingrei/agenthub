@@ -35,7 +35,9 @@ export const PlanBubble = React.memo(
       planSummary.total > 0
         ? `Plan: ${planSummary.completed}/${planSummary.total} done · ${planSummary.active} active`
         : autoCollapse
-          ? `Plan: ${preview}`
+          ? preview
+            ? `Plan: ${preview}`
+            : "Plan (collapsed)"
           : "Plan (collapsed)";
     return (
       <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
