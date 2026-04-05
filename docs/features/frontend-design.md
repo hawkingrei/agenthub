@@ -25,7 +25,10 @@ state labels, and panel behaviors diverged.
 - UI component baseline: `@mantine/core` + Tailwind CSS utilities.
 - Styling strategy:
   - semantic tokens in Tailwind config;
+  - matching `@theme` token definitions in `web/src/tailwind.css`;
   - reusable class presets in `web/src/ui/tailwind_classes.ts`;
+  - thin shared UI primitives in `web/src/ui/primitives.tsx` and
+    `web/src/ui/floating_surfaces.ts`;
   - avoid new handcrafted global CSS blocks.
 
 ### 1.1) Workbench Shell Language
@@ -48,6 +51,9 @@ state labels, and panel behaviors diverged.
 - Team surface is conversation-first for human interaction.
 - `Conversation` remains available even when no active run exists.
 - Conversation uses one shared group stream (human + leader + workers); no per-recipient split view on the human surface.
+- Shared conversation and ACP views are intentionally bounded recent windows by
+  default (current product baseline: recent-10) instead of infinite in-memory
+  scrollback.
 - Default response routing is team-wide when no `@mention` is provided, with leader-first speaking priority.
 - `@member_id` marks people in the same shared stream and should be surfaced back to agents/UI as mention metadata, without changing group-chat fan-out.
 - `Runs` is the dedicated run-entry tab (run browser + `Start Team` + run selection).
@@ -82,6 +88,8 @@ state labels, and panel behaviors diverged.
 ### 1) Styling Contract
 
 - New reusable visual patterns should be extracted into shared Tailwind class presets.
+- Repeated shells/actions/badges should prefer shared UI primitives before
+  introducing new page-local Tailwind strings.
 - Feature code should prefer semantic tokens (`brand.*`, `ui.*`, `state.*`) over literal color strings.
 
 ### 2) Team Interaction Contract
