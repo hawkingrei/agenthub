@@ -85,6 +85,10 @@ AgentHub needs a node-level abstraction for distributed execution and actor deli
 - node-to-node and node-to-AgentHub actor delivery must use `https://` gRPC targets
 - node-local DB backup must only store that node's local agent/runtime data
 - cluster/team/control-plane metadata remains authoritative in the main AgentHub database
+- node startup must use an explicit runtime role boundary:
+  - `server.role = "main"` keeps the current public HTTP/UI + optional internal gRPC control plane
+  - `server.role = "node"` requires `internal_grpc.enabled = true` and a non-`main` `server.node_id`
+  - `node` mode serves internal gRPC execution/control only and must not boot the public web/API surface
 
 ## Validation Matrix
 

@@ -79,6 +79,10 @@ audience = "agenthub-internal"
 ### Remote Node
 
 ```toml
+[server]
+role = "node"
+node_id = "node-01"
+
 [internal_grpc]
 enabled = true
 listen = "0.0.0.0:50051"
@@ -90,6 +94,10 @@ cert_dir = "/etc/agenthub/certs"
 [internal_grpc.auth]
 shared_secret = "same-secret-as-main"  # Must match!
 ```
+
+`node_id` must match the node you register on the main control plane. In node
+mode, AgentHub only starts the internal gRPC execution/control surface; it does
+not serve the public web UI or HTTP API.
 
 ### Network Requirements
 
@@ -174,6 +182,10 @@ shared_secret = "CHANGE-ME-256-BIT-SECRET"
 
 **GPU Node** (`gpu01.internal`):
 ```toml
+[server]
+role = "node"
+node_id = "gpu-01"
+
 [internal_grpc]
 enabled = true
 listen = "0.0.0.0:50051"

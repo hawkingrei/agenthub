@@ -5,6 +5,7 @@ import {
   deriveConversationFreezeCursor,
   formatConversationPreview,
   isToolCallLive,
+  unescapeLineBreaks,
 } from "./conversation";
 import { AcpMessage, AcpToolCall } from "./acp";
 
@@ -232,6 +233,14 @@ describe("buildConversationMessages", () => {
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("agent_message");
+  });
+});
+
+describe("unescapeLineBreaks", () => {
+  it("normalizes escaped newlines and tabs consistently", () => {
+    expect(unescapeLineBreaks("line1\\r\\nline2\\nline3\\tindent\\rline4")).toBe(
+      "line1\nline2\nline3\tindent\nline4"
+    );
   });
 });
 

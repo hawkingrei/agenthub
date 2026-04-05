@@ -12,6 +12,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, Tr
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
+use agenthub_config::ServerRole;
 use agenthub_logging::{LogSpec, init_tracing, split_log_path};
 
 const SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -34,6 +35,18 @@ fn log_config_details(
         tracing::warn!("env overrides ignored: {}", info.env_overrides.join(", "));
     }
     tracing::info!("config listen: {}", config.listen_addr());
+    tracing::info!("config server.role: {}", config.server_role().as_str());
+    if let Some(configured_node_id) = config.configured_server_node_id() {
+        tracing::info!("config server.node_id: {}", configured_node_id);
+    } else {
+        tracing::info!("config server.node_id: <unset>");
+    }
+    tracing::info!(
+        "effective server.node_id: {}",
+        config
+            .server_node_id()
+            .unwrap_or_else(|_| "<invalid>".to_string())
+    );
     if let Some((dir, file_name)) = log_spec {
         tracing::info!(
             "config log_path: {} (dir {}, file {})",
@@ -44,9 +57,13 @@ fn log_config_details(
     } else {
         tracing::info!("config log_path: <stdout>");
     }
-    tracing::info!("config rp_id: {}", config.rp_id());
-    tracing::info!("config rp_origin: {}", config.rp_origin());
-    tracing::info!("config rp_name: {}", config.rp_name());
+    if config.server_role() == ServerRole::Node {
+        tracing::info!("config web auth settings: ignored in node mode");
+    } else {
+        tracing::info!("config rp_id: {}", config.rp_id());
+        tracing::info!("config rp_origin: {}", config.rp_origin());
+        tracing::info!("config rp_name: {}", config.rp_name());
+    }
     let configured_web_dir = config
         .web_dir
         .as_deref()
@@ -55,11 +72,19 @@ fn log_config_details(
     if !cfg!(debug_assertions) && config.web_dir.is_some() {
         tracing::info!("config web_dir ignored in release build");
     }
-    tracing::info!(
-        "config web_dir: {}",
-        configured_web_dir.unwrap_or("<unset>")
-    );
-    tracing::info!("effective web_dir: {}", web_dir.unwrap_or("embedded"));
+    if config.server_role() == ServerRole::Node {
+        tracing::info!(
+            "config web_dir: {} (ignored in node mode)",
+            configured_web_dir.unwrap_or("<unset>")
+        );
+        tracing::info!("effective web_dir: <disabled>");
+    } else {
+        tracing::info!(
+            "config web_dir: {}",
+            configured_web_dir.unwrap_or("<unset>")
+        );
+        tracing::info!("effective web_dir: {}", web_dir.unwrap_or("embedded"));
+    }
     tracing::info!("config codex_acp_binary: {}", config.codex_acp_binary());
     tracing::info!(
         "config codex_acp_default_mode: {}",
@@ -72,11 +97,15 @@ fn log_config_details(
         "config codex_acp_multi_agent_enabled: {}",
         config.codex_acp_multi_agent_enabled()
     );
-    tracing::info!("config vapid_subject: {}", config.vapid_subject());
-    tracing::info!(
-        "config vapid_keys_path: {}",
-        config.vapid_keys_path().display()
-    );
+    if config.server_role() == ServerRole::Node {
+        tracing::info!("config push settings: disabled in node mode");
+    } else {
+        tracing::info!("config vapid_subject: {}", config.vapid_subject());
+        tracing::info!(
+            "config vapid_keys_path: {}",
+            config.vapid_keys_path().display()
+        );
+    }
     tracing::info!("config safe_paths: {}", config.safe_paths().len());
     tracing::info!(
         "config worktree.default_root: {}",
@@ -94,6 +123,14 @@ fn log_config_details(
         "config internal_grpc.security.mode: {}",
         config.internal_grpc_security_mode()
     );
+}
+
+fn validate_startup_config(config: &agenthub_config::AppConfig) -> anyhow::Result<()> {
+    let _ = config.server_node_id()?;
+    if config.server_role() == ServerRole::Node && !config.internal_grpc_enabled() {
+        anyhow::bail!("server.role = \"node\" requires internal_grpc.enabled = true");
+    }
+    Ok(())
 }
 
 fn build_app_router(
@@ -180,6 +217,55 @@ where
     }
 }
 
+async fn run_main_server(
+    state: crate::state::AppState,
+    config: &agenthub_config::AppConfig,
+    web_dir: Option<&str>,
+) -> anyhow::Result<()> {
+    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
+    let api_router = crate::api::router(state.clone());
+    let app = build_app_router(state.clone(), api_router, web_dir);
+
+    let addr: SocketAddr = config.listen_addr().parse()?;
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+
+    tracing::info!("listening on {}", addr);
+    let server = axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
+        .with_graceful_shutdown(async move {
+            if shutdown_rx.changed().await.is_err() {
+                // Receiver dropped before shutdown signal; let graceful shutdown future end.
+            }
+        })
+        .into_future();
+    tokio::pin!(server);
+
+    tokio::select! {
+        result = &mut server => {
+            result?;
+        }
+        _ = wait_for_shutdown_signal() => {
+            run_shutdown_cleanup(state).await;
+            let _ = shutdown_tx.send(true);
+            await_server_shutdown(server.as_mut()).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn run_node_server(
+    state: crate::state::AppState,
+    config: &agenthub_config::AppConfig,
+) -> anyhow::Result<()> {
+    tracing::info!(
+        node_id = %config.server_node_id()?,
+        "node mode active; public HTTP server disabled"
+    );
+    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), config).await?;
+    wait_for_shutdown_signal().await;
+    run_shutdown_cleanup(state).await;
+    Ok(())
+}
+
 pub async fn run() -> anyhow::Result<()> {
     match crate::cli::parse_root_cli_from_env() {
         Ok(crate::cli::RootCliCommand::Serve) => {}
@@ -216,47 +302,29 @@ pub async fn run() -> anyhow::Result<()> {
         log_spec.as_ref(),
         web_dir.as_deref(),
     );
+    validate_startup_config(&config)?;
     let _pyroscope =
         agenthub_pyroscope::maybe_start_from_env(agenthub_pyroscope::PyroscopeBootstrapOptions {
-            application_name: "agenthub.server",
+            application_name: match config.server_role() {
+                ServerRole::Main => "agenthub.server",
+                ServerRole::Node => "agenthub.node",
+            },
             application_version: env!("CARGO_PKG_VERSION"),
         });
     let state = crate::state::AppState::init(config.clone()).await?;
-    let _internal_grpc = crate::internal::maybe_spawn_internal_grpc(state.clone(), &config).await?;
-
-    let api_router = crate::api::router(state.clone());
-    let app = build_app_router(state.clone(), api_router, web_dir.as_deref());
-
-    let addr: SocketAddr = config.listen_addr().parse()?;
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
-
-    tracing::info!("listening on {}", addr);
-    let server = axum::serve(tokio::net::TcpListener::bind(addr).await?, app)
-        .with_graceful_shutdown(async move {
-            if shutdown_rx.changed().await.is_err() {
-                // Receiver dropped before shutdown signal; let graceful shutdown future end.
-            }
-        })
-        .into_future();
-    tokio::pin!(server);
-
-    tokio::select! {
-        result = &mut server => {
-            result?;
-        }
-        _ = wait_for_shutdown_signal() => {
-            run_shutdown_cleanup(state).await;
-            let _ = shutdown_tx.send(true);
-            await_server_shutdown(server.as_mut()).await?;
-        }
+    match config.server_role() {
+        ServerRole::Main => run_main_server(state, &config, web_dir.as_deref()).await,
+        ServerRole::Node => run_node_server(state, &config).await,
     }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::future;
 
+    use agenthub_config::{
+        AppConfig, ConfigLoadInfo, InternalGrpcConfig, PushConfig, ServerConfig, ServerRole,
+    };
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode, header},
@@ -289,6 +357,109 @@ mod tests {
             Some("web/dist"),
         );
         super::log_config_details(&config, &default_info, None, None, None);
+    }
+
+    #[test]
+    fn log_config_details_handles_node_mode_branches() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: Some("127.0.0.1:18080".to_string()),
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some("/tmp/agenthub/vapid.json".to_string()),
+            }),
+            web_dir: Some("web/custom".to_string()),
+            ..Default::default()
+        };
+        let info = ConfigLoadInfo {
+            path: std::path::PathBuf::from("/tmp/agenthub/config.toml"),
+            file_exists: true,
+            env_overrides: vec![],
+        };
+        let spec = (
+            std::path::PathBuf::from("/tmp/agenthub/logs"),
+            "node.log".to_string(),
+        );
+
+        super::log_config_details(
+            &config,
+            &info,
+            Some("/tmp/agenthub/logs/node.log"),
+            Some(&spec),
+            None,
+        );
+    }
+
+    #[test]
+    fn validate_startup_config_rejects_node_mode_without_internal_grpc() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            super::validate_startup_config(&config)
+                .expect_err("node role should require internal grpc")
+                .to_string(),
+            "server.role = \"node\" requires internal_grpc.enabled = true"
+        );
+    }
+
+    #[test]
+    fn validate_startup_config_rejects_reserved_main_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("main".to_string()),
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: None,
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            super::validate_startup_config(&config)
+                .expect_err("reserved node id should fail validation")
+                .to_string(),
+            "server.node_id must not be \"main\" when server.role = \"node\""
+        );
+    }
+
+    #[test]
+    fn validate_startup_config_accepts_node_mode_with_internal_grpc() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: None,
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+        super::validate_startup_config(&config).expect("node role should validate");
+    }
+
+    #[test]
+    fn validate_startup_config_accepts_main_role_without_internal_grpc() {
+        super::validate_startup_config(&AppConfig::default())
+            .expect("main role should not require internal grpc");
     }
 
     #[tokio::test]

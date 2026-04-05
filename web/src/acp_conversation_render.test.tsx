@@ -1120,6 +1120,25 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("in_progress");
   });
 
+  it("uses a non-empty collapsed plan summary when preview text is blank", () => {
+    const html = renderConversation(
+      [
+        {
+          kind: "agent_plan",
+          text: "   ",
+          event_id: 3,
+        },
+      ],
+      {
+        shouldAutoCollapse: true,
+        collapseCutoff: 10,
+      }
+    );
+
+    expect(html).toContain("Plan (collapsed)");
+    expect(html).not.toContain("Plan: </summary>");
+  });
+
   it("renders markdown bubbles and pending spacer", () => {
     const html = renderConversation(
       [

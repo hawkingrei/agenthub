@@ -66,9 +66,13 @@ Every participating node still runs the same `agenthub` binary. The difference
 is which node acts as the main control plane and which nodes are registered as
 remote execution targets.
 
-Recommended shared baseline on every node:
+Recommended remote-node baseline:
 
 ```toml
+[server]
+role = "node" # main | node
+node_id = "node-east"
+
 [internal_grpc]
 enabled = true
 listen = "0.0.0.0:50051"
@@ -90,6 +94,14 @@ token = "replace-me-for-bootstrap"
 
 Operational notes:
 
+- The main control-plane instance should keep the default `server.role = "main"`
+  (or omit `server.role` entirely) so it continues to serve the public web/UI
+  and API surface.
+- `server.role = "node"` turns the process into a node-only runtime. In this
+  mode AgentHub serves internal gRPC only and does not boot the public web/UI
+  HTTP surface.
+- `server.node_id` is required when `server.role = "node"` and must match the
+  node id registered on the main control plane.
 - `internal_grpc.enabled` must be `true` on the main control plane if you want
   to create or control remote-target agents, or if operators/scripts will use
   `agenthub actor ...` against the authority node.
@@ -110,7 +122,7 @@ Operational notes:
 
 1. Bring up the main AgentHub control plane with `internal_grpc.enabled = true`.
 2. Bring up each remote AgentHub node with the same internal gRPC auth/security
-   policy.
+   policy plus a unique `server.node_id`.
 3. Verify the remote node exposes an `https://` internal gRPC endpoint that is
    reachable from the main control plane.
 4. Log into the main AgentHub UI as root and register the remote node from the

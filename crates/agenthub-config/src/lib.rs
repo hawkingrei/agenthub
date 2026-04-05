@@ -9,6 +9,7 @@ const DEFAULT_SAFE_PATH: &str = "~/.agenthub/worktrees";
 const DEFAULT_CODEX_ACP_MODE: &str = "auto";
 const DEFAULT_HISTORY_EVENT_RETENTION_DAYS: u32 = 5;
 const DEFAULT_HISTORY_DELETE_BATCH_SIZE: u32 = 10_000;
+const MAIN_SERVER_NODE_ID: &str = "main";
 
 #[derive(Debug, Clone)]
 pub struct ConfigLoadInfo {
@@ -35,6 +36,25 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     pub listen: Option<String>,
+    pub role: Option<ServerRole>,
+    pub node_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerRole {
+    #[default]
+    Main,
+    Node,
+}
+
+impl ServerRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Node => "node",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -129,6 +149,44 @@ pub fn config_path() -> std::path::PathBuf {
 }
 
 impl AppConfig {
+    pub fn server_role(&self) -> ServerRole {
+        self.server
+            .as_ref()
+            .and_then(|server| server.role)
+            .unwrap_or_default()
+    }
+
+    pub fn is_node_role(&self) -> bool {
+        self.server_role() == ServerRole::Node
+    }
+
+    pub fn configured_server_node_id(&self) -> Option<String> {
+        self.server
+            .as_ref()
+            .and_then(|server| server.node_id.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    pub fn server_node_id(&self) -> anyhow::Result<String> {
+        match self.server_role() {
+            ServerRole::Main => Ok(MAIN_SERVER_NODE_ID.to_string()),
+            ServerRole::Node => {
+                let node_id = self.configured_server_node_id().ok_or_else(|| {
+                    anyhow::anyhow!("server.node_id is required when server.role = \"node\"")
+                })?;
+                if node_id == MAIN_SERVER_NODE_ID {
+                    anyhow::bail!(
+                        "server.node_id must not be \"{}\" when server.role = \"node\"",
+                        MAIN_SERVER_NODE_ID
+                    );
+                }
+                Ok(node_id)
+            }
+        }
+    }
+
     pub fn default_worktree_root(&self) -> String {
         self.worktree
             .as_ref()
@@ -392,6 +450,8 @@ impl AppConfig {
 fn detect_env_overrides() -> Vec<String> {
     let keys = [
         "AGENTHUB_LISTEN",
+        "AGENTHUB_SERVER_ROLE",
+        "AGENTHUB_SERVER_NODE_ID",
         "AGENTHUB_RP_ID",
         "AGENTHUB_RP_ORIGIN",
         "AGENTHUB_RP_NAME",
@@ -426,7 +486,71 @@ fn detect_env_overrides() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, CodexAcpConfig, HistoryConfig, WorktreeConfig};
+    use super::{
+        AppConfig, CodexAcpConfig, HistoryConfig, ServerConfig, ServerRole, WorktreeConfig,
+    };
+
+    #[test]
+    fn server_role_defaults_to_main() {
+        let config = AppConfig::default();
+        assert_eq!(config.server_role(), ServerRole::Main);
+        assert_eq!(config.server_node_id().expect("default node id"), "main");
+    }
+
+    #[test]
+    fn node_role_requires_non_main_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            config
+                .server_node_id()
+                .expect_err("node role should require node id")
+                .to_string(),
+            "server.node_id is required when server.role = \"node\""
+        );
+    }
+
+    #[test]
+    fn node_role_rejects_main_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some(" main ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            config
+                .server_node_id()
+                .expect_err("node role should reject main node id")
+                .to_string(),
+            "server.node_id must not be \"main\" when server.role = \"node\""
+        );
+    }
+
+    #[test]
+    fn node_role_uses_trimmed_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some(" node-east ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.server_role(), ServerRole::Node);
+        assert_eq!(
+            config.server_node_id().expect("node mode node id"),
+            "node-east"
+        );
+    }
 
     #[test]
     fn default_worktree_root_uses_builtin_default() {
