@@ -42,6 +42,8 @@ mod tests {
         assert!(!DEFAULT_TEAM_LEADER_PROMPT.contains(".cache/context/todo"));
         assert!(!DEFAULT_TEAM_WORKER_PROMPT.contains(".cache/context/todo"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Decision Complete"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Think from first principles"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("First-principles reasoning first"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Explore Before Asking"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Clearance checklist before delegation"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
@@ -78,6 +80,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("in_review"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Inspect inbox regularly"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Receive inbox work"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Think from first principles"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Re-derive the problem from first principles"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Treat inbox inspection as read-only"));
         assert!(!DEFAULT_TEAM_LEADER_PROMPT.contains("Pull inbox regularly"));
         assert!(!DEFAULT_TEAM_WORKER_PROMPT.contains("Acknowledge messages after reading"));
