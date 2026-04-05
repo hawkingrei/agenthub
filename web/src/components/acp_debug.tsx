@@ -3,7 +3,6 @@ import React from "react";
 import { AcpConfigOption, AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
 import { OutputLine } from "../output_cache";
-import { TerminalOutput } from "./terminal_output";
 import { ActionButton, ToolbarRow, cx } from "../ui/primitives";
 import {
   ACP_DEBUG_EMPTY_CLASS,
@@ -78,8 +77,14 @@ type AcpDebugProps = {
 };
 
 const COPIED_STATE_RESET_DELAY_MS = 1600;
+const DEBUG_TERMINAL_CONTAINER_CLASS =
+  "terminal flex-1 min-h-0 overflow-auto rounded-lg border border-notion-border bg-brand-primary p-3 font-mono text-[12px] leading-relaxed text-white shadow-inner";
+const DEBUG_TERMINAL_LINE_BASE_CLASS = "line break-words whitespace-pre-wrap";
+const DEBUG_TERMINAL_STDOUT_CLASS = "text-white";
+const DEBUG_TERMINAL_STDERR_CLASS = "text-red-300";
+const DEBUG_TERMINAL_SYSTEM_CLASS = "text-cyan-300";
 
-export function AcpDebug({
+function AcpDebugView({
   terminalOutputs,
   ansi,
   terminalRef,
@@ -303,7 +308,7 @@ export function AcpDebug({
             </div>
           ) : (
             <div className="h-[420px] min-h-[220px]">
-              <TerminalOutput
+              <DebugTerminalOutput
                 outputs={filteredTerminalOutputs}
                 ansi={ansi}
                 containerRef={terminalRef}
@@ -567,6 +572,9 @@ export function AcpDebug({
   );
 }
 
+export const AcpDebug = React.memo(AcpDebugView);
+AcpDebug.displayName = "AcpDebug";
+
 export type PermissionToolCall = {
   title?: string;
 };
@@ -612,6 +620,42 @@ export function buildPermissionCopyText(permission: AcpPermissionRecord): string
 
 function formatPermissionTimestamp(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
+}
+
+function DebugTerminalOutput({
+  outputs,
+  ansi,
+  containerRef,
+  onScroll,
+}: {
+  outputs: OutputLine[];
+  ansi: (input: string) => string;
+  containerRef?: React.RefObject<HTMLDivElement>;
+  onScroll?: () => void;
+}) {
+  return (
+    <div
+      className={DEBUG_TERMINAL_CONTAINER_CLASS}
+      ref={containerRef}
+      onScroll={onScroll}
+    >
+      {outputs.map((line) => {
+        const toneClass =
+          line.stream === "stderr"
+            ? DEBUG_TERMINAL_STDERR_CLASS
+            : line.stream === "system"
+              ? DEBUG_TERMINAL_SYSTEM_CLASS
+              : DEBUG_TERMINAL_STDOUT_CLASS;
+        return (
+          <div
+            key={`id-${line.event_id}`}
+            className={`${DEBUG_TERMINAL_LINE_BASE_CLASS} ${line.stream} ${toneClass}`}
+            dangerouslySetInnerHTML={{ __html: ansi(line.message) }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {

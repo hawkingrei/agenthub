@@ -66,15 +66,11 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "./agent_presets";
-import { AgentNodeSection, validateAgentNodeDraft } from "./components/agent_node_section";
+import { validateAgentNodeDraft } from "./components/agent_node_validation";
 import { AgentsPanel } from "./components/agents_panel";
 import { resolveAcpInputDockConversationClearance } from "./components/acp_panel";
-import { CreateAgentModal } from "./components/create_agent_modal";
-import { InputDock } from "./components/input_dock";
 import { OutputHeader } from "./components/output_header";
-import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
-import { PermissionModal } from "./components/permission_modal";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
@@ -127,6 +123,9 @@ import {
   APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
   APP_WORKSPACE_RIGHT_CLASS,
   APP_WORKSPACE_SPLITTER_CLASS,
+  OUTPUT_BODY_ACP_ROOT_CLASS,
+  OUTPUT_BODY_LOADING_CLASS,
+  OUTPUT_BODY_ROOT_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
@@ -153,33 +152,44 @@ const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
-const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
-
 const LazyAdminPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/admin_page.tsx"];
-  if (!load) {
-    throw new Error("LazyAdminPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/admin_page");
+  const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
   return { default: module.AdminPage };
 });
 
 const LazyJoinPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/join_page.tsx"];
-  if (!load) {
-    throw new Error("LazyJoinPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/join_page");
+  const module = (await import("./pages/join_page")) as typeof import("./pages/join_page");
   return { default: module.JoinPage };
 });
 
 const LazyTeamPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/team_page.tsx"];
-  if (!load) {
-    throw new Error("LazyTeamPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/team_page");
+  const module = (await import("./pages/team_page")) as typeof import("./pages/team_page");
   return { default: module.TeamPage };
+});
+
+const LazyCreateAgentModal = React.lazy(async () => {
+  const module = await import("./components/create_agent_modal");
+  return { default: module.CreateAgentModal };
+});
+
+const LazyAgentNodeSection = React.lazy(async () => {
+  const module = await import("./components/agent_node_section");
+  return { default: module.AgentNodeSection };
+});
+
+const LazyPermissionModal = React.lazy(async () => {
+  const module = await import("./components/permission_modal");
+  return { default: module.PermissionModal };
+});
+
+const LazyOutputBody = React.lazy(async () => {
+  const module = await import("./components/output_body");
+  return { default: module.OutputBody };
+});
+
+const LazyInputDock = React.lazy(async () => {
+  const module = await import("./components/input_dock");
+  return { default: module.InputDock };
 });
 
 function AuthRedirect(): null {
@@ -198,6 +208,21 @@ function PostLoginRedirect({ target }: { target: string }): null {
 
 function RouteFallback({ label }: { label: string }) {
   return <div className={ROUTE_FALLBACK_SHELL_CLASS}>{label}</div>;
+}
+
+function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
+  return (
+    <div className={hasAcp ? OUTPUT_BODY_ACP_ROOT_CLASS : OUTPUT_BODY_ROOT_CLASS}>
+      <div className={OUTPUT_BODY_LOADING_CLASS}>
+        <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
+        <div className="label">Loading...</div>
+      </div>
+    </div>
+  );
+}
+
+function InputDockFallback() {
+  return <div className="shrink-0 min-h-[104px]" aria-hidden="true" />;
 }
 
 export function shouldRedirectTeamsToLogin(
@@ -233,6 +258,73 @@ export function upsertAgentNodeRecord(
     return next;
   }
   return [...nodes, node].sort(compareAgentNodeRecords);
+}
+
+function isSameStringList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+function isSameAgentRecord(a: AgentRecord, b: AgentRecord): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.workdir === b.workdir &&
+    a.command === b.command &&
+    isSameStringList(a.args, b.args) &&
+    (a.target_node_id ?? null) === (b.target_node_id ?? null) &&
+    a.worktree_mode === b.worktree_mode &&
+    (a.worktree_repo ?? null) === (b.worktree_repo ?? null) &&
+    (a.worktree_ref ?? null) === (b.worktree_ref ?? null) &&
+    a.code_mode === b.code_mode &&
+    (a.agent_loop_enabled ?? null) === (b.agent_loop_enabled ?? null) &&
+    (a.agent_loop_idle_seconds ?? null) === (b.agent_loop_idle_seconds ?? null) &&
+    (a.agent_loop_prompt ?? null) === (b.agent_loop_prompt ?? null) &&
+    a.status === b.status &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at
+  );
+}
+
+export function isSameAgentRecordList(
+  prev: AgentRecord[],
+  next: AgentRecord[]
+): boolean {
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!isSameAgentRecord(prev[index], next[index])) return false;
+  }
+  return true;
+}
+
+function isSameAgentNodeRecord(
+  a: AgentNodeRecord,
+  b: AgentNodeRecord
+): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    (a.grpc_target ?? null) === (b.grpc_target ?? null) &&
+    (a.tls_server_name ?? null) === (b.tls_server_name ?? null) &&
+    (a.default_worktree_root ?? null) === (b.default_worktree_root ?? null) &&
+    a.is_main === b.is_main &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at
+  );
+}
+
+export function isSameAgentNodeRecordList(
+  prev: AgentNodeRecord[],
+  next: AgentNodeRecord[]
+): boolean {
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!isSameAgentNodeRecord(prev[index], next[index])) return false;
+  }
+  return true;
 }
 
 export function replaceAgentNodeRecord(
@@ -754,7 +846,7 @@ export function schedulePermissionPollLoop(
       pollState.timer = null;
       return;
     }
-    const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
+    const nextDelay = pendingCount > 0 ? 3_000 : 10_000;
     schedulePermissionPollLoop(
       nextDelay,
       pollState,
@@ -1324,7 +1416,7 @@ export function App() {
       const silent = opts?.silent === true;
       try {
         const items = await api.listAgents(token);
-        setAgents(items);
+        setAgents((prev) => (isSameAgentRecordList(prev, items) ? prev : items));
         return items;
       } catch (err) {
         if (!silent) {
@@ -1345,7 +1437,7 @@ export function App() {
       const silent = opts?.silent === true;
       try {
         const items = await api.listAgentNodes(token);
-        setAgentNodes(items);
+        setAgentNodes((prev) => (isSameAgentNodeRecordList(prev, items) ? prev : items));
         return items;
       } catch (err) {
         if (!silent) {
@@ -2163,7 +2255,10 @@ export function App() {
   }, [thinkingStartTs]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!token || !activeAgent || !developerMode || acpTab !== "debug") {
+      setAcpPermissionHistory([]);
+      return;
+    }
     let cancelled = false;
     const requestedAgentId = activeAgent;
     const load = async () => {
@@ -2183,7 +2278,7 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, activeAgent, activeSessionId]);
+  }, [token, activeAgent, activeSessionId, developerMode, acpTab]);
 
   const onRegister = async (role?: string) => {
     if (authBusyRef.current) return;
@@ -3526,33 +3621,39 @@ export function App() {
             <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
               {activeAgent ? (
                 <OutputErrorBoundary>
-                  <OutputBody
-                    terminalRef={terminalRef}
-                    onTerminalScroll={handleTerminalScroll}
-                    isOutputLoading={isOutputLoading}
-                    isConversationLoading={isConversationLoading}
-                    outputs={outputs}
-                    ansi={ansi}
-                    acpPanelProps={acpPanelProps}
-                  />
+                  <Suspense
+                    fallback={<WorkbenchBodyFallback hasAcp={acpView.hasAcp} />}
+                  >
+                    <LazyOutputBody
+                      terminalRef={terminalRef}
+                      onTerminalScroll={handleTerminalScroll}
+                      isOutputLoading={isOutputLoading}
+                      isConversationLoading={isConversationLoading}
+                      outputs={outputs}
+                      ansi={ansi}
+                      acpPanelProps={acpPanelProps}
+                    />
+                  </Suspense>
                 </OutputErrorBoundary>
               ) : null}
               {showInputDock && (
-                <InputDock
-                  input={input}
-                  historyCommands={inputHistory}
-                  showInterrupt={acpView.hasAcp}
-                  canInterrupt={canInterruptAcpRun}
-                  onHeightChange={setInputDockHeight}
-                  onInputChange={onInputChange}
-                  onSendInput={onSendInput}
-                  onInterrupt={onAcpCancel}
-                  onNavigateHistory={onNavigateInputHistory}
-                  onSelectHistoryCommand={onSelectInputHistory}
-                  onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                  showConversationJump={inputDockJumpMode.showConversationJump}
-                  isComposingRef={isComposingRef}
-                />
+                <Suspense fallback={<InputDockFallback />}>
+                  <LazyInputDock
+                    input={input}
+                    historyCommands={inputHistory}
+                    showInterrupt={acpView.hasAcp}
+                    canInterrupt={canInterruptAcpRun}
+                    onHeightChange={setInputDockHeight}
+                    onInputChange={onInputChange}
+                    onSendInput={onSendInput}
+                    onInterrupt={onAcpCancel}
+                    onNavigateHistory={onNavigateInputHistory}
+                    onSelectHistoryCommand={onSelectInputHistory}
+                    onJumpToBottom={inputDockJumpMode.onJumpToBottom}
+                    showConversationJump={inputDockJumpMode.showConversationJump}
+                    isComposingRef={isComposingRef}
+                  />
+                </Suspense>
               )}
             </div>
           </div>
@@ -3560,60 +3661,66 @@ export function App() {
       )}
 
       {auth && showCreateAgent && (
-        <CreateAgentModal
-          agentName={agentName}
-          setAgentName={setAgentName}
-          agentWorkdir={agentWorkdir}
-          setAgentWorkdir={setAgentWorkdir}
-          agentPresetId={agentPresetId}
-          setAgentPresetId={setAgentPresetId}
-          worktreeMode={worktreeMode}
-          setWorktreeMode={handleWorktreeModeChange}
-          worktreeRepo={worktreeRepo}
-          setWorktreeRepo={setWorktreeRepo}
-          worktreeRef={worktreeRef}
-          setWorktreeRef={setWorktreeRef}
-          codeMode={codeMode}
-          setCodeMode={setCodeMode}
-          worktreeError={worktreeError}
-          createBusy={createAgentBusy}
-          workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
-          onCreateAgent={onCreateAgent}
-          onClose={() => setShowCreateAgent(false)}
-        >
-          {canManageAgentNodes(auth) && (
-            <AgentNodeSection
-              nodes={agentNodes}
-              agents={agents}
-              targetNodeId={targetNodeId}
-              onTargetNodeIdChange={applyTargetNodeSelection}
-              nodeIdInput={nodeIdInput}
-              onNodeIdInputChange={setNodeIdInput}
-              nodeNameInput={nodeNameInput}
-              onNodeNameInputChange={setNodeNameInput}
-              grpcTargetInput={nodeGrpcTargetInput}
-              onGrpcTargetInputChange={setNodeGrpcTargetInput}
-              tlsServerNameInput={nodeTlsServerNameInput}
-              onTlsServerNameInputChange={setNodeTlsServerNameInput}
-              defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
-              onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
-              createBusy={createAgentNodeBusy}
-              updatingNodeIds={updatingAgentNodeIds}
-              deletingNodeIds={deletingAgentNodeIds}
-              onCreateNode={onCreateAgentNode}
-              onUpdateNode={onUpdateAgentNode}
-              onDeleteNode={onDeleteAgentNode}
-            />
-          )}
-        </CreateAgentModal>
+        <Suspense fallback={null}>
+          <LazyCreateAgentModal
+            agentName={agentName}
+            setAgentName={setAgentName}
+            agentWorkdir={agentWorkdir}
+            setAgentWorkdir={setAgentWorkdir}
+            agentPresetId={agentPresetId}
+            setAgentPresetId={setAgentPresetId}
+            worktreeMode={worktreeMode}
+            setWorktreeMode={handleWorktreeModeChange}
+            worktreeRepo={worktreeRepo}
+            setWorktreeRepo={setWorktreeRepo}
+            worktreeRef={worktreeRef}
+            setWorktreeRef={setWorktreeRef}
+            codeMode={codeMode}
+            setCodeMode={setCodeMode}
+            worktreeError={worktreeError}
+            createBusy={createAgentBusy}
+            workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
+            onCreateAgent={onCreateAgent}
+            onClose={() => setShowCreateAgent(false)}
+          >
+            {canManageAgentNodes(auth) && (
+              <Suspense fallback={null}>
+                <LazyAgentNodeSection
+                  nodes={agentNodes}
+                  agents={agents}
+                  targetNodeId={targetNodeId}
+                  onTargetNodeIdChange={applyTargetNodeSelection}
+                  nodeIdInput={nodeIdInput}
+                  onNodeIdInputChange={setNodeIdInput}
+                  nodeNameInput={nodeNameInput}
+                  onNodeNameInputChange={setNodeNameInput}
+                  grpcTargetInput={nodeGrpcTargetInput}
+                  onGrpcTargetInputChange={setNodeGrpcTargetInput}
+                  tlsServerNameInput={nodeTlsServerNameInput}
+                  onTlsServerNameInputChange={setNodeTlsServerNameInput}
+                  defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
+                  onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
+                  createBusy={createAgentNodeBusy}
+                  updatingNodeIds={updatingAgentNodeIds}
+                  deletingNodeIds={deletingAgentNodeIds}
+                  onCreateNode={onCreateAgentNode}
+                  onUpdateNode={onUpdateAgentNode}
+                  onDeleteNode={onDeleteAgentNode}
+                />
+              </Suspense>
+            )}
+          </LazyCreateAgentModal>
+        </Suspense>
       )}
 
       {auth && activeAgent && scopedAcpPermissions.length > 0 && (
-        <PermissionModal
-          permissions={scopedAcpPermissions}
-          permissionBusy={permissionBusy}
-          onRespond={onRespondPermission}
-        />
+        <Suspense fallback={null}>
+          <LazyPermissionModal
+            permissions={scopedAcpPermissions}
+            permissionBusy={permissionBusy}
+            onRespond={onRespondPermission}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -1,11 +1,12 @@
 import { UnstyledButton } from "@mantine/core";
 import React from "react";
-import { AcpView } from "../acp";
-import { AcpDebug, AcpDebugProps } from "./acp_debug";
+import type { AcpView } from "../acp";
+import type { AcpDebugProps } from "./acp_debug";
 import { AcpConversation, AcpConversationProps } from "./acp_conversation";
 import { AcpPlan, AcpPlanProps, summarizePlanEntries } from "./acp_plan";
 import { cx } from "../ui/primitives";
 import {
+  ACP_DEBUG_ROOT_CLASS,
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   ACP_PANEL_HEAD_CLASS,
   ACP_PANEL_ROOT_CLASS,
@@ -34,6 +35,34 @@ type AcpPanelProps = {
   plan: AcpPlanProps;
   debug: AcpDebugProps;
 };
+
+function AcpDebugSlot(props: AcpDebugProps) {
+  const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(
+    null
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void import("./acp_debug").then((module) => {
+      if (!cancelled) {
+        setDebugView(() => module.AcpDebug);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!DebugView) {
+    return (
+      <div className={ACP_DEBUG_ROOT_CLASS}>
+        <div className="text-sm text-notion-text-muted">Loading debug…</div>
+      </div>
+    );
+  }
+
+  return <DebugView {...props} />;
+}
 
 export const ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX = 104;
 export const ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX = 12;
@@ -164,7 +193,9 @@ function AcpPanelView({
         />
       )}
       {effectiveTab === "plan" && <AcpPlan {...plan} />}
-      {developerMode && effectiveTab === "debug" && <AcpDebug {...debug} />}
+      {developerMode && effectiveTab === "debug" && (
+        <AcpDebugSlot {...debug} />
+      )}
       {effectiveTab === "conversation" &&
       showConversationJump &&
       showFloatingConversationJump ? (

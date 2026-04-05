@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Switch } from "@mantine/core";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
@@ -59,6 +58,43 @@ type AdminProps = {
   passkeyEnabled: boolean | null;
   onPasskeyEnabledChange: (value: boolean) => void;
 };
+
+type AdminToggleFieldProps = {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  description: string;
+  onChange: (value: boolean) => void;
+};
+
+function AdminToggleField({
+  checked,
+  disabled = false,
+  label,
+  description,
+  onChange,
+}: AdminToggleFieldProps) {
+  return (
+    <label
+      className={`flex items-start gap-3 rounded-xl border border-notion-border bg-notion-sidebar/20 px-4 py-3 ${
+        disabled ? "opacity-60" : "cursor-pointer hover:bg-notion-hover/50"
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 rounded border-notion-border text-notion-accent focus:ring-notion-accent/20"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="min-w-0 space-y-1">
+        <span className="block text-sm font-semibold text-notion-text">{label}</span>
+        <span className={ADMIN_MUTED_TEXT_CLASS}>{description}</span>
+      </span>
+    </label>
+  );
+}
+
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"
@@ -293,11 +329,9 @@ export function AdminPage(props: AdminProps) {
             <div className={ADMIN_CARD_CLASS}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>UI Settings</h3>
               <div className="flex flex-col gap-3">
-                <Switch
+                <AdminToggleField
                   checked={props.developerMode}
-                  onChange={(event) =>
-                    props.onDeveloperModeChange(event.currentTarget.checked)
-                  }
+                  onChange={props.onDeveloperModeChange}
                   label="Developer Mode"
                   description="Applies to this browser only. Affects Agents and Teams."
                 />
@@ -312,12 +346,10 @@ export function AdminPage(props: AdminProps) {
             <div className={ADMIN_CARD_CLASS}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>System Configuration</h3>
               <div className="flex flex-col gap-3">
-                <Switch
+                <AdminToggleField
                   checked={props.passkeyEnabled ?? false}
                   disabled={props.passkeyEnabled === null}
-                  onChange={(event) =>
-                    props.onPasskeyEnabledChange(event.currentTarget.checked)
-                  }
+                  onChange={props.onPasskeyEnabledChange}
                   label="Enable Passkey"
                   description={
                     props.passkeyEnabled === null

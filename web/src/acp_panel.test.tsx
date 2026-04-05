@@ -285,13 +285,11 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("done");
   });
 
-  it("renders debug view when acpTab is debug", () => {
+  it("renders debug fallback shell when acpTab is debug", () => {
     const html = renderPanel(
       <AcpPanel {...baseProps} acpTab="debug" />
     );
-    expect(html).toContain("Session");
-    expect(html).toContain("Permissions");
-    expect(html).toContain("Raw");
+    expect(html).toContain("Loading debug…");
   });
 
   it("renders conversation jump button on ACP panel container layer", () => {
