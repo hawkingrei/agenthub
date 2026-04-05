@@ -18,6 +18,9 @@
   reusing an out-of-scope variable.
 - Normalized derived agent names with both `/` and `\\` path separators so the forge helper stays
   portable across path styles.
+- Replaced the forge modal role-model field with a stable native select and added explicit
+  selector-entry `data-*` attributes on the Team selector list so the UI exposes durable hooks
+  instead of forcing E2E to infer internal Mantine structure.
 - Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
   timing around developer tools updates.
 

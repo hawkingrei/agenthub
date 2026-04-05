@@ -3631,6 +3631,9 @@ export function TeamPage(props: TeamPageProps) {
                       key={team.id}
                       type="button"
                       className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
+                      data-team-selector-entry="true"
+                      data-team-id={team.id}
+                      data-team-name={team.name}
                       onClick={() => navigateToTeamDetail(team.id)}
                     >
                       <div className="min-w-0 flex-1">

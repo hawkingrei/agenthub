@@ -5,6 +5,7 @@ import {
   Group,
   List,
   Modal,
+  NativeSelect,
   Select,
   SimpleGrid,
   Stack,
@@ -206,14 +207,12 @@ export function CreateAgentModal({
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
-          <Select
+          <NativeSelect
             label={agentPresetLabel}
-            placeholder="Select preset"
             value={agentPresetId}
             data={presetOptions}
-            allowDeselect={false}
-            onChange={(value) => {
-              setAgentPresetId(resolveCreateAgentPresetId(value));
+            onChange={(event) => {
+              setAgentPresetId(resolveCreateAgentPresetId(event.currentTarget.value));
             }}
           />
           {showWorkdirInput ? (

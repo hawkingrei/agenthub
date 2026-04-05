@@ -1,10 +1,6 @@
 import { expect, test, testLocalLlm } from "./coverage";
 import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function deriveAgentName(identity: string | undefined, workdir: string): string {
   const normalizedIdentity = identity?.trim();
   if (normalizedIdentity) {
@@ -287,11 +283,6 @@ async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
-  const roleModelLabels: Record<string, string> = {
-    codex: "Codex ACP",
-    gemini: "Gemini CLI",
-    kimi: "Kimi CLI",
-  };
   const openButtonLabel = "Add Agent";
   const confirmLabel = "Create Agent";
   const primaryOpenButton = page
@@ -361,10 +352,7 @@ async function createTeamMemberFromModal(
     await dialog.getByLabel("Identity").fill(options.identity);
   }
   if (options.model && options.model !== "codex") {
-    const optionLabel = roleModelLabels[options.model] ?? options.model;
-    const modelControl = dialog.getByRole("textbox", { name: "Role model" });
-    await modelControl.click();
-    await page.getByRole("option", { name: optionLabel, exact: true }).click();
+    await dialog.getByLabel("Role model").selectOption(options.model);
   }
   await dialog.getByLabel(/Workdir/).fill(options.workdir);
   await dialog.getByRole("button", { name: confirmLabel }).click();
@@ -393,31 +381,22 @@ async function openTeamFromSelector(
   if ((await filterInput.count()) > 0) {
     await filterInput.fill(teamName);
   }
-  const selectorTeamButton = selectorPanel.locator("button.team-item", { hasText: teamName }).first();
-  const selectorFallbackButton = selectorPanel.getByRole("button", {
-    name: new RegExp(escapeRegex(teamName), "i"),
-  }).first();
-  const resolveTeamItem = async () => {
-    if (await selectorTeamButton.count()) {
-      return selectorTeamButton;
-    }
-    return selectorFallbackButton;
-  };
+  const selectorTeamButton = selectorPanel
+    .locator('[data-team-selector-entry="true"]', { hasText: teamName })
+    .first();
+  await expect(selectorTeamButton).toBeVisible();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const teamItem = await resolveTeamItem();
-    await expect(teamItem).toBeVisible();
     try {
-      await teamItem.click({ timeout: 1_500, force: attempt > 0 });
+      await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
-      await teamItem.click({ force: true });
+      await selectorTeamButton.click({ force: true });
     }
     await page.waitForTimeout(150);
     if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
-  const teamItem = await resolveTeamItem();
-  await teamItem.evaluate((element) => {
+  await selectorTeamButton.evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
   await expect(page).toHaveURL(/\/teams\/.+/);
