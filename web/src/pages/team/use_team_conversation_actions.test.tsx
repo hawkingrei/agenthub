@@ -7,6 +7,7 @@ import {
   type TeamActorMessageRecord,
   type TeamConversationMessageRecord,
   type TeamRunRecord,
+  type TeamTaskDetailResponse,
   type TeamTaskRecord,
   api,
 } from "../../api";
@@ -78,6 +79,23 @@ function buildSharedThreadTask(): TeamTaskRecord {
   };
 }
 
+function buildTaskThreadTask(
+  overrides: Partial<TeamTaskRecord> = {}
+): TeamTaskRecord {
+  return {
+    id: "task-thread",
+    team_id: "team-1",
+    title: "Task thread",
+    status: "in_review",
+    created_by_actor_id: "leader",
+    assigned_member_id: "worker-1",
+    context: {},
+    created_at: 2,
+    updated_at: 2,
+    ...overrides,
+  };
+}
+
 function buildRun(id: string): TeamRunRecord {
   return {
     id,
@@ -88,6 +106,25 @@ function buildRun(id: string): TeamRunRecord {
     created_at: 1,
     started_at: null,
     ended_at: null,
+  };
+}
+
+function buildSharedThreadDetail(
+  overrides: Partial<TeamTaskDetailResponse> = {}
+): TeamTaskDetailResponse {
+  return {
+    task: buildSharedThreadTask(),
+    conversation: {
+      id: "conv-all",
+      team_id: "team-1",
+      task_id: "task-all",
+      mode: "group_chat",
+      topic: "all",
+      created_at: 1,
+      updated_at: 1,
+    },
+    latest_run: buildRun("run-shared"),
+    ...overrides,
   };
 }
 
@@ -111,7 +148,7 @@ function createOptions(
     token: "token-1",
     selectedTeamId: "team-1",
     selectedConversation: buildSharedThreadTask(),
-    latestRunForSharedConversation: null,
+    selectedConversationLatestRun: null,
     activeRunIdForSelectedTeam: "run-1",
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     refreshEvents: vi.fn().mockResolvedValue(undefined),
@@ -185,28 +222,20 @@ describe("useTeamConversationActions", () => {
       buildTaskMessage(22, "tail-1"),
       buildTaskMessage(41, "tail-2"),
     ]);
-    mockedApi.getTeamTask.mockResolvedValue({
-      task: buildSharedThreadTask(),
-      conversation: {
-        id: "conv-all",
-        team_id: "team-1",
-        task_id: "task-all",
-        mode: "group_chat",
-        topic: "all",
-        created_at: 1,
-        updated_at: 1,
-      },
-      latest_run: {
-        id: "run-1",
-        team_id: "team-1",
-        context_id: "ctx-1",
-        status: "working",
-        input: {},
-        created_at: 1,
-        started_at: null,
-        ended_at: null,
-      },
-    });
+    mockedApi.getTeamTask.mockResolvedValue(
+      buildSharedThreadDetail({
+        latest_run: {
+          id: "run-1",
+          team_id: "team-1",
+          context_id: "ctx-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
+      })
+    );
     mockedApi.getTeamRunSnapshot.mockResolvedValueOnce({
       run: {
         id: "run-1",
@@ -257,18 +286,60 @@ describe("useTeamConversationActions", () => {
         "token-1",
         "team-1",
         "task-all",
-        { limit: 10 }
+        { limit: 20 }
       );
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
         1,
         "token-1",
         "run-1",
-        { event_limit: 1, message_limit: 10 }
+        { event_limit: 1, message_limit: 20 }
       );
       expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(1);
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledTimes(1);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(true);
       expect(options.setTaskMessagesLoading).toHaveBeenCalledWith(false);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("clears stale messages immediately when switching conversation scope", async () => {
+    let captured: TeamConversationActions | null = null;
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const mailboxMessages = createStateSetter<TeamActorMessageRecord[]>([]);
+    const options = createOptions({
+      setTaskMessages: taskMessages.setter,
+      setConversationMailboxMessages: mailboxMessages.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      taskMessages.state.current = [buildTaskMessage(11, "shared thread message")];
+      mailboxMessages.state.current = [buildMailboxMessage(12, "shared mailbox message")];
+      taskMessages.setter.mockClear();
+      mailboxMessages.setter.mockClear();
+
+      const nextOptions = createOptions({
+        ...options,
+        selectedConversation: buildTaskThreadTask(),
+        setTaskMessages: taskMessages.setter,
+        setConversationMailboxMessages: mailboxMessages.setter,
+      });
+
+      await act(async () => {
+        root.render(<HookHarness options={nextOptions} onCapture={(actions) => {
+          captured = actions;
+        }} />);
+        await Promise.resolve();
+      });
+
+      expect(captured).not.toBeNull();
+      expect(taskMessages.state.current).toEqual([]);
+      expect(mailboxMessages.state.current).toEqual([]);
+      expect(taskMessages.setter).toHaveBeenCalledWith([]);
+      expect(mailboxMessages.setter).toHaveBeenCalledWith([]);
     } finally {
       cleanupHarness(root, container);
     }
@@ -345,7 +416,7 @@ describe("useTeamConversationActions", () => {
     let captured: TeamConversationActions | null = null;
     const options = createOptions({
       activeRunIdForSelectedTeam: null,
-      latestRunForSharedConversation: buildRun("run-shared"),
+      selectedConversationLatestRun: buildRun("run-shared"),
     });
     const { root, container } = await mountHarness(options, (actions) => {
       captured = actions;
@@ -369,19 +440,11 @@ describe("useTeamConversationActions", () => {
   });
 
   it("reuses the existing shared thread instead of creating a duplicate", async () => {
-    mockedApi.ensureTeamSharedThread.mockResolvedValue({
-      task: buildSharedThreadTask(),
-      conversation: {
-        id: "conv-all",
-        team_id: "team-1",
-        task_id: "task-all",
-        mode: "group_chat",
-        topic: "all",
-        created_at: 1,
-        updated_at: 1,
-      },
-      latest_run: buildRun("run-new-shared"),
-    });
+    mockedApi.ensureTeamSharedThread.mockResolvedValue(
+      buildSharedThreadDetail({
+        latest_run: buildRun("run-new-shared"),
+      })
+    );
     mockedApi.listTeamTaskMessages.mockResolvedValue([]);
     mockedApi.sendTeamTaskMessage.mockResolvedValue({
       message_id: 77,
@@ -466,6 +529,7 @@ describe("useTeamConversationActions", () => {
       expect(draft.state.current).toBe("");
       expect(taskMessages.state.current).toHaveLength(1);
       expect(taskMessages.state.current[0]?.from_actor_id).toBe("user");
+      expect(taskMessages.state.current[0]?.conversation_id).toBe("");
       expect(taskMessages.state.current[0]?.payload).toEqual({
         type: "chat_message",
         text: "hello team",
@@ -485,7 +549,8 @@ describe("useTeamConversationActions", () => {
   });
 
   it("restores the draft and removes the optimistic echo when sending fails", async () => {
-    mockedApi.sendTeamTaskMessage.mockRejectedValueOnce(new Error("network broke"));
+    const deferred = createDeferred<TeamConversationMessageRecord>();
+    mockedApi.sendTeamTaskMessage.mockReturnValueOnce(deferred.promise);
 
     let captured: TeamConversationActions | null = null;
     const draft = createStateSetter("need retry");
@@ -500,16 +565,80 @@ describe("useTeamConversationActions", () => {
 
     try {
       await act(async () => {
-        await captured?.sendTaskMessage({
+        void captured?.sendTaskMessage({
           text: "need retry",
           mentionActorIds: [],
         });
         await Promise.resolve();
       });
 
+      draft.setter("newer text");
+
+      deferred.reject(new Error("network broke"));
+      await act(async () => {
+        try {
+          await deferred.promise;
+        } catch {
+          // expected rejection
+        }
+        await Promise.resolve();
+      });
+
       expect(taskMessages.state.current).toEqual([]);
-      expect(draft.state.current).toBe("need retry");
+      expect(draft.state.current).toBe("need retry\nnewer text");
       expect(options.setError).toHaveBeenCalledWith("network broke");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("uses the ensured shared-thread conversation id for the optimistic echo", async () => {
+    const ensureDeferred = createDeferred<TeamTaskDetailResponse>();
+    const sendDeferred = createDeferred<TeamConversationMessageRecord>();
+    mockedApi.ensureTeamSharedThread.mockReturnValueOnce(ensureDeferred.promise);
+    mockedApi.sendTeamTaskMessage.mockReturnValueOnce(sendDeferred.promise);
+
+    let captured: TeamConversationActions | null = null;
+    const draft = createStateSetter("hello shared thread");
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const options = createOptions({
+      selectedConversation: null,
+      activeRunIdForSelectedTeam: null,
+      setTaskMessages: taskMessages.setter,
+      setTaskMessageDraft: draft.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        void captured?.sendTaskMessage({
+          text: "hello shared thread",
+          mentionActorIds: [],
+        });
+        await Promise.resolve();
+      });
+
+      expect(draft.state.current).toBe("");
+      draft.setter("follow-up draft");
+
+      ensureDeferred.resolve(buildSharedThreadDetail());
+      await act(async () => {
+        await ensureDeferred.promise;
+        await Promise.resolve();
+      });
+
+      expect(taskMessages.state.current).toHaveLength(1);
+      expect(taskMessages.state.current[0]?.conversation_id).toBe("conv-all");
+
+      sendDeferred.resolve(buildTaskMessage(101, "hello shared thread"));
+      await act(async () => {
+        await sendDeferred.promise;
+        await Promise.resolve();
+      });
+
+      expect(draft.state.current).toBe("follow-up draft");
     } finally {
       cleanupHarness(root, container);
     }

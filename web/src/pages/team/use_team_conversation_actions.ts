@@ -11,31 +11,32 @@ import {
   type TeamActorMessageRecord,
   type TeamConversationMessageRecord,
   type TeamRunRecord,
+  type TeamTaskDetailResponse,
   type TeamTaskRecord,
 } from "../../api";
 import { buildMailboxChatPayload } from "./mailbox_helpers";
 import {
-  isSharedThreadTask,
   mergeConversationMessages,
   refreshTeamConversationMailboxAfterSend,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 import { uuidV7 } from "../../uuid";
 
-const TEAM_CONVERSATION_MESSAGE_LIMIT = 10;
-const TEAM_CONVERSATION_MAILBOX_LIMIT = 10;
+const TEAM_CONVERSATION_MESSAGE_LIMIT = 20;
+const TEAM_CONVERSATION_MAILBOX_LIMIT = 20;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
 
 type SharedConversationTarget = {
   task: TeamTaskRecord;
   latestRunId: string | null;
+  conversationId: string | null;
 };
 
 type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
   selectedConversation: TeamTaskRecord | null;
-  latestRunForSharedConversation: TeamRunRecord | null;
+  selectedConversationLatestRun: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   refreshEvents: (runId: string) => Promise<unknown>;
@@ -56,7 +57,7 @@ export function useTeamConversationActions({
   refreshSnapshot,
   selectedConversation,
   selectedTeamId,
-  latestRunForSharedConversation,
+  selectedConversationLatestRun,
   setBusy,
   setConversationMailboxMessages,
   setError,
@@ -77,15 +78,29 @@ export function useTeamConversationActions({
   });
 
   useEffect(() => {
-    taskMessageRequestSeqRef.current += 1;
-    taskMessageScopeRef.current = {
+    const nextScope = {
       teamId: selectedTeamId?.trim() ?? "",
       taskId: (selectedConversation?.id ?? "").trim(),
     };
+    const previousScope = taskMessageScopeRef.current;
+    taskMessageRequestSeqRef.current += 1;
+    taskMessageScopeRef.current = nextScope;
+    const conversationScopeChanged =
+      previousScope.teamId !== nextScope.teamId || previousScope.taskId !== nextScope.taskId;
+    if (conversationScopeChanged) {
+      setTaskMessages([]);
+      setConversationMailboxMessages([]);
+    }
     if (!selectedTeamId || !selectedConversation?.id) {
       setTaskMessagesLoading(false);
     }
-  }, [selectedConversation?.id, selectedTeamId, setTaskMessagesLoading]);
+  }, [
+    selectedConversation?.id,
+    selectedTeamId,
+    setConversationMailboxMessages,
+    setTaskMessages,
+    setTaskMessagesLoading,
+  ]);
 
   const refreshTaskMessages = useCallback(
     async (taskIdOverride?: string) => {
@@ -108,9 +123,7 @@ export function useTeamConversationActions({
           api.listTeamTaskMessages(token, teamId, taskId, {
             limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
           }),
-          selectedConversation &&
-          selectedConversation.id === taskId &&
-          isSharedThreadTask(selectedConversation)
+          selectedConversation && selectedConversation.id === taskId
             ? api.getTeamTask(token, teamId, taskId)
             : Promise.resolve(null),
         ]);
@@ -168,9 +181,10 @@ export function useTeamConversationActions({
     }
     return {
       task: selectedConversation,
-      latestRunId: latestRunForSharedConversation?.id?.trim() || null,
+      latestRunId: selectedConversationLatestRun?.id?.trim() || null,
+      conversationId: null,
     };
-  }, [latestRunForSharedConversation, selectedConversation, selectedTeamId]);
+  }, [selectedConversation, selectedConversationLatestRun, selectedTeamId]);
 
   const ensureSharedConversation = useCallback(async (): Promise<SharedConversationTarget | null> => {
     if (!selectedTeamId) {
@@ -181,13 +195,13 @@ export function useTeamConversationActions({
       return existing;
     }
     const detail = await api.ensureTeamSharedThread(token, selectedTeamId);
-    setSharedConversation(detail.task);
-    setSharedConversationLatestRun(detail.latest_run ?? null);
+    applySharedConversationDetail(detail, setSharedConversation, setSharedConversationLatestRun);
     setTaskMessages([]);
     setConversationMailboxMessages([]);
     return {
       task: detail.task,
       latestRunId: detail.latest_run?.id?.trim() || null,
+      conversationId: detail.conversation.id?.trim() || null,
     };
   }, [
     resolveConversationForMessage,
@@ -213,11 +227,17 @@ export function useTeamConversationActions({
         setError("Conversation message is required");
         return;
       }
+      setTaskMessageDraft("");
       sendTaskMessageInFlightRef.current = true;
       setBusy("send-task-message");
       setError(null);
       setWarning(null);
       let optimisticMessageId: number | null = null;
+      const restoreDraft = () => {
+        setTaskMessageDraft((current) =>
+          current.trim().length > 0 ? `${text}\n${current}` : text
+        );
+      };
       try {
         const conversation = await ensureSharedConversation();
         const taskId = conversation?.task.id;
@@ -229,34 +249,30 @@ export function useTeamConversationActions({
           optimisticMessageId =
             TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID +
             ++optimisticTaskMessageSeqRef.current;
-          setTaskMessageDraft("");
           setTaskMessages((prev) =>
-            mergeConversationMessages(
-              prev,
-              sortConversationMessages([
+            {
+              const nextMessages = sortConversationMessages([
                 ...prev,
                 buildOptimisticConversationMessage({
                   messageId: optimisticMessageId!,
                   taskId,
+                  conversationId: conversation.conversationId,
                   payload: chatPayload,
                   mentionActorIds: payload.mentionActorIds,
                 }),
-              ])
-            )
+              ]);
+              return mergeConversationMessages(prev, nextMessages);
+            }
           );
           const message = await api.sendTeamTaskMessage(token, selectedTeamId, taskId, {
             payload: chatPayload,
             idempotency_key: idempotencyKey,
           });
-          setTaskMessages((prev) =>
-            mergeConversationMessages(
-              prev.filter((item) => item.message_id !== optimisticMessageId),
-              sortConversationMessages([
-                ...prev.filter((item) => item.message_id !== optimisticMessageId),
-                message,
-              ])
-            )
-          );
+          setTaskMessages((prev) => {
+            const filtered = prev.filter((item) => item.message_id !== optimisticMessageId);
+            const nextMessages = sortConversationMessages([...filtered, message]);
+            return mergeConversationMessages(filtered, nextMessages);
+          });
           await refreshTeamConversationMailboxAfterSend({
             activeRunId: activeRunIdForSelectedTeam ?? conversation?.latestRunId,
             taskId,
@@ -266,16 +282,15 @@ export function useTeamConversationActions({
           });
           return;
         }
+        restoreDraft();
         setWarning("Unable to initialize shared team thread.");
       } catch (err) {
         if (optimisticMessageId != null) {
           setTaskMessages((prev) =>
             prev.filter((message) => message.message_id !== optimisticMessageId)
           );
-          setTaskMessageDraft((current) =>
-            current.trim().length > 0 ? current : text
-          );
         }
+        restoreDraft();
         setError(parseErrorMessage(err));
       } finally {
         sendTaskMessageInFlightRef.current = false;
@@ -305,6 +320,15 @@ export function useTeamConversationActions({
   };
 }
 
+function applySharedConversationDetail(
+  detail: TeamTaskDetailResponse,
+  setSharedConversation: Dispatch<SetStateAction<TeamTaskRecord | null>>,
+  setSharedConversationLatestRun: Dispatch<SetStateAction<TeamRunRecord | null>>
+) {
+  setSharedConversation(detail.task);
+  setSharedConversationLatestRun(detail.latest_run ?? null);
+}
+
 function sortConversationMessages(
   messages: TeamConversationMessageRecord[]
 ): TeamConversationMessageRecord[] {
@@ -322,17 +346,19 @@ function sortConversationMessages(
 function buildOptimisticConversationMessage({
   messageId,
   taskId,
+  conversationId,
   payload,
   mentionActorIds,
 }: {
   messageId: number;
   taskId: string;
+  conversationId?: string | null;
   payload: ReturnType<typeof buildMailboxChatPayload>;
   mentionActorIds: string[];
 }): TeamConversationMessageRecord {
   return {
     message_id: messageId,
-    conversation_id: taskId,
+    conversation_id: conversationId ?? "",
     task_id: taskId,
     from_actor_id: "user",
     to_actor_id: mentionActorIds.length === 1 ? mentionActorIds[0] ?? null : null,
