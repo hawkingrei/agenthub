@@ -11,6 +11,8 @@
   extra mobile-only scroll dependency from selector navigation.
 - Narrowed selector-route team picking by filling the team filter first, then matching the visible
   `.team-item` text so mobile layout differences do not break team selection.
+- Added a selector-route fallback that resolves the team entry by accessible button name before
+  falling back to `.team-item`, which keeps team selection stable across compact layouts.
 - Waited for compile-preview requests before asserting the rendered preview block to reduce flaky
   timing around developer tools updates.
 

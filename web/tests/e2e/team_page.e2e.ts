@@ -1,6 +1,10 @@
 import { expect, test, testLocalLlm } from "./coverage";
 import { UI_PREFS_STORAGE_KEY } from "../../src/ui/developer_mode";
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 type StoredAuthState = {
   token: string;
   userId: string;
@@ -375,8 +379,17 @@ async function openTeamFromSelector(
   if ((await filterInput.count()) > 0) {
     await filterInput.fill(teamName);
   }
+  const selectorTeamButton = page
+    .getByRole("button", {
+      name: new RegExp(escapeRegex(teamName), "i"),
+    })
+    .first();
+  const resolveTeamItem = async () =>
+    (await selectorTeamButton.isVisible().catch(() => false))
+      ? selectorTeamButton
+      : page.locator(".team-item", { hasText: teamName }).first();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const teamItem = page.locator(".team-item", { hasText: teamName }).first();
+    const teamItem = await resolveTeamItem();
     await expect(teamItem).toBeVisible();
     try {
       await teamItem.click({ timeout: 1_500, force: attempt > 0 });
@@ -388,6 +401,7 @@ async function openTeamFromSelector(
       return;
     }
   }
+  const teamItem = await resolveTeamItem();
   await teamItem.evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
