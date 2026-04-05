@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use agenthub_config::ServerRole;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::acp::AcpPermissionService;
 use crate::agent::{
-    AGENT_NODE_MAIN_ID, AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker,
-    AgentTimeTriggerWorkerSettings,
+    AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
 };
 use crate::auth::AuthService;
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -78,7 +78,9 @@ impl AppState {
 
     async fn setup_database(config: &agenthub_config::AppConfig) -> anyhow::Result<SqlitePool> {
         let db = agenthub_db::init_db().await?;
-        Self::ensure_root(&db).await?;
+        if config.server_role() == ServerRole::Main {
+            Self::ensure_root(&db).await?;
+        }
         Self::seed_safe_paths(&db, config).await?;
         Ok(db)
     }
@@ -107,7 +109,7 @@ impl AppState {
                 shared_secret: internal_shared_secret,
                 expected_issuer: config.internal_grpc_auth_issuer(),
                 expected_audience: config.internal_grpc_auth_audience(),
-                source_node_id: AGENT_NODE_MAIN_ID.to_string(),
+                source_node_id: config.server_node_id()?,
                 cert_dir: internal_grpc_cert_dir.to_string_lossy().to_string(),
                 security_mode: internal_grpc_security_mode,
             })
@@ -134,7 +136,11 @@ impl AppState {
             )
         });
 
-        let push = Arc::new(PushService::new(db.clone(), config)?);
+        let push = if config.server_role() == ServerRole::Node {
+            Arc::new(PushService::disabled(db.clone()))
+        } else {
+            Arc::new(PushService::new(db.clone(), config)?)
+        };
         let acp_permissions = Arc::new(AcpPermissionService::new(db.clone()));
         let auth = Arc::new(AuthService::new(db.clone(), config).await?);
         let agents = Arc::new(AgentManager::new_with_internal_grpc(
@@ -297,7 +303,8 @@ mod tests {
         append_gitignore_entry, resolve_global_gitignore_paths,
     };
     use agenthub_config::{
-        AppConfig, InternalGrpcConfig, InternalGrpcSecurityConfig, PushConfig, WebConfig,
+        AppConfig, InternalGrpcConfig, InternalGrpcSecurityConfig, PushConfig, ServerConfig,
+        ServerRole, WebConfig,
     };
     use agenthub_db::AgentEventDbRouter;
     use sqlx::Row;
@@ -582,5 +589,90 @@ mod tests {
             cert_dir.display()
         );
         let _ = std::fs::remove_dir_all(&keys_dir);
+    }
+
+    #[tokio::test]
+    async fn setup_database_skips_root_user_for_node_role() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let _home_guard = set_env_var("HOME", &temp_home);
+
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let db = AppState::setup_database(&config)
+            .await
+            .expect("setup node database");
+
+        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM users WHERE role = 'root'")
+            .fetch_one(&db)
+            .await
+            .expect("count root users");
+        let count: i64 = row.get("cnt");
+        assert_eq!(count, 0, "node startup should not create a root user");
+
+        db.close().await;
+        let _ = std::fs::remove_dir_all(&temp_home);
+    }
+
+    #[tokio::test]
+    async fn initialize_services_disables_push_for_node_role() {
+        let db = test_db().await;
+        let temp_root =
+            std::env::temp_dir().join(format!("agenthub-node-startup-{}", Uuid::new_v4()));
+        let cert_dir = temp_root.join("internal-grpc");
+        let keys_path = temp_root.join("push").join("vapid.json");
+        let event_dir = temp_root.join("agent-events");
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: Some("node-east".to_string()),
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some(keys_path.to_string_lossy().to_string()),
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: Some(InternalGrpcSecurityConfig {
+                    mode: Some("disabled".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+
+        let (_, _, push, _, _) =
+            AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir))
+                .await
+                .expect("initialize node services");
+
+        assert!(
+            !push.is_enabled(),
+            "node startup should keep push notifications disabled"
+        );
+        assert_eq!(
+            push.public_key(),
+            "",
+            "node startup should not expose a VAPID public key"
+        );
+        assert!(
+            !keys_path.exists(),
+            "node startup should not create VAPID keys at {}",
+            keys_path.display()
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_root);
     }
 }

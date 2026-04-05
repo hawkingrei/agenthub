@@ -48,6 +48,19 @@ HTTP server configuration.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `listen` | string | `"127.0.0.1:8080"` | Bind address and port |
+| `role` | string | `"main"` | Runtime role: `main` or `node` |
+| `node_id` | string | `"main"` in `main` mode | Required non-`main` node identity when `role = "node"` |
+
+**Distributed Node Example**:
+
+```toml
+[server]
+role = "node"
+node_id = "gpu-01"
+```
+
+When `role = "node"`, AgentHub starts only the node runtime surface. Public
+HTTP/UI routes are disabled, and `internal_grpc.enabled` must be `true`.
 
 ### `[web]` Section
 
@@ -163,6 +176,10 @@ Internal gRPC control plane for remote nodes and actor CLI.
 **Complete Internal gRPC Example**:
 
 ```toml
+[server]
+role = "node"
+node_id = "node-east"
+
 [internal_grpc]
 enabled = true
 listen = "0.0.0.0:50051"

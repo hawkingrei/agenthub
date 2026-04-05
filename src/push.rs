@@ -13,9 +13,9 @@ use web_push::{
 
 pub struct PushService {
     db: SqlitePool,
-    subject: String,
-    keys_path: PathBuf,
-    keys: RwLock<VapidKeys>,
+    subject: Option<String>,
+    keys_path: Option<PathBuf>,
+    keys: RwLock<Option<VapidKeys>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,35 +37,85 @@ impl PushService {
         let keys = load_or_create_vapid_keys(&keys_path)?;
         Ok(Self {
             db,
-            subject,
-            keys_path,
-            keys: RwLock::new(keys),
+            subject: Some(subject),
+            keys_path: Some(keys_path),
+            keys: RwLock::new(Some(keys)),
         })
+    }
+
+    pub fn disabled(db: SqlitePool) -> Self {
+        Self {
+            db,
+            subject: None,
+            keys_path: None,
+            keys: RwLock::new(None),
+        }
     }
 
     pub fn public_key(&self) -> String {
         self.keys
             .read()
             .expect("vapid keys lock poisoned")
-            .public_key
-            .clone()
+            .as_ref()
+            .map(|keys| keys.public_key.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.keys
+            .read()
+            .expect("vapid keys lock poisoned")
+            .is_some()
+    }
+
+    fn ensure_enabled(&self) -> anyhow::Result<()> {
+        if self.is_enabled() {
+            return Ok(());
+        }
+        anyhow::bail!("push notifications are disabled");
+    }
+
+    fn current_private_key(&self) -> anyhow::Result<String> {
+        self.keys
+            .read()
+            .expect("vapid keys lock poisoned")
+            .as_ref()
+            .map(|keys| keys.private_key.clone())
+            .ok_or_else(|| anyhow::anyhow!("push notifications are disabled"))
+    }
+
+    fn configured_subject(&self) -> anyhow::Result<&str> {
+        self.subject
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("push notifications are disabled"))
+    }
+
+    fn configured_keys_path(&self) -> anyhow::Result<&std::path::Path> {
+        self.keys_path
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("push notifications are disabled"))
     }
 
     pub fn subject(&self) -> &str {
-        &self.subject
+        self.subject.as_deref().unwrap_or("")
     }
 
     pub fn keys_path(&self) -> &std::path::Path {
-        &self.keys_path
+        self.keys_path
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new(""))
     }
 
     pub fn rotate_keys(&self) -> anyhow::Result<String> {
+        self.ensure_enabled()?;
+        let keys_path = self.configured_keys_path()?.to_path_buf();
         let keys = generate_vapid_keys()?;
         let payload = serde_json::to_string_pretty(&keys)?;
-        std::fs::write(&self.keys_path, payload)?;
+        std::fs::write(&keys_path, payload)?;
+        let public_key = keys.public_key.clone();
         let mut guard = self.keys.write().expect("vapid keys lock poisoned");
-        *guard = keys;
-        Ok(guard.public_key.clone())
+        *guard = Some(keys);
+        Ok(public_key)
     }
 
     pub async fn save_subscription(
@@ -73,6 +123,7 @@ impl PushService {
         user_id: &str,
         sub: PushSubscription,
     ) -> anyhow::Result<()> {
+        self.ensure_enabled()?;
         let now = Utc::now().timestamp();
         sqlx::query(
             r#"
@@ -95,6 +146,10 @@ impl PushService {
         agent_id: &str,
         session_id: &str,
     ) -> anyhow::Result<()> {
+        if !self.is_enabled() {
+            return Ok(());
+        }
+
         let payload = serde_json::to_vec(&serde_json::json!({
             "type": "agent_completed",
             "agent_id": agent_id,
@@ -113,20 +168,15 @@ impl PushService {
         .await?;
 
         let client = IsahcWebPushClient::new()?;
+        let private_key = self.current_private_key()?;
+        let subject = self.configured_subject()?.to_string();
         for row in rows {
             let endpoint: String = row.get("endpoint");
             let p256dh: String = row.get("p256dh");
             let auth: String = row.get("auth");
             let subscription = SubscriptionInfo::new(endpoint, p256dh, auth);
-            let private_key = {
-                self.keys
-                    .read()
-                    .expect("vapid keys lock poisoned")
-                    .private_key
-                    .clone()
-            };
             let mut sig_builder = VapidSignatureBuilder::from_base64(&private_key, &subscription)?;
-            sig_builder.add_claim("sub", self.subject.as_str());
+            sig_builder.add_claim("sub", subject.as_str());
             let sig = sig_builder.build()?;
 
             let mut builder = WebPushMessageBuilder::new(&subscription);
