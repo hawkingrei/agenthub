@@ -1,4 +1,5 @@
 import React from "react";
+import { IconButton } from "./ui/primitives";
 
 type ErrorBannerProps = {
   message: string;
@@ -16,14 +17,14 @@ export function ErrorBanner({ message, onClose }: ErrorBannerProps) {
     <div className={ERROR_BANNER_CLASS} role="alert">
       <span className={ERROR_TEXT_CLASS}>{message}</span>
       {onClose && (
-        <button
-          type="button"
+        <IconButton
           className={ERROR_CLOSE_CLASS}
           onClick={onClose}
           aria-label="Dismiss error"
+          size="sm"
         >
           x
-        </button>
+        </IconButton>
       )}
     </div>
   );

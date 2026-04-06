@@ -65,6 +65,7 @@ import { TeamConversationPanel } from "./team_conversation_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
 import { TeamRunPanel } from "./team_run_panel";
+import { TeamSetupPanel } from "./team_setup_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
@@ -4156,67 +4157,11 @@ export function TeamPage(props: TeamPageProps) {
               </div>
 
               {!selectedTeamHasConfiguredMembers && (
-                <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <span className={teamWorkbenchBadgeClassName}>Team Setup</span>
-                      <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
-                        No agents have joined this team yet.
-                      </h3>
-                      <p className="mt-2 max-w-2xl text-[13px] leading-5 text-ui-text-secondary">
-                        The team goal is saved, but runtime and runs stay blocked until you add the
-                        first agent.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      radius="md"
-                      className={teamWorkbenchAccentButtonClassName}
-                      leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
-                      onClick={openTeamMemberForgeModal}
-                    >
-                      {teamMemberForgeLabel}
-                    </Button>
-                  </div>
-                  <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
-                    <div className={teamWorkbenchInfoStripGridClassName}>
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Goal</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>
-                          {selectedTeam.description?.trim() ||
-                            "Capture the mission, constraints, and what this team should own."}
-                        </p>
-                      </div>
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>First Agent</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>
-                          Add the first agent with identity, skills, prompt, and workdir.
-                        </p>
-                      </div>
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Unlocks</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>
-                          Runtime, runs, and shared execution views unlock automatically once an
-                          agent exists.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid gap-px border-t border-ui-border bg-ui-border lg:grid-cols-3">
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 1</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>Create the first agent</p>
-                      </div>
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 2</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>Add more agents</p>
-                      </div>
-                      <div className={teamWorkbenchInfoStripItemClassName}>
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Step 3</p>
-                        <p className={teamWorkbenchInfoStripValueClassName}>Start runtime and runs</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <TeamSetupPanel
+                  description={selectedTeam.description}
+                  forgeLabel={teamMemberForgeLabel}
+                  onForge={openTeamMemberForgeModal}
+                />
               )}
 
               {tab === "runs" && (
