@@ -1,6 +1,6 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
-import { escapeHtml } from "../../html_escape";
+import { escapeTeamHtml } from "./team_text_helpers";
 
 const TEAM_MARKDOWN_CACHE_LIMIT = 256;
 const TEAM_MARKDOWN_CACHE_MAX_BYTES = 4 * 1024 * 1024;
@@ -43,7 +43,7 @@ function renderTeamMarkdown(input: string): string {
         : autoLinkWhitelistedUrls(stripped);
     return getMarkdownRenderer().render(prepared);
   } catch {
-    return `<p>${escapeHtml(stripped)}</p>`;
+    return `<p>${escapeTeamHtml(stripped)}</p>`;
   }
 }
 
@@ -62,7 +62,7 @@ function getMarkdownRenderer(): MarkdownIt {
           // fallback to escaped text
         }
       }
-      return `<pre class="hljs"><code>${escapeHtml(code)}</code></pre>`;
+      return `<pre class="hljs"><code>${escapeTeamHtml(code)}</code></pre>`;
     },
   });
   renderer.validateLink = (href: string) => sanitizeHref(href) != null;

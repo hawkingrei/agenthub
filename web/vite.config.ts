@@ -31,6 +31,36 @@ const ROUTE_UI_SHARED_IDS = [
   "/src/components/status_badge.tsx",
 ];
 
+const ROUTE_RICH_TEXT_SHARED_IDS = [
+  "/src/markdown.ts",
+  "/src/thread_markdown.ts",
+  "/src/components/thread_rich_text.tsx",
+  "/src/pages/team/team_markdown.ts",
+  "/src/pages/team/team_thread_rich_text.tsx",
+  "/node_modules/highlight.js/",
+  "/node_modules/markdown-it/",
+  "/node_modules/linkify-it/",
+  "/node_modules/mdurl/",
+  "/node_modules/uc.micro/",
+  "/node_modules/entities/",
+  "/node_modules/punycode.js/",
+];
+
+const ROUTE_MANTINE_INPUT_IDS = [
+  "/node_modules/@mantine/hooks/esm/utils/use-callback-ref/",
+  "/node_modules/@mantine/hooks/esm/use-debounced-callback/",
+  "/node_modules/@mantine/core/esm/core/utils/find-element-in-shadow-dom/",
+  "/node_modules/@mantine/core/esm/components/CloseButton/",
+  "/node_modules/@mantine/core/esm/components/ScrollArea/",
+  "/node_modules/@mantine/core/esm/components/Input/",
+  "/node_modules/@mantine/core/esm/components/InputBase/",
+  "/node_modules/@mantine/core/esm/components/Combobox/",
+  "/node_modules/@mantine/core/esm/components/NativeSelect/",
+  "/node_modules/@mantine/core/esm/components/TextInput/",
+  "/node_modules/@mantine/core/esm/components/Textarea/",
+  "/node_modules/@mantine/core/esm/components/Select/",
+];
+
 const ROUTE_AUTH_IDS = [
   "/src/pages/admin_page.tsx",
   "/src/pages/join_page.tsx",
@@ -51,11 +81,6 @@ const ROUTE_AGENTS_WORKBENCH_IDS = [
   "/src/components/acp_tool_",
 ];
 
-const ROUTE_TEAMS_RICH_TEXT_IDS = [
-  "/src/pages/team/team_markdown.ts",
-  "/src/pages/team/team_thread_rich_text.tsx",
-];
-
 function normalizeChunkId(id: string): string {
   return id.split("\\").join("/");
 }
@@ -66,6 +91,12 @@ function includesAny(id: string, needles: string[]): boolean {
 
 export function resolveChunkGroupName(id: string): string | undefined {
   const normalized = normalizeChunkId(id);
+  if (includesAny(normalized, ROUTE_MANTINE_INPUT_IDS)) {
+    return "route-mantine-inputs";
+  }
+  if (includesAny(normalized, ROUTE_RICH_TEXT_SHARED_IDS)) {
+    return "route-rich-text-shared";
+  }
   if (normalized.includes("/node_modules/@mantine/")) {
     return "vendor-mantine";
   }
@@ -83,9 +114,6 @@ export function resolveChunkGroupName(id: string): string | undefined {
   }
   if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
     return "route-teams-agent-acp";
-  }
-  if (includesAny(normalized, ROUTE_TEAMS_RICH_TEXT_IDS)) {
-    return "route-teams-rich-text";
   }
   if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
     return "route-teams";

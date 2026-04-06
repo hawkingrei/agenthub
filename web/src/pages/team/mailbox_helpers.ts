@@ -1,6 +1,6 @@
 import { TeamActorMessageRecord } from "../../api";
-import { escapeHtml } from "../../html_escape";
 import { renderTeamMarkdownCached } from "./team_markdown";
+import { escapeTeamHtml } from "./team_text_helpers";
 
 export type MailboxTemplateKey =
   | "leader_task_assignment"
@@ -435,7 +435,7 @@ export function buildMailboxChatPayload(
 
 function mentionChipHtml(actorId: string, displayNameByActorId?: Record<string, string>): string {
   const label = resolveDisplayName(actorId, displayNameByActorId, actorId);
-  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeHtml(label)}</span>`;
+  return `<span class="team-mention inline-flex items-center rounded-md border border-brand-primary/40 bg-brand-primary/10 px-1.5 py-0.5 text-[11px] text-brand-primary">@${escapeTeamHtml(label)}</span>`;
 }
 
 function isRawMentionBoundary(previous: string): boolean {
@@ -510,7 +510,7 @@ export function renderPlainTextWithMentions(
   displayNameByActorId?: Record<string, string>
 ): string {
   const tokenized = tokenizePlainTextMentions(text);
-  const escaped = escapeHtml(tokenized).replace(/\n/g, "<br/>");
+  const escaped = escapeTeamHtml(tokenized).replace(/\n/g, "<br/>");
   return renderMentionTokensIntoHtml(escaped, displayNameByActorId);
 }
 

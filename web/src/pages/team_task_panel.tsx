@@ -7,11 +7,12 @@ import {
   api,
 } from "../api";
 import {
-  DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
-  windowConversation,
-} from "../conversation";
-import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
-import { isImeComposing } from "../input_ime";
+  DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
+  deriveTeamThreadJumpState,
+  deriveTeamThreadStickToBottom,
+  windowTeamConversation,
+} from "./team/team_conversation_viewport";
+import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import { ActionButton, IconButton } from "../ui/primitives";
 import { TeamMemberLiveState } from "./team/member_helpers";
@@ -176,7 +177,7 @@ const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3 pt-2 border-t border-notion-border";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
-const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE;
+const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
 const TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS =
   "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
@@ -885,7 +886,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
     () =>
-      windowConversation(
+      windowTeamConversation(
         orderedMessages.flatMap((message) => {
           const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
           if (permissionCardPayload) {
@@ -951,7 +952,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       : "empty";
   const activityJumpState = React.useMemo(
     () =>
-      deriveThreadJumpState({
+      deriveTeamThreadJumpState({
         active: visibleWaterfallItems.length > 0,
         stickToBottom,
         pendingCount: 0,
@@ -1063,7 +1064,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     if (!node) {
       return;
     }
-    const nextStickToBottom = deriveThreadStickToBottom({
+    const nextStickToBottom = deriveTeamThreadStickToBottom({
       scrollHeight: node.scrollHeight,
       scrollTop: node.scrollTop,
       clientHeight: node.clientHeight,
@@ -1402,7 +1403,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             messageDraftComposingRef.current = false;
           }}
           onKeyDown={(event) => {
-            const composing = isImeComposing(
+            const composing = isTeamImeComposing(
               messageDraftComposingRef.current,
               event.nativeEvent.isComposing,
               "keyCode" in event.nativeEvent

@@ -33,12 +33,21 @@
   - only clear after the refreshed task list confirms the thread is gone
 - aligned Team Tailwind theme variables with the semantic tokens already referenced by the route-level classes and tests so route-local styling no longer depends on stale theme drift between `tailwind.config.cjs` and `tailwind.css`
 - extracted the duplicated LRU budgeting helpers used by ACP ANSI parsing and thread markdown rendering into a shared `web/src/cache_with_lru_budget.ts` utility so recency refresh and byte-budget eviction now stay aligned across both caches
+- moved Team thread viewport/window behavior onto route-local helpers:
+  - added `web/src/pages/team/team_conversation_viewport.ts`
+  - stopped importing `web/src/conversation.ts` / `web/src/hooks/thread_viewport.ts` from the Team route
+- moved Team HTML escaping / IME composition checks onto route-local helpers:
+  - added `web/src/pages/team/team_text_helpers.ts`
+  - stopped importing `web/src/html_escape.ts` / `web/src/input_ime.ts` from the Team route
+- corrected Vite chunk routing again so the Team route now resolves shared markdown through `route-rich-text-shared` instead of reusing `route-agents-workbench`
+- added a neutral `route-mantine-inputs` chunk for Team/ACP shared form controls; this removed some of the misleading coupling to agents-only chunks, but the Team route still eagerly imports `route-agents-debug` and needs one more pass
 
 ## Validation
 
 - `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team/use_team_conversation_actions.test.tsx src/pages/team/use_team_conversation_effects.test.tsx src/pages/team/use_team_member_acp_effects.test.tsx src/ui/primitives.test.tsx`
 - `cd web && npm run test -- src/pages/team/use_team_conversation_effects.test.tsx src/pages/team/use_team_member_acp_effects.test.tsx src/pages/team/use_team_member_backfill_effect.test.tsx src/cache_with_lru_budget.test.ts src/acp_conversation.test.ts src/components/thread_rich_text.test.tsx`
 - `cd web && npm run test -- vite.config.test.ts src/input_dock_keyboard.test.ts src/components/thread_rich_text.test.tsx src/pages/team/mailbox_helpers.test.ts src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- vite.config.test.ts src/pages/team/team_conversation_viewport.test.ts src/pages/team/mailbox_helpers.test.ts src/pages/team_panels.test.tsx`
 - `cd web && npm run lint -- --ignore-pattern dist-debug --ignore-pattern dist-debug-current`
 - `cd web && npm run build`
 - `make build-web`
@@ -51,9 +60,9 @@
 - hidden member lookups should now stop the immediate duplicate `api/agents/:id` wave while preserving later revalidation
 - live `agenthub.hawkingrei.com` still serves an older bundle at the time of this note, so DevTools network traces there continue to show `route-agents-debug` and `route-agents-workbench` on the Team route; that is a deployment lag, not the local build result
 - local production builds no longer show the earlier eager Team-route coupling:
-  - `route-teams` now resolves through `vendor-mantine`, `route-ui-shared`, `route-teams-rich-text`, and `route-teams-agent-acp`
-  - `rg -n "route-agents-(debug|workbench)" web/dist/assets/route-teams-*.js web/dist/assets/route-teams-agent-acp-*.js` returns no matches
-- the follow-up split switched Vite chunk routing from the ineffective Rollup-style `manualChunks` path to Rolldown `codeSplitting.groups`, which is the change that finally severed the Team route from the agents workbench/debug chunks
+  - `route-teams` no longer imports `route-agents-workbench`
+  - `route-teams` now imports `route-rich-text-shared` for Team markdown helpers and `route-mantine-inputs` for neutral form controls
+  - `route-teams` still imports `route-agents-debug`, so the Team-route lazy-loading TODO remains open
 
 ## Follow-up
 

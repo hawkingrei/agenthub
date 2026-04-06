@@ -44,10 +44,10 @@ describe("vite chunk grouping", () => {
       "route-agents-debug"
     );
     expect(resolveChunkGroup("/repo/web/src/pages/team/team_thread_rich_text.tsx")).toBe(
-      "route-teams-rich-text"
+      "route-rich-text-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/pages/team/team_markdown.ts")).toBe(
-      "route-teams-rich-text"
+      "route-rich-text-shared"
     );
   });
 
@@ -85,14 +85,10 @@ describe("vite chunk grouping", () => {
     expect(resolveChunkGroup("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
       undefined
     );
-    expect(resolveChunkGroup("/repo/web/src/thread_markdown.ts")).toBe(
-      "route-agents-workbench"
-    );
-    expect(resolveChunkGroup("/repo/web/src/markdown.ts")).toBe(
-      "route-agents-workbench"
-    );
+    expect(resolveChunkGroup("/repo/web/src/thread_markdown.ts")).toBe("route-rich-text-shared");
+    expect(resolveChunkGroup("/repo/web/src/markdown.ts")).toBe("route-rich-text-shared");
     expect(resolveChunkGroup("/repo/web/src/components/thread_rich_text.tsx")).toBe(
-      "route-agents-workbench"
+      "route-rich-text-shared"
     );
   });
 
@@ -113,11 +109,30 @@ describe("vite chunk grouping", () => {
       "route-ui-shared"
     );
     expect(
+      resolveChunkGroup("/repo/web/node_modules/@mantine/core/esm/components/Textarea/Textarea.mjs")
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup("/repo/web/node_modules/@mantine/core/esm/components/Combobox/Combobox.mjs")
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup(
+        "/repo/web/node_modules/@mantine/core/esm/components/CloseButton/CloseButton.mjs"
+      )
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup(
+        "/repo/web/node_modules/@mantine/hooks/esm/use-debounced-callback/use-debounced-callback.mjs"
+      )
+    ).toBe("route-mantine-inputs");
+    expect(
       resolveChunkGroup("/repo/web/node_modules/@mantine/core/esm/components/Button/Button.mjs")
     ).toBe("vendor-mantine");
     expect(
       resolveChunkGroup("/repo/web/node_modules/@mantine/hooks/esm/use-media-query/use-media-query.mjs")
     ).toBe("vendor-mantine");
+    expect(resolveChunkGroup("/repo/web/node_modules/markdown-it/lib/index.mjs")).toBe(
+      "route-rich-text-shared"
+    );
   });
 
   it("exposes a rollup-compatible manualChunks fallback", () => {
@@ -129,6 +144,9 @@ describe("vite chunk grouping", () => {
     );
     expect(resolveManualChunkName("/repo/web/src/html_escape.ts")).toBe(
       "route-ui-shared"
+    );
+    expect(resolveManualChunkName("/repo/web/src/components/thread_rich_text.tsx")).toBe(
+      "route-rich-text-shared"
     );
   });
 
