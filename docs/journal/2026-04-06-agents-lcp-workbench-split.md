@@ -38,6 +38,10 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - `web/src/components/acp_input_dock_clearance.ts`
   - `web/src/components/acp_conversation_cache_stats.ts`
 - Pulled the live-output routing and normalization helpers into `web/src/app_live_output.ts` so `web/src/app.tsx` no longer mixes route chrome with the SSE/live-batch plumbing in the same file.
+- Pulled viewport/layout sync helpers and global permission-poll scheduling/count helpers into focused modules:
+  - `web/src/app_viewport.ts`
+  - `web/src/app_permission_polling.ts`
+  This keeps `web/src/app.tsx` on route composition instead of mixing UI shell code with low-level browser sync and polling utilities.
 - Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
 - Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
 - Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
@@ -123,3 +127,4 @@ Live verification notes:
 
 - After merge, record the push/PR CI run IDs against `docs/todo.md` for the `agents` lazy-split verification item.
 - If another LCP pass is needed after merge, the next highest-value target is still `web/src/app.tsx` decomposition and further ACP workbench render-path trimming rather than more network gating.
+- The next frontend decomposition target after this pass is still the remaining ACP workbench/render plumbing, but the route shell no longer owns viewport-sync or permission-poll helper code directly.

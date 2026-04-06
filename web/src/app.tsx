@@ -50,6 +50,20 @@ import {
   routeLiveOutputBatch,
 } from "./app_live_output";
 import {
+  buildGlobalPermissionPollAgentIds,
+  chunkPermissionPollAgentIds,
+  filterPermissionsForAgent,
+  GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY,
+  mergePendingPermissionCountMap,
+  parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  schedulePermissionPollLoop,
+} from "./app_permission_polling";
+import {
+  setupLayoutAnchorVarSync,
+  setupRuntimeViewportVarSync,
+} from "./app_viewport";
+import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
   isSameOutputList,
@@ -137,9 +151,6 @@ import { ActionButton, IconButton } from "./ui/primitives";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
-const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
-const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
-const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
 const AGENTS_PANEL_DEFAULT_WIDTH = 288;
@@ -153,6 +164,26 @@ const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
 export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
+
+export {
+  buildGlobalPermissionPollAgentIds,
+  buildPendingPermissionCountMap,
+  chunkPermissionPollAgentIds,
+  filterPermissionsForAgent,
+  mergePendingPermissionCountMap,
+  parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  schedulePermissionPollLoop,
+} from "./app_permission_polling";
+export {
+  resolveRuntimeKeyboardInset,
+  resolveRuntimeViewportAxis,
+  resolveRuntimeViewportSize,
+  setupLayoutAnchorVarSync,
+  setupRuntimeViewportVarSync,
+  shouldSyncRuntimeViewportSize,
+  toNonNegativeRoundedPx,
+} from "./app_viewport";
 
 export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
   return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
@@ -436,129 +467,6 @@ type PendingPermissionJumpState = {
   attempts: number;
 };
 
-type RuntimeViewportSize = {
-  height: number;
-  width: number;
-};
-
-type RuntimeWindowLike = {
-  innerHeight: number;
-  innerWidth: number;
-  visualViewport?: VisualViewport | null;
-  addEventListener: (type: string, listener: () => void) => void;
-  removeEventListener: (type: string, listener: () => void) => void;
-  requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
-  cancelAnimationFrame?: (id: number) => void;
-};
-
-type StyleVarTarget = {
-  setProperty: (name: string, value: string) => void;
-};
-
-type LayoutAnchorNodeLike = {
-  getBoundingClientRect: () => { height: number; top: number };
-};
-
-type LayoutAnchorNodes = {
-  appRoot: LayoutAnchorNodeLike | null;
-  appHeader: LayoutAnchorNodeLike | null;
-  workspace: LayoutAnchorNodeLike | null;
-};
-
-type ResizeObserverLike = {
-  observe: (target: object) => void;
-  disconnect: () => void;
-};
-
-type ResizeObserverCtorLike = new (callback: () => void) => ResizeObserverLike;
-
-const MIN_RELIABLE_VIEWPORT_AXIS_PX = 48;
-
-export function resolveRuntimeViewportAxis(
-  axis: number | null | undefined,
-  fallback: number
-): number {
-  const fallbackRounded = Math.max(1, Math.round(fallback));
-  if (typeof axis !== "number" || !Number.isFinite(axis)) {
-    return fallbackRounded;
-  }
-  const rounded = Math.max(1, Math.round(axis));
-  const minReliable = Math.min(MIN_RELIABLE_VIEWPORT_AXIS_PX, fallbackRounded);
-  if (rounded < minReliable) {
-    return fallbackRounded;
-  }
-  return rounded;
-}
-
-export function resolveRuntimeViewportSize(
-  viewport: Pick<VisualViewport, "height" | "width" | "offsetTop"> | null | undefined,
-  innerHeight: number,
-  innerWidth: number
-): RuntimeViewportSize {
-  const toSafeViewportDimension = (
-    viewportValue: number | undefined,
-    fallback: number
-  ): number => {
-    const safeFallback =
-      typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0
-        ? fallback
-        : 1;
-    if (
-      typeof viewportValue !== "number" ||
-      !Number.isFinite(viewportValue) ||
-      viewportValue <= 1
-    ) {
-      return safeFallback;
-    }
-    return viewportValue;
-  };
-  const viewportOffsetTop =
-    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
-      ? Math.max(0, viewport.offsetTop)
-      : 0;
-  return {
-    height: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.height, innerHeight) + viewportOffsetTop,
-      innerHeight
-    ),
-    width: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.width, innerWidth),
-      innerWidth
-    ),
-  };
-}
-
-export function shouldSyncRuntimeViewportSize(
-  previous: RuntimeViewportSize | null,
-  next: RuntimeViewportSize
-): boolean {
-  if (!previous) return true;
-  return previous.height !== next.height || previous.width !== next.width;
-}
-
-export function resolveRuntimeKeyboardInset(
-  viewport: Pick<VisualViewport, "height" | "offsetTop"> | null | undefined,
-  innerHeight: number
-): number {
-  const safeInnerHeight =
-    typeof innerHeight === "number" && Number.isFinite(innerHeight) && innerHeight > 0
-      ? innerHeight
-      : 1;
-  const viewportHeight = resolveRuntimeViewportAxis(viewport?.height, safeInnerHeight);
-  const viewportOffsetTop =
-    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
-      ? Math.max(0, Math.round(viewport.offsetTop))
-      : 0;
-  const inset = safeInnerHeight - viewportHeight - viewportOffsetTop;
-  if (!Number.isFinite(inset)) return 0;
-  return inset > 0 ? inset : 0;
-}
-
-export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.round(value));
-}
-
 export function decidePermissionJump(
   pending: PendingPermissionJumpState | null,
   acpTab: "conversation" | "plan" | "debug",
@@ -570,38 +478,6 @@ export function decidePermissionJump(
   if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
   if (pending.attempts >= maxAttempts) return "clear";
   return "attempt";
-}
-
-export function parsePermissionPollAgentIds(key: string): string[] {
-  return key.split(",").filter(Boolean);
-}
-
-export function buildGlobalPermissionPollAgentIds(
-  allAgentIds: string[],
-  activeAgent: string | null
-): string[] {
-  if (!activeAgent) return allAgentIds;
-  return allAgentIds.filter((agentId) => agentId !== activeAgent);
-}
-
-export function resolveGlobalPermissionPollIntervalMs(
-  agentsCollapsed: boolean
-): number {
-  return agentsCollapsed
-    ? GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS
-    : GLOBAL_PERMISSION_POLL_INTERVAL_MS;
-}
-
-export function chunkPermissionPollAgentIds(
-  agentIds: string[],
-  maxConcurrency: number
-): string[][] {
-  const limit = Math.max(1, Math.floor(maxConcurrency));
-  const chunks: string[][] = [];
-  for (let i = 0; i < agentIds.length; i += limit) {
-    chunks.push(agentIds.slice(i, i + limit));
-  }
-  return chunks;
 }
 
 export function resolveAgentsPanelMaxWidth(workspaceWidth: number): number {
@@ -652,51 +528,6 @@ export function persistAgentsPanelWidthPreference(width: number): void {
   );
 }
 
-export function buildPendingPermissionCountMap(
-  entries: ReadonlyArray<readonly [string, number]>
-): Record<string, number> {
-  const nextCounts: Record<string, number> = {};
-  for (const [agentId, count] of entries) {
-    if (count > 0) {
-      nextCounts[agentId] = count;
-    }
-  }
-  return nextCounts;
-}
-
-export function mergePendingPermissionCountMap(
-  prev: Record<string, number>,
-  allAgentIds: string[],
-  updates: ReadonlyArray<readonly [string, number | null]>
-): Record<string, number> {
-  const nextCounts: Record<string, number> = {};
-  const allAgentSet = new Set(allAgentIds);
-  const updatedAgentSet = new Set(updates.map(([agentId]) => agentId));
-
-  for (const [agentId, count] of Object.entries(prev)) {
-    if (!allAgentSet.has(agentId)) continue;
-    if (!updatedAgentSet.has(agentId) && count > 0) {
-      nextCounts[agentId] = count;
-    }
-  }
-
-  for (const [agentId, count] of updates) {
-    if (count == null) {
-      const prevCount = prev[agentId];
-      if (typeof prevCount === "number" && prevCount > 0) {
-        nextCounts[agentId] = prevCount;
-      }
-      continue;
-    }
-    if (count > 0) {
-      nextCounts[agentId] = count;
-    } else {
-      delete nextCounts[agentId];
-    }
-  }
-  return nextCounts;
-}
-
 export function resolveOutputHistoryKey(
   agentId: string,
   sessionId: string | null,
@@ -731,176 +562,6 @@ export function resolveSessionScopedEvents(
     resolvedSessionId,
     scopedEvents,
   };
-}
-
-export function setupRuntimeViewportVarSync(
-  runtimeWindow: RuntimeWindowLike,
-  styleTarget: StyleVarTarget
-): () => void {
-  const viewport = runtimeWindow.visualViewport;
-  let rafId: number | null = null;
-  let previousSize: RuntimeViewportSize | null = null;
-  let previousKeyboardInset: number | null = null;
-  const syncViewportSizeNow = () => {
-    const rawNextSize = resolveRuntimeViewportSize(
-      viewport,
-      runtimeWindow.innerHeight,
-      runtimeWindow.innerWidth
-    );
-    const nextKeyboardInset = resolveRuntimeKeyboardInset(
-      viewport,
-      runtimeWindow.innerHeight
-    );
-    const nextSize =
-      nextKeyboardInset > 0 &&
-      previousSize &&
-      rawNextSize.width === previousSize.width
-        ? previousSize
-        : rawNextSize;
-    if (shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
-      previousSize = nextSize;
-      styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
-      styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
-    }
-    if (previousKeyboardInset === nextKeyboardInset) {
-      return;
-    }
-    previousKeyboardInset = nextKeyboardInset;
-    styleTarget.setProperty("--agenthub-keyboard-inset", `${nextKeyboardInset}px`);
-  };
-  const scheduleSyncViewportSize = () => {
-    if (
-      typeof runtimeWindow.requestAnimationFrame !== "function" ||
-      typeof runtimeWindow.cancelAnimationFrame !== "function"
-    ) {
-      syncViewportSizeNow();
-      return;
-    }
-    if (rafId != null) return;
-    rafId = runtimeWindow.requestAnimationFrame(() => {
-      rafId = null;
-      syncViewportSizeNow();
-    });
-  };
-  syncViewportSizeNow();
-  runtimeWindow.addEventListener("resize", scheduleSyncViewportSize);
-  runtimeWindow.addEventListener("orientationchange", scheduleSyncViewportSize);
-  viewport?.addEventListener("resize", scheduleSyncViewportSize);
-  viewport?.addEventListener("scroll", scheduleSyncViewportSize);
-  return () => {
-    if (
-      rafId != null &&
-      typeof runtimeWindow.cancelAnimationFrame === "function"
-    ) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    runtimeWindow.removeEventListener("resize", scheduleSyncViewportSize);
-    runtimeWindow.removeEventListener("orientationchange", scheduleSyncViewportSize);
-    viewport?.removeEventListener("resize", scheduleSyncViewportSize);
-    viewport?.removeEventListener("scroll", scheduleSyncViewportSize);
-  };
-}
-
-export function setupLayoutAnchorVarSync(
-  runtimeWindow: RuntimeWindowLike,
-  styleTarget: StyleVarTarget,
-  nodes: LayoutAnchorNodes,
-  resizeObserverCtor?: ResizeObserverCtorLike
-): () => void {
-  const syncLayoutAnchors = () => {
-    const headerHeight = toNonNegativeRoundedPx(
-      nodes.appHeader?.getBoundingClientRect().height
-    );
-    if (headerHeight != null) {
-      styleTarget.setProperty("--agenthub-header-height", `${headerHeight}px`);
-    }
-    const workspaceTop = toNonNegativeRoundedPx(
-      nodes.workspace?.getBoundingClientRect().top
-    );
-    if (workspaceTop != null) {
-      styleTarget.setProperty("--agenthub-workspace-top", `${workspaceTop}px`);
-    }
-  };
-  let rafId: number | null = null;
-  const scheduleSync = () => {
-    if (
-      typeof runtimeWindow.requestAnimationFrame !== "function" ||
-      typeof runtimeWindow.cancelAnimationFrame !== "function"
-    ) {
-      syncLayoutAnchors();
-      return;
-    }
-    if (rafId != null) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    rafId = runtimeWindow.requestAnimationFrame(() => {
-      rafId = null;
-      syncLayoutAnchors();
-    });
-  };
-
-  syncLayoutAnchors();
-  runtimeWindow.addEventListener("resize", scheduleSync);
-  runtimeWindow.addEventListener("orientationchange", scheduleSync);
-  const viewport = runtimeWindow.visualViewport;
-  viewport?.addEventListener("resize", scheduleSync);
-  viewport?.addEventListener("scroll", scheduleSync);
-  let observer: ResizeObserverLike | null = null;
-  if (resizeObserverCtor) {
-    observer = new resizeObserverCtor(() => scheduleSync());
-    if (nodes.appRoot) observer.observe(nodes.appRoot);
-    if (nodes.appHeader) observer.observe(nodes.appHeader);
-    if (nodes.workspace) observer.observe(nodes.workspace);
-  }
-  return () => {
-    if (
-      rafId != null &&
-      typeof runtimeWindow.cancelAnimationFrame === "function"
-    ) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    runtimeWindow.removeEventListener("resize", scheduleSync);
-    runtimeWindow.removeEventListener("orientationchange", scheduleSync);
-    viewport?.removeEventListener("resize", scheduleSync);
-    viewport?.removeEventListener("scroll", scheduleSync);
-    observer?.disconnect();
-  };
-}
-
-export function schedulePermissionPollLoop(
-  delay: number,
-  pollState: { timer: number | null },
-  pollOnce: () => Promise<number>,
-  isCancelled: () => boolean,
-  scheduleTimeout: (callback: () => void, delayMs: number) => number = (callback, delayMs) =>
-    window.setTimeout(callback, delayMs),
-  clearTimeoutFn: (timerId: number) => void = (timerId) => window.clearTimeout(timerId)
-): void {
-  if (isCancelled()) return;
-  if (pollState.timer != null) {
-    clearTimeoutFn(pollState.timer);
-    pollState.timer = null;
-  }
-  pollState.timer = scheduleTimeout(async () => {
-    if (isCancelled()) {
-      pollState.timer = null;
-      return;
-    }
-    const pendingCount = await pollOnce();
-    if (isCancelled()) {
-      pollState.timer = null;
-      return;
-    }
-    const nextDelay = pendingCount > 0 ? 3_000 : 10_000;
-    schedulePermissionPollLoop(
-      nextDelay,
-      pollState,
-      pollOnce,
-      isCancelled,
-      scheduleTimeout,
-    clearTimeoutFn
-    );
-  }, delay);
 }
 
 export function App() {
@@ -3681,12 +3342,4 @@ function isSamePendingPermissionCountMap(
     if (a[key] !== b[key]) return false;
   }
   return true;
-}
-
-export function filterPermissionsForAgent(
-  items: AcpPermissionRecord[],
-  agentId: string | null
-): AcpPermissionRecord[] {
-  if (!agentId) return [];
-  return items.filter((item) => item.agent_id === agentId);
 }
