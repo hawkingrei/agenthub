@@ -50,6 +50,7 @@
 - Moved the Team create-agent accent control from hard-coded hex colors to semantic `brand-primary`/`brand-primary-hover` tokens.
 - Updated ACP conversation / join / error-boundary tests to use the shared Mantine jsdom helpers so `matchMedia` and related provider assumptions stay consistent across the suite.
 - Migrated the highest-traffic raw buttons in `team_page.tsx` onto shared primitives or Mantine `UnstyledButton`, including the header sidebar toggle, runtime-notice dismiss action, Team selector refresh, selector rows, agent workspace menu trigger, advanced-workspace menu trigger, debug tab chips, and the repeated `Go to Runs` empty-state CTAs.
+- Switched `agent_node_section.tsx` machine-picker cards onto `SelectableListItem`, leaving the shared-primitives migration with only app-shell/test-helper raw buttons outside the new primitive layer.
 
 ## Validation
 

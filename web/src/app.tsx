@@ -149,6 +149,7 @@ const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
@@ -859,13 +860,14 @@ export function schedulePermissionPollLoop(
 }
 
 export function App() {
-  const eventLimit = 200;
+  const eventLimit = AGENT_EVENT_PAGE_SIZE;
   const maxCachedEvents = DEFAULT_OUTPUT_CACHE_MAX_EVENTS;
   const maxCachedSessions = DEFAULT_OUTPUT_CACHE_MAX_SESSIONS;
   const [routeLocation, setRouteLocation] = useState(() => ({
     pathname: location.pathname,
     search: location.search,
   }));
+  const isAdminRoute = routeLocation.pathname.startsWith("/admin");
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
       if (routeLocation.pathname === pathname) {
@@ -1455,14 +1457,6 @@ export function App() {
   }, [token, refreshAgents]);
 
   useEffect(() => {
-    if (!token || !canManageAgentNodes(auth)) {
-      setAgentNodes([]);
-      return;
-    }
-    void refreshAgentNodes();
-  }, [auth, token, refreshAgentNodes]);
-
-  useEffect(() => {
     if (!token) return;
     const timer = window.setInterval(() => {
       void refreshAgents({ silent: true });
@@ -1854,12 +1848,18 @@ export function App() {
   }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
 
   useEffect(() => {
-    if (!token || auth?.role !== "root") return;
+    if (!token || auth?.role !== "root" || !isAdminRoute) {
+      setSafePaths([]);
+      setDevices([]);
+      setAudits([]);
+      setVapidInfo(null);
+      return;
+    }
     api.listSafePaths(token).then(setSafePaths).catch(() => {});
     api.listDevices(token).then(setDevices).catch(() => {});
     api.listAudits(token).then(setAudits).catch(() => {});
     api.getVapidInfo(token).then(setVapidInfo).catch(() => {});
-  }, [token, auth?.role]);
+  }, [token, auth?.role, isAdminRoute]);
 
   useEffect(() => {
     setError((prev) => sanitizeAgentError(prev, activeAgentStatus));
@@ -3023,12 +3023,12 @@ export function App() {
   };
 
   useEffect(() => {
-    if (auth?.role === "root") {
+    if (auth?.role === "root" && isAdminRoute) {
       api.getAdminSettings(auth.token).then(res => {
         setPasskeyEnabled(res.passkey_enabled);
       }).catch(() => {});
     }
-  }, [auth]);
+  }, [auth, isAdminRoute]);
 
   const onPasskeyEnabledChange = async (enabled: boolean) => {
     if (!auth || auth.role !== "root") return;

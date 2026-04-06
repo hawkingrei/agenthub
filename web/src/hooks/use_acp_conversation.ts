@@ -89,6 +89,7 @@ const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
 const LOAD_OLDER_TRIGGER_TOP_PX = 80;
+export const AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS = 1200;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -383,6 +384,7 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
+  const autoLoadHistoryTimerRef = useRef<number | null>(null);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
@@ -827,10 +829,24 @@ export function useAcpConversation({
         window.clearTimeout(focusedToolCallResetTimerRef.current);
         focusedToolCallResetTimerRef.current = null;
       }
+      if (
+        typeof window !== "undefined" &&
+        autoLoadHistoryTimerRef.current != null
+      ) {
+        window.clearTimeout(autoLoadHistoryTimerRef.current);
+        autoLoadHistoryTimerRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      autoLoadHistoryTimerRef.current != null
+    ) {
+      window.clearTimeout(autoLoadHistoryTimerRef.current);
+      autoLoadHistoryTimerRef.current = null;
+    }
     if (
       !shouldAutoLoadConversationHistory(
         acpTab,
@@ -841,8 +857,22 @@ export function useAcpConversation({
     ) {
       return;
     }
-    prepareForLoadOlder();
-    onLoadOlder();
+    if (typeof window === "undefined") {
+      prepareForLoadOlder();
+      onLoadOlder();
+      return;
+    }
+    autoLoadHistoryTimerRef.current = window.setTimeout(() => {
+      autoLoadHistoryTimerRef.current = null;
+      prepareForLoadOlder();
+      onLoadOlder();
+    }, AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS);
+    return () => {
+      if (autoLoadHistoryTimerRef.current != null) {
+        window.clearTimeout(autoLoadHistoryTimerRef.current);
+        autoLoadHistoryTimerRef.current = null;
+      }
+    };
   }, [
     conversationMessages.length,
     acpTab,

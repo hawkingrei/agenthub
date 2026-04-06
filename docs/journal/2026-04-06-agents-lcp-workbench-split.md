@@ -22,7 +22,12 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - shared shell helpers such as `error_banner`, `auth_redirect`, `worktree_defaults`, and `input_history`
 - Restricted full ACP permission history polling to Developer Mode + Debug tab only; normal Conversation view now polls pending approvals only.
 - Short-circuited unchanged `/api/agents` and `/api/agent_nodes` refreshes in `web/src/app.tsx` so periodic refreshes do not force avoidable React rerenders.
+- Stopped prefetching `agent_nodes` on the root workbench route; root users now fetch node inventory only when the create-agent modal opens.
+- Stopped prefetching admin-only datasets (`safe_paths`, `devices`, `audits`, `vapid`, `admin/settings`) outside `/admin`.
+- Reduced the initial ACP event page size from `200` to `80` so the first workbench conversation load no longer requests a full large-history window.
+- Deferred ACP conversation auto-history backfill by `1200 ms` so `before_id` enrichment starts after first paint instead of competing directly with initial LCP.
 - Added focused regression tests in `web/vite.config.test.ts` and `web/src/app.permission_scope.test.ts` to lock the chunk routing and refresh short-circuit behavior.
+- Added focused runtime tests in `web/src/app.runtime_effects.test.tsx` to lock the new admin-route gating, node-fetch gating, and smaller ACP event page budget.
 
 ## Build Delta
 
@@ -69,8 +74,14 @@ Live verification notes:
   - first-load scripts are limited to `index`, `route-agents`, `route-auth`, `route-agents-terminal`, and `route-agents-workbench`
   - observed lab LCP dropped to `1634 ms` with `TTFB 582 ms` and `render delay 1053 ms`
   - normal Conversation view still polls `permissions?status=pending`, but the full ACP permission history endpoint no longer appears outside Developer Mode + Debug
+- Follow-up live traces after the next round of root-route request gating showed the primary improvement was request hygiene rather than a stable final LCP win:
+  - `/admin`-only requests disappeared from the root route waterfall
+  - `agent_nodes` no longer loads on first paint
+  - initial ACP event requests dropped from `limit=200` to `limit=80`
+  - auto-loaded `before_id` history fetches moved later, outside the first immediate mount work
+  - observed lab LCP remained noisy (`~1.1 s` best trace, `~3.1 s` and `~5.8 s` on later cold traces), which means the remaining bottleneck is still render delay inside the heavy agents workbench path rather than obvious stray network requests
 
 ## Follow-up
 
 - Deploy the current branch and re-measure `/` on `agenthub.hawkingrei.com` to verify `route-teams` / `route-agents-debug` disappear from the first-load network waterfall.
-- If the remaining first-load cost is still dominated by the workbench subtree, continue by pushing more of the ACP terminal/conversation path behind interaction-driven lazy boundaries.
+- If the remaining first-load cost is still dominated by the workbench subtree, continue by pushing more of the ACP terminal/conversation path behind interaction-driven lazy boundaries or by further delaying nonessential ACP history hydration.

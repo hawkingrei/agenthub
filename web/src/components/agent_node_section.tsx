@@ -1,6 +1,7 @@
 import React from "react";
 import { Alert, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { AgentNodeRecord, AgentNodeUpdate, AgentRecord } from "../api";
+import { SelectableListItem } from "../ui/primitives";
 import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
 
 type AgentNodeDraft = {
@@ -150,15 +151,11 @@ export function AgentNodeSection({
               const nodeAgents = agentsByNodeId.get(node.id) ?? [];
               const isSelected = selectedNode?.id === node.id;
               return (
-                <button
+                <SelectableListItem
                   key={node.id}
-                  type="button"
                   aria-pressed={isSelected}
-                  className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                    isSelected
-                      ? "border-ui-border-emphasis bg-white shadow-sm"
-                      : "border-ui-border bg-white/70 hover:border-ui-border-emphasis hover:bg-white"
-                  }`}
+                  active={isSelected}
+                  className="w-full px-3 py-3"
                   onClick={() => onTargetNodeIdChange(node.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -212,7 +209,7 @@ export function AgentNodeSection({
                       No agents assigned yet.
                     </Text>
                   )}
-                </button>
+                </SelectableListItem>
               );
             })}
           </div>

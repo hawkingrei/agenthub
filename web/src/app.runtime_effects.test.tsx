@@ -8,6 +8,7 @@ const {
   authStatusMock,
   loginStartMock,
   listAgentsMock,
+  listAgentEventsMock,
   listAgentNodesMock,
   listSafePathsMock,
   listDevicesMock,
@@ -19,6 +20,7 @@ const {
   authStatusMock: vi.fn(),
   loginStartMock: vi.fn(),
   listAgentsMock: vi.fn(),
+  listAgentEventsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
   listSafePathsMock: vi.fn(),
   listDevicesMock: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("./api", () => ({
     authStatus: authStatusMock,
     loginStart: loginStartMock,
     listAgents: listAgentsMock,
+    listAgentEvents: listAgentEventsMock,
     listAgentNodes: listAgentNodesMock,
     listSafePaths: listSafePathsMock,
     listDevices: listDevicesMock,
@@ -55,7 +58,7 @@ vi.mock("./webauthn", () => ({
   registerCredentialToJson: vi.fn(() => ({})),
 }));
 
-import { App } from "./app";
+import { AGENT_EVENT_PAGE_SIZE, App } from "./app";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -95,6 +98,7 @@ describe("App runtime viewport effects", () => {
   let originalWindowCancelAnimationFrameDescriptor: PropertyDescriptor | undefined;
   let originalGlobalRequestAnimationFrameDescriptor: PropertyDescriptor | undefined;
   let originalGlobalCancelAnimationFrameDescriptor: PropertyDescriptor | undefined;
+  let originalEventSourceDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     authStatusMock.mockReset();
@@ -102,6 +106,8 @@ describe("App runtime viewport effects", () => {
     loginStartMock.mockReset();
     listAgentsMock.mockReset();
     listAgentsMock.mockResolvedValue([]);
+    listAgentEventsMock.mockReset();
+    listAgentEventsMock.mockResolvedValue([]);
     listAgentNodesMock.mockReset();
     listAgentNodesMock.mockResolvedValue([]);
     listSafePathsMock.mockReset();
@@ -141,6 +147,7 @@ describe("App runtime viewport effects", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    window.history.replaceState({}, "", "/");
     originalWindowMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
       window,
       "matchMedia"
@@ -212,6 +219,28 @@ describe("App runtime viewport effects", () => {
     Object.defineProperty(globalThis, "cancelAnimationFrame", {
       configurable: true,
       value: window.cancelAnimationFrame,
+    });
+    originalEventSourceDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "EventSource"
+    );
+    class MockEventSource {
+      static OPEN = 1;
+      static CLOSED = 2;
+      readyState = MockEventSource.OPEN;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor() {}
+
+      close() {
+        this.readyState = MockEventSource.CLOSED;
+      }
+    }
+    Object.defineProperty(globalThis, "EventSource", {
+      configurable: true,
+      value: MockEventSource,
     });
     originalCredentialsDescriptor = Object.getOwnPropertyDescriptor(
       globalThis.navigator,
@@ -292,6 +321,11 @@ describe("App runtime viewport effects", () => {
     } else {
       delete (globalThis as typeof globalThis & { cancelAnimationFrame?: unknown })
         .cancelAnimationFrame;
+    }
+    if (originalEventSourceDescriptor) {
+      Object.defineProperty(globalThis, "EventSource", originalEventSourceDescriptor);
+    } else {
+      delete (globalThis as typeof globalThis & { EventSource?: unknown }).EventSource;
     }
     if (originalCredentialsDescriptor) {
       Object.defineProperty(
@@ -532,7 +566,56 @@ describe("App runtime viewport effects", () => {
     expect(listAgentNodesMock).not.toHaveBeenCalled();
   });
 
-  it("fetches agent nodes for root users", async () => {
+  it("fetches admin-only datasets only on the admin route", async () => {
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+
+    await act(async () => {
+      renderApp(root);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listSafePathsMock).not.toHaveBeenCalled();
+    expect(listDevicesMock).not.toHaveBeenCalled();
+    expect(listAuditsMock).not.toHaveBeenCalled();
+    expect(getVapidInfoMock).not.toHaveBeenCalled();
+    expect(getAdminSettingsMock).not.toHaveBeenCalled();
+  });
+
+  it("fetches admin-only datasets on the admin route for root users", async () => {
+    window.history.replaceState({}, "", "/admin");
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+
+    await act(async () => {
+      renderApp(root);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listSafePathsMock).toHaveBeenCalledWith("token-root");
+    expect(listDevicesMock).toHaveBeenCalledWith("token-root");
+    expect(listAuditsMock).toHaveBeenCalledWith("token-root");
+    expect(getVapidInfoMock).toHaveBeenCalledWith("token-root");
+    expect(getAdminSettingsMock).toHaveBeenCalledWith("token-root");
+  });
+
+  it("fetches agent nodes only when the create-agent modal opens", async () => {
     globalThis.localStorage.setItem(
       "agenthub_auth",
       JSON.stringify({
@@ -550,6 +633,24 @@ describe("App runtime viewport effects", () => {
     });
 
     expect(listAgentsMock).toHaveBeenCalledWith("token-root");
+    expect(listAgentNodesMock).not.toHaveBeenCalled();
+
+    const createAgentButton = container.querySelector(
+      'button[aria-label="Create agent"], button[title="Create agent"]'
+    ) as HTMLButtonElement | null;
+
+    expect(createAgentButton).toBeTruthy();
+
+    await act(async () => {
+      createAgentButton!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
     expect(listAgentNodesMock).toHaveBeenCalledWith("token-root");
+  });
+
+  it("uses the smaller ACP initial event page size budget", () => {
+    expect(AGENT_EVENT_PAGE_SIZE).toBe(80);
   });
 });
