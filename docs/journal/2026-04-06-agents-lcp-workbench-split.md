@@ -81,6 +81,22 @@ Follow-up local build after moving ACP wiring into the lazy workbench boundary:
 
 The primary route shell stays roughly flat in size, but it now keeps the ACP view builder and workbench runtime state entirely off the idle-root first-load path.
 
+Follow-up local build after splitting root shared helpers out of Team/workbench chunks:
+
+- `route-app-shared-BJ2pA2Xz.js`: `6.94 kB` (`2.03 kB` gzip)
+- `route-agents-debug-loader-CcoHWXaF.js`: `2.68 kB` (`1.20 kB` gzip)
+- `route-agents-Dl48vsmO.js`: `408.96 kB` (`87.77 kB` gzip)
+- `route-teams-nn-LI9z8.js`: `623.67 kB` (`117.38 kB` gzip)
+- `route-agents-workbench-CjUAlWZj.js`: `1,753.39 kB` (`467.25 kB` gzip)
+
+Most importantly, the root entry chunk now statically imports only:
+
+- `route-agents`
+- `route-app-shared`
+- `route-agents-debug-loader`
+
+It no longer statically imports `route-teams` or `route-agents-workbench` JS on `/`.
+
 ## Validation
 
 Commands run locally:
@@ -122,6 +138,11 @@ Live verification notes:
   - first-load network did **not** fetch `route-auth` or `route-agents-workbench`
   - Chrome DevTools performance trace reported `LCP 484 ms`, `TTFB 338 ms`, `render delay 146 ms`, and `CLS 0.00`
   - console remained clean aside from the existing `favicon.ico 404`
+- Latest local non-minified build after the chunk-boundary cleanup showed the same entry-path shape before deployment:
+  - `index.html` only preloads `rolldown-runtime` and `route-agents`
+  - root entry JS imports `route-agents`, `route-app-shared`, and the tiny `route-agents-debug-loader`
+  - root entry JS no longer imports `route-teams` or `route-agents-workbench`
+  - `route-app-shared` now owns the root+team shared live-output/event-polling helpers instead of letting Rollup fold them into the Team route chunk
 
 ## Follow-up
 

@@ -2,6 +2,7 @@ import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import type { AcpView } from "../acp";
 import type { AcpDebugProps } from "./acp_debug";
+import { loadAcpDebugModule } from "./acp_debug_loader";
 import {
   ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
   ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
@@ -39,18 +40,6 @@ type AcpPanelProps = {
   plan: AcpPlanProps;
   debug: AcpDebugProps;
 };
-
-let acpDebugModulePromise: Promise<typeof import("./acp_debug")> | null = null;
-
-function loadAcpDebugModule(): Promise<typeof import("./acp_debug")> {
-  if (acpDebugModulePromise == null) {
-    acpDebugModulePromise = import("./acp_debug").catch((error) => {
-      acpDebugModulePromise = null;
-      throw error;
-    });
-  }
-  return acpDebugModulePromise;
-}
 
 function AcpDebugSlot(props: AcpDebugProps) {
   const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(null);

@@ -27,8 +27,13 @@ const ROUTE_UI_SHARED_IDS = [
   "/src/ui/floating_surfaces.ts",
   "/src/ui/tailwind_classes.ts",
   "/src/input_ime.ts",
-  "/src/html_escape.ts",
   "/src/components/status_badge.tsx",
+];
+
+const ROUTE_APP_SHARED_IDS = [
+  "/src/app_live_output.ts",
+  "/src/event_polling.ts",
+  "/src/html_escape.ts",
 ];
 
 const ROUTE_RICH_TEXT_SHARED_IDS = [
@@ -67,6 +72,10 @@ const ROUTE_AUTH_IDS = [
   "/src/pages/auth_pages.tsx",
 ];
 
+const ROUTE_AGENTS_DEBUG_LOADER_IDS = [
+  "/src/components/acp_debug_loader.ts",
+];
+
 const ROUTE_AGENTS_WORKBENCH_IDS = [
   "/src/markdown.ts",
   "/src/thread_markdown.ts",
@@ -101,6 +110,9 @@ export function resolveChunkGroupName(id: string): string | undefined {
   if (includesAny(normalized, ROUTE_MANTINE_INPUT_IDS)) {
     return "route-mantine-inputs";
   }
+  if (includesAny(normalized, ROUTE_APP_SHARED_IDS)) {
+    return "route-app-shared";
+  }
   if (includesAny(normalized, ROUTE_RICH_TEXT_SHARED_IDS)) {
     return "route-rich-text-shared";
   }
@@ -118,6 +130,9 @@ export function resolveChunkGroupName(id: string): string | undefined {
   }
   if (includesAny(normalized, ROUTE_UI_SHARED_IDS)) {
     return "route-ui-shared";
+  }
+  if (includesAny(normalized, ROUTE_AGENTS_DEBUG_LOADER_IDS)) {
+    return "route-agents-debug-loader";
   }
   if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
     return "route-teams-agent-acp";
@@ -158,6 +173,8 @@ export default defineConfig({
         return deps.filter(
           (dep) =>
             !dep.includes("route-auth-") &&
+            !dep.includes("route-app-shared-") &&
+            !dep.includes("route-agents-debug-loader-") &&
             !dep.includes("route-agents-workbench-") &&
             !dep.includes("route-agents-debug-") &&
             !dep.includes("route-teams-agent-acp-") &&

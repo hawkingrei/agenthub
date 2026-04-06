@@ -77,7 +77,6 @@ import {
   selectCachedOutputs,
 } from "./output_cache";
 import { isNearBottom } from "./scroll";
-import { escapeHtml } from "./html_escape";
 import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
@@ -3221,6 +3220,13 @@ export function parseSendInputSessionMismatch(
 }
 
 function createAnsiRenderer(): (input: string) => string {
+  const escapeAnsiHtml = (input: string): string =>
+    input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const colors: Record<number, string> = {
     30: "#1e1e1e",
     31: "#e06c75",
@@ -3268,7 +3274,7 @@ function createAnsiRenderer(): (input: string) => string {
     let out = "";
 
     const pushText = (text: string) => {
-      const safe = escapeHtml(text);
+      const safe = escapeAnsiHtml(text);
       if (!fg && !bg) {
         out += safe;
         return;

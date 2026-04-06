@@ -61,11 +61,17 @@ describe("vite chunk grouping", () => {
     expect(resolveChunkGroup("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
     );
+    expect(resolveChunkGroup("/repo/web/src/app_live_output.ts")).toBe(
+      "route-app-shared"
+    );
+    expect(resolveChunkGroup("/repo/web/src/event_polling.ts")).toBe(
+      "route-app-shared"
+    );
     expect(resolveChunkGroup("/repo/web/src/scroll.ts")).toBe(
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/html_escape.ts")).toBe(
-      "route-ui-shared"
+      "route-app-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/components/workbench_connection_badge.tsx")).toBe(
       "route-agents"
@@ -101,6 +107,9 @@ describe("vite chunk grouping", () => {
     );
     expect(resolveChunkGroup("/repo/web/src/ui/tailwind_classes.ts")).toBe(
       "route-ui-shared"
+    );
+    expect(resolveChunkGroup("/repo/web/src/components/acp_debug_loader.ts")).toBe(
+      "route-agents-debug-loader"
     );
     expect(resolveChunkGroup("/repo/web/src/input_ime.ts")).toBe(
       "route-ui-shared"
@@ -142,8 +151,11 @@ describe("vite chunk grouping", () => {
     expect(resolveManualChunkName("/repo/web/src/components/acp_debug.tsx")).toBe(
       "route-agents-debug"
     );
+    expect(resolveManualChunkName("/repo/web/src/components/acp_debug_loader.ts")).toBe(
+      "route-agents-debug-loader"
+    );
     expect(resolveManualChunkName("/repo/web/src/html_escape.ts")).toBe(
-      "route-ui-shared"
+      "route-app-shared"
     );
     expect(resolveManualChunkName("/repo/web/src/components/thread_rich_text.tsx")).toBe(
       "route-rich-text-shared"
@@ -166,6 +178,8 @@ describe("vite chunk grouping", () => {
     expect(
       resolveModulePreloadDeps([
         "assets/route-agents-abc.js",
+        "assets/route-app-shared-abc.js",
+        "assets/route-agents-debug-loader-abc.js",
         "assets/route-agents-workbench-abc.js",
         "assets/route-agents-debug-abc.js",
         "assets/route-teams-agent-acp-abc.js",
