@@ -166,6 +166,7 @@ async fn setup_test_db() -> SqlitePool {
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
             FOREIGN KEY(task_id) REFERENCES team_tasks(id)
@@ -175,6 +176,17 @@ async fn setup_test_db() -> SqlitePool {
     .execute(&pool)
     .await
     .expect("create team_conversation_messages");
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX idx_team_conversation_messages_idempotency
+        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team_conversation_messages idempotency index");
 
     sqlx::query(
         r#"
@@ -618,6 +630,160 @@ async fn append_task_conversation_message_emits_stream_event() {
     assert_eq!(event.conversation_id, conversation.id);
     assert_eq!(event.message_id, Some(message.message_id));
     assert_eq!(event.source, "conversation_message");
+}
+
+#[tokio::test]
+async fn append_task_conversation_message_honors_idempotency_key() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let mut events = manager.subscribe_conversation_events();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-idempotency-team".to_string(),
+            description: Some("team for task message idempotency".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    let (first, first_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+            Some("task-msg-1"),
+        )
+        .await
+        .expect("append first message");
+    assert!(first_created);
+
+    let (retry, retry_created) = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+            Some("task-msg-1"),
+        )
+        .await
+        .expect("append retry message");
+    assert!(!retry_created);
+    assert_eq!(first.message_id, retry.message_id);
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), events.recv())
+        .await
+        .expect("receive first stream event")
+        .expect("stream event result");
+    assert_eq!(event.team_id, team.id);
+    assert_eq!(event.task_id, task.id);
+    assert_eq!(event.conversation_id, conversation.id);
+    assert_eq!(event.message_id, Some(first.message_id));
+    assert_eq!(event.source, "conversation_message");
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), events.recv())
+            .await
+            .is_err(),
+        "retry should not emit a second stream event"
+    );
+
+    let err = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"changed payload"}),
+            Some("task-msg-1"),
+        )
+        .await
+        .expect_err("mismatched payload should conflict");
+    assert!(
+        TeamManager::is_task_message_idempotency_conflict(&err),
+        "expected idempotency conflict, got: {err:?}"
+    );
+
+    let messages = manager
+        .list_task_conversation_messages(&task.id, 50, None)
+        .await
+        .expect("list conversation messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_id, first.message_id);
+}
+
+#[tokio::test]
+async fn append_task_conversation_message_propagates_non_idempotency_insert_failures() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-idempotency-insert-failure-team".to_string(),
+            description: Some("team for task message insert failure".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    sqlx::query(
+        r#"
+        CREATE TRIGGER fail_task_message_insert
+        BEFORE INSERT ON team_conversation_messages
+        WHEN NEW.idempotency_key IS NOT NULL
+        BEGIN
+            SELECT RAISE(FAIL, 'forced task message insert failure');
+        END;
+        "#,
+    )
+    .execute(&db)
+    .await
+    .expect("create failing trigger");
+
+    let err = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+            Some("task-msg-trigger-fail"),
+        )
+        .await
+        .expect_err("trigger failure should propagate");
+    assert!(
+        err.to_string()
+            .contains("forced task message insert failure"),
+        "expected insert failure to propagate, got: {err:?}"
+    );
+    assert!(
+        !TeamManager::is_task_message_idempotency_conflict(&err),
+        "expected non-idempotency error, got: {err:?}"
+    );
 }
 
 #[tokio::test]

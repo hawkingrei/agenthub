@@ -4,12 +4,13 @@ mod errors;
 
 use self::errors::{
     map_actor_service_api_error, map_create_team_error, map_not_found_error, map_resume_run_error,
-    map_runtime_start_error, map_submit_step_error, map_team_internal_error,
+    map_runtime_start_error, map_submit_step_error, map_task_message_error,
+    map_team_internal_error,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
     ActorMailboxService, ActorMessageStatus, ActorSendRequest, ActorServiceErrorCode,
-    parse_actor_transport,
+    canonical_json, parse_actor_transport,
 };
 use agenthub_team_prompts::{
     DEFAULT_TEAM_LEADER_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
@@ -22,6 +23,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::api::authz::require_user;
@@ -34,8 +36,8 @@ use crate::team::{
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
     build_actor_mailbox_immediate_hint_prompt, effective_team_member_skills,
-    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
-    stop_team_runtime,
+    ensure_team_runtime_started, force_team_member_new_session,
+    normalize_optional_idempotency_key_input, plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -183,6 +185,7 @@ pub struct SendTeamTaskMessageRequest {
     pub to_actor_id: Option<String>,
     pub route: Option<String>,
     pub payload: Value,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -827,6 +830,7 @@ async fn send_team_task_message(
         to_actor_id,
         route,
         payload,
+        idempotency_key,
     } = payload;
     let task = state
         .teams
@@ -859,19 +863,31 @@ async fn send_team_task_message(
     validate_task_message_sender(&actor_scope, &from_actor_id)?;
     let resolved_to_actor_id =
         resolve_task_message_target(&actor_scope, &route, to_actor_id, &payload)?;
-    let payload = ensure_task_message_correlation_id(normalize_task_message_payload(payload));
-    let message = state
+    let idempotency_key = normalize_optional_idempotency_key(idempotency_key.as_deref())?;
+    let payload = ensure_task_message_correlation_id(
+        normalize_task_message_payload(payload),
+        Some(TaskMessageCorrelationSeed {
+            task_id: &task_id,
+            from_actor_id: &from_actor_id,
+            to_actor_id: resolved_to_actor_id.as_deref(),
+            route: &route,
+            idempotency_key: idempotency_key.as_deref(),
+        }),
+    );
+    let (message, created) = state
         .teams
-        .append_task_conversation_message(
+        .append_task_conversation_message_with_created(
             &task_id,
             &from_actor_id,
             resolved_to_actor_id.as_deref(),
             &route,
             payload,
+            idempotency_key.as_deref(),
         )
         .await
-        .map_err(map_team_internal_error)?;
-    if from_actor_id == actor_scope.user_actor_id
+        .map_err(map_task_message_error)?;
+    if created
+        && from_actor_id == actor_scope.user_actor_id
         && let Err(err) =
             maybe_forward_task_message_to_mailbox(&state, &team, &task, &actor_scope, &message)
                 .await
@@ -2053,21 +2069,21 @@ fn normalize_optional_non_empty(value: Option<&str>) -> Result<Option<&str>, Api
 }
 
 fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<String>, ApiError> {
-    let Some(raw) = value else {
-        return Ok(None);
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    let normalized = normalize_optional_idempotency_key_input(value);
+    if value.is_some() && normalized.is_none() {
         return Err(ApiError::bad_request(
             "idempotency_key must be a non-empty string",
         ));
     }
-    if trimmed.len() > 128 {
+    let Some(idempotency_key) = normalized else {
+        return Ok(None);
+    };
+    if idempotency_key.len() > 128 {
         return Err(ApiError::bad_request(
             "idempotency_key must be at most 128 characters",
         ));
     }
-    Ok(Some(trimmed.to_string()))
+    Ok(Some(idempotency_key))
 }
 
 fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<String>, ApiError> {
@@ -2190,7 +2206,51 @@ fn normalize_task_created_by_actor_id(
     normalize_task_actor_id(raw, "created_by_actor_id", user)
 }
 
-fn ensure_task_message_correlation_id(payload: Value) -> Value {
+struct TaskMessageCorrelationSeed<'a> {
+    task_id: &'a str,
+    from_actor_id: &'a str,
+    to_actor_id: Option<&'a str>,
+    route: &'a str,
+    idempotency_key: Option<&'a str>,
+}
+
+fn hex_encode(data: &[u8]) -> String {
+    const HEX_CHARS: &[u8] = b"0123456789abcdef";
+    let mut result = String::with_capacity(data.len() * 2);
+    for byte in data {
+        result.push(HEX_CHARS[(byte >> 4) as usize] as char);
+        result.push(HEX_CHARS[(byte & 0xf) as usize] as char);
+    }
+    result
+}
+
+fn push_task_message_correlation_component(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.as_bytes());
+    hasher.update([0_u8]);
+}
+
+fn derive_task_message_correlation_id(
+    payload_obj: &Map<String, Value>,
+    seed: &TaskMessageCorrelationSeed<'_>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update("task-message-correlation:v1");
+    push_task_message_correlation_component(&mut hasher, seed.task_id);
+    push_task_message_correlation_component(&mut hasher, seed.from_actor_id);
+    push_task_message_correlation_component(&mut hasher, seed.to_actor_id.unwrap_or(""));
+    push_task_message_correlation_component(&mut hasher, seed.route);
+    push_task_message_correlation_component(&mut hasher, seed.idempotency_key.unwrap_or(""));
+    push_task_message_correlation_component(
+        &mut hasher,
+        canonical_json(&Value::Object(payload_obj.clone())).as_str(),
+    );
+    format!("taskmsg:v1:{}", hex_encode(&hasher.finalize()))
+}
+
+fn ensure_task_message_correlation_id(
+    payload: Value,
+    seed: Option<TaskMessageCorrelationSeed<'_>>,
+) -> Value {
     let Value::Object(mut payload_obj) = payload else {
         return payload;
     };
@@ -2200,7 +2260,14 @@ fn ensure_task_message_correlation_id(payload: Value) -> Value {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let correlation_id = existing.unwrap_or_else(|| Uuid::now_v7().to_string());
+    let correlation_id = existing.unwrap_or_else(|| {
+        seed.as_ref()
+            .and_then(|seed| {
+                seed.idempotency_key
+                    .map(|_| derive_task_message_correlation_id(&payload_obj, seed))
+            })
+            .unwrap_or_else(|| Uuid::now_v7().to_string())
+    });
     payload_obj.insert("correlation_id".to_string(), Value::String(correlation_id));
     Value::Object(payload_obj)
 }

@@ -546,6 +546,7 @@ async fn init_test_schema(db: &SqlitePool) {
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
             FOREIGN KEY(task_id) REFERENCES team_tasks(id)
@@ -555,6 +556,17 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create team_conversation_messages");
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX idx_team_conversation_messages_idempotency
+        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team_conversation_messages idempotency index");
 
     sqlx::query(
         r#"

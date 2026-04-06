@@ -2,7 +2,7 @@ use agenthub_team_actor::{ActorServiceError, ActorServiceErrorCode};
 use sqlx::Error as SqlxError;
 
 use crate::api::error::ApiError;
-use crate::team::{TeamRunResumeError, TeamRuntimeStartError};
+use crate::team::{TeamManager, TeamRunResumeError, TeamRuntimeStartError};
 
 pub(super) fn map_create_team_error(err: anyhow::Error) -> ApiError {
     if is_unique_team_name_violation(&err) {
@@ -14,6 +14,13 @@ pub(super) fn map_create_team_error(err: anyhow::Error) -> ApiError {
 pub(super) fn map_submit_step_error(err: anyhow::Error) -> ApiError {
     if is_unique_step_attempt_violation(&err) {
         return ApiError::conflict("step already exists for run");
+    }
+    map_team_internal_error(err)
+}
+
+pub(super) fn map_task_message_error(err: anyhow::Error) -> ApiError {
+    if TeamManager::is_task_message_idempotency_conflict(&err) {
+        return ApiError::conflict("idempotency_key conflicts with an existing message payload");
     }
     map_team_internal_error(err)
 }
@@ -106,8 +113,8 @@ fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
 mod tests {
     use axum::response::IntoResponse;
 
-    use super::map_runtime_start_error;
-    use crate::team::TeamRuntimeStartError;
+    use super::{map_runtime_start_error, map_task_message_error};
+    use crate::team::{TeamManager, TeamRuntimeStartError};
 
     #[test]
     fn map_runtime_start_error_maps_typed_runtime_config_errors_to_bad_request() {
@@ -134,6 +141,25 @@ mod tests {
     #[test]
     fn map_runtime_start_error_keeps_unknown_errors_internal() {
         let api_err = map_runtime_start_error(anyhow::anyhow!("unexpected"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn map_task_message_error_maps_idempotency_conflicts_to_conflict() {
+        let api_err =
+            map_task_message_error(TeamManager::task_message_idempotency_conflict_error());
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn map_task_message_error_keeps_unknown_errors_internal() {
+        let api_err = map_task_message_error(anyhow::anyhow!("unexpected"));
         assert_eq!(
             api_err.into_response().status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
