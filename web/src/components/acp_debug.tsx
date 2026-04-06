@@ -407,13 +407,19 @@ function AcpDebugView({
           </div>
           <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <input
+              aria-label="ACP config ID"
               className={debugInputClassName}
+              id="acp-config-id"
+              name="acp-config-id"
               placeholder="Config ID"
               value={acpConfigId}
               onChange={(e) => onAcpConfigIdChange(e.currentTarget.value)}
             />
             <input
+              aria-label="ACP config value"
               className={debugInputClassName}
+              id="acp-config-value"
+              name="acp-config-value"
               placeholder="Config Value ID"
               value={acpConfigValue}
               onChange={(e) => onAcpConfigValueChange(e.currentTarget.value)}

@@ -38,6 +38,7 @@ PR follow-up review on the Team/ACP frontend still had a few low-risk correctnes
   - guarded the Team task-thread CTA with `selectedTask?.id` in `web/src/pages/team_tasks_panel.tsx`
   - switched `web/src/app_permission_polling.ts` timeout defaults from `window.*` to `globalThis.*`
   - documented the sanitized HTML contract in `web/src/pages/team/team_thread_rich_text.tsx`
+- Added explicit accessibility labels for the ACP debug config inputs in `web/src/components/acp_debug.tsx` and locked them with a focused render assertion in `web/src/acp_debug.test.tsx`.
 
 ## Validation
 
