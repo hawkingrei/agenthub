@@ -31,7 +31,7 @@ import {
   restoreThreadScrollTop,
 } from "./thread_viewport";
 
-type EventMeta = {
+export type AcpConversationEventMeta = {
   oldestId: number | null;
   hasMore: boolean;
   loading: boolean;
@@ -43,7 +43,7 @@ type UseAcpConversationArgs = {
   activeAgent: string | null;
   activeSessionId: string | null;
   acpTab: "conversation" | "plan" | "debug";
-  eventMeta: Record<string, EventMeta>;
+  eventMeta: Record<string, AcpConversationEventMeta>;
   isAgentActive: boolean;
   onLoadOlder: () => void;
 };
@@ -164,7 +164,7 @@ function estimateTailPayloadSizeInternal(value: unknown, depth: number): number 
 export function shouldLoadOlderFromMeta(
   activeAgent: string | null,
   activeSessionId: string | null,
-  eventMeta: Record<string, EventMeta>
+  eventMeta: Record<string, AcpConversationEventMeta>
 ): boolean {
   if (!activeAgent) return false;
   const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
@@ -175,7 +175,9 @@ export function shouldLoadOlderFromMeta(
   return true;
 }
 
-export function hasReachedConversationTop(meta?: EventMeta | null): boolean {
+export function hasReachedConversationTop(
+  meta?: AcpConversationEventMeta | null
+): boolean {
   if (!meta) return false;
   if (!meta.loaded || meta.loading) return false;
   return !meta.hasMore;
@@ -184,7 +186,7 @@ export function hasReachedConversationTop(meta?: EventMeta | null): boolean {
 export function shouldShowConversationTopReachedHint(
   scrollTop: number,
   canLoadOlder: boolean,
-  meta?: EventMeta | null,
+  meta?: AcpConversationEventMeta | null,
   triggerTopPx: number = LOAD_OLDER_TRIGGER_TOP_PX
 ): boolean {
   if (scrollTop >= triggerTopPx) return false;

@@ -105,6 +105,19 @@ export type AcpView = {
   thinkingStartTs: number | null;
 };
 
+export const EMPTY_ACP_VIEW: AcpView = {
+  hasAcp: false,
+  toolCalls: [],
+  messages: [],
+  rawEvents: [],
+  configOptions: [],
+  plan: null,
+  commands: [],
+  currentMode: null,
+  runStatus: null,
+  thinkingStartTs: null,
+};
+
 export function buildAcpView(events: AcpEventLine[]): AcpView {
   const toolCalls: AcpToolCall[] = [];
   const toolCallMap = new Map<string, AcpToolCall>();

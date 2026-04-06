@@ -3,9 +3,9 @@ import { buildAcpView } from "../acp";
 import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
 import {
   AcpPanel,
-  resolveAcpInputDockConversationClearance,
 } from "../components/acp_panel";
-import { getAcpConversationCacheStats } from "../components/acp_conversation";
+import { getAcpConversationCacheStats } from "../components/acp_conversation_cache_stats";
+import { resolveAcpInputDockConversationClearance } from "../components/acp_input_dock_clearance";
 import { OutputHeaderDetails } from "../components/output_header";
 import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";

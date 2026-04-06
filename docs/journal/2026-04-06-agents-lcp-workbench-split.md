@@ -29,6 +29,18 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
 - Stopped auto-selecting the first non-running agent on `/`; the root route now auto-mounts the heavy ACP workbench only when a running agent exists.
 - Hid the agents-route input dock when no agent is selected so the idle root shell no longer pulls interaction-only workbench UI just to show the empty-state placeholder.
 - Limited global pending-permission polling to active agents so idle/exited agents no longer add avoidable root-route network churn.
+- Moved the remaining ACP workbench runtime wiring out of the root shell and into a lazy `web/src/components/agents_workbench.tsx` boundary:
+  - `useAcpConversation`
+  - ACP runtime metrics and permission-history jump state
+  - `OutputBody`
+  - `InputDock`
+- Split reusable ACP helpers into route-local modules so the root shell no longer keeps workbench-only helpers in its static graph:
+  - `web/src/components/acp_input_dock_clearance.ts`
+  - `web/src/components/acp_conversation_cache_stats.ts`
+- Pulled the live-output routing and normalization helpers into `web/src/app_live_output.ts` so `web/src/app.tsx` no longer mixes route chrome with the SSE/live-batch plumbing in the same file.
+- Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
+- Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
+- Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
 - Added focused regression tests in `web/vite.config.test.ts` and `web/src/app.permission_scope.test.ts` to lock the chunk routing and refresh short-circuit behavior.
 - Added focused runtime tests in `web/src/app.runtime_effects.test.tsx` to lock the new admin-route gating, node-fetch gating, and smaller ACP event page budget.
 
@@ -55,6 +67,15 @@ Follow-up local build after the second round of chunk routing:
 - `route-auth-CYw8x2xz.js`: `23.57 kB` (`8.31 kB` gzip)
 
 This second round intentionally keeps more shared shell code in `route-agents` so the browser no longer has to pull `route-teams` during initial `/` rendering just to resolve common workbench chrome.
+
+Follow-up local build after moving ACP wiring into the lazy workbench boundary:
+
+- `route-agents-D-pnEQUM.js`: `193.53 kB` (`57.57 kB` gzip)
+- `route-agents-workbench-Cbgcgg-b.js`: `1,128.20 kB` (`382.39 kB` gzip)
+- `route-agents-debug-UwyFCUWm.js`: `56.41 kB` (`16.18 kB` gzip)
+- `agents_workbench-CTJz5HFq.js`: `0.08 kB` (`0.09 kB` gzip)
+
+The primary route shell stays roughly flat in size, but it now keeps the ACP view builder and workbench runtime state entirely off the idle-root first-load path.
 
 ## Validation
 
@@ -86,8 +107,13 @@ Live verification notes:
   - initial ACP event requests dropped from `limit=200` to `limit=80`
   - auto-loaded `before_id` history fetches moved later, outside the first immediate mount work
   - observed lab LCP remained noisy (`~1.1 s` best trace, `~3.1 s` and `~5.8 s` on later cold traces), which means the remaining bottleneck is still render delay inside the heavy agents workbench path rather than obvious stray network requests
+- Final live verification on `https://agenthub.hawkingrei.com/` after deploying the lazy-workbench boundary showed the root route no longer eagerly fetched the ACP workbench chunk when it rendered `No agent selected`:
+  - first-load network stayed at `17` requests and included `/`, `route-agents`, `route-auth`, `/api/agents`, `/api/auth/status`, and `/api/settings/defaults`
+  - first-load network did **not** fetch `route-agents-workbench` or the `agents_workbench` bridge chunk
+  - Chrome DevTools performance trace reported `LCP 558 ms`, `TTFB 442 ms`, `render delay 116 ms`, and `CLS 0.00`
+  - the only remaining console noise was the pre-existing `favicon.ico 404`
 
 ## Follow-up
 
-- Deploy the current branch and re-measure `/` on `agenthub.hawkingrei.com` to verify `route-teams` / `route-agents-debug` disappear from the first-load network waterfall.
-- If the remaining first-load cost is still dominated by the workbench subtree, continue by pushing more of the ACP terminal/conversation path behind interaction-driven lazy boundaries or by further delaying nonessential ACP history hydration.
+- After merge, record the push/PR CI run IDs against `docs/todo.md` for the `agents` lazy-split verification item.
+- If another LCP pass is needed after merge, the next highest-value target is still `web/src/app.tsx` decomposition and further ACP workbench render-path trimming rather than more network gating.

@@ -29,6 +29,8 @@ export default defineConfig({
           if (
             normalized.includes("/src/connection_status.ts") ||
             normalized.includes("/src/error_banner.tsx") ||
+            normalized.includes("/src/scroll.ts") ||
+            normalized.includes("/src/html_escape.ts") ||
             normalized.includes("/src/worktree_defaults.ts") ||
             normalized.includes("/src/input_history.ts") ||
             normalized.includes("/src/auth_redirect.ts") ||
@@ -59,6 +61,7 @@ export default defineConfig({
             return "route-agents-terminal";
           }
           if (
+            normalized.includes("/src/components/agents_workbench.tsx") ||
             normalized.includes("/src/components/output_body.tsx") ||
             normalized.includes("/src/components/input_dock.tsx") ||
             normalized.includes("/src/components/acp_panel.tsx") ||
@@ -66,8 +69,7 @@ export default defineConfig({
             normalized.includes("/src/components/acp_plan.tsx") ||
             normalized.includes("/src/components/acp_tool_") ||
             normalized.includes("/src/components/acp_request_user_input_cards.tsx") ||
-            normalized.includes("/src/components/thread_rich_text.tsx") ||
-            normalized.includes("/src/hooks/use_acp_conversation.ts")
+            normalized.includes("/src/components/thread_rich_text.tsx")
           ) {
             return "route-agents-workbench";
           }

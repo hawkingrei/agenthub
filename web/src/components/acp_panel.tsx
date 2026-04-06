@@ -1,12 +1,16 @@
 import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import type { AcpView } from "../acp";
-import type { AcpDebugProps } from "./acp_debug";
+import { AcpDebug, type AcpDebugProps } from "./acp_debug";
+import {
+  ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
+  ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
+  resolveAcpInputDockConversationClearance,
+} from "./acp_input_dock_clearance";
 import { AcpConversation, AcpConversationProps } from "./acp_conversation";
 import { AcpPlan, AcpPlanProps, summarizePlanEntries } from "./acp_plan";
 import { cx } from "../ui/primitives";
 import {
-  ACP_DEBUG_ROOT_CLASS,
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   ACP_PANEL_HEAD_CLASS,
   ACP_PANEL_ROOT_CLASS,
@@ -36,48 +40,11 @@ type AcpPanelProps = {
   debug: AcpDebugProps;
 };
 
-function AcpDebugSlot(props: AcpDebugProps) {
-  const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(
-    null
-  );
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void import("./acp_debug").then((module) => {
-      if (!cancelled) {
-        setDebugView(() => module.AcpDebug);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!DebugView) {
-    return (
-      <div className={ACP_DEBUG_ROOT_CLASS}>
-        <div className="text-sm text-notion-text-muted">Loading debug…</div>
-      </div>
-    );
-  }
-
-  return <DebugView {...props} />;
-}
-
-export const ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX = 104;
-export const ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX = 12;
-
-export function resolveAcpInputDockConversationClearance(
-  inputDockHeight: number
-): number {
-  const normalizedHeight = Number.isFinite(inputDockHeight)
-    ? Math.max(0, Math.ceil(inputDockHeight))
-    : 0;
-  return Math.max(
-    ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
-    normalizedHeight + ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX
-  );
-}
+export {
+  ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
+  ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
+  resolveAcpInputDockConversationClearance,
+};
 
 function AcpPanelView({
   subtitle,
@@ -194,7 +161,7 @@ function AcpPanelView({
       )}
       {effectiveTab === "plan" && <AcpPlan {...plan} />}
       {developerMode && effectiveTab === "debug" && (
-        <AcpDebugSlot {...debug} />
+        <AcpDebug {...debug} />
       )}
       {effectiveTab === "conversation" &&
       showConversationJump &&

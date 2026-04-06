@@ -5,15 +5,17 @@ import {
 } from "../conversation";
 import { ACP_CONVERSATION_TOP_HINT_CLASS } from "../ui/tailwind_classes";
 import {
-  getThreadMarkdownCacheStats,
   preloadThreadMarkdownAssets,
   renderThreadMarkdownCached,
   resetThreadMarkdownCache,
 } from "./thread_rich_text";
 import {
-  getToolContentCacheStats,
   resetToolContentCaches,
 } from "./acp_tool_content";
+import {
+  getAcpConversationCacheStats,
+  type AcpConversationCacheStats,
+} from "./acp_conversation_cache_stats";
 import {
   ExploreGroupBubble,
   ToolCallBubble,
@@ -50,32 +52,12 @@ type AcpConversationProps = {
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
-type CacheStats = {
-  markdownHits: number;
-  markdownMisses: number;
-  ansiHits: number;
-  ansiMisses: number;
-  payloadParses: number;
-  payloadParseFailures: number;
-};
-
 export function resetAcpConversationCaches(): void {
   resetThreadMarkdownCache();
   resetToolContentCaches();
 }
-
-export function getAcpConversationCacheStats(): CacheStats {
-  const markdownStats = getThreadMarkdownCacheStats();
-  const toolContentStats = getToolContentCacheStats();
-  return {
-    markdownHits: markdownStats.markdownHits,
-    markdownMisses: markdownStats.markdownMisses,
-    ansiHits: toolContentStats.ansiHits,
-    ansiMisses: toolContentStats.ansiMisses,
-    payloadParses: toolContentStats.payloadParses,
-    payloadParseFailures: toolContentStats.payloadParseFailures,
-  };
-}
+export { getAcpConversationCacheStats };
+export type { AcpConversationCacheStats };
 
 export function renderMarkdownCached(text: string): string {
   return renderThreadMarkdownCached(text);

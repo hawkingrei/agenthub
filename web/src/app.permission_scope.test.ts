@@ -1,28 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord, AgentEvent, AgentNodeRecord, AgentRecord } from "./api";
 import {
-  analyzeLiveOutputBatch,
   buildPermissionPollAgentIds,
-  buildLatestLiveSessionMap,
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
   clampAgentsPanelWidth,
   chunkPermissionPollAgentIds,
   decidePermissionJump,
-  dispatchLiveOutputBatch,
   filterPermissionsForAgent,
   loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
   isSameAgentNodeRecordList,
   isSameAgentRecordList,
-  normalizeSseOutputLines,
   parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
   resolveAgentsPanelMaxWidth,
+  resolveActiveAcpView,
   resolveGlobalPermissionPollIntervalMs,
-  resolveLiveSessionSwitch,
   resolveOutputHistoryKey,
-  routeLiveOutputBatch,
   resolveDefaultActiveAgentId,
   resolveSessionScopedEvents,
   resolveRuntimeKeyboardInset,
@@ -33,8 +28,17 @@ import {
   setupRuntimeViewportVarSync,
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
-  updateLiveOutputBatchCursors,
 } from "./app";
+import { EMPTY_ACP_VIEW } from "./acp";
+import {
+  analyzeLiveOutputBatch,
+  buildLatestLiveSessionMap,
+  dispatchLiveOutputBatch,
+  normalizeSseOutputLines,
+  resolveLiveSessionSwitch,
+  routeLiveOutputBatch,
+  updateLiveOutputBatchCursors,
+} from "./app_live_output";
 
 const buildPermission = (
   id: string,
@@ -237,6 +241,35 @@ describe("app helper decisions", () => {
     ];
 
     expect(resolveDefaultActiveAgentId(agents)).toBeNull();
+  });
+
+  it("reuses the shared empty ACP view when no active agent is selected", () => {
+    const acpLines = [
+      {
+        ts: 1,
+        stream: "acp",
+        message: JSON.stringify({ type: "agent_message", text: "hello" }),
+        session_id: "session-1",
+      },
+    ];
+
+    expect(resolveActiveAcpView(null, acpLines)).toBe(EMPTY_ACP_VIEW);
+  });
+
+  it("builds an ACP view when an active agent is selected", () => {
+    const acpLines = [
+      {
+        ts: 1,
+        stream: "acp",
+        message: JSON.stringify({ type: "agent_message", text: "hello" }),
+        session_id: "session-1",
+      },
+    ];
+
+    const view = resolveActiveAcpView("agent-running", acpLines);
+    expect(view).not.toBe(EMPTY_ACP_VIEW);
+    expect(view.messages).toHaveLength(1);
+    expect(view.messages[0]?.text).toBe("hello");
   });
 
   it("parses permission poll agent ids from stable key", () => {

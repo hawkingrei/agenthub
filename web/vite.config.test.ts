@@ -27,6 +27,9 @@ function resolveModulePreloadDeps(deps: string[]): string[] {
 
 describe("vite manualChunks", () => {
   it("routes heavy agents workbench modules into a separate lazy chunk", () => {
+    expect(resolveManualChunk("/repo/web/src/components/agents_workbench.tsx")).toBe(
+      "route-agents-workbench"
+    );
     expect(resolveManualChunk("/repo/web/src/components/output_body.tsx")).toBe(
       "route-agents-workbench"
     );
@@ -55,6 +58,12 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
     );
+    expect(resolveManualChunk("/repo/web/src/scroll.ts")).toBe(
+      "route-agents"
+    );
+    expect(resolveManualChunk("/repo/web/src/html_escape.ts")).toBe(
+      "route-agents"
+    );
     expect(resolveManualChunk("/repo/web/src/components/workbench_connection_badge.tsx")).toBe(
       "route-agents"
     );
@@ -69,6 +78,9 @@ describe("vite manualChunks", () => {
     );
     expect(resolveManualChunk("/repo/web/src/components/acp_panel_helpers.ts")).toBe(
       "route-agents"
+    );
+    expect(resolveManualChunk("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
+      undefined
     );
   });
 

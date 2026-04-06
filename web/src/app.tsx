@@ -11,7 +11,7 @@ import {
   SafePath,
   VapidInfo,
 } from "./api";
-import { buildAcpView } from "./acp";
+import { buildAcpView, EMPTY_ACP_VIEW, type AcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
@@ -35,16 +35,20 @@ import {
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 import {
-  CursorRef,
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
   isSseConnectionStale,
   isCursorNewer,
   shouldPollAgentEvents,
-  updateLastEventCursor,
 } from "./event_polling";
 import { compareEventOrder } from "./seq_order";
+import {
+  buildLatestLiveSessionMap,
+  normalizeSseOutputLines,
+  resolveLiveSessionSwitch,
+  routeLiveOutputBatch,
+} from "./app_live_output";
 import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
@@ -68,14 +72,10 @@ import {
 } from "./agent_presets";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
 import { AgentsPanel } from "./components/agents_panel";
-import { resolveAcpInputDockConversationClearance } from "./components/acp_panel";
 import { OutputHeader } from "./components/output_header";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
-import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
-import { getAcpConversationCacheStats } from "./components/acp_conversation";
-import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import {
   DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
@@ -135,7 +135,6 @@ import {
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
-const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
 const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
@@ -155,6 +154,16 @@ const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
 export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
   return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
+}
+
+export function resolveActiveAcpView(
+  activeAgent: string | null,
+  acpOutputs: OutputLine[]
+): AcpView {
+  if (!activeAgent) {
+    return EMPTY_ACP_VIEW;
+  }
+  return buildAcpView(acpOutputs);
 }
 
 export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
@@ -197,14 +206,9 @@ const LazyPermissionModal = React.lazy(async () => {
   return { default: module.PermissionModal };
 });
 
-const LazyOutputBody = React.lazy(async () => {
-  const module = await import("./components/output_body");
-  return { default: module.OutputBody };
-});
-
-const LazyInputDock = React.lazy(async () => {
-  const module = await import("./components/input_dock");
-  return { default: module.InputDock };
+const LazyAgentsWorkbench = React.lazy(async () => {
+  const module = await import("./components/agents_workbench");
+  return { default: module.AgentsWorkbench };
 });
 
 function AuthRedirect(): null {
@@ -234,10 +238,6 @@ function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
       </div>
     </div>
   );
-}
-
-function InputDockFallback() {
-  return <div className="shrink-0 min-h-[104px]" aria-hidden="true" />;
 }
 
 export function shouldRedirectTeamsToLogin(
@@ -991,7 +991,6 @@ export function App() {
     parseInputHistory(getLocalStorageItemSafe(INPUT_HISTORY_STORAGE_KEY))
   );
   const [inputHistoryCursor, setInputHistoryCursor] = useState(-1);
-  const [inputDockHeight, setInputDockHeight] = useState(0);
   const inputHistoryDraftRef = useRef("");
   const sseRef = useRef<EventSource | null>(null);
   const lastSseActivityAtRef = useRef<number>(Date.now());
@@ -1040,9 +1039,6 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
-  const [pendingPermissionJump, setPendingPermissionJump] = useState<
-    PendingPermissionJumpState | null
-  >(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const appHeaderRef = useRef<HTMLElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -1293,7 +1289,10 @@ export function App() {
     },
     [updateAcpOutputCacheEntry, updateOutputCacheEntry]
   );
-  const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
+  const acpView = useMemo(
+    () => resolveActiveAcpView(activeAgent, acpOutputs),
+    [activeAgent, acpOutputs]
+  );
   const terminalOutputs = useMemo(
     () => outputs.filter((line) => line.stream !== "acp"),
     [outputs]
@@ -1419,7 +1418,6 @@ export function App() {
   useEffect(() => {
     setAcpPermissions([]);
     setAcpPermissionHistory([]);
-    setPendingPermissionJump(null);
   }, [activeAgent]);
 
   useEffect(() => {
@@ -1664,15 +1662,6 @@ export function App() {
     updateAcpOutputCacheEntry,
   ]);
 
-  const acpConversation = useAcpConversation({
-    acpView,
-    activeAgent,
-    activeSessionId,
-    acpTab,
-    eventMeta,
-    isAgentActive,
-    onLoadOlder: loadOlderEvents,
-  });
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -2802,7 +2791,6 @@ export function App() {
     if (!token || !activeAgent) return;
     eventPollRef.current.boostUntil = Date.now() + 10_000;
     schedulePollRef.current?.(1000);
-    acpConversation.jumpToConversationBottom();
     let messageId: string | null = null;
     if (activeSessionId) {
       messageId =
@@ -2867,21 +2855,9 @@ export function App() {
     token,
     activeAgent,
     activeSessionId,
-    acpConversation,
     loadAgentEvents,
     refreshAgents,
   ]);
-
-  const onSendInput = useCallback(async () => {
-    await sendAcpInput(input, {
-      recordHistory: true,
-      clearComposer: true,
-    });
-  }, [input, sendAcpInput]);
-
-  const onSubmitRequestUserInput = useCallback(async (text: string) => {
-    await sendAcpInput(text);
-  }, [sendAcpInput]);
 
   const onInputChange = useCallback(
     (value: string) => {
@@ -3141,258 +3117,11 @@ export function App() {
     }
   };
 
-  const acpRuntimeMetrics = useMemo(() => {
-    const cacheStats = getAcpConversationCacheStats();
-    return {
-      totalConversationItems: acpConversation.conversationTotalItems,
-      sourceConversationItems: acpConversation.conversationSourceItems,
-      renderedConversationItems: acpConversation.conversationRenderedItems,
-      pendingConversationItems: acpConversation.conversationPendingCount,
-      virtualizedConversation: acpConversation.conversationVirtualized,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
-      rawEventCount: acpView.rawEvents.length,
-      toolCallCount: acpView.toolCalls.length,
-      messageCount: acpView.messages.length,
-      markdownCacheHits: cacheStats.markdownHits,
-      markdownCacheMisses: cacheStats.markdownMisses,
-      ansiCacheHits: cacheStats.ansiHits,
-      ansiCacheMisses: cacheStats.ansiMisses,
-      payloadParses: cacheStats.payloadParses,
-      payloadParseFailures: cacheStats.payloadParseFailures,
-    };
-  }, [
-    acpConversation.conversationTotalItems,
-    acpConversation.conversationSourceItems,
-    acpConversation.conversationRenderedItems,
-    acpConversation.conversationPendingCount,
-    acpConversation.conversationVirtualized,
-    acpConversation.conversationStickToBottom,
-    acpConversation.conversationAvgHeight,
-    acpView.rawEvents.length,
-    acpView.toolCalls.length,
-    acpView.messages.length,
-  ]);
-
-  const onJumpToPermissionHistory = useCallback(
-    (permission: AcpPermissionRecord) => {
-      const toolCallId = permission.tool_call_id?.trim();
-      if (!toolCallId) return;
-      setAcpTab("conversation");
-      const targetSessionId = permission.session_id ?? null;
-      if (targetSessionId && targetSessionId !== activeSessionId) {
-        setActiveSessionId(targetSessionId);
-      }
-      setPendingPermissionJump({
-        toolCallId,
-        sessionId: targetSessionId,
-        attempts: 0,
-      });
-    },
-    [activeSessionId]
-  );
-  const jumpToConversationToolCall = acpConversation.jumpToConversationToolCall;
-
-  useEffect(() => {
-    const jumpDecision = decidePermissionJump(
-      pendingPermissionJump,
-      acpTab,
-      activeSessionId
-    );
-    if (jumpDecision === "idle" || jumpDecision === "wait") return;
-    if (jumpDecision === "clear") {
-      setPendingPermissionJump(null);
-      return;
-    }
-    if (!pendingPermissionJump) return;
-    if (jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
-      setPendingPermissionJump(null);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setPendingPermissionJump((prev) => {
-        if (!prev) return prev;
-        return { ...prev, attempts: prev.attempts + 1 };
-      });
-    }, PERMISSION_JUMP_RETRY_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [
-    pendingPermissionJump,
-    acpTab,
-    activeSessionId,
-    jumpToConversationToolCall,
-  ]);
-
-  const acpConversationProps = useMemo(
-    () => ({
-      items: acpConversation.conversationRenderItems,
-      windowOffset: acpConversation.conversationWindowOffset,
-      isFrozenView: acpConversation.isFrozenView,
-      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
-      collapseCutoff: acpConversation.collapseCutoff,
-      runStatus: acpView.runStatus?.status ?? null,
-      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
-      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      pendingCount: acpConversation.conversationPendingCount,
-      avgHeight: acpConversation.conversationAvgHeight,
-      topHint: acpConversation.showConversationTopReachedHint
-        ? "Already at top"
-        : null,
-      focusedToolCallId: acpConversation.focusedConversationToolCallId,
-      onScroll: acpConversation.handleConversationScroll,
-      containerRef: acpConversation.acpConversationRef,
-      ansi,
-      onSubmitRequestUserInput,
-    }),
-    [
-      acpConversation.conversationRenderItems,
-      acpConversation.conversationWindowOffset,
-      acpConversation.isFrozenView,
-      acpConversation.shouldAutoCollapse,
-      acpConversation.collapseCutoff,
-      acpConversation.conversationVirtualTopSpacer,
-      acpConversation.conversationVirtualBottomSpacer,
-      acpConversation.conversationStickToBottom,
-      acpConversation.conversationPendingCount,
-      acpConversation.conversationAvgHeight,
-      acpConversation.showConversationTopReachedHint,
-      acpConversation.focusedConversationToolCallId,
-      acpConversation.handleConversationScroll,
-      acpConversation.acpConversationRef,
-      acpView.runStatus?.status,
-      ansi,
-      onSubmitRequestUserInput,
-    ]
-  );
-  const acpDebugProps = useMemo(
-    () => ({
-      terminalOutputs,
-      ansi,
-      terminalRef,
-      onTerminalScroll: handleTerminalScroll,
-      showTerminalJump: terminalShowJump,
-      onJumpToTerminalBottom: jumpToTerminalBottom,
-      currentMode: acpView.currentMode,
-      rawEvents: acpView.rawEvents,
-      configOptions: acpView.configOptions,
-      acpPermissionHistory: scopedAcpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      onAcpModeIdChange: setAcpModeId,
-      onAcpModelIdChange: setAcpModelId,
-      onAcpConfigIdChange: setAcpConfigId,
-      onAcpConfigValueChange: setAcpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      onJumpToPermissionHistory,
-      runtimeMetrics: acpRuntimeMetrics,
-    }),
-    [
-      terminalOutputs,
-      ansi,
-      terminalRef,
-      handleTerminalScroll,
-      terminalShowJump,
-      jumpToTerminalBottom,
-      acpView.currentMode,
-      acpView.rawEvents,
-      acpView.configOptions,
-      scopedAcpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      onJumpToPermissionHistory,
-      acpRuntimeMetrics,
-    ]
-  );
-  const showInputDock =
-    activeAgent != null &&
-    !(
-      developerMode &&
-      acpTab === "debug" &&
-      acpView.hasAcp
-    );
-  useEffect(() => {
-    if (!showInputDock) {
-      setInputDockHeight(0);
-    }
-  }, [showInputDock]);
-  const conversationBottomClearance = showInputDock
-    ? resolveAcpInputDockConversationClearance(inputDockHeight)
-    : 0;
-
-  const acpPanelProps = useMemo(
-    () => ({
-      acpView,
-      subtitle: activeAgentRecord?.workdir ?? null,
-      mobileTitle: activeAgentRecord?.name ?? null,
-      acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
-      developerMode,
-      conversationBottomClearance,
-      onSelectTab: handleAcpTabSelect,
-      showConversationBadge: acpConversation.showConversationBadge,
-      showConversationJump: acpConversation.showConversationJump,
-      showFloatingConversationJump: !showInputDock,
-      onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
-      conversation: acpConversationProps,
-      plan: {
-        plan: acpView.plan,
-      },
-      debug: acpDebugProps,
-    }),
-    [
-      acpView,
-      activeAgentRecord?.name,
-      activeAgentRecord?.workdir,
-      acpTab,
-      developerMode,
-      handleAcpTabSelect,
-      acpConversation.showConversationBadge,
-      acpConversation.showConversationJump,
-      acpConversation.jumpToConversationBottom,
-      acpConversationProps,
-      acpDebugProps,
-      conversationBottomClearance,
-      showInputDock,
-    ]
-  );
-
   useEffect(() => {
     if (!developerMode && acpTab === "debug") {
       setAcpTab("conversation");
     }
   }, [acpTab, developerMode]);
-  const inputDockJumpMode = useMemo(
-    () =>
-      resolveInputDockJumpMode({
-        hasAcp: acpView.hasAcp,
-        showConversationJump: acpConversation.showConversationJump,
-        jumpToConversationBottom: acpConversation.jumpToConversationBottom,
-        showTerminalJump: terminalShowJump,
-        jumpToTerminalBottom,
-      }),
-    [
-      acpView.hasAcp,
-      acpConversation.showConversationJump,
-      acpConversation.jumpToConversationBottom,
-      terminalShowJump,
-      jumpToTerminalBottom,
-    ]
-  );
   const workspaceStyle = useMemo<React.CSSProperties | undefined>(() => {
     if (agentsCollapsed) {
       return undefined;
@@ -3640,37 +3369,53 @@ export function App() {
                   <Suspense
                     fallback={<WorkbenchBodyFallback hasAcp={acpView.hasAcp} />}
                   >
-                    <LazyOutputBody
-                      terminalRef={terminalRef}
-                      onTerminalScroll={handleTerminalScroll}
+                    <LazyAgentsWorkbench
+                      activeAgent={activeAgent}
+                      activeAgentRecord={activeAgentRecord}
+                      activeSessionId={activeSessionId}
+                      developerMode={developerMode}
+                      acpTab={acpTab}
+                      acpView={acpView}
+                      eventMeta={eventMeta}
+                      isAgentActive={isAgentActive}
+                      outputs={outputs}
+                      terminalOutputs={terminalOutputs}
+                      scopedAcpPermissionHistory={scopedAcpPermissionHistory}
                       isOutputLoading={isOutputLoading}
                       isConversationLoading={isConversationLoading}
-                      outputs={outputs}
+                      terminalRef={terminalRef}
+                      input={input}
+                      inputHistory={inputHistory}
                       ansi={ansi}
-                      acpPanelProps={acpPanelProps}
+                      canControlAcp={canControlAcp}
+                      canInterruptAcpRun={canInterruptAcpRun}
+                      acpModeId={acpModeId}
+                      acpModelId={acpModelId}
+                      acpConfigId={acpConfigId}
+                      acpConfigValue={acpConfigValue}
+                      isComposingRef={isComposingRef}
+                      onLoadOlderEvents={loadOlderEvents}
+                      onTerminalScroll={handleTerminalScroll}
+                      onSelectTab={handleAcpTabSelect}
+                      onAcpModeIdChange={setAcpModeId}
+                      onAcpModelIdChange={setAcpModelId}
+                      onAcpConfigIdChange={setAcpConfigId}
+                      onAcpConfigValueChange={setAcpConfigValue}
+                      onAcpSetMode={onAcpSetMode}
+                      onAcpSetModel={onAcpSetModel}
+                      onAcpSetConfig={onAcpSetConfig}
+                      onAcpCancel={onAcpCancel}
+                      onAcpClearSession={onAcpClearSession}
+                      onInputChange={onInputChange}
+                      onSelectInputHistory={onSelectInputHistory}
+                      onNavigateInputHistory={onNavigateInputHistory}
+                      onSendAcpInput={sendAcpInput}
+                      onJumpToTerminalBottom={jumpToTerminalBottom}
+                      showTerminalJump={terminalShowJump}
                     />
                   </Suspense>
                 </OutputErrorBoundary>
               ) : null}
-              {showInputDock && (
-                <Suspense fallback={<InputDockFallback />}>
-                  <LazyInputDock
-                    input={input}
-                    historyCommands={inputHistory}
-                    showInterrupt={acpView.hasAcp}
-                    canInterrupt={canInterruptAcpRun}
-                    onHeightChange={setInputDockHeight}
-                    onInputChange={onInputChange}
-                    onSendInput={onSendInput}
-                    onInterrupt={onAcpCancel}
-                    onNavigateHistory={onNavigateInputHistory}
-                    onSelectHistoryCommand={onSelectInputHistory}
-                    onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                    showConversationJump={inputDockJumpMode.showConversationJump}
-                    isComposingRef={isComposingRef}
-                  />
-                </Suspense>
-              )}
             </div>
           </div>
         </main>
@@ -3870,245 +3615,6 @@ function createAnsiRenderer(): (input: string) => string {
     }
     return out;
   };
-}
-
-function parseRunStatus(message: string): string | null {
-  const trimmed = message.trim();
-  if (!trimmed.startsWith("{")) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
-    if (parsed?.type === "run_status" && typeof parsed.status === "string") {
-      return parsed.status;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-export type LiveOutputBatchAnalysis = {
-  outputGroups: Record<string, OutputLine[]>;
-  acpGroups: Record<string, OutputLine[]>;
-  activeLines: OutputLine[];
-  activeAcpLines: OutputLine[];
-  nextStatuses: Record<string, AgentRecord["status"]>;
-};
-
-export function updateLiveOutputBatchCursors(
-  ref: CursorRef,
-  lines: OutputLine[]
-): void {
-  for (const line of lines) {
-    updateLastEventCursor(ref, `${line.agent_id}:${line.session_id}`, line);
-  }
-}
-
-export function analyzeLiveOutputBatch(
-  lines: OutputLine[],
-  activeAgent: string | null,
-  activeSessionId: string | null
-): LiveOutputBatchAnalysis {
-  const outputGroups: Record<string, OutputLine[]> = {};
-  const acpGroups: Record<string, OutputLine[]> = {};
-  const activeLines: OutputLine[] = [];
-  const activeAcpLines: OutputLine[] = [];
-  const nextStatuses: Record<string, AgentRecord["status"]> = {};
-
-  for (const line of lines) {
-    const key = `${line.agent_id}:${line.session_id}`;
-    (outputGroups[key] ??= []).push(line);
-
-    if (line.stream === "acp") {
-      const status = parseRunStatus(line.message);
-      if (status) {
-        nextStatuses[line.agent_id] = statusToAgentStatus(status);
-      }
-      (acpGroups[key] ??= []).push(line);
-    }
-
-    if (line.agent_id !== activeAgent) {
-      continue;
-    }
-    if (activeSessionId && line.session_id !== activeSessionId) {
-      continue;
-    }
-    activeLines.push(line);
-    if (line.stream === "acp") {
-      activeAcpLines.push(line);
-    }
-  }
-
-  return {
-    outputGroups,
-    acpGroups,
-    activeLines,
-    activeAcpLines,
-    nextStatuses,
-  };
-}
-
-export function buildLatestLiveSessionMap(
-  lines: OutputLine[]
-): Record<string, string> {
-  const latestByAgent = new Map<string, OutputLine>();
-  for (const line of lines) {
-    const previous = latestByAgent.get(line.agent_id);
-    if (!previous || compareEventOrder(line, previous) > 0) {
-      latestByAgent.set(line.agent_id, line);
-    }
-  }
-  return Object.fromEntries(
-    Array.from(latestByAgent.entries()).map(([agentId, line]) => [
-      agentId,
-      line.session_id,
-    ])
-  );
-}
-
-export function resolveLiveSessionSwitch(
-  lines: OutputLine[],
-  activeAgent: string | null,
-  activeSessionId: string | null
-): string | null {
-  if (!activeAgent) return null;
-  let latestReplacement: OutputLine | null = null;
-  for (const line of lines) {
-    if (line.agent_id !== activeAgent) continue;
-    if (activeSessionId && line.session_id === activeSessionId) continue;
-    if (!latestReplacement || compareEventOrder(line, latestReplacement) > 0) {
-      latestReplacement = line;
-    }
-  }
-  return latestReplacement?.session_id ?? null;
-}
-
-export function dispatchLiveOutputBatch(params: {
-  cursorRef: CursorRef;
-  lines: OutputLine[];
-  activeAgent: string | null,
-  activeSessionId: string | null;
-  onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
-  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
-  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
-}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
-  const {
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    onStatuses,
-    onOutputGroup,
-    onAcpGroup,
-  } = params;
-  updateLiveOutputBatchCursors(cursorRef, lines);
-  const analyzed = analyzeLiveOutputBatch(lines, activeAgent, activeSessionId);
-  if (Object.keys(analyzed.nextStatuses).length > 0) {
-    onStatuses(analyzed.nextStatuses);
-  }
-  for (const [key, grouped] of Object.entries(analyzed.outputGroups)) {
-    onOutputGroup(key, grouped);
-  }
-  for (const [key, grouped] of Object.entries(analyzed.acpGroups)) {
-    onAcpGroup(key, grouped);
-  }
-  return {
-    activeLines: analyzed.activeLines,
-    activeAcpLines: analyzed.activeAcpLines,
-  };
-}
-
-export function routeLiveOutputBatch(params: {
-  cursorRef: CursorRef;
-  lines: OutputLine[];
-  activeAgent: string | null;
-  activeSessionId: string | null;
-  updateAgents: (updater: (prev: AgentRecord[]) => AgentRecord[]) => void;
-  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
-  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
-}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
-  const {
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    updateAgents,
-    onOutputGroup,
-    onAcpGroup,
-  } = params;
-  return dispatchLiveOutputBatch({
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    onStatuses: (nextStatuses) => {
-      updateAgents((prev) =>
-        prev.map((agent) => {
-          const nextStatus = nextStatuses[agent.id];
-          return nextStatus ? { ...agent, status: nextStatus } : agent;
-        })
-      );
-    },
-    onOutputGroup,
-    onAcpGroup,
-  });
-}
-
-export function isValidOutputPayload(
-  payload: unknown
-): payload is {
-  event_id: number;
-  agent_id: string;
-  session_id: string;
-  seq: string;
-  ts: number;
-  stream: OutputLine["stream"];
-  message: string;
-} {
-  if (!payload || typeof payload !== "object") return false;
-  const candidate = payload as {
-    event_id?: unknown;
-    agent_id?: unknown;
-    session_id?: unknown;
-    seq?: unknown;
-    ts?: unknown;
-    stream?: unknown;
-    message?: unknown;
-  };
-  if (typeof candidate.event_id !== "number") return false;
-  if (typeof candidate.agent_id !== "string" || !candidate.agent_id) return false;
-  if (typeof candidate.session_id !== "string" || !candidate.session_id) return false;
-  if (typeof candidate.seq !== "string" || !candidate.seq) return false;
-  if (typeof candidate.ts !== "number") return false;
-  if (typeof candidate.message !== "string") return false;
-  if (
-    candidate.stream !== "stdout" &&
-    candidate.stream !== "stderr" &&
-    candidate.stream !== "system" &&
-    candidate.stream !== "acp"
-  ) {
-    return false;
-  }
-  return true;
-}
-
-export function normalizeSseOutputLines(message: unknown): OutputLine[] {
-  if (!message || typeof message !== "object") return [];
-  const parsed = message as { type?: unknown; payload?: unknown };
-  if (parsed.type === "output" || parsed.type === "acp") {
-    return isValidOutputPayload(parsed.payload) ? [parsed.payload] : [];
-  }
-  if (parsed.type !== "batch" || !Array.isArray(parsed.payload)) {
-    return [];
-  }
-  return parsed.payload.filter(isValidOutputPayload);
-}
-
-function statusToAgentStatus(status: string): AgentRecord["status"] {
-  if (status === "running") return "running";
-  if (status === "idle") return "idle";
-  if (status === "failed") return "failed";
-  if (status === "completed" || status === "cancelled") return "stopped";
-  return "stopped";
 }
 
 function isSamePermissionList(
