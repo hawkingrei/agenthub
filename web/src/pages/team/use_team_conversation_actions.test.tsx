@@ -560,6 +560,48 @@ describe("useTeamConversationActions", () => {
     }
   });
 
+  it("preserves empty-list state when the next conversation scope is already empty", async () => {
+    let captured: TeamConversationActions | null = null;
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
+    const mailboxMessages = createStateSetter<TeamActorMessageRecord[]>([]);
+    const options = createOptions({
+      setTaskMessages: taskMessages.setter,
+      setConversationMailboxMessages: mailboxMessages.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      taskMessages.setter.mockClear();
+      mailboxMessages.setter.mockClear();
+
+      const nextOptions = createOptions({
+        ...options,
+        selectedConversation: buildTaskThreadTask(),
+        setTaskMessages: taskMessages.setter,
+        setConversationMailboxMessages: mailboxMessages.setter,
+      });
+
+      await act(async () => {
+        root.render(<HookHarness options={nextOptions} onCapture={(actions) => {
+          captured = actions;
+        }} />);
+        await Promise.resolve();
+      });
+
+      expect(captured).not.toBeNull();
+      expect(taskMessages.state.current).toEqual([]);
+      expect(mailboxMessages.state.current).toEqual([]);
+      expect(taskMessages.setter).toHaveBeenCalledTimes(1);
+      expect(mailboxMessages.setter).toHaveBeenCalledTimes(1);
+      expect(typeof taskMessages.setter.mock.calls[0]?.[0]).toBe("function");
+      expect(typeof mailboxMessages.setter.mock.calls[0]?.[0]).toBe("function");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("lets the backend infer direct routing from a single mention", async () => {
     mockedApi.sendTeamTaskMessage.mockResolvedValue({
       message_id: 51,
@@ -910,6 +952,38 @@ describe("useTeamConversationActions", () => {
         await sendDeferred.promise;
         await Promise.resolve();
       });
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("honors the detail cooldown after a selected-thread detail fetch fails", async () => {
+    mockedApi.listTeamTaskMessages.mockResolvedValue([buildTaskMessage(31, "thread-tail")]);
+    mockedApi.getTeamTask.mockRejectedValue(new Error("detail fetch failed"));
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversation: buildTaskThreadTask(),
+      selectedConversationLatestRun: null,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.refreshTaskMessages("task-thread");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await captured?.refreshTaskMessages("task-thread");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.getTeamTask).toHaveBeenCalledTimes(1);
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(2);
     } finally {
       cleanupHarness(root, container);
     }

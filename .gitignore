@@ -9,6 +9,7 @@ web/node_modules
 web/dist
 web/dist-debug
 web/dist-debug-current
+web/dist-analyze
 web/.vite
 web/coverage
 bazel-*

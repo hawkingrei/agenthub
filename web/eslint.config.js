@@ -31,6 +31,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "dist-analyze/**",
       "node_modules/**",
       "coverage/**",
       "test-results/**",

@@ -42,9 +42,13 @@
 - live Team page now returns to `ONLINE · SSE CONNECTED` after reload without the earlier catalog-refresh storm
 - Team page previously still showed periodic `/api/agents` and `/permissions` traffic from root-workbench background effects; this change gates those effects to `/`
 - hidden member lookups should now stop the immediate duplicate `api/agents/:id` wave while preserving later revalidation
-- local production builds still show one unresolved coupling: `route-teams` continues to pull `route-shared-rich-text`, and that chunk still imports `route-agents` plus `route-agents-workbench`
-- the remaining eager Team-route dependency is no longer the polling churn itself; it is the shared markdown/render path that Rolldown still groups under the ACP workbench graph
+- live `agenthub.hawkingrei.com` still serves an older bundle at the time of this note, so DevTools network traces there continue to show `route-agents-debug` and `route-agents-workbench` on the Team route; that is a deployment lag, not the local build result
+- local production builds no longer show the earlier eager Team-route coupling:
+  - `route-teams` now resolves through `vendor-mantine`, `route-ui-shared`, `route-teams-rich-text`, and `route-teams-agent-acp`
+  - `rg -n "route-agents-(debug|workbench)" web/dist/assets/route-teams-*.js web/dist/assets/route-teams-agent-acp-*.js` returns no matches
+- the follow-up split switched Vite chunk routing from the ineffective Rollup-style `manualChunks` path to Rolldown `codeSplitting.groups`, which is the change that finally severed the Team route from the agents workbench/debug chunks
 
 ## Follow-up
 
-- continue tracing `route-shared-rich-text -> route-agents-workbench` in the built output and split the remaining markdown/render helper so `/teams` can avoid the Agents ACP workbench chunk entirely
+- redeploy and re-check `agenthub.hawkingrei.com` with DevTools so the live Team route evidence catches up with the local build result
+- keep the TODO item open until post-deploy verification confirms `/teams` no longer fetches `route-agents-workbench` or `route-agents-debug` on first load

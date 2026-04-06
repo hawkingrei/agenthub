@@ -80,6 +80,13 @@ export function useTeamConversationActions({
     taskId: "",
   });
 
+  const clearConversationCollections = useCallback(() => {
+    setTaskMessages((current) => (current.length === 0 ? current : []));
+    setConversationMailboxMessages((current) =>
+      current.length === 0 ? current : []
+    );
+  }, [setConversationMailboxMessages, setTaskMessages]);
+
   useEffect(() => {
     if (!selectedTeamId) {
       conversationDetailFetchAtRef.current.clear();
@@ -98,10 +105,7 @@ export function useTeamConversationActions({
     const conversationScopeChanged =
       previousScope.teamId !== nextScope.teamId || previousScope.taskId !== nextScope.taskId;
     if (conversationScopeChanged) {
-      setTaskMessages((current) => (current.length === 0 ? current : []));
-      setConversationMailboxMessages((current) =>
-        current.length === 0 ? current : []
-      );
+      clearConversationCollections();
     }
     if (!selectedTeamId || !selectedConversation?.id) {
       setTaskMessagesLoading(false);
@@ -110,6 +114,7 @@ export function useTeamConversationActions({
     selectedConversation?.id,
     selectedTeamId,
     setConversationMailboxMessages,
+    clearConversationCollections,
     setTaskMessages,
     setTaskMessagesLoading,
   ]);
@@ -126,8 +131,7 @@ export function useTeamConversationActions({
         taskMessageScopeRef.current.teamId === teamId &&
         taskMessageScopeRef.current.taskId === taskId;
       if (!teamId || !taskId) {
-        setTaskMessages([]);
-        setConversationMailboxMessages([]);
+        clearConversationCollections();
         return;
       }
       setTaskMessagesLoading(true);
@@ -202,6 +206,7 @@ export function useTeamConversationActions({
       }
     },
     [
+      clearConversationCollections,
       selectedConversation,
       selectedConversationLatestRun,
       selectedTeamId,
@@ -234,20 +239,18 @@ export function useTeamConversationActions({
     }
     const detail = await api.ensureTeamSharedThread(token, selectedTeamId);
     applySharedConversationDetail(detail, setSharedConversation, setSharedConversationLatestRun);
-    setTaskMessages([]);
-    setConversationMailboxMessages([]);
+    clearConversationCollections();
     return {
       task: detail.task,
       latestRunId: detail.latest_run?.id?.trim() || null,
       conversationId: detail.conversation.id?.trim() || null,
     };
   }, [
+    clearConversationCollections,
     resolveConversationForMessage,
     selectedTeamId,
-    setConversationMailboxMessages,
     setSharedConversation,
     setSharedConversationLatestRun,
-    setTaskMessages,
     token,
   ]);
 

@@ -1,6 +1,134 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const ROUTE_AGENTS_IDS = [
+  "/src/api.ts",
+  "/src/connection_status.ts",
+  "/src/error_banner.tsx",
+  "/src/scroll.ts",
+  "/src/html_escape.ts",
+  "/src/worktree_defaults.ts",
+  "/src/input_history.ts",
+  "/src/push.ts",
+  "/src/auth_redirect.ts",
+  "/src/webauthn.ts",
+  "/src/components/workbench_connection_badge.tsx",
+  "/src/components/workbench_header_menu.tsx",
+  "/src/components/acp_panel_helpers.ts",
+  "/src/components/agents_panel.tsx",
+  "/src/components/output_header.tsx",
+  "/src/components/output_error_boundary.tsx",
+  "/src/acp.ts",
+  "/src/agent_ws.ts",
+  "/src/output_cache.ts",
+];
+
+const ROUTE_UI_SHARED_IDS = [
+  "/src/ui/primitives.tsx",
+  "/src/ui/floating_surfaces.ts",
+  "/src/ui/tailwind_classes.ts",
+  "/src/input_ime.ts",
+  "/src/components/status_badge.tsx",
+];
+
+const ROUTE_AUTH_IDS = [
+  "/src/pages/admin_page.tsx",
+  "/src/pages/join_page.tsx",
+  "/src/pages/auth_pages.tsx",
+];
+
+const ROUTE_AGENTS_WORKBENCH_IDS = [
+  "/src/markdown.ts",
+  "/src/thread_markdown.ts",
+  "/src/components/thread_rich_text.tsx",
+  "/src/components/agents_workbench.tsx",
+  "/src/components/output_body.tsx",
+  "/src/components/input_dock.tsx",
+  "/src/components/acp_panel.tsx",
+  "/src/components/acp_conversation.tsx",
+  "/src/components/acp_plan.tsx",
+  "/src/components/acp_request_user_input_cards.tsx",
+  "/src/components/acp_tool_",
+];
+
+const ROUTE_TEAMS_RICH_TEXT_IDS = [
+  "/src/pages/team/team_markdown.ts",
+  "/src/pages/team/team_thread_rich_text.tsx",
+];
+
+function normalizeChunkId(id: string): string {
+  return id.split("\\").join("/");
+}
+
+function includesAny(id: string, needles: string[]): boolean {
+  return needles.some((needle) => id.includes(needle));
+}
+
+export function resolveChunkGroupName(id: string): string | undefined {
+  const normalized = normalizeChunkId(id);
+  if (normalized.includes("/node_modules/@mantine/")) {
+    return "vendor-mantine";
+  }
+  if (
+    normalized.includes("/node_modules/highlight.js/") ||
+    normalized.includes("/node_modules/markdown-it/")
+  ) {
+    return "vendor-markdown";
+  }
+  if (normalized.includes("/node_modules/qrcode/")) {
+    return "vendor-qrcode";
+  }
+  if (includesAny(normalized, ROUTE_UI_SHARED_IDS)) {
+    return "route-ui-shared";
+  }
+  if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
+    return "route-teams-agent-acp";
+  }
+  if (includesAny(normalized, ROUTE_TEAMS_RICH_TEXT_IDS)) {
+    return "route-teams-rich-text";
+  }
+  if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
+    return "route-teams";
+  }
+  if (includesAny(normalized, ROUTE_AUTH_IDS)) {
+    return "route-auth";
+  }
+  if (normalized.includes("/src/components/acp_debug.tsx")) {
+    return "route-agents-debug";
+  }
+  if (normalized.includes("/src/components/terminal_output.tsx")) {
+    return "route-agents-terminal";
+  }
+  if (includesAny(normalized, ROUTE_AGENTS_WORKBENCH_IDS)) {
+    return "route-agents-workbench";
+  }
+  if (includesAny(normalized, ROUTE_AGENTS_IDS)) {
+    return "route-agents";
+  }
+  return undefined;
+}
+
+const CHUNK_GROUPS = [
+  { name: "vendor-mantine", priority: 100 },
+  { name: "vendor-markdown", priority: 90 },
+  { name: "vendor-qrcode", priority: 80 },
+  { name: "route-ui-shared", priority: 70 },
+  { name: "route-teams-agent-acp", priority: 60 },
+  { name: "route-teams-rich-text", priority: 55 },
+  { name: "route-teams", priority: 50 },
+  { name: "route-auth", priority: 45 },
+  { name: "route-agents-debug", priority: 40 },
+  { name: "route-agents-terminal", priority: 35 },
+  { name: "route-agents-workbench", priority: 30 },
+  { name: "route-agents", priority: 20 },
+].map(({ name, priority }) => ({
+  name,
+  priority,
+  test(id: string) {
+    return resolveChunkGroupName(id) === name;
+  },
+}));
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -25,101 +153,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        onlyExplicitManualChunks: true,
-        manualChunks(id) {
-          const normalized = id.split("\\").join("/");
-          if (
-            normalized.includes("/src/api.ts") ||
-            normalized.includes("/src/connection_status.ts") ||
-            normalized.includes("/src/error_banner.tsx") ||
-            normalized.includes("/src/scroll.ts") ||
-            normalized.includes("/src/html_escape.ts") ||
-            normalized.includes("/src/worktree_defaults.ts") ||
-            normalized.includes("/src/input_history.ts") ||
-            normalized.includes("/src/push.ts") ||
-            normalized.includes("/src/auth_redirect.ts") ||
-            normalized.includes("/src/webauthn.ts") ||
-            normalized.includes("/src/components/workbench_connection_badge.tsx") ||
-            normalized.includes("/src/components/workbench_header_menu.tsx") ||
-            normalized.includes("/src/components/acp_panel_helpers.ts")
-          ) {
-            return "route-agents";
-          }
-          if (
-            normalized.includes("/src/ui/primitives.tsx") ||
-            normalized.includes("/src/ui/floating_surfaces.ts") ||
-            normalized.includes("/src/ui/tailwind_classes.ts") ||
-            normalized.includes("/src/input_ime.ts") ||
-            normalized.includes("/src/components/status_badge.tsx")
-          ) {
-            return "route-ui-shared";
-          }
-          if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
-            return "route-teams-agent-acp";
-          }
-          if (
-            normalized.includes("/src/pages/team/team_markdown.ts") ||
-            normalized.includes("/src/pages/team/team_thread_rich_text.tsx")
-          ) {
-            return "route-teams-rich-text";
-          }
-          if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
-            return "route-teams";
-          }
-          if (
-            normalized.includes("/src/pages/admin_page.tsx") ||
-            normalized.includes("/src/pages/join_page.tsx") ||
-            normalized.includes("/src/pages/auth_pages.tsx")
-          ) {
-            return "route-auth";
-          }
-          if (
-            normalized.includes("/src/components/acp_debug.tsx")
-          ) {
-            return "route-agents-debug";
-          }
-          if (normalized.includes("/src/components/terminal_output.tsx")) {
-            return "route-agents-terminal";
-          }
-          if (
-            normalized.includes("/src/markdown.ts") ||
-            normalized.includes("/src/thread_markdown.ts") ||
-            normalized.includes("/src/components/thread_rich_text.tsx") ||
-            normalized.includes("/src/components/agents_workbench.tsx") ||
-            normalized.includes("/src/components/output_body.tsx") ||
-            normalized.includes("/src/components/input_dock.tsx") ||
-            normalized.includes("/src/components/acp_panel.tsx") ||
-            normalized.includes("/src/components/acp_conversation.tsx") ||
-            normalized.includes("/src/components/acp_plan.tsx") ||
-            normalized.includes("/src/components/acp_tool_") ||
-            normalized.includes("/src/components/acp_request_user_input_cards.tsx")
-          ) {
-            return "route-agents-workbench";
-          }
-          if (
-            normalized.includes("/src/components/agents_panel.tsx") ||
-            normalized.includes("/src/components/output_header.tsx") ||
-            normalized.includes("/src/components/output_error_boundary.tsx") ||
-            normalized.includes("/src/acp.ts") ||
-            normalized.includes("/src/agent_ws.ts") ||
-            normalized.includes("/src/output_cache.ts")
-          ) {
-            return "route-agents";
-          }
-          if (!normalized.includes("/node_modules/")) return undefined;
-          if (normalized.includes("/node_modules/@mantine/")) {
-            return "vendor-mantine";
-          }
-          if (
-            normalized.includes("/node_modules/highlight.js/") ||
-            normalized.includes("/node_modules/markdown-it/")
-          ) {
-            return "vendor-markdown";
-          }
-          if (normalized.includes("/node_modules/qrcode/")) {
-            return "vendor-qrcode";
-          }
-          return undefined;
+        codeSplitting: {
+          groups: CHUNK_GROUPS,
         },
       },
     },
