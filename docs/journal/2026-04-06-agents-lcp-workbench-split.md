@@ -46,6 +46,10 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - `web/src/components/agents_workbench_metrics.ts` for runtime/cache/conversation metric assembly
   - `web/src/components/use_agents_permission_jump.ts` for the permission-history jump retry state machine
   This keeps the workbench component focused on view composition instead of mixing hook scheduling and pure metric shaping into the same file.
+- Continued the workbench decomposition by splitting the remaining ACP panel/input-dock state wiring out of `web/src/components/agents_workbench.tsx` into:
+  - `web/src/components/agents_workbench_types.ts`
+  - `web/src/components/use_agents_workbench_panel.ts`
+  This leaves `AgentsWorkbench` as a thin render shell while the hook owns ACP conversation/debug prop shaping and dock-clearance coordination.
 - Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
 - Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
 - Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
@@ -107,6 +111,7 @@ Commands run locally:
 
 ```bash
 cd web && npm run test -- vite.config.test.ts src/app.permission_scope.test.ts src/acp_panel.test.tsx src/create_agent_modal.test.tsx src/permission_modal.test.tsx src/components/agent_node_section.test.tsx
+cd web && npm run test -- src/agents_workbench.test.tsx src/output_body.test.tsx src/acp_debug.test.tsx
 cd web && npm run lint -- --ignore-pattern dist-debug
 cd web && npm run build
 make build-web
@@ -147,6 +152,10 @@ Live verification notes:
   - root entry JS imports `route-agents`, `route-app-shared`, and the tiny `route-agents-debug-loader`
   - root entry JS no longer imports `route-teams` or `route-agents-workbench`
   - `route-app-shared` now owns the root+team shared live-output/event-polling helpers instead of letting Rollup fold them into the Team route chunk
+- Follow-up live regression after the `AgentsWorkbench` hook split still shows the visible behavior intact:
+  - `https://agenthub.hawkingrei.com/` renders `No agent selected` without eagerly fetching `route-agents-workbench`
+  - `https://agenthub.hawkingrei.com/teams/...` stays `ONLINE · SSE CONNECTED`
+  - the only console noise remains the existing `favicon.ico 404`
 
 ## Follow-up
 
