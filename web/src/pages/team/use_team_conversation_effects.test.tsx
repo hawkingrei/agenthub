@@ -236,6 +236,45 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
   });
 
+  it("does not re-enable polling after reconnect when auto refresh is turned off", async () => {
+    vi.useFakeTimers();
+    const refreshTaskMessages = vi.fn().mockResolvedValue(undefined);
+    let params = createParams({
+      eventsAutoRefresh: true,
+      refreshTaskMessages,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+
+    params = createParams({
+      eventsAutoRefresh: false,
+      refreshTaskMessages,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = refreshTaskMessages.mock.calls.length;
+
+    await act(async () => {
+      source.emitError();
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
+  });
+
   it("reports sse state transitions to the caller", async () => {
     const onSseStateChange = vi.fn<(nextState: SseConnectionState) => void>();
     const params = createParams({

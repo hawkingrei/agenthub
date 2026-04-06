@@ -133,6 +133,7 @@ import {
   loadDeveloperModePreference,
   persistDeveloperModePreference,
 } from "./ui/developer_mode";
+import { ActionButton, IconButton } from "./ui/primitives";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
@@ -3242,18 +3243,19 @@ export function App() {
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
         {auth && (
           <div className="session flex items-center gap-2 sm:gap-3">
-            <button
+            <IconButton
               className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
               onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
               title={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-pressed={!agentsCollapsed}
+              tone={agentsCollapsed ? "default" : "active"}
             >
               <i
                 className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
                 aria-hidden="true"
               />
-            </button>
+            </IconButton>
             <WorkbenchConnectionBadge
               badge={connectionBadge}
               className={APP_WORKBENCH_HEADER_STATUS_CLASS}
@@ -3320,22 +3322,21 @@ export function App() {
           )}
           <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false && (
-              <button
-                type="button"
+              <ActionButton
                 className={AUTH_SECONDARY_BUTTON_CLASS}
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
               >
                 {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
-              </button>
+              </ActionButton>
             )}
-            <button
+            <ActionButton
               type="submit"
               className={AUTH_PRIMARY_BUTTON_CLASS}
               disabled={authBusy !== null}
             >
               {authBusy === "login" ? "Logging in..." : "Login"}
-            </button>
+            </ActionButton>
           </div>
         </form>
       )}

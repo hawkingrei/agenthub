@@ -158,7 +158,7 @@ export function useTeamConversationEffects({
     const scheduleReconnect = () => {
       if (cancelled) return;
       clearReconnectTimer();
-      setPollFallbackEnabled(tab === "conversation");
+      setPollFallbackEnabled(eventsAutoRefresh && tab === "conversation");
       updateSseState("reconnecting");
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
@@ -212,6 +212,7 @@ export function useTeamConversationEffects({
     };
   }, [
     conversationSelectionEnabled,
+    eventsAutoRefresh,
     onSseStateChange,
     refreshSelectedConversation,
     selectedConversationId,
