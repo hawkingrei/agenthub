@@ -9,12 +9,10 @@ import {
   type RequestUserInputQuestion,
   type RequestUserInputResponse,
 } from "../request_user_input";
+import { ActionButton } from "../ui/primitives";
 import { ACP_SEGMENTED_NOTE_WARNING_CLASS } from "../ui/tailwind_classes";
 
-const REQUEST_USER_INPUT_SUBMIT_BUTTON_CLASS =
-  "inline-flex h-9 items-center justify-center rounded-md bg-notion-accent px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px";
-
-export function RequestUserInputCard({
+export const RequestUserInputCard = React.memo(function RequestUserInputCard({
   toolCallId,
   questions,
   canSubmit,
@@ -241,9 +239,9 @@ export function RequestUserInputCard({
         <p className="max-w-sm text-[11px] italic leading-relaxed text-notion-text-muted">
           Response will be sent through the active turn.
         </p>
-        <button
-          type="button"
-          className={REQUEST_USER_INPUT_SUBMIT_BUTTON_CLASS}
+        <ActionButton
+          tone="primary"
+          size="md"
           onClick={() => {
             void handleSubmit();
           }}
@@ -251,11 +249,11 @@ export function RequestUserInputCard({
           data-request-user-input-submit={toolCallId}
         >
           {submitting ? "Submitting..." : "Submit Answer"}
-        </button>
+        </ActionButton>
       </div>
     </div>
   );
-}
+});
 
 export function RequestUserInputResultCard({
   questions,

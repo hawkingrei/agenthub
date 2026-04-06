@@ -1,3 +1,4 @@
+import { MantineProvider } from "@mantine/core";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -10,23 +11,25 @@ function renderConversation(
   override?: Partial<React.ComponentProps<typeof AcpConversation>>
 ): string {
   return renderToStaticMarkup(
-    <AcpConversation
-      items={items}
-      windowOffset={0}
-      isFrozenView={false}
-      shouldAutoCollapse={false}
-      collapseCutoff={0}
-      runStatus={null}
-      virtualTopSpacer={0}
-      virtualBottomSpacer={0}
-      stickToBottom={true}
-      pendingCount={0}
-      avgHeight={40}
-      onScroll={() => {}}
-      containerRef={React.createRef<HTMLDivElement>()}
-      ansi={(input) => `<span class="ansi-out">${input}</span>`}
-      {...override}
-    />
+    <MantineProvider>
+      <AcpConversation
+        items={items}
+        windowOffset={0}
+        isFrozenView={false}
+        shouldAutoCollapse={false}
+        collapseCutoff={0}
+        runStatus={null}
+        virtualTopSpacer={0}
+        virtualBottomSpacer={0}
+        stickToBottom={true}
+        pendingCount={0}
+        avgHeight={40}
+        onScroll={() => {}}
+        containerRef={React.createRef<HTMLDivElement>()}
+        ansi={(input) => `<span class="ansi-out">${input}</span>`}
+        {...override}
+      />
+    </MantineProvider>
   );
 }
 

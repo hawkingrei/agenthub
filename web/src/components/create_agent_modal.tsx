@@ -65,7 +65,7 @@ const worktreeOptions = [
   { value: "reuse_worktree", label: "Reuse git worktree" },
 ];
 const TEAM_AGENT_MODAL_ACCENT_BUTTON_CLASS =
-  "!border !border-ui-border-emphasis !bg-[#243243] !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-[#1d2936]";
+  "!border !border-ui-border-emphasis !bg-brand-primary !text-white !shadow-sm transition hover:!border-ui-border-strong hover:!bg-brand-primary-hover";
 const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
   "!border !border-ui-border !bg-white !text-ui-text-primary !shadow-sm transition hover:!border-ui-border-emphasis hover:!bg-ui-surface-soft";
 const TEAM_AGENT_MODAL_INFO_STRIP_CLASS =

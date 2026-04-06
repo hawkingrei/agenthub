@@ -1,7 +1,9 @@
+import { UnstyledButton } from "@mantine/core";
 import React, { useState } from "react";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import { ActionButton } from "../ui/primitives";
 import {
   ADMIN_APP_CLASS,
   ADMIN_CARD_CLASS,
@@ -118,56 +120,58 @@ export function AdminPage(props: AdminProps) {
       <section className={ADMIN_SECTION_CLASS}>
         <div className={ADMIN_TOOLBAR_CLASS}>
           <h2>Admin</h2>
-          <button
+          <ActionButton
+            tone="primary"
+            size="md"
             className={ADMIN_PRIMARY_BUTTON_CLASS}
             onClick={props.onCreateJoin}
           >
             Create Join QR
-          </button>
+          </ActionButton>
         </div>
         <div className={ADMIN_TAB_BAR_CLASS}>
-          <button
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "safe" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("safe")}
           >
             Safe Paths
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "devices" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("devices")}
           >
             Devices
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "audits" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("audits")}
           >
             Login Audits
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "join" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("join")}
           >
             Join Device
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "vapid" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("vapid")}
           >
             VAPID Keys
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "ui" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("ui")}
           >
             UI
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "system" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("system")}
           >
             System
-          </button>
+          </UnstyledButton>
         </div>
 
         <div className="admin-panel">
@@ -181,12 +185,14 @@ export function AdminPage(props: AdminProps) {
                   value={props.safePathInput}
                   onChange={(e) => props.setSafePathInput(e.target.value)}
                 />
-                <button
+                <ActionButton
                   className={ADMIN_PRIMARY_BUTTON_CLASS}
+                  tone="primary"
+                  size="md"
                   onClick={props.onAddSafePath}
                 >
                   Add Path
-                </button>
+                </ActionButton>
               </div>
               <div className={ADMIN_FORM_ROW_CLASS}>
                 <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
@@ -202,12 +208,14 @@ export function AdminPage(props: AdminProps) {
                   />
                   Select All
                 </label>
-                <button
+                <ActionButton
                   className={ADMIN_DANGER_BUTTON_CLASS}
+                  tone="danger"
+                  size="md"
                   onClick={props.onDeleteSelectedSafePaths}
                 >
                   Delete Selected
-                </button>
+                </ActionButton>
               </div>
               <ul className={ADMIN_LIST_CLASS}>
                 {props.safePaths.map((p) => (
@@ -220,12 +228,14 @@ export function AdminPage(props: AdminProps) {
                       />
                     </label>
                     <span className="mono flex-1 text-sm text-slate-800">{p.path}</span>
-                    <button
+                    <ActionButton
                       className={ADMIN_DANGER_BUTTON_CLASS}
+                      tone="danger"
+                      size="md"
                       onClick={() => props.onDeleteSafePath(p.path)}
                     >
                       Delete
-                    </button>
+                    </ActionButton>
                   </li>
                 ))}
               </ul>
@@ -242,12 +252,14 @@ export function AdminPage(props: AdminProps) {
                       {device.name} - {device.status}
                     </span>
                     {device.status === "active" && (
-                      <button
+                      <ActionButton
                         className={ADMIN_DANGER_BUTTON_CLASS}
+                        tone="danger"
+                        size="md"
                         onClick={() => props.onRevokeDevice(device.id)}
                       >
                         Revoke
-                      </button>
+                      </ActionButton>
                     )}
                   </li>
                 ))}
@@ -316,12 +328,14 @@ export function AdminPage(props: AdminProps) {
               )}
               {/* TODO: add copy button and rotate confirmation. */}
               <div className={ADMIN_FORM_ROW_CLASS}>
-                <button
+                <ActionButton
                   className={ADMIN_SECONDARY_BUTTON_CLASS}
+                  tone="secondary"
+                  size="md"
                   onClick={props.onRotateVapid}
                 >
                   Rotate Keys
-                </button>
+                </ActionButton>
               </div>
             </div>
           )}

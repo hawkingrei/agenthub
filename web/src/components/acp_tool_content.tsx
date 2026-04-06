@@ -6,10 +6,14 @@ import {
 import {
   ACP_DIFF_PRE_CLASS,
   ACP_PAYLOAD_MARKDOWN_CLASS,
-  ACP_SEGMENTED_BUTTON_CLASS,
   ACP_SEGMENTED_NOTE_WARNING_CLASS,
   ACP_TERMINAL_PRE_CLASS,
 } from "../ui/tailwind_classes";
+import {
+  SegmentedMoreFooter,
+  useProgressiveTailWindow,
+  useProgressiveVisibleCount,
+} from "./acp_progressive_views";
 import type { ToolCallDetailItem } from "./acp_tool_call_meta";
 import { ThreadRichText } from "./thread_rich_text";
 
@@ -83,10 +87,6 @@ const ACP_PAYLOAD_NESTED_SUMMARY_CLASS =
 const ACP_PAYLOAD_NESTED_BODY_CLASS =
   "acp-payload-nested-body mt-1 border-t border-slate-200 px-2 py-2";
 const ACP_SEGMENTED_BLOCK_CLASS = "acp-segmented-block grid gap-1.5";
-const ACP_SEGMENTED_FOOTER_CLASS =
-  "acp-segmented-footer flex flex-wrap items-center justify-between gap-1.5";
-const ACP_SEGMENTED_META_CLASS = "acp-segmented-meta text-[11px] text-slate-500";
-
 const ANSI_SPAN_TAG_PATTERN = /<\/?span(?: style="([a-zA-Z0-9:#;(),.%\s-]*)")?>/g;
 const ANSI_STYLE_VALUE_PATTERN = /^[a-zA-Z0-9#(),.%\s-]+$/;
 const ANSI_ALLOWED_STYLE_PROPERTIES: Record<string, keyof React.CSSProperties> = {
@@ -185,7 +185,11 @@ export function summarizeToolPayload(payload: NormalizedToolPayload, limit: numb
   return formatConversationPreview(summarizePayloadValue(payload.value), limit);
 }
 
-export function ToolPayloadView({ payload }: { payload: NormalizedToolPayload }) {
+export const ToolPayloadView = React.memo(function ToolPayloadView({
+  payload,
+}: {
+  payload: NormalizedToolPayload;
+}) {
   if (payload.kind === "empty") return null;
   if (payload.kind === "text") {
     return <ToolTextContent text={payload.text} markdownClassName={ACP_PAYLOAD_MARKDOWN_CLASS} />;
@@ -205,9 +209,13 @@ export function ToolPayloadView({ payload }: { payload: NormalizedToolPayload })
       {renderPayloadValue(payload.value, 0)}
     </div>
   );
-}
+});
 
-export function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[] }) {
+export const ToolCallDetailsView = React.memo(function ToolCallDetailsView({
+  details,
+}: {
+  details: ToolCallDetailItem[];
+}) {
   return (
     <div className={ACP_PAYLOAD_CARD_CLASS}>
       <dl className={ACP_PAYLOAD_GRID_CLASS}>
@@ -222,9 +230,9 @@ export function ToolCallDetailsView({ details }: { details: ToolCallDetailItem[]
       </dl>
     </div>
   );
-}
+});
 
-export function ToolTextContent({
+export const ToolTextContent = React.memo(function ToolTextContent({
   text,
   markdownClassName,
   preferPlainText = false,
@@ -269,7 +277,7 @@ export function ToolTextContent({
       tone={tone}
     />
   );
-}
+});
 
 export function shouldAutoExpandToolContent(text: string): boolean {
   if (!text) return false;
@@ -280,7 +288,7 @@ export function shouldAutoExpandToolContent(text: string): boolean {
   return true;
 }
 
-export function TerminalOutputView({
+export const TerminalOutputView = React.memo(function TerminalOutputView({
   text,
   ansi,
 }: {
@@ -313,7 +321,7 @@ export function TerminalOutputView({
       )}
     </div>
   );
-}
+});
 
 export function parseAnsiSegmentsCached(input: string): AnsiSegment[] {
   if (input.length > ANSI_SEGMENT_CACHE_MAX_ENTRY_CHARS) {
@@ -671,105 +679,6 @@ function countLines(text: string): number {
     if (text.charCodeAt(i) === 10) count += 1;
   }
   return count;
-}
-
-function useProgressiveVisibleCount(
-  total: number,
-  initial: number,
-  step: number
-): {
-  visibleCount: number;
-  hasMore: boolean;
-  remaining: number;
-  showMore: () => void;
-} {
-  const safeInitial = Math.max(1, initial);
-  const safeStep = Math.max(1, step);
-  const [visibleCount, setVisibleCount] = React.useState(() =>
-    Math.min(total, safeInitial)
-  );
-
-  React.useEffect(() => {
-    setVisibleCount(Math.min(total, safeInitial));
-  }, [total, safeInitial]);
-
-  const showMore = React.useCallback(() => {
-    setVisibleCount((prev) => Math.min(total, prev + safeStep));
-  }, [safeStep, total]);
-
-  const hasMore = visibleCount < total;
-  return {
-    visibleCount,
-    hasMore,
-    remaining: hasMore ? total - visibleCount : 0,
-    showMore,
-  };
-}
-
-function useProgressiveTailWindow(
-  total: number,
-  initial: number,
-  step: number
-): {
-  startIndex: number;
-  endIndex: number;
-  hasMore: boolean;
-  remaining: number;
-  showMore: () => void;
-} {
-  const safeInitial = Math.max(1, initial);
-  const safeStep = Math.max(1, step);
-  const baseline = Math.min(total, safeInitial);
-  const [visibleCount, setVisibleCount] = React.useState(() => baseline);
-
-  React.useEffect(() => {
-    setVisibleCount((prev) => {
-      const clampedPrev = Math.min(total, Math.max(prev, 0));
-      if (clampedPrev === 0) return baseline;
-      return Math.max(baseline, clampedPrev);
-    });
-  }, [baseline, total]);
-
-  const showMore = React.useCallback(() => {
-    setVisibleCount((prev) => Math.min(total, prev + safeStep));
-  }, [safeStep, total]);
-
-  const hasMore = visibleCount < total;
-  const remaining = hasMore ? total - visibleCount : 0;
-  const startIndex = Math.max(0, total - visibleCount);
-  return {
-    startIndex,
-    endIndex: total,
-    hasMore,
-    remaining,
-    showMore,
-  };
-}
-
-function SegmentedMoreFooter({
-  remaining,
-  unitLabel,
-  onShowMore,
-}: {
-  remaining: number;
-  unitLabel: string;
-  onShowMore: () => void;
-}) {
-  return (
-    <div className={ACP_SEGMENTED_FOOTER_CLASS}>
-      <span className={ACP_SEGMENTED_META_CLASS}>
-        {remaining} more {unitLabel}
-      </span>
-      <button
-        type="button"
-        className={ACP_SEGMENTED_BUTTON_CLASS}
-        onClick={onShowMore}
-        aria-label={`Show ${remaining} more ${unitLabel}`}
-      >
-        Show more
-      </button>
-    </div>
-  );
 }
 
 function shouldRenderMarkdownText(text: string): boolean {

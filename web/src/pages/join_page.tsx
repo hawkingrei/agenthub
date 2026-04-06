@@ -8,14 +8,12 @@ import {
 } from "../webauthn";
 import { AuthState } from "../types";
 import { setLocalStorageItemSafe } from "../storage/safe_storage";
+import { ActionButton } from "../ui/primitives";
 import {
   AUTH_FORM_CARD_CLASS,
   AUTH_INPUT_CLASS,
   AUTH_PAGE_CLASS,
-  AUTH_PRIMARY_BUTTON_CLASS,
 } from "../ui/tailwind_classes";
-
-const JOIN_PRIMARY_BUTTON_CLASS = `mt-1 ${AUTH_PRIMARY_BUTTON_CLASS}`;
 
 export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void }) {
   const token = new URLSearchParams(location.search).get("token") || "";
@@ -131,9 +129,9 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
           autoComplete="organization"
           onChange={(e) => setDeviceName(e.target.value)}
         />
-        <button className={JOIN_PRIMARY_BUTTON_CLASS} type="submit">
+        <ActionButton tone="primary" size="md" type="submit" className="mt-1">
           Join
-        </button>
+        </ActionButton>
       </form>
     </div>
   );
