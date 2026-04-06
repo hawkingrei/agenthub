@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord, AgentEvent, AgentNodeRecord, AgentRecord } from "./api";
 import {
   analyzeLiveOutputBatch,
+  buildPermissionPollAgentIds,
   buildLatestLiveSessionMap,
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
@@ -22,6 +23,7 @@ import {
   resolveLiveSessionSwitch,
   resolveOutputHistoryKey,
   routeLiveOutputBatch,
+  resolveDefaultActiveAgentId,
   resolveSessionScopedEvents,
   resolveRuntimeKeyboardInset,
   resolveRuntimeViewportAxis,
@@ -218,6 +220,25 @@ describe("app helper decisions", () => {
     ).toBe(false);
   });
 
+  it("prefers a running agent for the default root workbench selection", () => {
+    const agents = [
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-running", { status: "running" }),
+      buildAgentRecord("agent-idle", { status: "idle" }),
+    ];
+
+    expect(resolveDefaultActiveAgentId(agents)).toBe("agent-running");
+  });
+
+  it("does not select any default agent when only inactive agents exist", () => {
+    const agents = [
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-stopped", { status: "stopped" }),
+    ];
+
+    expect(resolveDefaultActiveAgentId(agents)).toBeNull();
+  });
+
   it("parses permission poll agent ids from stable key", () => {
     expect(parsePermissionPollAgentIds("")).toEqual([]);
     expect(parsePermissionPollAgentIds("agent-a,agent-b")).toEqual([
@@ -227,6 +248,21 @@ describe("app helper decisions", () => {
     expect(parsePermissionPollAgentIds("agent-a,,agent-b,")).toEqual([
       "agent-a",
       "agent-b",
+    ]);
+  });
+
+  it("builds pending-permission poll targets from active agents only", () => {
+    const agents = [
+      buildAgentRecord("agent-running", { status: "running" }),
+      buildAgentRecord("agent-idle", { status: "idle" }),
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-stopped", { status: "stopped" }),
+      buildAgentRecord("agent-running", { status: "running" }),
+    ];
+
+    expect(buildPermissionPollAgentIds(agents)).toEqual([
+      "agent-idle",
+      "agent-running",
     ]);
   });
 

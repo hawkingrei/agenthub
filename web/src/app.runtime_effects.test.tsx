@@ -650,6 +650,42 @@ describe("App runtime viewport effects", () => {
     expect(listAgentNodesMock).toHaveBeenCalledWith("token-root");
   });
 
+  it("does not auto-select exited agents on the root route", async () => {
+    listAgentsMock.mockResolvedValue([
+      {
+        id: "agent-exited",
+        name: "Exited agent",
+        workdir: "/tmp/exited",
+        command: "codex",
+        args: [],
+        worktree_mode: "use_existing",
+        code_mode: false,
+        status: "exited",
+        created_at: 1,
+        updated_at: 2,
+      },
+    ]);
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+
+    await act(async () => {
+      renderApp(root);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listAgentEventsMock).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("Conversation");
+    expect(container.textContent).not.toContain("Send input");
+  });
+
   it("uses the smaller ACP initial event page size budget", () => {
     expect(AGENT_EVENT_PAGE_SIZE).toBe(80);
   });

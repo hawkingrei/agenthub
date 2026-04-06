@@ -26,6 +26,9 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
 - Stopped prefetching admin-only datasets (`safe_paths`, `devices`, `audits`, `vapid`, `admin/settings`) outside `/admin`.
 - Reduced the initial ACP event page size from `200` to `80` so the first workbench conversation load no longer requests a full large-history window.
 - Deferred ACP conversation auto-history backfill by `1200 ms` so `before_id` enrichment starts after first paint instead of competing directly with initial LCP.
+- Stopped auto-selecting the first non-running agent on `/`; the root route now auto-mounts the heavy ACP workbench only when a running agent exists.
+- Hid the agents-route input dock when no agent is selected so the idle root shell no longer pulls interaction-only workbench UI just to show the empty-state placeholder.
+- Limited global pending-permission polling to active agents so idle/exited agents no longer add avoidable root-route network churn.
 - Added focused regression tests in `web/vite.config.test.ts` and `web/src/app.permission_scope.test.ts` to lock the chunk routing and refresh short-circuit behavior.
 - Added focused runtime tests in `web/src/app.runtime_effects.test.tsx` to lock the new admin-route gating, node-fetch gating, and smaller ACP event page budget.
 
@@ -69,6 +72,9 @@ Live verification notes:
 - Before the second round, `agenthub.hawkingrei.com/` still fetched `route-teams` and `route-agents-debug` on `/`, and full ACP permission history polling showed up outside the Debug tab.
 - After the code changes in this branch, local production build output no longer has `index -> route-teams` static imports; the remaining live eager fetches were from an older deployed build, not the current local output.
 - Chrome DevTools MCP later recovered and confirmed the remaining live over-polling was down to `/api/agents` plus `permissions?status=pending`; the full `/permissions` history call no longer appeared outside Developer Mode + Debug.
+- A later live MCP baseline on `https://agenthub.hawkingrei.com/` showed the root route still auto-selected an `EXITED` agent and mounted the ACP workbench by default. The follow-up fix in this branch removes that fallback so the idle route can stay on the lighter list-first shell unless a running agent exists.
+- The next live MCP baseline still showed `No agent selected` plus a visible input dock, which kept `route-agents-workbench` eager on the root route. This branch now suppresses the dock until an agent is actually selected.
+- The same idle-root baseline also showed `permissions?status=pending` polling for an exited agent. The branch now filters global pending-permission polling down to active agents only.
 - Final live after-check on `https://agenthub.hawkingrei.com/` after deploying `index-9Xgk5xXY.js` showed:
   - first-load network no longer fetches `route-teams` or `route-agents-debug`
   - first-load scripts are limited to `index`, `route-agents`, `route-auth`, `route-agents-terminal`, and `route-agents-workbench`

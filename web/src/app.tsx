@@ -153,6 +153,20 @@ export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
+export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
+  return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
+}
+
+export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
+  return Array.from(
+    new Set(
+      agents
+        .filter((agent) => isAgentActiveStatus(agent.status))
+        .map((agent) => agent.id)
+    )
+  ).sort();
+}
+
 const LazyAdminPage = React.lazy(async () => {
   const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
   return { default: module.AdminPage };
@@ -1325,9 +1339,10 @@ export function App() {
     () => encodeSseTargetAgentIds(streamAgentIds),
     [streamAgentIds]
   );
-  const permissionPollAgentIds = useMemo(() => {
-    return Array.from(new Set(agents.map((agent) => agent.id))).sort();
-  }, [agents]);
+  const permissionPollAgentIds = useMemo(
+    () => buildPermissionPollAgentIds(agents),
+    [agents]
+  );
   const permissionPollAgentIdsKey = useMemo(
     () => permissionPollAgentIds.join(","),
     [permissionPollAgentIds]
@@ -1466,11 +1481,10 @@ export function App() {
 
   useEffect(() => {
     if (activeAgent || agents.length === 0) return;
-    const running = agents.find((agent) => isAgentActiveStatus(agent.status));
-    const next = running ?? agents[0];
-    if (next) {
-      setActiveAgent(next.id);
-      setActiveSessionId(agentSessions[next.id] ?? null);
+    const nextAgentId = resolveDefaultActiveAgentId(agents);
+    if (nextAgentId) {
+      setActiveAgent(nextAgentId);
+      setActiveSessionId(agentSessions[nextAgentId] ?? null);
     }
   }, [agents, activeAgent, agentSessions]);
 
@@ -3305,11 +3319,13 @@ export function App() {
       acpRuntimeMetrics,
     ]
   );
-  const showInputDock = !(
-    developerMode &&
-    acpTab === "debug" &&
-    acpView.hasAcp
-  );
+  const showInputDock =
+    activeAgent != null &&
+    !(
+      developerMode &&
+      acpTab === "debug" &&
+      acpView.hasAcp
+    );
   useEffect(() => {
     if (!showInputDock) {
       setInputDockHeight(0);
