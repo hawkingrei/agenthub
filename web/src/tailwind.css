@@ -10,6 +10,14 @@
   --color-notion-bg-panel: #f8f5ee;
   --color-notion-text: #37352f;
   --color-notion-text-muted: #787774;
+  --color-notion-code-bg: #1e1e1e;
+  --color-notion-payload-bg: #fcfcfa;
+  --color-notion-payload-border: #dde2db;
+  --color-notion-plan-bg: #fffbf1;
+  --color-notion-plan-border: #efd9a9;
+  --color-notion-plan-progress: #e7ebe5;
+  --color-notion-plan-progress-from: #203b2d;
+  --color-notion-plan-progress-to: #4b6b5d;
   --color-notion-border: #e9e9e7;
   --color-notion-border-subtle: rgba(0, 0, 0, 0.06);
   --color-notion-border-faint: rgba(0, 0, 0, 0.05);

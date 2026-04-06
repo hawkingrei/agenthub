@@ -22,6 +22,11 @@
   - moved Team message rendering off the direct `components/thread_rich_text.tsx` dependency
 - moved Team member ACP loading behind a route-local dynamic import in `web/src/pages/team_page.tsx`
 - updated Vite chunk routing so Team-local markdown and Team member ACP have their own named boundaries (`route-shared-rich-text`, `route-teams-agent-acp`) instead of piggybacking silently on the default route graph
+- delayed clearing a selected non-shared thread until task refresh has actually settled:
+  - keep the selected thread while `tasksLoading` is still true
+  - keep the selected thread when `selectedConversationDetail.task` still provides a fallback task record
+  - only clear after the refreshed task list confirms the thread is gone
+- aligned Team Tailwind theme variables with the semantic tokens already referenced by the route-level classes and tests so route-local styling no longer depends on stale theme drift between `tailwind.config.cjs` and `tailwind.css`
 
 ## Validation
 

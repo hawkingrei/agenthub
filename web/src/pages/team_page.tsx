@@ -129,6 +129,7 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedConversationTask,
   resolveSelectedTeamTask,
+  shouldClearSelectedConversationTask,
   resolveTaskConversationMemberIds,
   removeTeamMemberLookupEntry,
   resolveTeamMemberAgentControlState,
@@ -2374,17 +2375,14 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useEffect(() => {
-    if (!resolvedSelectedConversationTaskId) {
-      return;
-    }
-    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
-      return;
-    }
-    if (taskList.length === 0 || selectedConversationDetail) {
-      return;
-    }
-    const stillExists = taskList.some((task) => task.id === resolvedSelectedConversationTaskId);
-    if (stillExists) {
+    const shouldClearSelection = shouldClearSelectedConversationTask({
+      selectedConversationTaskId: resolvedSelectedConversationTaskId,
+      sharedConversationTaskId: sharedConversation?.id ?? null,
+      taskList,
+      selectedConversationDetailPresent: Boolean(selectedConversationDetail),
+      tasksLoading,
+    });
+    if (!shouldClearSelection) {
       return;
     }
     setSelectedConversationTaskId("");
@@ -2394,6 +2392,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedConversationDetail,
     sharedConversation?.id,
     taskList,
+    tasksLoading,
   ]);
 
   useEffect(() => {

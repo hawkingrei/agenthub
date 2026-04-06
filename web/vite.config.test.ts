@@ -48,17 +48,11 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/components/acp_debug.tsx")).toBe(
       "route-agents-debug"
     );
-    expect(resolveManualChunk("/repo/web/src/thread_markdown.ts")).toBe(
-      "route-shared-rich-text"
-    );
-    expect(resolveManualChunk("/repo/web/src/markdown.ts")).toBe(
-      "route-shared-rich-text"
-    );
-    expect(resolveManualChunk("/repo/web/src/components/thread_rich_text.tsx")).toBe(
-      "route-shared-rich-text"
-    );
     expect(resolveManualChunk("/repo/web/src/pages/team/team_thread_rich_text.tsx")).toBe(
-      "route-shared-rich-text"
+      "route-teams-rich-text"
+    );
+    expect(resolveManualChunk("/repo/web/src/pages/team/team_markdown.ts")).toBe(
+      "route-teams-rich-text"
     );
   });
 
@@ -96,6 +90,39 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
       undefined
     );
+    expect(resolveManualChunk("/repo/web/src/thread_markdown.ts")).toBe(
+      "route-agents-workbench"
+    );
+    expect(resolveManualChunk("/repo/web/src/markdown.ts")).toBe(
+      "route-agents-workbench"
+    );
+    expect(resolveManualChunk("/repo/web/src/components/thread_rich_text.tsx")).toBe(
+      "route-agents-workbench"
+    );
+  });
+
+  it("pins shared ui primitives away from the agents debug/workbench chunks", () => {
+    expect(resolveManualChunk("/repo/web/src/ui/primitives.tsx")).toBe(
+      "route-ui-shared"
+    );
+    expect(resolveManualChunk("/repo/web/src/ui/floating_surfaces.ts")).toBe(
+      "route-ui-shared"
+    );
+    expect(resolveManualChunk("/repo/web/src/ui/tailwind_classes.ts")).toBe(
+      "route-ui-shared"
+    );
+    expect(resolveManualChunk("/repo/web/src/input_ime.ts")).toBe(
+      "route-ui-shared"
+    );
+    expect(resolveManualChunk("/repo/web/src/components/status_badge.tsx")).toBe(
+      "route-ui-shared"
+    );
+    expect(
+      resolveManualChunk("/repo/web/node_modules/@mantine/core/esm/components/Button/Button.mjs")
+    ).toBe("vendor-mantine");
+    expect(
+      resolveManualChunk("/repo/web/node_modules/@mantine/hooks/esm/use-media-query/use-media-query.mjs")
+    ).toBe("vendor-mantine");
   });
 
   it("keeps team route code in the team chunk", () => {

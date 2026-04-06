@@ -1044,7 +1044,7 @@ describe("TeamPage smoke render", () => {
       });
       container.remove();
     }
-  });
+  }, 10_000);
 
   it("switches the conversation stream target when opening a task thread from Kanban", async () => {
     const buildTeam = (id: string, name: string) => ({

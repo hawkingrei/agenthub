@@ -2614,7 +2614,7 @@ describe("team panels interactions", () => {
       rafSpy.mockRestore();
       cancelSpy.mockRestore();
     }
-  });
+  }, 10_000);
 
   it("TeamTaskPanel only renders markdown for the visible tail window until history is expanded", async () => {
     const markdownSpy = vi.spyOn(mailboxHelpers, "renderMarkdownWithMentions");

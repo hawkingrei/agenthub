@@ -94,6 +94,34 @@ export function resolveSelectedAgentWorkspaceLabel(
   return "Agent";
 }
 
+type ShouldClearSelectedConversationTaskArgs = {
+  selectedConversationTaskId: string;
+  sharedConversationTaskId: string | null;
+  taskList: TeamTaskRecord[];
+  selectedConversationDetailPresent: boolean;
+  tasksLoading: boolean;
+};
+
+export function shouldClearSelectedConversationTask({
+  selectedConversationTaskId,
+  sharedConversationTaskId,
+  taskList,
+  selectedConversationDetailPresent,
+  tasksLoading,
+}: ShouldClearSelectedConversationTaskArgs): boolean {
+  const normalizedSelectedTaskId = selectedConversationTaskId.trim();
+  if (!normalizedSelectedTaskId) {
+    return false;
+  }
+  if (normalizedSelectedTaskId === (sharedConversationTaskId?.trim() ?? "")) {
+    return false;
+  }
+  if (tasksLoading || selectedConversationDetailPresent || taskList.length === 0) {
+    return false;
+  }
+  return !taskList.some((task) => task.id === normalizedSelectedTaskId);
+}
+
 export function resolveAgentWorkspaceStatusView(
   member: TeamMemberLiveState | null
 ): AgentWorkspaceStatusView {

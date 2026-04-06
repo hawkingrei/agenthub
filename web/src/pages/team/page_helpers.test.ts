@@ -25,6 +25,7 @@ import {
   resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
+  shouldClearSelectedConversationTask,
   resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   refreshTeamConversationMailboxAfterSend,
@@ -316,6 +317,52 @@ describe("team page helpers", () => {
     expect(merged).toHaveLength(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT);
     expect(merged[0]?.message_id).toBe(6);
     expect(merged.at(-1)?.message_id).toBe(25);
+  });
+
+  it("keeps a selected thread while tasks are still loading or detail fallback exists", () => {
+    const taskList = [buildTask("task-1", 10)];
+
+    expect(
+      shouldClearSelectedConversationTask({
+        selectedConversationTaskId: "task-missing",
+        sharedConversationTaskId: "shared",
+        taskList,
+        selectedConversationDetailPresent: false,
+        tasksLoading: true,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldClearSelectedConversationTask({
+        selectedConversationTaskId: "task-missing",
+        sharedConversationTaskId: "shared",
+        taskList,
+        selectedConversationDetailPresent: true,
+        tasksLoading: false,
+      })
+    ).toBe(false);
+  });
+
+  it("clears a non-shared selected thread only after task refresh confirms it disappeared", () => {
+    expect(
+      shouldClearSelectedConversationTask({
+        selectedConversationTaskId: "task-missing",
+        sharedConversationTaskId: "shared",
+        taskList: [buildTask("task-1", 10), buildTask("task-2", 20)],
+        selectedConversationDetailPresent: false,
+        tasksLoading: false,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldClearSelectedConversationTask({
+        selectedConversationTaskId: "shared",
+        sharedConversationTaskId: "shared",
+        taskList: [buildTask("task-1", 10)],
+        selectedConversationDetailPresent: false,
+        tasksLoading: false,
+      })
+    ).toBe(false);
   });
 
   it("upserts run by id and keeps latest-first sort order", () => {

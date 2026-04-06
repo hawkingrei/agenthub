@@ -25,6 +25,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
           const normalized = id.split("\\").join("/");
           if (
@@ -44,16 +45,23 @@ export default defineConfig({
           ) {
             return "route-agents";
           }
+          if (
+            normalized.includes("/src/ui/primitives.tsx") ||
+            normalized.includes("/src/ui/floating_surfaces.ts") ||
+            normalized.includes("/src/ui/tailwind_classes.ts") ||
+            normalized.includes("/src/input_ime.ts") ||
+            normalized.includes("/src/components/status_badge.tsx")
+          ) {
+            return "route-ui-shared";
+          }
           if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
             return "route-teams-agent-acp";
           }
           if (
-            normalized.includes("/src/markdown.ts") ||
-            normalized.includes("/src/thread_markdown.ts") ||
-            normalized.includes("/src/components/thread_rich_text.tsx") ||
+            normalized.includes("/src/pages/team/team_markdown.ts") ||
             normalized.includes("/src/pages/team/team_thread_rich_text.tsx")
           ) {
-            return "route-shared-rich-text";
+            return "route-teams-rich-text";
           }
           if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
             return "route-teams";
@@ -74,6 +82,9 @@ export default defineConfig({
             return "route-agents-terminal";
           }
           if (
+            normalized.includes("/src/markdown.ts") ||
+            normalized.includes("/src/thread_markdown.ts") ||
+            normalized.includes("/src/components/thread_rich_text.tsx") ||
             normalized.includes("/src/components/agents_workbench.tsx") ||
             normalized.includes("/src/components/output_body.tsx") ||
             normalized.includes("/src/components/input_dock.tsx") ||
