@@ -18,9 +18,11 @@ PR follow-up review on the Team/ACP frontend still had a few low-risk correctnes
 - Hardened `web/src/components/acp_panel.tsx` lazy debug loading:
   - reset the cached module promise when the import rejects
   - allow a later Debug-tab visit to retry instead of staying permanently poisoned until reload
-- Removed the unused `onRefresh` prop from `web/src/pages/team_member_acp_panel.tsx` and updated focused tests.
+- Removed the dead Team ACP `onRefresh` wiring so `TeamMemberAcpPanel` no longer receives an unused refresh prop from `web/src/pages/team_page.tsx`.
 - Trimmed agent ids in `web/src/app_permission_polling.ts` before building global permission-poll batches.
-- Added a focused Team markdown regression in `web/src/pages/team/team_markdown.test.ts` proving raw HTML stays escaped and unsafe `javascript:` links do not survive rendering.
+- Added focused Team markdown regressions in `web/src/pages/team/team_markdown.test.ts` and `web/src/pages/team/team_thread_rich_text.test.tsx` proving raw HTML stays escaped and unsafe `javascript:` links do not survive rendering.
+- Centralized Team conversation mailbox reset paths in `web/src/pages/team/use_team_conversation_actions.ts` so scope changes, empty thread states, and refresh failures share one clearing path.
+- Centralized Team member ACP SSE teardown in `web/src/pages/team/use_team_member_acp_effects.ts` so reconnect, error, and unmount cleanup share one helper.
 
 ## Validation
 

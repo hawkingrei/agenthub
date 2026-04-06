@@ -186,12 +186,29 @@ export function useTeamMemberAcpEffects({
       source = null;
     };
 
+    const resetMemberAcpStream = ({
+      clearTimer = true,
+      disablePolling = false,
+    }: {
+      clearTimer?: boolean;
+      disablePolling?: boolean;
+    } = {}) => {
+      if (clearTimer) {
+        clearReconnectTimer();
+      }
+      closeSource();
+      if (disablePolling) {
+        setPollFallbackEnabled(false);
+        return;
+      }
+      syncPollFallbackEnabled();
+    };
+
     const scheduleReconnect = () => {
       if (cancelled) {
         return;
       }
-      clearReconnectTimer();
-      syncPollFallbackEnabled();
+      resetMemberAcpStream();
       const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
       reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
       reconnectTimer = window.setTimeout(() => {
@@ -203,7 +220,7 @@ export function useTeamMemberAcpEffects({
     };
 
     function openSource() {
-      closeSource();
+      resetMemberAcpStream({ clearTimer: false });
       sseConnectingRef.current = true;
       syncPollFallbackEnabled();
       const nextSource = new EventSource(
@@ -243,7 +260,7 @@ export function useTeamMemberAcpEffects({
           nextSource.close();
           return;
         }
-        closeSource();
+        resetMemberAcpStream({ clearTimer: false });
         scheduleReconnect();
       };
     }
@@ -251,9 +268,7 @@ export function useTeamMemberAcpEffects({
     openSource();
     return () => {
       cancelled = true;
-      clearReconnectTimer();
-      closeSource();
-      setPollFallbackEnabled(false);
+      resetMemberAcpStream({ disablePolling: true });
     };
   }, [
     memberAcpSyncEnabled,

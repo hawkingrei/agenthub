@@ -87,10 +87,24 @@ export function useTeamConversationActions({
 
   const clearConversationCollections = useCallback(() => {
     setTaskMessages((current) => (current.length === 0 ? current : []));
-    setConversationMailboxMessages((current) =>
-      current.length === 0 ? current : []
-    );
+    setConversationMailboxMessages((current) => (current.length === 0 ? current : []));
   }, [setConversationMailboxMessages, setTaskMessages]);
+  const replaceConversationMailboxMessages = useCallback(
+    (messages: TeamActorMessageRecord[]) => {
+      startTransition(() => {
+        setConversationMailboxMessages((current) => {
+          if (messages.length === 0) {
+            return current.length === 0 ? current : [];
+          }
+          return messages;
+        });
+      });
+    },
+    [setConversationMailboxMessages]
+  );
+  const clearConversationMailboxMessages = useCallback(() => {
+    replaceConversationMailboxMessages([]);
+  }, [replaceConversationMailboxMessages]);
   const selectedConversationBootstrapKind =
     selectedConversation?.context?.bootstrap_kind;
 
@@ -218,22 +232,16 @@ export function useTeamConversationActions({
           if (!isCurrentRequest()) {
             return;
           }
-          startTransition(() => {
-            setConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
-          });
+          replaceConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
         } else {
-          startTransition(() => {
-            setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
-          });
+          clearConversationMailboxMessages();
         }
       } catch (err) {
         if (!isCurrentRequest()) {
           return;
         }
         setError(parseErrorMessage(err));
-        startTransition(() => {
-          setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
-        });
+        clearConversationMailboxMessages();
       } finally {
         if (isCurrentRequest()) {
           setTaskMessagesLoading(false);
@@ -242,13 +250,14 @@ export function useTeamConversationActions({
     },
     [
       clearConversationCollections,
+      clearConversationMailboxMessages,
       selectedConversation,
       selectedConversationLatestRun,
       selectedTeamId,
-      setConversationMailboxMessages,
       setError,
       setTaskMessages,
       setTaskMessagesLoading,
+      replaceConversationMailboxMessages,
       token,
     ]
   );

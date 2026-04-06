@@ -4246,7 +4246,6 @@ export function TeamPage(props: TeamPageProps) {
                         onAcpSetModel={onSetTeamMemberAcpModel}
                         onAcpSetConfig={onSetTeamMemberAcpConfig}
                         onForceNewSession={onForceNewTeamMemberSession}
-                        onRefresh={onRefreshMemberConsole}
                         onLoadOlder={onLoadOlderMemberConsole}
                       />
                     </Suspense>
