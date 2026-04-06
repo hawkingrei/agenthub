@@ -84,9 +84,7 @@ import {
   type AgentPresetId,
 } from "./agent_presets";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
-import { AgentsPanel } from "./components/agents_panel";
-import { OutputHeader } from "./components/output_header";
-import { OutputErrorBoundary } from "./components/output_error_boundary";
+import { AgentsRouteShell } from "./components/agents_route_shell";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
@@ -133,13 +131,6 @@ import {
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   AUTH_CARD_BASE_CLASS,
   AUTH_PAGE_CLASS,
-  APP_WORKSPACE_ROOT_CLASS,
-  APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
-  APP_WORKSPACE_RIGHT_CLASS,
-  APP_WORKSPACE_SPLITTER_CLASS,
-  OUTPUT_BODY_ACP_ROOT_CLASS,
-  OUTPUT_BODY_LOADING_CLASS,
-  OUTPUT_BODY_ROOT_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
@@ -238,11 +229,6 @@ const LazyPermissionModal = React.lazy(async () => {
   return { default: module.PermissionModal };
 });
 
-const LazyAgentsWorkbench = React.lazy(async () => {
-  const module = await import("./components/agents_workbench");
-  return { default: module.AgentsWorkbench };
-});
-
 function AuthRedirect(): null {
   useEffect(() => {
     clearAuthAndRedirect(`${location.pathname}${location.search}${location.hash}`);
@@ -282,17 +268,6 @@ function ForbiddenRoute() {
       title="Forbidden"
       message="You do not have access to this page."
     />
-  );
-}
-
-function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
-  return (
-    <div className={hasAcp ? OUTPUT_BODY_ACP_ROOT_CLASS : OUTPUT_BODY_ROOT_CLASS}>
-      <div className={OUTPUT_BODY_LOADING_CLASS}>
-        <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-        <div className="label">Loading...</div>
-      </div>
-    </div>
   );
 }
 
@@ -3012,109 +2987,86 @@ export function App() {
       )}
 
       {auth && (
-        <main
-          className={
-            agentsCollapsed
-              ? APP_WORKSPACE_ROOT_COLLAPSED_CLASS
-              : APP_WORKSPACE_ROOT_CLASS
+        <AgentsRouteShell
+          agentsCollapsed={agentsCollapsed}
+          workspaceRef={workspaceRef}
+          workspaceStyle={workspaceStyle}
+          onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
+          agentsPanelProps={{
+            agents,
+            activeAgent,
+            agentsCollapsed,
+            compactRows: agentsPanelShowsCompactRows,
+            hasPendingPermissions,
+            pendingPermissionCounts,
+            startingAgentIds,
+            onCollapse: handleCollapseAgents,
+            onExpand: handleExpandAgents,
+            onCreateAgent: openCreateAgentModal,
+            onSelectAgent: handleSelectAgent,
+            onToggleCodeMode: onSetCodeMode,
+            onStartAgent: onStartAgent,
+            onStopAgent: onStopAgent,
+            onDeleteAgent: onDeleteAgent,
+          }}
+          outputHeaderProps={{
+            activeAgent: activeAgentRecord,
+            activeSessionId,
+            developerMode,
+            hasAcp: acpView.hasAcp,
+            thinkingStartTs,
+            runStatus: acpView.runStatus?.status ?? null,
+            modelLabel: activeAgentModelLabel,
+          }}
+          workbenchProps={
+            activeAgent
+              ? {
+                  activeAgent,
+                  activeAgentRecord,
+                  activeSessionId,
+                  developerMode,
+                  acpTab,
+                  acpView,
+                  eventMeta,
+                  isAgentActive,
+                  outputs,
+                  terminalOutputs,
+                  scopedAcpPermissionHistory,
+                  isOutputLoading,
+                  isConversationLoading,
+                  terminalRef,
+                  input,
+                  inputHistory,
+                  ansi,
+                  canControlAcp,
+                  canInterruptAcpRun,
+                  acpModeId,
+                  acpModelId,
+                  acpConfigId,
+                  acpConfigValue,
+                  isComposingRef,
+                  onLoadOlderEvents: loadOlderEvents,
+                  onTerminalScroll: handleTerminalScroll,
+                  onSelectTab: handleAcpTabSelect,
+                  onAcpModeIdChange: setAcpModeId,
+                  onAcpModelIdChange: setAcpModelId,
+                  onAcpConfigIdChange: setAcpConfigId,
+                  onAcpConfigValueChange: setAcpConfigValue,
+                  onAcpSetMode: onAcpSetMode,
+                  onAcpSetModel: onAcpSetModel,
+                  onAcpSetConfig: onAcpSetConfig,
+                  onAcpCancel: onAcpCancel,
+                  onAcpClearSession: onAcpClearSession,
+                  onInputChange: onInputChange,
+                  onSelectInputHistory: onSelectInputHistory,
+                  onNavigateInputHistory: onNavigateInputHistory,
+                  onSendAcpInput: sendAcpInput,
+                  onJumpToTerminalBottom: jumpToTerminalBottom,
+                  showTerminalJump: terminalShowJump,
+                }
+              : null
           }
-          ref={workspaceRef}
-          style={workspaceStyle}
-        >
-          <AgentsPanel
-            agents={agents}
-            activeAgent={activeAgent}
-            agentsCollapsed={agentsCollapsed}
-            compactRows={agentsPanelShowsCompactRows}
-            hasPendingPermissions={hasPendingPermissions}
-            pendingPermissionCounts={pendingPermissionCounts}
-            startingAgentIds={startingAgentIds}
-            onCollapse={handleCollapseAgents}
-            onExpand={handleExpandAgents}
-            onCreateAgent={openCreateAgentModal}
-            onSelectAgent={handleSelectAgent}
-            onToggleCodeMode={onSetCodeMode}
-            onStartAgent={onStartAgent}
-            onStopAgent={onStopAgent}
-            onDeleteAgent={onDeleteAgent}
-          />
-          {!agentsCollapsed && (
-            <div
-              className={APP_WORKSPACE_SPLITTER_CLASS}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize agents sidebar"
-              onPointerDown={handleAgentsSplitterPointerDown}
-            />
-          )}
-          <div className={APP_WORKSPACE_RIGHT_CLASS}>
-            <div className={acpView.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"}>
-              <OutputHeader
-                activeAgent={activeAgentRecord}
-                activeSessionId={activeSessionId}
-                developerMode={developerMode}
-                hasAcp={acpView.hasAcp}
-                thinkingStartTs={thinkingStartTs}
-                runStatus={acpView.runStatus?.status ?? null}
-                modelLabel={activeAgentModelLabel}
-              />
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
-              {activeAgent ? (
-                <OutputErrorBoundary>
-                  <Suspense
-                    fallback={<WorkbenchBodyFallback hasAcp={acpView.hasAcp} />}
-                  >
-                    <LazyAgentsWorkbench
-                      activeAgent={activeAgent}
-                      activeAgentRecord={activeAgentRecord}
-                      activeSessionId={activeSessionId}
-                      developerMode={developerMode}
-                      acpTab={acpTab}
-                      acpView={acpView}
-                      eventMeta={eventMeta}
-                      isAgentActive={isAgentActive}
-                      outputs={outputs}
-                      terminalOutputs={terminalOutputs}
-                      scopedAcpPermissionHistory={scopedAcpPermissionHistory}
-                      isOutputLoading={isOutputLoading}
-                      isConversationLoading={isConversationLoading}
-                      terminalRef={terminalRef}
-                      input={input}
-                      inputHistory={inputHistory}
-                      ansi={ansi}
-                      canControlAcp={canControlAcp}
-                      canInterruptAcpRun={canInterruptAcpRun}
-                      acpModeId={acpModeId}
-                      acpModelId={acpModelId}
-                      acpConfigId={acpConfigId}
-                      acpConfigValue={acpConfigValue}
-                      isComposingRef={isComposingRef}
-                      onLoadOlderEvents={loadOlderEvents}
-                      onTerminalScroll={handleTerminalScroll}
-                      onSelectTab={handleAcpTabSelect}
-                      onAcpModeIdChange={setAcpModeId}
-                      onAcpModelIdChange={setAcpModelId}
-                      onAcpConfigIdChange={setAcpConfigId}
-                      onAcpConfigValueChange={setAcpConfigValue}
-                      onAcpSetMode={onAcpSetMode}
-                      onAcpSetModel={onAcpSetModel}
-                      onAcpSetConfig={onAcpSetConfig}
-                      onAcpCancel={onAcpCancel}
-                      onAcpClearSession={onAcpClearSession}
-                      onInputChange={onInputChange}
-                      onSelectInputHistory={onSelectInputHistory}
-                      onNavigateInputHistory={onNavigateInputHistory}
-                      onSendAcpInput={sendAcpInput}
-                      onJumpToTerminalBottom={jumpToTerminalBottom}
-                      showTerminalJump={terminalShowJump}
-                    />
-                  </Suspense>
-                </OutputErrorBoundary>
-              ) : null}
-            </div>
-          </div>
-        </main>
+        />
       )}
 
       {auth && showCreateAgent && (

@@ -50,6 +50,12 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - `web/src/components/agents_workbench_types.ts`
   - `web/src/components/use_agents_workbench_panel.ts`
   This leaves `AgentsWorkbench` as a thin render shell while the hook owns ACP conversation/debug prop shaping and dock-clearance coordination.
+- Continued the root-shell decomposition by moving the authenticated agents workspace markup out of `web/src/app.tsx` into a dedicated `web/src/components/agents_route_shell.tsx` view/wrapper pair. The new shell owns:
+  - `AgentsPanel`
+  - output header placement
+  - splitter chrome
+  - lazy `AgentsWorkbench` mounting plus fallback/error-boundary wrapping
+  while `web/src/app.tsx` now only assembles shell props and route state.
 - Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
 - Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
 - Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
@@ -112,6 +118,7 @@ Commands run locally:
 ```bash
 cd web && npm run test -- vite.config.test.ts src/app.permission_scope.test.ts src/acp_panel.test.tsx src/create_agent_modal.test.tsx src/permission_modal.test.tsx src/components/agent_node_section.test.tsx
 cd web && npm run test -- src/agents_workbench.test.tsx src/output_body.test.tsx src/acp_debug.test.tsx
+cd web && npm run test -- src/agents_route_shell.test.tsx src/app.permission_scope.test.ts src/pages/team_page.smoke.test.tsx src/agents_workbench.test.tsx
 cd web && npm run lint -- --ignore-pattern dist-debug
 cd web && npm run build
 make build-web
@@ -156,6 +163,10 @@ Live verification notes:
   - `https://agenthub.hawkingrei.com/` renders `No agent selected` without eagerly fetching `route-agents-workbench`
   - `https://agenthub.hawkingrei.com/teams/...` stays `ONLINE · SSE CONNECTED`
   - the only console noise remains the existing `favicon.ico 404`
+- Follow-up live regression after extracting `AgentsRouteShell` out of `web/src/app.tsx` still shows the same visible behavior:
+  - root page remains `No agent selected` with no eager `route-agents-workbench` request
+  - Team page remains `ONLINE · SSE CONNECTED`
+  - console noise is unchanged (`favicon.ico 404` on `/`, two existing `404`s on `/teams/...`)
 
 ## Follow-up
 
