@@ -48,6 +48,18 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/components/acp_debug.tsx")).toBe(
       "route-agents-debug"
     );
+    expect(resolveManualChunk("/repo/web/src/thread_markdown.ts")).toBe(
+      "route-shared-rich-text"
+    );
+    expect(resolveManualChunk("/repo/web/src/markdown.ts")).toBe(
+      "route-shared-rich-text"
+    );
+    expect(resolveManualChunk("/repo/web/src/components/thread_rich_text.tsx")).toBe(
+      "route-shared-rich-text"
+    );
+    expect(resolveManualChunk("/repo/web/src/pages/team/team_thread_rich_text.tsx")).toBe(
+      "route-shared-rich-text"
+    );
   });
 
   it("keeps the agent index shell in the primary agents route chunk", () => {
@@ -90,6 +102,9 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/pages/team_page.tsx")).toBe(
       "route-teams"
     );
+    expect(resolveManualChunk("/repo/web/src/pages/team_member_acp_panel.tsx")).toBe(
+      "route-teams-agent-acp"
+    );
   });
 
   it("does not modulepreload lazy agents workbench or debug chunks", () => {
@@ -98,6 +113,7 @@ describe("vite manualChunks", () => {
         "assets/route-agents-abc.js",
         "assets/route-agents-workbench-abc.js",
         "assets/route-agents-debug-abc.js",
+        "assets/route-teams-agent-acp-abc.js",
         "assets/vendor-mantine-abc.js",
       ])
     ).toEqual([

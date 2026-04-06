@@ -6,13 +6,12 @@ import {
   TeamConversationMessageRecord,
   api,
 } from "../api";
-import { preloadThreadMarkdownAssets, ThreadRichText } from "../components/thread_rich_text";
-import { isImeComposing } from "../components/input_dock";
 import {
   DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
   windowConversation,
 } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
+import { isImeComposing } from "../input_ime";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import { ActionButton, IconButton } from "../ui/primitives";
 import { TeamMemberLiveState } from "./team/member_helpers";
@@ -29,6 +28,7 @@ import {
   resolveDisplayName,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
+import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
@@ -659,9 +659,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     formatTs,
   } = props;
 
-  React.useEffect(() => {
-    void preloadThreadMarkdownAssets().catch(() => {});
-  }, []);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const messageDraftComposingRef = React.useRef(false);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
@@ -958,7 +955,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         active: visibleWaterfallItems.length > 0,
         stickToBottom,
         pendingCount: 0,
-      }),
+    }),
     [stickToBottom, visibleWaterfallItems.length]
   );
   const renderTeamMessageHtml = React.useCallback(
@@ -1176,7 +1173,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
                       className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
                     >
-                      <ThreadRichText
+                      <TeamThreadRichText
                         className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                         text={item.text}
                         renderHtml={renderTeamMessageHtml}

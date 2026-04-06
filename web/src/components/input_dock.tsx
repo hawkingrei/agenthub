@@ -10,6 +10,7 @@ import {
   INPUT_DOCK_SEND_BUTTON_CLASS,
   INPUT_DOCK_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
+import { isImeComposing } from "../input_ime";
 
 type InputDockProps = {
   input: string;
@@ -55,14 +56,6 @@ type InputDockOutsideCloseDocument = Pick<
   Document,
   "addEventListener" | "removeEventListener"
 >;
-
-export function isImeComposing(
-  currentRefState: boolean,
-  nativeIsComposing: boolean,
-  nativeKeyCode?: number
-): boolean {
-  return currentRefState || nativeIsComposing || nativeKeyCode === 229;
-}
 
 export function shouldCloseHistoryFromPointerTarget(
   target: EventTarget | null,

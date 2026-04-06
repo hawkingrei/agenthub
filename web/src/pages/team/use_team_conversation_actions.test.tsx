@@ -376,6 +376,46 @@ describe("useTeamConversationActions", () => {
     }
   });
 
+  it("does not refetch team task detail after confirming a thread has no latest run", async () => {
+    mockedApi.listTeamTaskMessages
+      .mockResolvedValueOnce([buildTaskMessage(28, "tail-1")])
+      .mockResolvedValueOnce([buildTaskMessage(29, "tail-2")]);
+    mockedApi.getTeamTask.mockResolvedValue(
+      buildTaskThreadDetail({
+        latest_run: null,
+      })
+    );
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversation: buildTaskThreadTask(),
+      selectedConversationLatestRun: null,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      expect(captured).not.toBeNull();
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await captured?.refreshTaskMessages();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(2);
+      expect(mockedApi.getTeamTask).toHaveBeenCalledTimes(1);
+      expect(mockedApi.getTeamRunSnapshot).not.toHaveBeenCalled();
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("keeps shared-thread message state bounded to recent-20 across repeated refreshes", async () => {
     const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
     const mailboxMessages = createStateSetter<TeamActorMessageRecord[]>([]);

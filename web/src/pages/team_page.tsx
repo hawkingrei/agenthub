@@ -57,7 +57,6 @@ import {
 } from "../worktree_defaults";
 import { TeamEventsPanel } from "./team_events_panel";
 import { TeamMailboxPanel } from "./team_mailbox_panel";
-import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { normalizeTeamMemberLifecycle } from "./team_member_status_strip";
 import { TeamConversationPanel } from "./team_conversation_panel";
@@ -204,6 +203,8 @@ import {
   TEAM_WORKBENCH_PANEL_CLASS,
   TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
 } from "../ui/tailwind_classes";
+
+type TeamMemberAcpPanelComponent = typeof import("./team_member_acp_panel")["TeamMemberAcpPanel"];
 
 export {
   buildMailboxForwardChatPayload,
@@ -794,6 +795,8 @@ export function TeamPage(props: TeamPageProps) {
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamTaskRunCompilePreviewRecord | null>(null);
+  const [teamMemberAcpPanelView, setTeamMemberAcpPanelView] =
+    useState<TeamMemberAcpPanelComponent | null>(null);
 
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
@@ -2855,6 +2858,20 @@ export function TeamPage(props: TeamPageProps) {
     setWorkspaceDetailsOpen(false);
   }, [props.developerMode, selectedTeamId, tab]);
   React.useEffect(() => {
+    if (tab !== "agent_acp" || teamMemberAcpPanelView) {
+      return;
+    }
+    let cancelled = false;
+    void import("./team_member_acp_panel").then((module) => {
+      if (!cancelled) {
+        setTeamMemberAcpPanelView(() => module.TeamMemberAcpPanel);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, teamMemberAcpPanelView]);
+  React.useEffect(() => {
     if (!props.developerMode && tab === "debug") {
       setTab("conversation");
       setWorkspaceDetailsOpen(false);
@@ -4168,34 +4185,45 @@ export function TeamPage(props: TeamPageProps) {
                   {tab === "tasks" && tasksPanel}
 
                   {tab === "agent_acp" && (
-                    <TeamMemberAcpPanel
-                      developerMode={props.developerMode}
-                      selectedMemberId={selectedAgentWorkspaceMemberId}
-                      memberTitle={selectedAgentLabel}
-                      hideMemberTitle={true}
-                      selectedMemberSnapshot={selectedAgentWorkspaceSnapshot}
-                      selectedMemberRole={
-                        selectedAgentWorkspaceRuntimeMember?.role ??
-                        selectedAgentWorkspaceSnapshot?.role ??
-                        null
-                      }
-                      selectedSessionId={selectedAgentWorkspaceSessionId}
-                      memberEvents={memberEvents}
-                      memberEventsHasMore={memberEventsHasMore}
-                      memberEventsLoading={memberEventsLoading}
-                      eventsLoading={eventsLoading}
-                      oldestMemberEventId={oldestMemberEventId}
-                      onSendInput={onSendAgentAcpInput}
-                      canControlAcp={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
-                      canInterrupt={isAgentActiveStatus(selectedAgentWorkspaceAgent?.status ?? null)}
-                      onInterrupt={onCancelTeamMemberAcp}
-                      onAcpSetMode={onSetTeamMemberAcpMode}
-                      onAcpSetModel={onSetTeamMemberAcpModel}
-                      onAcpSetConfig={onSetTeamMemberAcpConfig}
-                      onForceNewSession={onForceNewTeamMemberSession}
-                      onRefresh={onRefreshMemberConsole}
-                      onLoadOlder={onLoadOlderMemberConsole}
-                    />
+                    teamMemberAcpPanelView ? (
+                      React.createElement(teamMemberAcpPanelView, {
+                        developerMode: props.developerMode,
+                        selectedMemberId: selectedAgentWorkspaceMemberId,
+                        memberTitle: selectedAgentLabel,
+                        hideMemberTitle: true,
+                        selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
+                        selectedMemberRole:
+                          selectedAgentWorkspaceRuntimeMember?.role ??
+                          selectedAgentWorkspaceSnapshot?.role ??
+                          null,
+                        selectedSessionId: selectedAgentWorkspaceSessionId,
+                        memberEvents,
+                        memberEventsHasMore,
+                        memberEventsLoading,
+                        eventsLoading,
+                        oldestMemberEventId,
+                        onSendInput: onSendAgentAcpInput,
+                        canControlAcp: isAgentActiveStatus(
+                          selectedAgentWorkspaceAgent?.status ?? null
+                        ),
+                        canInterrupt: isAgentActiveStatus(
+                          selectedAgentWorkspaceAgent?.status ?? null
+                        ),
+                        onInterrupt: onCancelTeamMemberAcp,
+                        onAcpSetMode: onSetTeamMemberAcpMode,
+                        onAcpSetModel: onSetTeamMemberAcpModel,
+                        onAcpSetConfig: onSetTeamMemberAcpConfig,
+                        onForceNewSession: onForceNewTeamMemberSession,
+                        onRefresh: onRefreshMemberConsole,
+                        onLoadOlder: onLoadOlderMemberConsole,
+                      })
+                    ) : (
+                      <div className={teamSectionCardClassName}>
+                        <p className={teamSectionBodyTextClassName}>
+                          Loading agent ACP...
+                        </p>
+                      </div>
+                    )
                   )}
 
                   {tab === "overview" && activeRunForSelectedTeam && (

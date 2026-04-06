@@ -141,11 +141,9 @@ export function useTeamConversationActions({
         const shouldFetchConversationDetail =
           selectedConversationId === taskId &&
           selectedConversationRunId.length === 0 &&
-          (cachedConversationRunId === undefined ||
-            (cachedConversationRunId === null &&
-              (lastDetailFetchAt === null ||
-            now - lastDetailFetchAt >=
-                TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS)));
+          cachedConversationRunId === undefined &&
+          (lastDetailFetchAt === null ||
+            now - lastDetailFetchAt >= TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS);
         if (shouldFetchConversationDetail) {
           conversationDetailFetchAtRef.current.set(taskId, now);
         }

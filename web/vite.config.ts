@@ -14,6 +14,7 @@ export default defineConfig({
             !dep.includes("route-auth-") &&
             !dep.includes("route-agents-workbench-") &&
             !dep.includes("route-agents-debug-") &&
+            !dep.includes("route-teams-agent-acp-") &&
             !dep.includes("route-teams-") &&
             !dep.includes("vendor-markdown-")
         );
@@ -43,6 +44,17 @@ export default defineConfig({
           ) {
             return "route-agents";
           }
+          if (normalized.includes("/src/pages/team_member_acp_panel.tsx")) {
+            return "route-teams-agent-acp";
+          }
+          if (
+            normalized.includes("/src/markdown.ts") ||
+            normalized.includes("/src/thread_markdown.ts") ||
+            normalized.includes("/src/components/thread_rich_text.tsx") ||
+            normalized.includes("/src/pages/team/team_thread_rich_text.tsx")
+          ) {
+            return "route-shared-rich-text";
+          }
           if (normalized.includes("/src/pages/team_page.tsx") || normalized.includes("/src/pages/team/")) {
             return "route-teams";
           }
@@ -69,8 +81,7 @@ export default defineConfig({
             normalized.includes("/src/components/acp_conversation.tsx") ||
             normalized.includes("/src/components/acp_plan.tsx") ||
             normalized.includes("/src/components/acp_tool_") ||
-            normalized.includes("/src/components/acp_request_user_input_cards.tsx") ||
-            normalized.includes("/src/components/thread_rich_text.tsx")
+            normalized.includes("/src/components/acp_request_user_input_cards.tsx")
           ) {
             return "route-agents-workbench";
           }
