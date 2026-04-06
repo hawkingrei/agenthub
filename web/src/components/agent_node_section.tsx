@@ -11,7 +11,7 @@ type AgentNodeDraft = {
   defaultWorktreeRoot: string;
 };
 
-type AgentNodeSectionProps = {
+export type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
   agents: AgentRecord[];
   targetNodeId: string;

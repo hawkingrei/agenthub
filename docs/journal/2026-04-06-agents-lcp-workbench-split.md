@@ -168,6 +168,7 @@ Live verification notes:
   - Team page remains `ONLINE · SSE CONNECTED`
   - console noise is unchanged (`favicon.ico 404` on `/`, two existing `404`s on `/teams/...`)
 - Follow-up route-shell decomposition extracted the remaining `AgentsRouteShell` prop assembly out of `web/src/app.tsx` into `web/src/components/agents_route_shell_props.ts`, and memoized `AgentsRouteShell`/`AgentsRouteShellView` so unrelated root rerenders stop rebuilding the shell prop bags by default.
+- Follow-up modal-shell cleanup extracted the remaining create-agent / node-section / permission-modal prop assembly into `web/src/components/agents_route_modal_props.ts`, so `web/src/app.tsx` no longer builds those large modal prop bags inline during every root render.
 
 ## Follow-up
 

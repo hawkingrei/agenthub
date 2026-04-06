@@ -86,6 +86,11 @@ import {
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
 import { AgentsRouteShell } from "./components/agents_route_shell";
 import {
+  buildAgentNodeSectionProps,
+  buildCreateAgentModalProps,
+  buildPermissionModalProps,
+} from "./components/agents_route_modal_props";
+import {
   buildAgentsPanelProps,
   buildAgentsWorkbenchProps,
   buildOutputHeaderProps,
@@ -1521,6 +1526,10 @@ export function App() {
     void refreshAgentNodes({ silent: true });
   }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
 
+  const closeCreateAgentModal = useCallback(() => {
+    setShowCreateAgent(false);
+  }, []);
+
   useEffect(() => {
     if (!token || auth?.role !== "root" || !isAdminRoute) {
       setSafePaths([]);
@@ -2232,7 +2241,7 @@ export function App() {
     [applyTargetNodeSelection, targetNodeId, token]
   );
 
-  const onCreateAgent = async () => {
+  const onCreateAgent = useCallback(async () => {
     if (!token) return;
     if (createAgentBusyRef.current) return;
     createAgentBusyRef.current = true;
@@ -2307,7 +2316,20 @@ export function App() {
       createAgentBusyRef.current = false;
       setCreateAgentBusy(false);
     }
-  };
+  }, [
+    token,
+    targetNodeId,
+    agentName,
+    agentWorkdir,
+    selectedTargetNodeDefaultWorktreeRoot,
+    worktreeMode,
+    agentPresetId,
+    worktreeRepo,
+    worktreeRef,
+    codeMode,
+    refreshAgents,
+    applyTargetNodeSelection,
+  ]);
 
   const onStartAgent = useCallback(async (id: string) => {
     if (!token) return;
@@ -2648,7 +2670,7 @@ export function App() {
     setAgentsCollapsed(true);
   }, [agentSessions]);
 
-  const onRespondPermission = async (
+  const onRespondPermission = useCallback(async (
     agentId: string,
     permissionId: string,
     optionId?: string
@@ -2669,7 +2691,7 @@ export function App() {
     } finally {
       setPermissionBusy(null);
     }
-  };
+  }, [token]);
 
   const onCreateJoin = async () => {
     if (!token) return;
@@ -2961,6 +2983,110 @@ export function App() {
     ]
   );
 
+  const canManageNodes = canManageAgentNodes(auth);
+
+  const createAgentModalProps = useMemo(
+    () =>
+      buildCreateAgentModalProps({
+        agentName,
+        setAgentName,
+        agentWorkdir,
+        setAgentWorkdir,
+        agentPresetId,
+        setAgentPresetId,
+        worktreeMode,
+        setWorktreeMode: handleWorktreeModeChange,
+        worktreeRepo,
+        setWorktreeRepo,
+        worktreeRef,
+        setWorktreeRef,
+        codeMode,
+        setCodeMode,
+        worktreeError,
+        createBusy: createAgentBusy,
+        workdirPlaceholder: selectedTargetNodeDefaultWorktreeRoot,
+        onCreateAgent: onCreateAgent,
+        onClose: closeCreateAgentModal,
+      }),
+    [
+      agentName,
+      agentWorkdir,
+      agentPresetId,
+      worktreeMode,
+      worktreeRepo,
+      worktreeRef,
+      codeMode,
+      worktreeError,
+      createAgentBusy,
+      selectedTargetNodeDefaultWorktreeRoot,
+      onCreateAgent,
+      closeCreateAgentModal,
+      handleWorktreeModeChange,
+    ]
+  );
+
+  const agentNodeSectionProps = useMemo(
+    () =>
+      buildAgentNodeSectionProps(
+        canManageNodes
+          ? {
+              nodes: agentNodes,
+              agents,
+              targetNodeId,
+              onTargetNodeIdChange: applyTargetNodeSelection,
+              nodeIdInput,
+              onNodeIdInputChange: setNodeIdInput,
+              nodeNameInput,
+              onNodeNameInputChange: setNodeNameInput,
+              grpcTargetInput: nodeGrpcTargetInput,
+              onGrpcTargetInputChange: setNodeGrpcTargetInput,
+              tlsServerNameInput: nodeTlsServerNameInput,
+              onTlsServerNameInputChange: setNodeTlsServerNameInput,
+              defaultWorktreeRootInput: nodeDefaultWorktreeRootInput,
+              onDefaultWorktreeRootInputChange: setNodeDefaultWorktreeRootInput,
+              createBusy: createAgentNodeBusy,
+              updatingNodeIds: updatingAgentNodeIds,
+              deletingNodeIds: deletingAgentNodeIds,
+              onCreateNode: onCreateAgentNode,
+              onUpdateNode: onUpdateAgentNode,
+              onDeleteNode: onDeleteAgentNode,
+            }
+          : null
+      ),
+    [
+      canManageNodes,
+      agentNodes,
+      agents,
+      targetNodeId,
+      applyTargetNodeSelection,
+      nodeIdInput,
+      nodeNameInput,
+      nodeGrpcTargetInput,
+      nodeTlsServerNameInput,
+      nodeDefaultWorktreeRootInput,
+      createAgentNodeBusy,
+      updatingAgentNodeIds,
+      deletingAgentNodeIds,
+      onCreateAgentNode,
+      onUpdateAgentNode,
+      onDeleteAgentNode,
+    ]
+  );
+
+  const permissionModalProps = useMemo(
+    () =>
+      buildPermissionModalProps(
+        activeAgent && scopedAcpPermissions.length > 0
+          ? {
+              permissions: scopedAcpPermissions,
+              permissionBusy,
+              onRespond: onRespondPermission,
+            }
+          : null
+      ),
+    [activeAgent, scopedAcpPermissions, permissionBusy, onRespondPermission]
+  );
+
   if (routeLocation.pathname.startsWith("/join")) {
     return (
       <div className="app bg-white" ref={appRootRef}>
@@ -3158,64 +3284,19 @@ export function App() {
 
       {auth && showCreateAgent && (
         <Suspense fallback={null}>
-          <LazyCreateAgentModal
-            agentName={agentName}
-            setAgentName={setAgentName}
-            agentWorkdir={agentWorkdir}
-            setAgentWorkdir={setAgentWorkdir}
-            agentPresetId={agentPresetId}
-            setAgentPresetId={setAgentPresetId}
-            worktreeMode={worktreeMode}
-            setWorktreeMode={handleWorktreeModeChange}
-            worktreeRepo={worktreeRepo}
-            setWorktreeRepo={setWorktreeRepo}
-            worktreeRef={worktreeRef}
-            setWorktreeRef={setWorktreeRef}
-            codeMode={codeMode}
-            setCodeMode={setCodeMode}
-            worktreeError={worktreeError}
-            createBusy={createAgentBusy}
-            workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
-            onCreateAgent={onCreateAgent}
-            onClose={() => setShowCreateAgent(false)}
-          >
-            {canManageAgentNodes(auth) && (
+          <LazyCreateAgentModal {...createAgentModalProps}>
+            {agentNodeSectionProps ? (
               <Suspense fallback={null}>
-                <LazyAgentNodeSection
-                  nodes={agentNodes}
-                  agents={agents}
-                  targetNodeId={targetNodeId}
-                  onTargetNodeIdChange={applyTargetNodeSelection}
-                  nodeIdInput={nodeIdInput}
-                  onNodeIdInputChange={setNodeIdInput}
-                  nodeNameInput={nodeNameInput}
-                  onNodeNameInputChange={setNodeNameInput}
-                  grpcTargetInput={nodeGrpcTargetInput}
-                  onGrpcTargetInputChange={setNodeGrpcTargetInput}
-                  tlsServerNameInput={nodeTlsServerNameInput}
-                  onTlsServerNameInputChange={setNodeTlsServerNameInput}
-                  defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
-                  onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
-                  createBusy={createAgentNodeBusy}
-                  updatingNodeIds={updatingAgentNodeIds}
-                  deletingNodeIds={deletingAgentNodeIds}
-                  onCreateNode={onCreateAgentNode}
-                  onUpdateNode={onUpdateAgentNode}
-                  onDeleteNode={onDeleteAgentNode}
-                />
+                <LazyAgentNodeSection {...agentNodeSectionProps} />
               </Suspense>
-            )}
+            ) : null}
           </LazyCreateAgentModal>
         </Suspense>
       )}
 
-      {auth && activeAgent && scopedAcpPermissions.length > 0 && (
+      {auth && permissionModalProps && (
         <Suspense fallback={null}>
-          <LazyPermissionModal
-            permissions={scopedAcpPermissions}
-            permissionBusy={permissionBusy}
-            onRespond={onRespondPermission}
-          />
+          <LazyPermissionModal {...permissionModalProps} />
         </Suspense>
       )}
     </div>
