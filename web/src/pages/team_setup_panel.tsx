@@ -5,13 +5,10 @@ import {
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
+  TEAM_WORKBENCH_ACCENT_BUTTON_CLASS,
+  TEAM_WORKBENCH_BADGE_CLASS,
   TEAM_WORKBENCH_PANEL_CLASS,
 } from "../ui/tailwind_classes";
-
-const TEAM_WORKBENCH_ACCENT_BUTTON_CLASS =
-  "!bg-notion-accent !text-white !border-transparent hover:!bg-notion-accent/90 transition shadow-sm active:!translate-y-px";
-const TEAM_WORKBENCH_BADGE_CLASS =
-  "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS =
   "overflow-hidden rounded-xl border border-notion-border bg-white shadow-md";
 const TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS = "grid gap-px bg-notion-border lg:grid-cols-3";

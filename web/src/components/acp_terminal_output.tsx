@@ -16,7 +16,8 @@ import {
 const ANSI_SEGMENT_CACHE_LIMIT = 512;
 const ANSI_SEGMENT_CACHE_MAX_BYTES = 4 * 1024 * 1024;
 const ANSI_SEGMENT_CACHE_MAX_ENTRY_CHARS = 120_000;
-const ANSI_SPAN_TAG_PATTERN = /<\/?span(?: style="([a-zA-Z0-9:#;(),.%\s-]*)")?>/g;
+const ANSI_SPAN_TAG_PATTERN =
+  /<\/?span(?:\s+(?:style="([a-zA-Z0-9:#;(),.%\s-]*)"|class="[^"]*"))*\s*>/g;
 const ANSI_STYLE_VALUE_PATTERN = /^[a-zA-Z0-9#(),.%\s-]+$/;
 const ANSI_ALLOWED_STYLE_PROPERTIES: Record<string, keyof React.CSSProperties> = {
   color: "color",

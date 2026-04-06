@@ -57,15 +57,6 @@ export function useTeamConversationEffects({
   }, [selectedConversationId, selectedTeamId]);
 
   useEffect(() => {
-    pollFallbackAllowedRef.current = Boolean(
-      eventsAutoRefresh &&
-        tab === "conversation" &&
-        (selectedTeamId?.trim() ?? "") &&
-        (selectedConversationId?.trim() ?? "")
-    );
-  }, [eventsAutoRefresh, selectedConversationId, selectedTeamId, tab]);
-
-  useEffect(() => {
     refreshTaskMessagesRef.current = refreshTaskMessages;
   }, [refreshTaskMessages]);
 
@@ -78,6 +69,22 @@ export function useTeamConversationEffects({
       previous === nextEnabled ? previous : nextEnabled
     );
   }, []);
+
+  useEffect(() => {
+    pollFallbackAllowedRef.current = Boolean(
+      eventsAutoRefresh &&
+        tab === "conversation" &&
+        (selectedTeamId?.trim() ?? "") &&
+        (selectedConversationId?.trim() ?? "")
+    );
+    syncPollFallbackEnabled();
+  }, [
+    eventsAutoRefresh,
+    selectedConversationId,
+    selectedTeamId,
+    syncPollFallbackEnabled,
+    tab,
+  ]);
 
   const refreshSelectedConversation = useCallback(async () => {
     const { teamId, conversationId } = latestSelectionRef.current;

@@ -165,6 +165,46 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
+  it("turns fallback polling off immediately after leaving the conversation tab", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const callsAfterMount = (
+      params.refreshTaskMessages as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            ...params,
+            tab: "debug",
+          }}
+        />
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterMount);
+  });
+
   it("refreshes the shared thread when a matching sse message arrives", async () => {
     const params = createParams({
       eventsAutoRefresh: true,

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { schedulePermissionPollLoop } from "./app_permission_polling";
+import {
+  GLOBAL_PERMISSION_POLL_IDLE_DELAY_MS,
+  schedulePermissionPollLoop,
+} from "./app_permission_polling";
 
 describe("schedulePermissionPollLoop", () => {
   it("reschedules after poll failures instead of leaking a rejection", async () => {
@@ -32,7 +35,7 @@ describe("schedulePermissionPollLoop", () => {
 
     expect(pollOnce).toHaveBeenCalledTimes(1);
     expect(scheduled).toHaveLength(2);
-    expect(delays).toEqual([5000, 10000]);
+    expect(delays).toEqual([5000, GLOBAL_PERMISSION_POLL_IDLE_DELAY_MS]);
     expect(pollState.timer).toBe(2);
   });
 });

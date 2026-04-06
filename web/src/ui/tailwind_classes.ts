@@ -178,6 +178,12 @@ export const TEAM_CREATE_MODAL_CARD_CLASS =
 export const TEAM_CREATE_PANEL_CARD_CLASS =
   "team-create-panel rounded-xl border border-notion-border bg-white/90 p-4";
 
+export const TEAM_WORKBENCH_ACCENT_BUTTON_CLASS =
+  "!bg-notion-accent !text-white !border-transparent hover:!bg-notion-accent/90 transition shadow-sm active:!translate-y-px";
+
+export const TEAM_WORKBENCH_BADGE_CLASS =
+  "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+
 export const TEAM_CREATE_SKILL_TAG_SELECTED_CLASS =
   "team-skill-tag selected rounded-full border border-notion-accent bg-notion-accent px-3 py-1 text-[12px] font-medium text-white transition";
 

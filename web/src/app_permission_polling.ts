@@ -3,6 +3,8 @@ import type { AcpPermissionRecord } from "./api";
 export const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
 export const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 export const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
+export const GLOBAL_PERMISSION_POLL_ACTIVE_DELAY_MS = 3000;
+export const GLOBAL_PERMISSION_POLL_IDLE_DELAY_MS = 10000;
 
 export function parsePermissionPollAgentIds(key: string): string[] {
   return key
@@ -128,7 +130,10 @@ export function schedulePermissionPollLoop(
       pollState.timer = null;
       return;
     }
-    const nextDelay = pendingCount > 0 ? 3_000 : 10_000;
+    const nextDelay =
+      pendingCount > 0
+        ? GLOBAL_PERMISSION_POLL_ACTIVE_DELAY_MS
+        : GLOBAL_PERMISSION_POLL_IDLE_DELAY_MS;
     schedulePermissionPollLoop(
       nextDelay,
       pollState,
