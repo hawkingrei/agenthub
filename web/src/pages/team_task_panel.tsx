@@ -1,4 +1,4 @@
-import { HoverCard } from "@mantine/core";
+import { HoverCard, UnstyledButton } from "@mantine/core";
 import React from "react";
 import {
   type AcpPermissionOption,
@@ -13,6 +13,7 @@ import {
 } from "../conversation";
 import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
+import { ActionButton, IconButton } from "../ui/primitives";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -29,8 +30,6 @@ import {
 } from "./team/mailbox_helpers";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
@@ -49,14 +48,12 @@ import {
   TEAM_TASK_ACTIVITY_STACK_CLASS,
   TEAM_TASK_ACTIVITY_TIME_CLASS,
   TEAM_TASK_COMPOSER_PANEL_CLASS,
-  TEAM_TASK_JUMP_BUTTON_CLASS,
   TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS,
   TEAM_TASK_PERMISSION_CARD_BODY_CLASS,
   TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS,
   TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS,
   TEAM_TASK_PERMISSION_CARD_HEADER_CLASS,
   TEAM_TASK_PERMISSION_CARD_REASON_CLASS,
-  TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS,
   TEAM_TASK_PERMISSION_CARD_STATUS_CLASS,
   TEAM_TASK_PERMISSION_CARD_TITLE_CLASS,
   TEAM_TASK_PERMISSION_CARD_CLASS,
@@ -154,6 +151,8 @@ const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
   "mt-2 inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
+  "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
   "grid gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
@@ -178,6 +177,12 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
+const TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS =
+  "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
+const TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS =
+  "bg-brand-primary/10 text-brand-primary";
+const TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS =
+  "text-ui-text-primary hover:bg-ui-surface-soft";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -558,25 +563,25 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
               {payload.options.map((option, index) => {
                 const optionId = option.option_id.trim();
                 return (
-                  <button
+                  <ActionButton
                     key={`${optionId}:${index}`}
-                    type="button"
-                    className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                    tone="primary"
+                    size="sm"
                     disabled={busy || !optionId}
                     onClick={() => onRespond(payload, optionId)}
                   >
                     {option.name}
-                  </button>
+                  </ActionButton>
                 );
               })}
-              <button
-                type="button"
-                className={TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS}
+              <ActionButton
+                tone="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() => onRespond(payload)}
               >
                 Cancel
-              </button>
+              </ActionButton>
             </div>
             {errorText ? <div className={TEAM_TASK_PERMISSION_CARD_ERROR_CLASS}>{errorText}</div> : null}
           </>
@@ -1083,9 +1088,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       >
         {onRefreshMessages && (
           <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} mb-2 w-full shrink-0 justify-end gap-2`}>
-            <button
-              type="button"
-              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            <ActionButton
+              tone="secondary"
+              size="md"
               onClick={() => {
                 void onRefreshMessages();
               }}
@@ -1095,7 +1100,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               <span>Refresh</span>
-            </button>
+            </ActionButton>
           </div>
         )}
         <div
@@ -1187,17 +1192,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       >
                         <HoverCard.Target>
                           {seenActorIds.length === 0 ? (
-                            <button
-                              type="button"
+                            <UnstyledButton
                               className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
                               aria-label="Pending delivery"
                               title="Pending delivery"
                             >
                               <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-                            </button>
+                            </UnstyledButton>
                           ) : (
-                            <button
-                              type="button"
+                            <UnstyledButton
                               className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
                               aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
                               title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
@@ -1219,7 +1222,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                                   } satisfies SeenDialStyle
                                 }
                               />
-                            </button>
+                            </UnstyledButton>
                           )}
                         </HoverCard.Target>
                         <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
@@ -1273,8 +1276,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                     </div>
                   )}
                   {developerMode && (
-                    <button
-                      type="button"
+                    <UnstyledButton
                       className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
                       onClick={() =>
                         setExpandedItemKeys((current) => ({
@@ -1285,7 +1287,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       aria-expanded={Boolean(expandedItemKeys[item.key])}
                     >
                       {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                    </button>
+                    </UnstyledButton>
                   )}
                   {developerMode && expandedItemKeys[item.key] && (
                     <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
@@ -1349,9 +1351,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           </div>
         </div>
         {activityJumpState.showJump && (
-          <button
-            type="button"
-            className={`${TEAM_TASK_JUMP_BUTTON_CLASS} absolute bottom-5 right-4 z-10`}
+          <IconButton
+            tone="default"
+            size="md"
+            className="absolute bottom-5 right-4 z-10 h-9 w-9 rounded-full border border-notion-border bg-white text-notion-text-muted shadow-md hover:bg-notion-hover hover:text-notion-text"
             onClick={() => {
               setStickToBottom(true);
               scrollActivityToBottom();
@@ -1360,7 +1363,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             aria-label="Jump to bottom"
           >
             <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
-          </button>
+          </IconButton>
         )}
       </div>
 
@@ -1444,13 +1447,12 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             </div>
             <div className="max-h-44 overflow-auto py-1">
               {filteredMentionCandidates.map((candidate, index) => (
-                <button
+                <UnstyledButton
                   key={candidate.actorId}
-                  type="button"
-                  className={`flex w-full items-center justify-between px-3 py-1 text-left text-sm ${
+                  className={`${TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS} ${
                     index === activeMentionIndex
-                      ? "bg-brand-primary/10 text-brand-primary"
-                      : "text-ui-text-primary hover:bg-ui-surface-soft"
+                      ? TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS
+                      : TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS
                   }`}
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -1459,7 +1461,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 >
                   <span>{candidate.label}</span>
                   <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </button>
+                </UnstyledButton>
               ))}
             </div>
           </div>
@@ -1468,16 +1470,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
             {`@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline`}
           </span>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px"
+          <ActionButton
+            tone="primary"
+            size="sm"
+            className="px-3.5"
             onClick={() => {
               sendCurrentMessage();
             }}
             disabled={!canSendMessage}
           >
             Send
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>

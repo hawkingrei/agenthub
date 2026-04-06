@@ -56,7 +56,7 @@ const TOOL_PAYLOAD_INITIAL_ITEMS = 8;
 const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 
 const ACP_PAYLOAD_CARD_CLASS =
-  "acp-payload-card overflow-hidden rounded-[10px] border border-[#dde2db] bg-[#fcfcfa] px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
+  "acp-payload-card overflow-hidden rounded-[10px] border border-notion-payload-border bg-notion-payload-bg px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
 const ACP_PAYLOAD_GRID_CLASS = "acp-payload-grid m-0 grid gap-1.5";
 const ACP_PAYLOAD_ROW_CLASS =
   "acp-payload-row grid grid-cols-[minmax(84px,128px)_minmax(0,1fr)] items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 [&>dt]:break-words [&>dt]:font-mono [&>dt]:text-[11px] [&>dt]:leading-[1.4] [&>dt]:text-slate-500 [&>dd]:m-0 [&>dd]:min-w-0 max-[720px]:grid-cols-[minmax(64px,96px)_minmax(0,1fr)] max-[720px]:gap-[5px] max-[600px]:grid-cols-1 max-[600px]:gap-1";
@@ -73,7 +73,7 @@ const ACP_CONTENT_TEXT_BASE_CLASS =
 const ACP_CONTENT_TEXT_ASCII_CLASS =
   `${ACP_CONTENT_TEXT_BASE_CLASS} acp-payload-ascii whitespace-pre`;
 const ACP_CONTENT_MARKDOWN_CLASS =
-  "acp-content-markdown rounded-lg border border-notion-border bg-[#1e1e1e] px-4 py-3 text-[13px] leading-relaxed text-slate-200 shadow-inner [&_.hljs]:bg-transparent [&_a]:text-sky-300 [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-3 [&_blockquote]:text-slate-300 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:text-slate-100 [&_li]:marker:text-slate-500 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:my-3 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-inherit [&_strong]:text-white";
+  "acp-content-markdown rounded-lg border border-notion-border bg-notion-code-bg px-4 py-3 text-[13px] leading-relaxed text-slate-200 shadow-inner [&_.hljs]:bg-transparent [&_a]:text-sky-300 [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-3 [&_blockquote]:text-slate-300 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:text-slate-100 [&_li]:marker:text-slate-500 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:my-3 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-inherit [&_strong]:text-white";
 const ACP_PAYLOAD_SEGMENTED_CLASS = "acp-payload-segmented grid gap-1.5";
 const ACP_PAYLOAD_LIST_CLASS = "acp-payload-list m-0 grid list-none gap-1.5 pl-0";
 const ACP_PAYLOAD_LIST_ITEM_CLASS = "m-0 min-w-0";

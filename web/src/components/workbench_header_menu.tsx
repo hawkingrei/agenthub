@@ -1,5 +1,5 @@
 import React from "react";
-import { Menu } from "@mantine/core";
+import { Menu, UnstyledButton } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 
 type WorkbenchHeaderMenuProps = {
@@ -28,15 +28,14 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
       {...NOTION_FLOATING_MENU_PROPS}
     >
       <Menu.Target>
-        <button
-          type="button"
+        <UnstyledButton
           className={buttonClassName}
           aria-label="Open workbench menu"
         >
           <i className="bi bi-grid-3x3-gap text-[13px] sm:text-[14px]" aria-hidden="true" />
           <span className="hidden sm:inline">Menu</span>
           <i className="bi bi-chevron-down text-[10px] text-black/65" aria-hidden="true" />
-        </button>
+        </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>{username}</Menu.Label>

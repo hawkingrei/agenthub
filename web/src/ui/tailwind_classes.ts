@@ -127,10 +127,10 @@ export const ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS =
   "bg-notion-hover border border-notion-border text-notion-text-muted font-mono normal-case tracking-normal";
 
 export const ACP_TERMINAL_PRE_CLASS =
-  "acp-terminal-pre m-0 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-[#1e1e1e] p-4 text-[13px] leading-relaxed text-slate-200 shadow-inner";
+  "acp-terminal-pre m-0 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-notion-code-bg p-4 text-[13px] leading-relaxed text-slate-200 shadow-inner";
 
 export const ACP_DIFF_PRE_CLASS =
-  "acp-diff-pre acp-diff-view m-0 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-[#1e1e1e] p-4 text-[13px] leading-relaxed text-slate-200 shadow-inner font-mono";
+  "acp-diff-pre acp-diff-view m-0 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-notion-border bg-notion-code-bg p-4 text-[13px] leading-relaxed text-slate-200 shadow-inner font-mono";
 
 export const ACP_SEGMENTED_BUTTON_CLASS =
   "acp-segmented-button h-7 rounded-md border border-notion-border bg-white px-2.5 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px shadow-sm";
