@@ -40,6 +40,7 @@
 - Mirrored the new semantic Notion color tokens into `web/src/tailwind.css` `@theme` so Tailwind v4 utility resolution and the checked-in theme entrypoint stay aligned with `web/tailwind.config.cjs`.
 - Switched `ErrorBanner` off its last raw close button and onto the shared `IconButton` primitive.
 - Extracted the Team "no agents yet" onboarding card into `web/src/pages/team_setup_panel.tsx` so `team_page.tsx` can keep shrinking along stable UI boundaries while the panel CTA itself now uses the shared `ActionButton` primitive.
+- Extracted the Team loading/unavailable workbench shells into `web/src/pages/team_workspace_state_panel.tsx` so `team_page.tsx` keeps routing/runtime wiring separate from static state-card markup.
 - Aligned ACP Debug tests to the shared Mantine jsdom helper so primitive-backed controls keep a stable test harness.
 - Wrapped `TeamSidebar`, `TeamMailboxPanel`, `TeamMemberAcpPanel`, `TeamTabsBar`, and `TeamStepsPanel` in `React.memo` to stop unrelated Team workbench state from re-running the heaviest sidebar/mailbox/ACP render trees.
 - Wrapped `TeamRunPanel`, `TeamEventsPanel`, `TeamOverviewPanel`, `TeamMemberConsolePanel`, and `TeamActiveRunPanel` in `React.memo` so toolbar/runtime/detail state changes no longer fan out across inactive Team surfaces.

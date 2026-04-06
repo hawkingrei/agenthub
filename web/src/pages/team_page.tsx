@@ -4,7 +4,6 @@ import {
   Badge,
   Button,
   Group,
-  Loader,
   Menu,
   SegmentedControl,
   Switch,
@@ -69,6 +68,10 @@ import { TeamSetupPanel } from "./team_setup_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
+import {
+  TeamLoadingPanel,
+  TeamUnavailablePanel,
+} from "./team_workspace_state_panel";
 import {
   appendTeamMemberToSpec,
   buildTeamMemberDraftFromSpec,
@@ -188,7 +191,6 @@ import {
   TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_SECTION_BODY_TEXT_CLASS,
   TEAM_SECTION_CARD_CLASS,
-  TEAM_SECTION_CARD_LARGE_CLASS,
   TEAM_SECTION_HEADING_CLASS,
   TEAM_SECTION_HINT_TEXT_CLASS,
   TEAM_SECTION_TITLE_CLASS,
@@ -366,7 +368,6 @@ export function validateRunInputJson(raw: string): RunInputValidation {
 
 const panelSecondaryButtonClassName = TEAM_PANEL_SECONDARY_BUTTON_CLASS;
 const teamSectionCardClassName = TEAM_SECTION_CARD_CLASS;
-const teamSectionCardLargeClassName = TEAM_SECTION_CARD_LARGE_CLASS;
 const teamSectionHeadingClassName = TEAM_SECTION_HEADING_CLASS;
 const teamSectionTitleClassName = TEAM_SECTION_TITLE_CLASS;
 const teamSectionBodyTextClassName = TEAM_SECTION_BODY_TEXT_CLASS;
@@ -3839,48 +3840,10 @@ export function TeamPage(props: TeamPageProps) {
             className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0"
             data-team-surface="workbench"
           >
-            {showTeamBootstrapLoading && (
-              <div
-                className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}
-                data-team-loading-shell="true"
-              >
-                <span className={teamWorkbenchBadgeClassName}>Loading Team</span>
-                <div className="mt-3 flex items-center gap-3">
-                  <Loader size="sm" color="gray" />
-                  <div className="min-w-0">
-                    <h2 className="text-[22px] font-semibold tracking-tight text-black">
-                      Loading team workspace...
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-                      AgentHub is loading the team catalog and workspace context. The workbench
-                      will render once the basic Team metadata is ready.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {showTeamBootstrapLoading && <TeamLoadingPanel />}
 
             {showTeamUnavailable && (
-              <div className={`${teamSectionCardLargeClassName} ${teamWorkbenchPanelClassName}`}>
-                <span className={teamWorkbenchBadgeClassName}>Team Not Found</span>
-                <h2 className="mt-2 text-[22px] font-semibold tracking-tight text-black">
-                  This team is unavailable.
-                </h2>
-                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/75">
-                  The requested team could not be loaded. Return to the selector to choose another
-                  team or create a new one.
-                </p>
-                <Group gap="sm" mt="md">
-                  <Button
-                    type="button"
-                    radius="md"
-                    className={teamWorkbenchAccentButtonClassName}
-                    onClick={navigateToTeamSelector}
-                  >
-                    Back to Team Selector
-                  </Button>
-                </Group>
-              </div>
+              <TeamUnavailablePanel onBackToSelector={navigateToTeamSelector} />
             )}
 
             {selectedTeam && (
