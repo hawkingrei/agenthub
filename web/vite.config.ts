@@ -6,7 +6,6 @@ const ROUTE_AGENTS_IDS = [
   "/src/connection_status.ts",
   "/src/error_banner.tsx",
   "/src/scroll.ts",
-  "/src/html_escape.ts",
   "/src/worktree_defaults.ts",
   "/src/input_history.ts",
   "/src/push.ts",
@@ -28,6 +27,7 @@ const ROUTE_UI_SHARED_IDS = [
   "/src/ui/floating_surfaces.ts",
   "/src/ui/tailwind_classes.ts",
   "/src/input_ime.ts",
+  "/src/html_escape.ts",
   "/src/components/status_badge.tsx",
 ];
 
@@ -108,26 +108,9 @@ export function resolveChunkGroupName(id: string): string | undefined {
   return undefined;
 }
 
-const CHUNK_GROUPS = [
-  { name: "vendor-mantine", priority: 100 },
-  { name: "vendor-markdown", priority: 90 },
-  { name: "vendor-qrcode", priority: 80 },
-  { name: "route-ui-shared", priority: 70 },
-  { name: "route-teams-agent-acp", priority: 60 },
-  { name: "route-teams-rich-text", priority: 55 },
-  { name: "route-teams", priority: 50 },
-  { name: "route-auth", priority: 45 },
-  { name: "route-agents-debug", priority: 40 },
-  { name: "route-agents-terminal", priority: 35 },
-  { name: "route-agents-workbench", priority: 30 },
-  { name: "route-agents", priority: 20 },
-].map(({ name, priority }) => ({
-  name,
-  priority,
-  test(id: string) {
-    return resolveChunkGroupName(id) === name;
-  },
-}));
+export function resolveManualChunkName(id: string): string | undefined {
+  return resolveChunkGroupName(id);
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -153,8 +136,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        codeSplitting: {
-          groups: CHUNK_GROUPS,
+        manualChunks(id) {
+          return resolveManualChunkName(id);
         },
       },
     },

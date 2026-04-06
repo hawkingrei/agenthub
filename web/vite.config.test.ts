@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import config, { resolveChunkGroupName } from "./vite.config";
+import config, { resolveChunkGroupName, resolveManualChunkName } from "./vite.config";
 
 function resolveChunkGroup(id: string): string | undefined {
   return resolveChunkGroupName(id);
@@ -65,7 +65,7 @@ describe("vite chunk grouping", () => {
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/html_escape.ts")).toBe(
-      "route-agents"
+      "route-ui-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/components/workbench_connection_badge.tsx")).toBe(
       "route-agents"
@@ -118,6 +118,18 @@ describe("vite chunk grouping", () => {
     expect(
       resolveChunkGroup("/repo/web/node_modules/@mantine/hooks/esm/use-media-query/use-media-query.mjs")
     ).toBe("vendor-mantine");
+  });
+
+  it("exposes a rollup-compatible manualChunks fallback", () => {
+    expect(resolveManualChunkName("/repo/web/src/pages/team_member_acp_panel.tsx")).toBe(
+      "route-teams-agent-acp"
+    );
+    expect(resolveManualChunkName("/repo/web/src/components/acp_debug.tsx")).toBe(
+      "route-agents-debug"
+    );
+    expect(resolveManualChunkName("/repo/web/src/html_escape.ts")).toBe(
+      "route-ui-shared"
+    );
   });
 
   it("keeps team route code in the team chunk", () => {

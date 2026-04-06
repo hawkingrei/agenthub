@@ -566,6 +566,16 @@ async function openMainTeamAction(
     return;
   }
 
+  const workflowTabButton = page
+    .locator('[data-team-surface="workflow-tabs"]')
+    .getByRole("button", { name: label, exact: true })
+    .first();
+  if ((await workflowTabButton.count()) > 0) {
+    await expect(workflowTabButton).toBeVisible();
+    await workflowTabButton.click();
+    return;
+  }
+
   const moreTrigger = page
     .getByRole("button", { name: "Open more workspace actions" })
     .first();

@@ -108,7 +108,7 @@ export function schedulePermissionPollLoop(
       pollState.timer = null;
       return;
     }
-    const pendingCount = await pollOnce();
+    const pendingCount = await pollOnce().catch(() => 0);
     if (isCancelled()) {
       pollState.timer = null;
       return;
