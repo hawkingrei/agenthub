@@ -66,6 +66,7 @@ describe("vite chunk grouping", () => {
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/api.ts")).toBe("route-agents");
+    expect(resolveChunkGroup("/repo/web/src/acp.ts")).toBe("route-acp-shared");
     expect(resolveChunkGroup("/repo/web/src/push.ts")).toBe("route-agents");
     expect(resolveChunkGroup("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
@@ -93,6 +94,9 @@ describe("vite chunk grouping", () => {
     );
     expect(resolveChunkGroup("/repo/web/src/components/workbench_header_menu.tsx")).toBe(
       "route-agents"
+    );
+    expect(resolveChunkGroup("/repo/web/src/components/acp_panel_helpers.ts")).toBe(
+      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
       "route-acp-shared"
