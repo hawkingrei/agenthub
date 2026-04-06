@@ -27,6 +27,10 @@ const TEAM_CONVERSATION_MAILBOX_LIMIT = 20;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
 const TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS = 30_000;
 
+function conversationDetailKey(teamId: string, taskId: string): string {
+  return `${teamId}:${taskId}`;
+}
+
 type SharedConversationTarget = {
   task: TeamTaskRecord;
   latestRunId: string | null;
@@ -75,6 +79,7 @@ export function useTeamConversationActions({
   const sendTaskMessageInFlightRef = useRef(false);
   const conversationDetailFetchAtRef = useRef<Map<string, number>>(new Map());
   const conversationDetailRunIdRef = useRef<Map<string, string | null>>(new Map());
+  const selectedTeamScopeRef = useRef("");
   const taskMessageScopeRef = useRef<{ teamId: string; taskId: string }>({
     teamId: "",
     taskId: "",
@@ -86,13 +91,39 @@ export function useTeamConversationActions({
       current.length === 0 ? current : []
     );
   }, [setConversationMailboxMessages, setTaskMessages]);
+  const selectedConversationBootstrapKind =
+    selectedConversation?.context?.bootstrap_kind;
 
   useEffect(() => {
-    if (!selectedTeamId) {
+    const normalizedTeamId = selectedTeamId?.trim() ?? "";
+    if (selectedTeamScopeRef.current !== normalizedTeamId) {
       conversationDetailFetchAtRef.current.clear();
       conversationDetailRunIdRef.current.clear();
+      selectedTeamScopeRef.current = normalizedTeamId;
     }
   }, [selectedTeamId]);
+
+  useEffect(() => {
+    const teamId = selectedTeamId?.trim() ?? "";
+    const taskId = (selectedConversation?.id ?? "").trim();
+    if (!teamId || !taskId) {
+      return;
+    }
+    const detailKey = conversationDetailKey(teamId, taskId);
+    const latestRunId = selectedConversationLatestRun?.id?.trim() || null;
+    if (latestRunId) {
+      conversationDetailRunIdRef.current.set(detailKey, latestRunId);
+      return;
+    }
+    if (selectedConversationBootstrapKind !== "shared_thread") {
+      conversationDetailRunIdRef.current.set(detailKey, null);
+    }
+  }, [
+    selectedConversation?.id,
+    selectedConversationBootstrapKind,
+    selectedConversationLatestRun,
+    selectedTeamId,
+  ]);
 
   useEffect(() => {
     const nextScope = {
@@ -137,19 +168,23 @@ export function useTeamConversationActions({
       setTaskMessagesLoading(true);
       try {
         const selectedConversationId = (selectedConversation?.id ?? "").trim();
+        const isSharedThreadTask =
+          selectedConversation?.context?.bootstrap_kind === "shared_thread";
+        const detailKey = conversationDetailKey(teamId, taskId);
         const cachedConversationRunId =
-          conversationDetailRunIdRef.current.get(taskId);
+          conversationDetailRunIdRef.current.get(detailKey);
         const lastDetailFetchAt =
-          conversationDetailFetchAtRef.current.get(taskId) ?? null;
+          conversationDetailFetchAtRef.current.get(detailKey) ?? null;
         const now = Date.now();
         const shouldFetchConversationDetail =
           selectedConversationId === taskId &&
+          isSharedThreadTask &&
           selectedConversationRunId.length === 0 &&
           cachedConversationRunId === undefined &&
           (lastDetailFetchAt === null ||
             now - lastDetailFetchAt >= TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS);
         if (shouldFetchConversationDetail) {
-          conversationDetailFetchAtRef.current.set(taskId, now);
+          conversationDetailFetchAtRef.current.set(detailKey, now);
         }
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
@@ -168,7 +203,7 @@ export function useTeamConversationActions({
         const fetchedConversationRunId =
           taskDetail?.latest_run?.id?.trim() || null;
         if (taskDetail) {
-          conversationDetailRunIdRef.current.set(taskId, fetchedConversationRunId);
+          conversationDetailRunIdRef.current.set(detailKey, fetchedConversationRunId);
         }
         const conversationRunId =
           selectedConversationRunId ||
@@ -296,7 +331,7 @@ export function useTeamConversationActions({
                 conversation.conversationId?.trim() ||
                 prev.find((message) => message.conversation_id.trim().length > 0)
                   ?.conversation_id ||
-                "";
+                taskId;
               const nextMessages = sortConversationMessages([
                 ...prev,
                 buildOptimisticConversationMessage({

@@ -22,6 +22,9 @@
   - moved Team message rendering off the direct `components/thread_rich_text.tsx` dependency
 - moved Team member ACP loading behind a route-local dynamic import in `web/src/pages/team_page.tsx`
 - updated Vite chunk routing so Team-local markdown and Team member ACP have their own named boundaries (`route-shared-rich-text`, `route-teams-agent-acp`) instead of piggybacking silently on the default route graph
+- keyed Team conversation detail caches by `teamId:taskId` and clear them when the selected team changes so cooldown/run-id state cannot bleed across teams
+- limited extra `getTeamTask(...)` latest-run discovery to the shared thread path; ordinary task threads now trust the selected-thread state instead of re-fetching detail on every refresh while no latest run exists
+- restored a stable optimistic `conversation_id` fallback for empty threads so the client never emits an empty conversation id before the server echo lands
 - delayed clearing a selected non-shared thread until task refresh has actually settled:
   - keep the selected thread while `tasksLoading` is still true
   - keep the selected thread when `selectedConversationDetail.task` still provides a fallback task record

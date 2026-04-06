@@ -75,7 +75,7 @@ export function InsetSurface({ className, ...props }: InsetSurfaceProps) {
   return <Box className={cx(INSET_SURFACE_BASE_CLASS, className)} {...props} />;
 }
 
-type ToolbarRowProps = React.HTMLAttributes<HTMLDivElement>;
+type ToolbarRowProps = React.ComponentPropsWithoutRef<typeof Box>;
 
 export function ToolbarRow({ className, ...props }: ToolbarRowProps) {
   return <Box className={cx(TOOLBAR_ROW_BASE_CLASS, className)} {...props} />;
