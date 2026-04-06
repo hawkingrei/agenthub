@@ -57,7 +57,6 @@ use codex_protocol::request_user_input::{
 use codex_shell_command::parse_command::parse_command;
 use tokio::sync::Mutex;
 use tracing::warn;
-use uuid::Uuid;
 
 use crate::thread::CodexThreadImpl;
 
@@ -225,18 +224,20 @@ impl AppServerCodexThread {
         }
     }
 
-    async fn submit_prompt_like(&self, op: Op) -> Result<String, CodexErr> {
+    async fn submit_prompt_like(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         let active_turn = {
             let state = self.state.lock().await;
             state.active_turn.clone()
         };
         if let Some(active_turn) = active_turn {
-            match self.try_steer_submission(active_turn, &op).await? {
+            match self
+                .try_steer_submission(submission_id.clone(), active_turn, &op)
+                .await?
+            {
                 SteerFollowUpAction::ReuseActiveSubmission(steered_submission_id) => {
                     return Ok(steered_submission_id);
                 }
                 SteerFollowUpAction::QueueFollowUp => {
-                    let submission_id = new_submission_id();
                     let mut state = self.state.lock().await;
                     if state.active_turn.is_some() {
                         state.queued_submissions.push_back(QueuedSubmission {
@@ -253,13 +254,13 @@ impl AppServerCodexThread {
             }
         }
 
-        let submission_id = new_submission_id();
         self.start_submission(submission_id.clone(), op).await?;
         Ok(submission_id)
     }
 
     async fn try_steer_submission(
         &self,
+        submission_id: String,
         active_turn: ActiveTurn,
         op: &Op,
     ) -> Result<SteerFollowUpAction, CodexErr> {
@@ -299,9 +300,13 @@ impl AppServerCodexThread {
             .await;
 
         match response {
-            Ok(_) => Ok(SteerFollowUpAction::ReuseActiveSubmission(
-                active_turn.submission_id,
-            )),
+            Ok(_) => {
+                let mut state = self.state.lock().await;
+                if let Some(active_turn) = state.active_turn.as_mut() {
+                    active_turn.submission_id = submission_id.clone();
+                }
+                Ok(SteerFollowUpAction::ReuseActiveSubmission(submission_id))
+            }
             Err(err) => match classify_turn_steer_failure(&err) {
                 TurnSteerFailure::StaleActiveTurn => {
                     let mut state = self.state.lock().await;
@@ -1666,10 +1671,10 @@ impl AppServerCodexThread {
 
 #[async_trait::async_trait]
 impl CodexThreadImpl for AppServerCodexThread {
-    async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+    async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         match op {
             op @ (Op::UserInput { .. } | Op::Review { .. } | Op::Compact | Op::Undo) => {
-                self.submit_prompt_like(op).await
+                self.submit_prompt_like(submission_id, op).await
             }
             Op::Interrupt => self.interrupt_active_turn().await,
             Op::Shutdown => self.shutdown_thread().await,
@@ -1940,10 +1945,6 @@ fn next_request_id(state: &mut AppServerState) -> RequestId {
     let request_id = state.next_request_id;
     state.next_request_id += 1;
     RequestId::Integer(request_id)
-}
-
-fn new_submission_id() -> String {
-    Uuid::new_v4().to_string()
 }
 
 fn noop_submission_id() -> String {
@@ -2624,6 +2625,7 @@ mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
     use std::fs;
+    use uuid::Uuid;
 
     #[test]
     fn resumed_regular_turn_is_steerable() {

@@ -80,13 +80,13 @@ const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
 pub trait CodexThreadImpl {
-    async fn submit(&self, op: Op) -> Result<String, CodexErr>;
+    async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr>;
     async fn next_event(&self) -> Result<Event, CodexErr>;
 }
 
 #[async_trait::async_trait]
 impl CodexThreadImpl for CodexThread {
-    async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+    async fn submit(&self, _submission_id: String, op: Op) -> Result<String, CodexErr> {
         self.submit(op).await
     }
 
@@ -316,7 +316,7 @@ impl Thread {
 
         if self.message_tx.send(message).is_err() {
             self.thread
-                .submit(Op::Shutdown)
+                .submit("shutdown".to_string(), Op::Shutdown)
                 .await
                 .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         } else {
@@ -658,11 +658,14 @@ impl PromptState {
                 };
 
                 self.thread
-                    .submit(Op::ExecApproval {
-                        id: approval_id,
-                        turn_id: Some(turn_id),
-                        decision,
-                    })
+                    .submit(
+                        self.submission_id.clone(),
+                        Op::ExecApproval {
+                            id: approval_id,
+                            turn_id: Some(turn_id),
+                            decision,
+                        },
+                    )
                     .await
                     .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
             }
@@ -682,10 +685,13 @@ impl PromptState {
                 };
 
                 self.thread
-                    .submit(Op::PatchApproval {
-                        id: call_id,
-                        decision,
-                    })
+                    .submit(
+                        self.submission_id.clone(),
+                        Op::PatchApproval {
+                            id: call_id,
+                            decision,
+                        },
+                    )
                     .await
                     .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
             }
@@ -718,10 +724,13 @@ impl PromptState {
                 };
 
                 self.thread
-                    .submit(Op::RequestPermissionsResponse {
-                        id: call_id,
-                        response,
-                    })
+                    .submit(
+                        self.submission_id.clone(),
+                        Op::RequestPermissionsResponse {
+                            id: call_id,
+                            response,
+                        },
+                    )
                     .await
                     .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
             }
@@ -1183,13 +1192,16 @@ impl PromptState {
         );
 
         self.thread
-            .submit(Op::ResolveElicitation {
-                server_name,
-                request_id: id,
-                decision: ElicitationAction::Decline,
-                content: None,
-                meta: None,
-            })
+            .submit(
+                self.submission_id.clone(),
+                Op::ResolveElicitation {
+                    server_name,
+                    request_id: id,
+                    decision: ElicitationAction::Decline,
+                    content: None,
+                    meta: None,
+                },
+            )
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
@@ -1515,11 +1527,14 @@ impl PromptState {
                 call_id, command
             );
             self.thread
-                .submit(Op::ExecApproval {
-                    id: resolved_approval_id,
-                    turn_id: Some(turn_id),
-                    decision,
-                })
+                .submit(
+                    self.submission_id.clone(),
+                    Op::ExecApproval {
+                        id: resolved_approval_id,
+                        turn_id: Some(turn_id),
+                        decision,
+                    },
+                )
                 .await
                 .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
             return Ok(());
@@ -3099,19 +3114,22 @@ impl<A: Auth> ThreadActor<A> {
         };
 
         self.thread
-            .submit(Op::OverrideTurnContext {
-                cwd: None,
-                approval_policy: None,
-                approvals_reviewer: None,
-                sandbox_policy: None,
-                model: Some(model_to_use.clone()),
-                effort: Some(effort_to_use),
-                summary: None,
-                collaboration_mode: None,
-                personality: None,
-                windows_sandbox_level: None,
-                service_tier: None,
-            })
+            .submit(
+                "config".to_string(),
+                Op::OverrideTurnContext {
+                    cwd: None,
+                    approval_policy: None,
+                    approvals_reviewer: None,
+                    sandbox_policy: None,
+                    model: Some(model_to_use.clone()),
+                    effort: Some(effort_to_use),
+                    summary: None,
+                    collaboration_mode: None,
+                    personality: None,
+                    windows_sandbox_level: None,
+                    service_tier: None,
+                },
+            )
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
@@ -3146,19 +3164,22 @@ impl<A: Auth> ThreadActor<A> {
         }
 
         self.thread
-            .submit(Op::OverrideTurnContext {
-                cwd: None,
-                approval_policy: None,
-                approvals_reviewer: None,
-                sandbox_policy: None,
-                model: None,
-                effort: Some(Some(effort)),
-                summary: None,
-                collaboration_mode: None,
-                personality: None,
-                windows_sandbox_level: None,
-                service_tier: None,
-            })
+            .submit(
+                "config".to_string(),
+                Op::OverrideTurnContext {
+                    cwd: None,
+                    approval_policy: None,
+                    approvals_reviewer: None,
+                    sandbox_policy: None,
+                    model: None,
+                    effort: Some(Some(effort)),
+                    summary: None,
+                    collaboration_mode: None,
+                    personality: None,
+                    windows_sandbox_level: None,
+                    service_tier: None,
+                },
+            )
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
@@ -3217,10 +3238,13 @@ impl<A: Auth> ThreadActor<A> {
             self.find_pending_user_input_answer(request.prompt.as_slice())?
         {
             self.thread
-                .submit(Op::UserInputAnswer {
-                    id: prepared.response_id.clone(),
-                    response: prepared.response.clone(),
-                })
+                .submit(
+                    submission_id.clone(),
+                    Op::UserInputAnswer {
+                        id: prepared.response_id.clone(),
+                        response: prepared.response.clone(),
+                    },
+                )
                 .await
                 .map_err(|e| {
                     let err = Error::internal_error().data(e.to_string());
@@ -3315,7 +3339,7 @@ impl<A: Auth> ThreadActor<A> {
 
         let submission_id = self
             .thread
-            .submit(op.clone())
+            .submit(Uuid::new_v4().to_string(), op.clone())
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
 
@@ -3359,19 +3383,22 @@ impl<A: Auth> ThreadActor<A> {
             .ok_or_else(Error::invalid_params)?;
 
         self.thread
-            .submit(Op::OverrideTurnContext {
-                cwd: None,
-                approval_policy: Some(preset.approval),
-                approvals_reviewer: None,
-                sandbox_policy: Some(preset.sandbox.clone()),
-                model: None,
-                effort: None,
-                summary: None,
-                collaboration_mode: None,
-                personality: None,
-                windows_sandbox_level: None,
-                service_tier: None,
-            })
+            .submit(
+                "config".to_string(),
+                Op::OverrideTurnContext {
+                    cwd: None,
+                    approval_policy: Some(preset.approval),
+                    approvals_reviewer: None,
+                    sandbox_policy: Some(preset.sandbox.clone()),
+                    model: None,
+                    effort: None,
+                    summary: None,
+                    collaboration_mode: None,
+                    personality: None,
+                    windows_sandbox_level: None,
+                    service_tier: None,
+                },
+            )
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
@@ -3426,19 +3453,22 @@ impl<A: Auth> ThreadActor<A> {
         }
 
         self.thread
-            .submit(Op::OverrideTurnContext {
-                cwd: None,
-                approval_policy: None,
-                approvals_reviewer: None,
-                sandbox_policy: None,
-                model: Some(model_to_use.clone()),
-                effort: Some(effort_to_use),
-                summary: None,
-                collaboration_mode: None,
-                personality: None,
-                windows_sandbox_level: None,
-                service_tier: None,
-            })
+            .submit(
+                "config".to_string(),
+                Op::OverrideTurnContext {
+                    cwd: None,
+                    approval_policy: None,
+                    approvals_reviewer: None,
+                    sandbox_policy: None,
+                    model: Some(model_to_use.clone()),
+                    effort: Some(effort_to_use),
+                    summary: None,
+                    collaboration_mode: None,
+                    personality: None,
+                    windows_sandbox_level: None,
+                    service_tier: None,
+                },
+            )
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
 
@@ -3451,7 +3481,7 @@ impl<A: Auth> ThreadActor<A> {
     async fn handle_cancel(&mut self) -> Result<(), Error> {
         self.abort_pending_interactions();
         self.thread
-            .submit(Op::Interrupt)
+            .submit("interrupt".to_string(), Op::Interrupt)
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         Ok(())
@@ -3460,7 +3490,7 @@ impl<A: Auth> ThreadActor<A> {
     async fn handle_shutdown(&mut self) -> Result<(), Error> {
         self.abort_pending_interactions();
         self.thread
-            .submit(Op::Shutdown)
+            .submit("shutdown".to_string(), Op::Shutdown)
             .await
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         Ok(())
@@ -5354,7 +5384,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl CodexThreadImpl for StubCodexThread {
-        async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+        async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
             let id = self
                 .current_id
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -5363,7 +5393,7 @@ mod tests {
 
             match op {
                 Op::UserInput { items, .. } => {
-                    *self.active_prompt_id.lock().unwrap() = Some(id.to_string());
+                    *self.active_prompt_id.lock().unwrap() = Some(submission_id.clone());
                     let prompt = items
                         .into_iter()
                         .map(|i| match i {
@@ -5379,7 +5409,7 @@ mod tests {
                         let send = |msg| {
                             self.op_tx
                                 .send(Event {
-                                    id: id.to_string(),
+                                    id: submission_id.clone(),
                                     msg,
                                 })
                                 .unwrap();
@@ -5449,7 +5479,7 @@ mod tests {
                     } else if prompt == "approval-block" {
                         self.op_tx
                             .send(Event {
-                                id: id.to_string(),
+                                id: submission_id.clone(),
                                 msg: EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
                                     call_id: "call-id".to_string(),
                                     approval_id: Some("approval-id".to_string()),
@@ -5474,7 +5504,7 @@ mod tests {
                     } else {
                         self.op_tx
                             .send(Event {
-                                id: id.to_string(),
+                                id: submission_id.clone(),
                                 msg: EventMsg::AgentMessageContentDelta(
                                     AgentMessageContentDeltaEvent {
                                         thread_id: id.to_string(),
@@ -5488,7 +5518,7 @@ mod tests {
                         // Send non-delta event (should be deduplicated, but handled by deduplication)
                         self.op_tx
                             .send(Event {
-                                id: id.to_string(),
+                                id: submission_id.clone(),
                                 msg: EventMsg::AgentMessage(AgentMessageEvent {
                                     message: prompt,
                                     phase: None,
@@ -5498,7 +5528,7 @@ mod tests {
                             .unwrap();
                         self.op_tx
                             .send(Event {
-                                id: id.to_string(),
+                                id: submission_id.clone(),
                                 msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                     last_agent_message: None,
                                     turn_id: id.to_string(),
@@ -5510,7 +5540,8 @@ mod tests {
                 Op::Compact => {
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::TurnStarted(TurnStartedEvent {
                                 model_context_window: None,
                                 collaboration_mode_kind: ModeKind::default(),
@@ -5520,7 +5551,8 @@ mod tests {
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::AgentMessage(AgentMessageEvent {
                                 message: "Compact task completed".to_string(),
                                 phase: None,
@@ -5530,7 +5562,8 @@ mod tests {
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
@@ -5541,7 +5574,8 @@ mod tests {
                 Op::Undo => {
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::UndoStarted(
                                 codex_protocol::protocol::UndoStartedEvent {
                                     message: Some("Undo in progress...".to_string()),
@@ -5551,7 +5585,8 @@ mod tests {
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::UndoCompleted(
                                 codex_protocol::protocol::UndoCompletedEvent {
                                     success: true,
@@ -5562,7 +5597,8 @@ mod tests {
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
@@ -5573,13 +5609,15 @@ mod tests {
                 Op::Review { review_request } => {
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::EnteredReviewMode(review_request.clone()),
                         })
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::ExitedReviewMode(ExitedReviewModeEvent {
                                 review_output: Some(ReviewOutputEvent {
                                     findings: vec![],
@@ -5595,7 +5633,8 @@ mod tests {
                         .unwrap();
                     self.op_tx
                         .send(Event {
-                            id: id.to_string(),
+                            id: submission_id.clone(),
+
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
@@ -5625,7 +5664,7 @@ mod tests {
                     unimplemented!()
                 }
             }
-            Ok(id.to_string())
+            Ok(submission_id)
         }
 
         async fn next_event(&self) -> Result<Event, CodexErr> {
@@ -5666,7 +5705,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl CodexThreadImpl for SharedSubmissionThread {
-        async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+        async fn submit(&self, _submission_id: String, op: Op) -> Result<String, CodexErr> {
             self.ops.lock().unwrap().push(op);
             Ok(self.submission_id.clone())
         }
