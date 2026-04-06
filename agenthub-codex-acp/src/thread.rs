@@ -5365,6 +5365,7 @@ mod tests {
         current_id: AtomicUsize,
         active_prompt_id: std::sync::Mutex<Option<String>>,
         ops: std::sync::Mutex<Vec<Op>>,
+        submission_ids: std::sync::Mutex<Vec<String>>,
         op_tx: mpsc::UnboundedSender<Event>,
         op_rx: Mutex<mpsc::UnboundedReceiver<Event>>,
     }
@@ -5376,6 +5377,7 @@ mod tests {
                 current_id: AtomicUsize::new(0),
                 active_prompt_id: std::sync::Mutex::default(),
                 ops: std::sync::Mutex::default(),
+                submission_ids: std::sync::Mutex::default(),
                 op_tx,
                 op_rx: Mutex::new(op_rx),
             }
@@ -5389,6 +5391,10 @@ mod tests {
                 .current_id
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
+            self.submission_ids
+                .lock()
+                .unwrap()
+                .push(submission_id.clone());
             self.ops.lock().unwrap().push(op.clone());
 
             match op {
@@ -5646,7 +5652,8 @@ mod tests {
                 | Op::ResolveElicitation { .. }
                 | Op::RequestPermissionsResponse { .. }
                 | Op::PatchApproval { .. }
-                | Op::Interrupt => {}
+                | Op::Interrupt
+                | Op::OverrideTurnContext { .. } => {}
                 Op::Shutdown => {
                     if let Some(active_prompt_id) = self.active_prompt_id.lock().unwrap().take() {
                         self.op_tx
@@ -6760,6 +6767,150 @@ mod tests {
 
         let ops = conversation.ops.lock().unwrap();
         assert!(matches!(ops.last(), Some(Op::Shutdown)));
+        drop(ops);
+
+        let submission_ids = conversation.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.last().map(String::as_str), Some("shutdown"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_mode_uses_config_submission_id() -> anyhow::Result<()> {
+        let (_session_id, _client, thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::SetMode {
+            mode: SessionModeId::new("read-only"),
+            response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.as_slice(), &["config".to_string()]);
+        drop(submission_ids);
+
+        let ops = thread.ops.lock().unwrap();
+        assert!(matches!(ops.as_slice(), [Op::OverrideTurnContext { .. }]));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_model_uses_config_submission_id() -> anyhow::Result<()> {
+        let (_session_id, _client, thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::SetModel {
+            model: ModelId::new("test-model"),
+            response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.as_slice(), &["config".to_string()]);
+        drop(submission_ids);
+
+        let ops = thread.ops.lock().unwrap();
+        assert!(matches!(
+            ops.as_slice(),
+            [Op::OverrideTurnContext {
+                model: Some(model),
+                ..
+            }] if model == "test-model"
+        ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_model_config_option_uses_config_submission_id() -> anyhow::Result<()> {
+        let (_session_id, _client, thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::SetConfigOption {
+            config_id: SessionConfigId::new("model"),
+            value: SessionConfigOptionValue::ValueId {
+                value: SessionConfigValueId::new("test-model"),
+            },
+            response_tx,
+        })?;
+
+        tokio::try_join!(
+            async {
+                response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.as_slice(), &["config".to_string()]);
+        drop(submission_ids);
+
+        let ops = thread.ops.lock().unwrap();
+        assert!(matches!(
+            ops.as_slice(),
+            [Op::OverrideTurnContext {
+                model: Some(model),
+                ..
+            }] if model == "test-model"
+        ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cancel_uses_interrupt_submission_id() -> anyhow::Result<()> {
+        let (_session_id, _client, thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::Cancel { response_tx })?;
+
+        tokio::try_join!(
+            async {
+                response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(())
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?;
+
+        let submission_ids = thread.submission_ids.lock().unwrap();
+        assert_eq!(submission_ids.as_slice(), &["interrupt".to_string()]);
+        drop(submission_ids);
+
+        let ops = thread.ops.lock().unwrap();
+        assert!(matches!(ops.as_slice(), [Op::Interrupt]));
 
         Ok(())
     }

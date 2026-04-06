@@ -57,6 +57,16 @@ To avoid splitting one live app-server turn into multiple ACP completion channel
 - when `thread.submit(op)` returns an already-tracked `submission_id`, ACP attaches a new waiter instead of replacing the existing prompt state;
 - one `TurnComplete` or `TurnAborted` event now resolves every waiter attached to that submission.
 
+## Compatibility-Safe Turn Steer Routing
+
+The adapter now preserves that shared-submission contract more explicitly while the ACP prompt state machine is still `submission_id`-centric.
+
+- a successful app-server `turn/steer` no longer swaps the local active turn onto a new caller-generated `submission_id`;
+- instead, ACP keeps reusing the original active submission id until the broader turn-centric refactor lands;
+- if `turn/steer` succeeds after local active-turn state already changed, ACP now starts a fresh turn instead of pretending the new submission was attached to the old turn.
+
+This keeps the intermediate app-server bridge slice compatible with the existing `PromptState` waiter model and avoids orphaning earlier ACP prompt waiters when multiple follow-up prompts share one live app-server turn.
+
 ## Resumed Active Turn Recovery
 
 The next gap was `load_session` against a thread that already had an in-progress turn.
