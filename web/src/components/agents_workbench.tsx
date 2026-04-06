@@ -2,24 +2,17 @@ import React from "react";
 import { AcpView } from "../acp";
 import { AcpPermissionRecord, AgentRecord } from "../api";
 import { OutputLine } from "../output_cache";
+import { buildAcpRuntimeMetrics } from "./agents_workbench_metrics";
 import {
   AcpConversationEventMeta,
   useAcpConversation,
 } from "../hooks/use_acp_conversation";
 import { getAcpConversationCacheStats } from "./acp_conversation_cache_stats";
+import { useAgentsPermissionJump } from "./use_agents_permission_jump";
 import { resolveAcpInputDockConversationClearance } from "./acp_input_dock_clearance";
 import { resolveInputDockJumpMode } from "./acp_panel_helpers";
 import { InputDock } from "./input_dock";
 import { OutputBody } from "./output_body";
-
-const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
-const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
-
-type PendingPermissionJumpState = {
-  toolCallId: string;
-  sessionId: string | null;
-  attempts: number;
-};
 
 type SendAcpInputOptions = {
   recordHistory?: boolean;
@@ -74,18 +67,6 @@ type AgentsWorkbenchProps = {
   showTerminalJump: boolean;
 };
 
-function shouldAttemptPermissionJump(
-  pending: PendingPermissionJumpState | null,
-  acpTab: "conversation" | "plan" | "debug",
-  activeSessionId: string | null
-): "idle" | "wait" | "attempt" | "clear" {
-  if (!pending) return "idle";
-  if (acpTab !== "conversation") return "wait";
-  if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
-  if (pending.attempts >= PERMISSION_JUMP_MAX_ATTEMPTS) return "clear";
-  return "attempt";
-}
-
 function AgentsWorkbenchView({
   activeAgent,
   activeAgentRecord,
@@ -131,8 +112,6 @@ function AgentsWorkbenchView({
   showTerminalJump,
 }: AgentsWorkbenchProps) {
   const [inputDockHeight, setInputDockHeight] = React.useState(0);
-  const [pendingPermissionJump, setPendingPermissionJump] =
-    React.useState<PendingPermissionJumpState | null>(null);
 
   const acpConversation = useAcpConversation({
     acpView,
@@ -152,55 +131,18 @@ function AgentsWorkbenchView({
     acpView.hasAcp
   );
 
+  const { onJumpToPermissionHistory } = useAgentsPermissionJump({
+    acpTab,
+    activeSessionId,
+    jumpToConversationToolCall,
+    onSelectTab,
+  });
+
   React.useEffect(() => {
     if (!showInputDock) {
       setInputDockHeight(0);
     }
   }, [showInputDock]);
-
-  const onJumpToPermissionHistory = React.useCallback(
-    (permission: AcpPermissionRecord) => {
-      const toolCallId = permission.tool_call_id?.trim();
-      if (!toolCallId) return;
-      onSelectTab("conversation");
-      setPendingPermissionJump({
-        toolCallId,
-        sessionId: permission.session_id ?? null,
-        attempts: 0,
-      });
-    },
-    [onSelectTab]
-  );
-
-  React.useEffect(() => {
-    const jumpDecision = shouldAttemptPermissionJump(
-      pendingPermissionJump,
-      acpTab,
-      activeSessionId
-    );
-    if (jumpDecision === "idle" || jumpDecision === "wait") return;
-    if (jumpDecision === "clear") {
-      setPendingPermissionJump(null);
-      return;
-    }
-    if (!pendingPermissionJump) return;
-    if (jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
-      setPendingPermissionJump(null);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setPendingPermissionJump((previous) => {
-        if (!previous) return previous;
-        return { ...previous, attempts: previous.attempts + 1 };
-      });
-    }, PERMISSION_JUMP_RETRY_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [
-    pendingPermissionJump,
-    acpTab,
-    activeSessionId,
-    jumpToConversationToolCall,
-  ]);
 
   const onSendInput = React.useCallback(async () => {
     jumpToConversationBottom();
@@ -220,24 +162,21 @@ function AgentsWorkbenchView({
 
   const acpRuntimeMetrics = React.useMemo(() => {
     const cacheStats = getAcpConversationCacheStats();
-    return {
-      totalConversationItems: acpConversation.conversationTotalItems,
-      sourceConversationItems: acpConversation.conversationSourceItems,
-      renderedConversationItems: acpConversation.conversationRenderedItems,
-      pendingConversationItems: acpConversation.conversationPendingCount,
-      virtualizedConversation: acpConversation.conversationVirtualized,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
+    return buildAcpRuntimeMetrics({
       rawEventCount: acpView.rawEvents.length,
       toolCallCount: acpView.toolCalls.length,
       messageCount: acpView.messages.length,
-      markdownCacheHits: cacheStats.markdownHits,
-      markdownCacheMisses: cacheStats.markdownMisses,
-      ansiCacheHits: cacheStats.ansiHits,
-      ansiCacheMisses: cacheStats.ansiMisses,
-      payloadParses: cacheStats.payloadParses,
-      payloadParseFailures: cacheStats.payloadParseFailures,
-    };
+      conversation: {
+        totalItems: acpConversation.conversationTotalItems,
+        sourceItems: acpConversation.conversationSourceItems,
+        renderedItems: acpConversation.conversationRenderedItems,
+        pendingItems: acpConversation.conversationPendingCount,
+        virtualized: acpConversation.conversationVirtualized,
+        stickToBottom: acpConversation.conversationStickToBottom,
+        averageHeight: acpConversation.conversationAvgHeight,
+      },
+      cacheStats,
+    });
   }, [
     acpConversation.conversationTotalItems,
     acpConversation.conversationSourceItems,

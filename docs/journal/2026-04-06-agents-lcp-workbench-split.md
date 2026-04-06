@@ -42,6 +42,10 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - `web/src/app_viewport.ts`
   - `web/src/app_permission_polling.ts`
   This keeps `web/src/app.tsx` on route composition instead of mixing UI shell code with low-level browser sync and polling utilities.
+- Continued the ACP workbench split inside `web/src/components/agents_workbench.tsx` by extracting:
+  - `web/src/components/agents_workbench_metrics.ts` for runtime/cache/conversation metric assembly
+  - `web/src/components/use_agents_permission_jump.ts` for the permission-history jump retry state machine
+  This keeps the workbench component focused on view composition instead of mixing hook scheduling and pure metric shaping into the same file.
 - Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
 - Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
 - Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
