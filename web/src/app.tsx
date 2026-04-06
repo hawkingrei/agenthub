@@ -19,7 +19,6 @@ import {
   isAgentActiveStatus,
   shouldShowUnexpectedExitNotice,
 } from "./agent_ws";
-import { ErrorBanner } from "./error_banner";
 import {
   clearAuthAndRedirect,
   isInvalidTokenMessage,
@@ -84,19 +83,17 @@ import {
   type AgentPresetId,
 } from "./agent_presets";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
-import { AgentsRouteShell } from "./components/agents_route_shell";
 import {
   buildAgentNodeSectionProps,
   buildCreateAgentModalProps,
   buildPermissionModalProps,
 } from "./components/agents_route_modal_props";
+import { AgentsRootPage } from "./components/agents_root_page";
 import {
   buildAgentsPanelProps,
   buildAgentsWorkbenchProps,
   buildOutputHeaderProps,
 } from "./components/agents_route_shell_props";
-import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
-import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import {
   DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
@@ -130,15 +127,6 @@ import {
 } from "./worktree_defaults";
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 import {
-  AUTH_ACTIONS_CLASS,
-  AUTH_FORM_CARD_CLASS,
-  AUTH_INPUT_CLASS,
-  AUTH_PRIMARY_BUTTON_CLASS,
-  AUTH_SECONDARY_BUTTON_CLASS,
-  APP_WORKBENCH_HEADER_CLASS,
-  APP_WORKBENCH_HEADER_STATUS_CLASS,
-  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
-  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   AUTH_CARD_BASE_CLASS,
   AUTH_PAGE_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
@@ -147,7 +135,6 @@ import {
   loadDeveloperModePreference,
   persistDeveloperModePreference,
 } from "./ui/developer_mode";
-import { ActionButton, IconButton } from "./ui/primitives";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
@@ -222,21 +209,6 @@ const LazyJoinPage = React.lazy(async () => {
 const LazyTeamPage = React.lazy(async () => {
   const module = (await import("./pages/team_page")) as typeof import("./pages/team_page");
   return { default: module.TeamPage };
-});
-
-const LazyCreateAgentModal = React.lazy(async () => {
-  const module = await import("./components/create_agent_modal");
-  return { default: module.CreateAgentModal };
-});
-
-const LazyAgentNodeSection = React.lazy(async () => {
-  const module = await import("./components/agent_node_section");
-  return { default: module.AgentNodeSection };
-});
-
-const LazyPermissionModal = React.lazy(async () => {
-  const module = await import("./components/permission_modal");
-  return { default: module.PermissionModal };
 });
 
 function AuthRedirect(): null {
@@ -3165,141 +3137,39 @@ export function App() {
   }
 
   return (
-    <div
-      className="app bg-white"
-      ref={appRootRef}
-    >
-      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
-        {auth && (
-          <div className="session flex items-center gap-2 sm:gap-3">
-            <IconButton
-              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
-              onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
-              title={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-pressed={!agentsCollapsed}
-              tone={agentsCollapsed ? "default" : "active"}
-            >
-              <i
-                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
-                aria-hidden="true"
-              />
-            </IconButton>
-            <WorkbenchConnectionBadge
-              badge={connectionBadge}
-              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
-            />
-            <WorkbenchHeaderMenu
-              active="agents"
-              username={auth.username}
-              isRoot={auth.role === "root"}
-              onLogout={onLogout}
-              onNavigate={navigateWorkbenchRoute}
-              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
-            />
-          </div>
-        )}
-      </header>
-
-      {normalizedError && (
-        <ErrorBanner message={normalizedError} onClose={() => setError(null)} />
-      )}
-
-      {!auth && (
-        <form
-          className={AUTH_FORM_CARD_CLASS}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onLogin();
-          }}
-        >
-          <h2 className="text-xl font-bold tracking-tight text-notion-text">
-            Login
-          </h2>
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-username"
-            name="username"
-            placeholder="Username"
-            value={username}
-            disabled={authBusy !== null}
-            autoComplete="username"
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-password"
-            name="password"
-            placeholder="Password"
-            type="password"
-            value={password}
-            disabled={authBusy !== null}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          {rootInitialized === false && (
-            <input
-              className={AUTH_INPUT_CLASS}
-              id="login-display-name"
-              name="display_name"
-              placeholder="Display Name"
-              value={displayName}
-              disabled={authBusy !== null}
-              autoComplete="name"
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          )}
-          <div className={AUTH_ACTIONS_CLASS}>
-            {rootInitialized === false && (
-              <ActionButton
-                className={AUTH_SECONDARY_BUTTON_CLASS}
-                disabled={authBusy !== null}
-                onClick={() => onRegister("root")}
-              >
-                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
-              </ActionButton>
-            )}
-            <ActionButton
-              type="submit"
-              className={AUTH_PRIMARY_BUTTON_CLASS}
-              disabled={authBusy !== null}
-            >
-              {authBusy === "login" ? "Logging in..." : "Login"}
-            </ActionButton>
-          </div>
-        </form>
-      )}
-
-      {auth && (
-        <AgentsRouteShell
-          agentsCollapsed={agentsCollapsed}
-          workspaceRef={workspaceRef}
-          workspaceStyle={workspaceStyle}
-          onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
-          agentsPanelProps={agentsPanelProps}
-          outputHeaderProps={outputHeaderProps}
-          workbenchProps={workbenchProps}
-        />
-      )}
-
-      {auth && showCreateAgent && (
-        <Suspense fallback={null}>
-          <LazyCreateAgentModal {...createAgentModalProps}>
-            {agentNodeSectionProps ? (
-              <Suspense fallback={null}>
-                <LazyAgentNodeSection {...agentNodeSectionProps} />
-              </Suspense>
-            ) : null}
-          </LazyCreateAgentModal>
-        </Suspense>
-      )}
-
-      {auth && permissionModalProps && (
-        <Suspense fallback={null}>
-          <LazyPermissionModal {...permissionModalProps} />
-        </Suspense>
-      )}
-    </div>
+    <AgentsRootPage
+      appRootRef={appRootRef}
+      appHeaderRef={appHeaderRef}
+      auth={auth}
+      normalizedError={normalizedError}
+      onClearError={() => setError(null)}
+      authBusy={authBusy}
+      rootInitialized={rootInitialized}
+      username={username}
+      password={password}
+      displayName={displayName}
+      setUsername={setUsername}
+      setPassword={setPassword}
+      setDisplayName={setDisplayName}
+      onLogin={onLogin}
+      onRegister={onRegister}
+      agentsCollapsed={agentsCollapsed}
+      onCollapseAgents={handleCollapseAgents}
+      onExpandAgents={handleExpandAgents}
+      connectionBadge={connectionBadge}
+      onLogout={onLogout}
+      navigateWorkbenchRoute={navigateWorkbenchRoute}
+      workspaceRef={workspaceRef}
+      workspaceStyle={workspaceStyle}
+      onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
+      agentsPanelProps={agentsPanelProps}
+      outputHeaderProps={outputHeaderProps}
+      workbenchProps={workbenchProps}
+      showCreateAgent={showCreateAgent}
+      createAgentModalProps={createAgentModalProps}
+      agentNodeSectionProps={agentNodeSectionProps}
+      permissionModalProps={permissionModalProps}
+    />
   );
 }
 

@@ -1,0 +1,242 @@
+import React, { Suspense } from "react";
+import { ErrorBanner } from "../error_banner";
+import { ConnectionBadge } from "../connection_status";
+import { AuthState } from "../types";
+import { ActionButton, IconButton } from "../ui/primitives";
+import {
+  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  APP_WORKBENCH_HEADER_CLASS,
+  APP_WORKBENCH_HEADER_STATUS_CLASS,
+  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
+  AUTH_ACTIONS_CLASS,
+  AUTH_FORM_CARD_CLASS,
+  AUTH_INPUT_CLASS,
+  AUTH_PRIMARY_BUTTON_CLASS,
+  AUTH_SECONDARY_BUTTON_CLASS,
+} from "../ui/tailwind_classes";
+import { AgentNodeSectionProps } from "./agent_node_section";
+import { AgentsPanelProps } from "./agents_panel";
+import { AgentsRouteShell } from "./agents_route_shell";
+import { AgentsWorkbenchProps } from "./agents_workbench_types";
+import { CreateAgentModalProps } from "./create_agent_modal";
+import { OutputHeaderProps } from "./output_header";
+import { PermissionModalProps } from "./permission_modal";
+import { WorkbenchConnectionBadge } from "./workbench_connection_badge";
+import { WorkbenchHeaderMenu } from "./workbench_header_menu";
+
+const LazyCreateAgentModal = React.lazy(async () => {
+  const module = await import("./create_agent_modal");
+  return { default: module.CreateAgentModal };
+});
+
+const LazyAgentNodeSection = React.lazy(async () => {
+  const module = await import("./agent_node_section");
+  return { default: module.AgentNodeSection };
+});
+
+const LazyPermissionModal = React.lazy(async () => {
+  const module = await import("./permission_modal");
+  return { default: module.PermissionModal };
+});
+
+export type AgentsRootPageProps = {
+  appRootRef: React.RefObject<HTMLDivElement | null>;
+  appHeaderRef: React.RefObject<HTMLElement | null>;
+  auth: AuthState | null;
+  normalizedError: string | null;
+  onClearError: () => void;
+  authBusy: "login" | "register" | null;
+  rootInitialized: boolean | null;
+  username: string;
+  password: string;
+  displayName: string;
+  setUsername: (value: string) => void;
+  setPassword: (value: string) => void;
+  setDisplayName: (value: string) => void;
+  onLogin: () => Promise<void>;
+  onRegister: (role: string) => Promise<void>;
+  agentsCollapsed: boolean;
+  onCollapseAgents: () => void;
+  onExpandAgents: () => void;
+  connectionBadge: ConnectionBadge;
+  onLogout: () => void;
+  navigateWorkbenchRoute: (pathname: string) => void;
+  workspaceRef: React.RefObject<HTMLElement | null>;
+  workspaceStyle?: React.CSSProperties;
+  onAgentsSplitterPointerDown: React.PointerEventHandler<HTMLDivElement>;
+  agentsPanelProps: AgentsPanelProps;
+  outputHeaderProps: OutputHeaderProps;
+  workbenchProps: AgentsWorkbenchProps | null;
+  showCreateAgent: boolean;
+  createAgentModalProps: CreateAgentModalProps;
+  agentNodeSectionProps: AgentNodeSectionProps | null;
+  permissionModalProps: PermissionModalProps | null;
+};
+
+export const AgentsRootPage = React.memo(function AgentsRootPage({
+  appRootRef,
+  appHeaderRef,
+  auth,
+  normalizedError,
+  onClearError,
+  authBusy,
+  rootInitialized,
+  username,
+  password,
+  displayName,
+  setUsername,
+  setPassword,
+  setDisplayName,
+  onLogin,
+  onRegister,
+  agentsCollapsed,
+  onCollapseAgents,
+  onExpandAgents,
+  connectionBadge,
+  onLogout,
+  navigateWorkbenchRoute,
+  workspaceRef,
+  workspaceStyle,
+  onAgentsSplitterPointerDown,
+  agentsPanelProps,
+  outputHeaderProps,
+  workbenchProps,
+  showCreateAgent,
+  createAgentModalProps,
+  agentNodeSectionProps,
+  permissionModalProps,
+}: AgentsRootPageProps) {
+  return (
+    <div className="app bg-white" ref={appRootRef}>
+      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
+        {auth ? (
+          <div className="session flex items-center gap-2 sm:gap-3">
+            <IconButton
+              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
+              onClick={agentsCollapsed ? onExpandAgents : onCollapseAgents}
+              title={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
+              aria-pressed={!agentsCollapsed}
+              tone={agentsCollapsed ? "default" : "active"}
+            >
+              <i
+                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
+                aria-hidden="true"
+              />
+            </IconButton>
+            <WorkbenchConnectionBadge
+              badge={connectionBadge}
+              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
+            />
+            <WorkbenchHeaderMenu
+              active="agents"
+              username={auth.username}
+              isRoot={auth.role === "root"}
+              onLogout={onLogout}
+              onNavigate={navigateWorkbenchRoute}
+              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+            />
+          </div>
+        ) : null}
+      </header>
+
+      {normalizedError ? (
+        <ErrorBanner message={normalizedError} onClose={onClearError} />
+      ) : null}
+
+      {!auth ? (
+        <form
+          className={AUTH_FORM_CARD_CLASS}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onLogin();
+          }}
+        >
+          <h2 className="text-xl font-bold tracking-tight text-notion-text">
+            Login
+          </h2>
+          <input
+            className={AUTH_INPUT_CLASS}
+            id="login-username"
+            name="username"
+            placeholder="Username"
+            value={username}
+            disabled={authBusy !== null}
+            autoComplete="username"
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <input
+            className={AUTH_INPUT_CLASS}
+            id="login-password"
+            name="password"
+            placeholder="Password"
+            type="password"
+            value={password}
+            disabled={authBusy !== null}
+            autoComplete="current-password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {rootInitialized === false ? (
+            <input
+              className={AUTH_INPUT_CLASS}
+              id="login-display-name"
+              name="display_name"
+              placeholder="Display Name"
+              value={displayName}
+              disabled={authBusy !== null}
+              autoComplete="name"
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          ) : null}
+          <div className={AUTH_ACTIONS_CLASS}>
+            {rootInitialized === false ? (
+              <ActionButton
+                className={AUTH_SECONDARY_BUTTON_CLASS}
+                disabled={authBusy !== null}
+                onClick={() => onRegister("root")}
+              >
+                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
+              </ActionButton>
+            ) : null}
+            <ActionButton
+              type="submit"
+              className={AUTH_PRIMARY_BUTTON_CLASS}
+              disabled={authBusy !== null}
+            >
+              {authBusy === "login" ? "Logging in..." : "Login"}
+            </ActionButton>
+          </div>
+        </form>
+      ) : (
+        <AgentsRouteShell
+          agentsCollapsed={agentsCollapsed}
+          workspaceRef={workspaceRef}
+          workspaceStyle={workspaceStyle}
+          onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
+          agentsPanelProps={agentsPanelProps}
+          outputHeaderProps={outputHeaderProps}
+          workbenchProps={workbenchProps}
+        />
+      )}
+
+      {auth && showCreateAgent ? (
+        <Suspense fallback={null}>
+          <LazyCreateAgentModal {...createAgentModalProps}>
+            {agentNodeSectionProps ? (
+              <Suspense fallback={null}>
+                <LazyAgentNodeSection {...agentNodeSectionProps} />
+              </Suspense>
+            ) : null}
+          </LazyCreateAgentModal>
+        </Suspense>
+      ) : null}
+
+      {auth && permissionModalProps ? (
+        <Suspense fallback={null}>
+          <LazyPermissionModal {...permissionModalProps} />
+        </Suspense>
+      ) : null}
+    </div>
+  );
+});
+AgentsRootPage.displayName = "AgentsRootPage";
