@@ -11,9 +11,11 @@ import {
   TextInput,
   Textarea,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
+import { ActionButton, IconButton } from "../ui/primitives";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -3622,7 +3624,7 @@ export function TeamPage(props: TeamPageProps) {
       <header className={teamWorkbenchHeaderShellClassName}>
         <div className="flex min-w-0 items-center gap-3">
           {!isSelectorRoute && (
-            <button
+            <IconButton
               className={teamWorkbenchHeaderIconButtonClassName}
               onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
               title={teamPanelToggleLabel}
@@ -3632,7 +3634,7 @@ export function TeamPage(props: TeamPageProps) {
                 className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
                 aria-hidden="true"
               />
-            </button>
+            </IconButton>
           )}
           {isSelectorRoute ? (
             <div className="min-w-0">
@@ -3679,14 +3681,15 @@ export function TeamPage(props: TeamPageProps) {
             <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
             <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
           </div>
-          <button
-            type="button"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/80 text-emerald-700 transition hover:bg-white"
+          <IconButton
+            tone="subtle"
+            size="md"
+            className="h-8 w-8 shrink-0 rounded-full border border-emerald-200 bg-white/80 text-emerald-700 hover:bg-white"
             aria-label="Dismiss runtime notice"
             onClick={() => setWarning(null)}
           >
             <i className="bi bi-x-lg" aria-hidden="true" />
-          </button>
+          </IconButton>
         </div>
       )}
       {warningNotice?.kind === "warning" && (
@@ -3731,9 +3734,9 @@ export function TeamPage(props: TeamPageProps) {
                   value={teamSelectorFilter}
                   onChange={(event) => setTeamSelectorFilter(event.target.value)}
                 />
-                <button
-                  type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-black/[0.08] bg-white/75 text-ui-text-primary transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                <IconButton
+                  size="md"
+                  className="h-9 w-9 rounded-[10px] border border-black/[0.08] bg-white/75 text-ui-text-primary hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
                   onClick={() => {
                     void refreshTeams();
                   }}
@@ -3742,7 +3745,7 @@ export function TeamPage(props: TeamPageProps) {
                   title="Refresh teams"
                 >
                   <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                </button>
+                </IconButton>
               </div>
             )}
 
@@ -3761,7 +3764,7 @@ export function TeamPage(props: TeamPageProps) {
                   const runtime = teamRuntimeByTeamId[team.id] ?? null;
                   const runtimeStatus = resolveTeamRuntimeStatus(summary, runtime);
                   return (
-                    <button
+                    <UnstyledButton
                       key={team.id}
                       type="button"
                       className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
@@ -3788,7 +3791,7 @@ export function TeamPage(props: TeamPageProps) {
                       <div className="mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted">
                         {runtimeStatus.label}
                       </div>
-                    </button>
+                    </UnstyledButton>
                   );
                 })}
               </div>
@@ -3922,14 +3925,14 @@ export function TeamPage(props: TeamPageProps) {
                             {...NOTION_FLOATING_MENU_PROPS}
                           >
                             <Menu.Target>
-                              <button
+                              <UnstyledButton
                                 type="button"
                                 className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold`}
                                 aria-label="Open agent workspace menu"
                               >
                                 <i className="bi bi-person-badge" aria-hidden="true" />
                                 <span>Agent</span>
-                              </button>
+                              </UnstyledButton>
                             </Menu.Target>
                             <Menu.Dropdown>
                               <Menu.Label>{selectedAgentLabel}</Menu.Label>
@@ -4045,7 +4048,7 @@ export function TeamPage(props: TeamPageProps) {
                               {...NOTION_FLOATING_MENU_PROPS}
                             >
                               <Menu.Target>
-                                <button
+                                <UnstyledButton
                                   type="button"
                                   className={
                                     isAdvancedWorkspace
@@ -4056,7 +4059,7 @@ export function TeamPage(props: TeamPageProps) {
                                 >
                                   <i className="bi bi-three-dots" aria-hidden="true" />
                                   <span>More</span>
-                                </button>
+                                </UnstyledButton>
                               </Menu.Target>
                               <Menu.Dropdown>
                                 {workspaceAdvancedTabItems.length > 0 && (
@@ -4257,13 +4260,14 @@ export function TeamPage(props: TeamPageProps) {
                     Select an existing run or start one in the Runs tab before opening this panel.
                   </p>
                   <div className="mt-3">
-                    <button
+                    <ActionButton
+                      tone="secondary"
+                      size="md"
                       className={panelSecondaryButtonClassName}
-                      type="button"
                       onClick={() => setTab("runs")}
                     >
                       Go to Runs
-                    </button>
+                    </ActionButton>
                   </div>
                 </div>
               )}
@@ -4384,13 +4388,14 @@ export function TeamPage(props: TeamPageProps) {
                           : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."}
                       </p>
                       <div className="mt-3">
-                        <button
+                        <ActionButton
+                          tone="secondary"
+                          size="md"
                           className={panelSecondaryButtonClassName}
-                          type="button"
                           onClick={() => setTab("runs")}
                         >
                           Go to Runs
-                        </button>
+                        </ActionButton>
                       </div>
                     </div>
                   )}
@@ -4479,7 +4484,7 @@ export function TeamPage(props: TeamPageProps) {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <h3 className={teamSectionHeadingClassName}>Debug Tools</h3>
                           <div className={teamDebugTabsClassName}>
-                            <button
+                            <UnstyledButton
                               className={
                                 teamDebugTag === "run_ops"
                                   ? teamDebugTabActiveClassName
@@ -4488,8 +4493,8 @@ export function TeamPage(props: TeamPageProps) {
                               onClick={() => setTeamDebugTag("run_ops")}
                             >
                               Run Ops
-                            </button>
-                            <button
+                            </UnstyledButton>
+                            <UnstyledButton
                               className={
                                 teamDebugTag === "step_ops"
                                   ? teamDebugTabActiveClassName
@@ -4498,8 +4503,8 @@ export function TeamPage(props: TeamPageProps) {
                               onClick={() => setTeamDebugTag("step_ops")}
                             >
                               Step Ops
-                            </button>
-                            <button
+                            </UnstyledButton>
+                            <UnstyledButton
                               className={
                                 teamDebugTag === "mailbox_raw"
                                   ? teamDebugTabActiveClassName
@@ -4508,7 +4513,7 @@ export function TeamPage(props: TeamPageProps) {
                               onClick={() => setTeamDebugTag("mailbox_raw")}
                             >
                               Mailbox Raw
-                            </button>
+                            </UnstyledButton>
                           </div>
                         </div>
                       </div>
@@ -4523,13 +4528,14 @@ export function TeamPage(props: TeamPageProps) {
                             tab first.
                           </p>
                           <div className="mt-3">
-                            <button
+                            <ActionButton
+                              tone="secondary"
+                              size="md"
                               className={panelSecondaryButtonClassName}
-                              type="button"
                               onClick={() => setTab("runs")}
                             >
                               Go to Runs
-                            </button>
+                            </ActionButton>
                           </div>
                         </div>
                       )}
@@ -4578,13 +4584,14 @@ export function TeamPage(props: TeamPageProps) {
                             the Runs tab first.
                           </p>
                           <div className="mt-3">
-                            <button
+                            <ActionButton
+                              tone="secondary"
+                              size="md"
                               className={panelSecondaryButtonClassName}
-                              type="button"
                               onClick={() => setTab("runs")}
                             >
                               Go to Runs
-                            </button>
+                            </ActionButton>
                           </div>
                         </div>
                       )}

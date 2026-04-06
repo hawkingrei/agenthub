@@ -49,6 +49,7 @@
 - Switched `admin_page.tsx`, `join_page.tsx`, and `output_error_boundary.tsx` off their remaining raw buttons and onto Mantine-backed shared primitives.
 - Moved the Team create-agent accent control from hard-coded hex colors to semantic `brand-primary`/`brand-primary-hover` tokens.
 - Updated ACP conversation / join / error-boundary tests to use the shared Mantine jsdom helpers so `matchMedia` and related provider assumptions stay consistent across the suite.
+- Migrated the highest-traffic raw buttons in `team_page.tsx` onto shared primitives or Mantine `UnstyledButton`, including the header sidebar toggle, runtime-notice dismiss action, Team selector refresh, selector rows, agent workspace menu trigger, advanced-workspace menu trigger, debug tab chips, and the repeated `Go to Runs` empty-state CTAs.
 
 ## Validation
 
@@ -65,3 +66,4 @@
 - run `make build-web`
 - verify on `https://agenthub.hawkingrei.com/teams/276a2682-9ce7-4af5-aa6c-f12575d13c37` that `Refresh channel`, `Pending delivery`, `Show details`, and `Send` remain interactive after the primitive migration
 - verify on `https://agenthub.hawkingrei.com/` that the workbench menu trigger still opens and no new console errors appear beyond the known `favicon.ico 404`
+- run `npm run test -- src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/workbench_header_menu.test.tsx src/workbench_header_menu.interaction.test.tsx`
