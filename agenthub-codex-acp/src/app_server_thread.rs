@@ -302,8 +302,10 @@ impl AppServerCodexThread {
         match response {
             Ok(_) => {
                 let mut state = self.state.lock().await;
-                if let Some(active_turn) = state.active_turn.as_mut() {
-                    active_turn.submission_id = submission_id.clone();
+                if let Some(current_active_turn) = state.active_turn.as_mut() {
+                    if current_active_turn.submission_id == active_turn.submission_id {
+                        current_active_turn.submission_id = submission_id.clone();
+                    }
                 }
                 Ok(SteerFollowUpAction::ReuseActiveSubmission(submission_id))
             }
@@ -573,57 +575,64 @@ impl AppServerCodexThread {
         &self,
         args: OverrideTurnContextArgs,
     ) -> Result<String, CodexErr> {
-        let mut state = self.state.lock().await;
-        let mut updated_config = state.config.clone();
+        let (updated_config, request_id, thread_id) = {
+            let mut state = self.state.lock().await;
+            let mut updated_config = state.config.clone();
 
-        if let Some(cwd) = args.cwd {
-            updated_config.cwd = cwd.try_into()?;
-        }
-        if let Some(approval_policy) = args.approval_policy {
-            updated_config
-                .permissions
-                .approval_policy
-                .set(approval_policy)
-                .map_err(|err| CodexErr::Fatal(err.to_string()))?;
-        }
-        if let Some(approvals_reviewer) = args.approvals_reviewer {
-            updated_config.approvals_reviewer = approvals_reviewer;
-        }
-        if let Some(sandbox_policy) = args.sandbox_policy {
-            updated_config
-                .permissions
-                .sandbox_policy
-                .set(sandbox_policy)
-                .map_err(|err| CodexErr::Fatal(err.to_string()))?;
-        }
-        if let Some(model) = args.model {
-            updated_config.model = Some(model);
-        }
-        if let Some(effort) = args.effort {
-            updated_config.model_reasoning_effort = effort;
-        }
-        if let Some(summary) = args.summary {
-            updated_config.model_reasoning_summary = Some(summary);
-        }
-        if let Some(personality) = args.personality {
-            updated_config.personality = Some(personality);
-        }
-        if let Some(service_tier) = args.service_tier {
-            updated_config.service_tier = service_tier;
-        }
+            if let Some(cwd) = args.cwd {
+                updated_config.cwd = cwd.try_into()?;
+            }
+            if let Some(approval_policy) = args.approval_policy {
+                updated_config
+                    .permissions
+                    .approval_policy
+                    .set(approval_policy)
+                    .map_err(|err| CodexErr::Fatal(err.to_string()))?;
+            }
+            if let Some(approvals_reviewer) = args.approvals_reviewer {
+                updated_config.approvals_reviewer = approvals_reviewer;
+            }
+            if let Some(sandbox_policy) = args.sandbox_policy {
+                updated_config
+                    .permissions
+                    .sandbox_policy
+                    .set(sandbox_policy)
+                    .map_err(|err| CodexErr::Fatal(err.to_string()))?;
+            }
+            if let Some(model) = args.model {
+                updated_config.model = Some(model);
+            }
+            if let Some(effort) = args.effort {
+                updated_config.model_reasoning_effort = effort;
+            }
+            if let Some(summary) = args.summary {
+                updated_config.model_reasoning_summary = Some(summary);
+            }
+            if let Some(personality) = args.personality {
+                updated_config.personality = Some(personality);
+            }
+            if let Some(service_tier) = args.service_tier {
+                updated_config.service_tier = service_tier;
+            }
+
+            let request_id = next_request_id(&mut state);
+            let thread_id = state.thread_id.clone();
+            (updated_config, request_id, thread_id)
+        };
 
         let _response: ThreadResumeResponse = self
             .request_handle
             .request_typed(ClientRequest::ThreadResume {
-                request_id: next_request_id(&mut state),
+                request_id,
                 params: thread_resume_params_from_config(
                     &updated_config,
-                    &SessionId::new(state.thread_id.clone()),
+                    &SessionId::new(thread_id),
                 ),
             })
             .await
             .map_err(typed_request_error_to_codex)?;
 
+        let mut state = self.state.lock().await;
         state.config = updated_config;
         Ok(noop_submission_id())
     }
