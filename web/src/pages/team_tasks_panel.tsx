@@ -444,7 +444,11 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation(selectedTask.id)}>
+            <ActionButton
+              tone="secondary"
+              size="md"
+              onClick={() => onOpenConversation(selectedTask?.id)}
+            >
               Open thread
             </ActionButton>
           </div>

@@ -92,14 +92,26 @@ export function filterPermissionsForAgent(
   return items.filter((item) => item.agent_id === agentId);
 }
 
+function defaultScheduleTimeout(
+  callback: () => void,
+  delayMs: number
+): number {
+  return globalThis.setTimeout(callback, delayMs) as unknown as number;
+}
+
+function defaultClearTimeout(timerId: number): void {
+  globalThis.clearTimeout(
+    timerId as unknown as ReturnType<typeof globalThis.setTimeout>
+  );
+}
+
 export function schedulePermissionPollLoop(
   delay: number,
   pollState: { timer: number | null },
   pollOnce: () => Promise<number>,
   isCancelled: () => boolean,
-  scheduleTimeout: (callback: () => void, delayMs: number) => number = (callback, delayMs) =>
-    window.setTimeout(callback, delayMs),
-  clearTimeoutFn: (timerId: number) => void = (timerId) => window.clearTimeout(timerId)
+  scheduleTimeout: (callback: () => void, delayMs: number) => number = defaultScheduleTimeout,
+  clearTimeoutFn: (timerId: number) => void = defaultClearTimeout
 ): void {
   if (isCancelled()) return;
   if (pollState.timer != null) {

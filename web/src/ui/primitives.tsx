@@ -12,7 +12,7 @@ const INSET_SURFACE_BASE_CLASS =
 const TOOLBAR_ROW_BASE_CLASS =
   "flex flex-wrap items-center justify-between gap-3";
 const SELECTABLE_LIST_ITEM_BASE_CLASS =
-  "team-item group relative flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white p-4 text-left shadow-sm transition-all hover:border-notion-accent/20 hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60";
+  "team-item group relative flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white p-4 text-left shadow-sm transition-all hover:border-notion-accent/20 hover:bg-notion-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60";
 const SELECTABLE_LIST_ITEM_ACTIVE_CLASS =
   "border-notion-accent/30 bg-notion-hover shadow-md ring-1 ring-notion-accent/30";
 

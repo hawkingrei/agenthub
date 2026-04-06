@@ -87,6 +87,9 @@ describe("ui primitives", () => {
     );
     expect(activeHtml).toContain("team-item");
     expect(activeHtml).toContain("ring-1 ring-notion-accent/30");
+    expect(activeHtml).toContain(
+      "focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2"
+    );
     expect(idleHtml).not.toContain("ring-1 ring-notion-accent/30");
     expect(activeHtml).toContain('type="button"');
   });

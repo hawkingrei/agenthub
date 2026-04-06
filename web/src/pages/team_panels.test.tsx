@@ -956,6 +956,11 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Agent ACP");
     expect(container.textContent).toContain("Debug");
+    expect(
+      Array.from(container.querySelectorAll('[data-team-surface="workflow-tabs"] button')).every(
+        (button) => button.getAttribute("type") === "button"
+      )
+    ).toBe(true);
 
     clickElement(findButtonByText(container, "Events"));
     expect(onTabChange).toHaveBeenCalledWith("events");

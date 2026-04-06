@@ -16,6 +16,7 @@ function TeamTabsBarImpl(props: TeamTabsBarProps) {
       {items.map((item) => (
         <UnstyledButton
           key={item.value}
+          type="button"
           className={tab === item.value ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
           onClick={() => onTabChange(item.value)}
         >

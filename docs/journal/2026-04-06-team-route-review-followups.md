@@ -32,6 +32,12 @@ PR follow-up review on the Team/ACP frontend still had a few low-risk correctnes
   - `web/src/app_live_output.test.ts`
   - `web/src/app_viewport.test.ts`
   so the extracted live-output routing and viewport sync helpers now have direct, file-local regression tests instead of relying only on the larger `app.permission_scope.test.ts`.
+- Applied a second low-risk review cleanup pass:
+  - added visible keyboard focus styling to `SelectableListItem` in `web/src/ui/primitives.tsx`
+  - set explicit `type="button"` on `web/src/pages/team_tabs_bar.tsx` tab buttons
+  - guarded the Team task-thread CTA with `selectedTask?.id` in `web/src/pages/team_tasks_panel.tsx`
+  - switched `web/src/app_permission_polling.ts` timeout defaults from `window.*` to `globalThis.*`
+  - documented the sanitized HTML contract in `web/src/pages/team/team_thread_rich_text.tsx`
 
 ## Validation
 
@@ -40,6 +46,7 @@ Commands run locally:
 ```bash
 cd web && npm run test -- vite.config.test.ts src/app.permission_scope.test.ts src/pages/team/team_markdown.test.ts src/pages/team_member_acp_panel.test.tsx src/pages/team_panels.test.tsx
 cd web && npm run test -- src/app_live_output.test.ts src/app_viewport.test.ts src/pages/team/team_thread_rich_text.test.tsx src/pages/team_member_acp_panel.test.tsx src/pages/team_panels.test.tsx
+cd web && npm run test -- src/ui/primitives.test.tsx src/pages/team_panels.test.tsx src/app_permission_polling.test.ts src/pages/team/team_thread_rich_text.test.tsx
 cd web && npm run test -- tests/e2e/team_page.e2e.ts --grep "team page keeps single-column proportions on mobile viewport"
 cd web && npm run lint -- --ignore-pattern dist-debug --ignore-pattern dist-debug-current
 cd web && npm run build -- --sourcemap
