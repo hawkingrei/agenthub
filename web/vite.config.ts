@@ -52,18 +52,28 @@ const ROUTE_RICH_TEXT_SHARED_IDS = [
 ];
 
 const ROUTE_MANTINE_INPUT_IDS = [
+  "/node_modules/@mantine/core/esm/index.mjs",
+  "/node_modules/@mantine/hooks/esm/index.mjs",
+  "/node_modules/@mantine/hooks/esm/use-previous/",
   "/node_modules/@mantine/hooks/esm/utils/use-callback-ref/",
   "/node_modules/@mantine/hooks/esm/use-debounced-callback/",
+  "/node_modules/@mantine/core/esm/core/utils/get-env/",
+  "/node_modules/@mantine/core/esm/core/utils/to-int/",
   "/node_modules/@mantine/core/esm/core/utils/find-element-in-shadow-dom/",
+  "/node_modules/@mantine/core/esm/components/Alert/",
   "/node_modules/@mantine/core/esm/components/CloseButton/",
+  "/node_modules/@mantine/core/esm/components/Modal/",
   "/node_modules/@mantine/core/esm/components/ScrollArea/",
   "/node_modules/@mantine/core/esm/components/Input/",
   "/node_modules/@mantine/core/esm/components/InputBase/",
+  "/node_modules/@mantine/core/esm/components/InputWrapper/",
   "/node_modules/@mantine/core/esm/components/Combobox/",
   "/node_modules/@mantine/core/esm/components/NativeSelect/",
   "/node_modules/@mantine/core/esm/components/TextInput/",
   "/node_modules/@mantine/core/esm/components/Textarea/",
   "/node_modules/@mantine/core/esm/components/Select/",
+  "/node_modules/@mantine/core/esm/utils/InlineInput/",
+  "/node_modules/@mantine/core/esm/utils/InputsGroupFieldset/",
 ];
 
 const ROUTE_AUTH_IDS = [
@@ -76,18 +86,24 @@ const ROUTE_AGENTS_DEBUG_LOADER_IDS = [
   "/src/components/acp_debug_loader.ts",
 ];
 
-const ROUTE_AGENTS_WORKBENCH_IDS = [
-  "/src/markdown.ts",
-  "/src/thread_markdown.ts",
-  "/src/components/thread_rich_text.tsx",
-  "/src/components/agents_workbench.tsx",
-  "/src/components/output_body.tsx",
-  "/src/components/input_dock.tsx",
+const ROUTE_ACP_SHARED_IDS = [
+  "/src/acp.ts",
+  "/src/components/acp_input_dock_clearance.ts",
+  "/src/components/acp_panel_helpers.ts",
   "/src/components/acp_panel.tsx",
   "/src/components/acp_conversation.tsx",
   "/src/components/acp_plan.tsx",
+  "/src/components/acp_progressive_views.tsx",
   "/src/components/acp_request_user_input_cards.tsx",
+  "/src/components/acp_conversation_cache_stats.ts",
+  "/src/components/input_dock.tsx",
   "/src/components/acp_tool_",
+  "/src/hooks/use_acp_conversation.ts",
+];
+
+const ROUTE_AGENTS_WORKBENCH_IDS = [
+  "/src/components/agents_workbench.tsx",
+  "/src/components/output_body.tsx",
 ];
 
 function normalizeChunkId(id: string): string {
@@ -130,6 +146,9 @@ export function resolveChunkGroupName(id: string): string | undefined {
   }
   if (includesAny(normalized, ROUTE_UI_SHARED_IDS)) {
     return "route-ui-shared";
+  }
+  if (includesAny(normalized, ROUTE_ACP_SHARED_IDS)) {
+    return "route-acp-shared";
   }
   if (includesAny(normalized, ROUTE_AGENTS_DEBUG_LOADER_IDS)) {
     return "route-agents-debug-loader";
@@ -177,6 +196,7 @@ export default defineConfig({
             !dep.includes("route-agents-debug-loader-") &&
             !dep.includes("route-agents-workbench-") &&
             !dep.includes("route-agents-debug-") &&
+            !dep.includes("route-acp-shared-") &&
             !dep.includes("route-teams-agent-acp-") &&
             !dep.includes("route-teams-") &&
             !dep.includes("vendor-markdown-")

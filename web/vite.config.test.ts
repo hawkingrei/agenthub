@@ -29,17 +29,17 @@ describe("vite chunk grouping", () => {
       "route-agents-workbench"
     );
     expect(resolveChunkGroup("/repo/web/src/components/input_dock.tsx")).toBe(
-      "route-agents-workbench"
+      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/components/acp_panel.tsx")).toBe(
-      "route-agents-workbench"
+      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/components/terminal_output.tsx")).toBe(
       "route-agents-terminal"
     );
     expect(
       resolveChunkGroup("/repo/web/src/components/acp_conversation.tsx")
-    ).toBe("route-agents-workbench");
+    ).toBe("route-acp-shared");
     expect(resolveChunkGroup("/repo/web/src/components/acp_debug.tsx")).toBe(
       "route-agents-debug"
     );
@@ -56,7 +56,7 @@ describe("vite chunk grouping", () => {
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/api.ts")).toBe("route-agents");
-    expect(resolveChunkGroup("/repo/web/src/acp.ts")).toBe("route-agents");
+    expect(resolveChunkGroup("/repo/web/src/acp.ts")).toBe("route-acp-shared");
     expect(resolveChunkGroup("/repo/web/src/push.ts")).toBe("route-agents");
     expect(resolveChunkGroup("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
@@ -86,10 +86,10 @@ describe("vite chunk grouping", () => {
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/components/acp_panel_helpers.ts")).toBe(
-      "route-agents"
+      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
-      undefined
+      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/thread_markdown.ts")).toBe("route-rich-text-shared");
     expect(resolveChunkGroup("/repo/web/src/markdown.ts")).toBe("route-rich-text-shared");
@@ -130,6 +130,21 @@ describe("vite chunk grouping", () => {
     ).toBe("route-mantine-inputs");
     expect(
       resolveChunkGroup(
+        "/repo/web/node_modules/@mantine/core/esm/components/Modal/Modal.mjs"
+      )
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup(
+        "/repo/web/node_modules/@mantine/core/esm/components/InputWrapper/InputWrapper.mjs"
+      )
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup(
+        "/repo/web/node_modules/@mantine/core/esm/core/utils/to-int/to-int.mjs"
+      )
+    ).toBe("route-mantine-inputs");
+    expect(
+      resolveChunkGroup(
         "/repo/web/node_modules/@mantine/hooks/esm/use-debounced-callback/use-debounced-callback.mjs"
       )
     ).toBe("route-mantine-inputs");
@@ -153,6 +168,9 @@ describe("vite chunk grouping", () => {
     );
     expect(resolveManualChunkName("/repo/web/src/components/acp_debug_loader.ts")).toBe(
       "route-agents-debug-loader"
+    );
+    expect(resolveManualChunkName("/repo/web/src/components/acp_panel.tsx")).toBe(
+      "route-acp-shared"
     );
     expect(resolveManualChunkName("/repo/web/src/html_escape.ts")).toBe(
       "route-app-shared"
@@ -182,6 +200,7 @@ describe("vite chunk grouping", () => {
         "assets/route-agents-debug-loader-abc.js",
         "assets/route-agents-workbench-abc.js",
         "assets/route-agents-debug-abc.js",
+        "assets/route-acp-shared-abc.js",
         "assets/route-teams-agent-acp-abc.js",
         "assets/vendor-mantine-abc.js",
       ])
