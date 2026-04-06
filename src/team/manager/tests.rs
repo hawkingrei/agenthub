@@ -726,6 +726,67 @@ async fn append_task_conversation_message_honors_idempotency_key() {
 }
 
 #[tokio::test]
+async fn append_task_conversation_message_propagates_non_idempotency_insert_failures() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "task-idempotency-insert-failure-team".to_string(),
+            description: Some("team for task message insert failure".to_string()),
+            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "user",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create task");
+
+    sqlx::query(
+        r#"
+        CREATE TRIGGER fail_task_message_insert
+        BEFORE INSERT ON team_conversation_messages
+        WHEN NEW.idempotency_key IS NOT NULL
+        BEGIN
+            SELECT RAISE(FAIL, 'forced task message insert failure');
+        END;
+        "#,
+    )
+    .execute(&db)
+    .await
+    .expect("create failing trigger");
+
+    let err = manager
+        .append_task_conversation_message_with_created(
+            &task.id,
+            "user",
+            None,
+            "group_chat",
+            json!({"type":"chat_message","text":"hello team"}),
+            Some("task-msg-trigger-fail"),
+        )
+        .await
+        .expect_err("trigger failure should propagate");
+    assert!(
+        err.to_string()
+            .contains("forced task message insert failure"),
+        "expected insert failure to propagate, got: {err:?}"
+    );
+    assert!(
+        !TeamManager::is_task_message_idempotency_conflict(&err),
+        "expected non-idempotency error, got: {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn task_status_updates_are_persisted() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

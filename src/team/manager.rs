@@ -77,6 +77,8 @@ const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
 pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
 pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
+const TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS: &str = "team_conversation_messages.conversation_id, team_conversation_messages.from_actor_id, team_conversation_messages.idempotency_key";
 
 fn is_row_not_found(err: &anyhow::Error) -> bool {
     matches!(
@@ -945,7 +947,7 @@ impl TeamManager {
         let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
             let result = sqlx::query(
                 r#"
-                INSERT OR IGNORE INTO team_conversation_messages (
+                INSERT INTO team_conversation_messages (
                     conversation_id,
                     task_id,
                     from_actor_id,
@@ -967,10 +969,10 @@ impl TeamManager {
             .bind(idempotency_key)
             .bind(now)
             .execute(&mut *tx)
-            .await?;
+            .await;
 
-            if result.rows_affected() == 1 {
-                (
+            match result {
+                Ok(result) => (
                     TeamConversationMessageRecord {
                         message_id: result.last_insert_rowid(),
                         conversation_id: conversation.id.clone(),
@@ -982,24 +984,26 @@ impl TeamManager {
                         created_at: now,
                     },
                     true,
-                )
-            } else {
-                let existing = fetch_task_conversation_message_by_idempotency(
-                    &mut tx,
-                    &conversation.id,
-                    from_actor_id,
-                    idempotency_key,
-                )
-                .await?;
-                ensure_task_conversation_message_idempotency_compatible(
-                    task_id,
-                    from_actor_id,
-                    to_actor_id.as_deref(),
-                    route,
-                    &redacted_payload,
-                    &existing,
-                )?;
-                (existing, false)
+                ),
+                Err(err) if is_task_conversation_message_idempotency_unique_violation(&err) => {
+                    let existing = fetch_task_conversation_message_by_idempotency(
+                        &mut tx,
+                        &conversation.id,
+                        from_actor_id,
+                        idempotency_key,
+                    )
+                    .await?;
+                    ensure_task_conversation_message_idempotency_compatible(
+                        task_id,
+                        from_actor_id,
+                        to_actor_id.as_deref(),
+                        route,
+                        &redacted_payload,
+                        &existing,
+                    )?;
+                    (existing, false)
+                }
+                Err(err) => return Err(err.into()),
             }
         } else {
             let result = sqlx::query(
@@ -4604,6 +4608,18 @@ fn ensure_task_conversation_message_idempotency_compatible(
         return Err(TaskConversationMessageStoreError::IdempotencyConflict);
     }
     Ok(())
+}
+
+fn is_task_conversation_message_idempotency_unique_violation(err: &SqlxError) -> bool {
+    match err {
+        SqlxError::Database(db_err) => {
+            db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE_CODE)
+                && db_err
+                    .message()
+                    .contains(TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS)
+        }
+        _ => false,
+    }
 }
 
 #[allow(dead_code)]

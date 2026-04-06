@@ -933,8 +933,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         );
     }
 
-    create_team_conversation_messages_idempotency_index(&pool).await;
-
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_team_channel_message_replicas_run_channel
@@ -1246,7 +1244,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_conversation_messages.idempotency_key",
     )
     .await;
-    create_team_conversation_messages_idempotency_index(&pool).await;
+    create_team_conversation_messages_idempotency_index(&pool).await?;
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",
@@ -1400,8 +1398,10 @@ async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
     }
 }
 
-async fn create_team_conversation_messages_idempotency_index(pool: &SqlitePool) {
-    if let Err(err) = sqlx::query(
+async fn create_team_conversation_messages_idempotency_index(
+    pool: &SqlitePool,
+) -> anyhow::Result<()> {
+    sqlx::query(
         r#"
         CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
         ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
@@ -1410,12 +1410,13 @@ async fn create_team_conversation_messages_idempotency_index(pool: &SqlitePool) 
     )
     .execute(pool)
     .await
-    {
-        tracing::warn!(
+    .map(|_| ())
+    .map_err(|err| {
+        anyhow::anyhow!(
             "db init: failed to create idx_team_conversation_messages_idempotency: {}",
             err
-        );
-    }
+        )
+    })
 }
 
 async fn try_connect(db_path: &std::path::Path) -> anyhow::Result<SqlitePool> {
@@ -2572,6 +2573,66 @@ mod tests {
         assert!(index_sql.contains("idempotency_key"));
 
         pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_fails_when_task_message_idempotency_index_cannot_be_created() {
+        let dir = unique_temp_dir("db-migrate-task-message-idempotency-duplicates");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages with idempotency_key");
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                conversation_id,
+                task_id,
+                from_actor_id,
+                to_actor_id,
+                route,
+                payload_json,
+                idempotency_key,
+                created_at
+            )
+            VALUES
+                ('conv-1', 'task-1', 'user', NULL, 'group_chat', '{}', 'dup-key', 1),
+                ('conv-1', 'task-1', 'user', NULL, 'group_chat', '{}', 'dup-key', 2)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert duplicate idempotency rows");
+        pool.close().await;
+
+        let err = init_db_at_path(&db_path)
+            .await
+            .expect_err("duplicate idempotency rows should fail migration");
+        assert!(
+            err.to_string()
+                .contains("idx_team_conversation_messages_idempotency"),
+            "unexpected error: {err:?}"
+        );
+
         let _ = std::fs::remove_file(&db_path);
         let _ = std::fs::remove_dir_all(&dir);
     }
