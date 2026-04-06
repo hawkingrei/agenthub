@@ -2,7 +2,7 @@ use agenthub_team_actor::{ActorServiceError, ActorServiceErrorCode};
 use sqlx::Error as SqlxError;
 
 use crate::api::error::ApiError;
-use crate::team::{TeamRunResumeError, TeamRuntimeStartError};
+use crate::team::{TeamManager, TeamRunResumeError, TeamRuntimeStartError};
 
 pub(super) fn map_create_team_error(err: anyhow::Error) -> ApiError {
     if is_unique_team_name_violation(&err) {
@@ -14,6 +14,13 @@ pub(super) fn map_create_team_error(err: anyhow::Error) -> ApiError {
 pub(super) fn map_submit_step_error(err: anyhow::Error) -> ApiError {
     if is_unique_step_attempt_violation(&err) {
         return ApiError::conflict("step already exists for run");
+    }
+    map_team_internal_error(err)
+}
+
+pub(super) fn map_task_message_error(err: anyhow::Error) -> ApiError {
+    if TeamManager::is_task_message_idempotency_conflict(&err) {
+        return ApiError::conflict("idempotency_key conflicts with an existing message payload");
     }
     map_team_internal_error(err)
 }

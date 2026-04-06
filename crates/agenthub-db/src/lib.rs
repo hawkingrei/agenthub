@@ -591,6 +591,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
             to_actor_id TEXT,
             route TEXT NOT NULL,
             payload_json TEXT NOT NULL,
+            idempotency_key TEXT,
             created_at INTEGER NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES team_conversations(id),
             FOREIGN KEY(task_id) REFERENCES team_tasks(id)
@@ -934,6 +935,22 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     if let Err(err) = sqlx::query(
         r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
+        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_idempotency: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
         CREATE INDEX IF NOT EXISTS idx_team_channel_message_replicas_run_channel
         ON team_channel_message_replicas(run_id, channel_id, stored_at DESC);
         "#,
@@ -1237,6 +1254,27 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "acp_permission_requests.human_review_notified_at",
     )
     .await;
+    add_column_if_missing(
+        &pool,
+        "ALTER TABLE team_conversation_messages ADD COLUMN idempotency_key TEXT",
+        "team_conversation_messages.idempotency_key",
+    )
+    .await;
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
+        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_idempotency: {}",
+            err
+        );
+    }
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",

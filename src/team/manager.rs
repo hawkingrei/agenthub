@@ -49,7 +49,7 @@ use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
-use agenthub_team_actor::ACTOR_MAIN_PEER_ID;
+use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
 #[derive(Clone)]
 pub struct TeamManager {
@@ -82,6 +82,12 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
         err.downcast_ref::<SqlxError>(),
         Some(SqlxError::RowNotFound)
     )
+}
+
+#[derive(Debug, thiserror::Error)]
+enum TaskConversationMessageStoreError {
+    #[error("idempotency_key conflicts with an existing task conversation message payload")]
+    IdempotencyConflict,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -310,6 +316,16 @@ struct AgentRunningSessionRow {
 }
 
 impl TeamManager {
+    pub fn is_task_message_idempotency_conflict(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<TaskConversationMessageStoreError>()
+            .is_some_and(|cause| {
+                matches!(
+                    cause,
+                    TaskConversationMessageStoreError::IdempotencyConflict
+                )
+            })
+    }
+
     #[cfg(test)]
     pub fn new(db: SqlitePool) -> Self {
         Self::new_with_event_dbs(db, AgentEventDbRouter::with_default_base_dir())
@@ -887,6 +903,28 @@ impl TeamManager {
         route: &str,
         payload: Value,
     ) -> anyhow::Result<TeamConversationMessageRecord> {
+        let (message, _created) = self
+            .append_task_conversation_message_with_created(
+                task_id,
+                from_actor_id,
+                to_actor_id,
+                route,
+                payload,
+                None,
+            )
+            .await?;
+        Ok(message)
+    }
+
+    pub async fn append_task_conversation_message_with_created(
+        &self,
+        task_id: &str,
+        from_actor_id: &str,
+        to_actor_id: Option<&str>,
+        route: &str,
+        payload: Value,
+        idempotency_key: Option<&str>,
+    ) -> anyhow::Result<(TeamConversationMessageRecord, bool)> {
         let now = Utc::now().timestamp();
         let conversation = self.get_task_conversation(task_id).await?;
         let redacted_payload = redact_sensitive_json(&payload);
@@ -895,48 +933,122 @@ impl TeamManager {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
-        let result = sqlx::query(
-            r#"
-            INSERT INTO team_conversation_messages (
-                conversation_id,
-                task_id,
-                from_actor_id,
-                to_actor_id,
-                route,
-                payload_json,
-                created_at
-            )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            "#,
-        )
-        .bind(&conversation.id)
-        .bind(task_id)
-        .bind(from_actor_id)
-        .bind(to_actor_id.as_deref())
-        .bind(route)
-        .bind(payload_json)
-        .bind(now)
-        .execute(&self.db)
-        .await?;
-        let message_id = result.last_insert_rowid();
-        self.emit_conversation_event(TeamConversationStreamEvent {
-            team_id: conversation.team_id.clone(),
-            task_id: task_id.to_string(),
-            conversation_id: conversation.id.clone(),
-            message_id: Some(message_id),
-            source: "conversation_message".to_string(),
-        });
+        let idempotency_key = idempotency_key
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
 
-        Ok(TeamConversationMessageRecord {
-            message_id,
-            conversation_id: conversation.id,
-            task_id: task_id.to_string(),
-            from_actor_id: from_actor_id.to_string(),
-            to_actor_id,
-            route: route.to_string(),
-            payload: redacted_payload,
-            created_at: now,
-        })
+        let mut tx = self.db.begin().await?;
+        let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
+            let result = sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO team_conversation_messages (
+                    conversation_id,
+                    task_id,
+                    from_actor_id,
+                    to_actor_id,
+                    route,
+                    payload_json,
+                    idempotency_key,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+            )
+            .bind(&conversation.id)
+            .bind(task_id)
+            .bind(from_actor_id)
+            .bind(to_actor_id.as_deref())
+            .bind(route)
+            .bind(&payload_json)
+            .bind(idempotency_key)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+
+            if result.rows_affected() == 1 {
+                (
+                    TeamConversationMessageRecord {
+                        message_id: result.last_insert_rowid(),
+                        conversation_id: conversation.id.clone(),
+                        task_id: task_id.to_string(),
+                        from_actor_id: from_actor_id.to_string(),
+                        to_actor_id: to_actor_id.clone(),
+                        route: route.to_string(),
+                        payload: redacted_payload.clone(),
+                        created_at: now,
+                    },
+                    true,
+                )
+            } else {
+                let existing = fetch_task_conversation_message_by_idempotency(
+                    &mut tx,
+                    &conversation.id,
+                    from_actor_id,
+                    idempotency_key,
+                )
+                .await?;
+                ensure_task_conversation_message_idempotency_compatible(
+                    task_id,
+                    from_actor_id,
+                    to_actor_id.as_deref(),
+                    route,
+                    &redacted_payload,
+                    &existing,
+                )?;
+                (existing, false)
+            }
+        } else {
+            let result = sqlx::query(
+                r#"
+                INSERT INTO team_conversation_messages (
+                    conversation_id,
+                    task_id,
+                    from_actor_id,
+                    to_actor_id,
+                    route,
+                    payload_json,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+            )
+            .bind(&conversation.id)
+            .bind(task_id)
+            .bind(from_actor_id)
+            .bind(to_actor_id.as_deref())
+            .bind(route)
+            .bind(&payload_json)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+            (
+                TeamConversationMessageRecord {
+                    message_id: result.last_insert_rowid(),
+                    conversation_id: conversation.id.clone(),
+                    task_id: task_id.to_string(),
+                    from_actor_id: from_actor_id.to_string(),
+                    to_actor_id: to_actor_id.clone(),
+                    route: route.to_string(),
+                    payload: redacted_payload.clone(),
+                    created_at: now,
+                },
+                true,
+            )
+        };
+
+        tx.commit().await?;
+        if created {
+            self.emit_conversation_event(TeamConversationStreamEvent {
+                team_id: conversation.team_id.clone(),
+                task_id: task_id.to_string(),
+                conversation_id: conversation.id.clone(),
+                message_id: Some(message.message_id),
+                source: "conversation_message".to_string(),
+            });
+        }
+
+        Ok((message, created))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4412,6 +4524,83 @@ fn filter_visible_team_runs(runs: Vec<TeamRunRecord>) -> Vec<TeamRunRecord> {
 
 fn shared_thread_mailbox_run_id(team_id: &str, task_id: &str) -> String {
     format!("shared-thread-mailbox:{team_id}:{task_id}")
+}
+
+fn push_fingerprint_component(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.as_bytes());
+    hasher.update([0_u8]);
+}
+
+fn task_conversation_message_fingerprint(
+    task_id: &str,
+    from_actor_id: &str,
+    to_actor_id: Option<&str>,
+    route: &str,
+    payload: &Value,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update("task-conversation-message-fingerprint:v1");
+    push_fingerprint_component(&mut hasher, task_id);
+    push_fingerprint_component(&mut hasher, from_actor_id);
+    push_fingerprint_component(&mut hasher, to_actor_id.unwrap_or(""));
+    push_fingerprint_component(&mut hasher, route);
+    push_fingerprint_component(&mut hasher, canonical_json(payload).as_str());
+    hex_encode(&hasher.finalize())
+}
+
+async fn fetch_task_conversation_message_by_idempotency(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    conversation_id: &str,
+    from_actor_id: &str,
+    idempotency_key: &str,
+) -> Result<TeamConversationMessageRecord, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            conversation_id,
+            task_id,
+            from_actor_id,
+            to_actor_id,
+            route,
+            payload_json,
+            created_at
+        FROM team_conversation_messages
+        WHERE conversation_id = ?1
+          AND from_actor_id = ?2
+          AND idempotency_key = ?3
+        LIMIT 1
+        "#,
+    )
+    .bind(conversation_id)
+    .bind(from_actor_id)
+    .bind(idempotency_key)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_conversation_message_row(&row).map_err(|err| sqlx::Error::Protocol(err.to_string()))
+}
+
+fn ensure_task_conversation_message_idempotency_compatible(
+    task_id: &str,
+    from_actor_id: &str,
+    to_actor_id: Option<&str>,
+    route: &str,
+    payload: &Value,
+    existing: &TeamConversationMessageRecord,
+) -> Result<(), TaskConversationMessageStoreError> {
+    let incoming_fp =
+        task_conversation_message_fingerprint(task_id, from_actor_id, to_actor_id, route, payload);
+    let existing_fp = task_conversation_message_fingerprint(
+        &existing.task_id,
+        &existing.from_actor_id,
+        existing.to_actor_id.as_deref(),
+        &existing.route,
+        &existing.payload,
+    );
+    if incoming_fp != existing_fp {
+        return Err(TaskConversationMessageStoreError::IdempotencyConflict);
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]

@@ -267,7 +267,11 @@ async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
         .await
         .expect("stop team runtime before seeding stale rows");
     assert!(
-        state.agents.running_session_id_for_agent("planner").await.is_none(),
+        state
+            .agents
+            .running_session_id_for_agent("planner")
+            .await
+            .is_none(),
         "planner runtime should be stopped before stale-row reconciliation coverage"
     );
 
@@ -327,13 +331,12 @@ async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
         .await
         .expect("load reconciled planner status");
     assert_eq!(agent_status, "exited");
-    let (session_status, ended_at): (String, Option<i64>) = sqlx::query_as(
-        "SELECT status, ended_at FROM agent_sessions WHERE id = ?1",
-    )
-    .bind("stale-team-runtime-session")
-    .fetch_one(&state.db)
-    .await
-    .expect("load reconciled planner session");
+    let (session_status, ended_at): (String, Option<i64>) =
+        sqlx::query_as("SELECT status, ended_at FROM agent_sessions WHERE id = ?1")
+            .bind("stale-team-runtime-session")
+            .fetch_one(&state.db)
+            .await
+            .expect("load reconciled planner session");
     assert_eq!(session_status, "exited");
     assert!(ended_at.is_some());
 }
@@ -3966,8 +3969,18 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         worker_snapshot.description.as_deref(),
         Some("Focused implementation specialist.")
     );
-    assert!(worker_snapshot.skills.iter().any(|skill| skill == "team-worker-executor"));
-    assert!(worker_snapshot.skills.iter().any(|skill| skill == "team-actor-mailbox"));
+    assert!(
+        worker_snapshot
+            .skills
+            .iter()
+            .any(|skill| skill == "team-worker-executor")
+    );
+    assert!(
+        worker_snapshot
+            .skills
+            .iter()
+            .any(|skill| skill == "team-actor-mailbox")
+    );
 
     let Json(events) = list_team_run_events(
         State(state),
@@ -4274,7 +4287,10 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     );
     assert_eq!(leader.model.as_deref(), Some("gpt-5"));
     assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
-    assert_eq!(leader.skills, crate::team::effective_team_member_skills("leader"));
+    assert_eq!(
+        leader.skills,
+        crate::team::effective_team_member_skills("leader")
+    );
     assert_eq!(leader.pending_inbox_count, 0);
     assert_eq!(leader.status, "working");
     assert_eq!(leader.session_status.as_deref(), Some("working"));
@@ -4556,29 +4572,24 @@ async fn team_shared_thread_api_ensures_canonical_thread_and_is_idempotent() {
     .await
     .expect("create team");
 
-    let Json(created) = ensure_team_shared_thread(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("ensure shared thread");
+    let Json(created) =
+        ensure_team_shared_thread(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("ensure shared thread");
 
     assert_eq!(created.task.title.to_lowercase(), "all");
     assert_eq!(created.conversation.task_id, created.task.id);
 
-    let Json(found) = get_team_shared_thread(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("get ensured shared thread");
+    let Json(found) =
+        get_team_shared_thread(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("get ensured shared thread");
     assert_eq!(found.task.id, created.task.id);
 
-    let Json(second) = ensure_team_shared_thread(State(state.clone()), headers, Path(team.id.clone()))
-        .await
-        .expect("ensure shared thread twice");
+    let Json(second) =
+        ensure_team_shared_thread(State(state.clone()), headers, Path(team.id.clone()))
+            .await
+            .expect("ensure shared thread twice");
     assert_eq!(second.task.id, created.task.id);
 
     let shared_thread_count: i64 = sqlx::query_scalar(
@@ -4664,6 +4675,7 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
                 "type":"chat_message",
                 "text":"older shared thread message"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -4681,18 +4693,16 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
                 "type":"chat_message",
                 "text":"latest shared thread message"
             }),
+            idempotency_key: None,
         }),
     )
     .await
     .expect("append latest message");
 
-    let Json(found) = get_team_shared_thread(
-        State(state.clone()),
-        headers.clone(),
-        Path(team.id.clone()),
-    )
-    .await
-    .expect("get canonical shared thread");
+    let Json(found) =
+        get_team_shared_thread(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("get canonical shared thread");
     assert_eq!(found.task.id, first.task.id);
 
     let Json(ensured) = ensure_team_shared_thread(State(state), headers, Path(team.id))
@@ -4756,6 +4766,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
                 "type":"chat_message",
                 "text":"<at>worker-1</at> please inspect the channel delivery path"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -4956,7 +4967,9 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let status_body = decode_json_body(status_err.into_response()).await;
     assert_eq!(
         status_body["error"],
-        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
+        Value::from(
+            "canonical Team task status/owner updates are agent-only; use actor runtime controls"
+        )
     );
 
     let owner_err = update_team_task(
@@ -4973,7 +4986,9 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let owner_body = decode_json_body(owner_err.into_response()).await;
     assert_eq!(
         owner_body["error"],
-        Value::from("canonical Team task status/owner updates are agent-only; use actor runtime controls")
+        Value::from(
+            "canonical Team task status/owner updates are agent-only; use actor runtime controls"
+        )
     );
 
     let reloaded = state
@@ -5030,6 +5045,7 @@ async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
             to_actor_id: None,
             route: Some("group_chat".to_string()),
             payload: json!({"text":"malicious broadcast"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5095,6 +5111,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
             to_actor_id: None,
             route: Some("to_member".to_string()),
             payload: json!({"text":"assign"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5113,6 +5130,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
             to_actor_id: Some("worker-1".to_string()),
             route: Some("to_member".to_string()),
             payload: json!({"text":"assign"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5131,6 +5149,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
             to_actor_id: Some("planner".to_string()),
             route: Some("group_chat".to_string()),
             payload: json!({"text":"broadcast"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5153,6 +5172,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
                 "authorization":"Bearer abc",
                 "nested":{"api_key":"123"}
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5180,6 +5200,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
             to_actor_id: None,
             route: Some("to_leader".to_string()),
             payload: json!({"text":"need clarification"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5199,6 +5220,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
                 "text":"status update",
                 "correlation_id":"corr-group-status-update"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5241,6 +5263,157 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     .await
     .expect("list messages with before_id");
     assert!(empty_page.is_empty());
+}
+
+#[tokio::test]
+async fn team_task_messages_api_supports_idempotency_key_and_dedupes_mailbox_forwarding() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-msg-idempotent-team".to_string(),
+            description: Some("task message idempotency coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Retry-safe chat".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({})),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: None,
+        },
+    )
+    .await
+    .expect("create task");
+
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(created.task.id.as_str()),
+            json!({
+                "task_id": created.task.id.clone(),
+                "conversation_id": created.conversation.id.clone(),
+            }),
+        )
+        .await
+        .expect("create task run");
+
+    let Json(first_message) = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"@worker-1 please verify the retry-safe path"
+            }),
+            idempotency_key: Some("task-msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect("send first task message");
+
+    let Json(retry_message) = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"@worker-1 please verify the retry-safe path"
+            }),
+            idempotency_key: Some("task-msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect("retry task message");
+
+    assert_eq!(first_message.message_id, retry_message.message_id);
+    assert_eq!(
+        first_message.payload["correlation_id"],
+        retry_message.payload["correlation_id"]
+    );
+
+    let conversation_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_conversation_messages WHERE task_id = ?1")
+            .bind(&created.task.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count deduped conversation messages");
+    assert_eq!(conversation_count, 1);
+
+    let mailbox_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM team_actor_messages WHERE run_id = ?1")
+            .bind(&run.id)
+            .fetch_one(&state.db)
+            .await
+            .expect("count deduped mailbox messages");
+    assert_eq!(mailbox_count, 2);
+
+    let conflict_err = send_team_task_message(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"different payload should conflict"
+            }),
+            idempotency_key: Some("task-msg-1".to_string()),
+        }),
+    )
+    .await
+    .expect_err("same idempotency_key with different payload should conflict");
+    assert_eq!(conflict_err.into_response().status(), StatusCode::CONFLICT);
+
+    let invalid_idempotency_err = send_team_task_message(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(SendTeamTaskMessageRequest {
+            from_actor_id: None,
+            to_actor_id: None,
+            route: Some("group_chat".to_string()),
+            payload: json!({
+                "type":"chat_message",
+                "text":"blank idempotency key should fail"
+            }),
+            idempotency_key: Some("   ".to_string()),
+        }),
+    )
+    .await
+    .expect_err("blank idempotency_key should fail");
+    assert_eq!(
+        invalid_idempotency_err.into_response().status(),
+        StatusCode::BAD_REQUEST
+    );
 }
 
 #[tokio::test]
@@ -5308,6 +5481,7 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
                 "type":"chat_message",
                 "text":"@worker-1 please validate api contract"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5383,6 +5557,7 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
                 "type":"chat_message",
                 "text":"status update to everyone"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5495,6 +5670,7 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
                 "text":"<at>worker-1</at> review the concise summary first",
                 "detail_ref":"artifact://task-direct-default/full-review-1"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5591,6 +5767,7 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
                 "type":"chat_message",
                 "text":"<at>planner</at> please review the latest patch"
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5655,6 +5832,7 @@ async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_l
                     "ignored":["nested"]
                 }
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5727,6 +5905,7 @@ async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_
                     "label":" full evidence "
                 }
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5797,6 +5976,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
                     "deadline":"2026-03-05"
                 }
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5811,6 +5991,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
             to_actor_id: Some("planner".to_string()),
             route: Some("to_leader".to_string()),
             payload: json!({"text":"working on compile details"}),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5831,6 +6012,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
                     "Feature note and todo are updated"
                 ]
             }),
+            idempotency_key: None,
         }),
     )
     .await
@@ -5988,6 +6170,7 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
                     "deadline": "2026-99-77"
                 }
             }),
+            idempotency_key: None,
         }),
     )
     .await
