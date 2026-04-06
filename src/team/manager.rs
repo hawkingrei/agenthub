@@ -44,6 +44,7 @@ use super::{
     TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+    normalize_optional_idempotency_key_input,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -316,6 +317,11 @@ struct AgentRunningSessionRow {
 }
 
 impl TeamManager {
+    #[cfg(test)]
+    pub(crate) fn task_message_idempotency_conflict_error() -> anyhow::Error {
+        TaskConversationMessageStoreError::IdempotencyConflict.into()
+    }
+
     pub fn is_task_message_idempotency_conflict(err: &anyhow::Error) -> bool {
         err.downcast_ref::<TaskConversationMessageStoreError>()
             .is_some_and(|cause| {
@@ -933,10 +939,7 @@ impl TeamManager {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
-        let idempotency_key = idempotency_key
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
+        let idempotency_key = normalize_optional_idempotency_key_input(idempotency_key);
 
         let mut tx = self.db.begin().await?;
         let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {

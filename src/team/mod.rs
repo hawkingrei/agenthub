@@ -62,3 +62,10 @@ pub(crate) fn collect_team_member_ids(spec: &Value) -> Vec<String> {
     }
     member_ids
 }
+
+pub(crate) fn normalize_optional_idempotency_key_input(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}

@@ -933,21 +933,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         );
     }
 
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
-        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
-        WHERE idempotency_key IS NOT NULL
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_team_conversation_messages_idempotency: {}",
-            err
-        );
-    }
+    create_team_conversation_messages_idempotency_index(&pool).await;
 
     if let Err(err) = sqlx::query(
         r#"
@@ -1260,21 +1246,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
         "team_conversation_messages.idempotency_key",
     )
     .await;
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
-        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
-        WHERE idempotency_key IS NOT NULL
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_team_conversation_messages_idempotency: {}",
-            err
-        );
-    }
+    create_team_conversation_messages_idempotency_index(&pool).await;
     add_column_if_missing(
         &pool,
         "ALTER TABLE team_actor_messages ADD COLUMN from_peer_id TEXT NOT NULL DEFAULT 'main'",
@@ -1425,6 +1397,24 @@ async fn add_column_if_missing(pool: &SqlitePool, sql: &str, column: &str) {
         if !message.contains("duplicate column name") {
             tracing::warn!("db init: failed to add {} column: {}", column, message);
         }
+    }
+}
+
+async fn create_team_conversation_messages_idempotency_index(pool: &SqlitePool) {
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_conversation_messages_idempotency
+        ON team_conversation_messages(conversation_id, from_actor_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_idempotency: {}",
+            err
+        );
     }
 }
 
@@ -2518,6 +2508,68 @@ mod tests {
         .await
         .expect("read assigned_member_id column");
         assert_eq!(assigned_member_id_column, "assigned_member_id");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_adds_task_message_idempotency_key_and_index_to_existing_messages_table() {
+        let dir = unique_temp_dir("db-migrate-task-message-idempotency");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE team_conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                from_actor_id TEXT NOT NULL,
+                to_actor_id TEXT,
+                route TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy team_conversation_messages");
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with task message idempotency migration");
+
+        let idempotency_key_column: String = sqlx::query_scalar(
+            r#"
+            SELECT name
+            FROM pragma_table_info('team_conversation_messages')
+            WHERE name = 'idempotency_key'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read idempotency_key column");
+        assert_eq!(idempotency_key_column, "idempotency_key");
+
+        let index_sql: String = sqlx::query_scalar(
+            r#"
+            SELECT sql
+            FROM sqlite_master
+            WHERE type = 'index'
+              AND name = 'idx_team_conversation_messages_idempotency'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read task message idempotency index");
+        assert!(index_sql.contains("conversation_id"));
+        assert!(index_sql.contains("from_actor_id"));
+        assert!(index_sql.contains("idempotency_key"));
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);

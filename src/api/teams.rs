@@ -36,8 +36,8 @@ use crate::team::{
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
     build_actor_mailbox_immediate_hint_prompt, effective_team_member_skills,
-    ensure_team_runtime_started, force_team_member_new_session, plan_actor_mailbox_immediate_hint,
-    stop_team_runtime,
+    ensure_team_runtime_started, force_team_member_new_session,
+    normalize_optional_idempotency_key_input, plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -2069,21 +2069,21 @@ fn normalize_optional_non_empty(value: Option<&str>) -> Result<Option<&str>, Api
 }
 
 fn normalize_optional_idempotency_key(value: Option<&str>) -> Result<Option<String>, ApiError> {
-    let Some(raw) = value else {
-        return Ok(None);
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    let normalized = normalize_optional_idempotency_key_input(value);
+    if value.is_some() && normalized.is_none() {
         return Err(ApiError::bad_request(
             "idempotency_key must be a non-empty string",
         ));
     }
-    if trimmed.len() > 128 {
+    let Some(idempotency_key) = normalized else {
+        return Ok(None);
+    };
+    if idempotency_key.len() > 128 {
         return Err(ApiError::bad_request(
             "idempotency_key must be at most 128 characters",
         ));
     }
-    Ok(Some(trimmed.to_string()))
+    Ok(Some(idempotency_key))
 }
 
 fn normalize_optional_run_status_filter(value: Option<&str>) -> Result<Option<String>, ApiError> {

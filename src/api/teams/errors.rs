@@ -113,8 +113,8 @@ fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
 mod tests {
     use axum::response::IntoResponse;
 
-    use super::map_runtime_start_error;
-    use crate::team::TeamRuntimeStartError;
+    use super::{map_runtime_start_error, map_task_message_error};
+    use crate::team::{TeamManager, TeamRuntimeStartError};
 
     #[test]
     fn map_runtime_start_error_maps_typed_runtime_config_errors_to_bad_request() {
@@ -141,6 +141,25 @@ mod tests {
     #[test]
     fn map_runtime_start_error_keeps_unknown_errors_internal() {
         let api_err = map_runtime_start_error(anyhow::anyhow!("unexpected"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn map_task_message_error_maps_idempotency_conflicts_to_conflict() {
+        let api_err =
+            map_task_message_error(TeamManager::task_message_idempotency_conflict_error());
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn map_task_message_error_keeps_unknown_errors_internal() {
+        let api_err = map_task_message_error(anyhow::anyhow!("unexpected"));
         assert_eq!(
             api_err.into_response().status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
