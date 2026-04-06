@@ -148,6 +148,9 @@ describe("vite chunk grouping", () => {
     expect(resolveManualChunkName("/repo/web/src/components/thread_rich_text.tsx")).toBe(
       "route-rich-text-shared"
     );
+    expect(resolveManualChunkName("\0/repo/web/src/components/acp_debug.tsx?import")).toBe(
+      "route-agents-debug"
+    );
   });
 
   it("keeps team route code in the team chunk", () => {

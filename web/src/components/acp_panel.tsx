@@ -1,7 +1,7 @@
 import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import type { AcpView } from "../acp";
-import { AcpDebug, type AcpDebugProps } from "./acp_debug";
+import type { AcpDebugProps } from "./acp_debug";
 import {
   ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
   ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
@@ -39,6 +39,57 @@ type AcpPanelProps = {
   plan: AcpPlanProps;
   debug: AcpDebugProps;
 };
+
+let acpDebugModulePromise: Promise<typeof import("./acp_debug")> | null = null;
+
+function loadAcpDebugModule(): Promise<typeof import("./acp_debug")> {
+  if (acpDebugModulePromise == null) {
+    acpDebugModulePromise = import("./acp_debug");
+  }
+  return acpDebugModulePromise;
+}
+
+function AcpDebugSlot(props: AcpDebugProps) {
+  const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(null);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    void loadAcpDebugModule()
+      .then((module) => {
+        if (!cancelled) {
+          setDebugView(() => module.AcpDebug);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loadFailed) {
+    return (
+      <div className="px-3 py-2 text-sm text-notion-text-muted">
+        Unable to load debug view.
+      </div>
+    );
+  }
+
+  if (DebugView == null) {
+    return (
+      <div className="px-3 py-2 text-sm text-notion-text-muted">
+        Loading debug...
+      </div>
+    );
+  }
+
+  return <DebugView {...props} />;
+}
 
 export {
   ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
@@ -160,9 +211,7 @@ function AcpPanelView({
         />
       )}
       {effectiveTab === "plan" && <AcpPlan {...plan} />}
-      {developerMode && effectiveTab === "debug" && (
-        <AcpDebug {...debug} />
-      )}
+      {developerMode && effectiveTab === "debug" && <AcpDebugSlot {...debug} />}
       {effectiveTab === "conversation" &&
       showConversationJump &&
       showFloatingConversationJump ? (

@@ -82,7 +82,14 @@ const ROUTE_AGENTS_WORKBENCH_IDS = [
 ];
 
 function normalizeChunkId(id: string): string {
-  return id.split("\\").join("/");
+  const normalizedPath = id.split("\\").join("/");
+  const withoutVirtualPrefix = normalizedPath.startsWith("\0")
+    ? normalizedPath.slice(1)
+    : normalizedPath;
+  const queryIndex = withoutVirtualPrefix.indexOf("?");
+  return queryIndex === -1
+    ? withoutVirtualPrefix
+    : withoutVirtualPrefix.slice(0, queryIndex);
 }
 
 function includesAny(id: string, needles: string[]): boolean {

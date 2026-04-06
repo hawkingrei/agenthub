@@ -289,8 +289,7 @@ describe("AcpPanel layout", () => {
     const html = renderPanel(
       <AcpPanel {...baseProps} acpTab="debug" />
     );
-    expect(html).toContain("Session Controls");
-    expect(html).toContain("Set Mode");
+    expect(html).toContain("Loading debug...");
   });
 
   it("renders conversation jump button on ACP panel container layer", () => {

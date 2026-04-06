@@ -37,19 +37,20 @@ export function getThreadMarkdownCacheStats(): ThreadMarkdownCacheStats {
 
 export function renderThreadMarkdownCached(text: string): string {
   const normalized = normalizeSkillBlocksForMarkdown(text);
-  if (text.length > MARKDOWN_CACHE_MAX_ENTRY_CHARS) {
+  const cacheKey = normalized;
+  if (cacheKey.length > MARKDOWN_CACHE_MAX_ENTRY_CHARS) {
     markdownCacheMissCount += 1;
     return renderMarkdown(normalized);
   }
-  const cached = markdownHtmlCache.get(text);
+  const cached = markdownHtmlCache.get(cacheKey);
   if (cached != null) {
     markdownCacheHitCount += 1;
-    refreshCacheRecency(markdownHtmlCache, markdownHtmlCacheSize, text);
+    refreshCacheRecency(markdownHtmlCache, markdownHtmlCacheSize, cacheKey);
     return cached;
   }
   markdownCacheMissCount += 1;
   const rendered = renderMarkdown(normalized);
-  const estimatedBytes = estimateStringBytes(text) + estimateStringBytes(rendered);
+  const estimatedBytes = estimateStringBytes(cacheKey) + estimateStringBytes(rendered);
   return cacheWithLruBudget(
     markdownHtmlCache,
     markdownHtmlCacheSize,
@@ -57,7 +58,7 @@ export function renderThreadMarkdownCached(text: string): string {
     (next) => {
       markdownCacheBytes = next;
     },
-    text,
+    cacheKey,
     rendered,
     estimatedBytes,
     MARKDOWN_CACHE_LIMIT,

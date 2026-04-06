@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   Alert,
   Badge,
@@ -205,7 +205,10 @@ import {
   TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
 } from "../ui/tailwind_classes";
 
-type TeamMemberAcpPanelComponent = typeof import("./team_member_acp_panel")["TeamMemberAcpPanel"];
+const LazyTeamMemberAcpPanel = React.lazy(async () => {
+  const module = await import("./team_member_acp_panel");
+  return { default: module.TeamMemberAcpPanel };
+});
 
 export {
   buildMailboxForwardChatPayload,
@@ -801,8 +804,6 @@ export function TeamPage(props: TeamPageProps) {
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamTaskRunCompilePreviewRecord | null>(null);
-  const [teamMemberAcpPanelView, setTeamMemberAcpPanelView] =
-    useState<TeamMemberAcpPanelComponent | null>(null);
 
   const [events, setEvents] = useState<TeamRunEventRecord[]>([]);
   const [eventsHasMore, setEventsHasMore] = useState(false);
@@ -2894,20 +2895,6 @@ export function TeamPage(props: TeamPageProps) {
     setWorkspaceDetailsOpen(false);
   }, [props.developerMode, selectedTeamId, tab]);
   React.useEffect(() => {
-    if (tab !== "agent_acp" || teamMemberAcpPanelView) {
-      return;
-    }
-    let cancelled = false;
-    void import("./team_member_acp_panel").then((module) => {
-      if (!cancelled) {
-        setTeamMemberAcpPanelView(() => module.TeamMemberAcpPanel);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, teamMemberAcpPanelView]);
-  React.useEffect(() => {
     if (!props.developerMode && tab === "debug") {
       setTab("conversation");
       setWorkspaceDetailsOpen(false);
@@ -4221,45 +4208,48 @@ export function TeamPage(props: TeamPageProps) {
                   {tab === "tasks" && tasksPanel}
 
                   {tab === "agent_acp" && (
-                    teamMemberAcpPanelView ? (
-                      React.createElement(teamMemberAcpPanelView, {
-                        developerMode: props.developerMode,
-                        selectedMemberId: selectedAgentWorkspaceMemberId,
-                        memberTitle: selectedAgentLabel,
-                        hideMemberTitle: true,
-                        selectedMemberSnapshot: selectedAgentWorkspaceSnapshot,
-                        selectedMemberRole:
-                          selectedAgentWorkspaceRuntimeMember?.role ??
-                          selectedAgentWorkspaceSnapshot?.role ??
-                          null,
-                        selectedSessionId: selectedAgentWorkspaceSessionId,
-                        memberEvents,
-                        memberEventsHasMore,
-                        memberEventsLoading,
-                        eventsLoading,
-                        oldestMemberEventId,
-                        onSendInput: onSendAgentAcpInput,
-                        canControlAcp: isAgentActiveStatus(
-                          selectedAgentWorkspaceAgent?.status ?? null
-                        ),
-                        canInterrupt: isAgentActiveStatus(
-                          selectedAgentWorkspaceAgent?.status ?? null
-                        ),
-                        onInterrupt: onCancelTeamMemberAcp,
-                        onAcpSetMode: onSetTeamMemberAcpMode,
-                        onAcpSetModel: onSetTeamMemberAcpModel,
-                        onAcpSetConfig: onSetTeamMemberAcpConfig,
-                        onForceNewSession: onForceNewTeamMemberSession,
-                        onRefresh: onRefreshMemberConsole,
-                        onLoadOlder: onLoadOlderMemberConsole,
-                      })
-                    ) : (
+                    <Suspense
+                      fallback={
                       <div className={teamSectionCardClassName}>
                         <p className={teamSectionBodyTextClassName}>
                           Loading agent ACP...
                         </p>
                       </div>
-                    )
+                      }
+                    >
+                      <LazyTeamMemberAcpPanel
+                        developerMode={props.developerMode}
+                        selectedMemberId={selectedAgentWorkspaceMemberId}
+                        memberTitle={selectedAgentLabel}
+                        hideMemberTitle={true}
+                        selectedMemberSnapshot={selectedAgentWorkspaceSnapshot}
+                        selectedMemberRole={
+                          selectedAgentWorkspaceRuntimeMember?.role ??
+                          selectedAgentWorkspaceSnapshot?.role ??
+                          null
+                        }
+                        selectedSessionId={selectedAgentWorkspaceSessionId}
+                        memberEvents={memberEvents}
+                        memberEventsHasMore={memberEventsHasMore}
+                        memberEventsLoading={memberEventsLoading}
+                        eventsLoading={eventsLoading}
+                        oldestMemberEventId={oldestMemberEventId}
+                        onSendInput={onSendAgentAcpInput}
+                        canControlAcp={isAgentActiveStatus(
+                          selectedAgentWorkspaceAgent?.status ?? null
+                        )}
+                        canInterrupt={isAgentActiveStatus(
+                          selectedAgentWorkspaceAgent?.status ?? null
+                        )}
+                        onInterrupt={onCancelTeamMemberAcp}
+                        onAcpSetMode={onSetTeamMemberAcpMode}
+                        onAcpSetModel={onSetTeamMemberAcpModel}
+                        onAcpSetConfig={onSetTeamMemberAcpConfig}
+                        onForceNewSession={onForceNewTeamMemberSession}
+                        onRefresh={onRefreshMemberConsole}
+                        onLoadOlder={onLoadOlderMemberConsole}
+                      />
+                    </Suspense>
                   )}
 
                   {tab === "overview" && activeRunForSelectedTeam && (
