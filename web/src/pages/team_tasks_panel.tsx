@@ -447,11 +447,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
             <ActionButton
               tone="secondary"
               size="md"
-              disabled={!selectedTask}
-              onClick={() => {
-                if (!selectedTask) return;
-                onOpenConversation(selectedTask.id);
-              }}
+              onClick={() => onOpenConversation(selectedTask.id)}
             >
               Open thread
             </ActionButton>

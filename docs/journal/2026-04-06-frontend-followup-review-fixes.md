@@ -31,3 +31,20 @@ cd web && npm run test -- src/app_permission_polling.test.ts src/acp_conversatio
 cd web && npm run lint -- --ignore-pattern dist-debug --ignore-pattern dist-debug-current
 cd web && npm run build
 ```
+
+## Additional Follow-up
+
+After the next CI pass surfaced a stale `Web` failure and a few remaining low-risk review notes, I applied a second small cleanup pass:
+
+- updated `web/src/acp_conversation_render.test.tsx` expectations to match the current ANSI span parser behavior, which now strips unsupported non-style span attributes while preserving text instead of rendering escaped tags
+- set `type="button"` on `web/src/components/workbench_header_menu.tsx` to avoid implicit submit behavior if it is ever rendered inside a form
+- precompiled the `<name>` / `<path>` regexes in `web/src/thread_markdown.ts` so skill block normalization no longer allocates a new `RegExp` per field lookup
+- simplified the `Open thread` CTA in `web/src/pages/team_tasks_panel.tsx` so the click path is only constructed inside the already-guarded `selectedTask` branch
+
+Validation for this follow-up pass:
+
+```bash
+cd web && npm run test -- src/acp_conversation_render.test.tsx src/workbench_header_menu.test.tsx src/pages/team_panels.test.tsx src/components/thread_rich_text.test.tsx
+cd web && npm run lint -- --ignore-pattern dist-debug --ignore-pattern dist-debug-current
+cd web && npm run build
+```

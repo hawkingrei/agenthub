@@ -60,7 +60,7 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("&quot;cmd&quot;");
     expect(html).toContain("line1");
     expect(html).toContain("line2");
-    expect(html).toContain("ansi-out");
+    expect(html).not.toContain("&lt;span class=&quot;ansi-out&quot;");
     expect(html).toContain("stdout");
   });
 
@@ -460,7 +460,7 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("style=\"color:#123456;font-weight:700\"");
   });
 
-  it("drops unsupported ansi styles and escapes non-whitelisted span tags", () => {
+  it("drops unsupported ansi styles and strips non-style span attributes while keeping text", () => {
     const html = renderConversation(
       [
         {
@@ -479,7 +479,8 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("<span style=\"color:#111111\">safe</span>");
     expect(html).not.toContain("position:absolute");
-    expect(html).toContain("&lt;span class=&quot;ansi-out&quot;&gt;literal&lt;/span&gt;");
+    expect(html).toContain("literal");
+    expect(html).not.toContain("&lt;span class=&quot;ansi-out&quot;&gt;");
   });
 
   it("renders finished tool calls collapsed by default", () => {

@@ -29,6 +29,7 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
     >
       <Menu.Target>
         <UnstyledButton
+          type="button"
           className={buttonClassName}
           aria-label="Open workbench menu"
         >
