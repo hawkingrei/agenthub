@@ -167,6 +167,7 @@ Live verification notes:
   - root page remains `No agent selected` with no eager `route-agents-workbench` request
   - Team page remains `ONLINE · SSE CONNECTED`
   - console noise is unchanged (`favicon.ico 404` on `/`, two existing `404`s on `/teams/...`)
+- Follow-up route-shell decomposition extracted the remaining `AgentsRouteShell` prop assembly out of `web/src/app.tsx` into `web/src/components/agents_route_shell_props.ts`, and memoized `AgentsRouteShell`/`AgentsRouteShellView` so unrelated root rerenders stop rebuilding the shell prop bags by default.
 
 ## Follow-up
 

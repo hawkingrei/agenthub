@@ -85,6 +85,11 @@ import {
 } from "./agent_presets";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
 import { AgentsRouteShell } from "./components/agents_route_shell";
+import {
+  buildAgentsPanelProps,
+  buildAgentsWorkbenchProps,
+  buildOutputHeaderProps,
+} from "./components/agents_route_shell_props";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
@@ -2800,8 +2805,161 @@ export function App() {
       ["--agents-panel-width" as string]: `${agentsPanelWidth}px`,
     };
   }, [agentsCollapsed, agentsPanelWidth]);
+
   const agentsPanelShowsCompactRows =
     !agentsCollapsed && agentsPanelWidth <= AGENTS_PANEL_COMPACT_ROWS_THRESHOLD;
+
+  const agentsPanelProps = useMemo(
+    () =>
+      buildAgentsPanelProps({
+        agents,
+        activeAgent,
+        agentsCollapsed,
+        compactRows: agentsPanelShowsCompactRows,
+        hasPendingPermissions,
+        pendingPermissionCounts,
+        startingAgentIds,
+        onCollapse: handleCollapseAgents,
+        onExpand: handleExpandAgents,
+        onCreateAgent: openCreateAgentModal,
+        onSelectAgent: handleSelectAgent,
+        onToggleCodeMode: onSetCodeMode,
+        onStartAgent: onStartAgent,
+        onStopAgent: onStopAgent,
+        onDeleteAgent: onDeleteAgent,
+      }),
+    [
+      agents,
+      activeAgent,
+      agentsCollapsed,
+      agentsPanelShowsCompactRows,
+      hasPendingPermissions,
+      pendingPermissionCounts,
+      startingAgentIds,
+      handleCollapseAgents,
+      handleExpandAgents,
+      openCreateAgentModal,
+      handleSelectAgent,
+      onSetCodeMode,
+      onStartAgent,
+      onStopAgent,
+      onDeleteAgent,
+    ]
+  );
+
+  const outputHeaderProps = useMemo(
+    () =>
+      buildOutputHeaderProps({
+        activeAgent: activeAgentRecord,
+        activeSessionId,
+        developerMode,
+        hasAcp: acpView.hasAcp,
+        thinkingStartTs,
+        runStatus: acpView.runStatus?.status ?? null,
+        modelLabel: activeAgentModelLabel,
+      }),
+    [
+      activeAgentRecord,
+      activeSessionId,
+      developerMode,
+      acpView.hasAcp,
+      acpView.runStatus?.status,
+      thinkingStartTs,
+      activeAgentModelLabel,
+    ]
+  );
+
+  const workbenchProps = useMemo(
+    () =>
+      buildAgentsWorkbenchProps({
+        activeAgent,
+        activeAgentRecord,
+        activeSessionId,
+        developerMode,
+        acpTab,
+        acpView,
+        eventMeta,
+        isAgentActive,
+        outputs,
+        terminalOutputs,
+        scopedAcpPermissionHistory,
+        isOutputLoading,
+        isConversationLoading,
+        terminalRef,
+        input,
+        inputHistory,
+        ansi,
+        canControlAcp,
+        canInterruptAcpRun,
+        acpModeId,
+        acpModelId,
+        acpConfigId,
+        acpConfigValue,
+        isComposingRef,
+        onLoadOlderEvents: loadOlderEvents,
+        onTerminalScroll: handleTerminalScroll,
+        onSelectTab: handleAcpTabSelect,
+        onAcpModeIdChange: setAcpModeId,
+        onAcpModelIdChange: setAcpModelId,
+        onAcpConfigIdChange: setAcpConfigId,
+        onAcpConfigValueChange: setAcpConfigValue,
+        onAcpSetMode: onAcpSetMode,
+        onAcpSetModel: onAcpSetModel,
+        onAcpSetConfig: onAcpSetConfig,
+        onAcpCancel: onAcpCancel,
+        onAcpClearSession: onAcpClearSession,
+        onInputChange: onInputChange,
+        onSelectInputHistory: onSelectInputHistory,
+        onNavigateInputHistory: onNavigateInputHistory,
+        onSendAcpInput: sendAcpInput,
+        onJumpToTerminalBottom: jumpToTerminalBottom,
+        showTerminalJump: terminalShowJump,
+      }),
+    [
+      activeAgent,
+      activeAgentRecord,
+      activeSessionId,
+      developerMode,
+      acpTab,
+      acpView,
+      eventMeta,
+      isAgentActive,
+      outputs,
+      terminalOutputs,
+      scopedAcpPermissionHistory,
+      isOutputLoading,
+      isConversationLoading,
+      terminalRef,
+      input,
+      inputHistory,
+      ansi,
+      canControlAcp,
+      canInterruptAcpRun,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      isComposingRef,
+      loadOlderEvents,
+      handleTerminalScroll,
+      handleAcpTabSelect,
+      setAcpModeId,
+      setAcpModelId,
+      setAcpConfigId,
+      setAcpConfigValue,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      onInputChange,
+      onSelectInputHistory,
+      onNavigateInputHistory,
+      sendAcpInput,
+      jumpToTerminalBottom,
+      terminalShowJump,
+    ]
+  );
 
   if (routeLocation.pathname.startsWith("/join")) {
     return (
@@ -2992,80 +3150,9 @@ export function App() {
           workspaceRef={workspaceRef}
           workspaceStyle={workspaceStyle}
           onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
-          agentsPanelProps={{
-            agents,
-            activeAgent,
-            agentsCollapsed,
-            compactRows: agentsPanelShowsCompactRows,
-            hasPendingPermissions,
-            pendingPermissionCounts,
-            startingAgentIds,
-            onCollapse: handleCollapseAgents,
-            onExpand: handleExpandAgents,
-            onCreateAgent: openCreateAgentModal,
-            onSelectAgent: handleSelectAgent,
-            onToggleCodeMode: onSetCodeMode,
-            onStartAgent: onStartAgent,
-            onStopAgent: onStopAgent,
-            onDeleteAgent: onDeleteAgent,
-          }}
-          outputHeaderProps={{
-            activeAgent: activeAgentRecord,
-            activeSessionId,
-            developerMode,
-            hasAcp: acpView.hasAcp,
-            thinkingStartTs,
-            runStatus: acpView.runStatus?.status ?? null,
-            modelLabel: activeAgentModelLabel,
-          }}
-          workbenchProps={
-            activeAgent
-              ? {
-                  activeAgent,
-                  activeAgentRecord,
-                  activeSessionId,
-                  developerMode,
-                  acpTab,
-                  acpView,
-                  eventMeta,
-                  isAgentActive,
-                  outputs,
-                  terminalOutputs,
-                  scopedAcpPermissionHistory,
-                  isOutputLoading,
-                  isConversationLoading,
-                  terminalRef,
-                  input,
-                  inputHistory,
-                  ansi,
-                  canControlAcp,
-                  canInterruptAcpRun,
-                  acpModeId,
-                  acpModelId,
-                  acpConfigId,
-                  acpConfigValue,
-                  isComposingRef,
-                  onLoadOlderEvents: loadOlderEvents,
-                  onTerminalScroll: handleTerminalScroll,
-                  onSelectTab: handleAcpTabSelect,
-                  onAcpModeIdChange: setAcpModeId,
-                  onAcpModelIdChange: setAcpModelId,
-                  onAcpConfigIdChange: setAcpConfigId,
-                  onAcpConfigValueChange: setAcpConfigValue,
-                  onAcpSetMode: onAcpSetMode,
-                  onAcpSetModel: onAcpSetModel,
-                  onAcpSetConfig: onAcpSetConfig,
-                  onAcpCancel: onAcpCancel,
-                  onAcpClearSession: onAcpClearSession,
-                  onInputChange: onInputChange,
-                  onSelectInputHistory: onSelectInputHistory,
-                  onNavigateInputHistory: onNavigateInputHistory,
-                  onSendAcpInput: sendAcpInput,
-                  onJumpToTerminalBottom: jumpToTerminalBottom,
-                  showTerminalJump: terminalShowJump,
-                }
-              : null
-          }
+          agentsPanelProps={agentsPanelProps}
+          outputHeaderProps={outputHeaderProps}
+          workbenchProps={workbenchProps}
         />
       )}
 

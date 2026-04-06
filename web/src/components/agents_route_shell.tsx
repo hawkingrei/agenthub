@@ -39,7 +39,7 @@ type AgentsRouteShellViewProps = {
   workbenchNode: React.ReactNode;
 };
 
-export function AgentsRouteShellView({
+export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
   agentsCollapsed,
   workspaceRef,
   workspaceStyle,
@@ -82,13 +82,14 @@ export function AgentsRouteShellView({
       </div>
     </main>
   );
-}
+});
+AgentsRouteShellView.displayName = "AgentsRouteShellView";
 
 type AgentsRouteShellProps = Omit<AgentsRouteShellViewProps, "workbenchNode"> & {
   workbenchProps: AgentsWorkbenchProps | null;
 };
 
-export function AgentsRouteShell({
+export const AgentsRouteShell = React.memo(function AgentsRouteShell({
   agentsCollapsed,
   workspaceRef,
   workspaceStyle,
@@ -118,4 +119,5 @@ export function AgentsRouteShell({
       workbenchNode={workbenchNode}
     />
   );
-}
+});
+AgentsRouteShell.displayName = "AgentsRouteShell";
