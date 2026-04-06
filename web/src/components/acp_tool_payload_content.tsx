@@ -240,23 +240,30 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   );
 }
 
-let payloadParseCountSink: (() => void) | null = null;
-let payloadParseFailureCountSink: (() => void) | null = null;
+let payloadParseCount = 0;
+let payloadParseFailureCount = 0;
 
-export function registerPayloadParseCounters(options: {
-  onParse: () => void;
-  onParseFailure: () => void;
-}): void {
-  payloadParseCountSink = options.onParse;
-  payloadParseFailureCountSink = options.onParseFailure;
+export function getToolPayloadParseStats(): {
+  payloadParses: number;
+  payloadParseFailures: number;
+} {
+  return {
+    payloadParses: payloadParseCount,
+    payloadParseFailures: payloadParseFailureCount,
+  };
+}
+
+export function resetToolPayloadParseStats(): void {
+  payloadParseCount = 0;
+  payloadParseFailureCount = 0;
 }
 
 function incrementPayloadParseCount(): void {
-  payloadParseCountSink?.();
+  payloadParseCount += 1;
 }
 
 function incrementPayloadParseFailureCount(): void {
-  payloadParseFailureCountSink?.();
+  payloadParseFailureCount += 1;
 }
 
 function summarizePayloadValue(value: unknown): string {
