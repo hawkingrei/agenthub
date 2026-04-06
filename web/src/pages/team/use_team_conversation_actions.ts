@@ -25,6 +25,7 @@ import { uuidV7 } from "../../uuid";
 const TEAM_CONVERSATION_MESSAGE_LIMIT = 20;
 const TEAM_CONVERSATION_MAILBOX_LIMIT = 20;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
+const TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS = 30_000;
 
 type SharedConversationTarget = {
   task: TeamTaskRecord;
@@ -72,10 +73,19 @@ export function useTeamConversationActions({
   const taskMessageRequestSeqRef = useRef(0);
   const optimisticTaskMessageSeqRef = useRef(0);
   const sendTaskMessageInFlightRef = useRef(false);
+  const conversationDetailFetchAtRef = useRef<Map<string, number>>(new Map());
+  const conversationDetailRunIdRef = useRef<Map<string, string | null>>(new Map());
   const taskMessageScopeRef = useRef<{ teamId: string; taskId: string }>({
     teamId: "",
     taskId: "",
   });
+
+  useEffect(() => {
+    if (!selectedTeamId) {
+      conversationDetailFetchAtRef.current.clear();
+      conversationDetailRunIdRef.current.clear();
+    }
+  }, [selectedTeamId]);
 
   useEffect(() => {
     const nextScope = {
@@ -88,8 +98,10 @@ export function useTeamConversationActions({
     const conversationScopeChanged =
       previousScope.teamId !== nextScope.teamId || previousScope.taskId !== nextScope.taskId;
     if (conversationScopeChanged) {
-      setTaskMessages([]);
-      setConversationMailboxMessages([]);
+      setTaskMessages((current) => (current.length === 0 ? current : []));
+      setConversationMailboxMessages((current) =>
+        current.length === 0 ? current : []
+      );
     }
     if (!selectedTeamId || !selectedConversation?.id) {
       setTaskMessagesLoading(false);
@@ -120,9 +132,23 @@ export function useTeamConversationActions({
       }
       setTaskMessagesLoading(true);
       try {
+        const selectedConversationId = (selectedConversation?.id ?? "").trim();
+        const cachedConversationRunId =
+          conversationDetailRunIdRef.current.get(taskId);
+        const lastDetailFetchAt =
+          conversationDetailFetchAtRef.current.get(taskId) ?? null;
+        const now = Date.now();
         const shouldFetchConversationDetail =
-          Boolean(selectedConversation && selectedConversation.id === taskId) &&
-          selectedConversationRunId.length === 0;
+          selectedConversationId === taskId &&
+          selectedConversationRunId.length === 0 &&
+          (cachedConversationRunId === undefined ||
+            (cachedConversationRunId === null &&
+              (lastDetailFetchAt === null ||
+            now - lastDetailFetchAt >=
+                TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS)));
+        if (shouldFetchConversationDetail) {
+          conversationDetailFetchAtRef.current.set(taskId, now);
+        }
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
             limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
@@ -137,8 +163,16 @@ export function useTeamConversationActions({
         startTransition(() => {
           setTaskMessages((prev) => mergeConversationMessages(prev, messages));
         });
+        const fetchedConversationRunId =
+          taskDetail?.latest_run?.id?.trim() || null;
+        if (taskDetail) {
+          conversationDetailRunIdRef.current.set(taskId, fetchedConversationRunId);
+        }
         const conversationRunId =
-          selectedConversationRunId || taskDetail?.latest_run?.id?.trim() || "";
+          selectedConversationRunId ||
+          fetchedConversationRunId ||
+          cachedConversationRunId ||
+          "";
         if (conversationRunId) {
           const conversationSnapshot = await api.getTeamRunSnapshot(token, conversationRunId, {
             event_limit: 1,
@@ -257,12 +291,17 @@ export function useTeamConversationActions({
             ++optimisticTaskMessageSeqRef.current;
           setTaskMessages((prev) =>
             {
+              const fallbackConversationId =
+                conversation.conversationId?.trim() ||
+                prev.find((message) => message.conversation_id.trim().length > 0)
+                  ?.conversation_id ||
+                "";
               const nextMessages = sortConversationMessages([
                 ...prev,
                 buildOptimisticConversationMessage({
                   messageId: optimisticMessageId!,
                   taskId,
-                  conversationId: conversation.conversationId,
+                  conversationId: fallbackConversationId,
                   payload: chatPayload,
                   mentionActorIds: payload.mentionActorIds,
                 }),

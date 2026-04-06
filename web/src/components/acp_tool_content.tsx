@@ -159,6 +159,8 @@ export function parseAnsiSegmentsCached(input: string): AnsiSegment[] {
   const cached = ansiSegmentCache.get(input);
   if (cached != null) {
     ansiCacheHitCount += 1;
+    ansiSegmentCache.delete(input);
+    ansiSegmentCache.set(input, cached);
     return cached;
   }
   ansiCacheMissCount += 1;

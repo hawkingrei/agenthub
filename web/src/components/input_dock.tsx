@@ -270,6 +270,10 @@ export function InputDock({
     onHeightChange(nextHeight);
   }, [onHeightChange]);
 
+  React.useEffect(() => {
+    lastReportedHeightRef.current = null;
+  }, [onHeightChange]);
+
   const ensureInputVisible = React.useCallback(() => {
     if (!mobileInputViewport) return;
     if (typeof window === "undefined") return;

@@ -128,6 +128,25 @@ function buildSharedThreadDetail(
   };
 }
 
+function buildTaskThreadDetail(
+  overrides: Partial<TeamTaskDetailResponse> = {}
+): TeamTaskDetailResponse {
+  return {
+    task: buildTaskThreadTask(),
+    conversation: {
+      id: "conv-thread",
+      team_id: "team-1",
+      task_id: "task-thread",
+      mode: "thread",
+      topic: "Task thread",
+      created_at: 2,
+      updated_at: 2,
+    },
+    latest_run: null,
+    ...overrides,
+  };
+}
+
 function createStateSetter<T>(initial: T) {
   const state = { current: initial };
   const setter = vi.fn((update: React.SetStateAction<T>) => {
@@ -427,6 +446,38 @@ describe("useTeamConversationActions", () => {
     }
   });
 
+  it("avoids repeated team-task detail fetches when a selected thread still has no latest run", async () => {
+    mockedApi.listTeamTaskMessages.mockResolvedValue([
+      buildTaskMessage(31, "thread-tail"),
+    ]);
+    mockedApi.getTeamTask.mockResolvedValue(buildTaskThreadDetail());
+
+    let captured: TeamConversationActions | null = null;
+    const options = createOptions({
+      selectedConversation: buildTaskThreadTask(),
+      selectedConversationLatestRun: null,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      await act(async () => {
+        await captured?.refreshTaskMessages("task-thread");
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await captured?.refreshTaskMessages("task-thread");
+        await Promise.resolve();
+      });
+
+      expect(mockedApi.getTeamTask).toHaveBeenCalledTimes(1);
+      expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(2);
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
   it("clears stale messages immediately when switching conversation scope", async () => {
     let captured: TeamConversationActions | null = null;
     const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([]);
@@ -462,8 +513,8 @@ describe("useTeamConversationActions", () => {
       expect(captured).not.toBeNull();
       expect(taskMessages.state.current).toEqual([]);
       expect(mailboxMessages.state.current).toEqual([]);
-      expect(taskMessages.setter).toHaveBeenCalledWith([]);
-      expect(mailboxMessages.setter).toHaveBeenCalledWith([]);
+      expect(taskMessages.setter).toHaveBeenCalled();
+      expect(mailboxMessages.setter).toHaveBeenCalled();
     } finally {
       cleanupHarness(root, container);
     }
@@ -763,6 +814,62 @@ describe("useTeamConversationActions", () => {
       });
 
       expect(draft.state.current).toBe("follow-up draft");
+    } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("reuses the current thread conversation id for optimistic task-thread echoes", async () => {
+    const sendDeferred = createDeferred<TeamConversationMessageRecord>();
+    mockedApi.sendTeamTaskMessage.mockReturnValueOnce(sendDeferred.promise);
+
+    let captured: TeamConversationActions | null = null;
+    const draft = createStateSetter("follow thread");
+    const taskMessages = createStateSetter<TeamConversationMessageRecord[]>([
+      {
+        ...buildTaskMessage(88, "older thread message"),
+        task_id: "task-thread",
+        conversation_id: "conv-thread",
+      },
+    ]);
+    const options = createOptions({
+      selectedConversation: buildTaskThreadTask(),
+      selectedConversationLatestRun: null,
+      setTaskMessages: taskMessages.setter,
+      setTaskMessageDraft: draft.setter,
+    });
+    const { root, container } = await mountHarness(options, (actions) => {
+      captured = actions;
+    });
+
+    try {
+      taskMessages.state.current = [
+        {
+          ...buildTaskMessage(88, "older thread message"),
+          task_id: "task-thread",
+          conversation_id: "conv-thread",
+        },
+      ];
+      await act(async () => {
+        void captured?.sendTaskMessage({
+          text: "follow thread",
+          mentionActorIds: [],
+        });
+        await Promise.resolve();
+      });
+
+      expect(taskMessages.state.current.at(-1)?.conversation_id).toBe("conv-thread");
+      expect(draft.state.current).toBe("");
+
+      sendDeferred.resolve({
+        ...buildTaskMessage(102, "follow thread"),
+        task_id: "task-thread",
+        conversation_id: "conv-thread",
+      });
+      await act(async () => {
+        await sendDeferred.promise;
+        await Promise.resolve();
+      });
     } finally {
       cleanupHarness(root, container);
     }

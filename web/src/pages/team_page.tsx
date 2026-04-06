@@ -2376,13 +2376,21 @@ export function TeamPage(props: TeamPageProps) {
     if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
       return;
     }
+    if (taskList.length === 0 || selectedConversationDetail) {
+      return;
+    }
     const stillExists = taskList.some((task) => task.id === resolvedSelectedConversationTaskId);
     if (stillExists) {
       return;
     }
     setSelectedConversationTaskId("");
     setSelectedConversationDetail(null);
-  }, [resolvedSelectedConversationTaskId, sharedConversation?.id, taskList]);
+  }, [
+    resolvedSelectedConversationTaskId,
+    selectedConversationDetail,
+    sharedConversation?.id,
+    taskList,
+  ]);
 
   useEffect(() => {
     setCompiledRunPreview(null);

@@ -44,8 +44,8 @@ type TeamMemberAcpPanelProps = {
   onAcpSetModel?: (modelId: string) => Promise<void> | void;
   onAcpSetConfig?: (configId: string, value: string) => Promise<void> | void;
   onForceNewSession?: () => Promise<void> | void;
-  onRefresh: () => Promise<void> | void;
-  onLoadOlder: () => Promise<void> | void;
+  onRefresh?: () => Promise<void> | void;
+  onLoadOlder?: () => Promise<void> | void;
 };
 
 type TeamMemberAcpTab = "conversation" | "plan" | "debug";
@@ -73,7 +73,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     onAcpSetModel,
     onAcpSetConfig,
     onForceNewSession,
-    onLoadOlder,
+    onLoadOlder = NOOP,
   } = props;
 
   const selectedSessionId =

@@ -3676,62 +3676,68 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
+    vi.useFakeTimers();
     const onLoadOlder = vi.fn();
 
-    renderWithMantine(
-      root,
-      <TeamMemberAcpPanel
-          developerMode={true}
-          selectedMemberId="worker-agent"
-          selectedMemberSnapshot={buildMemberSnapshot({
-            member_id: "worker-agent",
-            role: "worker",
-            latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
-          })}
-          memberEvents={[
-            {
-              event_id: 23,
-              agent_id: "worker-agent",
-              session_id: "task-77",
-              seq: "23",
-              ts: 1_700_000_203,
-              stream: "acp",
-              message: JSON.stringify({
-                type: "agent_thought",
-                text: "Inspecting the previous failure before replying.",
-              }),
-            },
-            {
-              event_id: 24,
-              agent_id: "worker-agent",
-              session_id: "task-77",
-              seq: "24",
-              ts: 1_700_000_204,
-              stream: "acp",
-              message: JSON.stringify({
-                type: "agent_message",
-                text: "I found the relevant stack trace.",
-              }),
-            },
-          ]}
-          memberEventsHasMore={true}
-          memberEventsLoading={false}
-          eventsLoading={false}
-          oldestMemberEventId={22}
-          onRefresh={vi.fn()}
-          onLoadOlder={onLoadOlder}
-        />
-    );
+    try {
+      renderWithMantine(
+        root,
+        <TeamMemberAcpPanel
+            developerMode={true}
+            selectedMemberId="worker-agent"
+            selectedMemberSnapshot={buildMemberSnapshot({
+              member_id: "worker-agent",
+              role: "worker",
+              latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+            })}
+            memberEvents={[
+              {
+                event_id: 23,
+                agent_id: "worker-agent",
+                session_id: "task-77",
+                seq: "23",
+                ts: 1_700_000_203,
+                stream: "acp",
+                message: JSON.stringify({
+                  type: "agent_thought",
+                  text: "Inspecting the previous failure before replying.",
+                }),
+              },
+              {
+                event_id: 24,
+                agent_id: "worker-agent",
+                session_id: "task-77",
+                seq: "24",
+                ts: 1_700_000_204,
+                stream: "acp",
+                message: JSON.stringify({
+                  type: "agent_message",
+                  text: "I found the relevant stack trace.",
+                }),
+              },
+            ]}
+            memberEventsHasMore={true}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={22}
+            onRefresh={vi.fn()}
+            onLoadOlder={onLoadOlder}
+          />
+      );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+      await act(async () => {
+        vi.advanceTimersByTime(1200);
+        await Promise.resolve();
+      });
 
-    expect(onLoadOlder).toHaveBeenCalled();
-    expect(container.textContent).toContain(
-      "Inspecting the previous failure before replying."
-    );
-    expect(container.textContent).toContain("I found the relevant stack trace.");
+      expect(onLoadOlder).toHaveBeenCalled();
+      expect(container.textContent).toContain(
+        "Inspecting the previous failure before replying."
+      );
+      expect(container.textContent).toContain("I found the relevant stack trace.");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("TeamMemberAcpPanel shows active thinking status in the header", () => {

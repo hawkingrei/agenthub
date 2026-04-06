@@ -7,6 +7,7 @@ import {
   api,
 } from "../api";
 import { preloadThreadMarkdownAssets, ThreadRichText } from "../components/thread_rich_text";
+import { isImeComposing } from "../components/input_dock";
 import {
   DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
   windowConversation,
@@ -662,6 +663,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     void preloadThreadMarkdownAssets().catch(() => {});
   }, []);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const messageDraftComposingRef = React.useRef(false);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
@@ -1396,7 +1398,20 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               setActiveMentionIndex(0);
             }, 0);
           }}
+          onCompositionStart={() => {
+            messageDraftComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            messageDraftComposingRef.current = false;
+          }}
           onKeyDown={(event) => {
+            const composing = isImeComposing(
+              messageDraftComposingRef.current,
+              event.nativeEvent.isComposing,
+              "keyCode" in event.nativeEvent
+                ? Number((event.nativeEvent as KeyboardEvent).keyCode)
+                : undefined
+            );
             if (activeMention && filteredMentionCandidates.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -1432,6 +1447,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               !event.altKey &&
               !event.metaKey &&
               !event.ctrlKey &&
+              !composing &&
               canSendMessage
             ) {
               event.preventDefault();

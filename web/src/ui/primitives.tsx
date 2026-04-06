@@ -126,10 +126,12 @@ type SelectableListItemProps = React.ComponentPropsWithoutRef<typeof UnstyledBut
 export function SelectableListItem({
   active = false,
   className,
+  type = "button",
   ...props
 }: SelectableListItemProps) {
   return (
     <UnstyledButton
+      type={type}
       className={cx(
         SELECTABLE_LIST_ITEM_BASE_CLASS,
         active && SELECTABLE_LIST_ITEM_ACTIVE_CLASS,
