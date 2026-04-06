@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEvent } from "../api";
+import * as acpModule from "../acp";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import {
@@ -17,6 +18,21 @@ vi.mock("../hooks/use_acp_conversation", () => ({
 }));
 
 installReactDomTestGlobals();
+
+async function openDebugTabAndWait(container: HTMLElement): Promise<void> {
+  act(() => {
+    required(
+      Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Debug")
+      ) as HTMLButtonElement | undefined,
+      "debug tab button missing"
+    ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+}
 
 function buildAcpEvents(extraMessages: Record<string, unknown>[] = []): AgentEvent[] {
   return [
@@ -104,7 +120,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -128,13 +143,79 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         onSendInput={vi.fn()}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
 
     expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+  });
+
+  it("pads the ACP conversation above the measured input dock height", () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+
+    class MockResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+      if ((this as HTMLElement).classList?.contains("input-dock-shell")) {
+        return {
+          x: 0,
+          y: 0,
+          width: 640,
+          height: 156,
+          top: 0,
+          right: 640,
+          bottom: 156,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamMemberAcpPanel
+          developerMode={true}
+          selectedMemberId="worker-agent"
+          selectedSessionId="runtime-session-1"
+          selectedMemberRole="worker"
+          selectedMemberSnapshot={null}
+          memberEvents={buildAcpEvents()}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onSendInput={vi.fn()}
+          onLoadOlder={vi.fn()}
+        />
+      );
+
+      act(() => {
+        resizeCallback?.([], {} as ResizeObserver);
+      });
+
+      const conversation = required(
+        container.querySelector('[data-acp-conversation-scroll="true"]') as HTMLDivElement | null,
+        "acp conversation scroll container missing"
+      );
+      expect(conversation.style.paddingBottom).toBe("");
+      expect(conversation.style.scrollPaddingBottom).toBe("168px");
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver;
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
   });
 
   it("shows an interrupt action for a running team member ACP session", () => {
@@ -156,7 +237,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         onSendInput={vi.fn()}
         canInterrupt={true}
         onInterrupt={onInterrupt}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -174,7 +254,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
-  it("submits selected ACP mode and model values for the team member", () => {
+  it("submits selected ACP mode and model values for the team member", async () => {
     const onAcpSetMode = vi.fn();
     const onAcpSetModel = vi.fn();
 
@@ -218,19 +298,11 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         canControlAcp={true}
         onAcpSetMode={onAcpSetMode}
         onAcpSetModel={onAcpSetModel}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
 
-    act(() => {
-      required(
-        Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Debug")
-        ) as HTMLButtonElement | undefined,
-        "debug tab button missing"
-      ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await openDebugTabAndWait(container);
 
     const modeSelect = required(
       container.querySelector('select[name="acp-mode"]') as HTMLSelectElement | null,
@@ -265,5 +337,53 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
 
     expect(onAcpSetMode).toHaveBeenCalledWith("danger_full_access");
     expect(onAcpSetModel).toHaveBeenCalledWith("gemini-2.5-pro");
+  });
+
+  it("does not rebuild ACP view when parent state changes without member ACP prop changes", () => {
+    const buildAcpViewSpy = vi.spyOn(acpModule, "buildAcpView");
+    const sharedEvents = buildAcpEvents();
+    const panelProps = {
+      developerMode: true,
+      selectedMemberId: "worker-agent",
+      selectedSessionId: "runtime-session-1",
+      selectedMemberRole: "worker",
+      selectedMemberSnapshot: null,
+      memberEvents: sharedEvents,
+      memberEventsHasMore: false,
+      memberEventsLoading: false,
+      eventsLoading: false,
+      oldestMemberEventId: null,
+      onSendInput: vi.fn(),
+      onLoadOlder: vi.fn(),
+    } as const;
+
+    function Wrapper() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick((current) => current + 1)}>
+            bump {tick}
+          </button>
+          <TeamMemberAcpPanel {...panelProps} />
+        </>
+      );
+    }
+
+    renderWithMantine(root, <Wrapper />);
+    const initialCallCount = buildAcpViewSpy.mock.calls.length;
+    expect(initialCallCount).toBeGreaterThan(0);
+
+    const bumpButton = required(
+      Array.from(container.querySelectorAll("button")).find((candidate) =>
+        candidate.textContent?.includes("bump")
+      ) as HTMLButtonElement | undefined,
+      "parent rerender button missing"
+    );
+
+    act(() => {
+      bumpButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(buildAcpViewSpy).toHaveBeenCalledTimes(initialCallCount);
   });
 });

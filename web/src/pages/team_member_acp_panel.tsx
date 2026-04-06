@@ -2,10 +2,10 @@ import React from "react";
 import { buildAcpView } from "../acp";
 import { AgentEvent, TeamMemberSnapshot, getTeamStepRuntimeHandleId } from "../api";
 import {
-  ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
   AcpPanel,
 } from "../components/acp_panel";
-import { getAcpConversationCacheStats } from "../components/acp_conversation";
+import { getAcpConversationCacheStats } from "../components/acp_conversation_cache_stats";
+import { resolveAcpInputDockConversationClearance } from "../components/acp_input_dock_clearance";
 import { OutputHeaderDetails } from "../components/output_header";
 import { resolveInputDockJumpMode } from "../components/acp_panel_helpers";
 import { InputDock } from "../components/input_dock";
@@ -21,9 +21,6 @@ import {
   OUTPUT_HEADER_TITLE_TEXT_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamMemberAcpPanelProps = {
@@ -47,15 +44,14 @@ type TeamMemberAcpPanelProps = {
   onAcpSetModel?: (modelId: string) => Promise<void> | void;
   onAcpSetConfig?: (configId: string, value: string) => Promise<void> | void;
   onForceNewSession?: () => Promise<void> | void;
-  onRefresh: () => Promise<void> | void;
-  onLoadOlder: () => Promise<void> | void;
+  onLoadOlder?: () => Promise<void> | void;
 };
 
 type TeamMemberAcpTab = "conversation" | "plan" | "debug";
 
 const NOOP = () => {};
 
-export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
+function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const {
     selectedMemberId,
     developerMode,
@@ -67,7 +63,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     memberEvents,
     memberEventsHasMore,
     memberEventsLoading,
-    eventsLoading,
     oldestMemberEventId,
     onSendInput,
     canControlAcp = false,
@@ -77,8 +72,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     onAcpSetModel,
     onAcpSetConfig,
     onForceNewSession,
-    onRefresh,
-    onLoadOlder,
+    onLoadOlder = NOOP,
   } = props;
 
   const selectedSessionId =
@@ -140,6 +134,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
   const [inputHistoryCursor, setInputHistoryCursor] = React.useState(-1);
   const [sendingInput, setSendingInput] = React.useState(false);
   const [terminalShowJump, setTerminalShowJump] = React.useState(false);
+  const [inputDockHeight, setInputDockHeight] = React.useState(0);
   const [acpModeId, setAcpModeId] = React.useState("");
   const [acpModelId, setAcpModelId] = React.useState("");
   const [acpConfigId, setAcpConfigId] = React.useState("");
@@ -171,11 +166,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     inputHistoryDraftRef.current = "";
   }, [selectedMemberId, selectedSessionId]);
 
-  const canLoadOlder =
-    Boolean(selectedMemberId.trim() && selectedSessionId) &&
-    !memberEventsLoading &&
-    memberEventsHasMore &&
-    oldestMemberEventId != null;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
@@ -430,11 +420,16 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     }
     return "Active thread";
   }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
-  const hasSelectedMember = Boolean(selectedMemberId.trim());
-  const canShowThreadOptions =
-    hasSelectedMember || memberEventsLoading || memberEvents.length > 0;
   const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const hasVisibleInputDock = canSendInput && showInputDock;
+  React.useEffect(() => {
+    if (!hasVisibleInputDock) {
+      setInputDockHeight(0);
+    }
+  }, [hasVisibleInputDock]);
+  const conversationBottomClearance = hasVisibleInputDock
+    ? resolveAcpInputDockConversationClearance(inputDockHeight)
+    : 0;
   const acpPanelProps = React.useMemo(
     () => ({
       acpView,
@@ -442,9 +437,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
-      conversationBottomClearance: hasVisibleInputDock
-        ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX
-        : 0,
+      conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
       showConversationJump: acpConversation.showConversationJump,
@@ -527,6 +520,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
       onForceNewSession,
       onInterrupt,
       panelSubtitle,
+      conversationBottomClearance,
       hasVisibleInputDock,
       terminalOutputs,
       terminalShowJump,
@@ -553,34 +547,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
 
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-2.5`}>
-      {canShowThreadOptions && (
-        <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} w-full shrink-0 justify-end gap-2`}>
-          <button
-            onClick={() => {
-              void onRefresh();
-            }}
-            disabled={hasSelectedMember && selectedSessionId ? memberEventsLoading : eventsLoading}
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
-            title="Refresh thread"
-            aria-label="Refresh thread"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </button>
-          {canLoadOlder && (
-            <button
-              onClick={() => {
-                void onLoadOlder();
-              }}
-              disabled={!canLoadOlder}
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            >
-              Load Older
-            </button>
-          )}
-        </div>
-      )}
-
       {!selectedMemberId.trim() && (
         <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
           Select an agent from the left rail to inspect its thread.
@@ -615,7 +581,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
               <OutputHeaderDetails items={developerTechnicalMetadata} />
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <AcpPanel {...acpPanelProps} />
           </div>
         </div>
@@ -629,6 +595,7 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
             showInterrupt={Boolean(onInterrupt) && acpView.hasAcp}
             canInterrupt={canInterruptAcpRun}
             sendDisabled={!canSendInput || sendingInput}
+            onHeightChange={setInputDockHeight}
             onInputChange={handleInputChange}
             onSendInput={() => {
               void handleSendInput();
@@ -650,3 +617,6 @@ export function TeamMemberAcpPanel(props: TeamMemberAcpPanelProps) {
     </div>
   );
 }
+
+export const TeamMemberAcpPanel = React.memo(TeamMemberAcpPanelImpl);
+TeamMemberAcpPanel.displayName = "TeamMemberAcpPanel";

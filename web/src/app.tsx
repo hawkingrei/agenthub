@@ -11,7 +11,7 @@ import {
   SafePath,
   VapidInfo,
 } from "./api";
-import { buildAcpView } from "./acp";
+import { buildAcpView, EMPTY_ACP_VIEW, type AcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
@@ -35,16 +35,34 @@ import {
   UPSTREAM_HTML_MESSAGE,
 } from "./connection_status";
 import {
-  CursorRef,
   getAdaptivePollInterval,
   EventCursor,
   getMaxEventCursor,
   isSseConnectionStale,
   isCursorNewer,
   shouldPollAgentEvents,
-  updateLastEventCursor,
 } from "./event_polling";
 import { compareEventOrder } from "./seq_order";
+import {
+  buildLatestLiveSessionMap,
+  normalizeSseOutputLines,
+  resolveLiveSessionSwitch,
+  routeLiveOutputBatch,
+} from "./app_live_output";
+import {
+  buildGlobalPermissionPollAgentIds,
+  chunkPermissionPollAgentIds,
+  filterPermissionsForAgent,
+  GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY,
+  mergePendingPermissionCountMap,
+  parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  schedulePermissionPollLoop,
+} from "./app_permission_polling";
+import {
+  setupLayoutAnchorVarSync,
+  setupRuntimeViewportVarSync,
+} from "./app_viewport";
 import {
   buildAcpCacheSlice,
   buildOutputCacheSlice,
@@ -59,34 +77,28 @@ import {
   selectCachedOutputs,
 } from "./output_cache";
 import { isNearBottom } from "./scroll";
-import { escapeHtml } from "./html_escape";
 import {
   DEFAULT_AGENT_PRESET_ID,
   formatAgentModelLabel,
   getAgentPreset,
   type AgentPresetId,
 } from "./agent_presets";
-import { AgentNodeSection, validateAgentNodeDraft } from "./components/agent_node_section";
+import { validateAgentNodeDraft } from "./components/agent_node_validation";
 import { AgentsPanel } from "./components/agents_panel";
-import { ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX } from "./components/acp_panel";
-import { CreateAgentModal } from "./components/create_agent_modal";
-import { InputDock } from "./components/input_dock";
 import { OutputHeader } from "./components/output_header";
-import { OutputBody } from "./components/output_body";
 import { OutputErrorBoundary } from "./components/output_error_boundary";
-import { PermissionModal } from "./components/permission_modal";
 import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
-import { resolveInputDockJumpMode } from "./components/acp_panel_helpers";
-import { getAcpConversationCacheStats } from "./components/acp_conversation";
-import { useAcpConversation } from "./hooks/use_acp_conversation";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
+import {
+  DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
+  DEFAULT_OUTPUT_CACHE_MAX_SESSIONS,
+} from "./storage/output_cache_budget";
 import {
   getLocalStorageItemSafe,
   removeLocalStorageItemSafe,
   setLocalStorageItemSafe,
 } from "./storage/safe_storage";
-import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { ensurePushSubscription } from "./push";
 import {
   INPUT_HISTORY_STORAGE_KEY,
@@ -119,23 +131,25 @@ import {
   APP_WORKBENCH_HEADER_STATUS_CLASS,
   APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  AUTH_CARD_BASE_CLASS,
+  AUTH_PAGE_CLASS,
   APP_WORKSPACE_ROOT_CLASS,
   APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
   APP_WORKSPACE_RIGHT_CLASS,
   APP_WORKSPACE_SPLITTER_CLASS,
+  OUTPUT_BODY_ACP_ROOT_CLASS,
+  OUTPUT_BODY_LOADING_CLASS,
+  OUTPUT_BODY_ROOT_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
   loadDeveloperModePreference,
   persistDeveloperModePreference,
 } from "./ui/developer_mode";
+import { ActionButton, IconButton } from "./ui/primitives";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
-const PERMISSION_JUMP_RETRY_DELAY_MS = 120;
-const GLOBAL_PERMISSION_POLL_INTERVAL_MS = 5000;
-const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
-const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
 const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
 const AGENTS_PANEL_DEFAULT_WIDTH = 288;
@@ -146,36 +160,87 @@ const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
+export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
-const routePageLoaders = import.meta.glob("./pages/{admin_page,join_page,team_page}.tsx");
+export {
+  buildGlobalPermissionPollAgentIds,
+  buildPendingPermissionCountMap,
+  chunkPermissionPollAgentIds,
+  filterPermissionsForAgent,
+  mergePendingPermissionCountMap,
+  parsePermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  schedulePermissionPollLoop,
+} from "./app_permission_polling";
+export {
+  resolveRuntimeKeyboardInset,
+  resolveRuntimeViewportAxis,
+  resolveRuntimeViewportSize,
+  setupLayoutAnchorVarSync,
+  setupRuntimeViewportVarSync,
+  shouldSyncRuntimeViewportSize,
+  toNonNegativeRoundedPx,
+} from "./app_viewport";
+
+export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
+  return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
+}
+
+export function resolveActiveAcpView(
+  activeAgent: string | null,
+  acpOutputs: OutputLine[]
+): AcpView {
+  if (!activeAgent) {
+    return EMPTY_ACP_VIEW;
+  }
+  return buildAcpView(acpOutputs);
+}
+
+export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
+  return Array.from(
+    new Set(
+      agents
+        .filter((agent) => isAgentActiveStatus(agent.status))
+        .map((agent) => agent.id)
+    )
+  ).sort();
+}
 
 const LazyAdminPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/admin_page.tsx"];
-  if (!load) {
-    throw new Error("LazyAdminPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/admin_page");
+  const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
   return { default: module.AdminPage };
 });
 
 const LazyJoinPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/join_page.tsx"];
-  if (!load) {
-    throw new Error("LazyJoinPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/join_page");
+  const module = (await import("./pages/join_page")) as typeof import("./pages/join_page");
   return { default: module.JoinPage };
 });
 
 const LazyTeamPage = React.lazy(async () => {
-  const load = routePageLoaders["./pages/team_page.tsx"];
-  if (!load) {
-    throw new Error("LazyTeamPage loader missing");
-  }
-  const module = (await load()) as typeof import("./pages/team_page");
+  const module = (await import("./pages/team_page")) as typeof import("./pages/team_page");
   return { default: module.TeamPage };
+});
+
+const LazyCreateAgentModal = React.lazy(async () => {
+  const module = await import("./components/create_agent_modal");
+  return { default: module.CreateAgentModal };
+});
+
+const LazyAgentNodeSection = React.lazy(async () => {
+  const module = await import("./components/agent_node_section");
+  return { default: module.AgentNodeSection };
+});
+
+const LazyPermissionModal = React.lazy(async () => {
+  const module = await import("./components/permission_modal");
+  return { default: module.PermissionModal };
+});
+
+const LazyAgentsWorkbench = React.lazy(async () => {
+  const module = await import("./components/agents_workbench");
+  return { default: module.AgentsWorkbench };
 });
 
 function AuthRedirect(): null {
@@ -194,6 +259,41 @@ function PostLoginRedirect({ target }: { target: string }): null {
 
 function RouteFallback({ label }: { label: string }) {
   return <div className={ROUTE_FALLBACK_SHELL_CLASS}>{label}</div>;
+}
+
+function AuthGateCard({ title, message }: { title: string; message: string }) {
+  return (
+    <div className={AUTH_PAGE_CLASS}>
+      <section className={AUTH_CARD_BASE_CLASS}>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
+      </section>
+    </div>
+  );
+}
+
+function AuthRequiredGate() {
+  return <AuthGateCard title="Login Required" message="Please login to continue." />;
+}
+
+function ForbiddenRoute() {
+  return (
+    <AuthGateCard
+      title="Forbidden"
+      message="You do not have access to this page."
+    />
+  );
+}
+
+function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
+  return (
+    <div className={hasAcp ? OUTPUT_BODY_ACP_ROOT_CLASS : OUTPUT_BODY_ROOT_CLASS}>
+      <div className={OUTPUT_BODY_LOADING_CLASS}>
+        <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
+        <div className="label">Loading...</div>
+      </div>
+    </div>
+  );
 }
 
 export function shouldRedirectTeamsToLogin(
@@ -231,6 +331,73 @@ export function upsertAgentNodeRecord(
   return [...nodes, node].sort(compareAgentNodeRecords);
 }
 
+function isSameStringList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+function isSameAgentRecord(a: AgentRecord, b: AgentRecord): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.workdir === b.workdir &&
+    a.command === b.command &&
+    isSameStringList(a.args, b.args) &&
+    (a.target_node_id ?? null) === (b.target_node_id ?? null) &&
+    a.worktree_mode === b.worktree_mode &&
+    (a.worktree_repo ?? null) === (b.worktree_repo ?? null) &&
+    (a.worktree_ref ?? null) === (b.worktree_ref ?? null) &&
+    a.code_mode === b.code_mode &&
+    (a.agent_loop_enabled ?? null) === (b.agent_loop_enabled ?? null) &&
+    (a.agent_loop_idle_seconds ?? null) === (b.agent_loop_idle_seconds ?? null) &&
+    (a.agent_loop_prompt ?? null) === (b.agent_loop_prompt ?? null) &&
+    a.status === b.status &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at
+  );
+}
+
+export function isSameAgentRecordList(
+  prev: AgentRecord[],
+  next: AgentRecord[]
+): boolean {
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!isSameAgentRecord(prev[index], next[index])) return false;
+  }
+  return true;
+}
+
+function isSameAgentNodeRecord(
+  a: AgentNodeRecord,
+  b: AgentNodeRecord
+): boolean {
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    (a.grpc_target ?? null) === (b.grpc_target ?? null) &&
+    (a.tls_server_name ?? null) === (b.tls_server_name ?? null) &&
+    (a.default_worktree_root ?? null) === (b.default_worktree_root ?? null) &&
+    a.is_main === b.is_main &&
+    a.created_at === b.created_at &&
+    a.updated_at === b.updated_at
+  );
+}
+
+export function isSameAgentNodeRecordList(
+  prev: AgentNodeRecord[],
+  next: AgentNodeRecord[]
+): boolean {
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (!isSameAgentNodeRecord(prev[index], next[index])) return false;
+  }
+  return true;
+}
+
 export function replaceAgentNodeRecord(
   nodes: AgentNodeRecord[],
   node: AgentNodeRecord
@@ -247,6 +414,10 @@ export function removeAgentNodeRecord(
 
 function isTeamsRoute(pathname: string): boolean {
   return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
+}
+
+export function isAgentsWorkbenchRoute(pathname: string): boolean {
+  return pathname === "/";
 }
 
 export function resolveTeamRoute(pathname: string): {
@@ -295,129 +466,6 @@ type PendingPermissionJumpState = {
   attempts: number;
 };
 
-type RuntimeViewportSize = {
-  height: number;
-  width: number;
-};
-
-type RuntimeWindowLike = {
-  innerHeight: number;
-  innerWidth: number;
-  visualViewport?: VisualViewport | null;
-  addEventListener: (type: string, listener: () => void) => void;
-  removeEventListener: (type: string, listener: () => void) => void;
-  requestAnimationFrame?: (cb: (timestamp: number) => void) => number;
-  cancelAnimationFrame?: (id: number) => void;
-};
-
-type StyleVarTarget = {
-  setProperty: (name: string, value: string) => void;
-};
-
-type LayoutAnchorNodeLike = {
-  getBoundingClientRect: () => { height: number; top: number };
-};
-
-type LayoutAnchorNodes = {
-  appRoot: LayoutAnchorNodeLike | null;
-  appHeader: LayoutAnchorNodeLike | null;
-  workspace: LayoutAnchorNodeLike | null;
-};
-
-type ResizeObserverLike = {
-  observe: (target: object) => void;
-  disconnect: () => void;
-};
-
-type ResizeObserverCtorLike = new (callback: () => void) => ResizeObserverLike;
-
-const MIN_RELIABLE_VIEWPORT_AXIS_PX = 48;
-
-export function resolveRuntimeViewportAxis(
-  axis: number | null | undefined,
-  fallback: number
-): number {
-  const fallbackRounded = Math.max(1, Math.round(fallback));
-  if (typeof axis !== "number" || !Number.isFinite(axis)) {
-    return fallbackRounded;
-  }
-  const rounded = Math.max(1, Math.round(axis));
-  const minReliable = Math.min(MIN_RELIABLE_VIEWPORT_AXIS_PX, fallbackRounded);
-  if (rounded < minReliable) {
-    return fallbackRounded;
-  }
-  return rounded;
-}
-
-export function resolveRuntimeViewportSize(
-  viewport: Pick<VisualViewport, "height" | "width" | "offsetTop"> | null | undefined,
-  innerHeight: number,
-  innerWidth: number
-): RuntimeViewportSize {
-  const toSafeViewportDimension = (
-    viewportValue: number | undefined,
-    fallback: number
-  ): number => {
-    const safeFallback =
-      typeof fallback === "number" && Number.isFinite(fallback) && fallback > 0
-        ? fallback
-        : 1;
-    if (
-      typeof viewportValue !== "number" ||
-      !Number.isFinite(viewportValue) ||
-      viewportValue <= 1
-    ) {
-      return safeFallback;
-    }
-    return viewportValue;
-  };
-  const viewportOffsetTop =
-    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
-      ? Math.max(0, viewport.offsetTop)
-      : 0;
-  return {
-    height: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.height, innerHeight) + viewportOffsetTop,
-      innerHeight
-    ),
-    width: resolveRuntimeViewportAxis(
-      toSafeViewportDimension(viewport?.width, innerWidth),
-      innerWidth
-    ),
-  };
-}
-
-export function shouldSyncRuntimeViewportSize(
-  previous: RuntimeViewportSize | null,
-  next: RuntimeViewportSize
-): boolean {
-  if (!previous) return true;
-  return previous.height !== next.height || previous.width !== next.width;
-}
-
-export function resolveRuntimeKeyboardInset(
-  viewport: Pick<VisualViewport, "height" | "offsetTop"> | null | undefined,
-  innerHeight: number
-): number {
-  const safeInnerHeight =
-    typeof innerHeight === "number" && Number.isFinite(innerHeight) && innerHeight > 0
-      ? innerHeight
-      : 1;
-  const viewportHeight = resolveRuntimeViewportAxis(viewport?.height, safeInnerHeight);
-  const viewportOffsetTop =
-    typeof viewport?.offsetTop === "number" && Number.isFinite(viewport.offsetTop)
-      ? Math.max(0, Math.round(viewport.offsetTop))
-      : 0;
-  const inset = safeInnerHeight - viewportHeight - viewportOffsetTop;
-  if (!Number.isFinite(inset)) return 0;
-  return inset > 0 ? inset : 0;
-}
-
-export function toNonNegativeRoundedPx(value: number | null | undefined): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.round(value));
-}
-
 export function decidePermissionJump(
   pending: PendingPermissionJumpState | null,
   acpTab: "conversation" | "plan" | "debug",
@@ -429,38 +477,6 @@ export function decidePermissionJump(
   if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
   if (pending.attempts >= maxAttempts) return "clear";
   return "attempt";
-}
-
-export function parsePermissionPollAgentIds(key: string): string[] {
-  return key.split(",").filter(Boolean);
-}
-
-export function buildGlobalPermissionPollAgentIds(
-  allAgentIds: string[],
-  activeAgent: string | null
-): string[] {
-  if (!activeAgent) return allAgentIds;
-  return allAgentIds.filter((agentId) => agentId !== activeAgent);
-}
-
-export function resolveGlobalPermissionPollIntervalMs(
-  agentsCollapsed: boolean
-): number {
-  return agentsCollapsed
-    ? GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS
-    : GLOBAL_PERMISSION_POLL_INTERVAL_MS;
-}
-
-export function chunkPermissionPollAgentIds(
-  agentIds: string[],
-  maxConcurrency: number
-): string[][] {
-  const limit = Math.max(1, Math.floor(maxConcurrency));
-  const chunks: string[][] = [];
-  for (let i = 0; i < agentIds.length; i += limit) {
-    chunks.push(agentIds.slice(i, i + limit));
-  }
-  return chunks;
 }
 
 export function resolveAgentsPanelMaxWidth(workspaceWidth: number): number {
@@ -511,51 +527,6 @@ export function persistAgentsPanelWidthPreference(width: number): void {
   );
 }
 
-export function buildPendingPermissionCountMap(
-  entries: ReadonlyArray<readonly [string, number]>
-): Record<string, number> {
-  const nextCounts: Record<string, number> = {};
-  for (const [agentId, count] of entries) {
-    if (count > 0) {
-      nextCounts[agentId] = count;
-    }
-  }
-  return nextCounts;
-}
-
-export function mergePendingPermissionCountMap(
-  prev: Record<string, number>,
-  allAgentIds: string[],
-  updates: ReadonlyArray<readonly [string, number | null]>
-): Record<string, number> {
-  const nextCounts: Record<string, number> = {};
-  const allAgentSet = new Set(allAgentIds);
-  const updatedAgentSet = new Set(updates.map(([agentId]) => agentId));
-
-  for (const [agentId, count] of Object.entries(prev)) {
-    if (!allAgentSet.has(agentId)) continue;
-    if (!updatedAgentSet.has(agentId) && count > 0) {
-      nextCounts[agentId] = count;
-    }
-  }
-
-  for (const [agentId, count] of updates) {
-    if (count == null) {
-      const prevCount = prev[agentId];
-      if (typeof prevCount === "number" && prevCount > 0) {
-        nextCounts[agentId] = prevCount;
-      }
-      continue;
-    }
-    if (count > 0) {
-      nextCounts[agentId] = count;
-    } else {
-      delete nextCounts[agentId];
-    }
-  }
-  return nextCounts;
-}
-
 export function resolveOutputHistoryKey(
   agentId: string,
   sessionId: string | null,
@@ -592,184 +563,16 @@ export function resolveSessionScopedEvents(
   };
 }
 
-export function setupRuntimeViewportVarSync(
-  runtimeWindow: RuntimeWindowLike,
-  styleTarget: StyleVarTarget
-): () => void {
-  const viewport = runtimeWindow.visualViewport;
-  let rafId: number | null = null;
-  let previousSize: RuntimeViewportSize | null = null;
-  let previousKeyboardInset: number | null = null;
-  const syncViewportSizeNow = () => {
-    const rawNextSize = resolveRuntimeViewportSize(
-      viewport,
-      runtimeWindow.innerHeight,
-      runtimeWindow.innerWidth
-    );
-    const nextKeyboardInset = resolveRuntimeKeyboardInset(
-      viewport,
-      runtimeWindow.innerHeight
-    );
-    const nextSize =
-      nextKeyboardInset > 0 &&
-      previousSize &&
-      rawNextSize.width === previousSize.width
-        ? previousSize
-        : rawNextSize;
-    if (shouldSyncRuntimeViewportSize(previousSize, nextSize)) {
-      previousSize = nextSize;
-      styleTarget.setProperty("--agenthub-vh", `${nextSize.height}px`);
-      styleTarget.setProperty("--agenthub-vw", `${nextSize.width}px`);
-    }
-    if (previousKeyboardInset === nextKeyboardInset) {
-      return;
-    }
-    previousKeyboardInset = nextKeyboardInset;
-    styleTarget.setProperty("--agenthub-keyboard-inset", `${nextKeyboardInset}px`);
-  };
-  const scheduleSyncViewportSize = () => {
-    if (
-      typeof runtimeWindow.requestAnimationFrame !== "function" ||
-      typeof runtimeWindow.cancelAnimationFrame !== "function"
-    ) {
-      syncViewportSizeNow();
-      return;
-    }
-    if (rafId != null) return;
-    rafId = runtimeWindow.requestAnimationFrame(() => {
-      rafId = null;
-      syncViewportSizeNow();
-    });
-  };
-  syncViewportSizeNow();
-  runtimeWindow.addEventListener("resize", scheduleSyncViewportSize);
-  runtimeWindow.addEventListener("orientationchange", scheduleSyncViewportSize);
-  viewport?.addEventListener("resize", scheduleSyncViewportSize);
-  viewport?.addEventListener("scroll", scheduleSyncViewportSize);
-  return () => {
-    if (
-      rafId != null &&
-      typeof runtimeWindow.cancelAnimationFrame === "function"
-    ) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    runtimeWindow.removeEventListener("resize", scheduleSyncViewportSize);
-    runtimeWindow.removeEventListener("orientationchange", scheduleSyncViewportSize);
-    viewport?.removeEventListener("resize", scheduleSyncViewportSize);
-    viewport?.removeEventListener("scroll", scheduleSyncViewportSize);
-  };
-}
-
-export function setupLayoutAnchorVarSync(
-  runtimeWindow: RuntimeWindowLike,
-  styleTarget: StyleVarTarget,
-  nodes: LayoutAnchorNodes,
-  resizeObserverCtor?: ResizeObserverCtorLike
-): () => void {
-  const syncLayoutAnchors = () => {
-    const headerHeight = toNonNegativeRoundedPx(
-      nodes.appHeader?.getBoundingClientRect().height
-    );
-    if (headerHeight != null) {
-      styleTarget.setProperty("--agenthub-header-height", `${headerHeight}px`);
-    }
-    const workspaceTop = toNonNegativeRoundedPx(
-      nodes.workspace?.getBoundingClientRect().top
-    );
-    if (workspaceTop != null) {
-      styleTarget.setProperty("--agenthub-workspace-top", `${workspaceTop}px`);
-    }
-  };
-  let rafId: number | null = null;
-  const scheduleSync = () => {
-    if (
-      typeof runtimeWindow.requestAnimationFrame !== "function" ||
-      typeof runtimeWindow.cancelAnimationFrame !== "function"
-    ) {
-      syncLayoutAnchors();
-      return;
-    }
-    if (rafId != null) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    rafId = runtimeWindow.requestAnimationFrame(() => {
-      rafId = null;
-      syncLayoutAnchors();
-    });
-  };
-
-  syncLayoutAnchors();
-  runtimeWindow.addEventListener("resize", scheduleSync);
-  runtimeWindow.addEventListener("orientationchange", scheduleSync);
-  const viewport = runtimeWindow.visualViewport;
-  viewport?.addEventListener("resize", scheduleSync);
-  viewport?.addEventListener("scroll", scheduleSync);
-  let observer: ResizeObserverLike | null = null;
-  if (resizeObserverCtor) {
-    observer = new resizeObserverCtor(() => scheduleSync());
-    if (nodes.appRoot) observer.observe(nodes.appRoot);
-    if (nodes.appHeader) observer.observe(nodes.appHeader);
-    if (nodes.workspace) observer.observe(nodes.workspace);
-  }
-  return () => {
-    if (
-      rafId != null &&
-      typeof runtimeWindow.cancelAnimationFrame === "function"
-    ) {
-      runtimeWindow.cancelAnimationFrame(rafId);
-    }
-    runtimeWindow.removeEventListener("resize", scheduleSync);
-    runtimeWindow.removeEventListener("orientationchange", scheduleSync);
-    viewport?.removeEventListener("resize", scheduleSync);
-    viewport?.removeEventListener("scroll", scheduleSync);
-    observer?.disconnect();
-  };
-}
-
-export function schedulePermissionPollLoop(
-  delay: number,
-  pollState: { timer: number | null },
-  pollOnce: () => Promise<number>,
-  isCancelled: () => boolean,
-  scheduleTimeout: (callback: () => void, delayMs: number) => number = (callback, delayMs) =>
-    window.setTimeout(callback, delayMs),
-  clearTimeoutFn: (timerId: number) => void = (timerId) => window.clearTimeout(timerId)
-): void {
-  if (isCancelled()) return;
-  if (pollState.timer != null) {
-    clearTimeoutFn(pollState.timer);
-    pollState.timer = null;
-  }
-  pollState.timer = scheduleTimeout(async () => {
-    if (isCancelled()) {
-      pollState.timer = null;
-      return;
-    }
-    const pendingCount = await pollOnce();
-    if (isCancelled()) {
-      pollState.timer = null;
-      return;
-    }
-    const nextDelay = pendingCount > 0 ? 5_000 : 3_000;
-    schedulePermissionPollLoop(
-      nextDelay,
-      pollState,
-      pollOnce,
-      isCancelled,
-      scheduleTimeout,
-    clearTimeoutFn
-    );
-  }, delay);
-}
-
 export function App() {
-  const eventLimit = 200;
-  const maxCachedEvents = 800;
-  const maxCachedSessions = 40;
+  const eventLimit = AGENT_EVENT_PAGE_SIZE;
+  const maxCachedEvents = DEFAULT_OUTPUT_CACHE_MAX_EVENTS;
+  const maxCachedSessions = DEFAULT_OUTPUT_CACHE_MAX_SESSIONS;
   const [routeLocation, setRouteLocation] = useState(() => ({
     pathname: location.pathname,
     search: location.search,
   }));
+  const isAdminRoute = routeLocation.pathname.startsWith("/admin");
+  const isAgentsRoute = isAgentsWorkbenchRoute(routeLocation.pathname);
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
       if (routeLocation.pathname === pathname) {
@@ -927,9 +730,6 @@ export function App() {
   const [acpPermissionHistory, setAcpPermissionHistory] = useState<
     AcpPermissionRecord[]
   >([]);
-  const [pendingPermissionJump, setPendingPermissionJump] = useState<
-    PendingPermissionJumpState | null
-  >(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const appHeaderRef = useRef<HTMLElement | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
@@ -1180,7 +980,10 @@ export function App() {
     },
     [updateAcpOutputCacheEntry, updateOutputCacheEntry]
   );
-  const acpView = useMemo(() => buildAcpView(acpOutputs), [acpOutputs]);
+  const acpView = useMemo(
+    () => resolveActiveAcpView(activeAgent, acpOutputs),
+    [activeAgent, acpOutputs]
+  );
   const terminalOutputs = useMemo(
     () => outputs.filter((line) => line.stream !== "acp"),
     [outputs]
@@ -1226,9 +1029,10 @@ export function App() {
     () => encodeSseTargetAgentIds(streamAgentIds),
     [streamAgentIds]
   );
-  const permissionPollAgentIds = useMemo(() => {
-    return Array.from(new Set(agents.map((agent) => agent.id))).sort();
-  }, [agents]);
+  const permissionPollAgentIds = useMemo(
+    () => buildPermissionPollAgentIds(agents),
+    [agents]
+  );
   const permissionPollAgentIdsKey = useMemo(
     () => permissionPollAgentIds.join(","),
     [permissionPollAgentIds]
@@ -1305,7 +1109,6 @@ export function App() {
   useEffect(() => {
     setAcpPermissions([]);
     setAcpPermissionHistory([]);
-    setPendingPermissionJump(null);
   }, [activeAgent]);
 
   useEffect(() => {
@@ -1319,7 +1122,7 @@ export function App() {
       const silent = opts?.silent === true;
       try {
         const items = await api.listAgents(token);
-        setAgents(items);
+        setAgents((prev) => (isSameAgentRecordList(prev, items) ? prev : items));
         return items;
       } catch (err) {
         if (!silent) {
@@ -1340,7 +1143,7 @@ export function App() {
       const silent = opts?.silent === true;
       try {
         const items = await api.listAgentNodes(token);
-        setAgentNodes(items);
+        setAgentNodes((prev) => (isSameAgentNodeRecordList(prev, items) ? prev : items));
         return items;
       } catch (err) {
         if (!silent) {
@@ -1353,33 +1156,24 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !isAgentsRoute) return;
     void refreshAgents();
-  }, [token, refreshAgents]);
+  }, [isAgentsRoute, token, refreshAgents]);
 
   useEffect(() => {
-    if (!token || !canManageAgentNodes(auth)) {
-      setAgentNodes([]);
-      return;
-    }
-    void refreshAgentNodes();
-  }, [auth, token, refreshAgentNodes]);
-
-  useEffect(() => {
-    if (!token) return;
+    if (!token || !isAgentsRoute) return;
     const timer = window.setInterval(() => {
       void refreshAgents({ silent: true });
     }, AGENT_STATUS_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [token, refreshAgents]);
+  }, [isAgentsRoute, token, refreshAgents]);
 
   useEffect(() => {
     if (activeAgent || agents.length === 0) return;
-    const running = agents.find((agent) => isAgentActiveStatus(agent.status));
-    const next = running ?? agents[0];
-    if (next) {
-      setActiveAgent(next.id);
-      setActiveSessionId(agentSessions[next.id] ?? null);
+    const nextAgentId = resolveDefaultActiveAgentId(agents);
+    if (nextAgentId) {
+      setActiveAgent(nextAgentId);
+      setActiveSessionId(agentSessions[nextAgentId] ?? null);
     }
   }, [agents, activeAgent, agentSessions]);
 
@@ -1559,15 +1353,6 @@ export function App() {
     updateAcpOutputCacheEntry,
   ]);
 
-  const acpConversation = useAcpConversation({
-    acpView,
-    activeAgent,
-    activeSessionId,
-    acpTab,
-    eventMeta,
-    isAgentActive,
-    onLoadOlder: loadOlderEvents,
-  });
   useEffect(() => {
     if (outputPersistTimerRef.current) {
       window.clearTimeout(outputPersistTimerRef.current);
@@ -1757,24 +1542,30 @@ export function App() {
   }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
 
   useEffect(() => {
-    if (!token || auth?.role !== "root") return;
+    if (!token || auth?.role !== "root" || !isAdminRoute) {
+      setSafePaths([]);
+      setDevices([]);
+      setAudits([]);
+      setVapidInfo(null);
+      return;
+    }
     api.listSafePaths(token).then(setSafePaths).catch(() => {});
     api.listDevices(token).then(setDevices).catch(() => {});
     api.listAudits(token).then(setAudits).catch(() => {});
     api.getVapidInfo(token).then(setVapidInfo).catch(() => {});
-  }, [token, auth?.role]);
+  }, [token, auth?.role, isAdminRoute]);
 
   useEffect(() => {
     setError((prev) => sanitizeAgentError(prev, activeAgentStatus));
   }, [activeAgentStatus]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!isAgentsRoute || !token || !activeAgent) return;
     loadAgentEvents(activeAgent, activeSessionId);
-  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, loadAgentEvents]);
 
   useEffect(() => {
-    if (!token) {
+    if (!isAgentsRoute || !token) {
       setSseState("idle");
       requestSseReconnectRef.current = null;
       return;
@@ -1903,6 +1694,7 @@ export function App() {
       setSseState("idle");
     };
   }, [
+    isAgentsRoute,
     token,
     hasSseTarget,
     streamAgentIdsQuery,
@@ -1911,7 +1703,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!token || !activeAgent) {
+    if (!isAgentsRoute || !token || !activeAgent) {
       const pollState = eventPollRef.current;
       if (pollState.timer) {
         window.clearTimeout(pollState.timer);
@@ -2021,7 +1813,7 @@ export function App() {
       pollState.boostUntil = null;
       schedulePollRef.current = null;
     };
-  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, loadAgentEvents]);
 
   useEffect(() => {
     if (acpView.hasAcp) return;
@@ -2040,7 +1832,7 @@ export function App() {
   }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
-    if (!token || !permissionPollAgentIdsKey) {
+    if (!isAgentsRoute || !token || !permissionPollAgentIdsKey) {
       setPendingPermissionCounts({});
       return;
     }
@@ -2093,10 +1885,13 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed]);
+  }, [isAgentsRoute, token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!isAgentsRoute || !token || !activeAgent) {
+      setAcpPermissions([]);
+      return;
+    }
     let cancelled = false;
     const requestedAgentId = activeAgent;
     const pollState = permissionPollRef.current;
@@ -2146,7 +1941,7 @@ export function App() {
       }
       schedulePermissionPollRef.current = null;
     };
-  }, [token, activeAgent, activeSessionId]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId]);
 
   useEffect(() => {
     if (!thinkingStartTs) return;
@@ -2158,7 +1953,10 @@ export function App() {
   }, [thinkingStartTs]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!isAgentsRoute || !token || !activeAgent || !developerMode || acpTab !== "debug") {
+      setAcpPermissionHistory([]);
+      return;
+    }
     let cancelled = false;
     const requestedAgentId = activeAgent;
     const load = async () => {
@@ -2178,7 +1976,7 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, activeAgent, activeSessionId]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, developerMode, acpTab]);
 
   const onRegister = async (role?: string) => {
     if (authBusyRef.current) return;
@@ -2688,7 +2486,6 @@ export function App() {
     if (!token || !activeAgent) return;
     eventPollRef.current.boostUntil = Date.now() + 10_000;
     schedulePollRef.current?.(1000);
-    acpConversation.jumpToConversationBottom();
     let messageId: string | null = null;
     if (activeSessionId) {
       messageId =
@@ -2753,21 +2550,9 @@ export function App() {
     token,
     activeAgent,
     activeSessionId,
-    acpConversation,
     loadAgentEvents,
     refreshAgents,
   ]);
-
-  const onSendInput = useCallback(async () => {
-    await sendAcpInput(input, {
-      recordHistory: true,
-      clearComposer: true,
-    });
-  }, [input, sendAcpInput]);
-
-  const onSubmitRequestUserInput = useCallback(async (text: string) => {
-    await sendAcpInput(text);
-  }, [sendAcpInput]);
 
   const onInputChange = useCallback(
     (value: string) => {
@@ -2923,12 +2708,12 @@ export function App() {
   };
 
   useEffect(() => {
-    if (auth?.role === "root") {
+    if (auth?.role === "root" && isAdminRoute) {
       api.getAdminSettings(auth.token).then(res => {
         setPasskeyEnabled(res.passkey_enabled);
       }).catch(() => {});
     }
-  }, [auth]);
+  }, [auth, isAdminRoute]);
 
   const onPasskeyEnabledChange = async (enabled: boolean) => {
     if (!auth || auth.role !== "root") return;
@@ -3027,247 +2812,11 @@ export function App() {
     }
   };
 
-  const acpRuntimeMetrics = useMemo(() => {
-    const cacheStats = getAcpConversationCacheStats();
-    return {
-      totalConversationItems: acpConversation.conversationTotalItems,
-      sourceConversationItems: acpConversation.conversationSourceItems,
-      renderedConversationItems: acpConversation.conversationRenderedItems,
-      pendingConversationItems: acpConversation.conversationPendingCount,
-      virtualizedConversation: acpConversation.conversationVirtualized,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      averageConversationHeight: Math.round(acpConversation.conversationAvgHeight),
-      rawEventCount: acpView.rawEvents.length,
-      toolCallCount: acpView.toolCalls.length,
-      messageCount: acpView.messages.length,
-      markdownCacheHits: cacheStats.markdownHits,
-      markdownCacheMisses: cacheStats.markdownMisses,
-      ansiCacheHits: cacheStats.ansiHits,
-      ansiCacheMisses: cacheStats.ansiMisses,
-      payloadParses: cacheStats.payloadParses,
-      payloadParseFailures: cacheStats.payloadParseFailures,
-    };
-  }, [
-    acpConversation.conversationTotalItems,
-    acpConversation.conversationSourceItems,
-    acpConversation.conversationRenderedItems,
-    acpConversation.conversationPendingCount,
-    acpConversation.conversationVirtualized,
-    acpConversation.conversationStickToBottom,
-    acpConversation.conversationAvgHeight,
-    acpView.rawEvents.length,
-    acpView.toolCalls.length,
-    acpView.messages.length,
-  ]);
-
-  const onJumpToPermissionHistory = useCallback(
-    (permission: AcpPermissionRecord) => {
-      const toolCallId = permission.tool_call_id?.trim();
-      if (!toolCallId) return;
-      setAcpTab("conversation");
-      const targetSessionId = permission.session_id ?? null;
-      if (targetSessionId && targetSessionId !== activeSessionId) {
-        setActiveSessionId(targetSessionId);
-      }
-      setPendingPermissionJump({
-        toolCallId,
-        sessionId: targetSessionId,
-        attempts: 0,
-      });
-    },
-    [activeSessionId]
-  );
-  const jumpToConversationToolCall = acpConversation.jumpToConversationToolCall;
-
-  useEffect(() => {
-    const jumpDecision = decidePermissionJump(
-      pendingPermissionJump,
-      acpTab,
-      activeSessionId
-    );
-    if (jumpDecision === "idle" || jumpDecision === "wait") return;
-    if (jumpDecision === "clear") {
-      setPendingPermissionJump(null);
-      return;
-    }
-    if (!pendingPermissionJump) return;
-    if (jumpToConversationToolCall(pendingPermissionJump.toolCallId)) {
-      setPendingPermissionJump(null);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setPendingPermissionJump((prev) => {
-        if (!prev) return prev;
-        return { ...prev, attempts: prev.attempts + 1 };
-      });
-    }, PERMISSION_JUMP_RETRY_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [
-    pendingPermissionJump,
-    acpTab,
-    activeSessionId,
-    jumpToConversationToolCall,
-  ]);
-
-  const acpConversationProps = useMemo(
-    () => ({
-      items: acpConversation.conversationRenderItems,
-      windowOffset: acpConversation.conversationWindowOffset,
-      isFrozenView: acpConversation.isFrozenView,
-      shouldAutoCollapse: acpConversation.shouldAutoCollapse,
-      collapseCutoff: acpConversation.collapseCutoff,
-      runStatus: acpView.runStatus?.status ?? null,
-      virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
-      virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
-      stickToBottom: acpConversation.conversationStickToBottom,
-      pendingCount: acpConversation.conversationPendingCount,
-      avgHeight: acpConversation.conversationAvgHeight,
-      topHint: acpConversation.showConversationTopReachedHint
-        ? "Already at top"
-        : null,
-      focusedToolCallId: acpConversation.focusedConversationToolCallId,
-      onScroll: acpConversation.handleConversationScroll,
-      containerRef: acpConversation.acpConversationRef,
-      ansi,
-      onSubmitRequestUserInput,
-    }),
-    [
-      acpConversation.conversationRenderItems,
-      acpConversation.conversationWindowOffset,
-      acpConversation.isFrozenView,
-      acpConversation.shouldAutoCollapse,
-      acpConversation.collapseCutoff,
-      acpConversation.conversationVirtualTopSpacer,
-      acpConversation.conversationVirtualBottomSpacer,
-      acpConversation.conversationStickToBottom,
-      acpConversation.conversationPendingCount,
-      acpConversation.conversationAvgHeight,
-      acpConversation.showConversationTopReachedHint,
-      acpConversation.focusedConversationToolCallId,
-      acpConversation.handleConversationScroll,
-      acpConversation.acpConversationRef,
-      acpView.runStatus?.status,
-      ansi,
-      onSubmitRequestUserInput,
-    ]
-  );
-  const acpDebugProps = useMemo(
-    () => ({
-      terminalOutputs,
-      ansi,
-      terminalRef,
-      onTerminalScroll: handleTerminalScroll,
-      showTerminalJump: terminalShowJump,
-      onJumpToTerminalBottom: jumpToTerminalBottom,
-      currentMode: acpView.currentMode,
-      rawEvents: acpView.rawEvents,
-      configOptions: acpView.configOptions,
-      acpPermissionHistory: scopedAcpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      onAcpModeIdChange: setAcpModeId,
-      onAcpModelIdChange: setAcpModelId,
-      onAcpConfigIdChange: setAcpConfigId,
-      onAcpConfigValueChange: setAcpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      onJumpToPermissionHistory,
-      runtimeMetrics: acpRuntimeMetrics,
-    }),
-    [
-      terminalOutputs,
-      ansi,
-      terminalRef,
-      handleTerminalScroll,
-      terminalShowJump,
-      jumpToTerminalBottom,
-      acpView.currentMode,
-      acpView.rawEvents,
-      acpView.configOptions,
-      scopedAcpPermissionHistory,
-      acpModeId,
-      acpModelId,
-      acpConfigId,
-      acpConfigValue,
-      canControlAcp,
-      onAcpSetMode,
-      onAcpSetModel,
-      onAcpSetConfig,
-      onAcpCancel,
-      onAcpClearSession,
-      onJumpToPermissionHistory,
-      acpRuntimeMetrics,
-    ]
-  );
-  const showInputDock = !(
-    developerMode &&
-    acpTab === "debug" &&
-    acpView.hasAcp
-  );
-
-  const acpPanelProps = useMemo(
-    () => ({
-      acpView,
-      subtitle: activeAgentRecord?.workdir ?? null,
-      mobileTitle: activeAgentRecord?.name ?? null,
-      acpTab: !developerMode && acpTab === "debug" ? "conversation" : acpTab,
-      developerMode,
-      conversationBottomClearance: showInputDock ? ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX : 0,
-      onSelectTab: handleAcpTabSelect,
-      showConversationBadge: acpConversation.showConversationBadge,
-      showConversationJump: acpConversation.showConversationJump,
-      showFloatingConversationJump: !showInputDock,
-      onJumpToConversationBottom: acpConversation.jumpToConversationBottom,
-      conversation: acpConversationProps,
-      plan: {
-        plan: acpView.plan,
-      },
-      debug: acpDebugProps,
-    }),
-    [
-      acpView,
-      activeAgentRecord?.name,
-      activeAgentRecord?.workdir,
-      acpTab,
-      developerMode,
-      handleAcpTabSelect,
-      acpConversation.showConversationBadge,
-      acpConversation.showConversationJump,
-      acpConversation.jumpToConversationBottom,
-      acpConversationProps,
-      acpDebugProps,
-      showInputDock,
-    ]
-  );
-
   useEffect(() => {
     if (!developerMode && acpTab === "debug") {
       setAcpTab("conversation");
     }
   }, [acpTab, developerMode]);
-  const inputDockJumpMode = useMemo(
-    () =>
-      resolveInputDockJumpMode({
-        hasAcp: acpView.hasAcp,
-        showConversationJump: acpConversation.showConversationJump,
-        jumpToConversationBottom: acpConversation.jumpToConversationBottom,
-        showTerminalJump: terminalShowJump,
-        jumpToTerminalBottom,
-      }),
-    [
-      acpView.hasAcp,
-      acpConversation.showConversationJump,
-      acpConversation.jumpToConversationBottom,
-      terminalShowJump,
-      jumpToTerminalBottom,
-    ]
-  );
   const workspaceStyle = useMemo<React.CSSProperties | undefined>(() => {
     if (agentsCollapsed) {
       return undefined;
@@ -3291,10 +2840,10 @@ export function App() {
 
   if (routeLocation.pathname.startsWith("/admin")) {
     if (!auth) {
-      return <AuthRequired />;
+      return <AuthRequiredGate />;
     }
     if (auth.role !== "root") {
-      return <ForbiddenPage />;
+      return <ForbiddenRoute />;
     }
     return (
       <div className="app bg-white" ref={appRootRef}>
@@ -3345,6 +2894,7 @@ export function App() {
             onLogout={onLogout}
             developerMode={developerMode}
             routeTeamId={teamRoute?.teamId ?? null}
+            defaultWorktreeRoot={defaultWorktreeRoot}
           />
         </Suspense>
       </div>
@@ -3363,18 +2913,19 @@ export function App() {
       <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
         {auth && (
           <div className="session flex items-center gap-2 sm:gap-3">
-            <button
+            <IconButton
               className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
               onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
               title={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
               aria-pressed={!agentsCollapsed}
+              tone={agentsCollapsed ? "default" : "active"}
             >
               <i
                 className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
                 aria-hidden="true"
               />
-            </button>
+            </IconButton>
             <WorkbenchConnectionBadge
               badge={connectionBadge}
               className={APP_WORKBENCH_HEADER_STATUS_CLASS}
@@ -3441,22 +2992,21 @@ export function App() {
           )}
           <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false && (
-              <button
-                type="button"
+              <ActionButton
                 className={AUTH_SECONDARY_BUTTON_CLASS}
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
               >
                 {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
-              </button>
+              </ActionButton>
             )}
-            <button
+            <ActionButton
               type="submit"
               className={AUTH_PRIMARY_BUTTON_CLASS}
               disabled={authBusy !== null}
             >
               {authBusy === "login" ? "Logging in..." : "Login"}
-            </button>
+            </ActionButton>
           </div>
         </form>
       )}
@@ -3512,93 +3062,122 @@ export function App() {
             <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
               {activeAgent ? (
                 <OutputErrorBoundary>
-                  <OutputBody
-                    terminalRef={terminalRef}
-                    onTerminalScroll={handleTerminalScroll}
-                    isOutputLoading={isOutputLoading}
-                    isConversationLoading={isConversationLoading}
-                    outputs={outputs}
-                    ansi={ansi}
-                    acpPanelProps={acpPanelProps}
-                  />
+                  <Suspense
+                    fallback={<WorkbenchBodyFallback hasAcp={acpView.hasAcp} />}
+                  >
+                    <LazyAgentsWorkbench
+                      activeAgent={activeAgent}
+                      activeAgentRecord={activeAgentRecord}
+                      activeSessionId={activeSessionId}
+                      developerMode={developerMode}
+                      acpTab={acpTab}
+                      acpView={acpView}
+                      eventMeta={eventMeta}
+                      isAgentActive={isAgentActive}
+                      outputs={outputs}
+                      terminalOutputs={terminalOutputs}
+                      scopedAcpPermissionHistory={scopedAcpPermissionHistory}
+                      isOutputLoading={isOutputLoading}
+                      isConversationLoading={isConversationLoading}
+                      terminalRef={terminalRef}
+                      input={input}
+                      inputHistory={inputHistory}
+                      ansi={ansi}
+                      canControlAcp={canControlAcp}
+                      canInterruptAcpRun={canInterruptAcpRun}
+                      acpModeId={acpModeId}
+                      acpModelId={acpModelId}
+                      acpConfigId={acpConfigId}
+                      acpConfigValue={acpConfigValue}
+                      isComposingRef={isComposingRef}
+                      onLoadOlderEvents={loadOlderEvents}
+                      onTerminalScroll={handleTerminalScroll}
+                      onSelectTab={handleAcpTabSelect}
+                      onAcpModeIdChange={setAcpModeId}
+                      onAcpModelIdChange={setAcpModelId}
+                      onAcpConfigIdChange={setAcpConfigId}
+                      onAcpConfigValueChange={setAcpConfigValue}
+                      onAcpSetMode={onAcpSetMode}
+                      onAcpSetModel={onAcpSetModel}
+                      onAcpSetConfig={onAcpSetConfig}
+                      onAcpCancel={onAcpCancel}
+                      onAcpClearSession={onAcpClearSession}
+                      onInputChange={onInputChange}
+                      onSelectInputHistory={onSelectInputHistory}
+                      onNavigateInputHistory={onNavigateInputHistory}
+                      onSendAcpInput={sendAcpInput}
+                      onJumpToTerminalBottom={jumpToTerminalBottom}
+                      showTerminalJump={terminalShowJump}
+                    />
+                  </Suspense>
                 </OutputErrorBoundary>
               ) : null}
-              {showInputDock && (
-                <InputDock
-                  input={input}
-                  historyCommands={inputHistory}
-                  showInterrupt={acpView.hasAcp}
-                  canInterrupt={canInterruptAcpRun}
-                  onInputChange={onInputChange}
-                  onSendInput={onSendInput}
-                  onInterrupt={onAcpCancel}
-                  onNavigateHistory={onNavigateInputHistory}
-                  onSelectHistoryCommand={onSelectInputHistory}
-                  onJumpToBottom={inputDockJumpMode.onJumpToBottom}
-                  showConversationJump={inputDockJumpMode.showConversationJump}
-                  isComposingRef={isComposingRef}
-                />
-              )}
             </div>
           </div>
         </main>
       )}
 
       {auth && showCreateAgent && (
-        <CreateAgentModal
-          agentName={agentName}
-          setAgentName={setAgentName}
-          agentWorkdir={agentWorkdir}
-          setAgentWorkdir={setAgentWorkdir}
-          agentPresetId={agentPresetId}
-          setAgentPresetId={setAgentPresetId}
-          worktreeMode={worktreeMode}
-          setWorktreeMode={handleWorktreeModeChange}
-          worktreeRepo={worktreeRepo}
-          setWorktreeRepo={setWorktreeRepo}
-          worktreeRef={worktreeRef}
-          setWorktreeRef={setWorktreeRef}
-          codeMode={codeMode}
-          setCodeMode={setCodeMode}
-          worktreeError={worktreeError}
-          createBusy={createAgentBusy}
-          workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
-          onCreateAgent={onCreateAgent}
-          onClose={() => setShowCreateAgent(false)}
-        >
-          {canManageAgentNodes(auth) && (
-            <AgentNodeSection
-              nodes={agentNodes}
-              agents={agents}
-              targetNodeId={targetNodeId}
-              onTargetNodeIdChange={applyTargetNodeSelection}
-              nodeIdInput={nodeIdInput}
-              onNodeIdInputChange={setNodeIdInput}
-              nodeNameInput={nodeNameInput}
-              onNodeNameInputChange={setNodeNameInput}
-              grpcTargetInput={nodeGrpcTargetInput}
-              onGrpcTargetInputChange={setNodeGrpcTargetInput}
-              tlsServerNameInput={nodeTlsServerNameInput}
-              onTlsServerNameInputChange={setNodeTlsServerNameInput}
-              defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
-              onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
-              createBusy={createAgentNodeBusy}
-              updatingNodeIds={updatingAgentNodeIds}
-              deletingNodeIds={deletingAgentNodeIds}
-              onCreateNode={onCreateAgentNode}
-              onUpdateNode={onUpdateAgentNode}
-              onDeleteNode={onDeleteAgentNode}
-            />
-          )}
-        </CreateAgentModal>
+        <Suspense fallback={null}>
+          <LazyCreateAgentModal
+            agentName={agentName}
+            setAgentName={setAgentName}
+            agentWorkdir={agentWorkdir}
+            setAgentWorkdir={setAgentWorkdir}
+            agentPresetId={agentPresetId}
+            setAgentPresetId={setAgentPresetId}
+            worktreeMode={worktreeMode}
+            setWorktreeMode={handleWorktreeModeChange}
+            worktreeRepo={worktreeRepo}
+            setWorktreeRepo={setWorktreeRepo}
+            worktreeRef={worktreeRef}
+            setWorktreeRef={setWorktreeRef}
+            codeMode={codeMode}
+            setCodeMode={setCodeMode}
+            worktreeError={worktreeError}
+            createBusy={createAgentBusy}
+            workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
+            onCreateAgent={onCreateAgent}
+            onClose={() => setShowCreateAgent(false)}
+          >
+            {canManageAgentNodes(auth) && (
+              <Suspense fallback={null}>
+                <LazyAgentNodeSection
+                  nodes={agentNodes}
+                  agents={agents}
+                  targetNodeId={targetNodeId}
+                  onTargetNodeIdChange={applyTargetNodeSelection}
+                  nodeIdInput={nodeIdInput}
+                  onNodeIdInputChange={setNodeIdInput}
+                  nodeNameInput={nodeNameInput}
+                  onNodeNameInputChange={setNodeNameInput}
+                  grpcTargetInput={nodeGrpcTargetInput}
+                  onGrpcTargetInputChange={setNodeGrpcTargetInput}
+                  tlsServerNameInput={nodeTlsServerNameInput}
+                  onTlsServerNameInputChange={setNodeTlsServerNameInput}
+                  defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
+                  onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
+                  createBusy={createAgentNodeBusy}
+                  updatingNodeIds={updatingAgentNodeIds}
+                  deletingNodeIds={deletingAgentNodeIds}
+                  onCreateNode={onCreateAgentNode}
+                  onUpdateNode={onUpdateAgentNode}
+                  onDeleteNode={onDeleteAgentNode}
+                />
+              </Suspense>
+            )}
+          </LazyCreateAgentModal>
+        </Suspense>
       )}
 
       {auth && activeAgent && scopedAcpPermissions.length > 0 && (
-        <PermissionModal
-          permissions={scopedAcpPermissions}
-          permissionBusy={permissionBusy}
-          onRespond={onRespondPermission}
-        />
+        <Suspense fallback={null}>
+          <LazyPermissionModal
+            permissions={scopedAcpPermissions}
+            permissionBusy={permissionBusy}
+            onRespond={onRespondPermission}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -3641,6 +3220,13 @@ export function parseSendInputSessionMismatch(
 }
 
 function createAnsiRenderer(): (input: string) => string {
+  const escapeAnsiHtml = (input: string): string =>
+    input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const colors: Record<number, string> = {
     30: "#1e1e1e",
     31: "#e06c75",
@@ -3688,7 +3274,7 @@ function createAnsiRenderer(): (input: string) => string {
     let out = "";
 
     const pushText = (text: string) => {
-      const safe = escapeHtml(text);
+      const safe = escapeAnsiHtml(text);
       if (!fg && !bg) {
         out += safe;
         return;
@@ -3734,245 +3320,6 @@ function createAnsiRenderer(): (input: string) => string {
   };
 }
 
-function parseRunStatus(message: string): string | null {
-  const trimmed = message.trim();
-  if (!trimmed.startsWith("{")) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as { type?: string; status?: string };
-    if (parsed?.type === "run_status" && typeof parsed.status === "string") {
-      return parsed.status;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-export type LiveOutputBatchAnalysis = {
-  outputGroups: Record<string, OutputLine[]>;
-  acpGroups: Record<string, OutputLine[]>;
-  activeLines: OutputLine[];
-  activeAcpLines: OutputLine[];
-  nextStatuses: Record<string, AgentRecord["status"]>;
-};
-
-export function updateLiveOutputBatchCursors(
-  ref: CursorRef,
-  lines: OutputLine[]
-): void {
-  for (const line of lines) {
-    updateLastEventCursor(ref, `${line.agent_id}:${line.session_id}`, line);
-  }
-}
-
-export function analyzeLiveOutputBatch(
-  lines: OutputLine[],
-  activeAgent: string | null,
-  activeSessionId: string | null
-): LiveOutputBatchAnalysis {
-  const outputGroups: Record<string, OutputLine[]> = {};
-  const acpGroups: Record<string, OutputLine[]> = {};
-  const activeLines: OutputLine[] = [];
-  const activeAcpLines: OutputLine[] = [];
-  const nextStatuses: Record<string, AgentRecord["status"]> = {};
-
-  for (const line of lines) {
-    const key = `${line.agent_id}:${line.session_id}`;
-    (outputGroups[key] ??= []).push(line);
-
-    if (line.stream === "acp") {
-      const status = parseRunStatus(line.message);
-      if (status) {
-        nextStatuses[line.agent_id] = statusToAgentStatus(status);
-      }
-      (acpGroups[key] ??= []).push(line);
-    }
-
-    if (line.agent_id !== activeAgent) {
-      continue;
-    }
-    if (activeSessionId && line.session_id !== activeSessionId) {
-      continue;
-    }
-    activeLines.push(line);
-    if (line.stream === "acp") {
-      activeAcpLines.push(line);
-    }
-  }
-
-  return {
-    outputGroups,
-    acpGroups,
-    activeLines,
-    activeAcpLines,
-    nextStatuses,
-  };
-}
-
-export function buildLatestLiveSessionMap(
-  lines: OutputLine[]
-): Record<string, string> {
-  const latestByAgent = new Map<string, OutputLine>();
-  for (const line of lines) {
-    const previous = latestByAgent.get(line.agent_id);
-    if (!previous || compareEventOrder(line, previous) > 0) {
-      latestByAgent.set(line.agent_id, line);
-    }
-  }
-  return Object.fromEntries(
-    Array.from(latestByAgent.entries()).map(([agentId, line]) => [
-      agentId,
-      line.session_id,
-    ])
-  );
-}
-
-export function resolveLiveSessionSwitch(
-  lines: OutputLine[],
-  activeAgent: string | null,
-  activeSessionId: string | null
-): string | null {
-  if (!activeAgent) return null;
-  let latestReplacement: OutputLine | null = null;
-  for (const line of lines) {
-    if (line.agent_id !== activeAgent) continue;
-    if (activeSessionId && line.session_id === activeSessionId) continue;
-    if (!latestReplacement || compareEventOrder(line, latestReplacement) > 0) {
-      latestReplacement = line;
-    }
-  }
-  return latestReplacement?.session_id ?? null;
-}
-
-export function dispatchLiveOutputBatch(params: {
-  cursorRef: CursorRef;
-  lines: OutputLine[];
-  activeAgent: string | null,
-  activeSessionId: string | null;
-  onStatuses: (nextStatuses: Record<string, AgentRecord["status"]>) => void;
-  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
-  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
-}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
-  const {
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    onStatuses,
-    onOutputGroup,
-    onAcpGroup,
-  } = params;
-  updateLiveOutputBatchCursors(cursorRef, lines);
-  const analyzed = analyzeLiveOutputBatch(lines, activeAgent, activeSessionId);
-  if (Object.keys(analyzed.nextStatuses).length > 0) {
-    onStatuses(analyzed.nextStatuses);
-  }
-  for (const [key, grouped] of Object.entries(analyzed.outputGroups)) {
-    onOutputGroup(key, grouped);
-  }
-  for (const [key, grouped] of Object.entries(analyzed.acpGroups)) {
-    onAcpGroup(key, grouped);
-  }
-  return {
-    activeLines: analyzed.activeLines,
-    activeAcpLines: analyzed.activeAcpLines,
-  };
-}
-
-export function routeLiveOutputBatch(params: {
-  cursorRef: CursorRef;
-  lines: OutputLine[];
-  activeAgent: string | null;
-  activeSessionId: string | null;
-  updateAgents: (updater: (prev: AgentRecord[]) => AgentRecord[]) => void;
-  onOutputGroup: (key: string, grouped: OutputLine[]) => void;
-  onAcpGroup: (key: string, grouped: OutputLine[]) => void;
-}): Pick<LiveOutputBatchAnalysis, "activeLines" | "activeAcpLines"> {
-  const {
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    updateAgents,
-    onOutputGroup,
-    onAcpGroup,
-  } = params;
-  return dispatchLiveOutputBatch({
-    cursorRef,
-    lines,
-    activeAgent,
-    activeSessionId,
-    onStatuses: (nextStatuses) => {
-      updateAgents((prev) =>
-        prev.map((agent) => {
-          const nextStatus = nextStatuses[agent.id];
-          return nextStatus ? { ...agent, status: nextStatus } : agent;
-        })
-      );
-    },
-    onOutputGroup,
-    onAcpGroup,
-  });
-}
-
-export function isValidOutputPayload(
-  payload: unknown
-): payload is {
-  event_id: number;
-  agent_id: string;
-  session_id: string;
-  seq: string;
-  ts: number;
-  stream: OutputLine["stream"];
-  message: string;
-} {
-  if (!payload || typeof payload !== "object") return false;
-  const candidate = payload as {
-    event_id?: unknown;
-    agent_id?: unknown;
-    session_id?: unknown;
-    seq?: unknown;
-    ts?: unknown;
-    stream?: unknown;
-    message?: unknown;
-  };
-  if (typeof candidate.event_id !== "number") return false;
-  if (typeof candidate.agent_id !== "string" || !candidate.agent_id) return false;
-  if (typeof candidate.session_id !== "string" || !candidate.session_id) return false;
-  if (typeof candidate.seq !== "string" || !candidate.seq) return false;
-  if (typeof candidate.ts !== "number") return false;
-  if (typeof candidate.message !== "string") return false;
-  if (
-    candidate.stream !== "stdout" &&
-    candidate.stream !== "stderr" &&
-    candidate.stream !== "system" &&
-    candidate.stream !== "acp"
-  ) {
-    return false;
-  }
-  return true;
-}
-
-export function normalizeSseOutputLines(message: unknown): OutputLine[] {
-  if (!message || typeof message !== "object") return [];
-  const parsed = message as { type?: unknown; payload?: unknown };
-  if (parsed.type === "output" || parsed.type === "acp") {
-    return isValidOutputPayload(parsed.payload) ? [parsed.payload] : [];
-  }
-  if (parsed.type !== "batch" || !Array.isArray(parsed.payload)) {
-    return [];
-  }
-  return parsed.payload.filter(isValidOutputPayload);
-}
-
-function statusToAgentStatus(status: string): AgentRecord["status"] {
-  if (status === "running") return "running";
-  if (status === "idle") return "idle";
-  if (status === "failed") return "failed";
-  if (status === "completed" || status === "cancelled") return "stopped";
-  return "stopped";
-}
-
 function isSamePermissionList(
   a: AcpPermissionRecord[],
   b: AcpPermissionRecord[]
@@ -4002,12 +3349,4 @@ function isSamePendingPermissionCountMap(
     if (a[key] !== b[key]) return false;
   }
   return true;
-}
-
-export function filterPermissionsForAgent(
-  items: AcpPermissionRecord[],
-  agentId: string | null
-): AcpPermissionRecord[] {
-  if (!agentId) return [];
-  return items.filter((item) => item.agent_id === agentId);
 }

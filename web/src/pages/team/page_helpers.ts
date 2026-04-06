@@ -25,7 +25,7 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
 export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
-export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 10;
+export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20;
 export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
 export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
 
@@ -92,6 +92,34 @@ export function resolveSelectedAgentWorkspaceLabel(
     return memberId;
   }
   return "Agent";
+}
+
+type ShouldClearSelectedConversationTaskArgs = {
+  selectedConversationTaskId: string;
+  sharedConversationTaskId: string | null;
+  taskList: TeamTaskRecord[];
+  selectedConversationDetailPresent: boolean;
+  tasksLoading: boolean;
+};
+
+export function shouldClearSelectedConversationTask({
+  selectedConversationTaskId,
+  sharedConversationTaskId,
+  taskList,
+  selectedConversationDetailPresent,
+  tasksLoading,
+}: ShouldClearSelectedConversationTaskArgs): boolean {
+  const normalizedSelectedTaskId = selectedConversationTaskId.trim();
+  if (!normalizedSelectedTaskId) {
+    return false;
+  }
+  if (normalizedSelectedTaskId === (sharedConversationTaskId?.trim() ?? "")) {
+    return false;
+  }
+  if (tasksLoading || selectedConversationDetailPresent || taskList.length === 0) {
+    return false;
+  }
+  return !taskList.some((task) => task.id === normalizedSelectedTaskId);
 }
 
 export function resolveAgentWorkspaceStatusView(
@@ -500,6 +528,31 @@ export function resolveSelectedTeamTask(
     }
   }
   return teamTasks[0] ?? null;
+}
+
+export function resolveSelectedConversationTask({
+  taskList,
+  selectedTaskId,
+  sharedConversation,
+  fallbackTask,
+}: {
+  taskList: TeamTaskRecord[];
+  selectedTaskId: string;
+  sharedConversation: TeamTaskRecord | null;
+  fallbackTask?: TeamTaskRecord | null;
+}): TeamTaskRecord | null {
+  const resolvedSelectedTaskId = selectedTaskId.trim();
+  if (!resolvedSelectedTaskId) {
+    return sharedConversation;
+  }
+  if (sharedConversation?.id === resolvedSelectedTaskId) {
+    return sharedConversation;
+  }
+  return (
+    taskList.find((task) => task.id === resolvedSelectedTaskId) ??
+    fallbackTask ??
+    null
+  );
 }
 
 function parseMailboxPayload(payload: unknown): unknown {

@@ -1,11 +1,9 @@
 import React from "react";
 import { TeamStepRecord } from "../api";
+import { ActionButton, ToolbarRow } from "../ui/primitives";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -61,7 +59,7 @@ const STEPS_ITEM_BODY_CLASS =
 const STEPS_LIST_ONLY_NOTE_CLASS =
   "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
 
-export function TeamStepsPanel(props: TeamStepsPanelProps) {
+function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const {
     steps,
     developerMode,
@@ -100,20 +98,21 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
 
   return (
     <div className={TEAM_PANEL_CARD_CLASS}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Steps</h3>
-        <button
+        <ActionButton
           onClick={() => {
             void onRefreshSteps();
           }}
-          className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+          tone="secondary"
+          size="md"
           title="Refresh steps"
           aria-label="Refresh steps"
         >
           <i className="bi bi-arrow-clockwise" aria-hidden="true" />
           <span>Refresh</span>
-        </button>
-      </div>
+        </ActionButton>
+      </ToolbarRow>
 
       {showControls && (
         <div className={STEPS_GRID_CLASS}>
@@ -143,15 +142,16 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
               value={stepInput}
               onChange={(event) => onStepInputChange(event.target.value)}
             />
-            <button
+            <ActionButton
               onClick={() => {
                 void onSubmitStep();
               }}
               disabled={busy === "submit-step"}
-              className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+              tone="primary"
+              size="md"
             >
               Submit Step
-            </button>
+            </ActionButton>
           </div>
 
           <div className={STEPS_PANEL_CLASS}>
@@ -233,14 +233,15 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
               />
             )}
 
-            <button
+            <ActionButton
               onClick={() => {
                 void onApplyStepAction();
               }}
-              className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+              tone="secondary"
+              size="md"
             >
               Apply Step Action
-            </button>
+            </ActionButton>
           </div>
         </div>
       )}
@@ -282,3 +283,6 @@ export function TeamStepsPanel(props: TeamStepsPanelProps) {
     </div>
   );
 }
+
+export const TeamStepsPanel = React.memo(TeamStepsPanelImpl);
+TeamStepsPanel.displayName = "TeamStepsPanel";

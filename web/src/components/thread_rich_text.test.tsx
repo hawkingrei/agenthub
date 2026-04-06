@@ -54,6 +54,29 @@ describe("thread_rich_text", () => {
     expect(afterSecond.markdownHits).toBe(1);
   });
 
+  it("reuses cached markdown for equivalent normalized skill blocks", () => {
+    const first = renderThreadMarkdownCached(
+      [
+        "<skill>",
+        "<name>team-actor-mailbox</name>",
+        "<path>skills/team/team-actor-mailbox.SKILL.md</path>",
+        "</skill>",
+      ].join("\n")
+    );
+    const afterFirst = getThreadMarkdownCacheStats();
+    const second = renderThreadMarkdownCached(
+      "<skill><name>team-actor-mailbox</name><path>skills/team/team-actor-mailbox.SKILL.md</path></skill>"
+    );
+    const afterSecond = getThreadMarkdownCacheStats();
+
+    expect(first).toContain("<strong>Skill</strong>");
+    expect(second).toContain("<strong>Skill</strong>");
+    expect(afterFirst.markdownMisses).toBe(1);
+    expect(afterFirst.markdownHits).toBe(0);
+    expect(afterSecond.markdownMisses).toBe(1);
+    expect(afterSecond.markdownHits).toBe(1);
+  });
+
   it("bypasses the cache for oversized markdown entries", async () => {
     await preloadThreadMarkdownAssets();
 

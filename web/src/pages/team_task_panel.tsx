@@ -1,4 +1,4 @@
-import { HoverCard } from "@mantine/core";
+import { HoverCard, UnstyledButton } from "@mantine/core";
 import React from "react";
 import {
   type AcpPermissionOption,
@@ -6,13 +6,15 @@ import {
   TeamConversationMessageRecord,
   api,
 } from "../api";
-import { preloadThreadMarkdownAssets, ThreadRichText } from "../components/thread_rich_text";
 import {
-  DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE,
-  windowConversation,
-} from "../conversation";
-import { deriveThreadJumpState, deriveThreadStickToBottom } from "../hooks/thread_viewport";
+  DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
+  deriveTeamThreadJumpState,
+  deriveTeamThreadStickToBottom,
+  windowTeamConversation,
+} from "./team/team_conversation_viewport";
+import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
+import { ActionButton, IconButton } from "../ui/primitives";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -27,10 +29,9 @@ import {
   resolveDisplayName,
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
+import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import {
   TEAM_PANEL_CARD_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
@@ -49,14 +50,12 @@ import {
   TEAM_TASK_ACTIVITY_STACK_CLASS,
   TEAM_TASK_ACTIVITY_TIME_CLASS,
   TEAM_TASK_COMPOSER_PANEL_CLASS,
-  TEAM_TASK_JUMP_BUTTON_CLASS,
   TEAM_TASK_PERMISSION_CARD_ACTIONS_CLASS,
   TEAM_TASK_PERMISSION_CARD_BODY_CLASS,
   TEAM_TASK_PERMISSION_CARD_COMPACT_CLASS,
   TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS,
   TEAM_TASK_PERMISSION_CARD_HEADER_CLASS,
   TEAM_TASK_PERMISSION_CARD_REASON_CLASS,
-  TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS,
   TEAM_TASK_PERMISSION_CARD_STATUS_CLASS,
   TEAM_TASK_PERMISSION_CARD_TITLE_CLASS,
   TEAM_TASK_PERMISSION_CARD_CLASS,
@@ -76,6 +75,8 @@ type TeamTaskPanelProps = {
   humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
+  conversationTitle?: string;
+  isSharedConversation?: boolean;
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -152,6 +153,8 @@ const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
   "mt-2 inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
+  "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
   "grid gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted sm:grid-cols-2";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
@@ -174,8 +177,14 @@ const TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS = "mt-3 pt-2 border-t border-notion-border";
 const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
-const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE;
+const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
+const TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS =
+  "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
+const TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS =
+  "bg-brand-primary/10 text-brand-primary";
+const TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS =
+  "text-ui-text-primary hover:bg-ui-surface-soft";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -556,25 +565,25 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
               {payload.options.map((option, index) => {
                 const optionId = option.option_id.trim();
                 return (
-                  <button
+                  <ActionButton
                     key={`${optionId}:${index}`}
-                    type="button"
-                    className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                    tone="primary"
+                    size="sm"
                     disabled={busy || !optionId}
                     onClick={() => onRespond(payload, optionId)}
                   >
                     {option.name}
-                  </button>
+                  </ActionButton>
                 );
               })}
-              <button
-                type="button"
-                className={TEAM_TASK_PERMISSION_CARD_SECONDARY_BUTTON_CLASS}
+              <ActionButton
+                tone="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() => onRespond(payload)}
               >
                 Cancel
-              </button>
+              </ActionButton>
             </div>
             {errorText ? <div className={TEAM_TASK_PERMISSION_CARD_ERROR_CLASS}>{errorText}</div> : null}
           </>
@@ -644,15 +653,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     humanActorId = "user",
     memberLiveStates = [],
     memberIds = [],
+    conversationTitle = "all",
+    isSharedConversation = true,
     messagesLoading,
     busy,
     formatTs,
   } = props;
 
-  React.useEffect(() => {
-    void preloadThreadMarkdownAssets().catch(() => {});
-  }, []);
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const messageDraftComposingRef = React.useRef(false);
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
@@ -708,6 +717,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       )
       .slice(0, 8);
   }, [activeMention, mentionCandidates]);
+  const normalizedConversationTitle =
+    conversationTitle.trim().length > 0 ? conversationTitle.trim() : "all";
+  const refreshLabel = isSharedConversation ? "Refresh channel" : "Refresh thread";
+  const emptyStateText = isSharedConversation
+    ? "No channel messages yet."
+    : "No thread messages yet.";
+  const messagePlaceholder = isSharedConversation
+    ? `Message #${normalizedConversationTitle}`
+    : "Reply in thread";
 
   const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
     if (cursor === null || Number.isNaN(cursor)) {
@@ -868,7 +886,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
     () =>
-      windowConversation(
+      windowTeamConversation(
         orderedMessages.flatMap((message) => {
           const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
           if (permissionCardPayload) {
@@ -934,11 +952,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       : "empty";
   const activityJumpState = React.useMemo(
     () =>
-      deriveThreadJumpState({
+      deriveTeamThreadJumpState({
         active: visibleWaterfallItems.length > 0,
         stickToBottom,
         pendingCount: 0,
-      }),
+    }),
     [stickToBottom, visibleWaterfallItems.length]
   );
   const renderTeamMessageHtml = React.useCallback(
@@ -1046,7 +1064,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     if (!node) {
       return;
     }
-    const nextStickToBottom = deriveThreadStickToBottom({
+    const nextStickToBottom = deriveTeamThreadStickToBottom({
       scrollHeight: node.scrollHeight,
       scrollTop: node.scrollTop,
       clientHeight: node.clientHeight,
@@ -1070,19 +1088,19 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       >
         {onRefreshMessages && (
           <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} mb-2 w-full shrink-0 justify-end gap-2`}>
-            <button
-              type="button"
-              className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+            <ActionButton
+              tone="secondary"
+              size="md"
               onClick={() => {
                 void onRefreshMessages();
               }}
               disabled={messagesLoading}
-              title="Refresh channel"
-              aria-label="Refresh channel"
+              title={refreshLabel}
+              aria-label={refreshLabel}
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               <span>Refresh</span>
-            </button>
+            </ActionButton>
           </div>
         )}
         <div
@@ -1156,10 +1174,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
                       className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
                     >
-                      <ThreadRichText
+                      <TeamThreadRichText
                         className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                         text={item.text}
-                        renderHtml={renderTeamMessageHtml}
+                        renderSanitizedHtml={renderTeamMessageHtml}
                       />
                     </div>
                   )}
@@ -1174,17 +1192,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       >
                         <HoverCard.Target>
                           {seenActorIds.length === 0 ? (
-                            <button
-                              type="button"
+                            <UnstyledButton
                               className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
                               aria-label="Pending delivery"
                               title="Pending delivery"
                             >
                               <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-                            </button>
+                            </UnstyledButton>
                           ) : (
-                            <button
-                              type="button"
+                            <UnstyledButton
                               className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
                               aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
                               title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
@@ -1206,7 +1222,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                                   } satisfies SeenDialStyle
                                 }
                               />
-                            </button>
+                            </UnstyledButton>
                           )}
                         </HoverCard.Target>
                         <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
@@ -1260,8 +1276,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                     </div>
                   )}
                   {developerMode && (
-                    <button
-                      type="button"
+                    <UnstyledButton
                       className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
                       onClick={() =>
                         setExpandedItemKeys((current) => ({
@@ -1272,7 +1287,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       aria-expanded={Boolean(expandedItemKeys[item.key])}
                     >
                       {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                    </button>
+                    </UnstyledButton>
                   )}
                   {developerMode && expandedItemKeys[item.key] && (
                     <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
@@ -1329,16 +1344,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           )}
           {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
             <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              No channel messages yet.
+              {emptyStateText}
             </div>
           )}
             </div>
           </div>
         </div>
         {activityJumpState.showJump && (
-          <button
-            type="button"
-            className={`${TEAM_TASK_JUMP_BUTTON_CLASS} absolute bottom-5 right-4 z-10`}
+          <IconButton
+            tone="default"
+            size="md"
+            className="absolute bottom-5 right-4 z-10 h-9 w-9 rounded-full border border-notion-border bg-white text-notion-text-muted shadow-md hover:bg-notion-hover hover:text-notion-text"
             onClick={() => {
               setStickToBottom(true);
               scrollActivityToBottom();
@@ -1347,7 +1363,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             aria-label="Jump to bottom"
           >
             <i className="bi bi-chevron-down text-sm" aria-hidden="true" />
-          </button>
+          </IconButton>
         )}
       </div>
 
@@ -1361,7 +1377,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           ref={messageTextareaRef}
           className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}
           rows={1}
-          placeholder="Message #all"
+          placeholder={messagePlaceholder}
           value={messageDraft}
           onChange={(event) => {
             const nextDraft = event.target.value;
@@ -1380,7 +1396,20 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               setActiveMentionIndex(0);
             }, 0);
           }}
+          onCompositionStart={() => {
+            messageDraftComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            messageDraftComposingRef.current = false;
+          }}
           onKeyDown={(event) => {
+            const composing = isTeamImeComposing(
+              messageDraftComposingRef.current,
+              event.nativeEvent.isComposing,
+              "keyCode" in event.nativeEvent
+                ? Number((event.nativeEvent as KeyboardEvent).keyCode)
+                : undefined
+            );
             if (activeMention && filteredMentionCandidates.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -1416,6 +1445,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               !event.altKey &&
               !event.metaKey &&
               !event.ctrlKey &&
+              !composing &&
               canSendMessage
             ) {
               event.preventDefault();
@@ -1431,13 +1461,12 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             </div>
             <div className="max-h-44 overflow-auto py-1">
               {filteredMentionCandidates.map((candidate, index) => (
-                <button
+                <UnstyledButton
                   key={candidate.actorId}
-                  type="button"
-                  className={`flex w-full items-center justify-between px-3 py-1 text-left text-sm ${
+                  className={`${TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS} ${
                     index === activeMentionIndex
-                      ? "bg-brand-primary/10 text-brand-primary"
-                      : "text-ui-text-primary hover:bg-ui-surface-soft"
+                      ? TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS
+                      : TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS
                   }`}
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -1446,7 +1475,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 >
                   <span>{candidate.label}</span>
                   <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </button>
+                </UnstyledButton>
               ))}
             </div>
           </div>
@@ -1455,16 +1484,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
             {`@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline`}
           </span>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px"
+          <ActionButton
+            tone="primary"
+            size="sm"
+            className="px-3.5"
             onClick={() => {
               sendCurrentMessage();
             }}
             disabled={!canSendMessage}
           >
             Send
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>

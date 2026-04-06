@@ -27,19 +27,39 @@
 - `web/src/pages/team/use_team_conversation_effects.ts`
   - decoupled the shared-thread SSE subscription from the active `# all` tab so Team keeps a live shared-thread stream target whenever a team with a shared conversation is selected;
   - kept the 4s fallback polling limited to the `# all` tab so only the realtime stream remains active on agent/task views.
+- `web/src/pages/team/use_team_conversation_actions.ts`
+  - generalized Team conversation refresh to target the currently selected Team task conversation instead of assuming the shared thread;
+  - keeps the selected task id as the canonical Team SSE / message-refresh scope key so `/tasks/:task_id/messages` and `/sse/teams/:team_id/tasks/:task_id/messages` stay aligned;
+  - clears message and mailbox state immediately when the selected conversation scope changes so switching from `# all` to a task thread does not briefly render stale shared-channel content under the new thread title.
 - `web/src/pages/team_page.tsx`
-  - updated the Team workbench connection badge to treat the shared-thread SSE stream as a team-wide target instead of only a conversation-tab target.
+  - updated the Team workbench connection badge to treat the selected Team conversation SSE stream as a team-wide target instead of only a conversation-tab target;
+  - split shared-channel and task-thread workspace title/description handling so task threads no longer inherit `# all` chrome or channel-specific copy.
+- `web/src/pages/team_task_panel.tsx`
+  - split composer placeholder, refresh label, and empty-state copy between shared-channel and task-thread modes so task threads read as direct task conversations instead of `# all`.
+- `web/src/pages/team_member_acp_panel.tsx`
+  - converted the ACP shell wrapper above the Team member input dock into a `flex-col` container so the ACP panel stays constrained to the workbench height instead of expanding with conversation content;
+  - replaced the fixed `104px` Team member ACP bottom clearance with measured input-dock height so the latest ACP bubble always stays above the dock.
+  - removed the Team-only `Refresh thread` / `Load Older` controls so Team member ACP now follows the same SSE-driven surface contract as the main Agents ACP view.
+- `web/src/components/input_dock.tsx`
+  - added runtime height reporting and a stable `data-acp-input-dock` marker so ACP surfaces can reserve space based on the real dock height.
+- `web/src/components/acp_conversation.tsx`
+  - kept ACP conversation dock clearance on `scrollPaddingBottom` only, avoiding artificial visible whitespace while still preserving bottom scroll targeting above sticky input docks.
 - `web/src/pages/team_panels.test.tsx`
   - updated channel conversation tests to cover the `200`-item tail window;
   - added a regression check that a small upward scroll near the bottom does not immediately exit stick-to-bottom mode.
   - added a layout regression test that locks the dedicated body-shell/composer-shell structure in place.
+- `web/src/pages/team_member_acp_panel.test.tsx`
+  - added a regression check that a measured Team member ACP input-dock height expands the conversation bottom padding above the dock.
 - `web/src/pages/team/use_team_conversation_actions.test.tsx`
   - updated the shared-thread refresh test to lock the new `20`-item bounded-load behavior in place.
 - `web/src/pages/team/use_team_conversation_effects.test.tsx`
   - added a regression check that the shared-thread SSE stream stays active outside the `# all` tab while polling still remains disabled there.
+- `web/src/pages/team/use_team_conversation_actions.test.tsx`
+  - added a regression check that switching conversation scope clears stale shared-thread messages before the next task-thread payload arrives.
 
 ## Validation
 
 - `cd web && npm run test -- src/pages/team/use_team_conversation_actions.test.tsx src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- src/pages/team_member_acp_panel.test.tsx src/acp_panel.test.tsx`
 - `cd web && npm run lint`
 - `cd web && npm run build`

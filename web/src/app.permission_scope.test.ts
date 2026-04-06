@@ -1,25 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { AcpPermissionRecord, AgentEvent } from "./api";
+import { AcpPermissionRecord, AgentEvent, AgentNodeRecord, AgentRecord } from "./api";
 import {
-  analyzeLiveOutputBatch,
-  buildLatestLiveSessionMap,
+  buildPermissionPollAgentIds,
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
   clampAgentsPanelWidth,
   chunkPermissionPollAgentIds,
   decidePermissionJump,
-  dispatchLiveOutputBatch,
   filterPermissionsForAgent,
+  isAgentsWorkbenchRoute,
   loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
-  normalizeSseOutputLines,
+  isSameAgentNodeRecordList,
+  isSameAgentRecordList,
   parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
   resolveAgentsPanelMaxWidth,
+  resolveActiveAcpView,
   resolveGlobalPermissionPollIntervalMs,
-  resolveLiveSessionSwitch,
   resolveOutputHistoryKey,
-  routeLiveOutputBatch,
+  resolveDefaultActiveAgentId,
   resolveSessionScopedEvents,
   resolveRuntimeKeyboardInset,
   resolveRuntimeViewportAxis,
@@ -29,8 +29,17 @@ import {
   setupRuntimeViewportVarSync,
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
-  updateLiveOutputBatchCursors,
 } from "./app";
+import { EMPTY_ACP_VIEW } from "./acp";
+import {
+  analyzeLiveOutputBatch,
+  buildLatestLiveSessionMap,
+  dispatchLiveOutputBatch,
+  normalizeSseOutputLines,
+  resolveLiveSessionSwitch,
+  routeLiveOutputBatch,
+  updateLiveOutputBatchCursors,
+} from "./app_live_output";
 
 const buildPermission = (
   id: string,
@@ -57,6 +66,41 @@ const buildEvent = (
   ts: eventId,
   stream,
   message: `${stream}-${eventId}`,
+});
+
+const buildAgentRecord = (id: string, overrides: Partial<AgentRecord> = {}): AgentRecord => ({
+  id,
+  name: id,
+  workdir: `/tmp/${id}`,
+  command: "codex",
+  args: [],
+  target_node_id: null,
+  worktree_mode: "use_existing",
+  worktree_repo: null,
+  worktree_ref: null,
+  code_mode: true,
+  agent_loop_enabled: null,
+  agent_loop_idle_seconds: null,
+  agent_loop_prompt: null,
+  status: "running",
+  created_at: 1,
+  updated_at: 1,
+  ...overrides,
+});
+
+const buildAgentNodeRecord = (
+  id: string,
+  overrides: Partial<AgentNodeRecord> = {}
+): AgentNodeRecord => ({
+  id,
+  name: id,
+  grpc_target: null,
+  tls_server_name: null,
+  default_worktree_root: null,
+  is_main: id === "main",
+  created_at: 1,
+  updated_at: 1,
+  ...overrides,
 });
 
 class MockEventTarget {
@@ -120,6 +164,13 @@ describe("filterPermissionsForAgent", () => {
 });
 
 describe("app helper decisions", () => {
+  it("enables agents workbench background sync only on the root route", () => {
+    expect(isAgentsWorkbenchRoute("/")).toBe(true);
+    expect(isAgentsWorkbenchRoute("/teams")).toBe(false);
+    expect(isAgentsWorkbenchRoute("/teams/team-1")).toBe(false);
+    expect(isAgentsWorkbenchRoute("/admin")).toBe(false);
+  });
+
   it("clamps persisted agents panel widths within the supported desktop bounds", () => {
     expect(clampAgentsPanelWidth(Number.NaN)).toBe(288);
     expect(clampAgentsPanelWidth(160)).toBe(256);
@@ -143,15 +194,121 @@ describe("app helper decisions", () => {
     expect(loadAgentsPanelWidthPreference(null)).toBe(288);
   });
 
+  it("short-circuits unchanged agent list refreshes", () => {
+    const prev = [
+      buildAgentRecord("agent-a", { args: ["--model", "gpt-5.4"] }),
+      buildAgentRecord("agent-b", { status: "idle" }),
+    ];
+    const next = [
+      buildAgentRecord("agent-a", { args: ["--model", "gpt-5.4"] }),
+      buildAgentRecord("agent-b", { status: "idle" }),
+    ];
+
+    expect(isSameAgentRecordList(prev, next)).toBe(true);
+    expect(
+      isSameAgentRecordList(prev, [
+        buildAgentRecord("agent-a", { args: ["--model", "gpt-5.4"] }),
+        buildAgentRecord("agent-b", { status: "failed" }),
+      ])
+    ).toBe(false);
+  });
+
+  it("short-circuits unchanged agent node refreshes", () => {
+    const prev = [
+      buildAgentNodeRecord("main", { is_main: true }),
+      buildAgentNodeRecord("remote-a", { grpc_target: "dns:///remote-a:7443" }),
+    ];
+    const next = [
+      buildAgentNodeRecord("main", { is_main: true }),
+      buildAgentNodeRecord("remote-a", { grpc_target: "dns:///remote-a:7443" }),
+    ];
+
+    expect(isSameAgentNodeRecordList(prev, next)).toBe(true);
+    expect(
+      isSameAgentNodeRecordList(prev, [
+        buildAgentNodeRecord("main", { is_main: true }),
+        buildAgentNodeRecord("remote-a", { grpc_target: "dns:///remote-b:7443" }),
+      ])
+    ).toBe(false);
+  });
+
+  it("prefers a running agent for the default root workbench selection", () => {
+    const agents = [
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-running", { status: "running" }),
+      buildAgentRecord("agent-idle", { status: "idle" }),
+    ];
+
+    expect(resolveDefaultActiveAgentId(agents)).toBe("agent-running");
+  });
+
+  it("does not select any default agent when only inactive agents exist", () => {
+    const agents = [
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-stopped", { status: "stopped" }),
+    ];
+
+    expect(resolveDefaultActiveAgentId(agents)).toBeNull();
+  });
+
+  it("reuses the shared empty ACP view when no active agent is selected", () => {
+    const acpLines = [
+      {
+        ts: 1,
+        stream: "acp",
+        message: JSON.stringify({ type: "agent_message", text: "hello" }),
+        session_id: "session-1",
+      },
+    ];
+
+    expect(resolveActiveAcpView(null, acpLines)).toBe(EMPTY_ACP_VIEW);
+  });
+
+  it("builds an ACP view when an active agent is selected", () => {
+    const acpLines = [
+      {
+        ts: 1,
+        stream: "acp",
+        message: JSON.stringify({ type: "agent_message", text: "hello" }),
+        session_id: "session-1",
+      },
+    ];
+
+    const view = resolveActiveAcpView("agent-running", acpLines);
+    expect(view).not.toBe(EMPTY_ACP_VIEW);
+    expect(view.messages).toHaveLength(1);
+    expect(view.messages[0]?.text).toBe("hello");
+  });
+
   it("parses permission poll agent ids from stable key", () => {
     expect(parsePermissionPollAgentIds("")).toEqual([]);
     expect(parsePermissionPollAgentIds("agent-a,agent-b")).toEqual([
       "agent-a",
       "agent-b",
     ]);
+    expect(parsePermissionPollAgentIds("agent-a, agent-b ,  agent-c")).toEqual([
+      "agent-a",
+      "agent-b",
+      "agent-c",
+    ]);
     expect(parsePermissionPollAgentIds("agent-a,,agent-b,")).toEqual([
       "agent-a",
       "agent-b",
+    ]);
+  });
+
+  it("builds pending-permission poll targets from active agents only", () => {
+    const agents = [
+      buildAgentRecord("agent-running", { status: "running" }),
+      buildAgentRecord("agent-idle", { status: "idle" }),
+      buildAgentRecord("agent-exited", { status: "exited" }),
+      buildAgentRecord("agent-stopped", { status: "stopped" }),
+      buildAgentRecord("agent-running", { status: "running" }),
+    ];
+
+    expect(buildPermissionPollAgentIds(agents)).toEqual([
+      "agent-idle",
+      "agent-running",
     ]);
   });
 
@@ -1067,6 +1224,50 @@ describe("app helper decisions", () => {
     expect(scheduledCallbacks).toHaveLength(1);
     expect(clearSpy).not.toHaveBeenCalled();
     expect(pollState.timer).toBeNull();
+  });
+
+  it("backs off permission polling when there are no pending approvals", async () => {
+    const pollState = { timer: null as number | null };
+    const scheduled: Array<{ delay: number; callback: () => void }> = [];
+
+    schedulePermissionPollLoop(
+      0,
+      pollState,
+      async () => 0,
+      () => false,
+      (callback, delayMs) => {
+        scheduled.push({ delay: delayMs, callback });
+        return scheduled.length;
+      },
+      () => {}
+    );
+
+    expect(scheduled).toHaveLength(1);
+    await scheduled[0].callback();
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled[1].delay).toBe(10_000);
+  });
+
+  it("polls more aggressively while pending approvals still exist", async () => {
+    const pollState = { timer: null as number | null };
+    const scheduled: Array<{ delay: number; callback: () => void }> = [];
+
+    schedulePermissionPollLoop(
+      0,
+      pollState,
+      async () => 2,
+      () => false,
+      (callback, delayMs) => {
+        scheduled.push({ delay: delayMs, callback });
+        return scheduled.length;
+      },
+      () => {}
+    );
+
+    expect(scheduled).toHaveLength(1);
+    await scheduled[0].callback();
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled[1].delay).toBe(3_000);
   });
 });
 

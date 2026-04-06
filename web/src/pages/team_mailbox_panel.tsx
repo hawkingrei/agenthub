@@ -1,6 +1,7 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
+import { ActionButton, SelectableListItem, ToolbarRow } from "../ui/primitives";
 import {
   isHumanMailboxActor,
   resolveDisplayName,
@@ -10,13 +11,9 @@ import {
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
-  TEAM_LIST_ITEM_BASE_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_PRIMARY_BUTTON_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
   TEAM_PANEL_TOOLBAR_CLASS,
@@ -143,7 +140,7 @@ function isMessageAcceptableForInbox(
   );
 }
 
-export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
+function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const {
     mode = "full",
     developerMode,
@@ -225,11 +222,6 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
       : []),
   ];
 
-  const actorButtonClassName = (isActive: boolean) =>
-    `${TEAM_LIST_ITEM_BASE_CLASS} ${
-      isActive ? "ring-1 ring-notion-accent/30 border-notion-accent/30 bg-notion-hover shadow-md" : ""
-    }`;
-
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
@@ -279,13 +271,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
-            onClick={onApplyMessageTemplate}
-          >
+          <ActionButton tone="secondary" size="md" onClick={onApplyMessageTemplate}>
             Apply Template
-          </button>
+          </ActionButton>
         </div>
         <textarea
           className={TEAM_PANEL_TEXTAREA_CLASS}
@@ -300,13 +288,14 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           value={msgIdempotencyKey}
           onChange={(event) => onMsgIdempotencyKeyChange(event.target.value)}
         />
-        <button
-          className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+        <ActionButton
+          tone="primary"
+          size="md"
           onClick={onSendMessage}
           disabled={busy === "send-message"}
         >
           Send Message
-        </button>
+        </ActionButton>
       </div>
 
       <div className={MAILBOX_ADVANCED_PANEL_CLASS}>
@@ -341,8 +330,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           />
           include_delivered
         </label>
-        <button
-          className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
+        <ActionButton
+          tone="secondary"
+          size="md"
           onClick={onRefreshInbox}
           disabled={busy !== null}
           title="Refresh read-only inbox"
@@ -350,16 +340,16 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
         >
           <i className="bi bi-arrow-clockwise" aria-hidden="true" />
           <span>Refresh Query</span>
-        </button>
+        </ActionButton>
       </div>
     </div>
   );
 
   return (
     <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
-      </div>
+      </ToolbarRow>
 
       {showConversation && snapshot && (
         <div className={MAILBOX_META_CLASS}>
@@ -390,9 +380,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
               const unread = unreadByMemberId[member.member_id] ?? 0;
               const isHuman = member.role === "human";
               return (
-                <button
+                <SelectableListItem
                   key={member.member_id}
-                  className={actorButtonClassName(selectedMemberId === member.member_id)}
+                  active={selectedMemberId === member.member_id}
                   onClick={() => onSelectMember(member.member_id)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
@@ -423,7 +413,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                       </span>
                     )}
                   </div>
-                </button>
+                </SelectableListItem>
               );
             })}
             {mailboxActors.length === 0 && (
@@ -432,7 +422,7 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
           </div>
 
           <div className={MAILBOX_PANEL_CLASS}>
-            <div className="teams-chat-head flex flex-wrap items-center justify-between gap-3 border-b border-notion-border pb-3">
+            <ToolbarRow className="teams-chat-head border-b border-notion-border pb-3">
               <div className="min-w-0 flex-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">Conversation</span>
                 <div className="truncate text-[14px] font-bold text-notion-text mt-0.5">
@@ -453,9 +443,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
+                <ActionButton
+                  tone="secondary"
+                  size="md"
                   onClick={() => {
                     void onAcceptVisibleMessages?.(acceptVisibleMessages);
                   }}
@@ -467,9 +457,10 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                   title="Accept pending inbox work visible in this conversation"
                 >
                   Accept visible pending
-                </button>
-                <button
-                  type="button"
+                </ActionButton>
+                <ActionButton
+                  tone="secondary"
+                  size="md"
                   className={MAILBOX_CHAT_JUMP_BUTTON_CLASS}
                   onClick={onJumpToBottom}
                   disabled={conversationMessages.length === 0}
@@ -477,9 +468,9 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 >
                   <i className="bi bi-chevron-down" aria-hidden="true" />
                   <span>Jump to bottom</span>
-                </button>
+                </ActionButton>
               </div>
-            </div>
+            </ToolbarRow>
 
             <ul
               className={MAILBOX_MESSAGE_LIST_CLASS}
@@ -535,15 +526,16 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                         normalizedHumanActorId
                       ) && (
                         <div className={`mt-3 flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
-                          <button
+                          <ActionButton
+                            tone="secondary"
+                            size="md"
                             onClick={() => {
                               void onAcceptMessage(message);
                             }}
                             disabled={busy !== null}
-                            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
                           >
                             Accept
-                          </button>
+                          </ActionButton>
                         </div>
                       )}
                     </div>
@@ -572,13 +564,14 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
                 }}
               />
               <div className="flex justify-end">
-                <button
-                  className={TEAM_PANEL_PRIMARY_BUTTON_CLASS}
+                <ActionButton
+                  tone="primary"
+                  size="md"
                   onClick={onSendChatMessage}
                   disabled={busy === "send-chat" || !chatDraft.trim()}
                 >
                   Send Chat
-                </button>
+                </ActionButton>
               </div>
             </div>
           </div>
@@ -606,3 +599,6 @@ export function TeamMailboxPanel(props: TeamMailboxPanelProps) {
     </div>
   );
 }
+
+export const TeamMailboxPanel = React.memo(TeamMailboxPanelImpl);
+TeamMailboxPanel.displayName = "TeamMailboxPanel";

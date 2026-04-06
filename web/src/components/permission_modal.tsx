@@ -1,10 +1,11 @@
 import React from "react";
-import { Badge, Button, Card, Group, Modal, Stack, Text } from "@mantine/core";
+import { Badge, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { AcpPermissionRecord } from "../api";
 import {
   NOTION_MODAL_CLASSNAMES,
   NOTION_MODAL_OVERLAY_PROPS,
 } from "../ui/floating_surfaces";
+import { SurfaceCard } from "../ui/primitives";
 
 type PermissionModalProps = {
   permissions: AcpPermissionRecord[];
@@ -47,7 +48,7 @@ export function PermissionModal({
           const title =
             toolCall?.title ?? perm.tool_call_id ?? "Permission Request";
           return (
-            <Card key={perm.id} withBorder radius="md" padding="sm">
+            <SurfaceCard key={perm.id} className="rounded-md border-notion-border p-3">
               <Group justify="space-between" align="center">
                 <Text fw={600}>{title}</Text>
                 <Badge variant="outline" size="sm">
@@ -79,7 +80,7 @@ export function PermissionModal({
                   Cancel
                 </Button>
               </Group>
-            </Card>
+            </SurfaceCard>
           );
         })}
       </Stack>

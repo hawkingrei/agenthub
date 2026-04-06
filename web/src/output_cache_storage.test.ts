@@ -1,6 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import { OutputLine } from "./output_cache";
+import {
+  DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
+  DEFAULT_OUTPUT_CACHE_MAX_SESSIONS,
+} from "./storage/output_cache_budget";
 
 const STORAGE_KEY = "agenthub_output_cache_v2";
 
@@ -195,5 +199,69 @@ describe("output cache storage", () => {
     };
 
     expect(() => saveOutputCaches(outputCache, {}, 10, 5)).not.toThrow();
+  });
+
+  it("keeps persisted output cache within the default frontend memory budget", () => {
+    const storage = (globalThis as { localStorage?: MemoryStorage }).localStorage;
+    const messageBody = "x".repeat(160);
+    const outputCache = Object.fromEntries(
+      Array.from(
+        { length: DEFAULT_OUTPUT_CACHE_MAX_SESSIONS + 6 },
+        (_, sessionIndex) => {
+          const sessionId = `session-${sessionIndex}`;
+          const key = `agent-1:${sessionId}`;
+          const lines = Array.from(
+            { length: DEFAULT_OUTPUT_CACHE_MAX_EVENTS + 80 },
+            (_, eventIndex) =>
+              ({
+                ...makeLine(
+                  sessionIndex * 10_000 + eventIndex + 1,
+                  eventIndex + 1,
+                  "stdout",
+                  sessionId
+                ),
+                message: `stdout-${sessionId}-${eventIndex}-${messageBody}`,
+              }) satisfies OutputLine
+          );
+          return [key, lines] as const;
+        }
+      )
+    );
+    const acpOutputCache = Object.fromEntries(
+      Array.from(
+        { length: DEFAULT_OUTPUT_CACHE_MAX_SESSIONS + 4 },
+        (_, sessionIndex) => {
+          const sessionId = `acp-session-${sessionIndex}`;
+          const key = `agent-1:${sessionId}`;
+          const lines = Array.from(
+            { length: DEFAULT_OUTPUT_CACHE_MAX_EVENTS + 80 },
+            (_, eventIndex) =>
+              ({
+                ...makeLine(
+                  100_000 + sessionIndex * 10_000 + eventIndex + 1,
+                  eventIndex + 1,
+                  "acp",
+                  sessionId
+                ),
+                message: `acp-${sessionId}-${eventIndex}-${messageBody}`,
+              }) satisfies OutputLine
+          );
+          return [key, lines] as const;
+        }
+      )
+    );
+
+    saveOutputCaches(
+      outputCache,
+      acpOutputCache,
+      DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
+      DEFAULT_OUTPUT_CACHE_MAX_SESSIONS
+    );
+
+    const raw = storage?.getItem(STORAGE_KEY) ?? "";
+    const parsed = raw ? JSON.parse(raw) : null;
+    expect(Object.keys(parsed.outputCache)).toHaveLength(DEFAULT_OUTPUT_CACHE_MAX_SESSIONS);
+    expect(Object.keys(parsed.acpOutputCache)).toHaveLength(DEFAULT_OUTPUT_CACHE_MAX_SESSIONS);
+    expect(raw.length).toBeLessThan(2_000_000);
   });
 });

@@ -11,31 +11,37 @@ import {
   type TeamActorMessageRecord,
   type TeamConversationMessageRecord,
   type TeamRunRecord,
+  type TeamTaskDetailResponse,
   type TeamTaskRecord,
 } from "../../api";
 import { buildMailboxChatPayload } from "./mailbox_helpers";
 import {
-  isSharedThreadTask,
   mergeConversationMessages,
   refreshTeamConversationMailboxAfterSend,
 } from "./page_helpers";
 import { parseErrorMessage } from "./create_helpers";
 import { uuidV7 } from "../../uuid";
 
-const TEAM_CONVERSATION_MESSAGE_LIMIT = 10;
-const TEAM_CONVERSATION_MAILBOX_LIMIT = 10;
+const TEAM_CONVERSATION_MESSAGE_LIMIT = 20;
+const TEAM_CONVERSATION_MAILBOX_LIMIT = 20;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
+const TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS = 30_000;
+
+function conversationDetailKey(teamId: string, taskId: string): string {
+  return `${teamId}:${taskId}`;
+}
 
 type SharedConversationTarget = {
   task: TeamTaskRecord;
   latestRunId: string | null;
+  conversationId: string | null;
 };
 
 type UseTeamConversationActionsOptions = {
   token: string;
   selectedTeamId: string | null;
   selectedConversation: TeamTaskRecord | null;
-  latestRunForSharedConversation: TeamRunRecord | null;
+  selectedConversationLatestRun: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   refreshSnapshot: (runId: string) => Promise<unknown>;
   refreshEvents: (runId: string) => Promise<unknown>;
@@ -56,7 +62,7 @@ export function useTeamConversationActions({
   refreshSnapshot,
   selectedConversation,
   selectedTeamId,
-  latestRunForSharedConversation,
+  selectedConversationLatestRun,
   setBusy,
   setConversationMailboxMessages,
   setError,
@@ -71,26 +77,98 @@ export function useTeamConversationActions({
   const taskMessageRequestSeqRef = useRef(0);
   const optimisticTaskMessageSeqRef = useRef(0);
   const sendTaskMessageInFlightRef = useRef(false);
+  const conversationDetailFetchAtRef = useRef<Map<string, number>>(new Map());
+  const conversationDetailRunIdRef = useRef<Map<string, string | null>>(new Map());
+  const selectedTeamScopeRef = useRef("");
   const taskMessageScopeRef = useRef<{ teamId: string; taskId: string }>({
     teamId: "",
     taskId: "",
   });
 
+  const clearConversationCollections = useCallback(() => {
+    setTaskMessages((current) => (current.length === 0 ? current : []));
+    setConversationMailboxMessages((current) => (current.length === 0 ? current : []));
+  }, [setConversationMailboxMessages, setTaskMessages]);
+  const replaceConversationMailboxMessages = useCallback(
+    (messages: TeamActorMessageRecord[]) => {
+      startTransition(() => {
+        setConversationMailboxMessages((current) => {
+          if (messages.length === 0) {
+            return current.length === 0 ? current : [];
+          }
+          return messages;
+        });
+      });
+    },
+    [setConversationMailboxMessages]
+  );
+  const clearConversationMailboxMessages = useCallback(() => {
+    replaceConversationMailboxMessages([]);
+  }, [replaceConversationMailboxMessages]);
+  const selectedConversationBootstrapKind =
+    selectedConversation?.context?.bootstrap_kind;
+
   useEffect(() => {
-    taskMessageRequestSeqRef.current += 1;
-    taskMessageScopeRef.current = {
+    const normalizedTeamId = selectedTeamId?.trim() ?? "";
+    if (selectedTeamScopeRef.current !== normalizedTeamId) {
+      conversationDetailFetchAtRef.current.clear();
+      conversationDetailRunIdRef.current.clear();
+      selectedTeamScopeRef.current = normalizedTeamId;
+    }
+  }, [selectedTeamId]);
+
+  useEffect(() => {
+    const teamId = selectedTeamId?.trim() ?? "";
+    const taskId = (selectedConversation?.id ?? "").trim();
+    if (!teamId || !taskId) {
+      return;
+    }
+    const detailKey = conversationDetailKey(teamId, taskId);
+    const latestRunId = selectedConversationLatestRun?.id?.trim() || null;
+    if (latestRunId) {
+      conversationDetailRunIdRef.current.set(detailKey, latestRunId);
+      return;
+    }
+    if (selectedConversationBootstrapKind !== "shared_thread") {
+      conversationDetailRunIdRef.current.set(detailKey, null);
+    }
+  }, [
+    selectedConversation?.id,
+    selectedConversationBootstrapKind,
+    selectedConversationLatestRun,
+    selectedTeamId,
+  ]);
+
+  useEffect(() => {
+    const nextScope = {
       teamId: selectedTeamId?.trim() ?? "",
       taskId: (selectedConversation?.id ?? "").trim(),
     };
+    const previousScope = taskMessageScopeRef.current;
+    taskMessageRequestSeqRef.current += 1;
+    taskMessageScopeRef.current = nextScope;
+    const conversationScopeChanged =
+      previousScope.teamId !== nextScope.teamId || previousScope.taskId !== nextScope.taskId;
+    if (conversationScopeChanged) {
+      clearConversationCollections();
+    }
     if (!selectedTeamId || !selectedConversation?.id) {
       setTaskMessagesLoading(false);
     }
-  }, [selectedConversation?.id, selectedTeamId, setTaskMessagesLoading]);
+  }, [
+    selectedConversation?.id,
+    selectedTeamId,
+    setConversationMailboxMessages,
+    clearConversationCollections,
+    setTaskMessages,
+    setTaskMessagesLoading,
+  ]);
 
   const refreshTaskMessages = useCallback(
     async (taskIdOverride?: string) => {
       const teamId = selectedTeamId?.trim() ?? "";
       const taskId = (taskIdOverride ?? selectedConversation?.id ?? "").trim();
+      const selectedConversationRunId = selectedConversationLatestRun?.id?.trim() ?? "";
       const requestSeq = ++taskMessageRequestSeqRef.current;
       taskMessageScopeRef.current = { teamId, taskId };
       const isCurrentRequest = () =>
@@ -98,19 +176,35 @@ export function useTeamConversationActions({
         taskMessageScopeRef.current.teamId === teamId &&
         taskMessageScopeRef.current.taskId === taskId;
       if (!teamId || !taskId) {
-        setTaskMessages([]);
-        setConversationMailboxMessages([]);
+        clearConversationCollections();
         return;
       }
       setTaskMessagesLoading(true);
       try {
+        const selectedConversationId = (selectedConversation?.id ?? "").trim();
+        const isSharedThreadTask =
+          selectedConversation?.context?.bootstrap_kind === "shared_thread";
+        const detailKey = conversationDetailKey(teamId, taskId);
+        const cachedConversationRunId =
+          conversationDetailRunIdRef.current.get(detailKey);
+        const lastDetailFetchAt =
+          conversationDetailFetchAtRef.current.get(detailKey) ?? null;
+        const now = Date.now();
+        const shouldFetchConversationDetail =
+          selectedConversationId === taskId &&
+          isSharedThreadTask &&
+          selectedConversationRunId.length === 0 &&
+          cachedConversationRunId === undefined &&
+          (lastDetailFetchAt === null ||
+            now - lastDetailFetchAt >= TEAM_CONVERSATION_DETAIL_REFRESH_COOLDOWN_MS);
+        if (shouldFetchConversationDetail) {
+          conversationDetailFetchAtRef.current.set(detailKey, now);
+        }
         const [messages, taskDetail] = await Promise.all([
           api.listTeamTaskMessages(token, teamId, taskId, {
             limit: TEAM_CONVERSATION_MESSAGE_LIMIT,
           }),
-          selectedConversation &&
-          selectedConversation.id === taskId &&
-          isSharedThreadTask(selectedConversation)
+          shouldFetchConversationDetail
             ? api.getTeamTask(token, teamId, taskId)
             : Promise.resolve(null),
         ]);
@@ -120,7 +214,16 @@ export function useTeamConversationActions({
         startTransition(() => {
           setTaskMessages((prev) => mergeConversationMessages(prev, messages));
         });
-        const conversationRunId = taskDetail?.latest_run?.id?.trim() ?? "";
+        const fetchedConversationRunId =
+          taskDetail?.latest_run?.id?.trim() || null;
+        if (taskDetail) {
+          conversationDetailRunIdRef.current.set(detailKey, fetchedConversationRunId);
+        }
+        const conversationRunId =
+          selectedConversationRunId ||
+          fetchedConversationRunId ||
+          cachedConversationRunId ||
+          "";
         if (conversationRunId) {
           const conversationSnapshot = await api.getTeamRunSnapshot(token, conversationRunId, {
             event_limit: 1,
@@ -129,22 +232,16 @@ export function useTeamConversationActions({
           if (!isCurrentRequest()) {
             return;
           }
-          startTransition(() => {
-            setConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
-          });
+          replaceConversationMailboxMessages(conversationSnapshot.mailbox.recent_messages);
         } else {
-          startTransition(() => {
-            setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
-          });
+          clearConversationMailboxMessages();
         }
       } catch (err) {
         if (!isCurrentRequest()) {
           return;
         }
         setError(parseErrorMessage(err));
-        startTransition(() => {
-          setConversationMailboxMessages((prev) => (prev.length === 0 ? prev : []));
-        });
+        clearConversationMailboxMessages();
       } finally {
         if (isCurrentRequest()) {
           setTaskMessagesLoading(false);
@@ -152,12 +249,15 @@ export function useTeamConversationActions({
       }
     },
     [
+      clearConversationCollections,
+      clearConversationMailboxMessages,
       selectedConversation,
+      selectedConversationLatestRun,
       selectedTeamId,
-      setConversationMailboxMessages,
       setError,
       setTaskMessages,
       setTaskMessagesLoading,
+      replaceConversationMailboxMessages,
       token,
     ]
   );
@@ -168,9 +268,10 @@ export function useTeamConversationActions({
     }
     return {
       task: selectedConversation,
-      latestRunId: latestRunForSharedConversation?.id?.trim() || null,
+      latestRunId: selectedConversationLatestRun?.id?.trim() || null,
+      conversationId: null,
     };
-  }, [latestRunForSharedConversation, selectedConversation, selectedTeamId]);
+  }, [selectedConversation, selectedConversationLatestRun, selectedTeamId]);
 
   const ensureSharedConversation = useCallback(async (): Promise<SharedConversationTarget | null> => {
     if (!selectedTeamId) {
@@ -181,21 +282,19 @@ export function useTeamConversationActions({
       return existing;
     }
     const detail = await api.ensureTeamSharedThread(token, selectedTeamId);
-    setSharedConversation(detail.task);
-    setSharedConversationLatestRun(detail.latest_run ?? null);
-    setTaskMessages([]);
-    setConversationMailboxMessages([]);
+    applySharedConversationDetail(detail, setSharedConversation, setSharedConversationLatestRun);
+    clearConversationCollections();
     return {
       task: detail.task,
       latestRunId: detail.latest_run?.id?.trim() || null,
+      conversationId: detail.conversation.id?.trim() || null,
     };
   }, [
+    clearConversationCollections,
     resolveConversationForMessage,
     selectedTeamId,
-    setConversationMailboxMessages,
     setSharedConversation,
     setSharedConversationLatestRun,
-    setTaskMessages,
     token,
   ]);
 
@@ -213,11 +312,17 @@ export function useTeamConversationActions({
         setError("Conversation message is required");
         return;
       }
+      setTaskMessageDraft("");
       sendTaskMessageInFlightRef.current = true;
       setBusy("send-task-message");
       setError(null);
       setWarning(null);
       let optimisticMessageId: number | null = null;
+      const restoreDraft = () => {
+        setTaskMessageDraft((current) =>
+          current.trim().length > 0 ? `${text}\n${current}` : text
+        );
+      };
       try {
         const conversation = await ensureSharedConversation();
         const taskId = conversation?.task.id;
@@ -229,34 +334,35 @@ export function useTeamConversationActions({
           optimisticMessageId =
             TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID +
             ++optimisticTaskMessageSeqRef.current;
-          setTaskMessageDraft("");
           setTaskMessages((prev) =>
-            mergeConversationMessages(
-              prev,
-              sortConversationMessages([
+            {
+              const fallbackConversationId =
+                conversation.conversationId?.trim() ||
+                prev.find((message) => message.conversation_id.trim().length > 0)
+                  ?.conversation_id ||
+                taskId;
+              const nextMessages = sortConversationMessages([
                 ...prev,
                 buildOptimisticConversationMessage({
                   messageId: optimisticMessageId!,
                   taskId,
+                  conversationId: fallbackConversationId,
                   payload: chatPayload,
                   mentionActorIds: payload.mentionActorIds,
                 }),
-              ])
-            )
+              ]);
+              return mergeConversationMessages(prev, nextMessages);
+            }
           );
           const message = await api.sendTeamTaskMessage(token, selectedTeamId, taskId, {
             payload: chatPayload,
             idempotency_key: idempotencyKey,
           });
-          setTaskMessages((prev) =>
-            mergeConversationMessages(
-              prev.filter((item) => item.message_id !== optimisticMessageId),
-              sortConversationMessages([
-                ...prev.filter((item) => item.message_id !== optimisticMessageId),
-                message,
-              ])
-            )
-          );
+          setTaskMessages((prev) => {
+            const filtered = prev.filter((item) => item.message_id !== optimisticMessageId);
+            const nextMessages = sortConversationMessages([...filtered, message]);
+            return mergeConversationMessages(filtered, nextMessages);
+          });
           await refreshTeamConversationMailboxAfterSend({
             activeRunId: activeRunIdForSelectedTeam ?? conversation?.latestRunId,
             taskId,
@@ -266,16 +372,15 @@ export function useTeamConversationActions({
           });
           return;
         }
+        restoreDraft();
         setWarning("Unable to initialize shared team thread.");
       } catch (err) {
         if (optimisticMessageId != null) {
           setTaskMessages((prev) =>
             prev.filter((message) => message.message_id !== optimisticMessageId)
           );
-          setTaskMessageDraft((current) =>
-            current.trim().length > 0 ? current : text
-          );
         }
+        restoreDraft();
         setError(parseErrorMessage(err));
       } finally {
         sendTaskMessageInFlightRef.current = false;
@@ -305,6 +410,15 @@ export function useTeamConversationActions({
   };
 }
 
+function applySharedConversationDetail(
+  detail: TeamTaskDetailResponse,
+  setSharedConversation: Dispatch<SetStateAction<TeamTaskRecord | null>>,
+  setSharedConversationLatestRun: Dispatch<SetStateAction<TeamRunRecord | null>>
+) {
+  setSharedConversation(detail.task);
+  setSharedConversationLatestRun(detail.latest_run ?? null);
+}
+
 function sortConversationMessages(
   messages: TeamConversationMessageRecord[]
 ): TeamConversationMessageRecord[] {
@@ -322,17 +436,19 @@ function sortConversationMessages(
 function buildOptimisticConversationMessage({
   messageId,
   taskId,
+  conversationId,
   payload,
   mentionActorIds,
 }: {
   messageId: number;
   taskId: string;
+  conversationId?: string | null;
   payload: ReturnType<typeof buildMailboxChatPayload>;
   mentionActorIds: string[];
 }): TeamConversationMessageRecord {
   return {
     message_id: messageId,
-    conversation_id: taskId,
+    conversation_id: conversationId ?? "",
     task_id: taskId,
     from_actor_id: "user",
     to_actor_id: mentionActorIds.length === 1 ? mentionActorIds[0] ?? null : null,

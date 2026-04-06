@@ -1,10 +1,17 @@
+import React from "react";
 import { NativeSelect } from "@mantine/core";
 import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { ActionButton, PanelHeader, StatusPill, SurfaceCard } from "../ui/primitives";
 import {
-  TEAM_LIST_ITEM_ACTIVE_CLASS,
-  TEAM_LIST_ITEM_IDLE_CLASS,
+  ActionButton,
+  InsetSurface,
+  PanelHeader,
+  SelectableListItem,
+  StatusPill,
+  SurfaceCard,
+  ToolbarRow,
+} from "../ui/primitives";
+import {
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_SECTION_TITLE_CLASS,
@@ -18,8 +25,6 @@ type TeamRunStatusFilterOption = {
   label: string;
 };
 
-const RUN_PANEL_LIST_CLASS =
-  "teams-run-list flex flex-col gap-4 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
 const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col gap-2 overflow-y-auto pr-1";
 const RUN_PANEL_SUBTITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const RUN_PANEL_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
@@ -49,7 +54,7 @@ type TeamRunPanelProps = {
   onLoadMoreRuns: () => Promise<void> | void;
 };
 
-export function TeamRunPanel(props: TeamRunPanelProps) {
+function TeamRunPanelImpl(props: TeamRunPanelProps) {
   const {
     selectedTeam,
     developerMode,
@@ -98,7 +103,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
         }
       />
 
-      <div className={RUN_PANEL_LIST_CLASS}>
+      <InsetSurface className="teams-run-list flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
           <p className={TEAM_MUTED_TEXT_CLASS}>
@@ -106,7 +111,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-notion-border/50 pb-4">
+        <ToolbarRow className="border-b border-notion-border/50 pb-4">
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>
             {runBlockedReason ?? "Start a new run for this team."}
           </span>
@@ -122,9 +127,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           >
             {busy === "create-run" ? "Starting..." : "Start Run"}
           </ActionButton>
-        </div>
+        </ToolbarRow>
 
-        <div className="teams-run-list-head mt-2 flex flex-wrap items-center justify-between gap-3">
+        <ToolbarRow className="teams-run-list-head mt-2">
           <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Runs</h3>
           <div className="actions flex flex-wrap items-center gap-2">
             <NativeSelect
@@ -149,7 +154,7 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </ActionButton>
           </div>
-        </div>
+        </ToolbarRow>
 
         <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
@@ -165,13 +170,9 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
             </p>
           )}
           {visibleRuns.map((run) => (
-            <button
+            <SelectableListItem
               key={run.id}
-              className={
-                run.id === activeRunId
-                  ? TEAM_LIST_ITEM_ACTIVE_CLASS
-                  : TEAM_LIST_ITEM_IDLE_CLASS
-              }
+              active={run.id === activeRunId}
               onClick={() => onActiveRunChange(run.id)}
             >
               <div className="flex w-full items-center justify-between gap-2">
@@ -186,11 +187,11 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
               {run.summary && (
                 <span className={`${TEAM_LIST_ITEM_META_CLASS} line-clamp-1`}>{run.summary}</span>
               )}
-            </button>
+            </SelectableListItem>
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-notion-border/50">
+        <ToolbarRow className="border-t border-notion-border/50 pt-2">
           <span className={RUN_PANEL_FOOT_META_CLASS}>
             {visibleRuns.length} of {totalLoadedRunsForTeam}
           </span>
@@ -204,8 +205,11 @@ export function TeamRunPanel(props: TeamRunPanelProps) {
           >
             {runsLoading ? "..." : "Load More"}
           </ActionButton>
-        </div>
-      </div>
+        </ToolbarRow>
+      </InsetSurface>
     </SurfaceCard>
   );
 }
+
+export const TeamRunPanel = React.memo(TeamRunPanelImpl);
+TeamRunPanel.displayName = "TeamRunPanel";

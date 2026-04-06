@@ -79,4 +79,19 @@ describe("conversation render cache", () => {
     expect(stats.ansiMisses).toBe(1);
     expect(stats.ansiHits).toBe(1);
   });
+
+  it("parses ansi spans when the renderer adds a class attribute", () => {
+    resetAcpConversationCaches();
+    const payload =
+      '<span class="ansi-green" style="color:#00ff00;font-weight:bold">ok</span>';
+    expect(parseAnsiSegmentsCached(payload)).toEqual([
+      {
+        text: "ok",
+        style: {
+          color: "#00ff00",
+          fontWeight: "bold",
+        },
+      },
+    ]);
+  });
 });

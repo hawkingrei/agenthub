@@ -4,9 +4,12 @@ import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { ConversationItem } from "./conversation";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+} from "./test_utils/react_test_helpers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+installReactDomTestGlobals();
 
 function setDetailsOpen(details: HTMLDetailsElement, open: boolean) {
   act(() => {
@@ -28,6 +31,13 @@ function setNativeValue(
     return;
   }
   element.value = value;
+}
+
+function renderConversation(
+  root: Root,
+  props: React.ComponentProps<typeof AcpConversation>
+): void {
+  renderWithMantine(root, <AcpConversation {...props} />);
 }
 
 describe("AcpConversation fold interactions", () => {
@@ -59,25 +69,21 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-        />
-      );
+    renderConversation(root, {
+      items,
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
     });
 
     const toolFold = container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null;
@@ -124,25 +130,21 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-        />
-      );
+    renderConversation(root, {
+      items,
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
     });
 
     const contentFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
@@ -190,25 +192,21 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-        />
-      );
+    renderConversation(root, {
+      items,
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
     });
 
     const contentNode = container.querySelector(".acp-content-markdown") as HTMLDivElement | null;
@@ -243,9 +241,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(<AcpConversation items={firstItems} {...baseProps} />);
-    });
+    renderConversation(root, { items: firstItems, ...baseProps });
 
     const secondItems: ConversationItem[] = [
       {
@@ -261,9 +257,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(<AcpConversation items={secondItems} {...baseProps} />);
-    });
+    renderConversation(root, { items: secondItems, ...baseProps });
 
     const detailedFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
@@ -298,30 +292,22 @@ describe("AcpConversation fold interactions", () => {
       ansi: (input: string) => input,
     };
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          {...baseProps}
-        />
-      );
+    renderConversation(root, {
+      items,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      ...baseProps,
     });
 
     const toolFold = container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null;
     expect(toolFold).not.toBeNull();
     expect(toolFold?.open).toBe(true);
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          shouldAutoCollapse={true}
-          collapseCutoff={10}
-          {...baseProps}
-        />
-      );
+    renderConversation(root, {
+      items,
+      shouldAutoCollapse: true,
+      collapseCutoff: 10,
+      ...baseProps,
     });
 
     const collapsedToolFold = container.querySelector(
@@ -370,26 +356,22 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-          onSubmitRequestUserInput={onSubmitRequestUserInput}
-        />
-      );
+    renderConversation(root, {
+      items,
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
+      onSubmitRequestUserInput,
     });
 
     const firstOption = container.querySelector(
@@ -449,26 +431,22 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={buildItems()}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-          onSubmitRequestUserInput={onSubmitRequestUserInput}
-        />
-      );
+    renderConversation(root, {
+      items: buildItems(),
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
+      onSubmitRequestUserInput,
     });
 
     const textarea = container.querySelector(
@@ -485,26 +463,22 @@ describe("AcpConversation fold interactions", () => {
 
     expect(textarea.value).toBe("Keep this draft");
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={buildItems()}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-          onSubmitRequestUserInput={onSubmitRequestUserInput}
-        />
-      );
+    renderConversation(root, {
+      items: buildItems(),
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
+      onSubmitRequestUserInput,
     });
 
     const rerenderedTextarea = container.querySelector(
@@ -540,26 +514,22 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    act(() => {
-      root.render(
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => input}
-          onSubmitRequestUserInput={onSubmitRequestUserInput}
-        />
-      );
+    renderConversation(root, {
+      items,
+      windowOffset: 0,
+      isFrozenView: false,
+      shouldAutoCollapse: false,
+      collapseCutoff: 0,
+      runStatus: null,
+      virtualTopSpacer: 0,
+      virtualBottomSpacer: 0,
+      stickToBottom: true,
+      pendingCount: 0,
+      avgHeight: 40,
+      onScroll: () => {},
+      containerRef: React.createRef<HTMLDivElement>(),
+      ansi: (input) => input,
+      onSubmitRequestUserInput,
     });
 
     const textarea = container.querySelector(

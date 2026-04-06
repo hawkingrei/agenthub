@@ -1,8 +1,9 @@
+import { UnstyledButton } from "@mantine/core";
 import React, { useState } from "react";
-import { Switch } from "@mantine/core";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
+import { ActionButton } from "../ui/primitives";
 import {
   ADMIN_APP_CLASS,
   ADMIN_CARD_CLASS,
@@ -59,6 +60,43 @@ type AdminProps = {
   passkeyEnabled: boolean | null;
   onPasskeyEnabledChange: (value: boolean) => void;
 };
+
+type AdminToggleFieldProps = {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  description: string;
+  onChange: (value: boolean) => void;
+};
+
+function AdminToggleField({
+  checked,
+  disabled = false,
+  label,
+  description,
+  onChange,
+}: AdminToggleFieldProps) {
+  return (
+    <label
+      className={`flex items-start gap-3 rounded-xl border border-notion-border bg-notion-sidebar/20 px-4 py-3 ${
+        disabled ? "opacity-60" : "cursor-pointer hover:bg-notion-hover/50"
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 rounded border-notion-border text-notion-accent focus:ring-notion-accent/20"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="min-w-0 space-y-1">
+        <span className="block text-sm font-semibold text-notion-text">{label}</span>
+        <span className={ADMIN_MUTED_TEXT_CLASS}>{description}</span>
+      </span>
+    </label>
+  );
+}
+
 export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"
@@ -82,56 +120,58 @@ export function AdminPage(props: AdminProps) {
       <section className={ADMIN_SECTION_CLASS}>
         <div className={ADMIN_TOOLBAR_CLASS}>
           <h2>Admin</h2>
-          <button
+          <ActionButton
+            tone="primary"
+            size="md"
             className={ADMIN_PRIMARY_BUTTON_CLASS}
             onClick={props.onCreateJoin}
           >
             Create Join QR
-          </button>
+          </ActionButton>
         </div>
         <div className={ADMIN_TAB_BAR_CLASS}>
-          <button
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "safe" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("safe")}
           >
             Safe Paths
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "devices" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("devices")}
           >
             Devices
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "audits" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("audits")}
           >
             Login Audits
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "join" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("join")}
           >
             Join Device
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "vapid" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("vapid")}
           >
             VAPID Keys
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "ui" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("ui")}
           >
             UI
-          </button>
-          <button
+          </UnstyledButton>
+          <UnstyledButton
             className={`${ADMIN_TAB_BUTTON_BASE_CLASS} ${tab === "system" ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS}`}
             onClick={() => setTab("system")}
           >
             System
-          </button>
+          </UnstyledButton>
         </div>
 
         <div className="admin-panel">
@@ -145,12 +185,14 @@ export function AdminPage(props: AdminProps) {
                   value={props.safePathInput}
                   onChange={(e) => props.setSafePathInput(e.target.value)}
                 />
-                <button
+                <ActionButton
                   className={ADMIN_PRIMARY_BUTTON_CLASS}
+                  tone="primary"
+                  size="md"
                   onClick={props.onAddSafePath}
                 >
                   Add Path
-                </button>
+                </ActionButton>
               </div>
               <div className={ADMIN_FORM_ROW_CLASS}>
                 <label className="checkbox inline-flex items-center gap-2 text-sm text-slate-700">
@@ -166,12 +208,14 @@ export function AdminPage(props: AdminProps) {
                   />
                   Select All
                 </label>
-                <button
+                <ActionButton
                   className={ADMIN_DANGER_BUTTON_CLASS}
+                  tone="danger"
+                  size="md"
                   onClick={props.onDeleteSelectedSafePaths}
                 >
                   Delete Selected
-                </button>
+                </ActionButton>
               </div>
               <ul className={ADMIN_LIST_CLASS}>
                 {props.safePaths.map((p) => (
@@ -184,12 +228,14 @@ export function AdminPage(props: AdminProps) {
                       />
                     </label>
                     <span className="mono flex-1 text-sm text-slate-800">{p.path}</span>
-                    <button
+                    <ActionButton
                       className={ADMIN_DANGER_BUTTON_CLASS}
+                      tone="danger"
+                      size="md"
                       onClick={() => props.onDeleteSafePath(p.path)}
                     >
                       Delete
-                    </button>
+                    </ActionButton>
                   </li>
                 ))}
               </ul>
@@ -206,12 +252,14 @@ export function AdminPage(props: AdminProps) {
                       {device.name} - {device.status}
                     </span>
                     {device.status === "active" && (
-                      <button
+                      <ActionButton
                         className={ADMIN_DANGER_BUTTON_CLASS}
+                        tone="danger"
+                        size="md"
                         onClick={() => props.onRevokeDevice(device.id)}
                       >
                         Revoke
-                      </button>
+                      </ActionButton>
                     )}
                   </li>
                 ))}
@@ -280,12 +328,14 @@ export function AdminPage(props: AdminProps) {
               )}
               {/* TODO: add copy button and rotate confirmation. */}
               <div className={ADMIN_FORM_ROW_CLASS}>
-                <button
+                <ActionButton
                   className={ADMIN_SECONDARY_BUTTON_CLASS}
+                  tone="secondary"
+                  size="md"
                   onClick={props.onRotateVapid}
                 >
                   Rotate Keys
-                </button>
+                </ActionButton>
               </div>
             </div>
           )}
@@ -293,11 +343,9 @@ export function AdminPage(props: AdminProps) {
             <div className={ADMIN_CARD_CLASS}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>UI Settings</h3>
               <div className="flex flex-col gap-3">
-                <Switch
+                <AdminToggleField
                   checked={props.developerMode}
-                  onChange={(event) =>
-                    props.onDeveloperModeChange(event.currentTarget.checked)
-                  }
+                  onChange={props.onDeveloperModeChange}
                   label="Developer Mode"
                   description="Applies to this browser only. Affects Agents and Teams."
                 />
@@ -312,12 +360,10 @@ export function AdminPage(props: AdminProps) {
             <div className={ADMIN_CARD_CLASS}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>System Configuration</h3>
               <div className="flex flex-col gap-3">
-                <Switch
+                <AdminToggleField
                   checked={props.passkeyEnabled ?? false}
                   disabled={props.passkeyEnabled === null}
-                  onChange={(event) =>
-                    props.onPasskeyEnabledChange(event.currentTarget.checked)
-                  }
+                  onChange={props.onPasskeyEnabledChange}
                   label="Enable Passkey"
                   description={
                     props.passkeyEnabled === null

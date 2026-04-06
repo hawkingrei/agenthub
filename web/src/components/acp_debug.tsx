@@ -1,8 +1,9 @@
+import { NativeSelect, TextInput, UnstyledButton } from "@mantine/core";
 import React from "react";
 import { AcpConfigOption, AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
 import { OutputLine } from "../output_cache";
-import { TerminalOutput } from "./terminal_output";
+import { ActionButton, ToolbarRow, cx } from "../ui/primitives";
 import {
   ACP_DEBUG_EMPTY_CLASS,
   ACP_DEBUG_PERMISSION_SUBMETA_CLASS,
@@ -12,6 +13,7 @@ import {
   ACP_DEBUG_ROOT_CLASS,
   ACP_DEBUG_SECTION_CLASS,
   ACP_DEBUG_TABS_CLASS,
+  ACP_TAB_BUTTON_BASE_CLASS,
   ACP_TAB_BUTTON_ACTIVE_CLASS,
   ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
@@ -75,8 +77,14 @@ type AcpDebugProps = {
 };
 
 const COPIED_STATE_RESET_DELAY_MS = 1600;
+const DEBUG_TERMINAL_CONTAINER_CLASS =
+  "terminal flex-1 min-h-0 overflow-auto rounded-lg border border-notion-border bg-brand-primary p-3 font-mono text-[12px] leading-relaxed text-white shadow-inner";
+const DEBUG_TERMINAL_LINE_BASE_CLASS = "line break-words whitespace-pre-wrap";
+const DEBUG_TERMINAL_STDOUT_CLASS = "text-white";
+const DEBUG_TERMINAL_STDERR_CLASS = "text-red-300";
+const DEBUG_TERMINAL_SYSTEM_CLASS = "text-cyan-300";
 
-export function AcpDebug({
+function AcpDebugView({
   terminalOutputs,
   ansi,
   terminalRef,
@@ -129,13 +137,16 @@ export function AcpDebug({
     ? Math.round((runtimeMetrics.ansiCacheHits / ansiTotal) * 100)
     : 0;
   const debugTabClassName = (isActive: boolean) =>
-    `acp-debug-tab ${isActive ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS}`;
-  const debugInputClassName =
-    "w-full rounded-md border border-notion-border bg-white px-3 py-1.5 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
-  const debugSecondaryButtonClassName =
-    "inline-flex h-8 items-center justify-center rounded-md border border-notion-border bg-white px-3 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover disabled:cursor-not-allowed disabled:opacity-60 active:translate-y-px";
-  const debugPrimaryButtonClassName =
-    "inline-flex h-8 items-center justify-center rounded-md bg-notion-accent px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:cursor-not-allowed disabled:opacity-60 active:translate-y-px";
+    cx(
+      "acp-debug-tab",
+      ACP_TAB_BUTTON_BASE_CLASS,
+      isActive ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS
+    );
+  const debugInputClassNames = {
+    root: "w-full",
+    input:
+      "rounded-md border border-notion-border bg-white px-3 py-1.5 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10",
+  } as const;
   const modeConfigOption = React.useMemo(
     () => configOptions.find((option) => option.id === "mode") ?? null,
     [configOptions]
@@ -205,40 +216,45 @@ export function AcpDebug({
   return (
     <div className={ACP_DEBUG_ROOT_CLASS}>
       <div className={ACP_DEBUG_TABS_CLASS}>
-        <button
+        <UnstyledButton
           className={debugTabClassName(tab === "terminal")}
+          type="button"
           onClick={() => setTab("terminal")}
         >
           Terminal
-        </button>
-        <button
+        </UnstyledButton>
+        <UnstyledButton
           className={debugTabClassName(tab === "session")}
+          type="button"
           onClick={() => setTab("session")}
         >
           Session Controls
-        </button>
-        <button
+        </UnstyledButton>
+        <UnstyledButton
           className={debugTabClassName(tab === "runtime")}
+          type="button"
           onClick={() => setTab("runtime")}
         >
           Runtime
-        </button>
-        <button
+        </UnstyledButton>
+        <UnstyledButton
           className={debugTabClassName(tab === "permissions")}
+          type="button"
           onClick={() => setTab("permissions")}
         >
           Permissions
-        </button>
-        <button
+        </UnstyledButton>
+        <UnstyledButton
           className={debugTabClassName(tab === "raw")}
+          type="button"
           onClick={() => setTab("raw")}
         >
           Raw Events
-        </button>
+        </UnstyledButton>
       </div>
       {tab === "terminal" && (
         <div className={`acp-terminal-wrapper ${ACP_DEBUG_SECTION_CLASS}`}>
-          <div className="flex items-center justify-between gap-2">
+          <ToolbarRow className="items-start">
             <div className="min-w-0">
               <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Terminal</h4>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-notion-text-muted">
@@ -249,39 +265,41 @@ export function AcpDebug({
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <div className="flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-md border border-notion-border">
-                <button
+                <UnstyledButton
                   className={debugTabClassName(terminalFilter === "all")}
                   type="button"
                   onClick={() => setTerminalFilter("all")}
                 >
                   All
-                </button>
-                <button
+                </UnstyledButton>
+                <UnstyledButton
                   className={debugTabClassName(terminalFilter === "stderr")}
                   type="button"
                   onClick={() => setTerminalFilter("stderr")}
                 >
                   Stderr
-                </button>
-                <button
+                </UnstyledButton>
+                <UnstyledButton
                   className={debugTabClassName(terminalFilter === "system")}
                   type="button"
                   onClick={() => setTerminalFilter("system")}
                 >
                   System
-                </button>
+                </UnstyledButton>
               </div>
               {showTerminalJump ? (
-                <button
-                  className={debugSecondaryButtonClassName}
+                <ActionButton
+                  className="whitespace-nowrap"
+                  size="sm"
+                  tone="secondary"
                   type="button"
                   onClick={onJumpToTerminalBottom}
                 >
                   Jump to latest
-                </button>
+                </ActionButton>
               ) : null}
             </div>
-          </div>
+          </ToolbarRow>
           {terminalOutputs.length === 0 ? (
             <div className={ACP_DEBUG_EMPTY_CLASS}>No terminal output yet.</div>
           ) : filteredTerminalOutputs.length === 0 ? (
@@ -290,7 +308,7 @@ export function AcpDebug({
             </div>
           ) : (
             <div className="h-[420px] min-h-[220px]">
-              <TerminalOutput
+              <DebugTerminalOutput
                 outputs={filteredTerminalOutputs}
                 ansi={ansi}
                 containerRef={terminalRef}
@@ -306,96 +324,118 @@ export function AcpDebug({
           <div className="acp-control-meta text-[13px] text-notion-text-muted italic">
             Current mode: {currentMode ?? "unknown"}
           </div>
-          <div className="form-row flex flex-col gap-2 sm:flex-row">
+          <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             {modeConfigOption?.selectOptions.length ? (
-              <select
+              <NativeSelect
                 aria-label="ACP mode"
-                className={debugInputClassName}
+                classNames={debugInputClassNames}
+                className="w-full"
                 name="acp-mode"
                 value={resolvedModeId}
-                onChange={(e) => onAcpModeIdChange(e.target.value)}
+                data={modeConfigOption.selectOptions.map((option) => ({
+                  value: option.valueId,
+                  label: option.label,
+                }))}
+                onChange={(e) => onAcpModeIdChange(e.currentTarget.value)}
+                radius="md"
+                size="sm"
               >
-                {modeConfigOption.selectOptions.map((option) => (
-                  <option key={option.valueId} value={option.valueId}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              </NativeSelect>
             ) : (
-              <input
+              <TextInput
                 aria-label="ACP mode"
-                className={debugInputClassName}
+                classNames={debugInputClassNames}
                 name="acp-mode"
                 placeholder="Mode ID"
                 value={resolvedModeId}
-                onChange={(e) => onAcpModeIdChange(e.target.value)}
+                onChange={(e) => onAcpModeIdChange(e.currentTarget.value)}
+                radius="md"
+                size="sm"
               />
             )}
-            <button
-              className={debugSecondaryButtonClassName}
+            <ActionButton
+              className="whitespace-nowrap"
+              size="sm"
+              tone="secondary"
               onClick={() => onAcpSetMode(resolvedModeId)}
               disabled={!canApplyMode || !resolvedModeId}
             >
               Set Mode
-            </button>
+            </ActionButton>
           </div>
-          <div className="form-row flex flex-col gap-2 sm:flex-row">
+          <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             {modelConfigOption?.selectOptions.length ? (
-              <select
+              <NativeSelect
                 aria-label="ACP model"
-                className={debugInputClassName}
+                classNames={debugInputClassNames}
+                className="w-full"
                 name="acp-model"
                 value={resolvedModelId}
-                onChange={(e) => onAcpModelIdChange(e.target.value)}
+                data={modelConfigOption.selectOptions.map((option) => ({
+                  value: option.valueId,
+                  label: option.label,
+                }))}
+                onChange={(e) => onAcpModelIdChange(e.currentTarget.value)}
+                radius="md"
+                size="sm"
               >
-                {modelConfigOption.selectOptions.map((option) => (
-                  <option key={option.valueId} value={option.valueId}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              </NativeSelect>
             ) : (
-              <input
+              <TextInput
                 aria-label="ACP model"
-                className={debugInputClassName}
+                classNames={debugInputClassNames}
                 name="acp-model"
                 placeholder="Model ID"
                 value={resolvedModelId}
-                onChange={(e) => onAcpModelIdChange(e.target.value)}
+                onChange={(e) => onAcpModelIdChange(e.currentTarget.value)}
+                radius="md"
+                size="sm"
               />
             )}
-            <button
-              className={debugSecondaryButtonClassName}
+            <ActionButton
+              className="whitespace-nowrap"
+              size="sm"
+              tone="secondary"
               onClick={() => onAcpSetModel(resolvedModelId)}
               disabled={!canApplyModel || !resolvedModelId}
             >
               Set Model
-            </button>
+            </ActionButton>
           </div>
           <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <input
-              className={debugInputClassName}
+            <TextInput
+              classNames={debugInputClassNames}
               placeholder="Config ID"
               value={acpConfigId}
-              onChange={(e) => onAcpConfigIdChange(e.target.value)}
+              onChange={(e) => onAcpConfigIdChange(e.currentTarget.value)}
+              radius="md"
+              size="sm"
             />
-            <input
-              className={debugInputClassName}
+            <TextInput
+              classNames={debugInputClassNames}
               placeholder="Config Value ID"
               value={acpConfigValue}
-              onChange={(e) => onAcpConfigValueChange(e.target.value)}
+              onChange={(e) => onAcpConfigValueChange(e.currentTarget.value)}
+              radius="md"
+              size="sm"
             />
-            <button className={debugSecondaryButtonClassName} onClick={onAcpSetConfig} disabled={!canApplyConfig}>
+            <ActionButton
+              className="whitespace-nowrap"
+              size="sm"
+              tone="secondary"
+              onClick={onAcpSetConfig}
+              disabled={!canApplyConfig}
+            >
               Set Config
-            </button>
+            </ActionButton>
           </div>
           <div className="form-row flex flex-wrap gap-2">
-            <button className={debugPrimaryButtonClassName} onClick={onAcpCancel} disabled={!canCancel}>
+            <ActionButton tone="primary" size="sm" onClick={onAcpCancel} disabled={!canCancel}>
               Cancel Run
-            </button>
-            <button className={debugSecondaryButtonClassName} onClick={onAcpClearSession} disabled={!canClear}>
+            </ActionButton>
+            <ActionButton tone="secondary" size="sm" onClick={onAcpClearSession} disabled={!canClear}>
               {acpClearSessionLabel ?? "Clear Session"}
-            </button>
+            </ActionButton>
           </div>
         </div>
       )}
@@ -469,7 +509,7 @@ export function AcpDebug({
             return (
               <div key={permission.id} className="acp-permission rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
                 <div className="head flex items-start justify-between gap-2">
-                  <button
+                  <UnstyledButton
                     className={ACP_DEBUG_PERMISSION_TOGGLE_CLASS}
                     type="button"
                     onClick={() => onJumpToPermissionHistory(permission)}
@@ -479,14 +519,16 @@ export function AcpDebug({
                       {derivePermissionTitle(permission, toolCall)}
                     </span>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-notion-text-muted">{permission.status}</span>
-                  </button>
-                  <button
-                    className={`acp-permission-copy ${debugSecondaryButtonClassName}`}
+                  </UnstyledButton>
+                  <ActionButton
+                    className="acp-permission-copy"
+                    size="sm"
+                    tone="secondary"
                     type="button"
                     onClick={() => void handleCopyPermission(permission)}
                   >
                     {copied ? "Copied" : "Copy"}
-                  </button>
+                  </ActionButton>
                 </div>
                 <div className={ACP_DEBUG_PERMISSION_SUBMETA_CLASS}>
                   <span className="mono">{permission.id}</span>
@@ -529,6 +571,9 @@ export function AcpDebug({
     </div>
   );
 }
+
+export const AcpDebug = React.memo(AcpDebugView);
+AcpDebug.displayName = "AcpDebug";
 
 export type PermissionToolCall = {
   title?: string;
@@ -575,6 +620,42 @@ export function buildPermissionCopyText(permission: AcpPermissionRecord): string
 
 function formatPermissionTimestamp(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
+}
+
+function DebugTerminalOutput({
+  outputs,
+  ansi,
+  containerRef,
+  onScroll,
+}: {
+  outputs: OutputLine[];
+  ansi: (input: string) => string;
+  containerRef?: React.RefObject<HTMLDivElement>;
+  onScroll?: () => void;
+}) {
+  return (
+    <div
+      className={DEBUG_TERMINAL_CONTAINER_CLASS}
+      ref={containerRef}
+      onScroll={onScroll}
+    >
+      {outputs.map((line) => {
+        const toneClass =
+          line.stream === "stderr"
+            ? DEBUG_TERMINAL_STDERR_CLASS
+            : line.stream === "system"
+              ? DEBUG_TERMINAL_SYSTEM_CLASS
+              : DEBUG_TERMINAL_STDOUT_CLASS;
+        return (
+          <div
+            key={`id-${line.event_id}`}
+            className={`${DEBUG_TERMINAL_LINE_BASE_CLASS} ${line.stream} ${toneClass}`}
+            dangerouslySetInnerHTML={{ __html: ansi(line.message) }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {

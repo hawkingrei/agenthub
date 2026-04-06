@@ -4,11 +4,8 @@ import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
 
 import type { AgentNodeRecord } from "../api";
-import {
-  AgentNodeSection,
-  validateAgentNodeDraft,
-  validateAgentNodeUpdateDraft,
-} from "./agent_node_section";
+import { AgentNodeSection } from "./agent_node_section";
+import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
 
 const baseNodes: AgentNodeRecord[] = [
   {

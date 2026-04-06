@@ -2,6 +2,10 @@
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+} from "../test_utils/react_test_helpers";
 
 const { joinStart, joinFinish, ensurePushSubscription } = vi.hoisted(() => ({
   joinStart: vi.fn(),
@@ -47,8 +51,7 @@ vi.mock("../storage/safe_storage", () => ({
 
 import { JoinPage } from "./join_page";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+installReactDomTestGlobals();
 
 function clickByText(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll("button")).find((node) =>
@@ -88,7 +91,7 @@ describe("JoinPage error handling", () => {
     joinStart.mockRejectedValueOnce(new Error("{\"error\":\"user not found\"}"));
 
     await act(async () => {
-      root.render(<JoinPage onComplete={() => {}} />);
+      renderWithMantine(root, <JoinPage onComplete={() => {}} />);
       await Promise.resolve();
     });
 
@@ -111,7 +114,7 @@ describe("JoinPage error handling", () => {
     });
 
     await act(async () => {
-      root.render(<JoinPage onComplete={onComplete} />);
+      renderWithMantine(root, <JoinPage onComplete={onComplete} />);
       await Promise.resolve();
     });
 

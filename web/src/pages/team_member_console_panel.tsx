@@ -7,19 +7,15 @@ import {
   TeamRunSnapshotRecord,
   getTeamStepRuntimeHandleId,
 } from "../api";
+import { ActionButton, SurfaceCard, ToolbarRow } from "../ui/primitives";
 import {
   resolveDisplayName,
 } from "./team/mailbox_helpers";
 import {
-  TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_INPUT_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
-  TEAM_PANEL_REFRESH_BUTTON_CLASS,
-  TEAM_PANEL_SECONDARY_BUTTON_CLASS,
   TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
 type TeamMemberConsolePanelProps = {
@@ -64,7 +60,7 @@ const MEMBER_CONSOLE_PROMPT_DETAILS_CLASS = "rounded-lg border border-ui-border 
 const MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS =
   "cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
 
-export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
+function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
   const {
     snapshot,
     selectedMemberId,
@@ -99,23 +95,26 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
   }, [selectedMemberSnapshot?.skills]);
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS} data-team-panel="member-console">
-      <div className={TEAM_PANEL_TOOLBAR_CLASS}>
+    <SurfaceCard className="p-4" data-team-panel="member-console">
+      <ToolbarRow>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Console</h3>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <button
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={() => {
               void onRefresh();
             }}
             disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            className={TEAM_PANEL_REFRESH_BUTTON_CLASS}
             title="Refresh member console"
             aria-label="Refresh member console"
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             <span>Refresh</span>
-          </button>
-          <button
+          </ActionButton>
+          <ActionButton
+            tone="secondary"
+            size="sm"
             onClick={() => {
               void onLoadOlder();
             }}
@@ -125,12 +124,11 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
               !memberEventsHasMore ||
               oldestMemberEventId == null
             }
-            className={TEAM_PANEL_SECONDARY_BUTTON_CLASS}
           >
             Load Older
-          </button>
+          </ActionButton>
         </div>
-      </div>
+      </ToolbarRow>
 
       <div className="form-row">
         <select
@@ -321,6 +319,9 @@ export function TeamMemberConsolePanel(props: TeamMemberConsolePanelProps) {
           ))}
         </ul>
       )}
-    </div>
+    </SurfaceCard>
   );
 }
+
+export const TeamMemberConsolePanel = React.memo(TeamMemberConsolePanelImpl);
+TeamMemberConsolePanel.displayName = "TeamMemberConsolePanel";

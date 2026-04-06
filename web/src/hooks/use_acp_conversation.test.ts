@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ConversationItem } from "../conversation";
 import {
+  AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS,
   buildConversationTailKey,
   buildVirtualConversationSlice,
   deriveConversationStickToBottom,
@@ -341,6 +342,7 @@ describe("conversation helper decisions", () => {
   });
 
   it("derives auto-load eligibility for short conversation windows", () => {
+    expect(AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS).toBe(1200);
     expect(shouldAutoLoadConversationHistory("debug", "agent-1", true, 2)).toBe(false);
     expect(shouldAutoLoadConversationHistory("conversation", null, true, 2)).toBe(false);
     expect(

@@ -10,7 +10,9 @@ const {
   getTeamPromptDefaults,
   getTeamRuntime,
   getTeamSharedThread,
+  getTeamTask,
   listTeamTasks,
+  teamActionsOptionsSpy,
   teamConversationActionsOptionsSpy,
   teamPageFixture,
   useMediaQueryMock,
@@ -27,7 +29,9 @@ const {
     members: [],
   }),
   getTeamSharedThread: vi.fn(),
+  getTeamTask: vi.fn(),
   listTeamTasks: vi.fn().mockResolvedValue([]),
+  teamActionsOptionsSpy: vi.fn(),
   teamConversationActionsOptionsSpy: vi.fn(),
   useMediaQueryMock: vi.fn(() => false),
   teamPageFixture: {
@@ -50,6 +54,7 @@ vi.mock("../api", async () => {
       getTeamPromptDefaults,
       getTeamRuntime,
       getTeamSharedThread,
+      getTeamTask,
       listTeamTasks,
     },
   };
@@ -59,7 +64,9 @@ vi.mock("./team/use_team_actions", () => ({
   useTeamActions: (options: {
     setTeams: React.Dispatch<React.SetStateAction<Array<Record<string, unknown>>>>;
     setAgents: React.Dispatch<React.SetStateAction<Array<Record<string, unknown>>>>;
+    onTeamsRefreshSettled?: () => void;
   }) => {
+    teamActionsOptionsSpy(options);
     const { setTeams, setAgents } = options;
     React.useEffect(() => {
       setTeams(teamPageFixture.teams);
@@ -126,12 +133,12 @@ vi.mock("./team/use_team_runtime_effects", () => ({
 vi.mock("./team/use_team_conversation_actions", () => ({
   useTeamConversationActions: (options: {
     selectedConversation: unknown;
-    latestRunForSharedConversation: unknown;
+    selectedConversationLatestRun: unknown;
     selectedTeamId: string | null;
   }) => {
     teamConversationActionsOptionsSpy({
       selectedConversation: options.selectedConversation,
-      latestRunForSharedConversation: options.latestRunForSharedConversation,
+      selectedConversationLatestRun: options.selectedConversationLatestRun,
       selectedTeamId: options.selectedTeamId,
     });
     return {
@@ -200,7 +207,9 @@ describe("TeamPage smoke render", () => {
     getTeamPromptDefaults.mockClear();
     getTeamRuntime.mockClear();
     getTeamSharedThread.mockClear();
+    getTeamTask.mockClear();
     listTeamTasks.mockClear();
+    teamActionsOptionsSpy.mockClear();
     teamConversationActionsOptionsSpy.mockClear();
     useMediaQueryMock.mockReset();
     useMediaQueryMock.mockReturnValue(false);
@@ -259,6 +268,44 @@ describe("TeamPage smoke render", () => {
 
     expect(markup).toContain("Loading team workspace");
     expect(markup).not.toContain("This team is unavailable");
+  });
+
+  it("reuses app-provided worktree defaults without refetching runtime defaults", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+              defaultWorktreeRoot="/srv/team-worktrees"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(getRuntimeDefaults).not.toHaveBeenCalled();
+      expect(getTeamPromptDefaults).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await flushEffects();
+      });
+      container.remove();
+    }
   });
 
   it("renders team detail content immediately when routing from selector to an already-loaded team", async () => {
@@ -438,6 +485,81 @@ describe("TeamPage smoke render", () => {
     }
   });
 
+  it("passes a stable teams-refresh settled callback across rerenders", async () => {
+    teamPageFixture.teams = [
+      {
+        id: "team-1",
+        name: "Team One",
+        description: "Mission",
+        spec: {
+          spec_version: 1,
+          leader_member_id: "leader",
+          entrypoint: "leader_plan",
+          steps: [],
+          members: [],
+        },
+        created_at: 1,
+        updated_at: 1,
+      },
+    ];
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+      });
+
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+      });
+
+      const settledCallbacks = teamActionsOptionsSpy.mock.calls
+        .map((call) => call[0]?.onTeamsRefreshSettled)
+        .filter((value): value is () => void => typeof value === "function");
+
+      expect(settledCallbacks.length).toBeGreaterThan(1);
+      expect(new Set(settledCallbacks).size).toBe(1);
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("ignores stale shared-thread responses after switching teams", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
@@ -564,12 +686,12 @@ describe("TeamPage smoke render", () => {
 
       const afterTeamTwo = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
         selectedConversation?: { id?: string };
-        latestRunForSharedConversation?: { id?: string };
+        selectedConversationLatestRun?: { id?: string };
         selectedTeamId?: string | null;
       };
       expect(afterTeamTwo.selectedTeamId).toBe("team-2");
       expect(afterTeamTwo.selectedConversation?.id).toBe("task-team-2");
-      expect(afterTeamTwo.latestRunForSharedConversation?.id).toBe("run-team-2");
+      expect(afterTeamTwo.selectedConversationLatestRun?.id).toBe("run-team-2");
 
       await act(async () => {
         teamOneRequest.resolve(buildSharedThreadDetail("team-1", "task-team-1", "run-team-1"));
@@ -578,12 +700,12 @@ describe("TeamPage smoke render", () => {
 
       const finalOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
         selectedConversation?: { id?: string };
-        latestRunForSharedConversation?: { id?: string };
+        selectedConversationLatestRun?: { id?: string };
         selectedTeamId?: string | null;
       };
       expect(finalOptions.selectedTeamId).toBe("team-2");
       expect(finalOptions.selectedConversation?.id).toBe("task-team-2");
-      expect(finalOptions.latestRunForSharedConversation?.id).toBe("run-team-2");
+      expect(finalOptions.selectedConversationLatestRun?.id).toBe("run-team-2");
     } finally {
       act(() => {
         root.unmount();
@@ -954,6 +1076,143 @@ describe("TeamPage smoke render", () => {
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
       expect(container.querySelector('[aria-label="Show workbench"]')).toBeNull();
       expect(container.textContent).toContain("Canonical Kanban");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  }, 10_000);
+
+  it("switches the conversation stream target when opening a task thread from Kanban", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+    listTeamTasks.mockResolvedValue([
+      {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "leader",
+        assigned_member_id: "leader",
+        context: { owner: "leader" },
+        created_at: 1,
+        updated_at: 2,
+      },
+    ]);
+    getTeamTask.mockResolvedValue({
+      task: {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "leader",
+        assigned_member_id: "leader",
+        context: { owner: "leader" },
+        created_at: 1,
+        updated_at: 2,
+      },
+      conversation: {
+        id: "conv-task-work",
+        team_id: "team-1",
+        task_id: "task-work",
+        mode: "group_chat",
+        topic: "Investigate regression",
+        created_at: 1,
+        updated_at: 2,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const kanbanButtons = Array.from(container.querySelectorAll("button")).filter(
+        (button) => button.textContent?.includes("Kanban")
+      ) as HTMLButtonElement[];
+      expect(kanbanButtons.length).toBeGreaterThan(0);
+
+      await act(async () => {
+        kanbanButtons[0]?.click();
+        await Promise.resolve();
+      });
+
+      const openThreadButton = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Open thread")
+      ) as HTMLButtonElement | undefined;
+      expect(openThreadButton).toBeDefined();
+
+      await act(async () => {
+        openThreadButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const lastOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+        selectedConversation?: { id?: string };
+      };
+      expect(lastOptions.selectedConversation?.id).toBe("task-work");
+      expect(getTeamTask).toHaveBeenCalledWith("token", "team-1", "task-work");
     } finally {
       act(() => {
         root.unmount();

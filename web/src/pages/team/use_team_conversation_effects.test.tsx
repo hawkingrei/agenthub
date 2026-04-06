@@ -117,8 +117,9 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledWith("task-all");
   });
 
-  it("polls the shared thread while the conversation tab is active", async () => {
+  it("polls the shared thread when EventSource is unavailable", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
     const params = createParams({
       eventsAutoRefresh: true,
     });
@@ -139,6 +140,69 @@ describe("useTeamConversationEffects", () => {
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
+  });
+
+  it("does not poll while the shared-thread SSE connection is still connecting", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
+  });
+
+  it("turns fallback polling off immediately after leaving the conversation tab", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const callsAfterMount = (
+      params.refreshTaskMessages as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            ...params,
+            tab: "debug",
+          }}
+        />
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterMount);
   });
 
   it("refreshes the shared thread when a matching sse message arrives", async () => {
@@ -172,7 +236,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
   });
 
-  it("keeps polling while the sse connection is open as a fallback", async () => {
+  it("stops polling once the sse connection is open", async () => {
     vi.useFakeTimers();
     const params = createParams({
       eventsAutoRefresh: true,
@@ -190,11 +254,89 @@ describe("useTeamConversationEffects", () => {
 
     await act(async () => {
       source.emitOpen();
+      await Promise.resolve();
+    });
+
+    const callsAfterOpen = (
+      params.refreshTaskMessages as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(callsAfterOpen).toBe(baseCalls);
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterOpen);
+  });
+
+  it("resumes polling after the sse connection drops", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      source.emitOpen();
+      source.emitError();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
       vi.advanceTimersByTime(4000);
       await Promise.resolve();
     });
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+  });
+
+  it("does not re-enable polling after reconnect when auto refresh is turned off", async () => {
+    vi.useFakeTimers();
+    const refreshTaskMessages = vi.fn().mockResolvedValue(undefined);
+    let params = createParams({
+      eventsAutoRefresh: true,
+      refreshTaskMessages,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+
+    params = createParams({
+      eventsAutoRefresh: false,
+      refreshTaskMessages,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = refreshTaskMessages.mock.calls.length;
+
+    await act(async () => {
+      source.emitError();
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
   it("reports sse state transitions to the caller", async () => {
@@ -280,7 +422,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
-  it("refreshes the shared thread immediately when the page regains focus, visibility, or network", async () => {
+  it("refreshes the shared thread immediately on resume signals after fallback polling is active", async () => {
     const params = createParams({
       eventsAutoRefresh: true,
     });
@@ -289,6 +431,11 @@ describe("useTeamConversationEffects", () => {
       root.render(<HookHarness params={params} />);
     });
     await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      MockEventSource.instances[0].emitError();
       await Promise.resolve();
     });
 

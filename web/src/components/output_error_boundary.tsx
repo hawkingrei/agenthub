@@ -1,4 +1,5 @@
 import React from "react";
+import { ActionButton } from "../ui/primitives";
 
 type OutputErrorBoundaryProps = {
   children: React.ReactNode;
@@ -13,9 +14,6 @@ const OUTPUT_ERROR_FALLBACK_BODY_CLASS =
   "output-body rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm backdrop-blur";
 const OUTPUT_ERROR_FALLBACK_CARD_CLASS =
   "output-error mx-auto my-6 flex max-w-md flex-col items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/70 p-4 text-rose-900";
-const OUTPUT_ERROR_RETRY_BUTTON_CLASS =
-  "ghost rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:border-rose-400";
-
 export class OutputErrorBoundary extends React.Component<
   OutputErrorBoundaryProps,
   OutputErrorBoundaryState
@@ -44,9 +42,14 @@ export class OutputErrorBoundary extends React.Component<
         <div className={OUTPUT_ERROR_FALLBACK_CARD_CLASS}>
           <div className="title">Output failed to render</div>
           <div className="meta">Retry rendering the latest output.</div>
-          <button className={OUTPUT_ERROR_RETRY_BUTTON_CLASS} onClick={this.handleReset}>
+          <ActionButton
+            tone="danger"
+            size="sm"
+            className="border-rose-300 bg-white text-rose-700 hover:border-rose-400 hover:bg-rose-50"
+            onClick={this.handleReset}
+          >
             Retry
-          </button>
+          </ActionButton>
         </div>
       </div>
     );

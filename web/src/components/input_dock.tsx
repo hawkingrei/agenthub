@@ -1,3 +1,4 @@
+import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
@@ -9,6 +10,7 @@ import {
   INPUT_DOCK_SEND_BUTTON_CLASS,
   INPUT_DOCK_TEXTAREA_CLASS,
 } from "../ui/tailwind_classes";
+import { isImeComposing } from "../input_ime";
 
 type InputDockProps = {
   input: string;
@@ -16,6 +18,7 @@ type InputDockProps = {
   showInterrupt: boolean;
   canInterrupt: boolean;
   sendDisabled?: boolean;
+  onHeightChange?: (height: number) => void;
   onInputChange: (value: string) => void;
   onSendInput: () => void;
   onInterrupt: () => void;
@@ -53,14 +56,6 @@ type InputDockOutsideCloseDocument = Pick<
   Document,
   "addEventListener" | "removeEventListener"
 >;
-
-export function isImeComposing(
-  currentRefState: boolean,
-  nativeIsComposing: boolean,
-  nativeKeyCode?: number
-): boolean {
-  return currentRefState || nativeIsComposing || nativeKeyCode === 229;
-}
 
 export function shouldCloseHistoryFromPointerTarget(
   target: EventTarget | null,
@@ -234,6 +229,7 @@ export function InputDock({
   showInterrupt,
   canInterrupt,
   sendDisabled = false,
+  onHeightChange,
   onInputChange,
   onSendInput,
   onInterrupt,
@@ -249,9 +245,27 @@ export function InputDock({
   const historyContainerRef = React.useRef<HTMLDivElement | null>(null);
   const inputDockRef = React.useRef<HTMLDivElement | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const lastReportedHeightRef = React.useRef<number | null>(null);
   const visibleHistory = historyCommands.slice(0, 12);
   const mobileInputViewport = useMobileInputViewport();
   const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
+
+  const reportDockHeight = React.useCallback(() => {
+    if (!onHeightChange) return;
+    const dockElement = inputDockRef.current;
+    const nextHeight = dockElement
+      ? Math.max(0, Math.ceil(dockElement.getBoundingClientRect().height))
+      : 0;
+    if (lastReportedHeightRef.current === nextHeight) {
+      return;
+    }
+    lastReportedHeightRef.current = nextHeight;
+    onHeightChange(nextHeight);
+  }, [onHeightChange]);
+
+  React.useEffect(() => {
+    lastReportedHeightRef.current = null;
+  }, [onHeightChange]);
 
   const ensureInputVisible = React.useCallback(() => {
     if (!mobileInputViewport) return;
@@ -327,20 +341,38 @@ export function InputDock({
     });
   }, [showHistory]);
 
+  React.useEffect(() => {
+    if (!onHeightChange) return;
+    reportDockHeight();
+    const dockElement = inputDockRef.current;
+    if (!dockElement || typeof ResizeObserver !== "function") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      reportDockHeight();
+    });
+    observer.observe(dockElement);
+    return () => {
+      observer.disconnect();
+    };
+  }, [onHeightChange, reportDockHeight]);
+
   return (
     <div
       className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      data-acp-input-dock="true"
       ref={inputDockRef}
     >
       {showConversationJump && (
-        <button
+        <UnstyledButton
+          type="button"
           className={`${ACP_JUMP_BOTTOM_BUTTON_CLASS} bottom-[calc(100%+0.75rem)] right-0`}
           onClick={onJumpToBottom}
           title="Jump to bottom"
           aria-label="Jump to bottom"
         >
           <i className="bi bi-chevron-down" aria-hidden="true" />
-        </button>
+        </UnstyledButton>
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
         <div
@@ -351,7 +383,8 @@ export function InputDock({
         >
           <div className="flex min-w-0 flex-wrap items-center gap-2">
           {showInterrupt && (
-            <button
+            <UnstyledButton
+              type="button"
               className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
               onClick={onInterrupt}
               disabled={!canInterrupt}
@@ -359,11 +392,12 @@ export function InputDock({
               aria-label="Interrupt current run"
             >
               Interrupt
-            </button>
+            </UnstyledButton>
           )}
           {historyCommands.length > 0 && (
             <div className="input-history relative" ref={historyContainerRef}>
-              <button
+              <UnstyledButton
+                type="button"
                 className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
                 onClick={() => setShowHistory((prev) => !prev)}
                 title="Show sent command history"
@@ -383,12 +417,13 @@ export function InputDock({
                 >
                   ▾
                 </span>
-              </button>
+              </UnstyledButton>
               {showHistory && (
                 <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
                   {visibleHistory.map((item, idx) => (
-                    <button
+                    <UnstyledButton
                       key={`${idx}-${item}`}
+                      type="button"
                       className={INPUT_DOCK_HISTORY_ITEM_CLASS}
                       title={item}
                       onClick={() => {
@@ -397,7 +432,7 @@ export function InputDock({
                       }}
                     >
                       {item}
-                    </button>
+                    </UnstyledButton>
                   ))}
                 </div>
               )}
@@ -473,14 +508,15 @@ export function InputDock({
             }}
             rows={2}
           />
-          <button
+          <UnstyledButton
+            type="button"
             className={INPUT_DOCK_SEND_BUTTON_CLASS}
             onClick={onSendInput}
             disabled={sendDisabled}
             aria-label="Send input"
           >
             Send
-          </button>
+          </UnstyledButton>
         </div>
       </div>
     </div>

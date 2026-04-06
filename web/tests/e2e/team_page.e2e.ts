@@ -566,18 +566,41 @@ async function openMainTeamAction(
     return;
   }
 
+  const workflowTabButton = page
+    .locator('[data-team-surface="workflow-tabs"]')
+    .getByRole("button", { name: label, exact: true })
+    .first();
+  if ((await workflowTabButton.count()) > 0) {
+    await expect(workflowTabButton).toBeVisible();
+    await workflowTabButton.click();
+    return;
+  }
+
   const moreTrigger = page
     .getByRole("button", { name: "Open more workspace actions" })
     .first();
   if ((await moreTrigger.count()) > 0) {
     await expect(moreTrigger).toBeVisible();
     await moreTrigger.click();
-    const menuItem = page.getByRole("menuitem", { name: label, exact: true });
-    if ((await menuItem.count()) > 0) {
+    const menuItem = page.getByRole("menuitem", { name: label, exact: true }).first();
+    const menuItemVisible =
+      (await menuItem.count()) > 0 &&
+      (await menuItem.isVisible().catch(() => false));
+    if (menuItemVisible) {
       await expect(menuItem).toBeVisible();
       await menuItem.click();
       return;
     }
+    await page.waitForTimeout(150);
+    const menuItemVisibleAfterTick =
+      (await menuItem.count()) > 0 &&
+      (await menuItem.isVisible().catch(() => false));
+    if (menuItemVisibleAfterTick) {
+      await expect(menuItem).toBeVisible();
+      await menuItem.click();
+      return;
+    }
+    await page.keyboard.press("Escape").catch(() => {});
   }
 
   if (allowSidebarReset) {

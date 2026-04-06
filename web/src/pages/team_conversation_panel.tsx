@@ -23,6 +23,8 @@ type TeamConversationPanelProps = {
   humanActorId?: string;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
+  conversationTitle?: string;
+  isSharedConversation?: boolean;
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -62,6 +64,8 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         humanActorId={humanActorId}
         memberLiveStates={props.memberLiveStates}
         memberIds={memberIds}
+        conversationTitle={props.conversationTitle}
+        isSharedConversation={props.isSharedConversation}
         messagesLoading={props.messagesLoading}
         busy={props.busy}
         formatTs={props.formatTs}

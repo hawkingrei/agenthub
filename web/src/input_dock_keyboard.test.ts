@@ -5,12 +5,12 @@ import {
   deriveInputPlaceholder,
   deriveInputDockKeyAction,
   deriveInputHistoryNavigation,
-  isImeComposing,
   isInputRectOutsideViewport,
   isMobileInputViewport,
   shouldCloseHistoryFromPointerTarget,
   type InputHistoryNavigationContext,
 } from "./components/input_dock";
+import { isImeComposing } from "./input_ime";
 
 function navContext(
   override: Partial<InputHistoryNavigationContext> = {}

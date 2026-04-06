@@ -11,14 +11,14 @@ import {
 } from "../../ui/tailwind_classes";
 
 const ACP_PLAN_CARD_CLASS =
-  "acp-plan-card grid gap-2.5 rounded-[10px] border border-[#efd9a9] bg-[#fffbf1] p-2.5";
+  "acp-plan-card grid gap-2.5 rounded-[10px] border border-notion-plan-border bg-notion-plan-bg p-2.5";
 const ACP_PLAN_PROGRESS_CLASS = "acp-plan-progress grid gap-1.5";
 const ACP_PLAN_PROGRESS_META_CLASS =
   "acp-plan-progress-meta flex flex-wrap gap-1.5 text-[11px] text-slate-500";
 const ACP_PLAN_PROGRESS_BAR_CLASS =
-  "acp-plan-progress-bar mt-2 h-1.5 overflow-hidden rounded-full bg-[#e7ebe5]";
+  "acp-plan-progress-bar mt-2 h-1.5 overflow-hidden rounded-full bg-notion-plan-progress";
 const ACP_PLAN_PROGRESS_BAR_FILL_CLASS =
-  "block h-full rounded-full bg-gradient-to-r from-[#203b2d] to-[#4b6b5d]";
+  "block h-full rounded-full bg-gradient-to-r from-notion-plan-progress-from to-notion-plan-progress-to";
 const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-3 grid list-none gap-1.5 p-0";
 const ACP_PLAN_CONTENT_CLASS = "acp-plan-content min-w-0 text-sm text-slate-800";
 

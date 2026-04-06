@@ -1,6 +1,8 @@
 import React from "react";
 import { Alert, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { AgentNodeRecord, AgentNodeUpdate, AgentRecord } from "../api";
+import { SelectableListItem } from "../ui/primitives";
+import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
 
 type AgentNodeDraft = {
   name: string;
@@ -8,8 +10,6 @@ type AgentNodeDraft = {
   tlsServerName: string;
   defaultWorktreeRoot: string;
 };
-
-const RESERVED_AGENT_NODE_ID = "main";
 
 type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
@@ -41,47 +41,6 @@ function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
     tlsServerName: node.tls_server_name ?? "",
     defaultWorktreeRoot: node.default_worktree_root ?? "",
   };
-}
-
-function validateAgentNodeMutableFields(input: {
-  nodeName: string;
-  grpcTarget: string;
-}): string | null {
-  if (!input.nodeName.trim()) {
-    return "Node name is required.";
-  }
-  if (!input.grpcTarget.trim()) {
-    return "gRPC target is required.";
-  }
-  return null;
-}
-
-export function validateAgentNodeDraft(input: {
-  nodeId: string;
-  nodeName: string;
-  grpcTarget: string;
-}): string | null {
-  const nodeId = input.nodeId.trim();
-  if (!nodeId) {
-    return "Node ID is required.";
-  }
-  if (nodeId === RESERVED_AGENT_NODE_ID) {
-    return `Node ID '${RESERVED_AGENT_NODE_ID}' is reserved.`;
-  }
-  if (nodeId.length > 128) {
-    return "Node ID must be at most 128 characters.";
-  }
-  if (![...nodeId].every((ch) => /[A-Za-z0-9._:-]/.test(ch))) {
-    return "Node ID may only contain ASCII letters, numbers, '.', '_', '-', or ':'.";
-  }
-  return validateAgentNodeMutableFields(input);
-}
-
-export function validateAgentNodeUpdateDraft(input: {
-  nodeName: string;
-  grpcTarget: string;
-}): string | null {
-  return validateAgentNodeMutableFields(input);
 }
 
 export function AgentNodeSection({
@@ -192,15 +151,11 @@ export function AgentNodeSection({
               const nodeAgents = agentsByNodeId.get(node.id) ?? [];
               const isSelected = selectedNode?.id === node.id;
               return (
-                <button
+                <SelectableListItem
                   key={node.id}
-                  type="button"
                   aria-pressed={isSelected}
-                  className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                    isSelected
-                      ? "border-ui-border-emphasis bg-white shadow-sm"
-                      : "border-ui-border bg-white/70 hover:border-ui-border-emphasis hover:bg-white"
-                  }`}
+                  active={isSelected}
+                  className="w-full px-3 py-3"
                   onClick={() => onTargetNodeIdChange(node.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -254,7 +209,7 @@ export function AgentNodeSection({
                       No agents assigned yet.
                     </Text>
                   )}
-                </button>
+                </SelectableListItem>
               );
             })}
           </div>

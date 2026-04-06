@@ -4,9 +4,9 @@ import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpPermissionRecord } from "./api";
 import { AcpDebug, AcpDebugProps } from "./components/acp_debug";
+import { installReactDomTestGlobals, renderWithMantine } from "./test_utils/react_test_helpers";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+installReactDomTestGlobals();
 
 const permission: AcpPermissionRecord = {
   id: "perm-1",
@@ -83,6 +83,10 @@ function clickByText(container: HTMLElement, text: string) {
   });
 }
 
+function renderDebug(root: Root, props: AcpDebugProps) {
+  renderWithMantine(root, <AcpDebug {...props} />);
+}
+
 describe("AcpDebug interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -111,63 +115,57 @@ describe("AcpDebug interactions", () => {
 
   it("invokes terminal jump callback from terminal tab", () => {
     const onJumpTerminal = vi.fn();
-    act(() => {
-      root.render(
-        <AcpDebug
-          {...buildProps({
-            initialTab: "terminal",
-            showTerminalJump: true,
-            onJumpToTerminalBottom: onJumpTerminal,
-            terminalOutputs: [
-              {
-                event_id: 1,
-                ts: 1,
-                seq: "1",
-                stream: "stdout",
-                message: "line 1",
-                agent_id: "agent-a",
-                session_id: "session-a",
-              },
-            ],
-          })}
-        />
-      );
-    });
+    renderDebug(
+      root,
+      buildProps({
+        initialTab: "terminal",
+        showTerminalJump: true,
+        onJumpToTerminalBottom: onJumpTerminal,
+        terminalOutputs: [
+          {
+            event_id: 1,
+            ts: 1,
+            seq: "1",
+            stream: "stdout",
+            message: "line 1",
+            agent_id: "agent-a",
+            session_id: "session-a",
+          },
+        ],
+      })
+    );
 
     clickByText(container, "Jump to latest");
     expect(onJumpTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("filters terminal output down to stderr lines", () => {
-    act(() => {
-      root.render(
-        <AcpDebug
-          {...buildProps({
-            initialTab: "terminal",
-            terminalOutputs: [
-              {
-                event_id: 1,
-                ts: 1,
-                seq: "1",
-                stream: "stdout",
-                message: "stdout line",
-                agent_id: "agent-a",
-                session_id: "session-a",
-              },
-              {
-                event_id: 2,
-                ts: 2,
-                seq: "2",
-                stream: "stderr",
-                message: "stderr line",
-                agent_id: "agent-a",
-                session_id: "session-a",
-              },
-            ],
-          })}
-        />
-      );
-    });
+    renderDebug(
+      root,
+      buildProps({
+        initialTab: "terminal",
+        terminalOutputs: [
+          {
+            event_id: 1,
+            ts: 1,
+            seq: "1",
+            stream: "stdout",
+            message: "stdout line",
+            agent_id: "agent-a",
+            session_id: "session-a",
+          },
+          {
+            event_id: 2,
+            ts: 2,
+            seq: "2",
+            stream: "stderr",
+            message: "stderr line",
+            agent_id: "agent-a",
+            session_id: "session-a",
+          },
+        ],
+      })
+    );
 
     clickByText(container, "Stderr");
     expect(container.textContent).toContain("stderr line");
@@ -176,9 +174,7 @@ describe("AcpDebug interactions", () => {
 
   it("invokes jump callback on permission row click", () => {
     const onJump = vi.fn();
-    act(() => {
-      root.render(<AcpDebug {...buildProps({ onJumpToPermissionHistory: onJump })} />);
-    });
+    renderDebug(root, buildProps({ onJumpToPermissionHistory: onJump }));
     clickByText(container, "Permissions");
 
     const row = container.querySelector(".acp-permission-toggle");
@@ -229,9 +225,7 @@ describe("AcpDebug interactions", () => {
         />
       );
     }
-    act(() => {
-      root.render(<ControlledDebug />);
-    });
+    renderWithMantine(root, <ControlledDebug />);
 
     const modeSelect = container.querySelector('select[name="acp-mode"]');
     const modelSelect = container.querySelector('select[name="acp-model"]');
@@ -259,9 +253,7 @@ describe("AcpDebug interactions", () => {
       configurable: true,
       value: { writeText },
     });
-    act(() => {
-      root.render(<AcpDebug {...buildProps()} />);
-    });
+    renderDebug(root, buildProps());
     clickByText(container, "Permissions");
 
     const copyButton = container.querySelector(".acp-permission-copy");
@@ -300,9 +292,7 @@ describe("AcpDebug interactions", () => {
       value: execCommand,
     });
 
-    act(() => {
-      root.render(<AcpDebug {...buildProps()} />);
-    });
+    renderDebug(root, buildProps());
     clickByText(container, "Permissions");
 
     const copyButton = container.querySelector(".acp-permission-copy");
@@ -323,9 +313,7 @@ describe("AcpDebug interactions", () => {
       configurable: true,
       value: { writeText },
     });
-    act(() => {
-      root.render(<AcpDebug {...buildProps()} />);
-    });
+    renderDebug(root, buildProps());
     clickByText(container, "Permissions");
 
     const copyButton = container.querySelector(".acp-permission-copy");
@@ -349,9 +337,7 @@ describe("AcpDebug interactions", () => {
     });
     const clearSpy = vi.spyOn(window, "clearTimeout");
 
-    act(() => {
-      root.render(<AcpDebug {...buildProps()} />);
-    });
+    renderDebug(root, buildProps());
     clickByText(container, "Permissions");
 
     const copyButton = container.querySelector(".acp-permission-copy");

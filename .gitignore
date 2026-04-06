@@ -7,6 +7,9 @@ cmd/agenthub/Cargo.lock
 .DS_Store
 web/node_modules
 web/dist
+web/dist-debug
+web/dist-debug-current
+web/dist-analyze
 web/.vite
 web/coverage
 bazel-*
