@@ -112,6 +112,12 @@ Live verification notes:
   - first-load network did **not** fetch `route-agents-workbench` or the `agents_workbench` bridge chunk
   - Chrome DevTools performance trace reported `LCP 558 ms`, `TTFB 442 ms`, `render delay 116 ms`, and `CLS 0.00`
   - the only remaining console noise was the pre-existing `favicon.ico 404`
+- Final follow-up live verification after moving the lightweight admin auth gate and `push.ts` out of the auth route chunk showed the idle root shell no longer eagerly fetched `route-auth` either:
+  - first-load network dropped to `16` requests
+  - first-load network included `/`, `index`, `route-agents`, root CSS/runtime assets, `/api/agents`, `/api/auth/status`, and `/api/settings/defaults`
+  - first-load network did **not** fetch `route-auth` or `route-agents-workbench`
+  - Chrome DevTools performance trace reported `LCP 484 ms`, `TTFB 338 ms`, `render delay 146 ms`, and `CLS 0.00`
+  - console remained clean aside from the existing `favicon.ico 404`
 
 ## Follow-up
 

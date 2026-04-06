@@ -27,15 +27,16 @@ export default defineConfig({
         manualChunks(id) {
           const normalized = id.split("\\").join("/");
           if (
+            normalized.includes("/src/api.ts") ||
             normalized.includes("/src/connection_status.ts") ||
             normalized.includes("/src/error_banner.tsx") ||
             normalized.includes("/src/scroll.ts") ||
             normalized.includes("/src/html_escape.ts") ||
             normalized.includes("/src/worktree_defaults.ts") ||
             normalized.includes("/src/input_history.ts") ||
+            normalized.includes("/src/push.ts") ||
             normalized.includes("/src/auth_redirect.ts") ||
             normalized.includes("/src/webauthn.ts") ||
-            normalized.includes("/src/pages/auth_pages.tsx") ||
             normalized.includes("/src/components/workbench_connection_badge.tsx") ||
             normalized.includes("/src/components/workbench_header_menu.tsx") ||
             normalized.includes("/src/components/acp_panel_helpers.ts")

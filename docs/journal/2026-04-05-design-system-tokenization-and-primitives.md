@@ -37,6 +37,7 @@
 - Switched `TeamTaskPanel` permission actions, refresh action, mention picker options, seen-state affordances, details toggle, jump-to-bottom control, and send button onto Mantine-backed `ActionButton`, `IconButton`, or `UnstyledButton`.
 - Switched `WorkbenchHeaderMenu` trigger onto Mantine `UnstyledButton` so the last header menu trigger no longer depends on a raw HTML button.
 - Added semantic Tailwind tokens for ACP code/payload/plan surfaces and moved the most visible `plan_bubble` plus ACP terminal/payload card colors off inline hex usage.
+- Mirrored the new semantic Notion color tokens into `web/src/tailwind.css` `@theme` so Tailwind v4 utility resolution and the checked-in theme entrypoint stay aligned with `web/tailwind.config.cjs`.
 - Aligned ACP Debug tests to the shared Mantine jsdom helper so primitive-backed controls keep a stable test harness.
 - Wrapped `TeamSidebar`, `TeamMailboxPanel`, `TeamMemberAcpPanel`, `TeamTabsBar`, and `TeamStepsPanel` in `React.memo` to stop unrelated Team workbench state from re-running the heaviest sidebar/mailbox/ACP render trees.
 - Wrapped `TeamRunPanel`, `TeamEventsPanel`, `TeamOverviewPanel`, `TeamMemberConsolePanel`, and `TeamActiveRunPanel` in `React.memo` so toolbar/runtime/detail state changes no longer fan out across inactive Team surfaces.

@@ -86,7 +86,6 @@ import {
   removeLocalStorageItemSafe,
   setLocalStorageItemSafe,
 } from "./storage/safe_storage";
-import { AuthRequired, ForbiddenPage } from "./pages/auth_pages";
 import { ensurePushSubscription } from "./push";
 import {
   INPUT_HISTORY_STORAGE_KEY,
@@ -119,6 +118,8 @@ import {
   APP_WORKBENCH_HEADER_STATUS_CLASS,
   APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
+  AUTH_CARD_BASE_CLASS,
+  AUTH_PAGE_CLASS,
   APP_WORKSPACE_ROOT_CLASS,
   APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
   APP_WORKSPACE_RIGHT_CLASS,
@@ -227,6 +228,30 @@ function PostLoginRedirect({ target }: { target: string }): null {
 
 function RouteFallback({ label }: { label: string }) {
   return <div className={ROUTE_FALLBACK_SHELL_CLASS}>{label}</div>;
+}
+
+function AuthGateCard({ title, message }: { title: string; message: string }) {
+  return (
+    <div className={AUTH_PAGE_CLASS}>
+      <section className={AUTH_CARD_BASE_CLASS}>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h2>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
+      </section>
+    </div>
+  );
+}
+
+function AuthRequiredGate() {
+  return <AuthGateCard title="Login Required" message="Please login to continue." />;
+}
+
+function ForbiddenRoute() {
+  return (
+    <AuthGateCard
+      title="Forbidden"
+      message="You do not have access to this page."
+    />
+  );
 }
 
 function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
@@ -3145,10 +3170,10 @@ export function App() {
 
   if (routeLocation.pathname.startsWith("/admin")) {
     if (!auth) {
-      return <AuthRequired />;
+      return <AuthRequiredGate />;
     }
     if (auth.role !== "root") {
-      return <ForbiddenPage />;
+      return <ForbiddenRoute />;
     }
     return (
       <div className="app bg-white" ref={appRootRef}>

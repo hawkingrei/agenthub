@@ -54,7 +54,9 @@ describe("vite manualChunks", () => {
     expect(resolveManualChunk("/repo/web/src/components/agents_panel.tsx")).toBe(
       "route-agents"
     );
+    expect(resolveManualChunk("/repo/web/src/api.ts")).toBe("route-agents");
     expect(resolveManualChunk("/repo/web/src/acp.ts")).toBe("route-agents");
+    expect(resolveManualChunk("/repo/web/src/push.ts")).toBe("route-agents");
     expect(resolveManualChunk("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
     );
