@@ -50,8 +50,6 @@ const ROUTE_RICH_TEXT_SHARED_IDS = [
 ];
 
 const ROUTE_MANTINE_INPUT_IDS = [
-  "/node_modules/@mantine/core/esm/index.mjs",
-  "/node_modules/@mantine/hooks/esm/index.mjs",
   "/node_modules/@mantine/hooks/esm/use-previous/",
   "/node_modules/@mantine/hooks/esm/utils/use-callback-ref/",
   "/node_modules/@mantine/hooks/esm/use-debounced-callback/",

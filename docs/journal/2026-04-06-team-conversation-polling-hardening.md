@@ -43,6 +43,11 @@
 - corrected Vite chunk routing again so the Team route now resolves shared markdown through `route-rich-text-shared` instead of reusing `route-agents-workbench`
 - added a neutral `route-mantine-inputs` chunk for Team/ACP shared form controls
 - finished the last Team-route lazy edge by moving `AcpDebug` mode/model/config controls onto lightweight native inputs so the debug-only chunk no longer owns shared Mantine form internals
+- narrowed `route-mantine-inputs` matching so package-level `@mantine/core` / `@mantine/hooks` index imports stay on `vendor-mantine` while only the concrete Team/ACP input submodules pin into the shared input chunk
+- added focused lazy-split regression coverage for:
+  - `web/src/components/agents_route_shell.tsx`
+  - `web/src/components/use_agents_workbench_panel.ts`
+  - root-route `App -> AgentsRouteShell` prop wiring
 
 ## Validation
 
@@ -50,6 +55,8 @@
 - `cd web && npm run test -- src/pages/team/use_team_conversation_effects.test.tsx src/pages/team/use_team_member_acp_effects.test.tsx src/pages/team/use_team_member_backfill_effect.test.tsx src/cache_with_lru_budget.test.ts src/acp_conversation.test.ts src/components/thread_rich_text.test.tsx`
 - `cd web && npm run test -- vite.config.test.ts src/input_dock_keyboard.test.ts src/components/thread_rich_text.test.tsx src/pages/team/mailbox_helpers.test.ts src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run test -- vite.config.test.ts src/pages/team/team_conversation_viewport.test.ts src/pages/team/mailbox_helpers.test.ts src/pages/team_panels.test.tsx`
+- `cd web && npm run test -- vite.config.test.ts src/agents_route_shell.test.tsx src/components/use_agents_workbench_panel.test.tsx src/app.runtime_effects.test.tsx src/app.route_shell.test.tsx`
+- `cd web && npx vitest run vite.config.test.ts src/agents_route_shell.test.tsx src/components/use_agents_workbench_panel.test.tsx src/app.runtime_effects.test.tsx src/app.route_shell.test.tsx --coverage.enabled --coverage.provider=v8 --coverage.reporter=text --coverage.include=src/components/agents_route_shell.tsx --coverage.include=src/components/use_agents_workbench_panel.ts --coverage.include=src/app.tsx`
 - `cd web && npm run lint -- --ignore-pattern dist-debug --ignore-pattern dist-debug-current`
 - `cd web && npm run build`
 - `make build-web`
@@ -71,6 +78,10 @@
   - first-load Team requests do not include `route-agents-workbench` or `route-agents-debug`
   - opening a Team member ACP workspace still lazy-loads `team_member_acp_panel` / `route-teams-agent-acp`, and `route-agents-debug` only appears after the user explicitly enters the `Debug` tab
   - the Team page still returns to `ONLINE · SSE CONNECTED` after reload, and the only visible console noise remains the existing `404` resources
+- latest live MCP follow-up after the coverage/chunk cleanup still shows:
+  - root page first-load requests remain limited to `index`, `route-agents`, `route-acp-shared`, `route-app-shared`, CSS/runtime assets, and the root API calls
+  - root page still does **not** fetch `route-agents-workbench` or `route-agents-debug`
+  - Team page remains `ONLINE · SSE CONNECTED` and still does **not** fetch `route-agents-workbench` / `route-agents-debug` on first load
 
 ## Follow-up
 

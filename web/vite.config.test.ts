@@ -155,6 +155,12 @@ describe("vite chunk grouping", () => {
       )
     ).toBe("route-mantine-inputs");
     expect(
+      resolveChunkGroup("/repo/web/node_modules/@mantine/core/esm/index.mjs")
+    ).toBe("vendor-mantine");
+    expect(
+      resolveChunkGroup("/repo/web/node_modules/@mantine/hooks/esm/index.mjs")
+    ).toBe("vendor-mantine");
+    expect(
       resolveChunkGroup("/repo/web/node_modules/@mantine/core/esm/components/Button/Button.mjs")
     ).toBe("vendor-mantine");
     expect(
