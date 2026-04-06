@@ -261,6 +261,7 @@ type TeamPageProps = {
   onLogout: () => void;
   developerMode: boolean;
   routeTeamId: string | null;
+  defaultWorktreeRoot?: string | null;
 };
 type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 type TeamCreateNoteTone = "info" | "warning";
@@ -466,6 +467,10 @@ const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLA
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
   const isSelectorRoute = routeTeamId == null;
+  const routeDefaultWorktreeRoot = React.useMemo(() => {
+    const normalized = normalizeWorkdirInput(props.defaultWorktreeRoot ?? "");
+    return normalized || DEFAULT_WORKTREE_ROOT;
+  }, [props.defaultWorktreeRoot]);
   const isCompactWorkbench = useMediaQuery("(max-width: 1023px)");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -1365,20 +1370,52 @@ export function TeamPage(props: TeamPageProps) {
   useEffect(() => {
     if (!props.token) {
       setForgeDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
-      setTeamPromptDefaults(EMPTY_TEAM_PROMPT_DEFAULTS);
+      return;
+    }
+    if (props.defaultWorktreeRoot != null) {
+      setForgeDefaultWorktreeRoot(routeDefaultWorktreeRoot);
       return;
     }
     let active = true;
-    void Promise.all([
-      api.getRuntimeDefaults(props.token),
-      api.getTeamPromptDefaults(props.token),
-    ])
-      .then(([runtimeDefaults, promptDefaults]) => {
+    void api
+      .getRuntimeDefaults(props.token)
+      .then((runtimeDefaults) => {
         if (!active) {
           return;
         }
         const root = normalizeWorkdirInput(runtimeDefaults.default_worktree_root);
         setForgeDefaultWorktreeRoot(root || DEFAULT_WORKTREE_ROOT);
+      })
+      .catch((err) => {
+        if (!active || (!showCreateTeamModal && !showForgeAgentForm)) {
+          return;
+        }
+        setError(`Failed to load Team runtime defaults: ${parseErrorMessage(err)}`);
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    props.defaultWorktreeRoot,
+    props.token,
+    routeDefaultWorktreeRoot,
+    setError,
+    showCreateTeamModal,
+    showForgeAgentForm,
+  ]);
+
+  useEffect(() => {
+    if (!props.token) {
+      setTeamPromptDefaults(EMPTY_TEAM_PROMPT_DEFAULTS);
+      return;
+    }
+    let active = true;
+    void api
+      .getTeamPromptDefaults(props.token)
+      .then((promptDefaults) => {
+        if (!active) {
+          return;
+        }
         setTeamPromptDefaults(promptDefaults);
       })
       .catch((err) => {

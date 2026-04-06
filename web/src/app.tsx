@@ -2895,6 +2895,7 @@ export function App() {
             onLogout={onLogout}
             developerMode={developerMode}
             routeTeamId={teamRoute?.teamId ?? null}
+            defaultWorktreeRoot={defaultWorktreeRoot}
           />
         </Suspense>
       </div>

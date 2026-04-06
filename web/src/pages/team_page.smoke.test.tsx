@@ -270,6 +270,44 @@ describe("TeamPage smoke render", () => {
     expect(markup).not.toContain("This team is unavailable");
   });
 
+  it("reuses app-provided worktree defaults without refetching runtime defaults", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+              defaultWorktreeRoot="/srv/team-worktrees"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(getRuntimeDefaults).not.toHaveBeenCalled();
+      expect(getTeamPromptDefaults).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => {
+        root.unmount();
+        await flushEffects();
+      });
+      container.remove();
+    }
+  });
+
   it("renders team detail content immediately when routing from selector to an already-loaded team", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
