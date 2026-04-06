@@ -148,6 +148,7 @@ import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
 import { useTeamConversationActions } from "./team/use_team_conversation_actions";
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
+import { useTeamMemberAcpEffects } from "./team/use_team_member_acp_effects";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamTaskEffects } from "./team/use_team_task_effects";
@@ -2462,48 +2463,16 @@ export function TeamPage(props: TeamPageProps) {
     await loadMemberEvents("prepend");
   }, [loadMemberEvents, selectedAgentWorkspaceMemberId, selectedAgentWorkspaceSessionId]);
 
-  useEffect(() => {
-    if (
-      (tab !== "agent_acp" && tab !== "member_console") ||
-      !selectedAgentWorkspaceMemberId
-    ) {
-      return;
-    }
-    if (!selectedAgentWorkspaceSessionId) {
-      setMemberEvents([]);
-      setMemberEventsHasMore(false);
-      return;
-    }
-    void loadMemberEvents("replace");
-  }, [
-    loadMemberEvents,
-    setMemberEventsHasMore,
-    selectedAgentWorkspaceMemberId,
-    selectedAgentWorkspaceSessionId,
+  useTeamMemberAcpEffects({
+    token: props.token,
+    selectedAgentId: selectedAgentWorkspaceAgentId,
+    selectedSessionId: selectedAgentWorkspaceSessionId,
     tab,
-  ]);
-  useEffect(() => {
-    if (
-      !eventsAutoRefresh ||
-      (tab !== "agent_acp" && tab !== "member_console") ||
-      !selectedAgentWorkspaceMemberId ||
-      !selectedAgentWorkspaceSessionId
-    ) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      void loadMemberEvents("replace").catch(() => undefined);
-    }, 4000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
     eventsAutoRefresh,
     loadMemberEvents,
-    selectedAgentWorkspaceMemberId,
-    selectedAgentWorkspaceSessionId,
-    tab,
-  ]);
+    setMemberEvents,
+    setMemberEventsHasMore,
+  });
 
   const onRefreshOverviewSnapshot = useCallback(async () => {
     if (!activeRunIdForSelectedTeam) return;

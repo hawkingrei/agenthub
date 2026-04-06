@@ -8,6 +8,7 @@ import {
   chunkPermissionPollAgentIds,
   decidePermissionJump,
   filterPermissionsForAgent,
+  isAgentsWorkbenchRoute,
   loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
   isSameAgentNodeRecordList,
@@ -163,6 +164,13 @@ describe("filterPermissionsForAgent", () => {
 });
 
 describe("app helper decisions", () => {
+  it("enables agents workbench background sync only on the root route", () => {
+    expect(isAgentsWorkbenchRoute("/")).toBe(true);
+    expect(isAgentsWorkbenchRoute("/teams")).toBe(false);
+    expect(isAgentsWorkbenchRoute("/teams/team-1")).toBe(false);
+    expect(isAgentsWorkbenchRoute("/admin")).toBe(false);
+  });
+
   it("clamps persisted agents panel widths within the supported desktop bounds", () => {
     expect(clampAgentsPanelWidth(Number.NaN)).toBe(288);
     expect(clampAgentsPanelWidth(160)).toBe(256);

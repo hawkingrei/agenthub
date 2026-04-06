@@ -506,7 +506,7 @@ export function useAcpConversation({
   const shouldLoadOlder = useCallback(() => {
     return shouldLoadOlderFromMeta(activeAgent, activeSessionId, eventMeta);
   }, [activeAgent, activeSessionId, eventMeta]);
-  const conversationMeta = useMemo<EventMeta | null>(() => {
+  const conversationMeta = useMemo<AcpConversationEventMeta | null>(() => {
     if (!activeAgent) return null;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
     return eventMeta[key] ?? null;

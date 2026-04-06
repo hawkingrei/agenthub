@@ -1,0 +1,249 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import type { AgentEvent } from "../../api";
+import { normalizeSseOutputLines } from "../../app_live_output";
+import { upsertAgentEventList } from "./page_helpers";
+import type { TeamTab } from "./state";
+import { useResumeRefresh } from "./use_resume_refresh";
+
+type UseTeamMemberAcpEffectsOptions = {
+  token: string;
+  selectedAgentId: string;
+  selectedSessionId: string | null;
+  tab: TeamTab;
+  eventsAutoRefresh: boolean;
+  loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
+  setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
+  setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
+};
+
+const TEAM_MEMBER_ACP_POLL_INTERVAL_MS = 4000;
+
+function isMemberAcpTab(tab: TeamTab): boolean {
+  return tab === "agent_acp" || tab === "member_console";
+}
+
+export function useTeamMemberAcpEffects({
+  token,
+  selectedAgentId,
+  selectedSessionId,
+  tab,
+  eventsAutoRefresh,
+  loadMemberEvents,
+  setMemberEvents,
+  setMemberEventsHasMore,
+}: UseTeamMemberAcpEffectsOptions) {
+  const refreshInFlightRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
+  const latestSelectionRef = useRef({ agentId: "", sessionId: "" });
+  const loadMemberEventsRef = useRef(loadMemberEvents);
+  const sseConnectedRef = useRef(false);
+  const pollFallbackAllowedRef = useRef(false);
+  const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
+
+  useEffect(() => {
+    latestSelectionRef.current = {
+      agentId: selectedAgentId.trim(),
+      sessionId: selectedSessionId?.trim() ?? "",
+    };
+  }, [selectedAgentId, selectedSessionId]);
+
+  useEffect(() => {
+    pollFallbackAllowedRef.current = Boolean(
+      eventsAutoRefresh &&
+        isMemberAcpTab(tab) &&
+        selectedAgentId.trim() &&
+        (selectedSessionId?.trim() ?? "")
+    );
+  }, [eventsAutoRefresh, selectedAgentId, selectedSessionId, tab]);
+
+  useEffect(() => {
+    loadMemberEventsRef.current = loadMemberEvents;
+  }, [loadMemberEvents]);
+
+  const syncPollFallbackEnabled = useCallback(() => {
+    const nextEnabled =
+      pollFallbackAllowedRef.current &&
+      (typeof EventSource === "undefined" || !sseConnectedRef.current);
+    setPollFallbackEnabled((previous) =>
+      previous === nextEnabled ? previous : nextEnabled
+    );
+  }, []);
+
+  const refreshSelectedMemberEvents = useCallback(async () => {
+    const { agentId, sessionId } = latestSelectionRef.current;
+    if (!agentId || !sessionId) {
+      return;
+    }
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
+    refreshInFlightRef.current = true;
+    try {
+      for (;;) {
+        refreshQueuedRef.current = false;
+        const current = latestSelectionRef.current;
+        if (!current.agentId || !current.sessionId) {
+          return;
+        }
+        await loadMemberEventsRef.current("replace");
+        if (!refreshQueuedRef.current) {
+          return;
+        }
+      }
+    } finally {
+      refreshInFlightRef.current = false;
+      if (refreshQueuedRef.current) {
+        refreshQueuedRef.current = false;
+        void refreshSelectedMemberEvents().catch(() => undefined);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isMemberAcpTab(tab) || !selectedAgentId.trim()) {
+      return;
+    }
+    if (!(selectedSessionId?.trim() ?? "")) {
+      setMemberEvents([]);
+      setMemberEventsHasMore(false);
+      setPollFallbackEnabled(false);
+      return;
+    }
+    syncPollFallbackEnabled();
+    void refreshSelectedMemberEvents();
+  }, [
+    refreshSelectedMemberEvents,
+    selectedAgentId,
+    selectedSessionId,
+    setMemberEvents,
+    setMemberEventsHasMore,
+    syncPollFallbackEnabled,
+    tab,
+  ]);
+
+  const memberAcpSyncEnabled = Boolean(
+    eventsAutoRefresh &&
+      token.trim() &&
+      selectedAgentId.trim() &&
+      (selectedSessionId?.trim() ?? "") &&
+      isMemberAcpTab(tab)
+  );
+  const memberAcpRefreshEnabled = memberAcpSyncEnabled && pollFallbackEnabled;
+
+  useResumeRefresh({
+    enabled: memberAcpRefreshEnabled,
+    intervalMs: TEAM_MEMBER_ACP_POLL_INTERVAL_MS,
+    refresh: refreshSelectedMemberEvents,
+  });
+
+  useEffect(() => {
+    const agentId = selectedAgentId.trim();
+    const sessionId = selectedSessionId?.trim() ?? "";
+    if (!memberAcpSyncEnabled || typeof EventSource === "undefined") {
+      sseConnectedRef.current = false;
+      syncPollFallbackEnabled();
+      return;
+    }
+    let cancelled = false;
+    let source: EventSource | null = null;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer != null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const closeSource = () => {
+      sseConnectedRef.current = false;
+      source?.close();
+      source = null;
+    };
+
+    const scheduleReconnect = () => {
+      if (cancelled) {
+        return;
+      }
+      clearReconnectTimer();
+      syncPollFallbackEnabled();
+      const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+      reconnectAttempt = Math.min(reconnectAttempt + 1, 6);
+      reconnectTimer = window.setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
+        openSource();
+      }, delay);
+    };
+
+    function openSource() {
+      closeSource();
+      const nextSource = new EventSource(
+        `${location.origin}/sse/agents?ids=${encodeURIComponent(agentId)}&token=${encodeURIComponent(
+          token
+        )}`
+      );
+      source = nextSource;
+      nextSource.onopen = () => {
+        reconnectAttempt = 0;
+        sseConnectedRef.current = true;
+        syncPollFallbackEnabled();
+      };
+      nextSource.onmessage = (event) => {
+        if (cancelled || event.data === "heartbeat") {
+          return;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        const liveLines = normalizeSseOutputLines(parsed).filter(
+          (line) => line.agent_id === agentId && line.session_id === sessionId
+        );
+        if (liveLines.length === 0) {
+          return;
+        }
+        setMemberEvents((prev) =>
+          upsertAgentEventList(prev, liveLines, "replace", sessionId)
+        );
+      };
+      nextSource.onerror = () => {
+        if (source !== nextSource) {
+          nextSource.close();
+          return;
+        }
+        closeSource();
+        scheduleReconnect();
+      };
+    }
+
+    openSource();
+    return () => {
+      cancelled = true;
+      clearReconnectTimer();
+      closeSource();
+      setPollFallbackEnabled(false);
+    };
+  }, [
+    memberAcpSyncEnabled,
+    selectedAgentId,
+    selectedSessionId,
+    setMemberEvents,
+    syncPollFallbackEnabled,
+    token,
+  ]);
+}
+
+export { TEAM_MEMBER_ACP_POLL_INTERVAL_MS };

@@ -187,4 +187,40 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(next).not.toBe(prev);
     expect(next["missing-a"]).toEqual(refreshedAgent);
   });
+
+  it("does not immediately revalidate cached hidden members on rerender", async () => {
+    vi.useFakeTimers();
+    const cachedAgent = makeAgent("missing-a");
+    const getAgentSpy = vi.spyOn(api, "getAgent").mockResolvedValue(cachedAgent);
+
+    let params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": cachedAgent },
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(1);
+
+    params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      teamMemberAgentsById: { "missing-a": cachedAgent },
+      setTeamMemberAgentsById: params.setTeamMemberAgentsById,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(1);
+  });
 });

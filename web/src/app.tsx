@@ -386,6 +386,10 @@ function isTeamsRoute(pathname: string): boolean {
   return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
 }
 
+export function isAgentsWorkbenchRoute(pathname: string): boolean {
+  return pathname === "/";
+}
+
 export function resolveTeamRoute(pathname: string): {
   mode: "selector" | "detail";
   teamId: string | null;
@@ -908,6 +912,7 @@ export function App() {
     search: location.search,
   }));
   const isAdminRoute = routeLocation.pathname.startsWith("/admin");
+  const isAgentsRoute = isAgentsWorkbenchRoute(routeLocation.pathname);
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
       if (routeLocation.pathname === pathname) {
@@ -1491,17 +1496,17 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !isAgentsRoute) return;
     void refreshAgents();
-  }, [token, refreshAgents]);
+  }, [isAgentsRoute, token, refreshAgents]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !isAgentsRoute) return;
     const timer = window.setInterval(() => {
       void refreshAgents({ silent: true });
     }, AGENT_STATUS_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [token, refreshAgents]);
+  }, [isAgentsRoute, token, refreshAgents]);
 
   useEffect(() => {
     if (activeAgent || agents.length === 0) return;
@@ -1895,12 +1900,12 @@ export function App() {
   }, [activeAgentStatus]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!isAgentsRoute || !token || !activeAgent) return;
     loadAgentEvents(activeAgent, activeSessionId);
-  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, loadAgentEvents]);
 
   useEffect(() => {
-    if (!token) {
+    if (!isAgentsRoute || !token) {
       setSseState("idle");
       requestSseReconnectRef.current = null;
       return;
@@ -2029,6 +2034,7 @@ export function App() {
       setSseState("idle");
     };
   }, [
+    isAgentsRoute,
     token,
     hasSseTarget,
     streamAgentIdsQuery,
@@ -2037,7 +2043,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!token || !activeAgent) {
+    if (!isAgentsRoute || !token || !activeAgent) {
       const pollState = eventPollRef.current;
       if (pollState.timer) {
         window.clearTimeout(pollState.timer);
@@ -2147,7 +2153,7 @@ export function App() {
       pollState.boostUntil = null;
       schedulePollRef.current = null;
     };
-  }, [token, activeAgent, activeSessionId, loadAgentEvents]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, loadAgentEvents]);
 
   useEffect(() => {
     if (acpView.hasAcp) return;
@@ -2166,7 +2172,7 @@ export function App() {
   }, [activeAgent, activeSessionId]);
 
   useEffect(() => {
-    if (!token || !permissionPollAgentIdsKey) {
+    if (!isAgentsRoute || !token || !permissionPollAgentIdsKey) {
       setPendingPermissionCounts({});
       return;
     }
@@ -2219,10 +2225,13 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed]);
+  }, [isAgentsRoute, token, permissionPollAgentIdsKey, activeAgent, agentsCollapsed]);
 
   useEffect(() => {
-    if (!token || !activeAgent) return;
+    if (!isAgentsRoute || !token || !activeAgent) {
+      setAcpPermissions([]);
+      return;
+    }
     let cancelled = false;
     const requestedAgentId = activeAgent;
     const pollState = permissionPollRef.current;
@@ -2272,7 +2281,7 @@ export function App() {
       }
       schedulePermissionPollRef.current = null;
     };
-  }, [token, activeAgent, activeSessionId]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId]);
 
   useEffect(() => {
     if (!thinkingStartTs) return;
@@ -2284,7 +2293,7 @@ export function App() {
   }, [thinkingStartTs]);
 
   useEffect(() => {
-    if (!token || !activeAgent || !developerMode || acpTab !== "debug") {
+    if (!isAgentsRoute || !token || !activeAgent || !developerMode || acpTab !== "debug") {
       setAcpPermissionHistory([]);
       return;
     }
@@ -2307,7 +2316,7 @@ export function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [token, activeAgent, activeSessionId, developerMode, acpTab]);
+  }, [isAgentsRoute, token, activeAgent, activeSessionId, developerMode, acpTab]);
 
   const onRegister = async (role?: string) => {
     if (authBusyRef.current) return;

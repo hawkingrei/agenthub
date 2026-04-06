@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { AgentRecord } from "../../api";
 import { api, getApiErrorStatus } from "../../api";
@@ -17,6 +17,8 @@ type ResolvedTeamMemberAgent = {
   memberId: string;
   agent?: AgentRecord | null;
 };
+
+const TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS = 60_000;
 
 function stableSerializeRecord(value: unknown): string {
   return JSON.stringify(sortRecordValue(value));
@@ -56,16 +58,26 @@ export function useTeamMemberBackfillEffect({
   teamMemberAgentsById,
   setTeamMemberAgentsById,
 }: UseTeamMemberBackfillEffectParams) {
+  const lastResolvedAtRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => {
     if (!token || teamSpecMemberIds.length === 0) {
       return;
     }
     const listedAgentIds = new Set(agents.map((agent) => agent.id));
+    const now = Date.now();
     const unresolvedMemberIds = teamSpecMemberIds.filter((memberId) => {
       if (listedAgentIds.has(memberId)) {
         return false;
       }
-      return teamMemberAgentsById[memberId] !== null;
+      if (!Object.prototype.hasOwnProperty.call(teamMemberAgentsById, memberId)) {
+        return true;
+      }
+      const lastResolvedAt = lastResolvedAtRef.current.get(memberId);
+      return (
+        lastResolvedAt == null ||
+        now - lastResolvedAt >= TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS
+      );
     });
     if (unresolvedMemberIds.length === 0) {
       return;
@@ -93,6 +105,12 @@ export function useTeamMemberBackfillEffect({
       }
       if (resolved.every(({ agent }) => agent === undefined)) {
         return;
+      }
+      const resolvedAt = Date.now();
+      for (const { memberId, agent } of resolved) {
+        if (agent !== undefined) {
+          lastResolvedAtRef.current.set(memberId, resolvedAt);
+        }
       }
       setTeamMemberAgentsById((prev) => {
         let next: Record<string, AgentRecord | null> | null = null;
