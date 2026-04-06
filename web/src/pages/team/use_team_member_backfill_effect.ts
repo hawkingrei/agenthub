@@ -61,6 +61,14 @@ export function useTeamMemberBackfillEffect({
   const lastResolvedAtRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
+    const memberIdSet = new Set(teamSpecMemberIds);
+    if (lastResolvedAtRef.current.size > 0) {
+      for (const memberId of lastResolvedAtRef.current.keys()) {
+        if (!memberIdSet.has(memberId)) {
+          lastResolvedAtRef.current.delete(memberId);
+        }
+      }
+    }
     if (!token || teamSpecMemberIds.length === 0) {
       return;
     }

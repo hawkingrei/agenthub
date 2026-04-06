@@ -44,6 +44,7 @@ export function useTeamMemberAcpEffects({
   const latestSelectionRef = useRef({ agentId: "", sessionId: "" });
   const loadMemberEventsRef = useRef(loadMemberEvents);
   const sseConnectedRef = useRef(false);
+  const sseConnectingRef = useRef(false);
   const pollFallbackAllowedRef = useRef(false);
   const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
 
@@ -70,7 +71,8 @@ export function useTeamMemberAcpEffects({
   const syncPollFallbackEnabled = useCallback(() => {
     const nextEnabled =
       pollFallbackAllowedRef.current &&
-      (typeof EventSource === "undefined" || !sseConnectedRef.current);
+      (typeof EventSource === "undefined" ||
+        (!sseConnectedRef.current && !sseConnectingRef.current));
     setPollFallbackEnabled((previous) =>
       previous === nextEnabled ? previous : nextEnabled
     );
@@ -112,14 +114,25 @@ export function useTeamMemberAcpEffects({
       return;
     }
     if (!(selectedSessionId?.trim() ?? "")) {
+      sseConnectedRef.current = false;
+      sseConnectingRef.current = false;
       setMemberEvents([]);
       setMemberEventsHasMore(false);
       setPollFallbackEnabled(false);
       return;
     }
+    sseConnectingRef.current = Boolean(
+      eventsAutoRefresh &&
+        token.trim() &&
+        typeof EventSource !== "undefined" &&
+        selectedAgentId.trim() &&
+        (selectedSessionId?.trim() ?? "") &&
+        isMemberAcpTab(tab)
+    );
     syncPollFallbackEnabled();
     void refreshSelectedMemberEvents();
   }, [
+    eventsAutoRefresh,
     refreshSelectedMemberEvents,
     selectedAgentId,
     selectedSessionId,
@@ -127,6 +140,7 @@ export function useTeamMemberAcpEffects({
     setMemberEventsHasMore,
     syncPollFallbackEnabled,
     tab,
+    token,
   ]);
 
   const memberAcpSyncEnabled = Boolean(
@@ -149,6 +163,7 @@ export function useTeamMemberAcpEffects({
     const sessionId = selectedSessionId?.trim() ?? "";
     if (!memberAcpSyncEnabled || typeof EventSource === "undefined") {
       sseConnectedRef.current = false;
+      sseConnectingRef.current = false;
       syncPollFallbackEnabled();
       return;
     }
@@ -166,6 +181,7 @@ export function useTeamMemberAcpEffects({
 
     const closeSource = () => {
       sseConnectedRef.current = false;
+      sseConnectingRef.current = false;
       source?.close();
       source = null;
     };
@@ -188,6 +204,8 @@ export function useTeamMemberAcpEffects({
 
     function openSource() {
       closeSource();
+      sseConnectingRef.current = true;
+      syncPollFallbackEnabled();
       const nextSource = new EventSource(
         `${location.origin}/sse/agents?ids=${encodeURIComponent(agentId)}&token=${encodeURIComponent(
           token
@@ -196,6 +214,7 @@ export function useTeamMemberAcpEffects({
       source = nextSource;
       nextSource.onopen = () => {
         reconnectAttempt = 0;
+        sseConnectingRef.current = false;
         sseConnectedRef.current = true;
         syncPollFallbackEnabled();
       };

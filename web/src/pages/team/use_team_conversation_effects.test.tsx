@@ -117,8 +117,9 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledWith("task-all");
   });
 
-  it("polls the shared thread while the conversation tab is active", async () => {
+  it("polls the shared thread when EventSource is unavailable", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
     const params = createParams({
       eventsAutoRefresh: true,
     });
@@ -139,6 +140,29 @@ describe("useTeamConversationEffects", () => {
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
+  });
+
+  it("does not poll while the shared-thread SSE connection is still connecting", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
   it("refreshes the shared thread when a matching sse message arrives", async () => {
@@ -358,7 +382,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
   });
 
-  it("refreshes the shared thread immediately when the page regains focus, visibility, or network", async () => {
+  it("refreshes the shared thread immediately on resume signals after fallback polling is active", async () => {
     const params = createParams({
       eventsAutoRefresh: true,
     });
@@ -367,6 +391,11 @@ describe("useTeamConversationEffects", () => {
       root.render(<HookHarness params={params} />);
     });
     await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      MockEventSource.instances[0].emitError();
       await Promise.resolve();
     });
 

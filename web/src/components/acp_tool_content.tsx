@@ -1,5 +1,6 @@
 import React from "react";
 import { unescapeLineBreaks } from "../conversation";
+import { cacheWithLruBudget, refreshCacheRecency } from "../cache_with_lru_budget";
 import { ACP_TERMINAL_PRE_CLASS } from "../ui/tailwind_classes";
 import {
   ACP_SEGMENTED_BLOCK_CLASS,
@@ -159,8 +160,7 @@ export function parseAnsiSegmentsCached(input: string): AnsiSegment[] {
   const cached = ansiSegmentCache.get(input);
   if (cached != null) {
     ansiCacheHitCount += 1;
-    ansiSegmentCache.delete(input);
-    ansiSegmentCache.set(input, cached);
+    refreshCacheRecency(ansiSegmentCache, ansiSegmentCacheSize, input);
     return cached;
   }
   ansiCacheMissCount += 1;
@@ -219,40 +219,6 @@ function parseAnsiSegments(input: string): AnsiSegment[] {
     pushAnsiSegment(segments, input.slice(cursor), styleStack);
   }
   return segments;
-}
-
-function cacheWithLruBudget<K, V>(
-  cache: Map<K, V>,
-  sizes: Map<K, number>,
-  currentBytes: () => number,
-  setBytes: (next: number) => void,
-  key: K,
-  value: V,
-  size: number,
-  entryLimit: number,
-  byteLimit: number
-): V {
-  if (cache.has(key)) {
-    const previousSize = sizes.get(key) ?? 0;
-    setBytes(Math.max(0, currentBytes() - previousSize));
-    sizes.delete(key);
-    cache.delete(key);
-  }
-  cache.set(key, value);
-  sizes.set(key, size);
-  setBytes(currentBytes() + size);
-  while (cache.size > entryLimit || currentBytes() > byteLimit) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey !== undefined) {
-      const oldestSize = sizes.get(oldestKey) ?? 0;
-      setBytes(Math.max(0, currentBytes() - oldestSize));
-      sizes.delete(oldestKey);
-      cache.delete(oldestKey);
-      continue;
-    }
-    break;
-  }
-  return value;
 }
 
 function estimateStringBytes(text: string): number {

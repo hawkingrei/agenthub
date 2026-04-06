@@ -223,4 +223,55 @@ describe("useTeamMemberBackfillEffect", () => {
 
     expect(getAgentSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("prunes stale cooldown entries when members leave the team spec", async () => {
+    const getAgentSpy = vi.spyOn(api, "getAgent").mockRejectedValue(
+      makeApiError(404, "not-found")
+    );
+
+    let params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-b"],
+      teamMemberAgentsById: { "missing-b": null },
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(1);
+
+    params = createParams({
+      teamSpecMemberIds: ["listed-agent"],
+      teamMemberAgentsById: { "missing-b": null },
+      setTeamMemberAgentsById: params.setTeamMemberAgentsById,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(1);
+
+    params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-b"],
+      teamMemberAgentsById: { "missing-b": null },
+      setTeamMemberAgentsById: params.setTeamMemberAgentsById,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(2);
+  });
 });

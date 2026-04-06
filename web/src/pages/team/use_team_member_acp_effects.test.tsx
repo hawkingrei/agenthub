@@ -147,8 +147,9 @@ describe("useTeamMemberAcpEffects", () => {
     expect(params.loadMemberEvents).toHaveBeenCalledWith("replace");
   });
 
-  it("polls member ACP while disconnected", async () => {
+  it("polls member ACP when EventSource is unavailable", async () => {
     vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
     const params = createParams({
       eventsAutoRefresh: true,
     });
@@ -168,6 +169,29 @@ describe("useTeamMemberAcpEffects", () => {
     });
 
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls + 1);
+  });
+
+  it("does not poll member ACP while SSE is still connecting", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = (params.loadMemberEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.loadMemberEvents).toHaveBeenCalledTimes(baseCalls);
   });
 
   it("stops fallback polling once member ACP SSE is connected", async () => {
