@@ -7,13 +7,13 @@ import {
 export function TeamThreadRichText({
   text,
   className,
-  renderHtml = renderTeamMarkdownCached,
+  renderSanitizedHtml = renderTeamMarkdownCached,
 }: {
   text: string;
   className?: string;
-  renderHtml?: (text: string) => string;
+  renderSanitizedHtml?: (text: string) => string;
 }) {
-  const html = renderHtml(text);
+  const html = renderSanitizedHtml(text);
   return (
     <div
       className={`${TEAM_THREAD_RICH_TEXT_BASE_CLASS} ${className ?? ""}`.trim()}

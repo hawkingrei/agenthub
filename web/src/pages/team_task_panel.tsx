@@ -1177,7 +1177,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       <TeamThreadRichText
                         className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                         text={item.text}
-                        renderHtml={renderTeamMessageHtml}
+                        renderSanitizedHtml={renderTeamMessageHtml}
                       />
                     </div>
                   )}
