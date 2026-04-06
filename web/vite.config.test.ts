@@ -21,25 +21,35 @@ function resolveModulePreloadDeps(deps: string[]): string[] {
 }
 
 describe("vite chunk grouping", () => {
-  it("routes heavy agents workbench modules into a separate lazy chunk", () => {
+  it("routes agents workbench-only modules into a separate lazy chunk", () => {
     expect(resolveChunkGroup("/repo/web/src/components/agents_workbench.tsx")).toBe(
       "route-agents-workbench"
     );
     expect(resolveChunkGroup("/repo/web/src/components/output_body.tsx")).toBe(
       "route-agents-workbench"
     );
+  });
+
+  it("routes ACP shell modules into the shared ACP chunk", () => {
     expect(resolveChunkGroup("/repo/web/src/components/input_dock.tsx")).toBe(
       "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/components/acp_panel.tsx")).toBe(
       "route-acp-shared"
     );
-    expect(resolveChunkGroup("/repo/web/src/components/terminal_output.tsx")).toBe(
-      "route-agents-terminal"
+    expect(resolveChunkGroup("/repo/web/src/acp.ts")).toBe("route-acp-shared");
+    expect(resolveChunkGroup("/repo/web/src/components/acp_panel_helpers.ts")).toBe(
+      "route-acp-shared"
     );
     expect(
       resolveChunkGroup("/repo/web/src/components/acp_conversation.tsx")
     ).toBe("route-acp-shared");
+  });
+
+  it("routes terminal and rich-text helpers into their dedicated chunks", () => {
+    expect(resolveChunkGroup("/repo/web/src/components/terminal_output.tsx")).toBe(
+      "route-agents-terminal"
+    );
     expect(resolveChunkGroup("/repo/web/src/components/acp_debug.tsx")).toBe(
       "route-agents-debug"
     );
@@ -56,7 +66,6 @@ describe("vite chunk grouping", () => {
       "route-agents"
     );
     expect(resolveChunkGroup("/repo/web/src/api.ts")).toBe("route-agents");
-    expect(resolveChunkGroup("/repo/web/src/acp.ts")).toBe("route-acp-shared");
     expect(resolveChunkGroup("/repo/web/src/push.ts")).toBe("route-agents");
     expect(resolveChunkGroup("/repo/web/src/connection_status.ts")).toBe(
       "route-agents"
@@ -84,9 +93,6 @@ describe("vite chunk grouping", () => {
     );
     expect(resolveChunkGroup("/repo/web/src/components/workbench_header_menu.tsx")).toBe(
       "route-agents"
-    );
-    expect(resolveChunkGroup("/repo/web/src/components/acp_panel_helpers.ts")).toBe(
-      "route-acp-shared"
     );
     expect(resolveChunkGroup("/repo/web/src/hooks/use_acp_conversation.ts")).toBe(
       "route-acp-shared"

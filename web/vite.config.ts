@@ -13,11 +13,9 @@ const ROUTE_AGENTS_IDS = [
   "/src/webauthn.ts",
   "/src/components/workbench_connection_badge.tsx",
   "/src/components/workbench_header_menu.tsx",
-  "/src/components/acp_panel_helpers.ts",
   "/src/components/agents_panel.tsx",
   "/src/components/output_header.tsx",
   "/src/components/output_error_boundary.tsx",
-  "/src/acp.ts",
   "/src/agent_ws.ts",
   "/src/output_cache.ts",
 ];

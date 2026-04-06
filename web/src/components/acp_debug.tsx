@@ -84,6 +84,22 @@ const DEBUG_TERMINAL_STDOUT_CLASS = "text-white";
 const DEBUG_TERMINAL_STDERR_CLASS = "text-red-300";
 const DEBUG_TERMINAL_SYSTEM_CLASS = "text-cyan-300";
 
+function renderConfigSelectOptions(
+  placeholder: string,
+  options: Array<{ valueId: string; label: string }>
+): React.ReactNode {
+  return (
+    <>
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option.valueId} value={option.valueId}>
+          {option.label}
+        </option>
+      ))}
+    </>
+  );
+}
+
 function AcpDebugView({
   terminalOutputs,
   ansi,
@@ -330,12 +346,10 @@ function AcpDebugView({
                 value={resolvedModeId}
                 onChange={(e) => onAcpModeIdChange(e.currentTarget.value)}
               >
-                <option value="">Select mode</option>
-                {modeConfigOption.selectOptions.map((option) => (
-                  <option key={option.valueId} value={option.valueId}>
-                    {option.label}
-                  </option>
-                ))}
+                {renderConfigSelectOptions(
+                  "Select mode",
+                  modeConfigOption.selectOptions
+                )}
               </select>
             ) : (
               <input
@@ -366,12 +380,10 @@ function AcpDebugView({
                 value={resolvedModelId}
                 onChange={(e) => onAcpModelIdChange(e.currentTarget.value)}
               >
-                <option value="">Select model</option>
-                {modelConfigOption.selectOptions.map((option) => (
-                  <option key={option.valueId} value={option.valueId}>
-                    {option.label}
-                  </option>
-                ))}
+                {renderConfigSelectOptions(
+                  "Select model",
+                  modelConfigOption.selectOptions
+                )}
               </select>
             ) : (
               <input
