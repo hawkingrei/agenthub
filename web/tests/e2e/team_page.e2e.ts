@@ -582,11 +582,14 @@ async function openMainTeamAction(
   if ((await moreTrigger.count()) > 0) {
     await expect(moreTrigger).toBeVisible();
     await moreTrigger.click();
-    const menuItem = page.getByRole("menuitem", { name: label, exact: true });
-    if ((await menuItem.count()) > 0) {
+    const menuItem = page.getByRole("menuitem", { name: label, exact: true }).first();
+    try {
+      await menuItem.waitFor({ state: "visible", timeout: 750 });
       await expect(menuItem).toBeVisible();
       await menuItem.click();
       return;
+    } catch {
+      await page.keyboard.press("Escape").catch(() => {});
     }
   }
 

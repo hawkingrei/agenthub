@@ -3428,7 +3428,6 @@ describe("team panels interactions", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3465,7 +3464,6 @@ describe("team panels interactions", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3505,7 +3503,6 @@ describe("team panels interactions", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         onSendInput={vi.fn()}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3587,7 +3584,6 @@ describe("team panels interactions", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         onForceNewSession={onForceNewSession}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3634,7 +3630,6 @@ describe("team panels interactions", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         canControlAcp={true}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3665,7 +3660,6 @@ describe("team panels interactions", () => {
         canControlAcp={true}
         canInterrupt={true}
         onInterrupt={vi.fn()}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3720,7 +3714,6 @@ describe("team panels interactions", () => {
             memberEventsLoading={false}
             eventsLoading={false}
             oldestMemberEventId={22}
-            onRefresh={vi.fn()}
             onLoadOlder={onLoadOlder}
           />
       );
@@ -3772,7 +3765,6 @@ describe("team panels interactions", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -3810,7 +3802,6 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={null}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
@@ -3853,7 +3844,6 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={null}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
@@ -3875,7 +3865,6 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={null}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
@@ -3900,7 +3889,6 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={null}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
@@ -3927,7 +3915,6 @@ describe("team panels interactions", () => {
           eventsLoading={false}
           oldestMemberEventId={null}
           onSendInput={onSendInput}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
@@ -3970,7 +3957,6 @@ describe("team panels interactions", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         onSendInput={onSendInput}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );

@@ -120,7 +120,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         memberEventsLoading={false}
         eventsLoading={false}
         oldestMemberEventId={null}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -144,7 +143,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         eventsLoading={false}
         oldestMemberEventId={null}
         onSendInput={vi.fn()}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -200,7 +198,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
           eventsLoading={false}
           oldestMemberEventId={null}
           onSendInput={vi.fn()}
-          onRefresh={vi.fn()}
           onLoadOlder={vi.fn()}
         />
       );
@@ -240,7 +237,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         onSendInput={vi.fn()}
         canInterrupt={true}
         onInterrupt={onInterrupt}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -302,7 +298,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         canControlAcp={true}
         onAcpSetMode={onAcpSetMode}
         onAcpSetModel={onAcpSetModel}
-        onRefresh={vi.fn()}
         onLoadOlder={vi.fn()}
       />
     );
@@ -359,7 +354,6 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       eventsLoading: false,
       oldestMemberEventId: null,
       onSendInput: vi.fn(),
-      onRefresh: vi.fn(),
       onLoadOlder: vi.fn(),
     } as const;
 

@@ -5,7 +5,10 @@ export const GLOBAL_PERMISSION_POLL_INTERVAL_COLLAPSED_MS = 10000;
 export const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
 
 export function parsePermissionPollAgentIds(key: string): string[] {
-  return key.split(",").filter(Boolean);
+  return key
+    .split(",")
+    .map((agentId) => agentId.trim())
+    .filter(Boolean);
 }
 
 export function buildGlobalPermissionPollAgentIds(

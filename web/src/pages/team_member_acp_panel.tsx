@@ -44,7 +44,6 @@ type TeamMemberAcpPanelProps = {
   onAcpSetModel?: (modelId: string) => Promise<void> | void;
   onAcpSetConfig?: (configId: string, value: string) => Promise<void> | void;
   onForceNewSession?: () => Promise<void> | void;
-  onRefresh?: () => Promise<void> | void;
   onLoadOlder?: () => Promise<void> | void;
 };
 

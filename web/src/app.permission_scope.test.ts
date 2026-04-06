@@ -286,6 +286,11 @@ describe("app helper decisions", () => {
       "agent-a",
       "agent-b",
     ]);
+    expect(parsePermissionPollAgentIds("agent-a, agent-b ,  agent-c")).toEqual([
+      "agent-a",
+      "agent-b",
+      "agent-c",
+    ]);
     expect(parsePermissionPollAgentIds("agent-a,,agent-b,")).toEqual([
       "agent-a",
       "agent-b",
