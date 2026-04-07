@@ -1,3 +1,4 @@
+import { Box } from "@mantine/core";
 import React from "react";
 import { AcpPanel, AcpPanelProps } from "./acp_panel";
 import { TerminalOutput } from "./terminal_output";
@@ -33,19 +34,19 @@ export const OutputBody = React.memo(function OutputBody({
     ? OUTPUT_BODY_ACP_ROOT_CLASS
     : OUTPUT_BODY_ROOT_CLASS;
   return (
-    <div className={bodyRootClassName}>
+    <Box className={bodyRootClassName}>
       {showLoading ? (
-        <div className={OUTPUT_BODY_LOADING_CLASS}>
+        <Box className={OUTPUT_BODY_LOADING_CLASS}>
           <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-          <div className="label">Loading...</div>
-        </div>
+          <Box className="label">Loading...</Box>
+        </Box>
       ) : acpPanelProps.acpView.hasAcp ? (
         <AcpPanel {...acpPanelProps} />
       ) : outputs.length === 0 ? (
-        <div className={OUTPUT_BODY_EMPTY_CLASS}>
-          <div className="title">No output yet</div>
-          <div className="meta">Send input or start the agent to see output.</div>
-        </div>
+        <Box className={OUTPUT_BODY_EMPTY_CLASS}>
+          <Box className="title">No output yet</Box>
+          <Box className="meta">Send input or start the agent to see output.</Box>
+        </Box>
       ) : (
         <TerminalOutput
           outputs={outputs}
@@ -54,6 +55,6 @@ export const OutputBody = React.memo(function OutputBody({
           onScroll={onTerminalScroll}
         />
       )}
-    </div>
+    </Box>
   );
 });

@@ -1,3 +1,4 @@
+import { Box } from "@mantine/core";
 import React from "react";
 import { OutputLine } from "../output_cache";
 
@@ -22,7 +23,7 @@ export function TerminalOutput({
   onScroll,
 }: TerminalOutputProps) {
   return (
-    <div
+    <Box
       className={TERMINAL_CONTAINER_CLASS}
       ref={containerRef}
       onScroll={onScroll}
@@ -36,7 +37,7 @@ export function TerminalOutput({
               ? TERMINAL_SYSTEM_CLASS
               : TERMINAL_STDOUT_CLASS;
         return (
-          <div
+          <Box
             key={key}
             className={`${TERMINAL_LINE_BASE_CLASS} ${line.stream} ${toneClass}`}
             dangerouslySetInnerHTML={{
@@ -45,6 +46,6 @@ export function TerminalOutput({
           />
         );
       })}
-    </div>
+    </Box>
   );
 }

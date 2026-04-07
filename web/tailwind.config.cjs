@@ -72,6 +72,11 @@ module.exports = {
             border: "#86efac",
             text: "#15803d",
           },
+          error: {
+            bg: "#fff1f2",
+            border: "#fecdd3",
+            text: "#be123c",
+          },
         },
       },
       spacing: {
