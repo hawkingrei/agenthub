@@ -3,6 +3,7 @@ import React, { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcpView } from "../acp";
+import type { AgentRecord } from "../api";
 import type { AgentsWorkbenchProps } from "./agents_workbench_types";
 import { useAgentsWorkbenchPanel } from "./use_agents_workbench_panel";
 
@@ -74,35 +75,22 @@ function createConversationState() {
 function createProps(
   override: Partial<AgentsWorkbenchProps> = {}
 ): AgentsWorkbenchProps {
+  const activeAgentRecord: AgentRecord = {
+    id: "agent-1",
+    name: "Agent one",
+    command: "agenthub",
+    args: [],
+    workdir: "/repo/workdir",
+    status: "running",
+    created_at: 1_775_491_200,
+    updated_at: 1_775_491_200,
+    code_mode: false,
+    worktree_mode: "use_existing",
+  };
+
   return {
     activeAgent: "agent-1",
-    activeAgentRecord: {
-      id: "agent-1",
-      name: "Agent one",
-      command: "agenthub",
-      workdir: "/repo/workdir",
-      status: "running",
-      created_at: "2026-04-06T00:00:00Z",
-      updated_at: "2026-04-06T00:00:00Z",
-      code_mode: false,
-      hidden: false,
-      provider: null,
-      provider_label: null,
-      model: null,
-      acp_session_id: null,
-      agent_loop_enabled: false,
-      agent_loop_prompt: null,
-      agent_loop_max_steps: null,
-      worktree_mode: null,
-      worktree_name_template: null,
-      profile_name: null,
-      profile_path: null,
-      session_id: null,
-      node_id: null,
-      self_update_enabled: false,
-      self_update_interval_secs: null,
-      next_self_update_at: null,
-    },
+    activeAgentRecord,
     activeSessionId: "session-1",
     developerMode: true,
     acpTab: "conversation",
