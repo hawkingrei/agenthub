@@ -435,13 +435,13 @@ mod tests {
         let count: i64 = row.get("cnt");
         assert_eq!(count, 3);
 
+        let default_safe_path = config
+            .safe_paths()
+            .into_iter()
+            .next()
+            .expect("default safe path");
         let row = sqlx::query("SELECT COUNT(*) AS cnt FROM safe_paths WHERE path = ?1")
-            .bind(
-                std::path::Path::new(&std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-                    .join(".agenthub/worktrees")
-                    .to_string_lossy()
-                    .to_string(),
-            )
+            .bind(default_safe_path)
             .fetch_one(&db)
             .await
             .expect("count default safe path");

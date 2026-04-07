@@ -943,8 +943,8 @@ impl TeamManager {
             .map(str::to_string);
         let idempotency_key = normalize_optional_idempotency_key_input(idempotency_key);
 
-        let mut tx = self.db.begin().await?;
         let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
+            let mut tx = self.db.begin().await?;
             let result = sqlx::query(
                 r#"
                 INSERT INTO team_conversation_messages (
@@ -1027,7 +1027,7 @@ impl TeamManager {
             .bind(route)
             .bind(&payload_json)
             .bind(now)
-            .execute(&mut *tx)
+            .execute(&self.db)
             .await?;
             (
                 TeamConversationMessageRecord {
@@ -1044,7 +1044,6 @@ impl TeamManager {
             )
         };
 
-        tx.commit().await?;
         if created {
             self.emit_conversation_event(TeamConversationStreamEvent {
                 team_id: conversation.team_id.clone(),

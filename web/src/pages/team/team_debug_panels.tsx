@@ -32,6 +32,7 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
         <h3 className={chrome.sectionHeadingClassName}>Debug Tools</h3>
         <div className={chrome.debugTabsClassName}>
           <UnstyledButton
+            type="button"
             className={
               teamDebugTag === "run_ops"
                 ? chrome.debugTabActiveClassName
@@ -42,6 +43,7 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
             Run Ops
           </UnstyledButton>
           <UnstyledButton
+            type="button"
             className={
               teamDebugTag === "step_ops"
                 ? chrome.debugTabActiveClassName
@@ -52,6 +54,7 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
             Step Ops
           </UnstyledButton>
           <UnstyledButton
+            type="button"
             className={
               teamDebugTag === "mailbox_raw"
                 ? chrome.debugTabActiveClassName
