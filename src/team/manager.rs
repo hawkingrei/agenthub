@@ -945,7 +945,7 @@ impl TeamManager {
 
         let (message, created) = if let Some(idempotency_key) = idempotency_key.as_deref() {
             let mut tx = self.db.begin().await?;
-            let result = sqlx::query(
+            let outcome = match sqlx::query(
                 r#"
                 INSERT INTO team_conversation_messages (
                     conversation_id,
@@ -969,9 +969,8 @@ impl TeamManager {
             .bind(idempotency_key)
             .bind(now)
             .execute(&mut *tx)
-            .await;
-
-            match result {
+            .await
+            {
                 Ok(result) => (
                     TeamConversationMessageRecord {
                         message_id: result.last_insert_rowid(),
@@ -1004,7 +1003,9 @@ impl TeamManager {
                     (existing, false)
                 }
                 Err(err) => return Err(err.into()),
-            }
+            };
+            tx.commit().await?;
+            outcome
         } else {
             let result = sqlx::query(
                 r#"

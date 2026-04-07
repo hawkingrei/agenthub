@@ -1,7 +1,7 @@
-import { AgentRecord } from "../api";
-import { AgentsPanelProps } from "./agents_panel";
-import { AgentsWorkbenchProps } from "./agents_workbench_types";
-import { OutputHeaderProps } from "./output_header";
+import type { AgentRecord } from "../api";
+import type { AgentsPanelProps } from "./agents_panel";
+import type { AgentsWorkbenchProps } from "./agents_workbench_types";
+import type { OutputHeaderProps } from "./output_header";
 
 export function buildAgentsPanelProps(
   props: AgentsPanelProps

@@ -1,12 +1,12 @@
 import React from "react";
-import { AcpPanelProps } from "./acp_panel";
+import type { AcpPanelProps } from "./acp_panel";
 import { buildAcpRuntimeMetrics } from "./agents_workbench_metrics";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { getAcpConversationCacheStats } from "./acp_conversation_cache_stats";
 import { useAgentsPermissionJump } from "./use_agents_permission_jump";
 import { resolveAcpInputDockConversationClearance } from "./acp_input_dock_clearance";
 import { resolveInputDockJumpMode } from "./acp_panel_helpers";
-import { AgentsWorkbenchProps } from "./agents_workbench_types";
+import type { AgentsWorkbenchProps } from "./agents_workbench_types";
 
 type UseAgentsWorkbenchPanelResult = {
   acpPanelProps: AcpPanelProps;

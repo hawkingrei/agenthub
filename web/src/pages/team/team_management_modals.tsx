@@ -1,8 +1,8 @@
 import React from "react";
 import { Alert, Button, SegmentedControl, Switch, TextInput, Textarea } from "@mantine/core";
 import { DEFAULT_TEAM_LEADER_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
-import { TeamMemberProfileDraft } from "./create_helpers";
-import {
+import type { TeamMemberProfileDraft } from "./create_helpers";
+import type {
   TeamMemberRoleOption,
   TeamMemberRoleProfile,
 } from "./forge_helpers";

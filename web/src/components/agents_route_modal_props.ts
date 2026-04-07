@@ -1,6 +1,6 @@
-import { AgentNodeSectionProps } from "./agent_node_section";
-import { CreateAgentModalProps } from "./create_agent_modal";
-import { PermissionModalProps } from "./permission_modal";
+import type { AgentNodeSectionProps } from "./agent_node_section";
+import type { CreateAgentModalProps } from "./create_agent_modal";
+import type { PermissionModalProps } from "./permission_modal";
 
 export function buildCreateAgentModalProps(
   props: CreateAgentModalProps
