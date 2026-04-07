@@ -118,6 +118,15 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
 
   useEffect(() => {
     if (!token) {
+      setAgents([]);
+      setAgentNodes([]);
+      setError(null);
+      setWorktreeError(null);
+      setStartingAgentIds({});
+      setShowCreateAgent(false);
+      setCreateAgentBusy(false);
+      setUpdatingAgentNodeIds({});
+      setDeletingAgentNodeIds({});
       setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
       setAgentWorkdir("");
       return;

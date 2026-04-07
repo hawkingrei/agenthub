@@ -1,4 +1,4 @@
-import { Box, UnstyledButton } from "@mantine/core";
+import { Box } from "@mantine/core";
 import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
@@ -192,12 +192,20 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                         ? `Start agent on node ${agent.target_node_id}`
                         : "Start";
                   return (
-                    <UnstyledButton
+                    <Box
+                      role="button"
+                      tabIndex={0}
                       key={agent.id}
                       className={
                         activeAgent === agent.id ? AGENTS_ROW_ACTIVE_CLASS : AGENTS_ROW_CLASS
                       }
                       onClick={() => onSelectAgent(agent.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onSelectAgent(agent.id);
+                        }
+                      }}
                       title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
                       <Box className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
@@ -314,7 +322,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           Code mode: {agent.code_mode ? "on" : "off"}
                         </Box>
                       </Box>
-                    </UnstyledButton>
+                    </Box>
                   );
                 })}
               </Box>

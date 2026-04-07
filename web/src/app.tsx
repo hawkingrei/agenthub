@@ -55,6 +55,7 @@ import {
   AUTH_PAGE_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
+import { parseSendInputSessionMismatch } from "./app_utils";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -298,6 +299,7 @@ export function App() {
     acpTab,
     setAcpTab,
     developerMode,
+    setDeveloperMode,
     acpModeId,
     setAcpModeId,
     acpModelId,
@@ -322,6 +324,7 @@ export function App() {
   const {
     pendingPermissionCounts,
     scopedAcpPermissions,
+    scopedAcpPermissionHistory,
   } = useAppPermissions(
     auth,
     isAgentsRoute,
@@ -333,14 +336,6 @@ export function App() {
     permissionState
   );
 
-
-  const {
-    agentsPanelWidth,
-    setAgentsPanelWidth,
-    appRootRef,
-    appHeaderRef,
-    workspaceRef,
-  } = useAppLayout(auth, error, agentsCollapsed);
 
   const {
     safePaths,
@@ -366,6 +361,21 @@ export function App() {
     onToggleAllSafePaths,
     onDeleteSelectedSafePaths,
   } = useAppAdmin(auth, isAdminRoute);
+
+  const normalizedError = useMemo(() => {
+    const rawError = error || authError || agentsError || sseError || adminError;
+    if (!rawError) return null;
+    const message = sanitizeErrorBannerMessage(rawError, networkOnline);
+    return shouldHideErrorBannerMessage(message) ? null : message;
+  }, [error, authError, agentsError, sseError, adminError, networkOnline]);
+
+  const {
+    agentsPanelWidth,
+    setAgentsPanelWidth,
+    appRootRef,
+    appHeaderRef,
+    workspaceRef,
+  } = useAppLayout(auth, normalizedError, agentsCollapsed);
 
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
@@ -396,13 +406,6 @@ export function App() {
       JSON.stringify(inputHistory)
     );
   }, [inputHistory]);
-
-  const normalizedError = useMemo(() => {
-    const rawError = error || authError || agentsError || sseError || adminError;
-    if (!rawError) return null;
-    const message = sanitizeErrorBannerMessage(rawError, networkOnline);
-    return shouldHideErrorBannerMessage(message) ? null : message;
-  }, [error, authError, agentsError, sseError, adminError, networkOnline]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -578,32 +581,30 @@ export function App() {
       }
       } catch (err: unknown) {
         const msg = parseApiErrorMessage(err) ?? String(err || "websocket not connected");
-        if (msg.includes("agent session mismatch")) {
-          const match = msg.match(/running=([^\s]+)/);
-          if (match && match[1]) {
-            const runningSessionId = match[1];
-            setActiveSessionId(runningSessionId);
-            setAgentSessions((prev) => ({ ...prev, [activeAgent]: runningSessionId }));
-            await loadAgentEvents(activeAgent, runningSessionId);
-            try {
-              await sendInputForSession(runningSessionId);
-              if (options?.recordHistory) {
-                setInputHistory((prev) => pushInputHistory(prev, text));
-                setInputHistoryCursor(-1);
-              }
-              if (options?.clearComposer) {
-                inputHistoryDraftRef.current = "";
-                setInput("");
-              }
-              return;
-            } catch (retryErr: unknown) {
-              const retryMsg = parseApiErrorMessage(retryErr) ?? String(retryErr || "websocket not connected");
-              setError(retryMsg);
-              if (retryMsg.includes(AGENT_NOT_RUNNING_ERROR)) {
-                await refreshAgents();
-              }
-              return;
+        const sessionMismatch = parseSendInputSessionMismatch(msg);
+        if (sessionMismatch) {
+          const runningSessionId = sessionMismatch.running;
+          setActiveSessionId(runningSessionId);
+          setAgentSessions((prev) => ({ ...prev, [activeAgent]: runningSessionId }));
+          await loadAgentEvents(activeAgent, runningSessionId);
+          try {
+            await sendInputForSession(runningSessionId);
+            if (options?.recordHistory) {
+              setInputHistory((prev) => pushInputHistory(prev, text));
+              setInputHistoryCursor(-1);
             }
+            if (options?.clearComposer) {
+              inputHistoryDraftRef.current = "";
+              setInput("");
+            }
+            return;
+          } catch (retryErr: unknown) {
+            const retryMsg = parseApiErrorMessage(retryErr) ?? String(retryErr || "websocket not connected");
+            setError(retryMsg);
+            if (retryMsg.includes(AGENT_NOT_RUNNING_ERROR)) {
+              await refreshAgents();
+            }
+            return;
           }
         }
         setError(msg);
@@ -800,7 +801,7 @@ export function App() {
         isAgentActive,
         outputs,
         terminalOutputs,
-        scopedAcpPermissionHistory: [], // will be handled by useAppPermissions later if needed
+        scopedAcpPermissionHistory,
         isOutputLoading,
         isConversationLoading,
         terminalRef,
@@ -844,6 +845,7 @@ export function App() {
       isAgentActive,
       outputs,
       terminalOutputs,
+      scopedAcpPermissionHistory,
       isOutputLoading,
       isConversationLoading,
       terminalRef,
@@ -1032,8 +1034,8 @@ export function App() {
               safePathInput={safePathInput}
               setSafePathInput={setSafePathInput}
               developerMode={developerMode}
-              onDeveloperModeChange={() => {}} // Handle correctly if needed
-              passkeyEnabled={passkeyEnabled ?? false}
+              onDeveloperModeChange={setDeveloperMode}
+              passkeyEnabled={passkeyEnabled}
               onPasskeyEnabledChange={onPasskeyEnabledChange}
             />
           </Suspense>
@@ -1072,7 +1074,7 @@ export function App() {
       normalizedError={normalizedError}
       onClearError={() => setError(null)}
       authBusy={authBusy}
-      rootInitialized={rootInitialized ?? false}
+      rootInitialized={rootInitialized}
       username={username}
       password={password}
       displayName={displayName}
