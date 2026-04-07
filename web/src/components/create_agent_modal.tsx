@@ -2,10 +2,10 @@ import React from "react";
 import {
   Alert,
   Button,
+  NativeSelect,
   Group,
   List,
   Modal,
-  NativeSelect,
   Select,
   SimpleGrid,
   Stack,
@@ -27,7 +27,7 @@ import {
   TEAM_MODAL_CLASSNAMES,
 } from "../ui/floating_surfaces";
 
-type CreateAgentModalProps = {
+export type CreateAgentModalProps = {
   title?: string;
   confirmLabel?: string;
   agentPresetLabel?: string;

@@ -1,4 +1,4 @@
-import { ActionIcon, Box, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Box } from "@mantine/core";
 import React from "react";
 
 export function cx(...values: Array<string | false | null | undefined>): string {
@@ -119,7 +119,7 @@ export function PanelHeader({
   );
 }
 
-type SelectableListItemProps = React.ComponentPropsWithoutRef<typeof UnstyledButton> & {
+type SelectableListItemProps = React.ComponentPropsWithoutRef<"button"> & {
   active?: boolean;
 };
 
@@ -130,7 +130,8 @@ export function SelectableListItem({
   ...props
 }: SelectableListItemProps) {
   return (
-    <UnstyledButton
+    <Box
+      component="button"
       type={type}
       className={cx(
         SELECTABLE_LIST_ITEM_BASE_CLASS,
@@ -142,7 +143,7 @@ export function SelectableListItem({
   );
 }
 
-type ActionButtonProps = React.ComponentPropsWithoutRef<typeof UnstyledButton> & {
+type ActionButtonProps = React.ComponentPropsWithoutRef<"button"> & {
   tone?: keyof typeof ACTION_BUTTON_TONE_CLASS;
   size?: keyof typeof ACTION_BUTTON_SIZE_CLASS;
 };
@@ -155,7 +156,8 @@ export function ActionButton({
   ...props
 }: ActionButtonProps) {
   return (
-    <UnstyledButton
+    <Box
+      component="button"
       type={type}
       className={cx(
         ACTION_BUTTON_BASE_CLASS,

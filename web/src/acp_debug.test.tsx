@@ -64,6 +64,10 @@ describe("AcpDebug", () => {
     expect(html).toContain("Mode ID");
     expect(html).toContain("Model ID");
     expect(html).toContain("Config ID");
+    expect(html).toContain('name="acp-config-id"');
+    expect(html).toContain('aria-label="ACP config ID"');
+    expect(html).toContain('name="acp-config-value"');
+    expect(html).toContain('aria-label="ACP config value"');
     // All tabs are now in the DOM as part of the tab bar
     expect(html).toContain("Terminal");
     expect(html).toContain("Permissions");

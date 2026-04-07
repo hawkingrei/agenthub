@@ -46,6 +46,16 @@ The deployed `agents` route still shipped a monolithic `route-agents` chunk that
   - `web/src/components/agents_workbench_metrics.ts` for runtime/cache/conversation metric assembly
   - `web/src/components/use_agents_permission_jump.ts` for the permission-history jump retry state machine
   This keeps the workbench component focused on view composition instead of mixing hook scheduling and pure metric shaping into the same file.
+- Continued the workbench decomposition by splitting the remaining ACP panel/input-dock state wiring out of `web/src/components/agents_workbench.tsx` into:
+  - `web/src/components/agents_workbench_types.ts`
+  - `web/src/components/use_agents_workbench_panel.ts`
+  This leaves `AgentsWorkbench` as a thin render shell while the hook owns ACP conversation/debug prop shaping and dock-clearance coordination.
+- Continued the root-shell decomposition by moving the authenticated agents workspace markup out of `web/src/app.tsx` into a dedicated `web/src/components/agents_route_shell.tsx` view/wrapper pair. The new shell owns:
+  - `AgentsPanel`
+  - output header placement
+  - splitter chrome
+  - lazy `AgentsWorkbench` mounting plus fallback/error-boundary wrapping
+  while `web/src/app.tsx` now only assembles shell props and route state.
 - Pinned shared shell utilities (`scroll.ts`, `html_escape.ts`) back to `route-agents` so they stop dragging the workbench chunk into the route entry.
 - Removed the nested lazy `AcpDebug` slot inside `web/src/components/acp_panel.tsx`; the panel now uses the already split `route-agents-debug` boundary directly instead of keeping an extra preload edge inside the workbench chunk.
 - Short-circuited idle-root ACP parsing: when no agent is selected, the root shell now reuses a shared empty ACP view instead of rebuilding `buildAcpView(...)` from cached ACP lines.
@@ -107,6 +117,8 @@ Commands run locally:
 
 ```bash
 cd web && npm run test -- vite.config.test.ts src/app.permission_scope.test.ts src/acp_panel.test.tsx src/create_agent_modal.test.tsx src/permission_modal.test.tsx src/components/agent_node_section.test.tsx
+cd web && npm run test -- src/agents_workbench.test.tsx src/output_body.test.tsx src/acp_debug.test.tsx
+cd web && npm run test -- src/agents_route_shell.test.tsx src/app.permission_scope.test.ts src/pages/team_page.smoke.test.tsx src/agents_workbench.test.tsx
 cd web && npm run lint -- --ignore-pattern dist-debug
 cd web && npm run build
 make build-web
@@ -147,6 +159,20 @@ Live verification notes:
   - root entry JS imports `route-agents`, `route-app-shared`, and the tiny `route-agents-debug-loader`
   - root entry JS no longer imports `route-teams` or `route-agents-workbench`
   - `route-app-shared` now owns the root+team shared live-output/event-polling helpers instead of letting Rollup fold them into the Team route chunk
+- Follow-up live regression after the `AgentsWorkbench` hook split still shows the visible behavior intact:
+  - `https://agenthub.hawkingrei.com/` renders `No agent selected` without eagerly fetching `route-agents-workbench`
+  - `https://agenthub.hawkingrei.com/teams/...` stays `ONLINE · SSE CONNECTED`
+  - the only console noise remains the existing `favicon.ico 404`
+- Follow-up live regression after extracting `AgentsRouteShell` out of `web/src/app.tsx` still shows the same visible behavior:
+  - root page remains `No agent selected` with no eager `route-agents-workbench` request
+  - Team page remains `ONLINE · SSE CONNECTED`
+  - console noise is unchanged (`favicon.ico 404` on `/`, two existing `404`s on `/teams/...`)
+- Follow-up route-shell decomposition extracted the remaining `AgentsRouteShell` prop assembly out of `web/src/app.tsx` into `web/src/components/agents_route_shell_props.ts`, and memoized `AgentsRouteShell`/`AgentsRouteShellView` so unrelated root rerenders stop rebuilding the shell prop bags by default.
+- Follow-up modal-shell cleanup extracted the remaining create-agent / node-section / permission-modal prop assembly into `web/src/components/agents_route_modal_props.ts`, so `web/src/app.tsx` no longer builds those large modal prop bags inline during every root render.
+- Follow-up root-view extraction moved the authenticated agents shell and login-form JSX out of `web/src/app.tsx` into `web/src/components/agents_root_page.tsx`, so the root route file now stays focused on route/state orchestration instead of rendering the entire header/auth/modal tree inline.
+- Follow-up route-selection extraction moved the root/admin/team route classification helpers into `web/src/app_route_selection.ts`, added focused route selection coverage in `web/src/app_route_selection.test.ts`, and converted the bottom of `web/src/app.tsx` onto a single `resolveAppRouteKind(...)` switch so route composition no longer duplicates pathname/auth branching inline.
+- Follow-up helper extraction moved the remaining agents/workbench pure helpers into `web/src/app_agents_helpers.ts` and re-exported them from `web/src/app.tsx`, reducing the root route file from `3300` lines to `3063` while keeping `app.route_auth` / `app.permission_scope` compatibility imports unchanged.
+- The latest local route-selection pass stayed green on `app_route_selection`, `app.route_auth`, `app.permission_scope`, lint, build, and `make build-web`; the live MCP after-check could not be completed because both `/` and `/teams/...` were returning `502 Bad Gateway` during verification, so this pass relies on local evidence rather than a fresh deployed browser regression.
 
 ## Follow-up
 

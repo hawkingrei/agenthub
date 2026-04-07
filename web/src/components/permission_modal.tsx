@@ -7,7 +7,7 @@ import {
 } from "../ui/floating_surfaces";
 import { SurfaceCard } from "../ui/primitives";
 
-type PermissionModalProps = {
+export type PermissionModalProps = {
   permissions: AcpPermissionRecord[];
   permissionBusy: string | null;
   onRespond: (agentId: string, permissionId: string, optionId?: string) => void;

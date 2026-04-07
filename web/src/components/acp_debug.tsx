@@ -1,4 +1,4 @@
-import { NativeSelect, TextInput, UnstyledButton } from "@mantine/core";
+import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import { AcpConfigOption, AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
@@ -84,6 +84,22 @@ const DEBUG_TERMINAL_STDOUT_CLASS = "text-white";
 const DEBUG_TERMINAL_STDERR_CLASS = "text-red-300";
 const DEBUG_TERMINAL_SYSTEM_CLASS = "text-cyan-300";
 
+function renderConfigSelectOptions(
+  placeholder: string,
+  options: Array<{ valueId: string; label: string }>
+): React.ReactNode {
+  return (
+    <>
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option.valueId} value={option.valueId}>
+          {option.label}
+        </option>
+      ))}
+    </>
+  );
+}
+
 function AcpDebugView({
   terminalOutputs,
   ansi,
@@ -142,11 +158,8 @@ function AcpDebugView({
       ACP_TAB_BUTTON_BASE_CLASS,
       isActive ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS
     );
-  const debugInputClassNames = {
-    root: "w-full",
-    input:
-      "rounded-md border border-notion-border bg-white px-3 py-1.5 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10",
-  } as const;
+  const debugInputClassName =
+    "w-full rounded-md border border-notion-border bg-white px-3 py-1.5 text-[14px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-2 focus:ring-notion-accent/10";
   const modeConfigOption = React.useMemo(
     () => configOptions.find((option) => option.id === "mode") ?? null,
     [configOptions]
@@ -326,31 +339,26 @@ function AcpDebugView({
           </div>
           <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             {modeConfigOption?.selectOptions.length ? (
-              <NativeSelect
+              <select
                 aria-label="ACP mode"
-                classNames={debugInputClassNames}
-                className="w-full"
+                className={debugInputClassName}
                 name="acp-mode"
                 value={resolvedModeId}
-                data={modeConfigOption.selectOptions.map((option) => ({
-                  value: option.valueId,
-                  label: option.label,
-                }))}
                 onChange={(e) => onAcpModeIdChange(e.currentTarget.value)}
-                radius="md"
-                size="sm"
               >
-              </NativeSelect>
+                {renderConfigSelectOptions(
+                  "Select mode",
+                  modeConfigOption.selectOptions
+                )}
+              </select>
             ) : (
-              <TextInput
+              <input
                 aria-label="ACP mode"
-                classNames={debugInputClassNames}
+                className={debugInputClassName}
                 name="acp-mode"
                 placeholder="Mode ID"
                 value={resolvedModeId}
                 onChange={(e) => onAcpModeIdChange(e.currentTarget.value)}
-                radius="md"
-                size="sm"
               />
             )}
             <ActionButton
@@ -365,31 +373,26 @@ function AcpDebugView({
           </div>
           <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             {modelConfigOption?.selectOptions.length ? (
-              <NativeSelect
+              <select
                 aria-label="ACP model"
-                classNames={debugInputClassNames}
-                className="w-full"
+                className={debugInputClassName}
                 name="acp-model"
                 value={resolvedModelId}
-                data={modelConfigOption.selectOptions.map((option) => ({
-                  value: option.valueId,
-                  label: option.label,
-                }))}
                 onChange={(e) => onAcpModelIdChange(e.currentTarget.value)}
-                radius="md"
-                size="sm"
               >
-              </NativeSelect>
+                {renderConfigSelectOptions(
+                  "Select model",
+                  modelConfigOption.selectOptions
+                )}
+              </select>
             ) : (
-              <TextInput
+              <input
                 aria-label="ACP model"
-                classNames={debugInputClassNames}
+                className={debugInputClassName}
                 name="acp-model"
                 placeholder="Model ID"
                 value={resolvedModelId}
                 onChange={(e) => onAcpModelIdChange(e.currentTarget.value)}
-                radius="md"
-                size="sm"
               />
             )}
             <ActionButton
@@ -403,21 +406,23 @@ function AcpDebugView({
             </ActionButton>
           </div>
           <div className="form-row grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <TextInput
-              classNames={debugInputClassNames}
+            <input
+              aria-label="ACP config ID"
+              className={debugInputClassName}
+              id="acp-config-id"
+              name="acp-config-id"
               placeholder="Config ID"
               value={acpConfigId}
               onChange={(e) => onAcpConfigIdChange(e.currentTarget.value)}
-              radius="md"
-              size="sm"
             />
-            <TextInput
-              classNames={debugInputClassNames}
+            <input
+              aria-label="ACP config value"
+              className={debugInputClassName}
+              id="acp-config-value"
+              name="acp-config-value"
               placeholder="Config Value ID"
               value={acpConfigValue}
               onChange={(e) => onAcpConfigValueChange(e.currentTarget.value)}
-              radius="md"
-              size="sm"
             />
             <ActionButton
               className="whitespace-nowrap"

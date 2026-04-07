@@ -1,5 +1,3 @@
-import { isImeComposing } from "../../input_ime";
-
 export function escapeTeamHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -14,5 +12,5 @@ export function isTeamImeComposing(
   nativeIsComposing: boolean,
   nativeKeyCode?: number
 ): boolean {
-  return isImeComposing(currentRefState, nativeIsComposing, nativeKeyCode);
+  return currentRefState || nativeIsComposing || nativeKeyCode === 229;
 }

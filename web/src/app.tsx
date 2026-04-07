@@ -3,7 +3,6 @@ import {
   api,
   AgentRecord,
   AgentNodeRecord,
-  AgentEvent,
   AuditRecord,
   AcpPermissionRecord,
   DeviceRecord,
@@ -11,7 +10,6 @@ import {
   SafePath,
   VapidInfo,
 } from "./api";
-import { buildAcpView, EMPTY_ACP_VIEW, type AcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
@@ -19,12 +17,35 @@ import {
   isAgentActiveStatus,
   shouldShowUnexpectedExitNotice,
 } from "./agent_ws";
-import { ErrorBanner } from "./error_banner";
 import {
   clearAuthAndRedirect,
   isInvalidTokenMessage,
-  resolvePostLoginRedirectTarget,
 } from "./auth_redirect";
+import {
+  buildPermissionPollAgentIds,
+  canManageAgentNodes,
+  clampAgentsPanelWidth,
+  isSameAgentNodeRecordList,
+  isSameAgentRecordList,
+  isSamePendingPermissionCountMap,
+  isSamePermissionList,
+  loadAgentsPanelWidthPreference,
+  persistAgentsPanelWidthPreference,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
+  resolveActiveAcpView,
+  resolveAgentsPanelMaxWidth,
+  resolveDefaultActiveAgentId,
+  resolveOutputHistoryKey,
+  resolveSessionScopedEvents,
+  upsertAgentNodeRecord,
+} from "./app_agents_helpers";
+import {
+  resolveAppRouteKind,
+  resolvePostAuthRedirectTarget,
+  resolveTeamRoute,
+  isAgentsWorkbenchRoute,
+} from "./app_route_selection";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -42,7 +63,6 @@ import {
   isCursorNewer,
   shouldPollAgentEvents,
 } from "./event_polling";
-import { compareEventOrder } from "./seq_order";
 import {
   buildLatestLiveSessionMap,
   normalizeSseOutputLines,
@@ -84,11 +104,17 @@ import {
   type AgentPresetId,
 } from "./agent_presets";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
-import { AgentsPanel } from "./components/agents_panel";
-import { OutputHeader } from "./components/output_header";
-import { OutputErrorBoundary } from "./components/output_error_boundary";
-import { WorkbenchConnectionBadge } from "./components/workbench_connection_badge";
-import { WorkbenchHeaderMenu } from "./components/workbench_header_menu";
+import {
+  buildAgentNodeSectionProps,
+  buildCreateAgentModalProps,
+  buildPermissionModalProps,
+} from "./components/agents_route_modal_props";
+import { AgentsRootPage } from "./components/agents_root_page";
+import {
+  buildAgentsPanelProps,
+  buildAgentsWorkbenchProps,
+  buildOutputHeaderProps,
+} from "./components/agents_route_shell_props";
 import { loadOutputCaches, saveOutputCaches } from "./storage/output_cache_storage";
 import {
   DEFAULT_OUTPUT_CACHE_MAX_EVENTS,
@@ -122,41 +148,17 @@ import {
 } from "./worktree_defaults";
 import { buildSseTargetAgentIds, encodeSseTargetAgentIds } from "./sse_targets";
 import {
-  AUTH_ACTIONS_CLASS,
-  AUTH_FORM_CARD_CLASS,
-  AUTH_INPUT_CLASS,
-  AUTH_PRIMARY_BUTTON_CLASS,
-  AUTH_SECONDARY_BUTTON_CLASS,
-  APP_WORKBENCH_HEADER_CLASS,
-  APP_WORKBENCH_HEADER_STATUS_CLASS,
-  APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
-  APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   AUTH_CARD_BASE_CLASS,
   AUTH_PAGE_CLASS,
-  APP_WORKSPACE_ROOT_CLASS,
-  APP_WORKSPACE_ROOT_COLLAPSED_CLASS,
-  APP_WORKSPACE_RIGHT_CLASS,
-  APP_WORKSPACE_SPLITTER_CLASS,
-  OUTPUT_BODY_ACP_ROOT_CLASS,
-  OUTPUT_BODY_LOADING_CLASS,
-  OUTPUT_BODY_ROOT_CLASS,
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import {
   loadDeveloperModePreference,
   persistDeveloperModePreference,
 } from "./ui/developer_mode";
-import { ActionButton, IconButton } from "./ui/primitives";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
-const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
-const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
-const AGENTS_PANEL_DEFAULT_WIDTH = 288;
-const AGENTS_PANEL_MIN_WIDTH = 256;
-const AGENTS_PANEL_MAX_WIDTH = 352;
-const AGENTS_PANEL_MIN_RIGHT_WIDTH = 760;
-const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
@@ -164,6 +166,24 @@ export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
+export {
+  buildPermissionPollAgentIds,
+  canManageAgentNodes,
+  clampAgentsPanelWidth,
+  decidePermissionJump,
+  isSameAgentNodeRecordList,
+  isSameAgentRecordList,
+  loadAgentsPanelWidthPreference,
+  persistAgentsPanelWidthPreference,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
+  resolveActiveAcpView,
+  resolveAgentsPanelMaxWidth,
+  resolveDefaultActiveAgentId,
+  resolveOutputHistoryKey,
+  resolveSessionScopedEvents,
+  upsertAgentNodeRecord,
+} from "./app_agents_helpers";
 export {
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
@@ -183,30 +203,14 @@ export {
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
 } from "./app_viewport";
-
-export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
-  return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
-}
-
-export function resolveActiveAcpView(
-  activeAgent: string | null,
-  acpOutputs: OutputLine[]
-): AcpView {
-  if (!activeAgent) {
-    return EMPTY_ACP_VIEW;
-  }
-  return buildAcpView(acpOutputs);
-}
-
-export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
-  return Array.from(
-    new Set(
-      agents
-        .filter((agent) => isAgentActiveStatus(agent.status))
-        .map((agent) => agent.id)
-    )
-  ).sort();
-}
+export {
+  isAgentsWorkbenchRoute,
+  isTeamsRoute,
+  resolveAppRouteKind,
+  resolvePostAuthRedirectTarget,
+  resolveTeamRoute,
+  shouldRedirectTeamsToLogin,
+} from "./app_route_selection";
 
 const LazyAdminPage = React.lazy(async () => {
   const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
@@ -221,26 +225,6 @@ const LazyJoinPage = React.lazy(async () => {
 const LazyTeamPage = React.lazy(async () => {
   const module = (await import("./pages/team_page")) as typeof import("./pages/team_page");
   return { default: module.TeamPage };
-});
-
-const LazyCreateAgentModal = React.lazy(async () => {
-  const module = await import("./components/create_agent_modal");
-  return { default: module.CreateAgentModal };
-});
-
-const LazyAgentNodeSection = React.lazy(async () => {
-  const module = await import("./components/agent_node_section");
-  return { default: module.AgentNodeSection };
-});
-
-const LazyPermissionModal = React.lazy(async () => {
-  const module = await import("./components/permission_modal");
-  return { default: module.PermissionModal };
-});
-
-const LazyAgentsWorkbench = React.lazy(async () => {
-  const module = await import("./components/agents_workbench");
-  return { default: module.AgentsWorkbench };
 });
 
 function AuthRedirect(): null {
@@ -283,284 +267,6 @@ function ForbiddenRoute() {
       message="You do not have access to this page."
     />
   );
-}
-
-function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
-  return (
-    <div className={hasAcp ? OUTPUT_BODY_ACP_ROOT_CLASS : OUTPUT_BODY_ROOT_CLASS}>
-      <div className={OUTPUT_BODY_LOADING_CLASS}>
-        <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-        <div className="label">Loading...</div>
-      </div>
-    </div>
-  );
-}
-
-export function shouldRedirectTeamsToLogin(
-  pathname: string,
-  auth: AuthState | null,
-  token: string | null
-): boolean {
-  return isTeamsRoute(pathname) && (!auth || !token);
-}
-
-export function canManageAgentNodes(auth: AuthState | null): boolean {
-  return auth?.role === "root";
-}
-
-function compareAgentNodeRecords(a: AgentNodeRecord, b: AgentNodeRecord): number {
-  if (a.is_main !== b.is_main) {
-    return a.is_main ? -1 : 1;
-  }
-  if (a.created_at !== b.created_at) {
-    return b.created_at - a.created_at;
-  }
-  return a.id.localeCompare(b.id);
-}
-
-export function upsertAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  node: AgentNodeRecord
-): AgentNodeRecord[] {
-  const existingIndex = nodes.findIndex((item) => item.id === node.id);
-  if (existingIndex >= 0) {
-    const next = [...nodes];
-    next[existingIndex] = node;
-    return next;
-  }
-  return [...nodes, node].sort(compareAgentNodeRecords);
-}
-
-function isSameStringList(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) return false;
-  }
-  return true;
-}
-
-function isSameAgentRecord(a: AgentRecord, b: AgentRecord): boolean {
-  return (
-    a.id === b.id &&
-    a.name === b.name &&
-    a.workdir === b.workdir &&
-    a.command === b.command &&
-    isSameStringList(a.args, b.args) &&
-    (a.target_node_id ?? null) === (b.target_node_id ?? null) &&
-    a.worktree_mode === b.worktree_mode &&
-    (a.worktree_repo ?? null) === (b.worktree_repo ?? null) &&
-    (a.worktree_ref ?? null) === (b.worktree_ref ?? null) &&
-    a.code_mode === b.code_mode &&
-    (a.agent_loop_enabled ?? null) === (b.agent_loop_enabled ?? null) &&
-    (a.agent_loop_idle_seconds ?? null) === (b.agent_loop_idle_seconds ?? null) &&
-    (a.agent_loop_prompt ?? null) === (b.agent_loop_prompt ?? null) &&
-    a.status === b.status &&
-    a.created_at === b.created_at &&
-    a.updated_at === b.updated_at
-  );
-}
-
-export function isSameAgentRecordList(
-  prev: AgentRecord[],
-  next: AgentRecord[]
-): boolean {
-  if (prev.length !== next.length) return false;
-  for (let index = 0; index < prev.length; index += 1) {
-    if (!isSameAgentRecord(prev[index], next[index])) return false;
-  }
-  return true;
-}
-
-function isSameAgentNodeRecord(
-  a: AgentNodeRecord,
-  b: AgentNodeRecord
-): boolean {
-  return (
-    a.id === b.id &&
-    a.name === b.name &&
-    (a.grpc_target ?? null) === (b.grpc_target ?? null) &&
-    (a.tls_server_name ?? null) === (b.tls_server_name ?? null) &&
-    (a.default_worktree_root ?? null) === (b.default_worktree_root ?? null) &&
-    a.is_main === b.is_main &&
-    a.created_at === b.created_at &&
-    a.updated_at === b.updated_at
-  );
-}
-
-export function isSameAgentNodeRecordList(
-  prev: AgentNodeRecord[],
-  next: AgentNodeRecord[]
-): boolean {
-  if (prev.length !== next.length) return false;
-  for (let index = 0; index < prev.length; index += 1) {
-    if (!isSameAgentNodeRecord(prev[index], next[index])) return false;
-  }
-  return true;
-}
-
-export function replaceAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  node: AgentNodeRecord
-): AgentNodeRecord[] {
-  return nodes.map((item) => (item.id === node.id ? node : item));
-}
-
-export function removeAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  nodeId: string
-): AgentNodeRecord[] {
-  return nodes.filter((item) => item.id !== nodeId);
-}
-
-function isTeamsRoute(pathname: string): boolean {
-  return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
-}
-
-export function isAgentsWorkbenchRoute(pathname: string): boolean {
-  return pathname === "/";
-}
-
-export function resolveTeamRoute(pathname: string): {
-  mode: "selector" | "detail";
-  teamId: string | null;
-} | null {
-  if (!isTeamsRoute(pathname)) {
-    return null;
-  }
-  const suffix = pathname.slice("/teams".length);
-  if (!suffix || suffix === "/") {
-    return { mode: "selector", teamId: null };
-  }
-  const normalized = suffix.startsWith("/") ? suffix.slice(1) : suffix;
-  const [rawTeamId] = normalized.split("/");
-  if (!rawTeamId) {
-    return { mode: "selector", teamId: null };
-  }
-  try {
-    return {
-      mode: "detail",
-      teamId: decodeURIComponent(rawTeamId),
-    };
-  } catch {
-    return {
-      mode: "detail",
-      teamId: rawTeamId,
-    };
-  }
-}
-
-export function resolvePostAuthRedirectTarget(
-  pathname: string,
-  search: string,
-  auth: AuthState | null,
-  token: string | null
-): string | null {
-  if (pathname !== "/") return null;
-  if (!auth || !token) return null;
-  return resolvePostLoginRedirectTarget(search);
-}
-
-type PendingPermissionJumpState = {
-  toolCallId: string;
-  sessionId: string | null;
-  attempts: number;
-};
-
-export function decidePermissionJump(
-  pending: PendingPermissionJumpState | null,
-  acpTab: "conversation" | "plan" | "debug",
-  activeSessionId: string | null,
-  maxAttempts: number = PERMISSION_JUMP_MAX_ATTEMPTS
-): PermissionJumpDecision {
-  if (!pending) return "idle";
-  if (acpTab !== "conversation") return "wait";
-  if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
-  if (pending.attempts >= maxAttempts) return "clear";
-  return "attempt";
-}
-
-export function resolveAgentsPanelMaxWidth(workspaceWidth: number): number {
-  if (!Number.isFinite(workspaceWidth) || workspaceWidth <= 0) {
-    return AGENTS_PANEL_MAX_WIDTH;
-  }
-  return Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(
-      AGENTS_PANEL_MAX_WIDTH,
-      Math.round(
-        workspaceWidth -
-          AGENTS_PANEL_MIN_RIGHT_WIDTH -
-          AGENTS_WORKSPACE_SPLITTER_WIDTH
-      )
-    )
-  );
-}
-
-export function clampAgentsPanelWidth(
-  value: number,
-  maxWidth = AGENTS_PANEL_MAX_WIDTH
-): number {
-  if (!Number.isFinite(value)) {
-    return AGENTS_PANEL_DEFAULT_WIDTH;
-  }
-  const effectiveMax = Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(AGENTS_PANEL_MAX_WIDTH, maxWidth)
-  );
-  return Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(effectiveMax, Math.round(value))
-  );
-}
-
-export function loadAgentsPanelWidthPreference(
-  raw = getLocalStorageItemSafe(AGENTS_PANEL_WIDTH_STORAGE_KEY)
-): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return clampAgentsPanelWidth(parsed);
-}
-
-export function persistAgentsPanelWidthPreference(width: number): void {
-  setLocalStorageItemSafe(
-    AGENTS_PANEL_WIDTH_STORAGE_KEY,
-    String(clampAgentsPanelWidth(width))
-  );
-}
-
-export function resolveOutputHistoryKey(
-  agentId: string,
-  sessionId: string | null,
-  agentSessions: Record<string, string>
-): string {
-  if (sessionId) return `${agentId}:${sessionId}`;
-  const latestSessionId = agentSessions[agentId] ?? "latest";
-  return `${agentId}:latest:${latestSessionId}`;
-}
-
-export function resolveSessionScopedEvents(
-  events: AgentEvent[],
-  requestedSessionId: string | null
-): {
-  latestSessionId: string | null;
-  resolvedSessionId: string | null;
-  scopedEvents: AgentEvent[];
-} {
-  const latestSessionId = !requestedSessionId
-    ? events.reduce<AgentEvent | null>((latest, current) => {
-        if (!current.session_id) return latest;
-        if (!latest) return current;
-        return compareEventOrder(current, latest) > 0 ? current : latest;
-      }, null)?.session_id ?? null
-    : null;
-  const resolvedSessionId = requestedSessionId ?? latestSessionId;
-  const scopedEvents = resolvedSessionId
-    ? events.filter((evt) => evt.session_id === resolvedSessionId)
-    : events;
-  return {
-    latestSessionId,
-    resolvedSessionId,
-    scopedEvents,
-  };
 }
 
 export function App() {
@@ -1068,6 +774,12 @@ export function App() {
     auth,
     token
   );
+  const routeKind = resolveAppRouteKind(
+    routeLocation,
+    auth,
+    token,
+    postAuthRedirectTarget
+  );
   useEffect(() => {
     const syncRouteLocation = () => {
       setRouteLocation({
@@ -1540,6 +1252,10 @@ export function App() {
     setShowCreateAgent(true);
     void refreshAgentNodes({ silent: true });
   }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
+
+  const closeCreateAgentModal = useCallback(() => {
+    setShowCreateAgent(false);
+  }, []);
 
   useEffect(() => {
     if (!token || auth?.role !== "root" || !isAdminRoute) {
@@ -2252,7 +1968,7 @@ export function App() {
     [applyTargetNodeSelection, targetNodeId, token]
   );
 
-  const onCreateAgent = async () => {
+  const onCreateAgent = useCallback(async () => {
     if (!token) return;
     if (createAgentBusyRef.current) return;
     createAgentBusyRef.current = true;
@@ -2327,7 +2043,20 @@ export function App() {
       createAgentBusyRef.current = false;
       setCreateAgentBusy(false);
     }
-  };
+  }, [
+    token,
+    targetNodeId,
+    agentName,
+    agentWorkdir,
+    selectedTargetNodeDefaultWorktreeRoot,
+    worktreeMode,
+    agentPresetId,
+    worktreeRepo,
+    worktreeRef,
+    codeMode,
+    refreshAgents,
+    applyTargetNodeSelection,
+  ]);
 
   const onStartAgent = useCallback(async (id: string) => {
     if (!token) return;
@@ -2668,7 +2397,7 @@ export function App() {
     setAgentsCollapsed(true);
   }, [agentSessions]);
 
-  const onRespondPermission = async (
+  const onRespondPermission = useCallback(async (
     agentId: string,
     permissionId: string,
     optionId?: string
@@ -2689,7 +2418,7 @@ export function App() {
     } finally {
       setPermissionBusy(null);
     }
-  };
+  }, [token]);
 
   const onCreateJoin = async () => {
     if (!token) return;
@@ -2825,361 +2554,372 @@ export function App() {
       ["--agents-panel-width" as string]: `${agentsPanelWidth}px`,
     };
   }, [agentsCollapsed, agentsPanelWidth]);
+
   const agentsPanelShowsCompactRows =
     !agentsCollapsed && agentsPanelWidth <= AGENTS_PANEL_COMPACT_ROWS_THRESHOLD;
 
-  if (routeLocation.pathname.startsWith("/join")) {
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
-          <LazyJoinPage onComplete={(next) => setAuth(next)} />
-        </Suspense>
-      </div>
-    );
-  }
+  const agentsPanelProps = useMemo(
+    () =>
+      buildAgentsPanelProps({
+        agents,
+        activeAgent,
+        agentsCollapsed,
+        compactRows: agentsPanelShowsCompactRows,
+        hasPendingPermissions,
+        pendingPermissionCounts,
+        startingAgentIds,
+        onCollapse: handleCollapseAgents,
+        onExpand: handleExpandAgents,
+        onCreateAgent: openCreateAgentModal,
+        onSelectAgent: handleSelectAgent,
+        onToggleCodeMode: onSetCodeMode,
+        onStartAgent: onStartAgent,
+        onStopAgent: onStopAgent,
+        onDeleteAgent: onDeleteAgent,
+      }),
+    [
+      agents,
+      activeAgent,
+      agentsCollapsed,
+      agentsPanelShowsCompactRows,
+      hasPendingPermissions,
+      pendingPermissionCounts,
+      startingAgentIds,
+      handleCollapseAgents,
+      handleExpandAgents,
+      openCreateAgentModal,
+      handleSelectAgent,
+      onSetCodeMode,
+      onStartAgent,
+      onStopAgent,
+      onDeleteAgent,
+    ]
+  );
 
-  if (routeLocation.pathname.startsWith("/admin")) {
-    if (!auth) {
+  const outputHeaderProps = useMemo(
+    () =>
+      buildOutputHeaderProps({
+        activeAgent: activeAgentRecord,
+        activeSessionId,
+        developerMode,
+        hasAcp: acpView.hasAcp,
+        thinkingStartTs,
+        runStatus: acpView.runStatus?.status ?? null,
+        modelLabel: activeAgentModelLabel,
+      }),
+    [
+      activeAgentRecord,
+      activeSessionId,
+      developerMode,
+      acpView.hasAcp,
+      acpView.runStatus?.status,
+      thinkingStartTs,
+      activeAgentModelLabel,
+    ]
+  );
+
+  const workbenchProps = useMemo(
+    () =>
+      buildAgentsWorkbenchProps({
+        activeAgent,
+        activeAgentRecord,
+        activeSessionId,
+        developerMode,
+        acpTab,
+        acpView,
+        eventMeta,
+        isAgentActive,
+        outputs,
+        terminalOutputs,
+        scopedAcpPermissionHistory,
+        isOutputLoading,
+        isConversationLoading,
+        terminalRef,
+        input,
+        inputHistory,
+        ansi,
+        canControlAcp,
+        canInterruptAcpRun,
+        acpModeId,
+        acpModelId,
+        acpConfigId,
+        acpConfigValue,
+        isComposingRef,
+        onLoadOlderEvents: loadOlderEvents,
+        onTerminalScroll: handleTerminalScroll,
+        onSelectTab: handleAcpTabSelect,
+        onAcpModeIdChange: setAcpModeId,
+        onAcpModelIdChange: setAcpModelId,
+        onAcpConfigIdChange: setAcpConfigId,
+        onAcpConfigValueChange: setAcpConfigValue,
+        onAcpSetMode: onAcpSetMode,
+        onAcpSetModel: onAcpSetModel,
+        onAcpSetConfig: onAcpSetConfig,
+        onAcpCancel: onAcpCancel,
+        onAcpClearSession: onAcpClearSession,
+        onInputChange: onInputChange,
+        onSelectInputHistory: onSelectInputHistory,
+        onNavigateInputHistory: onNavigateInputHistory,
+        onSendAcpInput: sendAcpInput,
+        onJumpToTerminalBottom: jumpToTerminalBottom,
+        showTerminalJump: terminalShowJump,
+      }),
+    [
+      activeAgent,
+      activeAgentRecord,
+      activeSessionId,
+      developerMode,
+      acpTab,
+      acpView,
+      eventMeta,
+      isAgentActive,
+      outputs,
+      terminalOutputs,
+      scopedAcpPermissionHistory,
+      isOutputLoading,
+      isConversationLoading,
+      terminalRef,
+      input,
+      inputHistory,
+      ansi,
+      canControlAcp,
+      canInterruptAcpRun,
+      acpModeId,
+      acpModelId,
+      acpConfigId,
+      acpConfigValue,
+      isComposingRef,
+      loadOlderEvents,
+      handleTerminalScroll,
+      handleAcpTabSelect,
+      setAcpModeId,
+      setAcpModelId,
+      setAcpConfigId,
+      setAcpConfigValue,
+      onAcpSetMode,
+      onAcpSetModel,
+      onAcpSetConfig,
+      onAcpCancel,
+      onAcpClearSession,
+      onInputChange,
+      onSelectInputHistory,
+      onNavigateInputHistory,
+      sendAcpInput,
+      jumpToTerminalBottom,
+      terminalShowJump,
+    ]
+  );
+
+  const canManageNodes = canManageAgentNodes(auth);
+
+  const createAgentModalProps = useMemo(
+    () =>
+      buildCreateAgentModalProps({
+        agentName,
+        setAgentName,
+        agentWorkdir,
+        setAgentWorkdir,
+        agentPresetId,
+        setAgentPresetId,
+        worktreeMode,
+        setWorktreeMode: handleWorktreeModeChange,
+        worktreeRepo,
+        setWorktreeRepo,
+        worktreeRef,
+        setWorktreeRef,
+        codeMode,
+        setCodeMode,
+        worktreeError,
+        createBusy: createAgentBusy,
+        workdirPlaceholder: selectedTargetNodeDefaultWorktreeRoot,
+        onCreateAgent: onCreateAgent,
+        onClose: closeCreateAgentModal,
+      }),
+    [
+      agentName,
+      agentWorkdir,
+      agentPresetId,
+      worktreeMode,
+      worktreeRepo,
+      worktreeRef,
+      codeMode,
+      worktreeError,
+      createAgentBusy,
+      selectedTargetNodeDefaultWorktreeRoot,
+      onCreateAgent,
+      closeCreateAgentModal,
+      handleWorktreeModeChange,
+    ]
+  );
+
+  const agentNodeSectionProps = useMemo(
+    () =>
+      buildAgentNodeSectionProps(
+        canManageNodes
+          ? {
+              nodes: agentNodes,
+              agents,
+              targetNodeId,
+              onTargetNodeIdChange: applyTargetNodeSelection,
+              nodeIdInput,
+              onNodeIdInputChange: setNodeIdInput,
+              nodeNameInput,
+              onNodeNameInputChange: setNodeNameInput,
+              grpcTargetInput: nodeGrpcTargetInput,
+              onGrpcTargetInputChange: setNodeGrpcTargetInput,
+              tlsServerNameInput: nodeTlsServerNameInput,
+              onTlsServerNameInputChange: setNodeTlsServerNameInput,
+              defaultWorktreeRootInput: nodeDefaultWorktreeRootInput,
+              onDefaultWorktreeRootInputChange: setNodeDefaultWorktreeRootInput,
+              createBusy: createAgentNodeBusy,
+              updatingNodeIds: updatingAgentNodeIds,
+              deletingNodeIds: deletingAgentNodeIds,
+              onCreateNode: onCreateAgentNode,
+              onUpdateNode: onUpdateAgentNode,
+              onDeleteNode: onDeleteAgentNode,
+            }
+          : null
+      ),
+    [
+      canManageNodes,
+      agentNodes,
+      agents,
+      targetNodeId,
+      applyTargetNodeSelection,
+      nodeIdInput,
+      nodeNameInput,
+      nodeGrpcTargetInput,
+      nodeTlsServerNameInput,
+      nodeDefaultWorktreeRootInput,
+      createAgentNodeBusy,
+      updatingAgentNodeIds,
+      deletingAgentNodeIds,
+      onCreateAgentNode,
+      onUpdateAgentNode,
+      onDeleteAgentNode,
+    ]
+  );
+
+  const permissionModalProps = useMemo(
+    () =>
+      buildPermissionModalProps(
+        activeAgent && scopedAcpPermissions.length > 0
+          ? {
+              permissions: scopedAcpPermissions,
+              permissionBusy,
+              onRespond: onRespondPermission,
+            }
+          : null
+      ),
+    [activeAgent, scopedAcpPermissions, permissionBusy, onRespondPermission]
+  );
+
+  switch (routeKind) {
+    case "join":
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
+            <LazyJoinPage onComplete={(next) => setAuth(next)} />
+          </Suspense>
+        </div>
+      );
+    case "admin-auth-required":
       return <AuthRequiredGate />;
-    }
-    if (auth.role !== "root") {
+    case "admin-forbidden":
       return <ForbiddenRoute />;
-    }
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
-          <LazyAdminPage
-            auth={auth}
-            error={normalizedError}
-            setError={setError}
-            safePaths={safePaths}
-            selectedSafePaths={selectedSafePaths}
-            onToggleSafePath={onToggleSafePath}
-            onToggleAllSafePaths={onToggleAllSafePaths}
-            onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-            devices={devices}
-            audits={audits}
-            vapidInfo={vapidInfo}
-            onRotateVapid={onRotateVapid}
-            onAddSafePath={onAddSafePath}
-            onDeleteSafePath={onDeleteSafePath}
-            onRevokeDevice={onRevokeDevice}
-            onCreateJoin={onCreateJoin}
-            joinQr={joinQr}
-            joinToken={joinToken}
-            joinPin={joinPin}
-            safePathInput={safePathInput}
-            setSafePathInput={setSafePathInput}
-            developerMode={developerMode}
-            onDeveloperModeChange={handleDeveloperModeChange}
-            passkeyEnabled={passkeyEnabled}
-            onPasskeyEnabledChange={onPasskeyEnabledChange}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (isTeamsRoute(routeLocation.pathname)) {
-    if (shouldRedirectTeamsToLogin(routeLocation.pathname, auth, token)) {
+    case "admin":
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
+            <LazyAdminPage
+              auth={auth}
+              error={normalizedError}
+              setError={setError}
+              safePaths={safePaths}
+              selectedSafePaths={selectedSafePaths}
+              onToggleSafePath={onToggleSafePath}
+              onToggleAllSafePaths={onToggleAllSafePaths}
+              onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+              devices={devices}
+              audits={audits}
+              vapidInfo={vapidInfo}
+              onRotateVapid={onRotateVapid}
+              onAddSafePath={onAddSafePath}
+              onDeleteSafePath={onDeleteSafePath}
+              onRevokeDevice={onRevokeDevice}
+              onCreateJoin={onCreateJoin}
+              joinQr={joinQr}
+              joinToken={joinToken}
+              joinPin={joinPin}
+              safePathInput={safePathInput}
+              setSafePathInput={setSafePathInput}
+              developerMode={developerMode}
+              onDeveloperModeChange={handleDeveloperModeChange}
+              passkeyEnabled={passkeyEnabled}
+              onPasskeyEnabledChange={onPasskeyEnabledChange}
+            />
+          </Suspense>
+        </div>
+      );
+    case "teams-auth-redirect":
       return <AuthRedirect />;
+    case "teams": {
+      const teamRoute = resolveTeamRoute(routeLocation.pathname);
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading teams..." />}>
+            <LazyTeamPage
+              auth={auth}
+              token={token}
+              onLogout={onLogout}
+              developerMode={developerMode}
+              routeTeamId={teamRoute?.teamId ?? null}
+              defaultWorktreeRoot={defaultWorktreeRoot}
+            />
+          </Suspense>
+        </div>
+      );
     }
-    const teamRoute = resolveTeamRoute(routeLocation.pathname);
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading teams..." />}>
-          <LazyTeamPage
-            auth={auth}
-            token={token}
-            onLogout={onLogout}
-            developerMode={developerMode}
-            routeTeamId={teamRoute?.teamId ?? null}
-            defaultWorktreeRoot={defaultWorktreeRoot}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (postAuthRedirectTarget) {
-    return <PostLoginRedirect target={postAuthRedirectTarget} />;
+    case "post-auth-redirect":
+      return <PostLoginRedirect target={postAuthRedirectTarget!} />;
+    case "agents":
+      break;
   }
 
   return (
-    <div
-      className="app bg-white"
-      ref={appRootRef}
-    >
-      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
-        {auth && (
-          <div className="session flex items-center gap-2 sm:gap-3">
-            <IconButton
-              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
-              onClick={agentsCollapsed ? handleExpandAgents : handleCollapseAgents}
-              title={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-pressed={!agentsCollapsed}
-              tone={agentsCollapsed ? "default" : "active"}
-            >
-              <i
-                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
-                aria-hidden="true"
-              />
-            </IconButton>
-            <WorkbenchConnectionBadge
-              badge={connectionBadge}
-              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
-            />
-            <WorkbenchHeaderMenu
-              active="agents"
-              username={auth.username}
-              isRoot={auth.role === "root"}
-              onLogout={onLogout}
-              onNavigate={navigateWorkbenchRoute}
-              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
-            />
-          </div>
-        )}
-      </header>
-
-      {normalizedError && (
-        <ErrorBanner message={normalizedError} onClose={() => setError(null)} />
-      )}
-
-      {!auth && (
-        <form
-          className={AUTH_FORM_CARD_CLASS}
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onLogin();
-          }}
-        >
-          <h2 className="text-xl font-bold tracking-tight text-notion-text">
-            Login
-          </h2>
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-username"
-            name="username"
-            placeholder="Username"
-            value={username}
-            disabled={authBusy !== null}
-            autoComplete="username"
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            className={AUTH_INPUT_CLASS}
-            id="login-password"
-            name="password"
-            placeholder="Password"
-            type="password"
-            value={password}
-            disabled={authBusy !== null}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          {rootInitialized === false && (
-            <input
-              className={AUTH_INPUT_CLASS}
-              id="login-display-name"
-              name="display_name"
-              placeholder="Display Name"
-              value={displayName}
-              disabled={authBusy !== null}
-              autoComplete="name"
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          )}
-          <div className={AUTH_ACTIONS_CLASS}>
-            {rootInitialized === false && (
-              <ActionButton
-                className={AUTH_SECONDARY_BUTTON_CLASS}
-                disabled={authBusy !== null}
-                onClick={() => onRegister("root")}
-              >
-                {authBusy === "register" ? "Bootstrapping..." : "Initialize Root"}
-              </ActionButton>
-            )}
-            <ActionButton
-              type="submit"
-              className={AUTH_PRIMARY_BUTTON_CLASS}
-              disabled={authBusy !== null}
-            >
-              {authBusy === "login" ? "Logging in..." : "Login"}
-            </ActionButton>
-          </div>
-        </form>
-      )}
-
-      {auth && (
-        <main
-          className={
-            agentsCollapsed
-              ? APP_WORKSPACE_ROOT_COLLAPSED_CLASS
-              : APP_WORKSPACE_ROOT_CLASS
-          }
-          ref={workspaceRef}
-          style={workspaceStyle}
-        >
-          <AgentsPanel
-            agents={agents}
-            activeAgent={activeAgent}
-            agentsCollapsed={agentsCollapsed}
-            compactRows={agentsPanelShowsCompactRows}
-            hasPendingPermissions={hasPendingPermissions}
-            pendingPermissionCounts={pendingPermissionCounts}
-            startingAgentIds={startingAgentIds}
-            onCollapse={handleCollapseAgents}
-            onExpand={handleExpandAgents}
-            onCreateAgent={openCreateAgentModal}
-            onSelectAgent={handleSelectAgent}
-            onToggleCodeMode={onSetCodeMode}
-            onStartAgent={onStartAgent}
-            onStopAgent={onStopAgent}
-            onDeleteAgent={onDeleteAgent}
-          />
-          {!agentsCollapsed && (
-            <div
-              className={APP_WORKSPACE_SPLITTER_CLASS}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize agents sidebar"
-              onPointerDown={handleAgentsSplitterPointerDown}
-            />
-          )}
-          <div className={APP_WORKSPACE_RIGHT_CLASS}>
-            <div className={acpView.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"}>
-              <OutputHeader
-                activeAgent={activeAgentRecord}
-                activeSessionId={activeSessionId}
-                developerMode={developerMode}
-                hasAcp={acpView.hasAcp}
-                thinkingStartTs={thinkingStartTs}
-                runStatus={acpView.runStatus?.status ?? null}
-                modelLabel={activeAgentModelLabel}
-              />
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
-              {activeAgent ? (
-                <OutputErrorBoundary>
-                  <Suspense
-                    fallback={<WorkbenchBodyFallback hasAcp={acpView.hasAcp} />}
-                  >
-                    <LazyAgentsWorkbench
-                      activeAgent={activeAgent}
-                      activeAgentRecord={activeAgentRecord}
-                      activeSessionId={activeSessionId}
-                      developerMode={developerMode}
-                      acpTab={acpTab}
-                      acpView={acpView}
-                      eventMeta={eventMeta}
-                      isAgentActive={isAgentActive}
-                      outputs={outputs}
-                      terminalOutputs={terminalOutputs}
-                      scopedAcpPermissionHistory={scopedAcpPermissionHistory}
-                      isOutputLoading={isOutputLoading}
-                      isConversationLoading={isConversationLoading}
-                      terminalRef={terminalRef}
-                      input={input}
-                      inputHistory={inputHistory}
-                      ansi={ansi}
-                      canControlAcp={canControlAcp}
-                      canInterruptAcpRun={canInterruptAcpRun}
-                      acpModeId={acpModeId}
-                      acpModelId={acpModelId}
-                      acpConfigId={acpConfigId}
-                      acpConfigValue={acpConfigValue}
-                      isComposingRef={isComposingRef}
-                      onLoadOlderEvents={loadOlderEvents}
-                      onTerminalScroll={handleTerminalScroll}
-                      onSelectTab={handleAcpTabSelect}
-                      onAcpModeIdChange={setAcpModeId}
-                      onAcpModelIdChange={setAcpModelId}
-                      onAcpConfigIdChange={setAcpConfigId}
-                      onAcpConfigValueChange={setAcpConfigValue}
-                      onAcpSetMode={onAcpSetMode}
-                      onAcpSetModel={onAcpSetModel}
-                      onAcpSetConfig={onAcpSetConfig}
-                      onAcpCancel={onAcpCancel}
-                      onAcpClearSession={onAcpClearSession}
-                      onInputChange={onInputChange}
-                      onSelectInputHistory={onSelectInputHistory}
-                      onNavigateInputHistory={onNavigateInputHistory}
-                      onSendAcpInput={sendAcpInput}
-                      onJumpToTerminalBottom={jumpToTerminalBottom}
-                      showTerminalJump={terminalShowJump}
-                    />
-                  </Suspense>
-                </OutputErrorBoundary>
-              ) : null}
-            </div>
-          </div>
-        </main>
-      )}
-
-      {auth && showCreateAgent && (
-        <Suspense fallback={null}>
-          <LazyCreateAgentModal
-            agentName={agentName}
-            setAgentName={setAgentName}
-            agentWorkdir={agentWorkdir}
-            setAgentWorkdir={setAgentWorkdir}
-            agentPresetId={agentPresetId}
-            setAgentPresetId={setAgentPresetId}
-            worktreeMode={worktreeMode}
-            setWorktreeMode={handleWorktreeModeChange}
-            worktreeRepo={worktreeRepo}
-            setWorktreeRepo={setWorktreeRepo}
-            worktreeRef={worktreeRef}
-            setWorktreeRef={setWorktreeRef}
-            codeMode={codeMode}
-            setCodeMode={setCodeMode}
-            worktreeError={worktreeError}
-            createBusy={createAgentBusy}
-            workdirPlaceholder={selectedTargetNodeDefaultWorktreeRoot}
-            onCreateAgent={onCreateAgent}
-            onClose={() => setShowCreateAgent(false)}
-          >
-            {canManageAgentNodes(auth) && (
-              <Suspense fallback={null}>
-                <LazyAgentNodeSection
-                  nodes={agentNodes}
-                  agents={agents}
-                  targetNodeId={targetNodeId}
-                  onTargetNodeIdChange={applyTargetNodeSelection}
-                  nodeIdInput={nodeIdInput}
-                  onNodeIdInputChange={setNodeIdInput}
-                  nodeNameInput={nodeNameInput}
-                  onNodeNameInputChange={setNodeNameInput}
-                  grpcTargetInput={nodeGrpcTargetInput}
-                  onGrpcTargetInputChange={setNodeGrpcTargetInput}
-                  tlsServerNameInput={nodeTlsServerNameInput}
-                  onTlsServerNameInputChange={setNodeTlsServerNameInput}
-                  defaultWorktreeRootInput={nodeDefaultWorktreeRootInput}
-                  onDefaultWorktreeRootInputChange={setNodeDefaultWorktreeRootInput}
-                  createBusy={createAgentNodeBusy}
-                  updatingNodeIds={updatingAgentNodeIds}
-                  deletingNodeIds={deletingAgentNodeIds}
-                  onCreateNode={onCreateAgentNode}
-                  onUpdateNode={onUpdateAgentNode}
-                  onDeleteNode={onDeleteAgentNode}
-                />
-              </Suspense>
-            )}
-          </LazyCreateAgentModal>
-        </Suspense>
-      )}
-
-      {auth && activeAgent && scopedAcpPermissions.length > 0 && (
-        <Suspense fallback={null}>
-          <LazyPermissionModal
-            permissions={scopedAcpPermissions}
-            permissionBusy={permissionBusy}
-            onRespond={onRespondPermission}
-          />
-        </Suspense>
-      )}
-    </div>
+    <AgentsRootPage
+      appRootRef={appRootRef}
+      appHeaderRef={appHeaderRef}
+      auth={auth}
+      normalizedError={normalizedError}
+      onClearError={() => setError(null)}
+      authBusy={authBusy}
+      rootInitialized={rootInitialized}
+      username={username}
+      password={password}
+      displayName={displayName}
+      setUsername={setUsername}
+      setPassword={setPassword}
+      setDisplayName={setDisplayName}
+      onLogin={onLogin}
+      onRegister={onRegister}
+      agentsCollapsed={agentsCollapsed}
+      onCollapseAgents={handleCollapseAgents}
+      onExpandAgents={handleExpandAgents}
+      connectionBadge={connectionBadge}
+      onLogout={onLogout}
+      navigateWorkbenchRoute={navigateWorkbenchRoute}
+      workspaceRef={workspaceRef}
+      workspaceStyle={workspaceStyle}
+      onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
+      agentsPanelProps={agentsPanelProps}
+      outputHeaderProps={outputHeaderProps}
+      workbenchProps={workbenchProps}
+      showCreateAgent={showCreateAgent}
+      createAgentModalProps={createAgentModalProps}
+      agentNodeSectionProps={agentNodeSectionProps}
+      permissionModalProps={permissionModalProps}
+    />
   );
 }
 
@@ -3318,35 +3058,4 @@ function createAnsiRenderer(): (input: string) => string {
     }
     return out;
   };
-}
-
-function isSamePermissionList(
-  a: AcpPermissionRecord[],
-  b: AcpPermissionRecord[]
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    const left = a[i];
-    const right = b[i];
-    if (left.id !== right.id) return false;
-    if (left.status !== right.status) return false;
-    if (left.selected_option_id !== right.selected_option_id) return false;
-    if ((left.responded_at ?? null) !== (right.responded_at ?? null)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isSamePendingPermissionCountMap(
-  a: Record<string, number>,
-  b: Record<string, number>
-): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (a[key] !== b[key]) return false;
-  }
-  return true;
 }

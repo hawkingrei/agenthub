@@ -61,6 +61,7 @@ describe("ui primitives", () => {
       </ActionButton>
     );
     expect(primaryHtml).toContain("bg-notion-accent text-white");
+    expect(primaryHtml).not.toContain("mantine-UnstyledButton-root");
     expect(dangerHtml).toContain("border border-red-200 bg-red-50 text-red-600");
     expect(dangerHtml).toContain("h-8 px-3 text-[12px]");
   });
@@ -90,6 +91,7 @@ describe("ui primitives", () => {
     expect(activeHtml).toContain(
       "focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2"
     );
+    expect(activeHtml).not.toContain("mantine-UnstyledButton-root");
     expect(idleHtml).not.toContain("ring-1 ring-notion-accent/30");
     expect(activeHtml).toContain('type="button"');
   });

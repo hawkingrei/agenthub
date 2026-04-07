@@ -49,7 +49,7 @@ const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow
 const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
   "text-sm font-bold uppercase tracking-widest text-notion-text-muted px-2";
 
-type AgentsPanelProps = {
+export type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
   agentsCollapsed: boolean;

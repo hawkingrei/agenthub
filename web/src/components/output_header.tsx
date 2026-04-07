@@ -51,7 +51,7 @@ export function OutputHeaderDetails({
   );
 }
 
-type OutputHeaderProps = {
+export type OutputHeaderProps = {
   activeAgent: AgentRecord | null;
   activeSessionId: string | null;
   developerMode: boolean;

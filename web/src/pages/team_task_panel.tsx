@@ -1,4 +1,4 @@
-import { HoverCard, UnstyledButton } from "@mantine/core";
+import { HoverCard } from "@mantine/core";
 import React from "react";
 import {
   type AcpPermissionOption,
@@ -146,13 +146,14 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "flex items-center gap-2 mb-0.5";
+  "mb-0.5 flex items-start justify-between gap-2";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
+const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3";
 const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "mt-2 inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+  "inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
@@ -161,7 +162,6 @@ const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-bold text-notion-text opacity-70";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
   "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover";
-const TEAM_TASK_ACTIVITY_SEEN_META_CLASS = "absolute top-2 right-4 sm:right-8 opacity-0 group-hover:opacity-100 transition-opacity";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
@@ -1151,6 +1151,119 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
                       <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
                     </div>
+                    {(shouldShowSeenMeta || developerMode) && (
+                      <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
+                        {shouldShowSeenMeta && (
+                          <HoverCard
+                            openDelay={120}
+                            closeDelay={80}
+                            position="top-end"
+                            shadow="md"
+                            radius="md"
+                          >
+                            <HoverCard.Target>
+                              {seenActorIds.length === 0 ? (
+                                <button
+                                  type="button"
+                                  className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                                  aria-label="Pending delivery"
+                                  title="Pending delivery"
+                                >
+                                  <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+                                  aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+                                  title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+                                >
+                                  <span
+                                    className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
+                                    role="progressbar"
+                                    aria-valuenow={seenProgress.readCount}
+                                    aria-valuemin={0}
+                                    aria-valuemax={seenProgress.totalCount}
+                                    style={
+                                      {
+                                        "--value": seenProgress.progress,
+                                        "--size": "1rem",
+                                        "--thickness": "1rem",
+                                        width: "var(--size)",
+                                        height: "var(--size)",
+                                        background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
+                                      } satisfies SeenDialStyle
+                                    }
+                                  />
+                                </button>
+                              )}
+                            </HoverCard.Target>
+                            <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
+                              {seenActorIds.length === 0 ? (
+                                <>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
+                                    Pending delivery
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
+                                  <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
+                                    {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
+                                  </div>
+                                  {seenProgress.readActorIds.length > 0 && (
+                                    <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                                      <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
+                                      <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                                        {seenProgress.readActorIds.map((actorId) => (
+                                          <span
+                                            key={`${item.key}-read-${actorId}`}
+                                            className="rounded-full border border-notion-border bg-white px-2 py-0.5"
+                                          >
+                                            {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {seenProgress.unreadActorIds.length > 0 && (
+                                    <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                                      <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
+                                      <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                                        {seenProgress.unreadActorIds.map((actorId) => (
+                                          <span
+                                            key={`${item.key}-unread-${actorId}`}
+                                            className="rounded-full border border-dashed border-notion-border bg-transparent px-2 py-0.5"
+                                          >
+                                            {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </HoverCard.Dropdown>
+                          </HoverCard>
+                        )}
+                        {developerMode && (
+                          <button
+                            type="button"
+                            className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                            onClick={() =>
+                              setExpandedItemKeys((current) => ({
+                                ...current,
+                                [item.key]: !current[item.key],
+                              }))
+                            }
+                            aria-expanded={Boolean(expandedItemKeys[item.key])}
+                          >
+                            {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {permissionCardPayload ? (
                     <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
@@ -1180,114 +1293,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         renderSanitizedHtml={renderTeamMessageHtml}
                       />
                     </div>
-                  )}
-                  {shouldShowSeenMeta && (
-                    <div className={TEAM_TASK_ACTIVITY_SEEN_META_CLASS}>
-                      <HoverCard
-                        openDelay={120}
-                        closeDelay={80}
-                        position="top-end"
-                        shadow="md"
-                        radius="md"
-                      >
-                        <HoverCard.Target>
-                          {seenActorIds.length === 0 ? (
-                            <UnstyledButton
-                              className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-                              aria-label="Pending delivery"
-                              title="Pending delivery"
-                            >
-                              <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-                            </UnstyledButton>
-                          ) : (
-                            <UnstyledButton
-                              className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-                              aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-                              title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-                            >
-                              <span
-                                className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
-                                role="progressbar"
-                                aria-valuenow={seenProgress.readCount}
-                                aria-valuemin={0}
-                                aria-valuemax={seenProgress.totalCount}
-                                style={
-                                  {
-                                    "--value": seenProgress.progress,
-                                    "--size": "1rem",
-                                    "--thickness": "1rem",
-                                    width: "var(--size)",
-                                    height: "var(--size)",
-                                    background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
-                                  } satisfies SeenDialStyle
-                                }
-                              />
-                            </UnstyledButton>
-                          )}
-                        </HoverCard.Target>
-                        <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
-                          {seenActorIds.length === 0 ? (
-                            <>
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
-                                Pending delivery
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
-                              <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
-                                {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
-                              </div>
-                              {seenProgress.readActorIds.length > 0 && (
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
-                                  <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                                    {seenProgress.readActorIds.map((actorId) => (
-                                      <span
-                                        key={`${item.key}-read-${actorId}`}
-                                        className="rounded-full border border-notion-border bg-white px-2 py-0.5"
-                                      >
-                                        {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {seenProgress.unreadActorIds.length > 0 && (
-                                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                                  <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
-                                  <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                                    {seenProgress.unreadActorIds.map((actorId) => (
-                                      <span
-                                        key={`${item.key}-unread-${actorId}`}
-                                        className="rounded-full border border-dashed border-notion-border bg-transparent px-2 py-0.5"
-                                      >
-                                        {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </HoverCard.Dropdown>
-                      </HoverCard>
-                    </div>
-                  )}
-                  {developerMode && (
-                    <UnstyledButton
-                      className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
-                      onClick={() =>
-                        setExpandedItemKeys((current) => ({
-                          ...current,
-                          [item.key]: !current[item.key],
-                        }))
-                      }
-                      aria-expanded={Boolean(expandedItemKeys[item.key])}
-                    >
-                      {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                    </UnstyledButton>
                   )}
                   {developerMode && expandedItemKeys[item.key] && (
                     <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
@@ -1461,7 +1466,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             </div>
             <div className="max-h-44 overflow-auto py-1">
               {filteredMentionCandidates.map((candidate, index) => (
-                <UnstyledButton
+                <button
+                  type="button"
                   key={candidate.actorId}
                   className={`${TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS} ${
                     index === activeMentionIndex
@@ -1475,7 +1481,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 >
                   <span>{candidate.label}</span>
                   <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </UnstyledButton>
+                </button>
               ))}
             </div>
           </div>
