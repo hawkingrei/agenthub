@@ -57,7 +57,6 @@ use codex_protocol::request_user_input::{
 use codex_shell_command::parse_command::parse_command;
 use tokio::sync::Mutex;
 use tracing::warn;
-use uuid::Uuid;
 
 use crate::thread::CodexThreadImpl;
 
@@ -225,7 +224,7 @@ impl AppServerCodexThread {
         }
     }
 
-    async fn submit_prompt_like(&self, op: Op) -> Result<String, CodexErr> {
+    async fn submit_prompt_like(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         let active_turn = {
             let state = self.state.lock().await;
             state.active_turn.clone()
@@ -236,7 +235,6 @@ impl AppServerCodexThread {
                     return Ok(steered_submission_id);
                 }
                 SteerFollowUpAction::QueueFollowUp => {
-                    let submission_id = new_submission_id();
                     let mut state = self.state.lock().await;
                     if state.active_turn.is_some() {
                         state.queued_submissions.push_back(QueuedSubmission {
@@ -253,7 +251,6 @@ impl AppServerCodexThread {
             }
         }
 
-        let submission_id = new_submission_id();
         self.start_submission(submission_id.clone(), op).await?;
         Ok(submission_id)
     }
@@ -281,7 +278,7 @@ impl AppServerCodexThread {
             let Some(current_active_turn) = state.active_turn.as_ref() else {
                 return Ok(SteerFollowUpAction::StartFreshTurn);
             };
-            if current_active_turn.submission_id != active_turn.submission_id {
+            if !active_turn_matches(current_active_turn, &active_turn) {
                 return Ok(SteerFollowUpAction::StartFreshTurn);
             }
             (next_request_id(&mut state), state.thread_id.clone())
@@ -299,9 +296,18 @@ impl AppServerCodexThread {
             .await;
 
         match response {
-            Ok(_) => Ok(SteerFollowUpAction::ReuseActiveSubmission(
-                active_turn.submission_id,
-            )),
+            Ok(_) => {
+                let state = self.state.lock().await;
+                if let Some(submission_id) =
+                    reused_submission_id_after_successful_turn_steer(&state, &active_turn)
+                {
+                    return Ok(SteerFollowUpAction::ReuseActiveSubmission(submission_id));
+                }
+                warn!(
+                    "turn/steer succeeded but local active-turn state changed, starting a fresh turn instead"
+                );
+                Ok(SteerFollowUpAction::StartFreshTurn)
+            }
             Err(err) => match classify_turn_steer_failure(&err) {
                 TurnSteerFailure::StaleActiveTurn => {
                     let mut state = self.state.lock().await;
@@ -311,7 +317,7 @@ impl AppServerCodexThread {
                     if state
                         .active_turn
                         .as_ref()
-                        .is_some_and(|turn| turn.submission_id == active_turn.submission_id)
+                        .is_some_and(|turn| active_turn_matches(turn, &active_turn))
                     {
                         clear_active_turn_state(&mut state);
                     }
@@ -325,7 +331,7 @@ impl AppServerCodexThread {
                     if let Some(current_active_turn) = state
                         .active_turn
                         .as_mut()
-                        .filter(|turn| turn.submission_id == active_turn.submission_id)
+                        .filter(|turn| active_turn_matches(turn, &active_turn))
                     {
                         current_active_turn.steerable = false;
                     } else {
@@ -339,7 +345,7 @@ impl AppServerCodexThread {
                     if state
                         .active_turn
                         .as_ref()
-                        .is_none_or(|turn| turn.submission_id != active_turn.submission_id)
+                        .is_none_or(|turn| !active_turn_matches(turn, &active_turn))
                     {
                         return Ok(SteerFollowUpAction::StartFreshTurn);
                     }
@@ -568,57 +574,64 @@ impl AppServerCodexThread {
         &self,
         args: OverrideTurnContextArgs,
     ) -> Result<String, CodexErr> {
-        let mut state = self.state.lock().await;
-        let mut updated_config = state.config.clone();
+        let (updated_config, request_id, thread_id) = {
+            let mut state = self.state.lock().await;
+            let mut updated_config = state.config.clone();
 
-        if let Some(cwd) = args.cwd {
-            updated_config.cwd = cwd.try_into()?;
-        }
-        if let Some(approval_policy) = args.approval_policy {
-            updated_config
-                .permissions
-                .approval_policy
-                .set(approval_policy)
-                .map_err(|err| CodexErr::Fatal(err.to_string()))?;
-        }
-        if let Some(approvals_reviewer) = args.approvals_reviewer {
-            updated_config.approvals_reviewer = approvals_reviewer;
-        }
-        if let Some(sandbox_policy) = args.sandbox_policy {
-            updated_config
-                .permissions
-                .sandbox_policy
-                .set(sandbox_policy)
-                .map_err(|err| CodexErr::Fatal(err.to_string()))?;
-        }
-        if let Some(model) = args.model {
-            updated_config.model = Some(model);
-        }
-        if let Some(effort) = args.effort {
-            updated_config.model_reasoning_effort = effort;
-        }
-        if let Some(summary) = args.summary {
-            updated_config.model_reasoning_summary = Some(summary);
-        }
-        if let Some(personality) = args.personality {
-            updated_config.personality = Some(personality);
-        }
-        if let Some(service_tier) = args.service_tier {
-            updated_config.service_tier = service_tier;
-        }
+            if let Some(cwd) = args.cwd {
+                updated_config.cwd = cwd.try_into()?;
+            }
+            if let Some(approval_policy) = args.approval_policy {
+                updated_config
+                    .permissions
+                    .approval_policy
+                    .set(approval_policy)
+                    .map_err(|err| CodexErr::Fatal(err.to_string()))?;
+            }
+            if let Some(approvals_reviewer) = args.approvals_reviewer {
+                updated_config.approvals_reviewer = approvals_reviewer;
+            }
+            if let Some(sandbox_policy) = args.sandbox_policy {
+                updated_config
+                    .permissions
+                    .sandbox_policy
+                    .set(sandbox_policy)
+                    .map_err(|err| CodexErr::Fatal(err.to_string()))?;
+            }
+            if let Some(model) = args.model {
+                updated_config.model = Some(model);
+            }
+            if let Some(effort) = args.effort {
+                updated_config.model_reasoning_effort = effort;
+            }
+            if let Some(summary) = args.summary {
+                updated_config.model_reasoning_summary = Some(summary);
+            }
+            if let Some(personality) = args.personality {
+                updated_config.personality = Some(personality);
+            }
+            if let Some(service_tier) = args.service_tier {
+                updated_config.service_tier = service_tier;
+            }
+
+            let request_id = next_request_id(&mut state);
+            let thread_id = state.thread_id.clone();
+            (updated_config, request_id, thread_id)
+        };
 
         let _response: ThreadResumeResponse = self
             .request_handle
             .request_typed(ClientRequest::ThreadResume {
-                request_id: next_request_id(&mut state),
+                request_id,
                 params: thread_resume_params_from_config(
                     &updated_config,
-                    &SessionId::new(state.thread_id.clone()),
+                    &SessionId::new(thread_id),
                 ),
             })
             .await
             .map_err(typed_request_error_to_codex)?;
 
+        let mut state = self.state.lock().await;
         state.config = updated_config;
         Ok(noop_submission_id())
     }
@@ -1666,10 +1679,10 @@ impl AppServerCodexThread {
 
 #[async_trait::async_trait]
 impl CodexThreadImpl for AppServerCodexThread {
-    async fn submit(&self, op: Op) -> Result<String, CodexErr> {
+    async fn submit(&self, submission_id: String, op: Op) -> Result<String, CodexErr> {
         match op {
             op @ (Op::UserInput { .. } | Op::Review { .. } | Op::Compact | Op::Undo) => {
-                self.submit_prompt_like(op).await
+                self.submit_prompt_like(submission_id, op).await
             }
             Op::Interrupt => self.interrupt_active_turn().await,
             Op::Shutdown => self.shutdown_thread().await,
@@ -1942,10 +1955,6 @@ fn next_request_id(state: &mut AppServerState) -> RequestId {
     RequestId::Integer(request_id)
 }
 
-fn new_submission_id() -> String {
-    Uuid::new_v4().to_string()
-}
-
 fn noop_submission_id() -> String {
     "app-server".to_string()
 }
@@ -1981,6 +1990,21 @@ fn submission_id_for_turn_or_fallback(state: &AppServerState, turn_id: &str) -> 
         })
         .or_else(|| (!turn_id.is_empty()).then(|| turn_id.to_string()))
         .or_else(|| active_submission_id(state))
+}
+
+fn active_turn_matches(current: &ActiveTurn, expected: &ActiveTurn) -> bool {
+    current.submission_id == expected.submission_id && current.turn_id == expected.turn_id
+}
+
+fn reused_submission_id_after_successful_turn_steer(
+    state: &AppServerState,
+    active_turn: &ActiveTurn,
+) -> Option<String> {
+    state
+        .active_turn
+        .as_ref()
+        .filter(|current| active_turn_matches(current, active_turn))
+        .map(|current| current.submission_id.clone())
 }
 
 fn pending_patch_changes_for_request(
@@ -2624,6 +2648,35 @@ mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
     use std::fs;
+    use uuid::Uuid;
+
+    async fn test_state_with_active_turn(active_turn: Option<ActiveTurn>) -> AppServerState {
+        let codex_home =
+            std::env::temp_dir().join(format!("agenthub-codex-home-{}", Uuid::new_v4()));
+        fs::create_dir_all(&codex_home).expect("create codex home");
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home.clone())
+            .fallback_cwd(Some(codex_home))
+            .build()
+            .await
+            .expect("build config");
+        AppServerState {
+            config,
+            next_request_id: 1,
+            thread_id: "thread-1".to_string(),
+            active_turn,
+            queued_submissions: VecDeque::new(),
+            local_events: VecDeque::new(),
+            pending_exec_requests: HashMap::new(),
+            pending_patch_requests: HashMap::new(),
+            pending_patch_changes: HashMap::new(),
+            pending_permissions_requests: HashMap::new(),
+            pending_user_input_requests: HashMap::new(),
+            pending_elicitation_requests: HashMap::new(),
+            pending_turn_diffs: HashMap::new(),
+            interrupt_after_turn_starts: false,
+        }
+    }
 
     #[test]
     fn resumed_regular_turn_is_steerable() {
@@ -2873,35 +2926,49 @@ mod tests {
 
     #[tokio::test]
     async fn submission_id_for_turn_falls_back_to_turn_id_when_local_state_is_missing() {
-        let codex_home =
-            std::env::temp_dir().join(format!("agenthub-codex-home-{}", Uuid::new_v4()));
-        fs::create_dir_all(&codex_home).expect("create codex home");
-        let config = ConfigBuilder::default()
-            .codex_home(codex_home.clone())
-            .fallback_cwd(Some(codex_home.clone()))
-            .build()
-            .await
-            .expect("build config");
-        let state = AppServerState {
-            config,
-            next_request_id: 1,
-            thread_id: "thread-1".to_string(),
-            active_turn: None,
-            queued_submissions: VecDeque::new(),
-            local_events: VecDeque::new(),
-            pending_exec_requests: HashMap::new(),
-            pending_patch_requests: HashMap::new(),
-            pending_patch_changes: HashMap::new(),
-            pending_permissions_requests: HashMap::new(),
-            pending_user_input_requests: HashMap::new(),
-            pending_elicitation_requests: HashMap::new(),
-            pending_turn_diffs: HashMap::new(),
-            interrupt_after_turn_starts: false,
-        };
+        let state = test_state_with_active_turn(None).await;
 
         assert_eq!(
             submission_id_for_turn_or_fallback(&state, "resumed-turn").as_deref(),
             Some("resumed-turn")
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_turn_steer_reuses_existing_submission_when_local_active_turn_matches() {
+        let active_turn = ActiveTurn {
+            submission_id: "shared-submission".to_string(),
+            turn_id: Some("turn-1".to_string()),
+            steerable: true,
+            last_agent_message: None,
+        };
+        let state = test_state_with_active_turn(Some(active_turn.clone())).await;
+
+        assert_eq!(
+            reused_submission_id_after_successful_turn_steer(&state, &active_turn).as_deref(),
+            Some("shared-submission")
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_turn_steer_starts_fresh_turn_when_local_active_turn_changed() {
+        let state = test_state_with_active_turn(Some(ActiveTurn {
+            submission_id: "new-submission".to_string(),
+            turn_id: Some("turn-2".to_string()),
+            steerable: true,
+            last_agent_message: None,
+        }))
+        .await;
+        let old_active_turn = ActiveTurn {
+            submission_id: "shared-submission".to_string(),
+            turn_id: Some("turn-1".to_string()),
+            steerable: true,
+            last_agent_message: None,
+        };
+
+        assert_eq!(
+            reused_submission_id_after_successful_turn_steer(&state, &old_active_turn),
+            None
         );
     }
 
