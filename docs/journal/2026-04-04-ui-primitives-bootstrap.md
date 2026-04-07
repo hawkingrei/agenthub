@@ -74,6 +74,10 @@ surface/header/button patterns stop drifting independently across Agents and Tea
   - `web/src/pages/team_task_panel.tsx`
     - conversation shell now uses `SurfaceCard`
     - refresh row and composer meta row now use `ToolbarRow`
+  - `web/src/pages/team_mailbox_panel.tsx`
+    - mailbox shell now uses `SurfaceCard`
+    - advanced controls shell now uses `InsetSurface`
+    - chat composer action row now uses `ToolbarRow`
 
 ## Validation
 
