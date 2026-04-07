@@ -7,7 +7,7 @@ import {
   TeamRunSnapshotRecord,
   getTeamStepRuntimeHandleId,
 } from "../api";
-import { ActionButton, SurfaceCard, ToolbarRow } from "../ui/primitives";
+import { ActionButton, InsetSurface, SurfaceCard, ToolbarRow } from "../ui/primitives";
 import {
   resolveDisplayName,
 } from "./team/mailbox_helpers";
@@ -147,7 +147,7 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
       </div>
 
       {selectedMemberSnapshot && (
-        <div className={MEMBER_CONSOLE_DETAIL_CLASS}>
+        <InsetSurface className={MEMBER_CONSOLE_DETAIL_CLASS}>
           <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
             <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
               <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>member_id</div>
@@ -265,7 +265,7 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
               </p>
             )}
           </div>
-        </div>
+        </InsetSurface>
       )}
 
       {!selectedMemberSnapshot && (
