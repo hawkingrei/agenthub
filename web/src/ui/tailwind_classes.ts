@@ -16,10 +16,10 @@ export const AUTH_INPUT_CLASS =
   "w-full rounded-lg border border-notion-border bg-white px-4 py-2.5 text-[15px] text-notion-text outline-none transition focus:border-notion-accent focus:ring-4 focus:ring-notion-accent/10";
 
 export const AUTH_PRIMARY_BUTTON_CLASS =
-  "inline-flex h-11 items-center justify-center rounded-lg bg-notion-accent px-6 text-[15px] font-bold text-white shadow-sm transition hover:bg-notion-accent/90 disabled:opacity-50 active:translate-y-px";
+  "h-11 px-6 text-[15px] font-bold";
 
 export const AUTH_SECONDARY_BUTTON_CLASS =
-  "inline-flex h-11 items-center justify-center rounded-lg border border-notion-border bg-white px-6 text-[15px] font-bold text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
+  "h-11 px-6 text-[15px] font-bold";
 
 export const AUTH_ACTIONS_CLASS = "flex flex-col gap-3 pt-2";
 
@@ -38,18 +38,18 @@ export const ACP_PANEL_HEAD_CLASS =
   "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-notion-border-faint bg-notion-surface-overlay px-4 py-2.5 backdrop-blur-sm sm:px-6 max-[720px]:px-3";
 
 export const ACP_TABS_CLASS =
-  "inline-flex max-w-full flex-wrap items-center gap-1 rounded-[10px] border border-notion-border-subtle bg-notion-surface-elevated p-1 shadow-notion-soft";
+  "inline-flex max-w-full flex-wrap items-center gap-1 rounded-[10px] border border-notion-border-subtle bg-notion-surface-elevated p-1 shadow-[0_1px_3px_rgba(15,23,42,0.05)]";
 
 export const ACP_PANEL_TABS_CLASS = ACP_TABS_CLASS;
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
-  "acp-tab-button inline-flex h-7 items-center rounded-[8px] px-2.5 text-[11px] font-semibold leading-none transition";
+  "acp-tab-button inline-flex h-7 items-center rounded-[8px] border px-2.5 text-[11px] font-semibold leading-none transition";
 
 export const ACP_TAB_BUTTON_ACTIVE_CLASS =
-  "bg-notion-hover-strong text-notion-text shadow-notion-tab";
+  "border-notion-border-subtle bg-notion-hover-strong text-notion-text shadow-[0_1px_3px_rgba(15,23,42,0.08)]";
 
 export const ACP_TAB_BUTTON_IDLE_CLASS =
-  "text-notion-text-muted hover:bg-notion-hover-soft hover:text-notion-text";
+  "border-notion-border-faint bg-white/88 text-notion-text-muted shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:border-notion-border-subtle hover:bg-notion-hover-soft hover:text-notion-text";
 
 export const ACP_TAB_BADGE_CLASS =
   "acp-tab-badge ml-1 rounded-full bg-notion-hover-strong px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted";
@@ -209,13 +209,13 @@ export const TEAM_TAB_BAR_CLASS =
   "tab-bar team-tab-bar flex min-w-0 gap-2 overflow-x-auto rounded-[16px] border border-notion-border-faint bg-notion-surface-overlay p-1 shadow-notion-soft";
 
 const TEAM_TAB_BUTTON_BASE_CLASS =
-  "tab shrink-0 rounded-[12px] px-3 py-1.5 text-[13px] font-semibold transition";
+  "tab shrink-0 rounded-[12px] border px-3 py-1.5 text-[13px] font-semibold transition";
 
 export const TEAM_TAB_BUTTON_ACTIVE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} active border border-notion-border-subtle bg-white text-notion-text shadow-notion-row`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} active border-notion-border-subtle bg-white text-notion-text shadow-[0_1px_3px_rgba(15,23,42,0.08)]`;
 
 export const TEAM_TAB_BUTTON_IDLE_CLASS =
-  `${TEAM_TAB_BUTTON_BASE_CLASS} text-notion-text-muted hover:bg-notion-hover-subtle hover:text-notion-text`;
+  `${TEAM_TAB_BUTTON_BASE_CLASS} border-notion-border-faint bg-white/88 text-notion-text-muted shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:border-notion-border-subtle hover:bg-notion-hover-subtle hover:text-notion-text`;
 
 export const TEAM_SIDEBAR_ROOT_CLASS =
   "teams-sidebar flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto bg-notion-sidebar p-4 border-r border-notion-border";

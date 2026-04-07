@@ -1,19 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Menu,
-  SegmentedControl,
-  Switch,
-  TextInput,
-  Textarea,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
+import { Alert } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import { ActionButton, IconButton } from "../ui/primitives";
 import {
   deriveConnectionBadge,
@@ -46,9 +33,6 @@ import {
   getAgentPreset,
   type AgentPresetId,
 } from "../agent_presets";
-import { CreateAgentModal } from "../components/create_agent_modal";
-import { WorkbenchConnectionBadge } from "../components/workbench_connection_badge";
-import { WorkbenchHeaderMenu } from "../components/workbench_header_menu";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import {
@@ -66,7 +50,20 @@ import { TeamRunPanel } from "./team_run_panel";
 import { TeamSetupPanel } from "./team_setup_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
-import { TeamTabsBar } from "./team_tabs_bar";
+import {
+  TeamCreateDialog,
+  TeamEditMemberDialog,
+  TeamForgeAgentDialog,
+} from "./team/team_management_modals";
+import {
+  TeamDebugToolsHeader,
+  TeamRunOpsPanel,
+  TeamRunRequiredPanel,
+  type TeamDebugTag,
+} from "./team/team_debug_panels";
+import { TeamPageHeader } from "./team/team_page_header";
+import { TeamSelectorPanel } from "./team/team_selector_panel";
+import { TeamWorkspaceHeader } from "./team/team_workspace_header";
 import {
   TeamLoadingPanel,
   TeamUnavailablePanel,
@@ -107,8 +104,6 @@ import {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 import {
-  DEFAULT_TEAM_LEADER_SKILLS,
-  DEFAULT_TEAM_WORKER_SKILLS,
   EMPTY_TEAM_PROMPT_DEFAULTS,
   TeamMemberAgentStatus,
   TeamMemberAgentStatusSummary,
@@ -179,11 +174,6 @@ import {
   type TeamRunBrowserState,
 } from "./team/state";
 import {
-  TEAM_CREATE_ACTIONS_BAR_CLASS,
-  TEAM_CREATE_MODAL_BACKDROP_CLASS,
-  TEAM_CREATE_MODAL_CARD_CLASS,
-  TEAM_CREATE_PANEL_CARD_CLASS,
-  TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
   TEAM_DEBUG_TABS_CLASS,
   TEAM_DEBUG_TAB_ACTIVE_CLASS,
   TEAM_DEBUG_TAB_IDLE_CLASS,
@@ -266,8 +256,6 @@ type TeamPageProps = {
   routeTeamId: string | null;
   defaultWorktreeRoot?: string | null;
 };
-type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
-type TeamCreateNoteTone = "info" | "warning";
 
 export function parseTeamAgentInputSessionMismatch(
   message: string
@@ -382,8 +370,6 @@ const teamSectionHintTextClassName = TEAM_SECTION_HINT_TEXT_CLASS;
 const teamDebugTabsClassName = TEAM_DEBUG_TABS_CLASS;
 const teamDebugTabActiveClassName = TEAM_DEBUG_TAB_ACTIVE_CLASS;
 const teamDebugTabIdleClassName = TEAM_DEBUG_TAB_IDLE_CLASS;
-const teamCreateModalHeaderClassName =
-  "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4";
 const teamRunMetaItemClassName =
   "rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] text-notion-text-muted";
 const workspaceToolbarClassName =
@@ -403,46 +389,6 @@ const teamRuntimeNoticeClassName =
 const teamRuntimeNoticeTitleClassName =
   "text-[11px] font-bold uppercase tracking-wider text-state-success-text opacity-80";
 const teamRuntimeNoticeBodyClassName = "mt-1 text-sm leading-relaxed font-medium";
-const TEAM_CREATE_NOTE_ALERT_CONFIG: Record<
-  TeamCreateNoteTone,
-  { color: "blue" | "yellow"; title: string; iconClassName: string }
-> = {
-  info: {
-    color: "blue",
-    title: "Team note",
-    iconClassName: "bi bi-info-circle",
-  },
-  warning: {
-    color: "yellow",
-    title: "Action required",
-    iconClassName: "bi bi-exclamation-triangle",
-  },
-};
-
-const TeamCreateNote = React.memo(function TeamCreateNote({
-  tone,
-  children,
-  action,
-}: {
-  tone: TeamCreateNoteTone;
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  const config = TEAM_CREATE_NOTE_ALERT_CONFIG[tone];
-  return (
-    <Alert
-      color={config.color}
-      variant="light"
-      radius="md"
-      mt="md"
-      title={config.title}
-      icon={<i className={config.iconClassName} aria-hidden="true" />}
-    >
-      <div className="text-sm">{children}</div>
-      {action ? <div className="mt-3">{action}</div> : null}
-    </Alert>
-  );
-});
 
 const teamWorkbenchPanelClassName = TEAM_WORKBENCH_PANEL_CLASS;
 const teamWorkbenchAccentButtonClassName =
@@ -1011,6 +957,26 @@ export function TeamPage(props: TeamPageProps) {
       return name.includes(normalizedTeamSelectorFilter) || id.includes(normalizedTeamSelectorFilter);
     });
   }, [normalizedTeamSelectorFilter, teams]);
+  const selectorTeamItems = useMemo(
+    () =>
+      selectorVisibleTeams.map((team) => {
+        const summary = teamMemberSummaryByTeamId.get(team.id);
+        const runtime = teamRuntimeByTeamId[team.id] ?? null;
+        const runtimeStatus = resolveTeamRuntimeStatus(summary, runtime);
+        return {
+          id: team.id,
+          name: team.name,
+          description: team.description?.trim() || "No mission summary yet.",
+          summary: summary
+            ? `${summary.total} members · ${summary.active} active${
+                summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
+              }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
+            : "No agents configured yet",
+          runtimeLabel: runtimeStatus.label,
+        };
+      }),
+    [selectorVisibleTeams, teamMemberSummaryByTeamId, teamRuntimeByTeamId]
+  );
   const selectedTeamMemberStatuses = useMemo(() => {
     if (!selectedTeam) {
       return [];
@@ -3459,158 +3425,67 @@ export function TeamPage(props: TeamPageProps) {
     />
   );
 
+  const teamDebugChrome = useMemo(
+    () => ({
+      panelCardClassName: TEAM_PANEL_CARD_CLASS,
+      sectionHeadingClassName: teamSectionHeadingClassName,
+      sectionBodyTextClassName: teamSectionBodyTextClassName,
+      sectionHintTextClassName: teamSectionHintTextClassName,
+      debugTabsClassName: teamDebugTabsClassName,
+      debugTabActiveClassName: teamDebugTabActiveClassName,
+      debugTabIdleClassName: teamDebugTabIdleClassName,
+      panelSecondaryButtonClassName,
+    }),
+    []
+  );
+
   const runOpsPanel = (
-    <div className="space-y-3">
-      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-        <h4 className={teamSectionHeadingClassName}>Create Run</h4>
-        <p className={teamSectionBodyTextClassName}>
-          Debug entry for manually starting a Team run.
-        </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-          <TextInput
-            className="flex-1"
-            radius="md"
-            placeholder="context_id (optional, auto-generated when empty)"
-            value={runContextId}
-            onChange={(event) => setRunContextId(event.target.value)}
-          />
-          <Button
-            radius="md"
-            color="dark"
-            onClick={onCreateRun}
-            disabled={!canCreateRun}
-            title={runInputValidation.error ?? teamExecutionBlockedReason ?? "Create run"}
-          >
-            Create Run
-          </Button>
-        </div>
-        <p className={teamSectionHintTextClassName}>
-          <code>context_id</code> can be empty. Use one when you want retries/resume grouped
-          under the same context.
-        </p>
-        <Textarea
-          className="mt-3"
-          radius="md"
-          minRows={8}
-          autosize
-          placeholder='Optional JSON input, e.g. {"task":"sync"}'
-          aria-label="Run input JSON"
-          spellCheck={false}
-          value={runInput}
-          onChange={(event) => setRunInput(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCreateRun) {
-              event.preventDefault();
-              void onCreateRun();
-            }
-          }}
-          styles={{ input: { fontFamily: "monospace", fontSize: "12px", lineHeight: "1.5" } }}
-        />
-        {runInputValidation.error ? (
-          <p className="mt-2 text-xs text-rose-600" role="alert">
-            {runInputValidation.error}
-          </p>
-        ) : (
-          <p className={teamSectionHintTextClassName}>
-            {teamExecutionBlockedReason ??
-              "Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run."}
-          </p>
-        )}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
-            onClick={() =>
-              setRunInput(
-                JSON.stringify(
-                  {
-                    task: "investigate",
-                    objective: "improve-team-run",
-                  },
-                  null,
-                  2
-                )
-              )
-            }
-          >
-            Use Example JSON
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
-            onClick={() => setRunInput("{}")}
-          >
-            Set Empty Object
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
-            onClick={() => {
-              const parsed = runInputValidation.parsed;
-              if (parsed === undefined && runInput.trim().length === 0) {
-                setRunInput("{}");
-                return;
-              }
-              if (runInputValidation.error || parsed === undefined) {
-                return;
-              }
-              setRunInput(JSON.stringify(parsed, null, 2));
-            }}
-            disabled={runInputHasError}
-          >
-            Format JSON
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
-            onClick={() => setRunInput("")}
-            disabled={runInput.trim().length === 0}
-          >
-            Clear
-          </Button>
-        </div>
-        <p className={teamSectionHintTextClassName}>
-          Leave empty to submit default empty input <code>{`{}`}</code>.
-        </p>
-      </div>
-      <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-        <h4 className={teamSectionHeadingClassName}>Load Existing Run</h4>
-        <p className={teamSectionBodyTextClassName}>
-          Load by <code>run_id</code> for the currently selected team only.
-        </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-          <TextInput
-            className="flex-1"
-            radius="md"
-            placeholder="existing run_id"
-            value={runLookupId}
-            onChange={(event) => setRunLookupId(event.target.value)}
-          />
-          <Button
-            radius="md"
-            variant="default"
-            color="gray"
-            onClick={onLoadRunById}
-            disabled={busy === "load-run"}
-            loading={busy === "load-run"}
-          >
-            Load Run
-          </Button>
-        </div>
-      </div>
-    </div>
+    <TeamRunOpsPanel
+      chrome={teamDebugChrome}
+      busy={busy}
+      runContextId={runContextId}
+      runInput={runInput}
+      runLookupId={runLookupId}
+      canCreateRun={canCreateRun}
+      runInputHasError={runInputHasError}
+      runInputError={runInputValidation.error}
+      createRunTitle={runInputValidation.error ?? teamExecutionBlockedReason ?? "Create run"}
+      parsedRunInput={runInputValidation.parsed}
+      helperText={
+        teamExecutionBlockedReason ??
+        "Accepts any valid JSON value. Shortcut: Ctrl/Cmd + Enter to create run."
+      }
+      onRunContextIdChange={setRunContextId}
+      onRunInputChange={setRunInput}
+      onRunLookupIdChange={setRunLookupId}
+      onCreateRun={onCreateRun}
+      onLoadRunById={onLoadRunById}
+      onUseExampleJson={() =>
+        setRunInput(
+          JSON.stringify(
+            {
+              task: "investigate",
+              objective: "improve-team-run",
+            },
+            null,
+            2
+          )
+        )
+      }
+      onSetEmptyObject={() => setRunInput("{}")}
+      onFormatJson={() => {
+        const parsed = runInputValidation.parsed;
+        if (parsed === undefined && runInput.trim().length === 0) {
+          setRunInput("{}");
+          return;
+        }
+        if (runInputValidation.error || parsed === undefined) {
+          return;
+        }
+        setRunInput(JSON.stringify(parsed, null, 2));
+      }}
+      onClearRunInput={() => setRunInput("")}
+    />
   );
   const warningNotice = resolveTeamPageNotice(warning);
   const showSidebarPane = !isSelectorRoute && !teamsSidebarCollapsed;
@@ -3640,58 +3515,22 @@ export function TeamPage(props: TeamPageProps) {
 
   return (
     <div className={TEAM_PAGE_ROOT_CLASS}>
-      <header className={teamWorkbenchHeaderShellClassName}>
-        <div className="flex min-w-0 items-center gap-3">
-          {!isSelectorRoute && (
-            <IconButton
-              className={teamWorkbenchHeaderIconButtonClassName}
-              onClick={() => setTeamsSidebarCollapsed((previous) => !previous)}
-              title={teamPanelToggleLabel}
-              aria-label={teamPanelToggleLabel}
-            >
-              <i
-                className={teamsSidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
-                aria-hidden="true"
-              />
-            </IconButton>
-          )}
-          {isSelectorRoute ? (
-            <div className="min-w-0">
-              <h1 className="text-[clamp(1.1rem,1.85vw,1.45rem)] font-semibold leading-[1.05] tracking-tight text-black">
-                Team Selector
-              </h1>
-              <p className="mt-0.5 text-[12px] text-black/55">Choose a team</p>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {!isSelectorRoute && (
-            <Button
-              type="button"
-              size="xs"
-              radius="md"
-              variant="default"
-              className={teamWorkbenchMutedButtonClassName}
-              leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
-              onClick={navigateToTeamSelector}
-            >
-              Team Selector
-            </Button>
-          )}
-          <WorkbenchConnectionBadge
-            badge={connectionBadge}
-            className={teamWorkbenchHeaderStatusClassName}
-          />
-          <WorkbenchHeaderMenu
-            active="teams"
-            username={props.auth.username}
-            isRoot={props.auth.role === "root"}
-            onLogout={props.onLogout}
-            onNavigate={navigateTeamRoute}
-            buttonClassName={`${teamWorkbenchHeaderIconButtonClassName} h-auto w-auto gap-1.5 px-2 sm:px-3`}
-          />
-        </div>
-      </header>
+      <TeamPageHeader
+        isSelectorRoute={isSelectorRoute}
+        teamsSidebarCollapsed={teamsSidebarCollapsed}
+        teamPanelToggleLabel={teamPanelToggleLabel}
+        connectionBadge={connectionBadge}
+        username={props.auth.username}
+        isRoot={props.auth.role === "root"}
+        headerShellClassName={teamWorkbenchHeaderShellClassName}
+        headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
+        headerMutedButtonClassName={teamWorkbenchMutedButtonClassName}
+        headerStatusClassName={teamWorkbenchHeaderStatusClassName}
+        onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
+        onNavigateToSelector={navigateToTeamSelector}
+        onNavigate={navigateTeamRoute}
+        onLogout={props.onLogout}
+      />
 
       {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
       {warningNotice?.kind === "runtime" && (
@@ -3727,96 +3566,20 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {isSelectorRoute ? (
-        <div className="flex min-h-0 flex-1 justify-center">
-          <section className="flex min-h-0 w-full max-w-[720px] flex-col">
-            <div className="flex items-start justify-between gap-3 px-2">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-[18px] font-semibold tracking-tight text-black">Teams</h2>
-              </div>
-              <Button
-                type="button"
-                radius="md"
-                className={teamWorkbenchAccentButtonClassName}
-                onClick={openCreateTeamModal}
-              >
-                Create Team
-              </Button>
-            </div>
-
-            {teams.length > 0 && (
-              <div className="mt-3 flex items-center gap-2 px-2">
-                <TextInput
-                  className="flex-1"
-                  radius="md"
-                  placeholder="Filter teams by name or id"
-                  aria-label="Filter teams"
-                  value={teamSelectorFilter}
-                  onChange={(event) => setTeamSelectorFilter(event.target.value)}
-                />
-                <IconButton
-                  size="md"
-                  className="h-9 w-9 rounded-[10px] border border-black/[0.08] bg-white/75 text-ui-text-primary hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
-                  onClick={() => {
-                    void refreshTeams();
-                  }}
-                  disabled={busy === "refresh-teams"}
-                  aria-label="Refresh teams"
-                  title="Refresh teams"
-                >
-                  <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                </IconButton>
-              </div>
-            )}
-
-            <div className="mt-3 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-0.5">
-                {teams.length === 0 && (
-                  <p className={`${teamSectionBodyTextClassName} px-2`}>
-                    No teams yet. Create the team first, then enter its workspace to add agents.
-                  </p>
-                )}
-                {teams.length > 0 && selectorVisibleTeams.length === 0 && (
-                  <p className={`${teamSectionBodyTextClassName} px-2`}>No teams match the current filter.</p>
-                )}
-                {selectorVisibleTeams.map((team) => {
-                  const summary = teamMemberSummaryByTeamId.get(team.id);
-                  const runtime = teamRuntimeByTeamId[team.id] ?? null;
-                  const runtimeStatus = resolveTeamRuntimeStatus(summary, runtime);
-                  return (
-                    <UnstyledButton
-                      key={team.id}
-                      type="button"
-                      className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
-                      data-team-selector-entry="true"
-                      data-team-id={team.id}
-                      data-team-name={team.name}
-                      onClick={() => navigateToTeamDetail(team.id)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[14px] font-semibold text-ui-text-primary">
-                          {team.name}
-                        </div>
-                        <div className="mt-1 line-clamp-1 text-[12px] leading-5 text-ui-text-secondary">
-                          {team.description?.trim() || "No mission summary yet."}
-                        </div>
-                        <div className="mt-1 text-[11px] leading-4 text-ui-text-muted">
-                          {summary
-                            ? `${summary.total} members · ${summary.active} active${
-                                summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
-                              }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
-                            : "No agents configured yet"}
-                        </div>
-                      </div>
-                      <div className="mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted">
-                        {runtimeStatus.label}
-                      </div>
-                    </UnstyledButton>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        </div>
+        <TeamSelectorPanel
+          busy={busy}
+          filter={teamSelectorFilter}
+          hasTeams={teams.length > 0}
+          items={selectorTeamItems}
+          bodyTextClassName={teamSectionBodyTextClassName}
+          accentButtonClassName={teamWorkbenchAccentButtonClassName}
+          onFilterChange={setTeamSelectorFilter}
+          onRefreshTeams={() => {
+            void refreshTeams();
+          }}
+          onCreateTeam={openCreateTeamModal}
+          onSelectTeam={navigateToTeamDetail}
+        />
       ) : (
         <div className={detailLayoutClassName}>
           {showSidebarPane && (
@@ -3870,270 +3633,59 @@ export function TeamPage(props: TeamPageProps) {
                     isAgentWorkspace ? "py-0.5" : ""
                   }`}
                 >
-                  <div className={`flex flex-col ${isAgentWorkspace ? "gap-2" : "gap-3"}`}>
-                    <div
-                      className={`flex flex-wrap items-start justify-between ${
-                        isAgentWorkspace ? "gap-1.5" : "gap-2"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        {workspaceEyebrow && (
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
-                            {workspaceEyebrow}
-                          </p>
-                        )}
-                        {showDedicatedWorkspaceHeading ? (
-                          <h2
-                            className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
-                              isAgentWorkspace
-                                ? "text-[15px] font-bold leading-[1.1]"
-                                : "text-[17px] font-bold leading-tight"
-                            } tracking-tight text-notion-text`}
-                          >
-                            {workspaceTitle}
-                          </h2>
-                        ) : null}
-                        {workspaceDescription && (
-                          <p className="mt-1 text-[12px] leading-relaxed text-notion-text-muted">
-                            {workspaceDescription}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        {isAgentWorkspace ? (
-                          <Menu
-                            position="bottom-end"
-                            {...NOTION_FLOATING_MENU_PROPS}
-                          >
-                            <Menu.Target>
-                              <UnstyledButton
-                                type="button"
-                                className={`${teamWorkbenchMutedButtonClassName} ${teamWorkbenchHeaderActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold`}
-                                aria-label="Open agent workspace menu"
-                              >
-                                <i className="bi bi-person-badge" aria-hidden="true" />
-                                <span>Agent</span>
-                              </UnstyledButton>
-                            </Menu.Target>
-                            <Menu.Dropdown>
-                              <Menu.Label>{selectedAgentLabel}</Menu.Label>
-                              {[
-                                {
-                                  label: "Member",
-                                  value: selectedAgentWorkspaceMemberId || "-",
-                                },
-                                { label: "Role", value: selectedAgentStatusView.role },
-                                {
-                                  label: "Lifecycle",
-                                  value: selectedAgentStatusView.lifecycle,
-                                },
-                                { label: "Work", value: selectedAgentStatusView.work },
-                                { label: "Inbox", value: selectedAgentStatusView.inbox },
-                                {
-                                  label: "Loop",
-                                  value: selectedAgentSpecDraft?.agent_loop_enabled
-                                    ? `${
-                                        selectedAgentSpecDraft.agent_loop_idle_seconds.trim() || "?"
-                                      }s idle`
-                                    : "disabled",
-                                },
-                              ].map((item) => (
-                                <Menu.Item key={item.label} disabled>
-                                  <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                                    <span className="font-semibold text-ui-text-primary">
-                                      {item.label}
-                                    </span>
-                                    <span className="ml-2">{item.value}</span>
-                                  </div>
-                                </Menu.Item>
-                              ))}
-                              <Menu.Item disabled>
-                                <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                                  <span className="font-semibold text-ui-text-primary">Identity</span>
-                                  <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                                    {selectedAgentSpecDraft?.description?.trim() ||
-                                      "No agent identity description yet."}
-                                  </p>
-                                </div>
-                              </Menu.Item>
-                              <Menu.Item disabled>
-                                <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                                  <span className="font-semibold text-ui-text-primary">Current work</span>
-                                  <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                                    {selectedAgentStatusView.currentWork}
-                                  </p>
-                                </div>
-                              </Menu.Item>
-                              <Menu.Divider />
-                              <Menu.Item
-                                leftSection={<i className="bi bi-pencil-square" aria-hidden="true" />}
-                                onClick={openTeamMemberEditModal}
-                              >
-                                Edit profile
-                              </Menu.Item>
-                              <Menu.Item
-                                leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
-                                onClick={onStartSelectedTeamAgent}
-                                disabled={!selectedAgentControlState.canStart}
-                              >
-                                Start Agent
-                              </Menu.Item>
-                              <Menu.Item
-                                leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
-                                onClick={onStopSelectedTeamAgent}
-                                disabled={!selectedAgentControlState.canStop}
-                              >
-                                Stop Agent
-                              </Menu.Item>
-                              <Menu.Item
-                                color="red"
-                                leftSection={<i className="bi bi-trash" aria-hidden="true" />}
-                                onClick={onDeleteSelectedTeamAgent}
-                                disabled={!selectedAgentControlState.canDelete}
-                              >
-                                Delete Agent
-                              </Menu.Item>
-                            </Menu.Dropdown>
-                          </Menu>
-                        ) : showWorkspaceRuntimeBadge ? (
-                          <Tooltip
-                            label={`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} members online`}
-                            withArrow
-                          >
-                            <Group
-                              gap={8}
-                              wrap="nowrap"
-                              className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
-                            >
-                              <Badge
-                                variant="light"
-                                color={selectedTeamRuntimeControlTone.statusColor}
-                                radius="sm"
-                              >
-                                {selectedTeamRuntimeStatus.label}
-                              </Badge>
-                              <Badge
-                                variant="dot"
-                                color={selectedTeamRuntimeControlTone.countColor}
-                                radius="sm"
-                              >
-                                {`${selectedTeamRuntimeStatus.online}/${selectedTeamRuntimeStatus.total} online`}
-                              </Badge>
-                            </Group>
-                          </Tooltip>
-                        ) : null}
-                        <div className={workspaceToolbarClassName}>
-                          {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
-                            <Menu
-                              position="bottom-end"
-                              {...NOTION_FLOATING_MENU_PROPS}
-                            >
-                              <Menu.Target>
-                                <UnstyledButton
-                                  type="button"
-                                  className={
-                                    isAdvancedWorkspace
-                                      ? workspaceToolbarButtonActiveClassName
-                                      : workspaceToolbarButtonIdleClassName
-                                  }
-                                  aria-label="Open more workspace actions"
-                                >
-                                  <i className="bi bi-three-dots" aria-hidden="true" />
-                                  <span>More</span>
-                                </UnstyledButton>
-                              </Menu.Target>
-                              <Menu.Dropdown>
-                                {workspaceAdvancedTabItems.length > 0 && (
-                                  <>
-                                    <Menu.Label>Views</Menu.Label>
-                                    {workspaceAdvancedTabItems.map((item) => (
-                                      <Menu.Item key={item.value} onClick={() => setTab(item.value)}>
-                                        {item.label}
-                                      </Menu.Item>
-                                    ))}
-                                  </>
-                                )}
-                                {showRunActionsInAdvanced && (
-                                  <>
-                                    {workspaceAdvancedTabItems.length > 0 && <Menu.Divider />}
-                                    <Menu.Label>Run</Menu.Label>
-                                    <Menu.Item onClick={onRefreshActiveRun}>Refresh Run</Menu.Item>
-                                    <Menu.Item
-                                      onClick={onCancelRun}
-                                      disabled={
-                                        busy === "cancel-run" ||
-                                        activeRunForSelectedTeam.status === "canceled"
-                                      }
-                                    >
-                                      Cancel
-                                    </Menu.Item>
-                                    <Menu.Item
-                                      onClick={onResumeRun}
-                                      disabled={busy === "resume-run" || !canResumeActiveRun}
-                                    >
-                                      Resume
-                                    </Menu.Item>
-                                    <Menu.Item
-                                      onClick={onRestartRun}
-                                      disabled={busy === "restart-run" || !canRestartActiveRun}
-                                    >
-                                      Restart
-                                    </Menu.Item>
-                                  </>
-                                )}
-                                {props.developerMode && workspaceDetailItems.length > 0 && (
-                                  <>
-                                    {(workspaceAdvancedTabItems.length > 0 ||
-                                      showRunActionsInAdvanced) && <Menu.Divider />}
-                                    <Menu.Label>Workspace</Menu.Label>
-                                    <Menu.Item
-                                      onClick={() =>
-                                        setWorkspaceDetailsOpen((current) => !current)
-                                      }
-                                    >
-                                      {workspaceDetailsOpen
-                                        ? "Hide workspace details"
-                                        : "Show workspace details"}
-                                    </Menu.Item>
-                                  </>
-                                )}
-                              </Menu.Dropdown>
-                            </Menu>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {!isAgentWorkspace && (
-                      <TeamTabsBar
-                        tab={tab}
-                        onTabChange={setTab}
-                        items={TEAM_WORKFLOW_TAB_ITEMS}
-                      />
-                    )}
-                    {(workspaceNoticeText || props.developerMode) && (
-                      <div className={workspaceNoticeClassName}>
-                        {workspaceNoticeText && (
-                          <div className={workspaceNoticeTextClassName}>
-                            <span className={workspaceNoticeDotClassName} aria-hidden="true" />
-                            <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted">
-                              {workspaceNoticeText}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {props.developerMode &&
-                      workspaceDetailsOpen &&
-                      workspaceDetailItems.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {workspaceDetailItems.map((item) => (
-                            <div key={item} className={teamRunMetaItemClassName}>
-                              {item}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
+                  <TeamWorkspaceHeader
+                    workspaceEyebrow={workspaceEyebrow}
+                    showDedicatedWorkspaceHeading={showDedicatedWorkspaceHeading}
+                    workspaceTitle={workspaceTitle}
+                    workspaceDescription={workspaceDescription}
+                    isAgentWorkspace={isAgentWorkspace}
+                    selectedAgentLabel={selectedAgentLabel}
+                    selectedAgentWorkspaceMemberId={selectedAgentWorkspaceMemberId}
+                    selectedAgentStatusView={selectedAgentStatusView}
+                    selectedAgentSpecDraft={selectedAgentSpecDraft}
+                    selectedAgentControlState={selectedAgentControlState}
+                    showWorkspaceRuntimeBadge={showWorkspaceRuntimeBadge}
+                    selectedTeamRuntimeStatusLabel={selectedTeamRuntimeStatus.label}
+                    selectedTeamRuntimeOnline={selectedTeamRuntimeStatus.online}
+                    selectedTeamRuntimeTotal={selectedTeamRuntimeStatus.total}
+                    selectedTeamRuntimeControlTone={selectedTeamRuntimeControlTone}
+                    workspaceAdvancedTabItems={workspaceAdvancedTabItems}
+                    isAdvancedWorkspace={isAdvancedWorkspace}
+                    showRunActionsInAdvanced={showRunActionsInAdvanced}
+                    activeRunStatus={activeRunForSelectedTeam?.status ?? null}
+                    canResumeActiveRun={canResumeActiveRun}
+                    canRestartActiveRun={canRestartActiveRun}
+                    developerMode={props.developerMode}
+                    workspaceDetailsOpen={workspaceDetailsOpen}
+                    workspaceDetailItems={workspaceDetailItems}
+                    workspaceNoticeText={workspaceNoticeText}
+                    workspaceNoticeDotClassName={workspaceNoticeDotClassName}
+                    workflowTabItems={TEAM_WORKFLOW_TAB_ITEMS}
+                    tab={tab}
+                    busy={busy}
+                    chrome={{
+                      mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+                      headerActionButtonClassName: teamWorkbenchHeaderActionButtonClassName,
+                      toolbarClassName: workspaceToolbarClassName,
+                      toolbarButtonActiveClassName: workspaceToolbarButtonActiveClassName,
+                      toolbarButtonIdleClassName: workspaceToolbarButtonIdleClassName,
+                      noticeClassName: workspaceNoticeClassName,
+                      noticeTextClassName: workspaceNoticeTextClassName,
+                      runMetaItemClassName: teamRunMetaItemClassName,
+                    }}
+                    onTabChange={setTab}
+                    onToggleWorkspaceDetails={() =>
+                      setWorkspaceDetailsOpen((current) => !current)
+                    }
+                    onRefreshActiveRun={onRefreshActiveRun}
+                    onCancelRun={onCancelRun}
+                    onResumeRun={onResumeRun}
+                    onRestartRun={onRestartRun}
+                    onOpenTeamMemberEditModal={openTeamMemberEditModal}
+                    onStartSelectedTeamAgent={onStartSelectedTeamAgent}
+                    onStopSelectedTeamAgent={onStopSelectedTeamAgent}
+                    onDeleteSelectedTeamAgent={onDeleteSelectedTeamAgent}
+                  />
               </div>
 
               {!selectedTeamHasConfiguredMembers && (
@@ -4418,64 +3970,21 @@ export function TeamPage(props: TeamPageProps) {
 
                   {tab === "debug" && props.developerMode && (
                     <>
-                      <div className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <h3 className={teamSectionHeadingClassName}>Debug Tools</h3>
-                          <div className={teamDebugTabsClassName}>
-                            <UnstyledButton
-                              className={
-                                teamDebugTag === "run_ops"
-                                  ? teamDebugTabActiveClassName
-                                  : teamDebugTabIdleClassName
-                              }
-                              onClick={() => setTeamDebugTag("run_ops")}
-                            >
-                              Run Ops
-                            </UnstyledButton>
-                            <UnstyledButton
-                              className={
-                                teamDebugTag === "step_ops"
-                                  ? teamDebugTabActiveClassName
-                                  : teamDebugTabIdleClassName
-                              }
-                              onClick={() => setTeamDebugTag("step_ops")}
-                            >
-                              Step Ops
-                            </UnstyledButton>
-                            <UnstyledButton
-                              className={
-                                teamDebugTag === "mailbox_raw"
-                                  ? teamDebugTabActiveClassName
-                                  : teamDebugTabIdleClassName
-                              }
-                              onClick={() => setTeamDebugTag("mailbox_raw")}
-                            >
-                              Mailbox Raw
-                            </UnstyledButton>
-                          </div>
-                        </div>
-                      </div>
+                      <TeamDebugToolsHeader
+                        chrome={teamDebugChrome}
+                        teamDebugTag={teamDebugTag}
+                        onTeamDebugTagChange={setTeamDebugTag}
+                      />
 
                       {teamDebugTag === "run_ops" && runOpsPanel}
 
                       {teamDebugTag === "step_ops" && !activeRunForSelectedTeam && (
-                        <div className={teamSectionCardClassName}>
-                          <h4 className={teamSectionHeadingClassName}>Step Ops</h4>
-                          <p className={teamSectionBodyTextClassName}>
-                            Step operations require an active run. Start or select one in the Runs
-                            tab first.
-                          </p>
-                          <div className="mt-3">
-                            <ActionButton
-                              tone="secondary"
-                              size="md"
-                              className={panelSecondaryButtonClassName}
-                              onClick={() => setTab("runs")}
-                            >
-                              Go to Runs
-                            </ActionButton>
-                          </div>
-                        </div>
+                        <TeamRunRequiredPanel
+                          chrome={teamDebugChrome}
+                          title="Step Ops"
+                          body="Step operations require an active run. Start or select one in the Runs tab first."
+                          onGoToRuns={() => setTab("runs")}
+                        />
                       )}
 
                       {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
@@ -4515,23 +4024,12 @@ export function TeamPage(props: TeamPageProps) {
                       )}
 
                       {teamDebugTag === "mailbox_raw" && !activeRunForSelectedTeam && (
-                        <div className={teamSectionCardClassName}>
-                          <h4 className={teamSectionHeadingClassName}>Mailbox Raw</h4>
-                          <p className={teamSectionBodyTextClassName}>
-                            Mailbox raw operations require an active run. Start or select one in
-                            the Runs tab first.
-                          </p>
-                          <div className="mt-3">
-                            <ActionButton
-                              tone="secondary"
-                              size="md"
-                              className={panelSecondaryButtonClassName}
-                              onClick={() => setTab("runs")}
-                            >
-                              Go to Runs
-                            </ActionButton>
-                          </div>
-                        </div>
+                        <TeamRunRequiredPanel
+                          chrome={teamDebugChrome}
+                          title="Mailbox Raw"
+                          body="Mailbox raw operations require an active run. Start or select one in the Runs tab first."
+                          onGoToRuns={() => setTab("runs")}
+                        />
                       )}
 
                       {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
@@ -4599,423 +4097,99 @@ export function TeamPage(props: TeamPageProps) {
         </div>
       )}
 
-      {showCreateTeamModal && (
-        <div
-          className={TEAM_CREATE_MODAL_BACKDROP_CLASS}
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget && busy !== "create-team") {
-              closeCreateTeamModal();
-            }
-          }}
-        >
-          <div
-            className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="team-create-title"
-          >
-            <div className={teamCreateModalHeaderClassName}>
-              <div className="min-w-0 flex-1">
-                <span className={teamWorkbenchBadgeClassName}>Create Team</span>
-                <h3 id="team-create-title" className="mt-2 text-[18px] font-semibold tracking-tight text-black">
-                  Start with the mission, not the agents.
-                </h3>
-                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
-                  Team creation only stores the workspace identity and goal. Add agents afterward,
-                  each with their own role profile, skills, and prompt.
-                </p>
-              </div>
-            </div>
-            <div className="modal-body mt-4 space-y-4">
-              <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
-                <TextInput
-                  label="Team name"
-                  radius="md"
-                  placeholder="growth-hive"
-                  value={newTeamName}
-                  onChange={(event) => setNewTeamName(event.target.value)}
-                />
-                <Textarea
-                  className="mt-3"
-                  label="Team goal"
-                  radius="md"
-                  minRows={5}
-                  autosize
-                  placeholder="Describe the mission, constraints, and what this team should own."
-                  value={newTeamDescription}
-                  onChange={(event) => setNewTeamDescription(event.target.value)}
-                />
-              </div>
+      <TeamCreateDialog
+        open={showCreateTeamModal}
+        busy={busy}
+        teamName={newTeamName}
+        teamDescription={newTeamDescription}
+        onTeamNameChange={setNewTeamName}
+        onTeamDescriptionChange={setNewTeamDescription}
+        onCreateTeam={onCreateTeam}
+        onClose={closeCreateTeamModal}
+        chrome={{
+          panelClassName: teamWorkbenchPanelClassName,
+          accentButtonClassName: teamWorkbenchAccentButtonClassName,
+          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+          badgeClassName: teamWorkbenchBadgeClassName,
+          modalHeaderClassName:
+            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
+          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
+          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
+          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
+        }}
+      />
 
-              <TeamCreateNote tone={newTeamName.trim() ? "info" : "warning"}>
-                {newTeamName.trim()
-                  ? "After the team is created, add the first agent. More agents can be added after the first agent exists."
-                  : "Team name is required before the team can be created."}
-              </TeamCreateNote>
-            </div>
+      <TeamForgeAgentDialog
+        open={showForgeAgentForm}
+        draft={teamMemberDraft}
+        roleProfile={teamMemberRoleProfile}
+        roleOptions={teamMemberRoleOptions}
+        selectedTeamHasLeader={selectedTeamHasLeader}
+        onRoleChange={handleTeamMemberRoleChange}
+        onPatchDraft={patchTeamMemberDraft}
+        chrome={{
+          panelClassName: teamWorkbenchPanelClassName,
+          accentButtonClassName: teamWorkbenchAccentButtonClassName,
+          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+          badgeClassName: teamWorkbenchBadgeClassName,
+          modalHeaderClassName:
+            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
+          setupChecklistClassName: teamWorkbenchSetupChecklistClassName,
+          infoStripGridClassName: teamWorkbenchInfoStripGridClassName,
+          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
+          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
+          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
+        }}
+        modalProps={{
+          title: "Add Agent",
+          confirmLabel: "Create Agent",
+          agentPresetLabel: "Role model",
+          agentPresetSummaryLabel: "Model",
+          teamStyled: true,
+          agentName: forgeAgentName,
+          setAgentName: setForgeAgentName,
+          agentWorkdir: forgeAgentWorkdir,
+          setAgentWorkdir: setForgeAgentWorkdir,
+          agentPresetId: forgeAgentPresetId,
+          setAgentPresetId: setForgeAgentPresetId,
+          worktreeMode: forgeAgentWorktreeMode,
+          setWorktreeMode: handleForgeWorktreeModeChange,
+          worktreeRepo: forgeAgentWorktreeRepo,
+          setWorktreeRepo: setForgeAgentWorktreeRepo,
+          worktreeRef: forgeAgentWorktreeRef,
+          setWorktreeRef: setForgeAgentWorktreeRef,
+          codeMode: forgeAgentCodeMode,
+          setCodeMode: setForgeAgentCodeMode,
+          worktreeError: forgeAgentWorktreeError,
+          showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
+          createBusy: forgeAgentBusy,
+          workdirPlaceholder: forgeDefaultWorktreeRoot,
+          withinPortal: true,
+          onCreateAgent: onCreateForgeAgent,
+          onClose: closeTeamMemberForgeModal,
+        }}
+      />
 
-            <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
-              <Button
-                radius="md"
-                variant="default"
-                className={teamWorkbenchMutedButtonClassName}
-                onClick={closeCreateTeamModal}
-                disabled={busy === "create-team"}
-                type="button"
-              >
-                Cancel
-              </Button>
-              <Button
-                radius="md"
-                className={teamWorkbenchAccentButtonClassName}
-                onClick={onCreateTeam}
-                disabled={busy === "create-team" || !newTeamName.trim()}
-                loading={busy === "create-team"}
-                type="button"
-              >
-                Create Team
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showForgeAgentForm && teamMemberDraft && (
-        <CreateAgentModal
-          title="Add Agent"
-          confirmLabel="Create Agent"
-          agentPresetLabel="Role model"
-          agentPresetSummaryLabel="Model"
-          teamStyled
-          agentName={forgeAgentName}
-          setAgentName={setForgeAgentName}
-          agentWorkdir={forgeAgentWorkdir}
-          setAgentWorkdir={setForgeAgentWorkdir}
-          agentPresetId={forgeAgentPresetId}
-          setAgentPresetId={setForgeAgentPresetId}
-          worktreeMode={forgeAgentWorktreeMode}
-          setWorktreeMode={handleForgeWorktreeModeChange}
-          worktreeRepo={forgeAgentWorktreeRepo}
-          setWorktreeRepo={setForgeAgentWorktreeRepo}
-          worktreeRef={forgeAgentWorktreeRef}
-          setWorktreeRef={setForgeAgentWorktreeRef}
-          codeMode={forgeAgentCodeMode}
-          setCodeMode={setForgeAgentCodeMode}
-          worktreeError={forgeAgentWorktreeError}
-          showWorktreeAdvancedOptions={teamMemberDraft.role !== "leader"}
-          createBusy={forgeAgentBusy}
-          workdirPlaceholder={forgeDefaultWorktreeRoot}
-          withinPortal
-          onCreateAgent={onCreateForgeAgent}
-          onClose={closeTeamMemberForgeModal}
-        >
-          <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className={teamWorkbenchBadgeClassName}>
-                {teamMemberRoleProfile?.profileLabel ?? "Agent Profile"}
-              </span>
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-ui-text-muted">
-                member_id follows agent id
-              </span>
-            </div>
-            <p className="mt-2 text-[13px] leading-5 text-ui-text-secondary">
-              {teamMemberRoleProfile?.intro ??
-                "Configure the agent identity, skills, and prompt before attaching it to the team."}
-            </p>
-            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className={teamWorkbenchInfoStripLabelClassName}>Role Selection</p>
-                  <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-                    {selectedTeamHasLeader
-                      ? "This team already has a leader. New agents join as workers."
-                      : "Start with the leader. Worker unlocks after the first leader exists."}
-                  </p>
-                </div>
-                <span className={teamWorkbenchBadgeClassName}>
-                  {teamMemberDraft.role === "leader" ? "Single leader" : "Execution role"}
-                </span>
-              </div>
-              <SegmentedControl
-                className="mt-3"
-                fullWidth
-                radius="xl"
-                size="sm"
-                value={teamMemberDraft.role}
-                onChange={handleTeamMemberRoleChange}
-                data={teamMemberRoleOptions.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                  disabled: option.disabled,
-                }))}
-              />
-              <p className="mt-2 text-[11px] leading-5 text-ui-text-muted">
-                {teamMemberRoleOptions.find((option) => option.value === teamMemberDraft.role)
-                  ?.description ?? "Select the role before editing skills and prompt."}
-              </p>
-            </div>
-            <div className={`${teamWorkbenchSetupChecklistClassName} mt-4`}>
-              <div className={teamWorkbenchInfoStripGridClassName}>
-                <div className={teamWorkbenchInfoStripItemClassName}>
-                  <p className={teamWorkbenchInfoStripLabelClassName}>Focus</p>
-                  <p className={teamWorkbenchInfoStripValueClassName}>
-                    {teamMemberRoleProfile?.focus ??
-                      "Set the role before editing the profile details."}
-                  </p>
-                </div>
-                <div className={teamWorkbenchInfoStripItemClassName}>
-                  <p className={teamWorkbenchInfoStripLabelClassName}>Skills</p>
-                  <p className={teamWorkbenchInfoStripValueClassName}>
-                    {teamMemberRoleProfile?.skillsHint ??
-                      "Select required skills first, then add optional helpers."}
-                  </p>
-                </div>
-                <div className={teamWorkbenchInfoStripItemClassName}>
-                  <p className={teamWorkbenchInfoStripLabelClassName}>Prompt Scope</p>
-                  <p className={teamWorkbenchInfoStripValueClassName}>
-                    {teamMemberRoleProfile?.promptHint ??
-                      "Keep the role prompt focused on scope, responsibilities, and delivery rules."}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <TextInput
-              className="mt-4"
-              radius="md"
-              label="Identity"
-              placeholder="Short role description exposed on the agent card"
-              value={teamMemberDraft.description}
-              onChange={(event) =>
-                patchTeamMemberDraft({ description: event.currentTarget.value })
-              }
-            />
-            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
-              <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
-              <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-                Role-bound Team skills are injected automatically from the system skill path. They
-                are no longer configured per member.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(teamMemberDraft.role === "leader"
-                  ? DEFAULT_TEAM_LEADER_SKILLS
-                  : DEFAULT_TEAM_WORKER_SKILLS
-                ).map((skill) => (
-                  <span
-                    key={`${teamMemberDraft.role}-system-skill-${skill}`}
-                    className={TEAM_CREATE_SKILL_TAG_SELECTED_CLASS}
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <Textarea
-              className="mt-3"
-              radius="md"
-              label="Prompt"
-              minRows={6}
-              autosize
-              value={teamMemberDraft.prompt}
-              onChange={(event) =>
-                patchTeamMemberDraft({ prompt: event.currentTarget.value })
-              }
-              styles={{
-                input: {
-                  fontFamily: "monospace",
-                  fontSize: "12px",
-                  lineHeight: "1.5",
-                },
-              }}
-            />
-          </div>
-        </CreateAgentModal>
-      )}
-
-      {showTeamMemberEditModal && teamMemberEditDraft && (
-        <div
-          className={TEAM_CREATE_MODAL_BACKDROP_CLASS}
-          role="presentation"
-          onClick={(event) => {
-            if (
-              event.target === event.currentTarget &&
-              busy !== "save-team-member-profile"
-            ) {
-              closeTeamMemberEditModal();
-            }
-          }}
-        >
-          <div
-            className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${teamWorkbenchPanelClassName}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="team-edit-member-title"
-          >
-            <div className={teamCreateModalHeaderClassName}>
-              <div className="min-w-0 flex-1">
-                <span className={teamWorkbenchBadgeClassName}>Agent Profile</span>
-                <h3
-                  id="team-edit-member-title"
-                  className="mt-2 text-[18px] font-semibold tracking-tight text-black"
-                >
-                  Edit {selectedAgentLabel}
-                </h3>
-                <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
-                  Update the Team-owned agent identity, prompt, and skill profile without leaving
-                  the current workspace.
-                </p>
-              </div>
-            </div>
-            <div className="modal-body mt-4 space-y-4">
-              <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
-                <div className="grid gap-px overflow-hidden rounded-[14px] border border-ui-border bg-ui-border sm:grid-cols-3">
-                  {[
-                    { label: "Member", value: teamMemberEditDraft.member_id },
-                    { label: "Role", value: teamMemberEditDraft.role },
-                    { label: "Model", value: teamMemberEditDraft.model.trim() || "-" },
-                  ].map((item) => (
-                    <div key={item.label} className={teamWorkbenchInfoStripItemClassName}>
-                      <p className={teamWorkbenchInfoStripLabelClassName}>{item.label}</p>
-                      <p className={teamWorkbenchInfoStripValueClassName}>{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <TextInput
-                  className="mt-4"
-                  radius="md"
-                  label="Identity"
-                  placeholder="Short role description exposed on the agent card"
-                  value={teamMemberEditDraft.description}
-                  onChange={(event) =>
-                    patchTeamMemberEditDraft({ description: event.currentTarget.value })
-                  }
-                />
-                <TextInput
-                  className="mt-3"
-                  radius="md"
-                  label="Model"
-                  placeholder="Optional model override"
-                  value={teamMemberEditDraft.model}
-                  onChange={(event) =>
-                    patchTeamMemberEditDraft({ model: event.currentTarget.value })
-                  }
-                />
-                <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className={teamWorkbenchInfoStripLabelClassName}>Agent loop</p>
-                        <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-                          When enabled, AgentHub will inject the configured ACP prompt after this
-                          agent stays silent for the selected idle window.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={teamMemberEditDraft.agent_loop_enabled}
-                        onChange={(event) =>
-                          patchTeamMemberEditDraft({
-                            agent_loop_enabled: event.currentTarget.checked,
-                          })
-                        }
-                        label={teamMemberEditDraft.agent_loop_enabled ? "Enabled" : "Disabled"}
-                      />
-                    </div>
-                    <TextInput
-                      radius="md"
-                      label="Idle timeout (seconds)"
-                      placeholder="900"
-                      value={teamMemberEditDraft.agent_loop_idle_seconds}
-                      disabled={!teamMemberEditDraft.agent_loop_enabled}
-                      onChange={(event) =>
-                        patchTeamMemberEditDraft({
-                          agent_loop_idle_seconds: event.currentTarget.value,
-                        })
-                      }
-                    />
-                    <Textarea
-                      radius="md"
-                      minRows={3}
-                      autosize
-                      label="Loop prompt"
-                      placeholder="You have been idle. Resume by checking your inbox, summarizing current state, and taking the next scoped action."
-                      value={teamMemberEditDraft.agent_loop_prompt}
-                      disabled={!teamMemberEditDraft.agent_loop_enabled}
-                      onChange={(event) =>
-                        patchTeamMemberEditDraft({
-                          agent_loop_prompt: event.currentTarget.value,
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
-                  <p className={teamWorkbenchInfoStripLabelClassName}>System Skills</p>
-                  <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-                    Role-bound Team skills come from the system-managed skill path and are shown
-                    here as the effective runtime contract.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(teamMemberEditDraft.role === "leader"
-                      ? DEFAULT_TEAM_LEADER_SKILLS
-                      : DEFAULT_TEAM_WORKER_SKILLS
-                    ).map((skill) => (
-                      <span
-                        key={`${teamMemberEditDraft.role}-edit-system-skill-${skill}`}
-                        className={TEAM_CREATE_SKILL_TAG_SELECTED_CLASS}
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <Textarea
-                  className="mt-3"
-                  radius="md"
-                  label="Prompt"
-                  minRows={6}
-                  autosize
-                  value={teamMemberEditDraft.prompt}
-                  onChange={(event) =>
-                    patchTeamMemberEditDraft({ prompt: event.currentTarget.value })
-                  }
-                  styles={{
-                    input: {
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      lineHeight: "1.5",
-                    },
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
-              <Button
-                radius="md"
-                variant="default"
-                className={teamWorkbenchMutedButtonClassName}
-                onClick={closeTeamMemberEditModal}
-                disabled={busy === "save-team-member-profile"}
-                type="button"
-              >
-                Cancel
-              </Button>
-              <Button
-                radius="md"
-                className={teamWorkbenchAccentButtonClassName}
-                onClick={onSaveTeamMemberProfile}
-                disabled={busy === "save-team-member-profile"}
-                loading={busy === "save-team-member-profile"}
-                type="button"
-              >
-                Save Profile
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TeamEditMemberDialog
+        open={showTeamMemberEditModal}
+        busy={busy}
+        selectedAgentLabel={selectedAgentLabel}
+        draft={teamMemberEditDraft}
+        onPatchDraft={patchTeamMemberEditDraft}
+        onClose={closeTeamMemberEditModal}
+        onSave={onSaveTeamMemberProfile}
+        chrome={{
+          panelClassName: teamWorkbenchPanelClassName,
+          accentButtonClassName: teamWorkbenchAccentButtonClassName,
+          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+          badgeClassName: teamWorkbenchBadgeClassName,
+          modalHeaderClassName:
+            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
+          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
+          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
+          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
+        }}
+      />
     </div>
   );
 }

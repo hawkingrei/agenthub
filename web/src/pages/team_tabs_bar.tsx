@@ -1,5 +1,5 @@
 import React from "react";
-import { UnstyledButton } from "@mantine/core";
+import { Box } from "@mantine/core";
 import { TEAM_TAB_BAR_CLASS, TEAM_TAB_BUTTON_ACTIVE_CLASS, TEAM_TAB_BUTTON_IDLE_CLASS } from "../ui/tailwind_classes";
 import { TEAM_TAB_ITEMS, type TeamTab } from "./team/state";
 
@@ -14,14 +14,15 @@ function TeamTabsBarImpl(props: TeamTabsBarProps) {
   return (
     <div className={`mt-2 ${TEAM_TAB_BAR_CLASS}`} data-team-surface="workflow-tabs">
       {items.map((item) => (
-        <UnstyledButton
+        <Box
           key={item.value}
+          component="button"
           type="button"
           className={tab === item.value ? TEAM_TAB_BUTTON_ACTIVE_CLASS : TEAM_TAB_BUTTON_IDLE_CLASS}
           onClick={() => onTabChange(item.value)}
         >
           {item.label}
-        </UnstyledButton>
+        </Box>
       ))}
     </div>
   );
