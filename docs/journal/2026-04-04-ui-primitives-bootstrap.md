@@ -71,6 +71,9 @@ surface/header/button patterns stop drifting independently across Agents and Tea
   - `web/src/pages/team_sidebar.tsx`
     - sidebar section toggles now use shared `ActionButton`
     - team, workflow, and agent rows now use `SelectableListItem`
+  - `web/src/pages/team_task_panel.tsx`
+    - conversation shell now uses `SurfaceCard`
+    - refresh row and composer meta row now use `ToolbarRow`
 
 ## Validation
 
