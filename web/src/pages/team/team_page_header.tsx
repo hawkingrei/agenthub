@@ -1,9 +1,8 @@
 import React from "react";
-import { Button } from "@mantine/core";
 import type { ConnectionBadge } from "../../connection_status";
 import { WorkbenchConnectionBadge } from "../../components/workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "../../components/workbench_header_menu";
-import { IconButton } from "../../ui/primitives";
+import { ActionButton, IconButton } from "../../ui/primitives";
 
 type TeamPageHeaderProps = {
   isSelectorRoute: boolean;
@@ -65,17 +64,16 @@ export const TeamPageHeader = React.memo(function TeamPageHeader({
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {!isSelectorRoute && (
-          <Button
+          <ActionButton
             type="button"
-            size="xs"
-            radius="md"
-            variant="default"
+            tone="secondary"
+            size="sm"
             className={headerMutedButtonClassName}
-            leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
             onClick={onNavigateToSelector}
           >
+            <i className="bi bi-grid-3x3-gap" aria-hidden="true" />
             Team Selector
-          </Button>
+          </ActionButton>
         )}
         <WorkbenchConnectionBadge badge={connectionBadge} className={headerStatusClassName} />
         <WorkbenchHeaderMenu

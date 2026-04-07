@@ -1,6 +1,7 @@
 import React from "react";
-import { Badge, Group, Menu, Tooltip, UnstyledButton } from "@mantine/core";
+import { Badge, Group, Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
+import { ActionButton } from "../../ui/primitives";
 import { TeamTabsBar } from "../team_tabs_bar";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
@@ -163,14 +164,16 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
           {isAgentWorkspace ? (
             <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
               <Menu.Target>
-                <UnstyledButton
+                <ActionButton
                   type="button"
+                  tone="secondary"
+                  size="sm"
                   className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold`}
                   aria-label="Open agent workspace menu"
                 >
                   <i className="bi bi-person-badge" aria-hidden="true" />
                   <span>Agent</span>
-                </UnstyledButton>
+                </ActionButton>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Label>{selectedAgentLabel}</Menu.Label>
@@ -261,8 +264,10 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
             {(workspaceAdvancedTabItems.length > 0 || showRunActionsInAdvanced) && (
               <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
                 <Menu.Target>
-                  <UnstyledButton
+                  <ActionButton
                     type="button"
+                    tone="ghost"
+                    size="sm"
                     className={
                       isAdvancedWorkspace
                         ? chrome.toolbarButtonActiveClassName
@@ -272,7 +277,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                   >
                     <i className="bi bi-three-dots" aria-hidden="true" />
                     <span>More</span>
-                  </UnstyledButton>
+                  </ActionButton>
                 </Menu.Target>
                 <Menu.Dropdown>
                   {workspaceAdvancedTabItems.length > 0 && (
