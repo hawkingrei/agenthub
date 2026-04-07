@@ -53,6 +53,14 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - refresh/cancel/resume/restart now use shared `ActionButton`
   - `web/src/pages/team_mailbox_panel.tsx`
     - actor selection rows now use `SelectableListItem`
+  - `web/src/pages/team/team_selector_panel.tsx`
+    - selector header and filter row now use `ToolbarRow`
+    - create action now uses shared `ActionButton`
+    - team rows now use `SelectableListItem`
+  - `web/src/pages/team/team_debug_panels.tsx`
+    - debug header and run forms now use `SurfaceCard`
+    - debug tab switcher and run actions now use shared `ActionButton`
+    - stacked input/action rows now use `ToolbarRow`
 
 ## Validation
 
@@ -61,6 +69,7 @@ surface/header/button patterns stop drifting independently across Agents and Tea
 - `cd web && npm run test -- src/ui/primitives.test.tsx src/pages/team_panels.test.tsx`
 - `cd web && npm run lint`
 - `make build-web`
+- `cd web && npm run test -- src/pages/team/team_selector_panel.test.tsx src/pages/team/team_debug_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 
 ## Follow-up
 

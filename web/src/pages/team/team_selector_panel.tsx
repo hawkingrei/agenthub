@@ -1,6 +1,11 @@
 import React from "react";
-import { Button, TextInput, UnstyledButton } from "@mantine/core";
-import { IconButton } from "../../ui/primitives";
+import { TextInput } from "@mantine/core";
+import {
+  ActionButton,
+  IconButton,
+  SelectableListItem,
+  ToolbarRow,
+} from "../../ui/primitives";
 
 export type TeamSelectorItem = {
   id: string;
@@ -38,17 +43,23 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
   return (
     <div className="flex min-h-0 flex-1 justify-center">
       <section className="flex min-h-0 w-full max-w-[720px] flex-col">
-        <div className="flex items-start justify-between gap-3 px-2">
+        <ToolbarRow className="items-start px-2">
           <div className="min-w-0 flex-1">
             <h2 className="text-[18px] font-semibold tracking-tight text-black">Teams</h2>
           </div>
-          <Button type="button" radius="md" className={accentButtonClassName} onClick={onCreateTeam}>
+          <ActionButton
+            type="button"
+            tone="primary"
+            size="md"
+            className={accentButtonClassName}
+            onClick={onCreateTeam}
+          >
             Create Team
-          </Button>
-        </div>
+          </ActionButton>
+        </ToolbarRow>
 
         {hasTeams && (
-          <div className="mt-3 flex items-center gap-2 px-2">
+          <ToolbarRow className="mt-3 justify-start gap-2 px-2">
             <TextInput
               className="flex-1"
               radius="md"
@@ -67,7 +78,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </IconButton>
-          </div>
+          </ToolbarRow>
         )}
 
         <div className="mt-3 flex-1 overflow-y-auto">
@@ -81,10 +92,10 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
               <p className={`${bodyTextClassName} px-2`}>No teams match the current filter.</p>
             )}
             {items.map((team) => (
-              <UnstyledButton
+              <SelectableListItem
                 key={team.id}
                 type="button"
-                className="team-item flex w-full min-w-0 items-start justify-between gap-3 rounded-[10px] border border-transparent bg-transparent px-2 py-2 text-left text-ui-text-primary transition hover:bg-[rgba(55,53,47,0.05)]"
+                className="rounded-[10px] border-transparent bg-transparent px-2 py-2 shadow-none hover:bg-[rgba(55,53,47,0.05)]"
                 data-team-selector-entry="true"
                 data-team-id={team.id}
                 data-team-name={team.name}
@@ -102,7 +113,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
                 <div className="mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-ui-text-muted">
                   {team.runtimeLabel}
                 </div>
-              </UnstyledButton>
+              </SelectableListItem>
             ))}
           </div>
         </div>
