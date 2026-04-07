@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseSendInputSessionMismatch } from "./app_utils";
 import { AcpPermissionRecord, AgentEvent, AgentNodeRecord, AgentRecord } from "./api";
 import {
   buildPermissionPollAgentIds,
@@ -13,7 +14,6 @@ import {
   mergePendingPermissionCountMap,
   isSameAgentNodeRecordList,
   isSameAgentRecordList,
-  parseSendInputSessionMismatch,
   parsePermissionPollAgentIds,
   resolveAgentsPanelMaxWidth,
   resolveActiveAcpView,

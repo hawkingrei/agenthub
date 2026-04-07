@@ -70,6 +70,11 @@ const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 
 export {
+  AGENT_SOURCE_MANUAL,
+  AGENT_SOURCE_TEAM_FORGE,
+  AGENT_EVENT_PAGE_SIZE,
+} from "./api";
+export {
   buildPermissionPollAgentIds,
   canManageAgentNodes,
   clampAgentsPanelWidth,

@@ -45,6 +45,7 @@ vi.mock("./api", () => ({
     getAdminSettings: getAdminSettingsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
+  AGENT_EVENT_PAGE_SIZE: 80,
 }));
 
 vi.mock("./push", () => ({
