@@ -252,6 +252,7 @@ export function useAppOutputCache(
     const selection = selectCachedOutputs(outputCache, acpOutputCache, key, latestKey);
 
     if (selection.source === "none") {
+      if (eventMeta[key]?.loading) return;
       setOutputs([]);
       setAcpOutputs([]);
       outputsKeyRef.current = viewKey;

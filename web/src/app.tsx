@@ -12,7 +12,6 @@ import {
 import {
   canManageAgentNodes,
   clampAgentsPanelWidth,
-  persistAgentsPanelWidthPreference,
   resolveAgentsPanelMaxWidth,
   resolveDefaultActiveAgentId,
 } from "./app_agents_helpers";
@@ -56,6 +55,7 @@ import {
   ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import { parseSendInputSessionMismatch } from "./app_utils";
+import { resolveDefaultWorktreeRootForTargetNode } from "./worktree_defaults";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -253,6 +253,7 @@ export function App() {
     onDeleteAgentNode,
     openCreateAgentModal,
     refreshAgents,
+    defaultWorktreeRoot,
   } = useAppAgents(auth, isAgentsRoute);
 
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
@@ -655,7 +656,6 @@ export function App() {
         window.removeEventListener("pointercancel", onPointerUp);
         bodyStyle.cursor = previousCursor;
         bodyStyle.userSelect = previousUserSelect;
-        persistAgentsPanelWidthPreference(agentsPanelWidth);
       };
 
       window.addEventListener("pointermove", onPointerMove);
@@ -881,6 +881,15 @@ export function App() {
   );
 
   const canManageNodes = canManageAgentNodes(auth);
+  const createAgentDefaultWorktreeRoot = useMemo(
+    () =>
+      resolveDefaultWorktreeRootForTargetNode(
+        targetNodeId,
+        agentNodes,
+        defaultWorktreeRoot
+      ),
+    [targetNodeId, agentNodes, defaultWorktreeRoot]
+  );
 
   const createAgentModalProps = useMemo(
     () =>
@@ -901,7 +910,7 @@ export function App() {
         setCodeMode,
         worktreeError,
         createBusy: createAgentBusy,
-        workdirPlaceholder: "", // handled by resolveDefaultWorktreeRootForTargetNode
+        workdirPlaceholder: createAgentDefaultWorktreeRoot,
         onCreateAgent: onCreateAgent,
         onClose: closeCreateAgentModal,
       }),
@@ -922,6 +931,7 @@ export function App() {
       setCodeMode,
       worktreeError,
       createAgentBusy,
+      createAgentDefaultWorktreeRoot,
       onCreateAgent,
       closeCreateAgentModal,
     ]
@@ -1050,11 +1060,11 @@ export function App() {
           <Suspense fallback={<RouteFallback label="Loading teams..." />}>
             <LazyTeamPage
               auth={auth}
-              token={auth?.token ?? null}
+              token={auth!.token}
               onLogout={onLogout}
               developerMode={developerMode}
               routeTeamId={teamRoute?.teamId ?? null}
-              defaultWorktreeRoot={""} // handled correctly if needed
+              defaultWorktreeRoot={defaultWorktreeRoot}
             />
           </Suspense>
         </div>

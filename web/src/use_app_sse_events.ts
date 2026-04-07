@@ -71,12 +71,14 @@ export function useAppSseEvents(
   useEffect(() => {
     if (!isAgentsRoute || !token) {
       setSseState("idle");
+      setError(null);
       requestSseReconnectRef.current = null;
       return;
     }
     const streamTarget = streamAgentIdsQuery;
     if (!hasSseTarget || streamTarget.length === 0) {
       setSseState("idle");
+      setError(null);
       requestSseReconnectRef.current = null;
       return;
     }
@@ -112,6 +114,7 @@ export function useAppSseEvents(
         lastSseActivityAtRef.current = Date.now();
         reconnectAttempt = 0;
         setNetworkOnline(true);
+        setError(null);
         setSseState("connected");
       };
 
@@ -157,6 +160,7 @@ export function useAppSseEvents(
           if (cancelled) return;
           if (latest && buildSseTargetAgentIds(latest).length === 0) {
             setSseState("idle");
+            setError(null);
             return;
           }
           scheduleReconnect();

@@ -527,5 +527,6 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     openCreateAgentModal,
     refreshAgents,
     refreshAgentNodes,
+    defaultWorktreeRoot,
   };
 }
