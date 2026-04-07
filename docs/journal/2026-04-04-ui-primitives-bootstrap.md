@@ -65,6 +65,9 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - selector shortcut now uses shared `ActionButton`
   - `web/src/pages/team/team_workspace_header.tsx`
     - agent workspace trigger and advanced workspace trigger now use shared `ActionButton`
+  - `web/src/pages/team/team_management_modals.tsx`
+    - modal footer actions now use shared `ActionButton`
+    - repeated modal card shells now use `SurfaceCard`
 
 ## Validation
 
@@ -75,6 +78,7 @@ surface/header/button patterns stop drifting independently across Agents and Tea
 - `make build-web`
 - `cd web && npm run test -- src/pages/team/team_selector_panel.test.tsx src/pages/team/team_debug_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run test -- src/pages/team/team_page_header.test.tsx src/pages/team/team_workspace_header.test.tsx`
+- `cd web && npm run test -- src/pages/team/team_management_modals.test.tsx src/pages/team_page.smoke.test.tsx`
 
 ## Follow-up
 
