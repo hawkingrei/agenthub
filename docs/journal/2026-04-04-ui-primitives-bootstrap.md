@@ -68,6 +68,9 @@ surface/header/button patterns stop drifting independently across Agents and Tea
   - `web/src/pages/team/team_management_modals.tsx`
     - modal footer actions now use shared `ActionButton`
     - repeated modal card shells now use `SurfaceCard`
+  - `web/src/pages/team_sidebar.tsx`
+    - sidebar section toggles now use shared `ActionButton`
+    - team, workflow, and agent rows now use `SelectableListItem`
 
 ## Validation
 
@@ -79,6 +82,7 @@ surface/header/button patterns stop drifting independently across Agents and Tea
 - `cd web && npm run test -- src/pages/team/team_selector_panel.test.tsx src/pages/team/team_debug_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run test -- src/pages/team/team_page_header.test.tsx src/pages/team/team_workspace_header.test.tsx`
 - `cd web && npm run test -- src/pages/team/team_management_modals.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 
 ## Follow-up
 
