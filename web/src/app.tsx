@@ -3,7 +3,6 @@ import {
   api,
   AgentRecord,
   AgentNodeRecord,
-  AgentEvent,
   AuditRecord,
   AcpPermissionRecord,
   DeviceRecord,
@@ -11,7 +10,6 @@ import {
   SafePath,
   VapidInfo,
 } from "./api";
-import { buildAcpView, EMPTY_ACP_VIEW, type AcpView } from "./acp";
 import {
   AGENT_NOT_RUNNING_ERROR,
   shouldIgnoreAgentWsError,
@@ -22,8 +20,32 @@ import {
 import {
   clearAuthAndRedirect,
   isInvalidTokenMessage,
-  resolvePostLoginRedirectTarget,
 } from "./auth_redirect";
+import {
+  buildPermissionPollAgentIds,
+  canManageAgentNodes,
+  clampAgentsPanelWidth,
+  isSameAgentNodeRecordList,
+  isSameAgentRecordList,
+  isSamePendingPermissionCountMap,
+  isSamePermissionList,
+  loadAgentsPanelWidthPreference,
+  persistAgentsPanelWidthPreference,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
+  resolveActiveAcpView,
+  resolveAgentsPanelMaxWidth,
+  resolveDefaultActiveAgentId,
+  resolveOutputHistoryKey,
+  resolveSessionScopedEvents,
+  upsertAgentNodeRecord,
+} from "./app_agents_helpers";
+import {
+  resolveAppRouteKind,
+  resolvePostAuthRedirectTarget,
+  resolveTeamRoute,
+  isAgentsWorkbenchRoute,
+} from "./app_route_selection";
 import {
   deriveConnectionBadge,
   getNavigatorOnline,
@@ -41,7 +63,6 @@ import {
   isCursorNewer,
   shouldPollAgentEvents,
 } from "./event_polling";
-import { compareEventOrder } from "./seq_order";
 import {
   buildLatestLiveSessionMap,
   normalizeSseOutputLines,
@@ -137,14 +158,7 @@ import {
 } from "./ui/developer_mode";
 
 const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
-const PERMISSION_JUMP_MAX_ATTEMPTS = 24;
 const SSE_STALE_RECONNECT_THRESHOLD_MS = 45_000;
-const AGENTS_PANEL_WIDTH_STORAGE_KEY = "agenthub_agents_panel_width";
-const AGENTS_PANEL_DEFAULT_WIDTH = 288;
-const AGENTS_PANEL_MIN_WIDTH = 256;
-const AGENTS_PANEL_MAX_WIDTH = 352;
-const AGENTS_PANEL_MIN_RIGHT_WIDTH = 760;
-const AGENTS_WORKSPACE_SPLITTER_WIDTH = 12;
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 const AGENT_STATUS_REFRESH_INTERVAL_MS = 10_000;
@@ -152,6 +166,24 @@ export const AGENT_EVENT_PAGE_SIZE = 80;
 const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
 const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
 
+export {
+  buildPermissionPollAgentIds,
+  canManageAgentNodes,
+  clampAgentsPanelWidth,
+  decidePermissionJump,
+  isSameAgentNodeRecordList,
+  isSameAgentRecordList,
+  loadAgentsPanelWidthPreference,
+  persistAgentsPanelWidthPreference,
+  removeAgentNodeRecord,
+  replaceAgentNodeRecord,
+  resolveActiveAcpView,
+  resolveAgentsPanelMaxWidth,
+  resolveDefaultActiveAgentId,
+  resolveOutputHistoryKey,
+  resolveSessionScopedEvents,
+  upsertAgentNodeRecord,
+} from "./app_agents_helpers";
 export {
   buildGlobalPermissionPollAgentIds,
   buildPendingPermissionCountMap,
@@ -171,30 +203,14 @@ export {
   shouldSyncRuntimeViewportSize,
   toNonNegativeRoundedPx,
 } from "./app_viewport";
-
-export function resolveDefaultActiveAgentId(agents: AgentRecord[]): string | null {
-  return agents.find((agent) => isAgentActiveStatus(agent.status))?.id ?? null;
-}
-
-export function resolveActiveAcpView(
-  activeAgent: string | null,
-  acpOutputs: OutputLine[]
-): AcpView {
-  if (!activeAgent) {
-    return EMPTY_ACP_VIEW;
-  }
-  return buildAcpView(acpOutputs);
-}
-
-export function buildPermissionPollAgentIds(agents: AgentRecord[]): string[] {
-  return Array.from(
-    new Set(
-      agents
-        .filter((agent) => isAgentActiveStatus(agent.status))
-        .map((agent) => agent.id)
-    )
-  ).sort();
-}
+export {
+  isAgentsWorkbenchRoute,
+  isTeamsRoute,
+  resolveAppRouteKind,
+  resolvePostAuthRedirectTarget,
+  resolveTeamRoute,
+  shouldRedirectTeamsToLogin,
+} from "./app_route_selection";
 
 const LazyAdminPage = React.lazy(async () => {
   const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
@@ -251,273 +267,6 @@ function ForbiddenRoute() {
       message="You do not have access to this page."
     />
   );
-}
-
-export function shouldRedirectTeamsToLogin(
-  pathname: string,
-  auth: AuthState | null,
-  token: string | null
-): boolean {
-  return isTeamsRoute(pathname) && (!auth || !token);
-}
-
-export function canManageAgentNodes(auth: AuthState | null): boolean {
-  return auth?.role === "root";
-}
-
-function compareAgentNodeRecords(a: AgentNodeRecord, b: AgentNodeRecord): number {
-  if (a.is_main !== b.is_main) {
-    return a.is_main ? -1 : 1;
-  }
-  if (a.created_at !== b.created_at) {
-    return b.created_at - a.created_at;
-  }
-  return a.id.localeCompare(b.id);
-}
-
-export function upsertAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  node: AgentNodeRecord
-): AgentNodeRecord[] {
-  const existingIndex = nodes.findIndex((item) => item.id === node.id);
-  if (existingIndex >= 0) {
-    const next = [...nodes];
-    next[existingIndex] = node;
-    return next;
-  }
-  return [...nodes, node].sort(compareAgentNodeRecords);
-}
-
-function isSameStringList(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) return false;
-  }
-  return true;
-}
-
-function isSameAgentRecord(a: AgentRecord, b: AgentRecord): boolean {
-  return (
-    a.id === b.id &&
-    a.name === b.name &&
-    a.workdir === b.workdir &&
-    a.command === b.command &&
-    isSameStringList(a.args, b.args) &&
-    (a.target_node_id ?? null) === (b.target_node_id ?? null) &&
-    a.worktree_mode === b.worktree_mode &&
-    (a.worktree_repo ?? null) === (b.worktree_repo ?? null) &&
-    (a.worktree_ref ?? null) === (b.worktree_ref ?? null) &&
-    a.code_mode === b.code_mode &&
-    (a.agent_loop_enabled ?? null) === (b.agent_loop_enabled ?? null) &&
-    (a.agent_loop_idle_seconds ?? null) === (b.agent_loop_idle_seconds ?? null) &&
-    (a.agent_loop_prompt ?? null) === (b.agent_loop_prompt ?? null) &&
-    a.status === b.status &&
-    a.created_at === b.created_at &&
-    a.updated_at === b.updated_at
-  );
-}
-
-export function isSameAgentRecordList(
-  prev: AgentRecord[],
-  next: AgentRecord[]
-): boolean {
-  if (prev.length !== next.length) return false;
-  for (let index = 0; index < prev.length; index += 1) {
-    if (!isSameAgentRecord(prev[index], next[index])) return false;
-  }
-  return true;
-}
-
-function isSameAgentNodeRecord(
-  a: AgentNodeRecord,
-  b: AgentNodeRecord
-): boolean {
-  return (
-    a.id === b.id &&
-    a.name === b.name &&
-    (a.grpc_target ?? null) === (b.grpc_target ?? null) &&
-    (a.tls_server_name ?? null) === (b.tls_server_name ?? null) &&
-    (a.default_worktree_root ?? null) === (b.default_worktree_root ?? null) &&
-    a.is_main === b.is_main &&
-    a.created_at === b.created_at &&
-    a.updated_at === b.updated_at
-  );
-}
-
-export function isSameAgentNodeRecordList(
-  prev: AgentNodeRecord[],
-  next: AgentNodeRecord[]
-): boolean {
-  if (prev.length !== next.length) return false;
-  for (let index = 0; index < prev.length; index += 1) {
-    if (!isSameAgentNodeRecord(prev[index], next[index])) return false;
-  }
-  return true;
-}
-
-export function replaceAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  node: AgentNodeRecord
-): AgentNodeRecord[] {
-  return nodes.map((item) => (item.id === node.id ? node : item));
-}
-
-export function removeAgentNodeRecord(
-  nodes: AgentNodeRecord[],
-  nodeId: string
-): AgentNodeRecord[] {
-  return nodes.filter((item) => item.id !== nodeId);
-}
-
-function isTeamsRoute(pathname: string): boolean {
-  return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
-}
-
-export function isAgentsWorkbenchRoute(pathname: string): boolean {
-  return pathname === "/";
-}
-
-export function resolveTeamRoute(pathname: string): {
-  mode: "selector" | "detail";
-  teamId: string | null;
-} | null {
-  if (!isTeamsRoute(pathname)) {
-    return null;
-  }
-  const suffix = pathname.slice("/teams".length);
-  if (!suffix || suffix === "/") {
-    return { mode: "selector", teamId: null };
-  }
-  const normalized = suffix.startsWith("/") ? suffix.slice(1) : suffix;
-  const [rawTeamId] = normalized.split("/");
-  if (!rawTeamId) {
-    return { mode: "selector", teamId: null };
-  }
-  try {
-    return {
-      mode: "detail",
-      teamId: decodeURIComponent(rawTeamId),
-    };
-  } catch {
-    return {
-      mode: "detail",
-      teamId: rawTeamId,
-    };
-  }
-}
-
-export function resolvePostAuthRedirectTarget(
-  pathname: string,
-  search: string,
-  auth: AuthState | null,
-  token: string | null
-): string | null {
-  if (pathname !== "/") return null;
-  if (!auth || !token) return null;
-  return resolvePostLoginRedirectTarget(search);
-}
-
-type PendingPermissionJumpState = {
-  toolCallId: string;
-  sessionId: string | null;
-  attempts: number;
-};
-
-export function decidePermissionJump(
-  pending: PendingPermissionJumpState | null,
-  acpTab: "conversation" | "plan" | "debug",
-  activeSessionId: string | null,
-  maxAttempts: number = PERMISSION_JUMP_MAX_ATTEMPTS
-): PermissionJumpDecision {
-  if (!pending) return "idle";
-  if (acpTab !== "conversation") return "wait";
-  if (pending.sessionId && activeSessionId !== pending.sessionId) return "wait";
-  if (pending.attempts >= maxAttempts) return "clear";
-  return "attempt";
-}
-
-export function resolveAgentsPanelMaxWidth(workspaceWidth: number): number {
-  if (!Number.isFinite(workspaceWidth) || workspaceWidth <= 0) {
-    return AGENTS_PANEL_MAX_WIDTH;
-  }
-  return Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(
-      AGENTS_PANEL_MAX_WIDTH,
-      Math.round(
-        workspaceWidth -
-          AGENTS_PANEL_MIN_RIGHT_WIDTH -
-          AGENTS_WORKSPACE_SPLITTER_WIDTH
-      )
-    )
-  );
-}
-
-export function clampAgentsPanelWidth(
-  value: number,
-  maxWidth = AGENTS_PANEL_MAX_WIDTH
-): number {
-  if (!Number.isFinite(value)) {
-    return AGENTS_PANEL_DEFAULT_WIDTH;
-  }
-  const effectiveMax = Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(AGENTS_PANEL_MAX_WIDTH, maxWidth)
-  );
-  return Math.max(
-    AGENTS_PANEL_MIN_WIDTH,
-    Math.min(effectiveMax, Math.round(value))
-  );
-}
-
-export function loadAgentsPanelWidthPreference(
-  raw = getLocalStorageItemSafe(AGENTS_PANEL_WIDTH_STORAGE_KEY)
-): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return clampAgentsPanelWidth(parsed);
-}
-
-export function persistAgentsPanelWidthPreference(width: number): void {
-  setLocalStorageItemSafe(
-    AGENTS_PANEL_WIDTH_STORAGE_KEY,
-    String(clampAgentsPanelWidth(width))
-  );
-}
-
-export function resolveOutputHistoryKey(
-  agentId: string,
-  sessionId: string | null,
-  agentSessions: Record<string, string>
-): string {
-  if (sessionId) return `${agentId}:${sessionId}`;
-  const latestSessionId = agentSessions[agentId] ?? "latest";
-  return `${agentId}:latest:${latestSessionId}`;
-}
-
-export function resolveSessionScopedEvents(
-  events: AgentEvent[],
-  requestedSessionId: string | null
-): {
-  latestSessionId: string | null;
-  resolvedSessionId: string | null;
-  scopedEvents: AgentEvent[];
-} {
-  const latestSessionId = !requestedSessionId
-    ? events.reduce<AgentEvent | null>((latest, current) => {
-        if (!current.session_id) return latest;
-        if (!latest) return current;
-        return compareEventOrder(current, latest) > 0 ? current : latest;
-      }, null)?.session_id ?? null
-    : null;
-  const resolvedSessionId = requestedSessionId ?? latestSessionId;
-  const scopedEvents = resolvedSessionId
-    ? events.filter((evt) => evt.session_id === resolvedSessionId)
-    : events;
-  return {
-    latestSessionId,
-    resolvedSessionId,
-    scopedEvents,
-  };
 }
 
 export function App() {
@@ -1024,6 +773,12 @@ export function App() {
     routeLocation.search,
     auth,
     token
+  );
+  const routeKind = resolveAppRouteKind(
+    routeLocation,
+    auth,
+    token,
+    postAuthRedirectTarget
   );
   useEffect(() => {
     const syncRouteLocation = () => {
@@ -3059,81 +2814,76 @@ export function App() {
     [activeAgent, scopedAcpPermissions, permissionBusy, onRespondPermission]
   );
 
-  if (routeLocation.pathname.startsWith("/join")) {
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
-          <LazyJoinPage onComplete={(next) => setAuth(next)} />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (routeLocation.pathname.startsWith("/admin")) {
-    if (!auth) {
+  switch (routeKind) {
+    case "join":
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading join flow..." />}>
+            <LazyJoinPage onComplete={(next) => setAuth(next)} />
+          </Suspense>
+        </div>
+      );
+    case "admin-auth-required":
       return <AuthRequiredGate />;
-    }
-    if (auth.role !== "root") {
+    case "admin-forbidden":
       return <ForbiddenRoute />;
-    }
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
-          <LazyAdminPage
-            auth={auth}
-            error={normalizedError}
-            setError={setError}
-            safePaths={safePaths}
-            selectedSafePaths={selectedSafePaths}
-            onToggleSafePath={onToggleSafePath}
-            onToggleAllSafePaths={onToggleAllSafePaths}
-            onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-            devices={devices}
-            audits={audits}
-            vapidInfo={vapidInfo}
-            onRotateVapid={onRotateVapid}
-            onAddSafePath={onAddSafePath}
-            onDeleteSafePath={onDeleteSafePath}
-            onRevokeDevice={onRevokeDevice}
-            onCreateJoin={onCreateJoin}
-            joinQr={joinQr}
-            joinToken={joinToken}
-            joinPin={joinPin}
-            safePathInput={safePathInput}
-            setSafePathInput={setSafePathInput}
-            developerMode={developerMode}
-            onDeveloperModeChange={handleDeveloperModeChange}
-            passkeyEnabled={passkeyEnabled}
-            onPasskeyEnabledChange={onPasskeyEnabledChange}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (isTeamsRoute(routeLocation.pathname)) {
-    if (shouldRedirectTeamsToLogin(routeLocation.pathname, auth, token)) {
+    case "admin":
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
+            <LazyAdminPage
+              auth={auth}
+              error={normalizedError}
+              setError={setError}
+              safePaths={safePaths}
+              selectedSafePaths={selectedSafePaths}
+              onToggleSafePath={onToggleSafePath}
+              onToggleAllSafePaths={onToggleAllSafePaths}
+              onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+              devices={devices}
+              audits={audits}
+              vapidInfo={vapidInfo}
+              onRotateVapid={onRotateVapid}
+              onAddSafePath={onAddSafePath}
+              onDeleteSafePath={onDeleteSafePath}
+              onRevokeDevice={onRevokeDevice}
+              onCreateJoin={onCreateJoin}
+              joinQr={joinQr}
+              joinToken={joinToken}
+              joinPin={joinPin}
+              safePathInput={safePathInput}
+              setSafePathInput={setSafePathInput}
+              developerMode={developerMode}
+              onDeveloperModeChange={handleDeveloperModeChange}
+              passkeyEnabled={passkeyEnabled}
+              onPasskeyEnabledChange={onPasskeyEnabledChange}
+            />
+          </Suspense>
+        </div>
+      );
+    case "teams-auth-redirect":
       return <AuthRedirect />;
+    case "teams": {
+      const teamRoute = resolveTeamRoute(routeLocation.pathname);
+      return (
+        <div className="app bg-white" ref={appRootRef}>
+          <Suspense fallback={<RouteFallback label="Loading teams..." />}>
+            <LazyTeamPage
+              auth={auth}
+              token={token}
+              onLogout={onLogout}
+              developerMode={developerMode}
+              routeTeamId={teamRoute?.teamId ?? null}
+              defaultWorktreeRoot={defaultWorktreeRoot}
+            />
+          </Suspense>
+        </div>
+      );
     }
-    const teamRoute = resolveTeamRoute(routeLocation.pathname);
-    return (
-      <div className="app bg-white" ref={appRootRef}>
-        <Suspense fallback={<RouteFallback label="Loading teams..." />}>
-          <LazyTeamPage
-            auth={auth}
-            token={token}
-            onLogout={onLogout}
-            developerMode={developerMode}
-            routeTeamId={teamRoute?.teamId ?? null}
-            defaultWorktreeRoot={defaultWorktreeRoot}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (postAuthRedirectTarget) {
-    return <PostLoginRedirect target={postAuthRedirectTarget} />;
+    case "post-auth-redirect":
+      return <PostLoginRedirect target={postAuthRedirectTarget!} />;
+    case "agents":
+      break;
   }
 
   return (
@@ -3308,35 +3058,4 @@ function createAnsiRenderer(): (input: string) => string {
     }
     return out;
   };
-}
-
-function isSamePermissionList(
-  a: AcpPermissionRecord[],
-  b: AcpPermissionRecord[]
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    const left = a[i];
-    const right = b[i];
-    if (left.id !== right.id) return false;
-    if (left.status !== right.status) return false;
-    if (left.selected_option_id !== right.selected_option_id) return false;
-    if ((left.responded_at ?? null) !== (right.responded_at ?? null)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isSamePendingPermissionCountMap(
-  a: Record<string, number>,
-  b: Record<string, number>
-): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (a[key] !== b[key]) return false;
-  }
-  return true;
 }

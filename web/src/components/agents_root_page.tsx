@@ -191,6 +191,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           <div className={AUTH_ACTIONS_CLASS}>
             {rootInitialized === false ? (
               <ActionButton
+                tone="secondary"
                 className={AUTH_SECONDARY_BUTTON_CLASS}
                 disabled={authBusy !== null}
                 onClick={() => onRegister("root")}
@@ -199,6 +200,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
               </ActionButton>
             ) : null}
             <ActionButton
+              tone="primary"
               type="submit"
               className={AUTH_PRIMARY_BUTTON_CLASS}
               disabled={authBusy !== null}

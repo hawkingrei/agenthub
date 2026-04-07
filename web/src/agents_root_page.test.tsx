@@ -191,6 +191,9 @@ describe("AgentsRootPage", () => {
     expect(html).toContain('name="username"');
     expect(html).toContain('name="password"');
     expect(html).toContain('name="display_name"');
+    expect(html).toContain("bg-notion-accent text-white");
+    expect(html).not.toContain("bg-notion-accent px-6 text-[15px] font-bold text-white");
+    expect(html).not.toContain("bg-white text-white");
   });
 
   it("renders the authenticated agents workbench shell when auth is present", () => {
