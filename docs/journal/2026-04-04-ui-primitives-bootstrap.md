@@ -53,6 +53,37 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - refresh/cancel/resume/restart now use shared `ActionButton`
   - `web/src/pages/team_mailbox_panel.tsx`
     - actor selection rows now use `SelectableListItem`
+  - `web/src/pages/team/team_selector_panel.tsx`
+    - selector header and filter row now use `ToolbarRow`
+    - create action now uses shared `ActionButton`
+    - team rows now use `SelectableListItem`
+  - `web/src/pages/team/team_debug_panels.tsx`
+    - debug header and run forms now use `SurfaceCard`
+    - debug tab switcher and run actions now use shared `ActionButton`
+    - stacked input/action rows now use `ToolbarRow`
+  - `web/src/pages/team/team_page_header.tsx`
+    - selector shortcut now uses shared `ActionButton`
+  - `web/src/pages/team/team_workspace_header.tsx`
+    - agent workspace trigger and advanced workspace trigger now use shared `ActionButton`
+  - `web/src/pages/team/team_management_modals.tsx`
+    - modal footer actions now use shared `ActionButton`
+    - repeated modal card shells now use `SurfaceCard`
+  - `web/src/pages/team_sidebar.tsx`
+    - sidebar section toggles now use shared `ActionButton`
+    - team, workflow, and agent rows now use `SelectableListItem`
+  - `web/src/pages/team_task_panel.tsx`
+    - conversation shell now uses `SurfaceCard`
+    - refresh row and composer meta row now use `ToolbarRow`
+  - `web/src/pages/team_mailbox_panel.tsx`
+    - mailbox shell now uses `SurfaceCard`
+    - advanced controls shell now uses `InsetSurface`
+    - chat composer action row now uses `ToolbarRow`
+  - `web/src/pages/team_member_console_panel.tsx`
+    - member detail shell now uses `InsetSurface`
+  - `web/src/use_app_output_cache.ts`, `web/src/use_app_permissions.ts`, `web/src/use_app_sse_events.ts`, `web/src/use_app_acp_ui.ts`
+    - cleaned up lingering type imports after the hook extraction so dispatcher/output-cache signatures match actual exports
+  - `web/src/components/bubbles/markdown_bubble.tsx`, `web/src/pages/team_task_panel.tsx`, `web/src/pages/team_mailbox_panel.tsx`
+    - removed duplicated base bubble class composition now that variant constants already include the shared bubble shell
 
 ## Validation
 
@@ -61,6 +92,10 @@ surface/header/button patterns stop drifting independently across Agents and Tea
 - `cd web && npm run test -- src/ui/primitives.test.tsx src/pages/team_panels.test.tsx`
 - `cd web && npm run lint`
 - `make build-web`
+- `cd web && npm run test -- src/pages/team/team_selector_panel.test.tsx src/pages/team/team_debug_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- src/pages/team/team_page_header.test.tsx src/pages/team/team_workspace_header.test.tsx`
+- `cd web && npm run test -- src/pages/team/team_management_modals.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
 
 ## Follow-up
 

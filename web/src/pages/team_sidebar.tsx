@@ -2,7 +2,7 @@ import React from "react";
 import { CloseButton, Menu, TextInput, UnstyledButton } from "@mantine/core";
 import { TeamDefinitionRecord } from "../api";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
-import { ActionButton, IconButton } from "../ui/primitives";
+import { ActionButton, IconButton, SelectableListItem } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_LIST_ITEM_META_CLASS,
@@ -427,7 +427,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
 
       {showTeamSelector && (
         <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-          <UnstyledButton
+          <ActionButton
+            tone="ghost"
+            size="sm"
             className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
             onClick={() => toggleSection("teams")}
             aria-expanded={sectionOpen.teams}
@@ -438,7 +440,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               className={sectionOpen.teams ? "bi bi-chevron-down" : "bi bi-chevron-right"}
               aria-hidden="true"
             />
-          </UnstyledButton>
+          </ActionButton>
           {sectionOpen.teams && (
             <div className="mt-1.5 space-y-1">
               {teams.length > 0 && (
@@ -476,8 +478,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   const summaryLabel = formatTeamMemberSummary(summary);
                   const isSelected = team.id === selectedTeamId;
                   return (
-                    <UnstyledButton
+                    <SelectableListItem
                       key={team.id}
+                      active={isSelected}
                       className={
                         isSelected
                           ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
@@ -500,7 +503,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                           {summaryLabel}
                         </span>
                       )}
-                    </UnstyledButton>
+                    </SelectableListItem>
                   );
                 })}
               </div>
@@ -524,7 +527,8 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
               Workflow
             </div>
-            <UnstyledButton
+            <SelectableListItem
+              active={tab === "conversation"}
               className={
                 tab === "conversation"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -540,8 +544,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 #
               </span>
               <span className="truncate text-[13px]"># all</span>
-            </UnstyledButton>
-            <UnstyledButton
+            </SelectableListItem>
+            <SelectableListItem
+              active={tab === "tasks"}
               className={
                 tab === "tasks"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -549,14 +554,16 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               }
               onClick={onSelectKanban}
               title="Kanban"
-            >
-              <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
-              <span className="truncate text-[13px]">Kanban</span>
-            </UnstyledButton>
+              >
+                <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
+                <span className="truncate text-[13px]">Kanban</span>
+            </SelectableListItem>
           </div>
 
           <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-            <UnstyledButton
+            <ActionButton
+              tone="ghost"
+              size="sm"
               className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
               onClick={() => toggleSection("agents")}
               aria-expanded={sectionOpen.agents}
@@ -567,7 +574,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 className={sectionOpen.agents ? "bi bi-chevron-down" : "bi bi-chevron-right"}
                 aria-hidden="true"
               />
-            </UnstyledButton>
+            </ActionButton>
             {sectionOpen.agents && (
               <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} px-1`}>
                 {memberLiveStates.length === 0 && (
@@ -582,8 +589,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   const currentWorkLabel = resolveCurrentWorkLabel(member);
                   const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   return (
-                    <UnstyledButton
+                    <SelectableListItem
                       key={member.member_id}
+                      active={isActiveMember}
                       className={
                         isActiveMember
                           ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
@@ -621,7 +629,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                           {currentWorkLabel}
                         </span>
                       )}
-                    </UnstyledButton>
+                    </SelectableListItem>
                   );
                 })}
               </div>

@@ -1,3 +1,4 @@
+import { Box } from "@mantine/core";
 import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
@@ -89,9 +90,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   return (
     <>
       {!agentsCollapsed && (
-        <div className={AGENTS_PANEL_BACKDROP_CLASS} onClick={onCollapse} />
+        <Box className={AGENTS_PANEL_BACKDROP_CLASS} onClick={onCollapse} />
       )}
-      <div
+      <Box
         className={
           agentsCollapsed
             ? AGENTS_PANEL_COLLAPSED_CLASS
@@ -101,7 +102,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         }
       >
         {agentsCollapsed ? (
-          <div className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
+          <Box className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
             <IconButton
               size="md"
               tone="default"
@@ -111,22 +112,23 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             >
               <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
             </IconButton>
-            <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
-              <span className="value">{agents.length}</span>
-              <span className="label">Agents</span>
+            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
+              <Box component="span" className="value">{agents.length}</Box>
+              <Box component="span" className="label">Agents</Box>
               {hasPendingPermissions ? (
-                <span
+                <Box
+                  component="span"
                   className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
                   role="img"
                   aria-label="Pending permissions"
                   title="Pending permissions"
                 />
               ) : null}
-            </div>
-            <div className={AGENTS_WORKBENCH_METRIC_CLASS} title="Running">
-              <span className="value">{runningCount}</span>
-              <span className="label">Running</span>
-            </div>
+            </Box>
+            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Running">
+              <Box component="span" className="value">{runningCount}</Box>
+              <Box component="span" className="label">Running</Box>
+            </Box>
             <IconButton
               size="md"
               tone="active"
@@ -136,12 +138,12 @@ export const AgentsPanel = React.memo(function AgentsPanel({
             >
               <i className="bi bi-plus-lg" aria-hidden="true" />
             </IconButton>
-          </div>
+          </Box>
         ) : (
           <>
-            <div className={AGENTS_TOOLBAR_CLASS}>
-              <h2 className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</h2>
-              <div className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
+            <Box className={AGENTS_TOOLBAR_CLASS}>
+              <Box component="h2" className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</Box>
+              <Box className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
                 <IconButton
                   size="md"
                   tone="default"
@@ -160,10 +162,10 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                 >
                   Create Agent
                 </ActionButton>
-              </div>
-            </div>
-            <div className={AGENTS_PANEL_BODY_CLASS}>
-              <div className={AGENTS_WORKBENCH_LIST_CLASS}>
+              </Box>
+            </Box>
+            <Box className={AGENTS_PANEL_BODY_CLASS}>
+              <Box className={AGENTS_WORKBENCH_LIST_CLASS}>
                 {agents.map((agent) => {
                   const isStarting = Boolean(startingAgentIds[agent.id]);
                   const isRemoteTarget = Boolean(agent.target_node_id);
@@ -190,39 +192,36 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                         ? `Start agent on node ${agent.target_node_id}`
                         : "Start";
                   return (
-                    <div
+                    <Box
+                      role="button"
+                      tabIndex={0}
                       key={agent.id}
                       className={
                         activeAgent === agent.id ? AGENTS_ROW_ACTIVE_CLASS : AGENTS_ROW_CLASS
                       }
-                      role="button"
-                      tabIndex={0}
                       onClick={() => onSelectAgent(agent.id)}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" ||
-                          e.key === " " ||
-                          e.key === "Spacebar"
-                        ) {
-                          e.preventDefault();
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
                           onSelectAgent(agent.id);
                         }
                       }}
                       title={`ID: ${agent.id}\nWorkdir: ${agent.workdir}\nCommand: ${agent.command}\nStatus: ${agent.status}\nCode mode: ${agent.code_mode ? "on" : "off"}\nNode: ${agent.target_node_id ?? "main"}`}
                     >
-                      <div className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
-                        <div className={AGENTS_WORKBENCH_ROW_TITLE_CLASS}>
-                          <span className={AGENTS_WORKBENCH_NAME_CLASS}>{agent.name}</span>
+                      <Box className={AGENTS_WORKBENCH_ROW_HEAD_CLASS}>
+                        <Box className={AGENTS_WORKBENCH_ROW_TITLE_CLASS}>
+                          <Box component="span" className={AGENTS_WORKBENCH_NAME_CLASS}>{agent.name}</Box>
                           {pendingPermissionCount > 0 ? (
-                            <span
+                            <Box
+                              component="span"
                               className={AGENTS_WORKBENCH_PERMISSION_DOT_CLASS}
                               role="img"
                               aria-label={pendingPermissionLabel}
                               title={pendingPermissionLabel}
                             />
                           ) : null}
-                        </div>
-                        <div className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
+                        </Box>
+                        <Box className={AGENTS_WORKBENCH_ROW_ACTIONS_CLASS}>
                           <IconButton
                             size="sm"
                             tone={agent.code_mode ? "active" : "subtle"}
@@ -296,9 +295,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           >
                             <i className="bi bi-trash" aria-hidden="true" />
                           </IconButton>
-                        </div>
-                      </div>
-                      <div className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
+                        </Box>
+                      </Box>
+                      <Box className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
                         {modelLabel ? (
                           <StatusPill className="agents-workbench-tag">{modelLabel}</StatusPill>
                         ) : null}
@@ -316,21 +315,21 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                           )}
                           title={`status: ${agent.status}`}
                         />
-                      </div>
-                      <div className={AGENTS_WORKBENCH_ROW_META_CLASS}>
-                        <span className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</span>
-                        <span className={AGENTS_WORKBENCH_CODE_MODE_CLASS}>
+                      </Box>
+                      <Box className={AGENTS_WORKBENCH_ROW_META_CLASS}>
+                        <Box component="span" className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</Box>
+                        <Box component="span" className={AGENTS_WORKBENCH_CODE_MODE_CLASS}>
                           Code mode: {agent.code_mode ? "on" : "off"}
-                        </span>
-                      </div>
-                    </div>
+                        </Box>
+                      </Box>
+                    </Box>
                   );
                 })}
-              </div>
-            </div>
+              </Box>
+            </Box>
           </>
         )}
-      </div>
+      </Box>
     </>
   );
 });

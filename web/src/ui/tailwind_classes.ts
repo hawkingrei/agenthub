@@ -76,7 +76,7 @@ export const ACP_DEBUG_PERMISSION_SUBMETA_CLASS =
   "acp-permission-submeta mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-notion-text-muted";
 
 export const ACP_DEBUG_PERMISSION_WARNING_CLASS =
-  "acp-permission-options mono mt-2 rounded-lg border border-orange-100 bg-orange-50/50 px-3 py-2 text-[11px] text-orange-800";
+  "acp-permission-options mono mt-2 rounded-lg border border-state-warning-border bg-state-warning-bg/50 px-3 py-2 text-[11px] text-state-warning-text";
 
 export const ACP_DEBUG_RAW_PRE_CLASS =
   "acp-content mt-2 overflow-auto rounded-lg border border-notion-border bg-white p-3 text-[12px] leading-relaxed text-notion-text";
@@ -88,10 +88,10 @@ export const ACP_MESSAGE_BUBBLE_CLASS =
   "acp-message-bubble relative max-w-[min(86%,78ch)] rounded-[18px] border px-4 py-3 text-[14px] leading-7 shadow-notion-card transition-all";
 
 export const ACP_MESSAGE_BUBBLE_AGENT_CLASS =
-  "acp-message-bubble-agent self-start rounded-tl-md border-notion-border-subtle bg-white text-notion-text";
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-md border-notion-border-subtle bg-white text-notion-text`;
 
 export const ACP_MESSAGE_BUBBLE_USER_CLASS =
-  "acp-message-bubble-user self-end rounded-tr-md border-notion-accent/15 bg-notion-accent-bg/75 text-notion-text";
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-md border-notion-accent/15 bg-notion-accent-bg/75 text-notion-text`;
 
 export const ACP_BUBBLE_THINKING_CLASS =
   "acp-bubble agent_thinking self-start max-w-[80%] rounded-[18px] rounded-tl-[4px] border border-notion-border bg-notion-surface-tint/50 px-4 py-3 italic text-notion-text-muted/80 shadow-sm";
@@ -103,10 +103,10 @@ export const ACP_PLAN_INDEX_BADGE_CLASS =
   "mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md bg-notion-hover text-[10px] font-bold text-notion-text-muted shadow-inner";
 
 export const ACP_PLAN_PRIORITY_BADGE_CLASS =
-  "ml-2 rounded-sm bg-orange-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 border border-orange-100";
+  "ml-2 rounded-sm bg-state-warning-bg px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-state-warning-text border border-state-warning-border";
 
 export const ACP_PLAN_STATUS_BADGE_CLASS =
-  "ml-2 rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700 border border-emerald-100";
+  "ml-2 rounded-sm bg-state-success-bg px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-state-success-text border border-state-success-border";
 
 export const ACP_TOOL_STATUS_CLASS =
   "acp-tool-status inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-sm transition";
@@ -118,10 +118,10 @@ export const ACP_TOOL_STATUS_GROUP_RUNNING_CLASS =
   "bg-notion-accent-bg border border-notion-accent/20 text-notion-accent animate-pulse";
 
 export const ACP_TOOL_STATUS_GROUP_SUCCESS_CLASS =
-  "bg-emerald-50 border border-emerald-200 text-emerald-700";
+  "bg-state-success-bg border border-state-success-border text-state-success-text";
 
 export const ACP_TOOL_STATUS_GROUP_FAILURE_CLASS =
-  "bg-rose-50 border border-rose-200 text-rose-700";
+  "bg-state-error-bg border border-state-error-border text-state-error-text";
 
 export const ACP_TOOL_STATUS_SINGLE_DEFAULT_CLASS =
   "bg-notion-hover border border-notion-border text-notion-text-muted font-mono normal-case tracking-normal";
@@ -136,7 +136,7 @@ export const ACP_SEGMENTED_BUTTON_CLASS =
   "acp-segmented-button h-7 rounded-md border border-notion-border bg-white px-2.5 text-[11px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px shadow-sm";
 
 export const ACP_SEGMENTED_NOTE_WARNING_CLASS =
-  "acp-segmented-note warning flex items-center gap-2 rounded-md border border-orange-100 bg-orange-50/50 px-3 py-2 text-[12px] leading-relaxed text-orange-800 italic";
+  "acp-segmented-note warning flex items-center gap-2 rounded-md border border-state-warning-border bg-state-warning-bg/50 px-3 py-2 text-[12px] leading-relaxed text-state-warning-text italic";
 
 export const ACP_PAYLOAD_MARKDOWN_CLASS =
   "acp-payload-markdown text-[14px] leading-relaxed text-notion-text [&_pre]:my-3 [&_code]:rounded [&_code]:bg-notion-hover [&_code]:px-1 [&_p]:mb-3 [&_p:last-child]:mb-0";
@@ -283,10 +283,10 @@ export const TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS =
   "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS =
-  "border-notion-accent/15 bg-notion-accent-bg/72";
+  `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} border-notion-accent/15 bg-notion-accent-bg/72`;
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS =
-  "border-notion-border-subtle bg-white";
+  `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} border-notion-border-subtle bg-white`;
 
 export const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
   "text-[13px] font-bold text-notion-text";
@@ -414,10 +414,10 @@ export const MAILBOX_MESSAGE_BUBBLE_CLASS =
   "teams-message-bubble relative max-w-[85%] rounded-[18px] px-4 py-2.5 text-[14px] leading-relaxed shadow-notion-soft transition-all";
 
 export const MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS =
-  "teams-message-bubble-outgoing self-end rounded-tr-[4px] border border-notion-accent/15 bg-notion-bubble-user text-notion-text";
+  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-outgoing self-end rounded-tr-[4px] border border-notion-accent/15 bg-notion-bubble-user text-notion-text`;
 
 export const MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS =
-  "teams-message-bubble-incoming self-start rounded-tl-[4px] border border-notion-border bg-white text-notion-text";
+  `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-incoming self-start rounded-tl-[4px] border border-notion-border bg-white text-notion-text`;
 
 export const MAILBOX_CONVERSATION_EMPTY_CLASS =
   "teams-conversation-empty mx-auto my-8 rounded-full border border-notion-border bg-white px-6 py-2 text-sm font-medium text-notion-text-muted italic shadow-sm";
@@ -482,7 +482,7 @@ export const ADMIN_SECONDARY_BUTTON_CLASS =
   "inline-flex h-9 items-center justify-center rounded-md border border-notion-border bg-white px-4 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover disabled:opacity-50 active:translate-y-px";
 
 export const ADMIN_DANGER_BUTTON_CLASS =
-  "inline-flex h-9 items-center justify-center rounded-md border border-red-200 bg-red-50 px-4 text-[13px] font-medium text-red-700 transition hover:bg-red-100 active:translate-y-px";
+  "inline-flex h-9 items-center justify-center rounded-md border border-state-error-border bg-state-error-bg px-4 text-[13px] font-medium text-state-error-text transition hover:bg-state-error-bg/80 active:translate-y-px";
 
 export const ADMIN_LIST_CLASS = "space-y-1.5";
 

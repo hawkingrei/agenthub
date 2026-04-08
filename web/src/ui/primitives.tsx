@@ -39,7 +39,7 @@ const ACTION_BUTTON_TONE_CLASS = {
     "border border-notion-border bg-white text-notion-text shadow-sm hover:bg-notion-hover",
   ghost: "bg-transparent text-notion-text-muted hover:bg-notion-hover hover:text-notion-text",
   danger:
-    "border border-red-200 bg-red-50 text-red-600 shadow-sm hover:bg-red-100",
+    "border border-state-error-border bg-state-error-bg text-state-error-text shadow-sm hover:bg-state-error-bg/80",
 } as const;
 
 const ICON_BUTTON_BASE_CLASS =
@@ -57,7 +57,7 @@ const ICON_BUTTON_TONE_CLASS = {
     "border border-notion-accent/30 bg-notion-accent-bg text-notion-accent shadow-sm hover:bg-notion-accent/10",
   subtle:
     "text-notion-text-muted hover:bg-notion-hover hover:text-notion-text",
-  danger: "text-notion-text-muted hover:bg-red-50 hover:text-red-600",
+  danger: "text-notion-text-muted hover:bg-state-error-bg hover:text-state-error-text",
 } as const;
 
 const STATUS_PILL_BASE_CLASS =

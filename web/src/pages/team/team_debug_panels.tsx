@@ -1,6 +1,10 @@
 import React from "react";
-import { Button, TextInput, Textarea, UnstyledButton } from "@mantine/core";
-import { ActionButton } from "../../ui/primitives";
+import { TextInput, Textarea } from "@mantine/core";
+import {
+  ActionButton,
+  SurfaceCard,
+  ToolbarRow,
+} from "../../ui/primitives";
 
 export type TeamDebugTag = "run_ops" | "step_ops" | "mailbox_raw";
 
@@ -27,12 +31,14 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
   onTeamDebugTagChange,
 }: TeamDebugToolsHeaderProps) {
   return (
-    <div className={`${chrome.panelCardClassName} p-3`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <SurfaceCard className={`${chrome.panelCardClassName} p-3`}>
+      <ToolbarRow>
         <h3 className={chrome.sectionHeadingClassName}>Debug Tools</h3>
         <div className={chrome.debugTabsClassName}>
-          <UnstyledButton
+          <ActionButton
             type="button"
+            tone="ghost"
+            size="sm"
             className={
               teamDebugTag === "run_ops"
                 ? chrome.debugTabActiveClassName
@@ -41,9 +47,11 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
             onClick={() => onTeamDebugTagChange("run_ops")}
           >
             Run Ops
-          </UnstyledButton>
-          <UnstyledButton
+          </ActionButton>
+          <ActionButton
             type="button"
+            tone="ghost"
+            size="sm"
             className={
               teamDebugTag === "step_ops"
                 ? chrome.debugTabActiveClassName
@@ -52,9 +60,11 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
             onClick={() => onTeamDebugTagChange("step_ops")}
           >
             Step Ops
-          </UnstyledButton>
-          <UnstyledButton
+          </ActionButton>
+          <ActionButton
             type="button"
+            tone="ghost"
+            size="sm"
             className={
               teamDebugTag === "mailbox_raw"
                 ? chrome.debugTabActiveClassName
@@ -63,10 +73,10 @@ export const TeamDebugToolsHeader = React.memo(function TeamDebugToolsHeader({
             onClick={() => onTeamDebugTagChange("mailbox_raw")}
           >
             Mailbox Raw
-          </UnstyledButton>
+          </ActionButton>
         </div>
-      </div>
-    </div>
+      </ToolbarRow>
+    </SurfaceCard>
   );
 });
 
@@ -117,12 +127,12 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
 }: TeamRunOpsPanelProps) {
   return (
     <div className="space-y-3">
-      <div className={`${chrome.panelCardClassName} p-4`}>
+      <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
         <h4 className={chrome.sectionHeadingClassName}>Create Run</h4>
         <p className={chrome.sectionBodyTextClassName}>
           Debug entry for manually starting a Team run.
         </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+        <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
           <TextInput
             className="flex-1"
             radius="md"
@@ -130,16 +140,16 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
             value={runContextId}
             onChange={(event) => onRunContextIdChange(event.target.value)}
           />
-          <Button
-            radius="md"
-            color="dark"
+          <ActionButton
+            tone="primary"
+            size="md"
             onClick={() => void onCreateRun()}
             disabled={!canCreateRun}
             title={createRunTitle}
           >
             Create Run
-          </Button>
-        </div>
+          </ActionButton>
+        </ToolbarRow>
         <p className={chrome.sectionHintTextClassName}>
           <code>context_id</code> can be empty. Use one when you want retries/resume grouped
           under the same context.
@@ -169,60 +179,52 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
         ) : (
           <p className={chrome.sectionHintTextClassName}>{helperText}</p>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button
+        <ToolbarRow className="mt-2 justify-start gap-2">
+          <ActionButton
             type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
+            tone="secondary"
+            size="sm"
             onClick={onUseExampleJson}
           >
             Use Example JSON
-          </Button>
-          <Button
+          </ActionButton>
+          <ActionButton
             type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
+            tone="secondary"
+            size="sm"
             onClick={onSetEmptyObject}
           >
             Set Empty Object
-          </Button>
-          <Button
+          </ActionButton>
+          <ActionButton
             type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
+            tone="secondary"
+            size="sm"
             onClick={onFormatJson}
             disabled={runInputHasError || parsedRunInput === undefined}
           >
             Format JSON
-          </Button>
-          <Button
+          </ActionButton>
+          <ActionButton
             type="button"
-            size="xs"
-            radius="md"
-            variant="default"
-            color="gray"
+            tone="secondary"
+            size="sm"
             onClick={onClearRunInput}
             disabled={runInput.trim().length === 0}
           >
             Clear
-          </Button>
-        </div>
+          </ActionButton>
+        </ToolbarRow>
         <p className={chrome.sectionHintTextClassName}>
           Leave empty to submit default empty input <code>{`{}`}</code>.
         </p>
-      </div>
-      <div className={`${chrome.panelCardClassName} p-4`}>
+      </SurfaceCard>
+      <SurfaceCard className={`${chrome.panelCardClassName} p-4`}>
         <h4 className={chrome.sectionHeadingClassName}>Load Existing Run</h4>
         <p className={chrome.sectionBodyTextClassName}>
           Load by <code>run_id</code> for the currently selected team only.
         </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
+        <ToolbarRow className="mt-3 flex-col sm:flex-row sm:items-start">
           <TextInput
             className="flex-1"
             radius="md"
@@ -230,18 +232,16 @@ export const TeamRunOpsPanel = React.memo(function TeamRunOpsPanel({
             value={runLookupId}
             onChange={(event) => onRunLookupIdChange(event.target.value)}
           />
-          <Button
-            radius="md"
-            variant="default"
-            color="gray"
+          <ActionButton
+            tone="secondary"
+            size="md"
             onClick={() => void onLoadRunById()}
             disabled={busy === "load-run"}
-            loading={busy === "load-run"}
           >
-            Load Run
-          </Button>
-        </div>
-      </div>
+            {busy === "load-run" ? "Loading..." : "Load Run"}
+          </ActionButton>
+        </ToolbarRow>
+      </SurfaceCard>
     </div>
   );
 });
@@ -260,7 +260,7 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
   onGoToRuns,
 }: TeamRunRequiredPanelProps) {
   return (
-    <div className={chrome.panelCardClassName}>
+    <SurfaceCard className={chrome.panelCardClassName}>
       <h4 className={chrome.sectionHeadingClassName}>{title}</h4>
       <p className={chrome.sectionBodyTextClassName}>{body}</p>
       <div className="mt-3">
@@ -273,6 +273,6 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
           Go to Runs
         </ActionButton>
       </div>
-    </div>
+    </SurfaceCard>
   );
 });

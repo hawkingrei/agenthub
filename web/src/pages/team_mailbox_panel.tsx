@@ -1,7 +1,13 @@
 import React from "react";
 import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { ActionButton, SelectableListItem, ToolbarRow } from "../ui/primitives";
+import {
+  ActionButton,
+  InsetSurface,
+  SelectableListItem,
+  SurfaceCard,
+  ToolbarRow,
+} from "../ui/primitives";
 import {
   isHumanMailboxActor,
   resolveDisplayName,
@@ -24,7 +30,6 @@ import {
   MAILBOX_CHAT_JUMP_BUTTON_CLASS,
   MAILBOX_MESSAGE_LIST_CLASS,
   MAILBOX_MESSAGE_ITEM_CLASS,
-  MAILBOX_MESSAGE_BUBBLE_CLASS,
   MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS,
   MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS,
   MAILBOX_CONVERSATION_EMPTY_CLASS,
@@ -101,8 +106,7 @@ const MAILBOX_SECTION_TITLE_CLASS = "text-[10px] font-bold uppercase tracking-wi
 const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
 const MAILBOX_ADVANCED_HINT_CLASS =
   "mt-4 rounded-md border border-state-warning-border bg-state-warning-bg px-4 py-3 text-[13px] text-state-warning-text italic";
-const MAILBOX_ADVANCED_ROOT_CLASS =
-  "teams-message-advanced mt-6 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
+const MAILBOX_ADVANCED_ROOT_CLASS = "teams-message-advanced mt-6";
 
 function resolveMailboxActorLabel(
   actorId: string,
@@ -346,7 +350,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   );
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
+    <SurfaceCard className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
       <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
       </ToolbarRow>
@@ -497,7 +501,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                     key={message.message_id}
                     className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${isOutgoing ? "items-end" : "items-start"}`}
                   >
-                    <div className={`${MAILBOX_MESSAGE_BUBBLE_CLASS} ${isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}`}>
+                    <div className={isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
                       <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
                         <span className="font-bold">
                           {fromLabel}
@@ -563,7 +567,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   }
                 }}
               />
-              <div className="flex justify-end">
+              <ToolbarRow className="justify-end">
                 <ActionButton
                   tone="primary"
                   size="md"
@@ -572,7 +576,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                 >
                   Send Chat
                 </ActionButton>
-              </div>
+              </ToolbarRow>
             </div>
           </div>
         </div>
@@ -591,12 +595,12 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       )}
 
       {showDeveloperMailboxTools && (
-        <div className={MAILBOX_ADVANCED_ROOT_CLASS}>
+        <InsetSurface className={MAILBOX_ADVANCED_ROOT_CLASS}>
           <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest mb-4">Advanced mailbox controls</h4>
           {advancedControls}
-        </div>
+        </InsetSurface>
       )}
-    </div>
+    </SurfaceCard>
   );
 }
 

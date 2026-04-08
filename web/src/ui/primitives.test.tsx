@@ -62,7 +62,7 @@ describe("ui primitives", () => {
     );
     expect(primaryHtml).toContain("bg-notion-accent text-white");
     expect(primaryHtml).not.toContain("mantine-UnstyledButton-root");
-    expect(dangerHtml).toContain("border border-red-200 bg-red-50 text-red-600");
+    expect(dangerHtml).toContain("border border-state-error-border bg-state-error-bg text-state-error-text");
     expect(dangerHtml).toContain("h-8 px-3 text-[12px]");
   });
 

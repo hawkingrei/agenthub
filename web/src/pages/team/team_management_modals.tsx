@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, SegmentedControl, Switch, TextInput, Textarea } from "@mantine/core";
+import { Alert, SegmentedControl, Switch, TextInput, Textarea } from "@mantine/core";
 import { DEFAULT_TEAM_LEADER_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
@@ -17,6 +17,7 @@ import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
 } from "../../ui/tailwind_classes";
+import { ActionButton, SurfaceCard } from "../../ui/primitives";
 
 type TeamCreateNoteTone = "info" | "warning";
 
@@ -130,7 +131,7 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
           </div>
         </div>
         <div className="modal-body mt-4 space-y-4">
-          <div className={TEAM_CREATE_PANEL_CARD_CLASS}>
+          <SurfaceCard className={TEAM_CREATE_PANEL_CARD_CLASS}>
             <TextInput
               label="Team name"
               radius="md"
@@ -148,7 +149,7 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
               value={teamDescription}
               onChange={(event) => onTeamDescriptionChange(event.target.value)}
             />
-          </div>
+          </SurfaceCard>
 
           <TeamCreateNote tone={teamName.trim() ? "info" : "warning"}>
             {teamName.trim()
@@ -158,26 +159,26 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
         </div>
 
         <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
-          <Button
-            radius="md"
-            variant="default"
+          <ActionButton
             className={chrome.mutedButtonClassName}
             onClick={onClose}
             disabled={createBusy}
+            size="md"
+            tone="secondary"
             type="button"
           >
             Cancel
-          </Button>
-          <Button
-            radius="md"
+          </ActionButton>
+          <ActionButton
             className={chrome.accentButtonClassName}
             onClick={onCreateTeam}
             disabled={createBusy || !teamName.trim()}
-            loading={createBusy}
+            size="md"
+            tone="primary"
             type="button"
           >
-            Create Team
-          </Button>
+            {createBusy ? "Creating..." : "Create Team"}
+          </ActionButton>
         </div>
       </div>
     </div>
@@ -241,7 +242,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
           </div>
         </div>
         <div className="modal-body mt-4 space-y-4">
-          <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
+          <SurfaceCard className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
             <div className="grid gap-px overflow-hidden rounded-[14px] border border-ui-border bg-ui-border sm:grid-cols-3">
               {[
                 { label: "Member", value: draft.member_id },
@@ -273,7 +274,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
               value={draft.model}
               onChange={(event) => onPatchDraft({ model: event.currentTarget.value })}
             />
-            <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4">
+            <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-4 shadow-none">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -320,8 +321,8 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                   }
                 />
               </div>
-            </div>
-            <div className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3">
+            </SurfaceCard>
+            <SurfaceCard className="mt-4 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3 shadow-none">
               <p className={chrome.infoStripLabelClassName}>System Skills</p>
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                 Role-bound Team skills come from the system-managed skill path and are shown here
@@ -340,7 +341,7 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                   </span>
                 ))}
               </div>
-            </div>
+            </SurfaceCard>
             <Textarea
               className="mt-3"
               radius="md"
@@ -357,30 +358,30 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                 },
               }}
             />
-          </div>
+          </SurfaceCard>
         </div>
 
         <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
-          <Button
-            radius="md"
-            variant="default"
+          <ActionButton
             className={chrome.mutedButtonClassName}
             onClick={onClose}
             disabled={saveBusy}
+            size="md"
+            tone="secondary"
             type="button"
           >
             Cancel
-          </Button>
-          <Button
-            radius="md"
+          </ActionButton>
+          <ActionButton
             className={chrome.accentButtonClassName}
             onClick={onSave}
             disabled={saveBusy}
-            loading={saveBusy}
+            size="md"
+            tone="primary"
             type="button"
           >
-            Save Profile
-          </Button>
+            {saveBusy ? "Saving..." : "Save Profile"}
+          </ActionButton>
         </div>
       </div>
     </div>
@@ -414,7 +415,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
 
   return (
     <CreateAgentModal {...modalProps}>
-      <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
+      <SurfaceCard className={`${TEAM_CREATE_PANEL_CARD_CLASS} border border-ui-border bg-ui-surface/90`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className={chrome.badgeClassName}>
             {roleProfile?.profileLabel ?? "Agent Profile"}
@@ -427,7 +428,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
           {roleProfile?.intro ??
             "Configure the agent identity, skills, and prompt before attaching it to the team."}
         </p>
-        <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3">
+        <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3 shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <p className={chrome.infoStripLabelClassName}>Role Selection</p>
@@ -458,7 +459,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
             {roleOptions.find((option) => option.value === draft.role)?.description ??
               "Select the role before editing skills and prompt."}
           </p>
-        </div>
+        </SurfaceCard>
         <div className={`${chrome.setupChecklistClassName} mt-4`}>
           <div className={chrome.infoStripGridClassName}>
             <div className={chrome.infoStripItemClassName}>
@@ -494,7 +495,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
             onPatchDraft({ description: event.currentTarget.value })
           }
         />
-        <div className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3">
+        <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3 shadow-none">
           <p className={chrome.infoStripLabelClassName}>System Skills</p>
           <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
             Role-bound Team skills are injected automatically from the system skill path. They are
@@ -513,7 +514,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
               </span>
             ))}
           </div>
-        </div>
+        </SurfaceCard>
         <Textarea
           className="mt-3"
           radius="md"
@@ -530,7 +531,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
             },
           }}
         />
-      </div>
+      </SurfaceCard>
     </CreateAgentModal>
   );
 });

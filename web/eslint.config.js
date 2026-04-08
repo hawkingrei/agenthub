@@ -32,6 +32,7 @@ export default [
     ignores: [
       "dist/**",
       "dist-analyze/**",
+      "dist-debug-current/**",
       "node_modules/**",
       "coverage/**",
       "test-results/**",

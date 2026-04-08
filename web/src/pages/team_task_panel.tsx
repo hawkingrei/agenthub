@@ -14,7 +14,7 @@ import {
 } from "./team/team_conversation_viewport";
 import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
-import { ActionButton, IconButton } from "../ui/primitives";
+import { ActionButton, IconButton, SurfaceCard, ToolbarRow } from "../ui/primitives";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
   applyMentionAtTag,
@@ -33,10 +33,8 @@ import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
   TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS,
   TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
@@ -140,8 +138,6 @@ type TeamTaskPanelAudioWindow = Window &
   };
 
 const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-bold uppercase tracking-wider text-notion-text-muted";
-const TEAM_TASK_COMPOSER_META_ROW_CLASS =
-  "mt-0.5 flex flex-wrap items-center justify-between gap-2";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
@@ -291,11 +287,9 @@ function resolveActivityBubbleClassName(
   actorId: string,
   humanActorId: string
 ): string {
-  return `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} ${
-    isHumanMailboxActor(actorId, humanActorId)
-      ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
-      : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS
-  }`;
+  return isHumanMailboxActor(actorId, humanActorId)
+    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
+    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -1078,7 +1072,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [stickToBottom]);
 
   return (
-    <div
+    <SurfaceCard
       className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col overflow-hidden`}
       data-team-surface="conversation"
     >
@@ -1087,7 +1081,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         data-team-channel-body="true"
       >
         {onRefreshMessages && (
-          <div className={`${TEAM_PANEL_TOOLBAR_ACTIONS_CLASS} mb-2 w-full shrink-0 justify-end gap-2`}>
+          <ToolbarRow className="mb-2 w-full shrink-0 justify-end gap-2">
             <ActionButton
               tone="secondary"
               size="md"
@@ -1101,7 +1095,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
               <span>Refresh</span>
             </ActionButton>
-          </div>
+          </ToolbarRow>
         )}
         <div
           ref={activityListRef}
@@ -1486,7 +1480,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             </div>
           </div>
         )}
-        <div className={TEAM_TASK_COMPOSER_META_ROW_CLASS}>
+        <ToolbarRow className="mt-0.5 gap-2">
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
             {`@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline`}
           </span>
@@ -1501,9 +1495,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           >
             Send
           </ActionButton>
-        </div>
+        </ToolbarRow>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }
 
