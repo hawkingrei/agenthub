@@ -89,6 +89,12 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - `SelectableListItem` now exposes an explicit `layout` prop so row/column direction does not rely on conflicting Tailwind utilities
   - `web/src/pages/team/team_selector_panel.tsx`
     - selector rows now use `layout="row"` instead of overriding the primitive's default column stack with conflicting flex classes
+  - `web/src/use_app_agents.ts`, `web/src/app.tsx`
+    - logout now clears pending node draft and agent selection state instead of leaving stale local state across sessions
+    - target node selection now clamps back to `main` when the selected node disappears from refreshed runtime node inventory
+    - agent workbench selection now falls back when the current agent disappears after refresh or deletion
+  - `web/src/use_app_agents.test.tsx`
+    - added regression coverage for logout state reset and invalid target node fallback after a node-list refresh
 
 ## Validation
 
@@ -101,6 +107,7 @@ surface/header/button patterns stop drifting independently across Agents and Tea
 - `cd web && npm run test -- src/pages/team/team_page_header.test.tsx src/pages/team/team_workspace_header.test.tsx`
 - `cd web && npm run test -- src/pages/team/team_management_modals.test.tsx src/pages/team_page.smoke.test.tsx`
 - `cd web && npm run test -- src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run test -- src/use_app_agents.test.tsx src/app.route_shell.test.tsx src/app.runtime_effects.test.tsx`
 
 ## Follow-up
 

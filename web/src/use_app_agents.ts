@@ -125,10 +125,24 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       setStartingAgentIds({});
       setShowCreateAgent(false);
       setCreateAgentBusy(false);
+      setAgentName("");
+      setAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+      setWorktreeMode("use_existing");
+      setWorktreeRepo("");
+      setWorktreeRef("");
+      setCodeMode(true);
+      setTargetNodeId("main");
       setUpdatingAgentNodeIds({});
       setDeletingAgentNodeIds({});
+      setNodeIdInput("");
+      setNodeNameInput("");
+      setNodeGrpcTargetInput("");
+      setNodeTlsServerNameInput("");
+      setNodeDefaultWorktreeRootInput("");
+      setCreateAgentNodeBusy(false);
       setDefaultWorktreeRoot(DEFAULT_WORKTREE_ROOT);
       setAgentWorkdir("");
+      selectedTargetNodeDefaultWorktreeRootRef.current = "";
       return;
     }
     api
@@ -153,7 +167,12 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
 
   const applyTargetNodeSelection = useCallback(
     (nextTargetNodeId: string, nextNodes: AgentNodeRecord[] = agentNodes) => {
-      const resolvedTargetNodeId = nextTargetNodeId.trim() || "main";
+      const requestedTargetNodeId = nextTargetNodeId.trim() || "main";
+      const resolvedTargetNodeId =
+        requestedTargetNodeId === "main" ||
+        nextNodes.some((node) => node.id === requestedTargetNodeId)
+          ? requestedTargetNodeId
+          : "main";
       const nextDefaultRoot = resolveDefaultWorktreeRootForTargetNode(
         resolvedTargetNodeId,
         nextNodes,
@@ -174,6 +193,16 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     },
     [agentNodes, defaultWorktreeRoot, worktreeMode]
   );
+
+  useEffect(() => {
+    const normalizedTargetNodeId = targetNodeId.trim() || "main";
+    if (
+      normalizedTargetNodeId !== "main" &&
+      !agentNodes.some((node) => node.id === normalizedTargetNodeId)
+    ) {
+      applyTargetNodeSelection("main", agentNodes);
+    }
+  }, [agentNodes, applyTargetNodeSelection, targetNodeId]);
 
   const handleWorktreeModeChange = useCallback(
     (nextMode: "use_existing" | "create_worktree" | "reuse_worktree") => {
