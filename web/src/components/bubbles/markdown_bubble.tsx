@@ -1,7 +1,6 @@
 import React from "react";
 import {
   ACP_MESSAGE_BUBBLE_AGENT_CLASS,
-  ACP_MESSAGE_BUBBLE_CLASS,
   ACP_MESSAGE_BUBBLE_USER_CLASS,
 } from "../../ui/tailwind_classes";
 import { ThreadRichText } from "../thread_rich_text";
@@ -24,7 +23,7 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
     >
       <div
         data-acp-message-bubble={isAgent ? "agent" : "user"}
-        className={`${ACP_MESSAGE_BUBBLE_CLASS} ${isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}`}
+        className={isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}
       >
         <ThreadRichText key={markdownRenderVersion} text={text} />
       </div>

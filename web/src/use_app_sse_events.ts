@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { AuthState } from "./types";
-import { AgentRecord, OutputLine } from "./api";
+import { AgentRecord } from "./api";
+import type { OutputLine } from "./output_cache";
 import { 
   deriveConnectionBadge, 
   getNavigatorOnline, 

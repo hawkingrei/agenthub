@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { AuthState } from "./types";
 import { AgentRecord, api, AcpPermissionRecord } from "./api";
 import { 
@@ -28,11 +28,11 @@ export function useAppPermissions(
   acpTab: string,
   state: {
     acpPermissions: AcpPermissionRecord[];
-    setAcpPermissions: React.Dispatch<React.SetStateAction<AcpPermissionRecord[]>>;
+    setAcpPermissions: Dispatch<SetStateAction<AcpPermissionRecord[]>>;
     pendingPermissionCounts: Record<string, number>;
-    setPendingPermissionCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+    setPendingPermissionCounts: Dispatch<SetStateAction<Record<string, number>>>;
     acpPermissionHistory: AcpPermissionRecord[];
-    setAcpPermissionHistory: React.Dispatch<React.SetStateAction<AcpPermissionRecord[]>>;
+    setAcpPermissionHistory: Dispatch<SetStateAction<AcpPermissionRecord[]>>;
   }
 ) {
   const token = auth?.token ?? null;

@@ -80,6 +80,10 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - chat composer action row now uses `ToolbarRow`
   - `web/src/pages/team_member_console_panel.tsx`
     - member detail shell now uses `InsetSurface`
+  - `web/src/use_app_output_cache.ts`, `web/src/use_app_permissions.ts`, `web/src/use_app_sse_events.ts`, `web/src/use_app_acp_ui.ts`
+    - cleaned up lingering type imports after the hook extraction so dispatcher/output-cache signatures match actual exports
+  - `web/src/components/bubbles/markdown_bubble.tsx`, `web/src/pages/team_task_panel.tsx`, `web/src/pages/team_mailbox_panel.tsx`
+    - removed duplicated base bubble class composition now that variant constants already include the shared bubble shell
 
 ## Validation
 

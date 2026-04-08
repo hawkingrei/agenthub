@@ -3,8 +3,9 @@ import { resolveActiveAcpView } from "./app_agents_helpers";
 import { isAgentActiveStatus } from "./agent_ws";
 import { loadDeveloperModePreference, persistDeveloperModePreference } from "./ui/developer_mode";
 import { formatAgentModelLabel } from "./agent_presets";
-import { api, AgentRecord, parseApiErrorMessage, OutputLine } from "./api";
+import { api, AgentRecord, parseApiErrorMessage } from "./api";
 import { createAnsiRenderer } from "./app_utils";
+import type { OutputLine } from "./output_cache";
 
 export function useAppAcpUi(
   token: string | null,
@@ -164,4 +165,3 @@ export function useAppAcpUi(
     onAcpClearSession,
   };
 }
-

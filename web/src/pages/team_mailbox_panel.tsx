@@ -30,7 +30,6 @@ import {
   MAILBOX_CHAT_JUMP_BUTTON_CLASS,
   MAILBOX_MESSAGE_LIST_CLASS,
   MAILBOX_MESSAGE_ITEM_CLASS,
-  MAILBOX_MESSAGE_BUBBLE_CLASS,
   MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS,
   MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS,
   MAILBOX_CONVERSATION_EMPTY_CLASS,
@@ -502,7 +501,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                     key={message.message_id}
                     className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${isOutgoing ? "items-end" : "items-start"}`}
                   >
-                    <div className={`${MAILBOX_MESSAGE_BUBBLE_CLASS} ${isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}`}>
+                    <div className={isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
                       <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
                         <span className="font-bold">
                           {fromLabel}

@@ -35,7 +35,6 @@ import {
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
   TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS,
   TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
@@ -288,11 +287,9 @@ function resolveActivityBubbleClassName(
   actorId: string,
   humanActorId: string
 ): string {
-  return `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} ${
-    isHumanMailboxActor(actorId, humanActorId)
-      ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
-      : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS
-  }`;
+  return isHumanMailboxActor(actorId, humanActorId)
+    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
+    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {

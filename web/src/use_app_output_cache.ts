@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { AuthState } from "./types";
-import { api, OutputLine } from "./api";
+import { api, type AgentRecord } from "./api";
 import { compareEventOrder } from "./seq_order";
 import { 
   loadOutputCaches, 
@@ -22,6 +22,7 @@ import {
   replaceAcpCacheSlice, 
   selectCachedOutputs 
 } from "./output_cache";
+import type { OutputLine } from "./output_cache";
 import { 
   buildLatestLiveSessionMap, 
   resolveLiveSessionSwitch, 
@@ -42,7 +43,7 @@ export function useAppOutputCache(
   auth: AuthState | null,
   activeAgent: string | null,
   activeAgentStatus: string | null,
-  setAgents: React.Dispatch<React.SetStateAction<AgentRecord[]>>
+  setAgents: Dispatch<SetStateAction<AgentRecord[]>>
 ) {
   const token = auth?.token ?? null;
   const eventLimit = 80;
