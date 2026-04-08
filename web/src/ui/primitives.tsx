@@ -121,11 +121,12 @@ export function PanelHeader({
 
 type SelectableListItemProps = React.ComponentPropsWithoutRef<"button"> & {
   active?: boolean;
+  layout?: "column" | "row";
 };
 
 export const SelectableListItem = React.forwardRef<HTMLButtonElement, SelectableListItemProps>(
   function SelectableListItem(
-    { active = false, className, type = "button", ...props },
+    { active = false, className, layout = "column", type = "button", ...props },
     ref
   ) {
     return (
@@ -135,6 +136,7 @@ export const SelectableListItem = React.forwardRef<HTMLButtonElement, Selectable
         type={type}
         className={cx(
           SELECTABLE_LIST_ITEM_BASE_CLASS,
+          layout === "row" ? "flex-row items-start" : "flex-col",
           active && SELECTABLE_LIST_ITEM_ACTIVE_CLASS,
           className
         )}

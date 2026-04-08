@@ -94,8 +94,9 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             {items.map((team) => (
               <SelectableListItem
                 key={team.id}
+                layout="row"
                 type="button"
-                className="min-w-0 flex-row items-start justify-between gap-3 rounded-[10px] border-transparent bg-transparent px-2 py-2 shadow-none hover:bg-[rgba(55,53,47,0.05)]"
+                className="min-w-0 justify-between gap-3 rounded-[10px] border-transparent bg-transparent px-2 py-2 shadow-none hover:bg-[rgba(55,53,47,0.05)]"
                 data-team-selector-entry="true"
                 data-team-id={team.id}
                 data-team-name={team.name}

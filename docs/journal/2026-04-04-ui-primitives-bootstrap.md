@@ -86,8 +86,9 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - removed duplicated base bubble class composition now that variant constants already include the shared bubble shell
   - `web/src/ui/primitives.tsx`
     - `ActionButton` and `SelectableListItem` now forward refs so Mantine `Menu.Target` can anchor shared button primitives safely
+    - `SelectableListItem` now exposes an explicit `layout` prop so row/column direction does not rely on conflicting Tailwind utilities
   - `web/src/pages/team/team_selector_panel.tsx`
-    - selector rows now opt into an explicit horizontal list-item layout instead of inheriting the default column stack
+    - selector rows now use `layout="row"` instead of overriding the primitive's default column stack with conflicting flex classes
 
 ## Validation
 
