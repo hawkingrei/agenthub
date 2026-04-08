@@ -123,52 +123,55 @@ type SelectableListItemProps = React.ComponentPropsWithoutRef<"button"> & {
   active?: boolean;
 };
 
-export function SelectableListItem({
-  active = false,
-  className,
-  type = "button",
-  ...props
-}: SelectableListItemProps) {
-  return (
-    <Box
-      component="button"
-      type={type}
-      className={cx(
-        SELECTABLE_LIST_ITEM_BASE_CLASS,
-        active && SELECTABLE_LIST_ITEM_ACTIVE_CLASS,
-        className
-      )}
-      {...props}
-    />
-  );
-}
+export const SelectableListItem = React.forwardRef<HTMLButtonElement, SelectableListItemProps>(
+  function SelectableListItem(
+    { active = false, className, type = "button", ...props },
+    ref
+  ) {
+    return (
+      <Box
+        ref={ref}
+        component="button"
+        type={type}
+        className={cx(
+          SELECTABLE_LIST_ITEM_BASE_CLASS,
+          active && SELECTABLE_LIST_ITEM_ACTIVE_CLASS,
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+SelectableListItem.displayName = "SelectableListItem";
 
 type ActionButtonProps = React.ComponentPropsWithoutRef<"button"> & {
   tone?: keyof typeof ACTION_BUTTON_TONE_CLASS;
   size?: keyof typeof ACTION_BUTTON_SIZE_CLASS;
 };
 
-export function ActionButton({
-  tone = "secondary",
-  size = "md",
-  className,
-  type = "button",
-  ...props
-}: ActionButtonProps) {
-  return (
-    <Box
-      component="button"
-      type={type}
-      className={cx(
-        ACTION_BUTTON_BASE_CLASS,
-        ACTION_BUTTON_SIZE_CLASS[size],
-        ACTION_BUTTON_TONE_CLASS[tone],
-        className
-      )}
-      {...props}
-    />
-  );
-}
+export const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProps>(
+  function ActionButton(
+    { tone = "secondary", size = "md", className, type = "button", ...props },
+    ref
+  ) {
+    return (
+      <Box
+        ref={ref}
+        component="button"
+        type={type}
+        className={cx(
+          ACTION_BUTTON_BASE_CLASS,
+          ACTION_BUTTON_SIZE_CLASS[size],
+          ACTION_BUTTON_TONE_CLASS[tone],
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+ActionButton.displayName = "ActionButton";
 
 type IconButtonProps = React.ComponentPropsWithoutRef<typeof ActionIcon> & {
   tone?: keyof typeof ICON_BUTTON_TONE_CLASS;
