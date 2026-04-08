@@ -674,13 +674,53 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (activeAgent || agents.length === 0) return;
+    if (agents.length === 0) {
+      if (activeAgent !== null) {
+        setActiveAgent(null);
+      }
+      if (activeSessionId !== null) {
+        setActiveSessionId(null);
+      }
+      return;
+    }
+
+    if (activeAgent) {
+      const activeAgentStillExists = agents.some((agent) => agent.id === activeAgent);
+      if (activeAgentStillExists) {
+        return;
+      }
+    }
+
     const nextAgentId = resolveDefaultActiveAgentId(agents);
     if (nextAgentId) {
-      setActiveAgent(nextAgentId);
-      setActiveSessionId(agentSessions[nextAgentId] ?? null);
+      if (nextAgentId !== activeAgent) {
+        setActiveAgent(nextAgentId);
+      }
+      const nextSessionId = agentSessions[nextAgentId] ?? null;
+      if (nextSessionId !== activeSessionId) {
+        setActiveSessionId(nextSessionId);
+      }
+    } else {
+      if (activeAgent !== null) {
+        setActiveAgent(null);
+      }
+      if (activeSessionId !== null) {
+        setActiveSessionId(null);
+      }
     }
-  }, [agents, activeAgent, agentSessions, setActiveSessionId]);
+  }, [agents, activeAgent, activeSessionId, agentSessions, setActiveAgent, setActiveSessionId]);
+
+  useEffect(() => {
+    if (auth?.token) {
+      return;
+    }
+    if (activeAgent !== null) {
+      setActiveAgent(null);
+    }
+    if (activeSessionId !== null) {
+      setActiveSessionId(null);
+    }
+  }, [activeAgent, activeSessionId, auth?.token, setActiveAgent, setActiveSessionId]);
 
   const closeCreateAgentModal = useCallback(() => {
     setShowCreateAgent(false);
