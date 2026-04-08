@@ -708,7 +708,7 @@ export function App() {
         setActiveSessionId(null);
       }
     }
-  }, [agents, activeAgent, activeSessionId, agentSessions, setActiveSessionId]);
+  }, [agents, activeAgent, activeSessionId, agentSessions, setActiveAgent, setActiveSessionId]);
 
   useEffect(() => {
     if (auth?.token) {
@@ -720,7 +720,7 @@ export function App() {
     if (activeSessionId !== null) {
       setActiveSessionId(null);
     }
-  }, [activeAgent, activeSessionId, auth?.token, setActiveSessionId]);
+  }, [activeAgent, activeSessionId, auth?.token, setActiveAgent, setActiveSessionId]);
 
   const closeCreateAgentModal = useCallback(() => {
     setShowCreateAgent(false);
