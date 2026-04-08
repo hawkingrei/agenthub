@@ -344,37 +344,34 @@ You are running inside an AgentHub actor session.
 
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
-`current_run_id`, `actor_id`, `default_channel`, `actor_cli_path`, and
+`current_run_id`, `actor_id`, `default_channel`, and
 optional continuity summary for this specific session.
-
-Use the concrete `actor_cli_path` from the runtime context block for runtime
-coordination.
 
 Team mailbox commands:
 
 1. Accept pending inbox work:
-   `<actor_cli_path> actor receive --run-id "<run-id>" --limit 20`
+   `agenthub actor receive --run-id "<run-id>" --limit 20`
 2. Inspect mailbox without mutating delivery state:
-   `<actor_cli_path> actor inbox --run-id "<run-id>" --limit 20 --include-delivered`
+   `agenthub actor inbox --run-id "<run-id>" --limit 20 --include-delivered`
 3. Send a local direct message:
-   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 4. Send a channel message:
-   `<actor_cli_path> actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --channel-id "all" --text "@worker Please review this patch.\n\n- verify API shape\n- call out blockers"`
 5. Send a remote direct message:
-   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "remote-worker" --transport remote --route-json '{"endpoint":"https://..."}' --text "Please review this patch.\n\n- verify API shape\n- call out blockers"`
 6. Send an urgent human notification:
-   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "user" --text "Urgent: permission review timed out. Please check Channel for details."`
 7. Force duplicate delivery when business logic requires repeated send:
-   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --allow-duplicate --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 8. Use explicit idempotency key when coordinating retries across workers:
-   `<actor_cli_path> actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
+   `agenthub actor send --run-id "<run-id>" --to-actor-id "worker" --idempotency-key "stable-key" --text "Reminder:\n\n- update the test evidence\n- reply when done"`
 
 Team context commands:
 
 9. Inspect live team runtime status, roster, identity-card descriptions, and optional run step overlay:
-   `<actor_cli_path> actor team-members`
+   `agenthub actor team-members`
 10. When you need step-level overlay for a specific run:
-   `<actor_cli_path> actor team-members --run-id "<run-id>"`
+   `agenthub actor team-members --run-id "<run-id>"`
 
 Protocol rules:
 
@@ -442,8 +439,8 @@ mod tests {
             assert_frontmatter_has_name_and_description(&doc);
             if kind == ManagedSkillKind::ActorRuntime {
                 assert!(doc.contents.contains("Runtime coordination contract"));
-                assert!(doc.contents.contains("`actor_cli_path`"));
-                assert!(doc.contents.contains("<actor_cli_path> actor receive"));
+                assert!(!doc.contents.contains("`actor_cli_path`"));
+                assert!(doc.contents.contains("`agenthub actor receive"));
             }
         }
     }

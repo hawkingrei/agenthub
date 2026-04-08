@@ -6,8 +6,8 @@ use tokio::process::{Child, Command};
 use crate::acp::{AcpActorSkillContext, AcpRuntimeLocation};
 
 use super::{
-    ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV, ACTOR_RUNTIME_CLI_ENV,
-    ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, ACTOR_RUNTIME_TEAM_ID_ENV, ProxyPolicy,
+    ACTOR_RUNTIME_ACTOR_ID_ENV, ACTOR_RUNTIME_CHANNEL_ENV, ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
+    ACTOR_RUNTIME_TEAM_ID_ENV, ProxyPolicy,
 };
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,6 @@ impl AgentExecutor for LocalExecutor {
         if let Some(context) = request.actor_context.as_ref() {
             command.env(ACTOR_RUNTIME_ACTOR_ID_ENV, &context.actor_id);
             command.env(ACTOR_RUNTIME_CHANNEL_ENV, &context.default_channel);
-            command.env(ACTOR_RUNTIME_CLI_ENV, &context.actor_cli_path);
             if let Some(team_id) = context
                 .team_id
                 .as_deref()

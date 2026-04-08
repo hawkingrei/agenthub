@@ -75,8 +75,6 @@ use crate::{ACP_CLIENT, prompt_args::parse_slash_name};
 
 static APPROVAL_PRESETS: LazyLock<Vec<ApprovalPreset>> = LazyLock::new(builtin_approval_presets);
 const INIT_COMMAND_PROMPT: &str = include_str!("./prompt_for_init_command.md");
-const ACTOR_RUNTIME_CLI_ENV: &str = "AGENTHUB_ACTOR_CLI";
-
 /// Trait for abstracting over the `CodexThread` to make testing easier.
 #[async_trait::async_trait]
 pub trait CodexThreadImpl {
@@ -2249,9 +2247,9 @@ fn build_exec_permission_options(
 }
 
 fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
-    std::env::var(ACTOR_RUNTIME_CLI_ENV)
+    std::env::current_exe()
         .ok()
-        .and_then(|value| canonicalize_runtime_actor_cli_path(value.as_str()))
+        .and_then(|path| std::fs::canonicalize(&path).ok())
 }
 
 fn canonicalize_runtime_actor_cli_path(path: &str) -> Option<PathBuf> {
