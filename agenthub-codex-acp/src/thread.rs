@@ -2249,7 +2249,7 @@ fn build_exec_permission_options(
 fn resolve_runtime_actor_cli_path() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
-        .and_then(|path| canonicalize_runtime_actor_cli_path(path.to_string_lossy().as_ref()))
+        .and_then(|path| std::fs::canonicalize(&path).ok())
 }
 
 fn canonicalize_runtime_actor_cli_path(path: &str) -> Option<PathBuf> {
