@@ -20,7 +20,6 @@ use uuid::Uuid;
 use crate::acp::AcpActorSkillContext;
 use crate::acp::AcpPermissionService;
 use crate::acp::DEFAULT_ACTOR_CHANNEL;
-use crate::acp::default_actor_cli_path;
 use crate::agent::AgentManager;
 use crate::agent::WorktreeMode;
 use crate::agenthub_binary::resolve_agenthub_binary_path;
@@ -104,7 +103,6 @@ fn build_team_member_actor_context(
         current_run_id: None,
         actor_id: member.member_id.clone(),
         default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-        actor_cli_path: default_actor_cli_path()?,
         member_role: Some(member.role.clone()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -1002,7 +1000,7 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
             command: "/bin/sh".to_string(),
             args: vec![
                 "-c".to_string(),
-                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|actor=%s|channel=%s|cli=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\" \"$AGENTHUB_ACTOR_CLI\"".to_string(),
+                "printf 'ACTOR_ENV_SNAPSHOT|team=%s|current_run=%s|actor=%s|channel=%s\\n' \"$AGENTHUB_ACTOR_TEAM_ID\" \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" \"$AGENTHUB_ACTOR_ID\" \"$AGENTHUB_ACTOR_CHANNEL\"".to_string(),
             ],
             target_node_id: None,
             worktree_mode: WorktreeMode::UseExisting,
@@ -1016,13 +1014,11 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         .await
         .expect("create agent");
 
-    let actor_cli_path = default_actor_cli_path().expect("resolve actor cli path");
     let actor_context = AcpActorSkillContext {
         team_id: Some("team-env-check".to_string()),
         current_run_id: Some("run-env-check".to_string()),
         actor_id: "planner".to_string(),
         default_channel: "coordination".to_string(),
-        actor_cli_path: actor_cli_path.clone(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -1082,10 +1078,5 @@ async fn start_agent_with_actor_context_injects_runtime_env_vars() {
         snapshot.contains("channel=coordination"),
         "missing AGENTHUB_ACTOR_CHANNEL in process env output: {snapshot}"
     );
-    assert!(
-        snapshot.contains(&format!("cli={actor_cli_path}")),
-        "missing AGENTHUB_ACTOR_CLI in process env output: {snapshot}"
-    );
-
     let _ = std::fs::remove_dir_all(&workdir);
 }

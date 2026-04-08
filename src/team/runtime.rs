@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Error as SqlxError;
 
-use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL, default_actor_cli_path};
+use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
 use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
@@ -124,14 +124,12 @@ fn parse_runtime_member_specs(spec: &Value) -> anyhow::Result<Vec<TeamRuntimeMem
 fn build_team_member_actor_context(
     team_id: &str,
     member: &TeamRuntimeMemberSpec,
-    actor_cli_path: &str,
 ) -> anyhow::Result<AcpActorSkillContext> {
     Ok(AcpActorSkillContext {
         team_id: Some(team_id.to_string()),
         current_run_id: None,
         actor_id: member.member_id.clone(),
         default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-        actor_cli_path: actor_cli_path.to_string(),
         member_role: Some(member.role.clone()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -409,7 +407,6 @@ pub async fn ensure_team_runtime_started(
     team: &TeamDefinitionRecord,
 ) -> anyhow::Result<TeamRuntimeControlRecord> {
     let member_specs = parse_runtime_member_specs(&team.spec)?;
-    let actor_cli_path = default_actor_cli_path()?;
     let mut started_member_ids = Vec::new();
     let mut members = Vec::with_capacity(member_specs.len());
 
@@ -417,11 +414,8 @@ pub async fn ensure_team_runtime_started(
         reconcile_team_member_runtime(agents, member)
             .await
             .with_context(|| format!("prepare runtime for member '{}'", member.member_id))?;
-        let actor_context =
-            build_team_member_actor_context(team.id.as_str(), member, actor_cli_path.as_str())
-                .with_context(|| {
-                    format!("build actor context for member '{}'", member.member_id)
-                })?;
+        let actor_context = build_team_member_actor_context(team.id.as_str(), member)
+            .with_context(|| format!("build actor context for member '{}'", member.member_id))?;
         let mut action = "started";
         if let Some(session_id) = agents
             .running_session_id_for_agent(member.member_id.as_str())
@@ -498,13 +492,11 @@ pub async fn force_team_member_new_session(
                 member_id, team.id
             ))
         })?;
-    let actor_cli_path = default_actor_cli_path()?;
     reconcile_team_member_runtime(agents, member)
         .await
         .with_context(|| format!("prepare runtime for member '{}'", member.member_id))?;
-    let actor_context =
-        build_team_member_actor_context(team.id.as_str(), member, actor_cli_path.as_str())
-            .with_context(|| format!("build actor context for member '{}'", member.member_id))?;
+    let actor_context = build_team_member_actor_context(team.id.as_str(), member)
+        .with_context(|| format!("build actor context for member '{}'", member.member_id))?;
     let agent = agents
         .get_agent(member.member_id.as_str())
         .await

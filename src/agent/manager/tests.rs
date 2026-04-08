@@ -8,9 +8,7 @@ use super::{
     AgentRecord, AgentStatus, OutputStream, WorktreeMode, build_runtime_start_policy,
     ensure_team_leader_workdir_exists, status_to_str, stream_from_str,
 };
-use crate::acp::{
-    AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation, default_actor_cli_path,
-};
+use crate::acp::{AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation};
 use crate::path_utils::expand_tilde;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -170,7 +168,6 @@ fn build_agent_start_plan_requires_idle_session_for_new_actor_context() {
         current_run_id: Some("run-1".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -202,12 +199,6 @@ fn build_agent_start_plan_prioritizes_remote_target_over_local_reuse() {
         }
         other => panic!("expected remote start plan, got {other:?}"),
     }
-}
-
-#[test]
-fn default_actor_cli_path_returns_non_empty_value() {
-    let path = default_actor_cli_path().expect("resolve default actor cli path");
-    assert!(!path.trim().is_empty());
 }
 
 #[test]
@@ -272,7 +263,6 @@ fn runtime_start_policy_redirects_leader_to_stable_sandbox() {
         current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -312,7 +302,6 @@ fn runtime_start_policy_allows_worker_use_existing_workdir_for_validation() {
         current_run_id: Some("run-worker".to_string()),
         actor_id: "worker-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -343,7 +332,6 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
         current_run_id: Some("run-1234-5678".to_string()),
         actor_id: "worker-alpha".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -379,7 +367,6 @@ fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
         current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -414,7 +401,6 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
         current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -436,7 +422,6 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
         current_run_id: Some("run-worker".to_string()),
         actor_id: "worker-1".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("worker".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
@@ -465,7 +450,6 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
         current_run_id: Some("run-leader".to_string()),
         actor_id: "leader-2".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: "/tmp/agenthub".to_string(),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,

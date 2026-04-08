@@ -126,7 +126,6 @@ mod tests {
             current_run_id: Some("run-1".to_string()),
             actor_id: "actor-1".to_string(),
             default_channel: "default".to_string(),
-            actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: role.map(str::to_string),
             member_skills: Vec::new(),
             contract_version: None,

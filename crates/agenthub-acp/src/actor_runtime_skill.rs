@@ -41,7 +41,6 @@ fn build_actor_runtime_context_text(context: &AcpActorSkillContext) -> String {
         "- session_scope: Team member runtime".to_string(),
         format!("- actor_id: {}", context.actor_id),
         format!("- default_channel: {}", context.default_channel),
-        format!("- actor_cli_path: {}", context.actor_cli_path),
     ];
     if let Some(team_id) = context
         .team_id
@@ -159,7 +158,6 @@ mod tests {
             current_run_id: Some("run-42".to_string()),
             actor_id: "planner".to_string(),
             default_channel: "coordination".to_string(),
-            actor_cli_path: "/tmp/agenthub".to_string(),
             member_role: Some("leader".to_string()),
             member_skills: Vec::new(),
             contract_version: Some("v1".to_string()),

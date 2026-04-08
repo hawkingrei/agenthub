@@ -512,8 +512,6 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
         .await
         .expect("create runtime-scope agent");
     let token = issue_token(&authz, InternalRole::Worker, Some(&agent.id), None);
-    let actor_cli_path = crate::acp::default_actor_cli_path().expect("resolve actor cli path");
-
     let session_id = state
         .agents
         .start_agent_with_actor_context(
@@ -523,7 +521,6 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
                 current_run_id: Some("run-runtime-scope".to_string()),
                 actor_id: agent.id.clone(),
                 default_channel: "default".to_string(),
-                actor_cli_path,
                 member_role: Some("leader".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
@@ -606,8 +603,6 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team
         .await
         .expect("create runtime-scope agent");
     let token = issue_token(&authz, InternalRole::Worker, Some(&agent.id), None);
-    let actor_cli_path = crate::acp::default_actor_cli_path().expect("resolve actor cli path");
-
     state
         .agents
         .start_agent_with_actor_context(
@@ -617,7 +612,6 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team
                 current_run_id: Some("run-runtime-scope".to_string()),
                 actor_id: agent.id.clone(),
                 default_channel: "default".to_string(),
-                actor_cli_path,
                 member_role: Some("leader".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,

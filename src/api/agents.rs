@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use crate::acp::{
     AcpActorSkillContext, AcpPermissionRecord, AcpPermissionRespondResult, DEFAULT_ACTOR_CHANNEL,
-    default_actor_cli_path, normalize_actor_cli_path,
 };
 use crate::agent::{
     AgentConfig, AgentRecord, AgentSendInputError, AgentTimeTriggerCreateInput,
@@ -91,7 +90,6 @@ pub struct StartAgentActorRuntimeRequest {
     pub actor_id: String,
     pub member_role: Option<String>,
     pub channel: Option<String>,
-    pub actor_cli_path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1035,18 +1033,12 @@ fn parse_start_actor_runtime_context(
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_ACTOR_CHANNEL)
         .to_string();
-    let actor_cli_path = match actor_runtime.actor_cli_path.as_deref() {
-        Some(path) => normalize_actor_cli_path(Some(path))
-            .map_err(|err| ApiError::bad_request(err.to_string().as_str()))?,
-        None => default_actor_cli_path()?,
-    };
 
     Ok(Some(AcpActorSkillContext {
         team_id,
         current_run_id,
         actor_id: actor_id.to_string(),
         default_channel,
-        actor_cli_path,
         member_role: actor_runtime
             .member_role
             .map(|value| value.trim().to_string()),
@@ -1084,7 +1076,6 @@ mod tests {
     use uuid::Uuid;
 
     use crate::acp::AcpPermissionService;
-    use crate::acp::default_actor_cli_path;
     use crate::agent::AgentManager;
     use crate::auth::AuthService;
     use crate::internal::client::InternalGrpcPeerClientConfig;
@@ -1316,7 +1307,6 @@ mod tests {
 
     #[test]
     fn parse_start_actor_runtime_context_accepts_valid_payload() {
-        let default_cli = default_actor_cli_path().expect("default actor cli path");
         let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 team_id: Some("team-7".to_string()),
@@ -1324,7 +1314,6 @@ mod tests {
                 actor_id: "planner".to_string(),
                 member_role: Some("leader".to_string()),
                 channel: Some("coordination".to_string()),
-                actor_cli_path: Some(default_cli.clone()),
             }),
         }))
         .expect("parse actor runtime context")
@@ -1334,11 +1323,10 @@ mod tests {
         assert_eq!(context.actor_id, "planner");
         assert_eq!(context.member_role.as_deref(), Some("leader"));
         assert_eq!(context.default_channel, "coordination");
-        assert_eq!(context.actor_cli_path, default_cli);
     }
 
     #[test]
-    fn parse_start_actor_runtime_context_defaults_channel_and_cli_path() {
+    fn parse_start_actor_runtime_context_defaults_channel() {
         let context = parse_start_actor_runtime_context(Some(StartAgentRequest {
             actor_runtime: Some(StartAgentActorRuntimeRequest {
                 team_id: Some("team-9".to_string()),
@@ -1346,16 +1334,11 @@ mod tests {
                 actor_id: "planner".to_string(),
                 member_role: None,
                 channel: None,
-                actor_cli_path: None,
             }),
         }))
         .expect("parse actor runtime context")
         .expect("context");
         assert_eq!(context.default_channel, "default");
-        assert_eq!(
-            context.actor_cli_path,
-            default_actor_cli_path().expect("default actor cli path")
-        );
     }
 
     #[test]
@@ -1367,7 +1350,6 @@ mod tests {
                 actor_id: "planner".to_string(),
                 member_role: None,
                 channel: None,
-                actor_cli_path: None,
             }),
         }))
         .expect_err("team_id or run_id should be required");
@@ -1385,27 +1367,10 @@ mod tests {
                 actor_id: " ".to_string(),
                 member_role: None,
                 channel: None,
-                actor_cli_path: None,
             }),
         }))
         .expect_err("actor_id should be required");
         let _ = actor_id_err;
-    }
-
-    #[test]
-    fn parse_start_actor_runtime_context_rejects_untrusted_actor_cli_path() {
-        let err = parse_start_actor_runtime_context(Some(StartAgentRequest {
-            actor_runtime: Some(StartAgentActorRuntimeRequest {
-                team_id: Some("team-10".to_string()),
-                run_id: Some("run-10".to_string()),
-                actor_id: "planner".to_string(),
-                member_role: None,
-                channel: None,
-                actor_cli_path: Some("/tmp/not-allowed-agenthub".to_string()),
-            }),
-        }))
-        .expect_err("actor_cli_path should be validated");
-        let _ = err;
     }
 
     #[test]
@@ -3026,7 +2991,6 @@ mod tests {
         let script = "printf '%s\\n' \"$AGENTHUB_ACTOR_CURRENT_RUN_ID\" > actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_ID\" >> actor-runtime-env.txt; \
              printf '%s\\n' \"$AGENTHUB_ACTOR_CHANNEL\" >> actor-runtime-env.txt; \
-             printf '%s\\n' \"$AGENTHUB_ACTOR_CLI\" >> actor-runtime-env.txt; \
              sleep 30"
             .to_string();
 
@@ -3050,7 +3014,6 @@ mod tests {
         let created = decode_json_body(create_resp).await;
         let agent_id = created["id"].as_str().expect("agent id");
 
-        let cli_path = default_actor_cli_path().expect("resolve default cli path");
         let start_resp = app
             .clone()
             .oneshot(build_json_request(
@@ -3061,8 +3024,7 @@ mod tests {
                     "actor_runtime": {
                         "run_id": "run-api-start",
                         "actor_id": "planner",
-                        "channel": "coordination",
-                        "actor_cli_path": cli_path
+                        "channel": "coordination"
                     }
                 })),
             ))

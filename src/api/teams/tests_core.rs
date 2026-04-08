@@ -761,7 +761,6 @@ async fn teams_api_create_team_auto_starts_member_runtime() {
 async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
     let state = build_test_state().await;
     configure_worker_team_member_agent(&state, "reviewer").await;
-    let actor_cli_path = default_actor_cli_path().expect("resolve actor cli path");
 
     let planner_session = state
         .agents
@@ -772,7 +771,6 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 current_run_id: None,
                 actor_id: "planner".to_string(),
                 default_channel: "default".to_string(),
-                actor_cli_path: actor_cli_path.clone(),
                 member_role: Some("leader".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
@@ -791,7 +789,6 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 current_run_id: None,
                 actor_id: "reviewer".to_string(),
                 default_channel: "default".to_string(),
-                actor_cli_path,
                 member_role: Some("worker".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
@@ -1098,7 +1095,6 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         current_run_id: None,
         actor_id: "planner".to_string(),
         default_channel: "default".to_string(),
-        actor_cli_path: default_actor_cli_path().expect("actor cli path"),
         member_role: Some("leader".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
