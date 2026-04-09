@@ -134,7 +134,7 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
     case "waiting":
       return "warning";
     case "in_review":
-      return "inactive";
+      return "active";
     case "completed":
       return "active";
     case "canceled":
