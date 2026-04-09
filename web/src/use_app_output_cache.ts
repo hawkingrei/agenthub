@@ -36,8 +36,8 @@ import {
 } from "./event_polling";
 import { resolveOutputHistoryKey, resolveSessionScopedEvents } from "./app_agents_helpers";
 
-const LIVE_OUTPUT_RETENTION_LIMIT = 1200;
-const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 1200;
+const LIVE_OUTPUT_RETENTION_LIMIT = 600;
+const LIVE_ACP_OUTPUT_RETENTION_LIMIT = 600;
 
 export function useAppOutputCache(
   auth: AuthState | null,
