@@ -1024,7 +1024,7 @@ impl PromptState {
                 codex_error_info,
                 additional_details,
             }) => {
-                error!(
+                warn!(
                     "Handled error during turn: {message} {codex_error_info:?} {additional_details:?}"
                 );
             }
