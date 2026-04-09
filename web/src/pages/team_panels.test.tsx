@@ -263,7 +263,13 @@ function buildPanelTask(
   id: string,
   overrides: Partial<{
     title: string;
-    status: "open" | "in_progress" | "in_review" | "completed" | "canceled";
+    status:
+      | "open"
+      | "in_progress"
+      | "waiting"
+      | "in_review"
+      | "completed"
+      | "canceled";
     assigned_member_id: string | null;
     context: Record<string, unknown>;
     created_at: number;
@@ -3110,6 +3116,12 @@ describe("team panels interactions", () => {
                 updated_at: 220,
               }),
               buildPanelTask("task-3", {
+                title: "Wait for PR review",
+                status: "waiting",
+                created_at: 85,
+                updated_at: 224,
+              }),
+              buildPanelTask("task-4", {
                 title: "Review release notes",
                 status: "in_review",
                 created_at: 80,
@@ -3164,6 +3176,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
+    expect(container.textContent).toContain("Wait for PR review");
     clickElement(findButtonByAriaLabel(container, "Refresh tasks"));
     clickElement(findButtonByText(container, "Investigate bug"));
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
@@ -3196,6 +3209,7 @@ describe("team panels interactions", () => {
     expect(onOpenRun).toHaveBeenCalledWith("run-2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Board lanes");
+    expect(container.textContent).toContain("Waiting");
     expect(container.textContent).toContain("In review");
     expect(container.textContent).toContain("Completed");
     expect(container.textContent).toContain("Prepare rollout");

@@ -313,7 +313,8 @@ pub(super) fn parse_team_task_status(raw: &str) -> Result<TeamTaskStatus, Status
     let trimmed = raw.trim();
     trimmed.parse::<TeamTaskStatus>().map_err(|_| {
         Status::invalid_argument(format!(
-            "invalid task status '{trimmed}', expected one of: open, in_progress, in_review, completed, canceled"
+            "invalid task status '{trimmed}', expected one of: {}",
+            crate::team::TEAM_TASK_STATUS_VALUES.join(", ")
         ))
     })
 }

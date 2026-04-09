@@ -207,6 +207,7 @@ fn parse_team_task_status_argument(raw: &str) -> anyhow::Result<TeamTaskStatus> 
     match raw.trim() {
         "open" => Ok(TeamTaskStatus::Open),
         "in_progress" => Ok(TeamTaskStatus::InProgress),
+        "waiting" => Ok(TeamTaskStatus::Waiting),
         "in_review" => Ok(TeamTaskStatus::InReview),
         "completed" => Ok(TeamTaskStatus::Completed),
         "canceled" => Ok(TeamTaskStatus::Canceled),

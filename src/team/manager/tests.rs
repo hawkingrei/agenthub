@@ -1384,6 +1384,116 @@ async fn linked_run_completion_marks_task_in_review() {
 }
 
 #[tokio::test]
+async fn linked_run_sync_preserves_waiting_tasks() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-waiting-team".to_string(),
+            description: Some("team with sticky waiting tasks".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Wait for review",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let task = manager
+        .update_task_status(&task.id, TeamTaskStatus::Waiting)
+        .await
+        .expect("move task to waiting");
+    assert_eq!(task.status, TeamTaskStatus::Waiting);
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"check for review updates"}),
+        )
+        .await
+        .expect("create linked run");
+    let after_create = manager.get_task(&task.id).await.expect("reload after create");
+    assert_eq!(after_create.status, TeamTaskStatus::Waiting);
+
+    let step = manager
+        .submit_step(
+            &run.id,
+            "planner_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"check waiting dependency"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("linked-session-waiting"))
+        .await
+        .expect("start step");
+    let _ = manager
+        .complete_step(&step.id, Some(json!({"result":"still waiting"})))
+        .await
+        .expect("complete step");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::Waiting);
+}
+
+#[tokio::test]
+async fn cancel_run_preserves_waiting_task() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-waiting-cancel-team".to_string(),
+            description: Some("team with sticky waiting cancellation".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Wait for approval",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            None,
+        )
+        .await
+        .expect("create task");
+    let task = manager
+        .update_task_status(&task.id, TeamTaskStatus::Waiting)
+        .await
+        .expect("move task to waiting");
+    assert_eq!(task.status, TeamTaskStatus::Waiting);
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"check waiting dependency"}),
+        )
+        .await
+        .expect("create linked run");
+    let _ = manager.cancel_run(&run.id).await.expect("cancel run");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::Waiting);
+}
+
+#[tokio::test]
 async fn linked_run_failure_keeps_task_in_progress() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

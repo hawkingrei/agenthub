@@ -1776,7 +1776,7 @@ mod tests {
         let args = vec![
             "team-tasks".to_string(),
             "--status".to_string(),
-            "in_review".to_string(),
+            "waiting".to_string(),
             "--include-shared-thread".to_string(),
         ];
         let parsed =
@@ -1786,7 +1786,7 @@ mod tests {
                 assert_eq!(query.team_id.as_deref(), Some("team-kanban"));
                 assert!(query.run_id.is_none());
                 assert_eq!(actor_id, "leader");
-                assert_eq!(query.status, Some(TeamTaskStatus::InReview));
+                assert_eq!(query.status, Some(TeamTaskStatus::Waiting));
                 assert!(query.include_shared_thread);
             }
             _ => panic!("expected team-tasks command"),

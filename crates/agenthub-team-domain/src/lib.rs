@@ -19,8 +19,14 @@ pub const TEAM_STEP_STATUS_VALUES: [&str; 6] = [
     "canceled",
 ];
 
-pub const TEAM_TASK_STATUS_VALUES: [&str; 5] =
-    ["open", "in_progress", "in_review", "completed", "canceled"];
+pub const TEAM_TASK_STATUS_VALUES: [&str; 6] = [
+    "open",
+    "in_progress",
+    "waiting",
+    "in_review",
+    "completed",
+    "canceled",
+];
 pub const TEAM_RUN_CONTINUITY_MODE_VALUES: [&str; 2] = ["inherit_recent", "reset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +88,7 @@ pub struct TeamMemberContinuityStateRecord {
 pub enum TeamTaskStatus {
     Open,
     InProgress,
+    Waiting,
     InReview,
     Completed,
     Canceled,
@@ -92,6 +99,7 @@ impl TeamTaskStatus {
         match self {
             Self::Open => "open",
             Self::InProgress => "in_progress",
+            Self::Waiting => "waiting",
             Self::InReview => "in_review",
             Self::Completed => "completed",
             Self::Canceled => "canceled",
@@ -106,6 +114,7 @@ impl std::str::FromStr for TeamTaskStatus {
         match raw.trim() {
             "open" => Ok(Self::Open),
             "in_progress" => Ok(Self::InProgress),
+            "waiting" => Ok(Self::Waiting),
             "in_review" => Ok(Self::InReview),
             "completed" => Ok(Self::Completed),
             "canceled" => Ok(Self::Canceled),
@@ -247,7 +256,7 @@ mod tests {
     fn status_values_keep_expected_length() {
         assert_eq!(TEAM_RUN_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_STEP_STATUS_VALUES.len(), 6);
-        assert_eq!(TEAM_TASK_STATUS_VALUES.len(), 5);
+        assert_eq!(TEAM_TASK_STATUS_VALUES.len(), 6);
         assert_eq!(TEAM_RUN_CONTINUITY_MODE_VALUES.len(), 2);
     }
 
@@ -264,6 +273,7 @@ mod tests {
         for (status, label) in [
             (TeamTaskStatus::Open, "open"),
             (TeamTaskStatus::InProgress, "in_progress"),
+            (TeamTaskStatus::Waiting, "waiting"),
             (TeamTaskStatus::InReview, "in_review"),
             (TeamTaskStatus::Completed, "completed"),
             (TeamTaskStatus::Canceled, "canceled"),

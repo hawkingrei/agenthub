@@ -214,7 +214,11 @@ Constraint:
 ### 2) Status Values
 
 - Task:
-  - `open`, `in_progress`, `in_review`, `completed`, `canceled`
+  - `open`, `in_progress`, `waiting`, `in_review`, `completed`, `canceled`
+  - `waiting` means the task is blocked on human/external action and should remain visible without
+    asking the assigned agent to continue active execution
+  - a later status check with no new information should keep the task in `waiting`, not bounce it
+    back to `in_progress`
 - Run/step:
   - `submitted`, `working`, `input_required`, `completed`, `failed`, `canceled`
 

@@ -76,6 +76,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("canonical Team task creation"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("waiting"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("waiting"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("in_review"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("in_review"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Inspect inbox regularly"));

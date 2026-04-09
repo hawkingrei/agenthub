@@ -97,6 +97,7 @@ const TASK_STATUS_FILTERS: ReadonlyArray<{ value: TaskStatusFilter; label: strin
   { value: "all", label: "All" },
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In progress" },
+  { value: "waiting", label: "Waiting" },
   { value: "in_review", label: "In review" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
@@ -113,6 +114,11 @@ const TASK_BOARD_COLUMNS: ReadonlyArray<{
     description: "Actively being worked on now.",
   },
   {
+    status: "waiting",
+    label: "Waiting",
+    description: "Paused until a human or external dependency responds.",
+  },
+  {
     status: "in_review",
     label: "In review",
     description: "Implementation finished and waiting for review.",
@@ -125,8 +131,10 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
   switch (status) {
     case "in_progress":
       return "active";
-    case "in_review":
+    case "waiting":
       return "warning";
+    case "in_review":
+      return "active";
     case "completed":
       return "active";
     case "canceled":
@@ -140,6 +148,9 @@ function resolveTaskStatusTone(status: TeamTaskStatus): StatusTone {
 function formatTaskEmptyLabel(status: TeamTaskStatus): string {
   if (status === "in_progress") {
     return "No tasks in progress.";
+  }
+  if (status === "waiting") {
+    return "No tasks waiting on human or external action.";
   }
   if (status === "in_review") {
     return "No tasks waiting for review.";

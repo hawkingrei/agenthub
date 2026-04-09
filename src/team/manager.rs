@@ -3877,16 +3877,17 @@ async fn sync_linked_task_status_tx(
         return Ok(());
     };
 
+    let status_raw = team_task_status_to_str(&status);
     sqlx::query(
         r#"
         UPDATE team_tasks
         SET status = ?3, updated_at = ?4
-        WHERE id = ?1 AND team_id = ?2 AND status <> ?3
+        WHERE id = ?1 AND team_id = ?2 AND status <> ?3 AND status <> 'waiting'
         "#,
     )
     .bind(task_id)
     .bind(team_id)
-    .bind(team_task_status_to_str(&status))
+    .bind(status_raw)
     .bind(now)
     .execute(&mut **tx)
     .await?;

@@ -11,7 +11,7 @@ This skill defines:
 
 - when leader should create a Team task
 - which role may advance each task state
-- how execution evidence maps into `open / in_progress / in_review / completed / canceled`
+- how execution evidence maps into `open / in_progress / waiting / in_review / completed / canceled`
 - how worker-local TODO state stays aligned with canonical Team task state
 
 Shared routing, human-facing reply rules, and mailbox transport remain canonical in
@@ -21,6 +21,7 @@ Shared routing, human-facing reply rules, and mailbox transport remain canonical
 
 - `open`
 - `in_progress`
+- `waiting`
 - `in_review`
 - `completed`
 - `canceled`
@@ -29,6 +30,7 @@ State meaning:
 
 - `open`: work is acknowledged but execution has not started yet
 - `in_progress`: implementation/research is actively advancing
+- `waiting`: execution is paused until a human or external dependency responds; later checks may confirm the task should remain parked if no new information arrives
 - `in_review`: worker evidence indicates execution is done and review is pending
 - `completed`: review/acceptance passed
 - `canceled`: work is intentionally stopped or no longer relevant
@@ -67,8 +69,11 @@ Leader may:
 - use `agenthub actor team-task-update --task-id <task_id> --assigned-member-id <member_id>` when the task needs an explicit owner
 - use `agenthub actor team-task-update --task-id <task_id> --unassign` when ownership should be cleared explicitly
 - use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to move `open -> in_progress`
+- use `agenthub actor team-task-update --task-id <task_id> --status waiting` to park an active task when PR review, approval, or external feedback is the next required action
 - use `agenthub actor team-task-update --task-id <task_id> --status in_review` to move `in_progress -> in_review`
 - use `agenthub actor team-task-update --task-id <task_id> --status completed` to move `in_review -> completed`
+- keep `waiting` if a later check finds no new information; do not resume active execution just because someone had time to look
+- use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to resume `waiting -> in_progress` only when the dependency has actually cleared and active execution should continue
 - use `agenthub actor team-task-update --task-id <task_id> --status in_progress` to move `in_review -> in_progress` when changes are requested
 - use `agenthub actor team-task-update --task-id <task_id> --status canceled` to move any unfinished task to `canceled`
 - use `agenthub actor team-task-update --task-id <task_id> --status open` to reopen `completed|canceled -> open` when follow-up is required
@@ -103,6 +108,8 @@ Use this mapping unless a stronger product rule overrides it:
 
 - task created -> `open`
 - owner begins execution -> `in_progress`
+- blocked on human/external action -> `waiting`
+- later check finds no meaningful update -> stay `waiting`
 - linked run succeeds and evidence is ready -> `in_review`
 - leader/human review approves -> `completed`
 - review requests changes -> `in_progress`
