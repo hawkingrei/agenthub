@@ -24,7 +24,7 @@
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
     "qrcode": "^1.5.3",
-    "react": "^19.2.4",
+    "react": "^19.2.5",
     "react-dom": "^19.2.4",
     "uuidv7": "^1.0.2"
   },
