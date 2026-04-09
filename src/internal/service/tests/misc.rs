@@ -69,9 +69,9 @@ fn actor_service_error_code_maps_to_expected_grpc_status() {
 
 #[test]
 fn parse_team_task_status_reports_trimmed_input() {
-    let err = super::super::parse_team_task_status("  waiting  ").expect_err("invalid status");
+    let err = super::super::parse_team_task_status("  paused  ").expect_err("invalid status");
     assert_eq!(
         err.message(),
-        "invalid task status 'waiting', expected one of: open, in_progress, in_review, completed, canceled"
+        "invalid task status 'paused', expected one of: open, in_progress, waiting, in_review, completed, canceled"
     );
 }

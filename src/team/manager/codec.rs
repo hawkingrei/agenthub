@@ -206,6 +206,7 @@ pub(super) fn team_task_status_to_str(status: &TeamTaskStatus) -> &'static str {
     match status {
         TeamTaskStatus::Open => "open",
         TeamTaskStatus::InProgress => "in_progress",
+        TeamTaskStatus::Waiting => "waiting",
         TeamTaskStatus::InReview => "in_review",
         TeamTaskStatus::Completed => "completed",
         TeamTaskStatus::Canceled => "canceled",
@@ -215,6 +216,7 @@ pub(super) fn team_task_status_to_str(status: &TeamTaskStatus) -> &'static str {
 pub(super) fn team_task_status_from_str(raw: &str) -> TeamTaskStatus {
     match raw {
         "in_progress" => TeamTaskStatus::InProgress,
+        "waiting" => TeamTaskStatus::Waiting,
         "in_review" => TeamTaskStatus::InReview,
         "completed" => TeamTaskStatus::Completed,
         "canceled" => TeamTaskStatus::Canceled,

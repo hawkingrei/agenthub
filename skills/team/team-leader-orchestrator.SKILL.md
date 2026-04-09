@@ -267,8 +267,10 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
   visible in Kanban.
 - Use `team-task-lifecycle` as the canonical state-transition contract.
 - Use `agenthub actor team-task-update` when intentionally advancing the canonical Team task lifecycle.
-- The expected Team task path is `open -> in_progress -> in_review -> completed|canceled`.
+- The expected Team task path is `open -> in_progress -> waiting|in_review -> completed|canceled`.
 - Successful worker execution should normally land in `in_review`, not directly `completed`.
+- Use `waiting` when the next action belongs to a human or external dependency such as PR review or approval.
+- If a later check shows no new information, keep the task in `waiting` instead of bouncing it back to `in_progress`.
 - Move `in_review -> completed` only after review/acceptance is explicit.
 - Move `in_review -> in_progress` when changes are requested.
 - For developer/code tasks, treat `completed` as "merge-ready to latest `main`":

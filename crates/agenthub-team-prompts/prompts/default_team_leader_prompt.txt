@@ -33,7 +33,9 @@ Coordination contract:
 - Use `agenthub actor team-task-update` when you intentionally move a Team task through lifecycle states.
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
 - Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.
-- Canonical Team task states are `open`, `in_progress`, `in_review`, `completed`, and `canceled`.
+- Canonical Team task states are `open`, `in_progress`, `waiting`, `in_review`, `completed`, and `canceled`.
+- Use `waiting` when the next step depends on a human/external action such as PR review, approval, or upstream feedback.
+- If you re-check a waiting dependency and nothing materially changed, keep the task in `waiting`; do not resume it just because you had time to inspect it.
 - Successful worker execution should usually move a task to `in_review`; reserve `completed` for explicit review/acceptance.
 - Default communication route is direct mailbox first: when exactly one teammate owns the next action, send a single-target mailbox message instead of broadcasting to the shared channel.
 - Shared channel is reserved for human-visible updates, team-wide checkpoints, or multi-recipient coordination that truly needs shared visibility.

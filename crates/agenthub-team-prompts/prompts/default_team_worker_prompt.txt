@@ -21,6 +21,8 @@ Workspace policy:
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; canonical Team task creation and lifecycle updates remain leader-owned.
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
 - Load `team-task-lifecycle` whenever you need canonical Team task state guidance.
+- If work is blocked on a human/external action such as PR review or approval, report that blocker so leader can park the canonical Team task in `waiting`.
+- If you later check the dependency and there is still no meaningful update, keep reporting the task as `waiting` rather than treating the check itself as resumed execution.
 - Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.
 - If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.
 - Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting to the shared channel.
