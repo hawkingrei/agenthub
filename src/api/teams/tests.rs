@@ -141,6 +141,15 @@ fn resolve_test_agenthub_binary_path() -> String {
         .clone()
 }
 
+fn long_lived_test_agent_command() -> String {
+    "/bin/sh".to_string()
+}
+
+fn long_lived_test_agent_args() -> String {
+    serde_json::to_string(&vec!["-c", "exec sleep 3600"])
+        .expect("serialize long-lived test agent args")
+}
+
 pub(crate) async fn build_test_state() -> AppState {
     build_test_state_with_db_source(None, true).await
 }
@@ -810,6 +819,29 @@ pub(crate) async fn configure_worker_team_member_agent(state: &AppState, agent_i
     .execute(&state.db)
     .await
     .expect("configure worker team member agent");
+}
+
+pub(crate) async fn configure_long_lived_team_member_agent(state: &AppState, agent_id: &str) {
+    let now = Utc::now().timestamp();
+    let command = long_lived_test_agent_command();
+    let args = long_lived_test_agent_args();
+    sqlx::query(
+        r#"
+        UPDATE agents
+        SET command = ?2,
+            args = ?3,
+            status = 'created',
+            updated_at = ?4
+        WHERE id = ?1
+        "#,
+    )
+    .bind(agent_id)
+    .bind(command)
+    .bind(args)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .expect("configure long-lived team member agent");
 }
 
 pub(crate) async fn insert_legacy_team_member_agent(state: &AppState, agent_id: &str) -> String {

@@ -888,6 +888,7 @@ async fn teams_api_start_and_stop_team_runtime() {
 #[tokio::test]
 async fn force_new_session_restarts_member_runtime_with_new_session_id() {
     let state = build_test_state().await;
+    configure_long_lived_team_member_agent(&state, "planner").await;
     let headers = auth_headers(&state).await;
     let Json(team) = create_team(
         State(state.clone()),
@@ -926,8 +927,9 @@ async fn force_new_session_restarts_member_runtime_with_new_session_id() {
     assert_forced_restart_runtime(&runtime, &team.id, "planner", &original_planner_session);
 
     let state = build_test_state().await;
-    let headers = auth_headers(&state).await;
     configure_worker_team_member_agent(&state, "reviewer").await;
+    configure_long_lived_team_member_agent(&state, "reviewer").await;
+    let headers = auth_headers(&state).await;
     let Json(team) = create_team(
         State(state.clone()),
         headers.clone(),
