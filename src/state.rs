@@ -414,7 +414,12 @@ mod tests {
 
     #[tokio::test]
     async fn seed_safe_paths_inserts_distinct_paths() {
+        let _guard = ENV_LOCK.lock().await;
         let db = test_db().await;
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let _home_guard = set_env_var("HOME", &temp_home);
+        let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
         let config = AppConfig {
             safe_paths: Some(vec![
                 "/tmp/a".to_string(),
@@ -447,6 +452,8 @@ mod tests {
             .expect("count default safe path");
         let default_count: i64 = row.get("cnt");
         assert_eq!(default_count, 1);
+
+        let _ = std::fs::remove_dir_all(&temp_home);
     }
 
     #[tokio::test]
