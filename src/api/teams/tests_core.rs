@@ -925,9 +925,13 @@ async fn force_new_session_restarts_member_runtime_with_new_session_id() {
     .await
     .expect("force new planner session");
     assert_forced_restart_runtime(&runtime, &team.id, "planner", &original_planner_session);
+    state
+        .agents
+        .stop_agent("planner")
+        .await
+        .expect("stop planner after force new session test");
 
     let state = build_test_state().await;
-    configure_worker_team_member_agent(&state, "reviewer").await;
     configure_long_lived_team_member_agent(&state, "reviewer").await;
     let headers = auth_headers(&state).await;
     let Json(team) = create_team(
@@ -964,6 +968,11 @@ async fn force_new_session_restarts_member_runtime_with_new_session_id() {
         .await
         .unwrap_or_else(|err| panic!("{err:#}"));
     assert_forced_restart_runtime(&runtime, &team.id, "reviewer", &original_reviewer_session);
+    state
+        .agents
+        .stop_agent("reviewer")
+        .await
+        .expect("stop reviewer after force new session test");
 }
 
 #[tokio::test]

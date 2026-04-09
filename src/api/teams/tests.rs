@@ -146,7 +146,7 @@ fn long_lived_test_agent_command() -> String {
 }
 
 fn long_lived_test_agent_args() -> String {
-    serde_json::to_string(&vec!["-c", "exec sleep 3600"])
+    serde_json::to_string(&vec!["-c", "exec /bin/sleep 30"])
         .expect("serialize long-lived test agent args")
 }
 
@@ -825,11 +825,21 @@ pub(crate) async fn configure_long_lived_team_member_agent(state: &AppState, age
     let now = Utc::now().timestamp();
     let command = long_lived_test_agent_command();
     let args = long_lived_test_agent_args();
+    let workdir = state
+        .agents
+        .get_agent(agent_id)
+        .await
+        .expect("load long-lived team member agent")
+        .workdir;
+    std::fs::create_dir_all(&workdir).expect("create long-lived team member workdir");
     sqlx::query(
         r#"
         UPDATE agents
         SET command = ?2,
             args = ?3,
+            worktree_mode = 'use_existing',
+            worktree_repo = NULL,
+            worktree_ref = NULL,
             status = 'created',
             updated_at = ?4
         WHERE id = ?1
