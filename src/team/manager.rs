@@ -3878,21 +3878,13 @@ async fn sync_linked_task_status_tx(
     };
 
     let status_raw = team_task_status_to_str(&status);
-    let query = if matches!(status, TeamTaskStatus::InProgress | TeamTaskStatus::InReview) {
+    sqlx::query(
         r#"
         UPDATE team_tasks
         SET status = ?3, updated_at = ?4
         WHERE id = ?1 AND team_id = ?2 AND status <> ?3 AND status <> 'waiting'
-        "#
-    } else {
-        r#"
-        UPDATE team_tasks
-        SET status = ?3, updated_at = ?4
-        WHERE id = ?1 AND team_id = ?2 AND status <> ?3
-        "#
-    };
-
-    sqlx::query(query)
+        "#,
+    )
     .bind(task_id)
     .bind(team_id)
     .bind(status_raw)
