@@ -18,6 +18,10 @@ This document defines that operational baseline.
 - Context/memory layering and promotion rules.
 - Membership change and member identity-card synchronization.
 
+Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
+
+- [team-execution-vocabulary.md](./team-execution-vocabulary.md)
+
 ## Non-Goals
 
 - Replacing existing API schemas for run/step storage.
@@ -56,6 +60,9 @@ Operational collaboration follows six phases:
   ownership surface.
 - `conversation`: human-facing interaction stream.
 - `correlation_id`: chain identity linking one intent across conversation/mailbox/run events.
+
+For the full execution-boundary rules and naming guidance, see
+[team-execution-vocabulary.md](./team-execution-vocabulary.md).
 
 Human/Task boundary:
 
