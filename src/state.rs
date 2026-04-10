@@ -458,7 +458,12 @@ mod tests {
 
     #[tokio::test]
     async fn seed_safe_paths_inserts_default_when_not_configured() {
+        let _guard = ENV_LOCK.lock().await;
         let db = test_db().await;
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let _home_guard = set_env_var("HOME", &temp_home);
+        let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
         let config = AppConfig::default();
 
         AppState::seed_safe_paths(&db, &config)
@@ -476,6 +481,8 @@ mod tests {
                 .to_string_lossy()
                 .to_string();
         assert_eq!(path, expected);
+
+        let _ = std::fs::remove_dir_all(&temp_home);
     }
 
     #[tokio::test]
