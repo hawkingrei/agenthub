@@ -91,7 +91,6 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
         format!("- continuity_mode: {}", continuity.mode),
         format!("- continuity_source_run_id: {}", continuity.source_run_id),
         format!("- continuity_summary: {summary}"),
-        "- continuity_detail_policy: inspect persisted artifacts or replay state for deeper history.".to_string(),
     ]
 }
 
@@ -213,8 +212,8 @@ mod tests {
             panic!("expected text content block");
         };
         assert!(text.text.contains("continuity_summary: Continue implementation with the same branch."));
-        assert!(text.text.contains("continuity_detail_policy: inspect persisted artifacts"));
         assert!(!text.text.contains("continuity_history_window_json"));
+        assert!(!text.text.contains("continuity_detail_policy"));
         assert!(!text.text.contains("continuity_source_session_id"));
         assert!(!text.text.contains("artifact-0001-continuity-output.json"));
     }

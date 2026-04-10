@@ -345,7 +345,7 @@ You are running inside an AgentHub actor session.
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
 `current_run_id`, `actor_id`, `default_channel`, and
-compact continuity summary for this specific session.
+optional compact continuity summary for this specific session.
 Treat deeper continuity detail as pointer-backed runtime state: inspect
 persisted artifacts or replay state when you need more history, instead of
 expecting large inline continuity payloads in the prompt itself.
