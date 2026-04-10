@@ -172,6 +172,9 @@ ACP permission requests are first-class runtime records:
 - Dynamic actor runtime fields such as `team_id`, `current_run_id`, and continuity summaries should
   stay in a separate text prefix block injected before each prompt instead of being rewritten into
   the managed `SKILL.md` files.
+- That runtime continuity block should stay pointer-first: keep a compact continuity summary in
+  prompt text, and route deeper history through persisted artifacts or replay state instead of
+  embedding raw continuity windows inline.
 - Keep debug capabilities available without exposing internal-only controls in primary user path.
 - Treat in-memory runtime ownership as authoritative for live SSE; use persisted status as a recoverable cache that may require reconciliation after abrupt exits.
 - Keep provider metadata, runtime placement, and proxy policy explicit in code so future P2P work extends stable seams instead of forking provider-specific paths.
