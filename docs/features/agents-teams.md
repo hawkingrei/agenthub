@@ -240,7 +240,7 @@ Constraint:
 - Cross-member sharing goes through Team channels (events/mailbox/pointers), not direct filesystem writes.
 - Leader workspace should remain an empty coordination workspace by default.
 - The canonical file/directory contract for `.cache/context/` and `.agenthubmemory/` lives in
-  `docs/features/team-workspace-memory-contract.md`.
+  [team-workspace-memory-contract.md](./team-workspace-memory-contract.md).
 
 ### 5) Team Surface Contract
 

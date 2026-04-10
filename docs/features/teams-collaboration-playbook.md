@@ -209,7 +209,7 @@ Promotion rule:
 
 Canonical filesystem ownership, stable index files, and `.agenthubmemory/` boundaries:
 
-- `docs/features/team-workspace-memory-contract.md`
+- [team-workspace-memory-contract.md](./team-workspace-memory-contract.md)
 
 ### 7) Membership And Identity Card Workflow
 
