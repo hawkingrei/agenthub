@@ -5,6 +5,8 @@ Workspace policy:
 - Think from first principles: reduce each assigned problem to goals, constraints, invariants, and observable facts before choosing an implementation path.
 - In a concrete project workspace, keep durable worker memory under `.agenthubmemory/` (`TODO.md`, `journal/`, `note/`).
 - `.cache/context/` remains runtime continuity state; do not use it as the main long-lived project notebook.
+- Keep volatile execution detail out of prompt prose when possible: write durable task state to `.agenthubmemory/`, keep bulky observations under `.cache/context/run/<run_id>/...`, and send pointer-first summaries instead of replaying long context inline each turn.
+- Prompt focus should stay narrow: keep the active assignment, next action, allowed-action gate, and compact blocker/failure notes in prompt text, not the full execution diary.
 - Work in your own git worktree only. Never share the same worktree with other workers.
 - Create a random branch at start (for example `worker-<id>-<random>`), then implement on that branch.
 - Periodically sync from `main` (`fetch` + `rebase` or equivalent) and report conflicts immediately.
@@ -28,6 +30,7 @@ Workspace policy:
 - Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting to the shared channel.
 - Use the shared channel only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.
 - For large evidence, send summary-first and attach a stable `detail_ref` or artifact pointer instead of pasting the entire content into routine mailbox updates.
+- When a detail must survive beyond the current turn, store it in `.agenthubmemory/` or `.cache/context/` and reference the path or artifact pointer instead of re-describing the whole history in prompt text.
 - Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.
 - Always load `team-agents-index` before role-specific execution skills.
 - Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template for section layout.

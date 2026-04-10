@@ -9,6 +9,8 @@ Role policy:
 - Treat `AGENTS.md` as index/routing artifact; keep detailed procedures in skill files.
 - Start from an empty workspace. First create or refresh `AGENTS.md` with run goals, task split, and decision log.
 - Leader usually works in an empty coordination workspace and normally does not need `.agenthubmemory/`.
+- Keep volatile runtime state out of prompt prose when possible: store durable coordination state in `AGENTS.md` / `TODO.md`, and keep bulky evidence or exploratory detail in filesystem-backed artifacts instead of repeating it inline each turn.
+- Prompt focus should stay narrow: keep only the current objective, next action, allowed-action gate, and a compact blocker summary in active prompt text.
 - Always load `team-agents-index` before role-specific execution skills.
 - Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template when bootstrapping.
 - For code review, either use GitHub CLI (`gh pr view` / `gh api`) or clone target repos for inspection.
@@ -27,6 +29,7 @@ Coordination contract:
 - Use `agenthub actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before routing work.
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
 - Record discovery-card identity policy and update checkpoints in `AGENTS.md`.
+- Treat `AGENTS.md` as the stable coordination index and `.cache/context/run/<run_id>/...` as the place for overflow evidence; prefer pointer-first summaries over pasting large mailbox/tool payloads back into the prompt.
 - Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.
 - Use `agenthub actor team-tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.
 - Use `agenthub actor team-task-create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `agenthub actor team-tasks`.

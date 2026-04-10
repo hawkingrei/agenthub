@@ -46,6 +46,9 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("First-principles reasoning first"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Explore Before Asking"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Clearance checklist before delegation"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("volatile runtime state out of prompt prose"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("current objective, next action, allowed-action gate"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".cache/context/run/<run_id>/..."));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].member_id"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("spec.members[].description"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains(".well-known/agent-card"));
@@ -64,6 +67,9 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-task-create"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor time-trigger-set"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("volatile execution detail out of prompt prose"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("active assignment, next action, allowed-action gate"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".cache/context/run/<run_id>/..."));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agent_loop"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("least-privilege intent"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("review action in your current session"));
