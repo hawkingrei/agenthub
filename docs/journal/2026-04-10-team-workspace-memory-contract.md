@@ -5,7 +5,8 @@
 - promoted the scattered Team context/memory rules into a stable feature doc:
   - `docs/features/team-workspace-memory-contract.md`
 - separated the v1 ownership boundary between:
-  - `.cache/context/` as runtime-owned continuity, indexes, append-only trails, and run artifacts
+  - workspace-root `AGENTS.md` / `TODO.md` as coordination indexes
+  - `.cache/context/` as runtime-owned continuity, append-only trails, and run artifacts
   - `.agenthubmemory/` as worker-authored durable project memory
 - documented the stable index files, append-only files, run artifact layout, and promotion rules so
   prompt-tail slimming has one canonical filesystem target
@@ -23,11 +24,14 @@ and `.agenthubmemory/` differently.
 
 - added `docs/features/team-workspace-memory-contract.md` as the canonical v1 memory contract
 - defined the file-level roles for:
-  - `.cache/context/AGENTS.md`
-  - `.cache/context/TODO.md`
+  - workspace-root `AGENTS.md`
+  - workspace-root `TODO.md`
   - `.cache/context/state.md`
   - append-only `decisions.md`, `errors.md`, `log.md`
-  - `.cache/context/memory/*.md`
+  - `.cache/context/memory/profile.md`
+  - `.cache/context/memory/project_facts.md`
+  - `.cache/context/memory/decision_journal.md`
+  - `.cache/context/memory/open_questions.md`
   - `.cache/context/run/<run_id>/...`
 - defined the worker-facing `.agenthubmemory/` layout:
   - `TODO.md`
@@ -35,7 +39,7 @@ and `.agenthubmemory/` differently.
   - `note/`
   - `scratch/`
 - clarified promotion and pointer rules between prompt text, `L1` run artifacts, and `L2` durable
-  memory
+  memory, with worker durable promotion targeting `.agenthubmemory/note/`
 
 ## Follow-Up
 

@@ -2,7 +2,7 @@
 
 ## Problem
 
-AgentHub Team runtime already uses workspace-local `.cache/context` state, project-local
+AgentHub Team runtime already uses workspace-local `.cache/context/` state, project-local
 `.agenthubmemory/` notes, and pointer-first prompt guidance. What is still easy to drift is the
 exact contract between these surfaces: which data belongs in runtime continuity, which data belongs
 in durable project memory, which files act as stable indexes, and how prompt assembly should point
@@ -67,27 +67,30 @@ Prompt assembly should treat filesystem memory as the source of durable detail:
 
 ## Contracts
 
-### 1) `.cache/context/` Contract
+### 1) Workspace Root And `.cache/context/` Contract
 
-The v1 layout is:
+The v1 layout separates workspace-root coordination artifacts from runtime-owned
+`.cache/context/` state:
 
 ```text
-<agent_workspace>/.cache/context/
+<agent_workspace>/
   AGENTS.md
   TODO.md
-  state.md
-  decisions.md
-  errors.md
-  log.md
-  memory/
-    profile.md
-    project_facts.md
-    decision_journal.md
-    open_questions.md
-  run/
-    <run_id>/
-      artifact-<seq>-<kind>.json
-      artifact-<seq>-<kind>.txt
+  .cache/
+    context/
+      state.md
+      decisions.md
+      errors.md
+      log.md
+      memory/
+        profile.md
+        project_facts.md
+        decision_journal.md
+        open_questions.md
+      run/
+        <run_id>/
+          artifact-<seq>-<kind>.json
+          artifact-<seq>-<kind>.txt
 ```
 
 File ownership rules:
@@ -96,7 +99,7 @@ File ownership rules:
   - Stable routing/index pointer file for the current role and phase.
   - Should stay concise and point to deeper docs/skills/artifacts instead of copying them inline.
 - `TODO.md`
-  - Runtime-visible current work index for the workspace.
+  - Runtime-visible current work index for the workspace root.
   - May be rewritten as state advances.
 - `state.md`
   - Compact current-state snapshot.
@@ -107,8 +110,15 @@ File ownership rules:
   - Append-only failure trail with short summaries and pointers.
 - `log.md`
   - Append-only operational trace and pointer log.
-- `memory/*.md`
-  - Curated cross-run facts promoted from run artifacts.
+- `memory/profile.md`
+  - Stable role/profile facts that help future runs re-establish identity and durable working
+    assumptions.
+- `memory/project_facts.md`
+  - Validated durable project facts and constraints promoted from run artifacts.
+- `memory/decision_journal.md`
+  - Curated cross-run decisions promoted from run artifacts.
+- `memory/open_questions.md`
+  - Durable unresolved questions that should survive run rotation until answered.
 - `run/<run_id>/...`
   - High-fidelity run-scoped artifacts and replay/debug material.
 
@@ -172,17 +182,16 @@ When an observation is too large for prompt text:
 
 The same rule applies to worker project memory:
 
-- `.agenthubmemory/` may hold concise summaries and reusable notes
+- `.agenthubmemory/note/` may hold concise summaries and reusable notes
 - oversized raw evidence should still live under `.cache/context/run/<run_id>/...`, with
-  `.agenthubmemory/` pointing to it when needed
+  `.agenthubmemory/note/` or `.agenthubmemory/journal/` pointing to it when needed
 
 ### 5) Role-Specific Rules
 
 - Leader
   - Default workspace is an empty coordination workspace.
-  - Uses `.cache/context/` as the primary durable memory surface.
-  - Keeps planning/routing state in `AGENTS.md`, `TODO.md`, append-only decisions/errors, and
-    pointer-backed run artifacts.
+  - Uses workspace-root `AGENTS.md` and `TODO.md` for coordination indexes, plus `.cache/context/`
+    for runtime continuity, append-only trails, and pointer-backed run artifacts.
 - Worker
   - Uses `.cache/context/` for runtime continuity and run-scoped evidence.
   - Uses `.agenthubmemory/` for durable repository/task memory that survives one run and remains
@@ -195,7 +204,7 @@ The same rule applies to worker project memory:
 - Flush outcomes should remain explicit (`persisted`, `noop`, `failed`) so recovery trails stay
   auditable.
 - Durable facts promoted from flush output should be written into `.cache/context/memory/*.md` or
-  `.agenthubmemory/` as concise summaries with source pointers.
+  `.agenthubmemory/note/` as concise summaries with source pointers.
 
 ## Operational Notes
 
@@ -212,7 +221,8 @@ The same rule applies to worker project memory:
 
 ## Source Journals
 
-- `docs/journal/2026-02-22-team-context-memory-architecture.md`
-- `docs/journal/2026-02-22-team-memory-flush-spec.md`
-- `docs/journal/2026-04-10-team-prompt-tail-slimming.md`
-- `docs/journal/2026-04-10-runtime-context-identity-compaction.md`
+- [2026-02-22-team-context-memory-architecture.md](../journal/2026-02-22-team-context-memory-architecture.md)
+- [2026-02-22-team-memory-flush-spec.md](../journal/2026-02-22-team-memory-flush-spec.md)
+- [2026-04-10-team-prompt-tail-slimming.md](../journal/2026-04-10-team-prompt-tail-slimming.md)
+- [2026-04-10-runtime-context-identity-compaction.md](../journal/2026-04-10-runtime-context-identity-compaction.md)
+- [2026-04-10-team-workspace-memory-contract.md](../journal/2026-04-10-team-workspace-memory-contract.md)
