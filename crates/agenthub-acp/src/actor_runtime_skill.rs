@@ -89,14 +89,13 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
         return Vec::new();
     };
     let summary = truncate_chars(continuity.summary_text.as_str(), 400);
-    let history_window = truncate_chars(continuity.history_window.to_string().as_str(), 800);
     let source_session = continuity.source_session_id.as_deref().unwrap_or("n/a");
     vec![
         format!("- continuity_mode: {}", continuity.mode),
         format!("- continuity_source_run_id: {}", continuity.source_run_id),
         format!("- continuity_source_session_id: {source_session}"),
         format!("- continuity_summary: {summary}"),
-        format!("- continuity_history_window_json: {history_window}"),
+        "- continuity_detail_policy: keep prompt continuity compact; inspect persisted continuity artifacts or replay state for deeper history instead of relying on inline JSON.".to_string(),
     ]
 }
 
@@ -172,5 +171,36 @@ mod tests {
         assert!(text.text.contains("default_channel: coordination"));
         assert!(text.text.contains("contract_version: v1"));
         assert!(text.text.contains("authoritative runtime identity"));
+    }
+
+    #[test]
+    fn actor_runtime_context_block_keeps_continuity_pointer_first() {
+        let block = build_actor_runtime_context_block(&AcpActorSkillContext {
+            team_id: Some("team-7".to_string()),
+            current_run_id: Some("run-42".to_string()),
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+            member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
+            contract_version: Some("v1".to_string()),
+            continuity: Some(crate::AcpActorContinuityEnvelope {
+                mode: "resume".to_string(),
+                source_run_id: "run-41".to_string(),
+                source_session_id: Some("session-41".to_string()),
+                summary_text: "Continue implementation with the same branch.".to_string(),
+                history_window: serde_json::json!({
+                    "messages": 3,
+                    "output_excerpt": "very long excerpt",
+                    "artifact_pointer": ".cache/context/run/run-41/artifact-0001-continuity-output.json"
+                }),
+            }),
+        });
+        let ContentBlock::Text(text) = block else {
+            panic!("expected text content block");
+        };
+        assert!(text.text.contains("continuity_summary: Continue implementation with the same branch."));
+        assert!(text.text.contains("continuity_detail_policy: keep prompt continuity compact"));
+        assert!(!text.text.contains("continuity_history_window_json"));
+        assert!(!text.text.contains("artifact-0001-continuity-output.json"));
     }
 }
