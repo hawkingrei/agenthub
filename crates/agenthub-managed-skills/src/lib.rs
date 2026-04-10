@@ -345,7 +345,10 @@ You are running inside an AgentHub actor session.
 Use this skill together with the runtime context block that AgentHub injects
 before each prompt. The context block carries the current `team_id`,
 `current_run_id`, `actor_id`, `default_channel`, and
-optional continuity summary for this specific session.
+compact continuity summary for this specific session.
+Treat deeper continuity detail as pointer-backed runtime state: inspect
+persisted artifacts or replay state when you need more history, instead of
+expecting large inline continuity payloads in the prompt itself.
 
 Team mailbox commands:
 
@@ -441,6 +444,8 @@ mod tests {
                 assert!(doc.contents.contains("Runtime coordination contract"));
                 assert!(!doc.contents.contains("`actor_cli_path`"));
                 assert!(doc.contents.contains("`agenthub actor receive"));
+                assert!(doc.contents.contains("compact continuity summary"));
+                assert!(doc.contents.contains("persisted artifacts or replay state"));
             }
         }
     }

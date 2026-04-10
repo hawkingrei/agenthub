@@ -57,8 +57,6 @@ fn build_actor_runtime_context_text(context: &AcpActorSkillContext) -> String {
         .filter(|value| !value.is_empty())
     {
         lines.push(format!("- current_run_id: {run_id}"));
-    } else {
-        lines.push("- current_run_id: n/a".to_string());
     }
     if let Some(member_role) = context
         .member_role
@@ -89,11 +87,9 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
         return Vec::new();
     };
     let summary = truncate_chars(continuity.summary_text.as_str(), 400);
-    let source_session = continuity.source_session_id.as_deref().unwrap_or("n/a");
     vec![
         format!("- continuity_mode: {}", continuity.mode),
         format!("- continuity_source_run_id: {}", continuity.source_run_id),
-        format!("- continuity_source_session_id: {source_session}"),
         format!("- continuity_summary: {summary}"),
         "- continuity_detail_policy: inspect persisted artifacts or replay state for deeper history.".to_string(),
     ]
@@ -174,6 +170,24 @@ mod tests {
     }
 
     #[test]
+    fn actor_runtime_context_block_omits_missing_run_id_placeholder() {
+        let block = build_actor_runtime_context_block(&AcpActorSkillContext {
+            team_id: Some("team-7".to_string()),
+            current_run_id: None,
+            actor_id: "planner".to_string(),
+            default_channel: "coordination".to_string(),
+            member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
+            contract_version: Some("v1".to_string()),
+            continuity: None,
+        });
+        let ContentBlock::Text(text) = block else {
+            panic!("expected text content block");
+        };
+        assert!(!text.text.contains("current_run_id: n/a"));
+    }
+
+    #[test]
     fn actor_runtime_context_block_keeps_continuity_pointer_first() {
         let block = build_actor_runtime_context_block(&AcpActorSkillContext {
             team_id: Some("team-7".to_string()),
@@ -201,6 +215,7 @@ mod tests {
         assert!(text.text.contains("continuity_summary: Continue implementation with the same branch."));
         assert!(text.text.contains("continuity_detail_policy: inspect persisted artifacts"));
         assert!(!text.text.contains("continuity_history_window_json"));
+        assert!(!text.text.contains("continuity_source_session_id"));
         assert!(!text.text.contains("artifact-0001-continuity-output.json"));
     }
 }
