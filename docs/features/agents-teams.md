@@ -14,6 +14,10 @@ terminology and operating expectations drift.
 - Conversation event-bus communication semantics for Team chat lane.
 - Cold-start and context-ownership constraints.
 
+Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
+
+- [team-execution-vocabulary.md](./team-execution-vocabulary.md)
+
 ## Non-Goals
 
 - Model-specific prompt copy.
@@ -198,6 +202,9 @@ Constraint:
 ## Contracts
 
 ### 1) Terminology
+
+For the full execution vocabulary and boundary rules, see
+[team-execution-vocabulary.md](./team-execution-vocabulary.md).
 
 - `member`: stable identity from `spec.members[].member_id`.
 - `agent`: runtime process bound to a member.
