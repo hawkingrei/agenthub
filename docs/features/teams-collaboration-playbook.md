@@ -207,6 +207,10 @@ Promotion rule:
 
 - recurring/high-value facts move from `journal` to `memory` during coordination rounds.
 
+Canonical filesystem ownership, stable index files, and `.agenthubmemory/` boundaries:
+
+- [team-workspace-memory-contract.md](./team-workspace-memory-contract.md)
+
 ### 7) Membership And Identity Card Workflow
 
 When adding a worker:
