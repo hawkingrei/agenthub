@@ -449,6 +449,14 @@ fn is_agent_loop_user_message(message: &str) -> bool {
             .is_some_and(|value| value.starts_with(AGENT_LOOP_MESSAGE_ID_PREFIX))
 }
 
+fn is_agent_loop_activity_output(output: &AgentOutput) -> bool {
+    matches!(output.stream, OutputStream::Acp) && !is_agent_loop_user_message(&output.message)
+}
+
+fn should_rearm_agent_loop_for_output(session_id: &str, output: &AgentOutput) -> bool {
+    output.session_id == session_id && is_agent_loop_activity_output(output)
+}
+
 fn is_agent_user_message(message: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(message)
         .ok()
@@ -529,10 +537,7 @@ fn spawn_agent_loop_controller(
                 },
                 event = output_rx.recv() => match event {
                     Ok(output) => {
-                        if output.session_id != session_id {
-                            continue;
-                        }
-                        if is_agent_loop_user_message(&output.message) {
+                        if !should_rearm_agent_loop_for_output(session_id.as_str(), &output) {
                             continue;
                         }
                         deadline = tokio::time::Instant::now() + Duration::from_secs(config.idle_seconds as u64);

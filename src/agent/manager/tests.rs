@@ -5,8 +5,10 @@ use super::acp_provider::{
 use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
-    AgentRecord, AgentStatus, OutputStream, WorktreeMode, build_runtime_start_policy,
-    ensure_team_runtime_workspace_layout, status_to_str, stream_from_str,
+    AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
+    build_runtime_start_policy, ensure_team_runtime_workspace_layout,
+    is_agent_loop_activity_output, should_rearm_agent_loop_for_output, status_to_str,
+    stream_from_str,
 };
 use crate::acp::{AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation};
 use crate::path_utils::expand_tilde;
@@ -64,6 +66,97 @@ fn stream_roundtrip() {
         let parsed = stream_from_str(s);
         assert_eq!(stream, parsed);
     }
+}
+
+#[test]
+fn agent_loop_activity_counts_non_loop_acp_output_only() {
+    let base = AgentOutput {
+        event_id: 1,
+        agent_id: "agent-1".to_string(),
+        session_id: "session-1".to_string(),
+        seq: "seq-1".to_string(),
+        ts: 1,
+        stream: OutputStream::Acp,
+        message: r#"{"type":"agent_message","message":"working"}"#.to_string(),
+    };
+    assert!(is_agent_loop_activity_output(&base));
+
+    let human_input = AgentOutput {
+        message: r#"{"type":"user_message","text":"please continue","message_id":"human-1"}"#
+            .to_string(),
+        ..base.clone()
+    };
+    assert!(
+        is_agent_loop_activity_output(&human_input),
+        "human ACP user_message should rearm the loop"
+    );
+
+    let loop_input = AgentOutput {
+        message: r#"{"type":"user_message","text":"loop prompt","message_id":"agent-loop:seq-2"}"#
+            .to_string(),
+        ..base.clone()
+    };
+    assert!(
+        !is_agent_loop_activity_output(&loop_input),
+        "synthetic loop prompt must not rearm the loop"
+    );
+
+    let system_output = AgentOutput {
+        stream: OutputStream::System,
+        message: "process exited".to_string(),
+        ..base
+    };
+    assert!(
+        !is_agent_loop_activity_output(&system_output),
+        "non-ACP output should not reset ACP silence tracking"
+    );
+}
+
+#[test]
+fn agent_loop_rearm_requires_same_session_and_real_acp_activity() {
+    let base = AgentOutput {
+        event_id: 1,
+        agent_id: "agent-1".to_string(),
+        session_id: "session-1".to_string(),
+        seq: "seq-1".to_string(),
+        ts: 1,
+        stream: OutputStream::Acp,
+        message: r#"{"type":"agent_message","message":"working"}"#.to_string(),
+    };
+
+    assert!(
+        should_rearm_agent_loop_for_output("session-1", &base),
+        "matching-session ACP activity should rearm"
+    );
+
+    let other_session = AgentOutput {
+        session_id: "session-2".to_string(),
+        ..base.clone()
+    };
+    assert!(
+        !should_rearm_agent_loop_for_output("session-1", &other_session),
+        "other-session activity must not rearm"
+    );
+
+    let synthetic_loop = AgentOutput {
+        message: r#"{"type":"user_message","text":"loop prompt","message_id":"agent-loop:seq-2"}"#
+            .to_string(),
+        ..base.clone()
+    };
+    assert!(
+        !should_rearm_agent_loop_for_output("session-1", &synthetic_loop),
+        "synthetic loop prompt must not rearm"
+    );
+
+    let non_acp = AgentOutput {
+        stream: OutputStream::System,
+        message: "process exited".to_string(),
+        ..base
+    };
+    assert!(
+        !should_rearm_agent_loop_for_output("session-1", &non_acp),
+        "non-ACP output must not rearm"
+    );
 }
 
 #[test]
