@@ -62,6 +62,17 @@ const ICON_BUTTON_TONE_CLASS = {
 
 const STATUS_PILL_BASE_CLASS =
   "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+const EMPTY_STATE_BASE_CLASS =
+  "rounded-xl border border-dashed border-notion-border/80 bg-notion-sidebar/10 px-4 py-5 text-center";
+const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
+const EMPTY_STATE_BODY_CLASS = "mt-1 text-[13px] leading-relaxed text-notion-text-muted";
+const KEY_VALUE_LIST_BASE_CLASS =
+  "grid grid-cols-[auto,minmax(0,1fr)] items-start gap-x-3 gap-y-1.5";
+const KEY_VALUE_ITEM_BASE_CLASS = "contents";
+const KEY_VALUE_LABEL_CLASS =
+  "mono text-[11px] font-bold uppercase tracking-wide text-notion-text opacity-70";
+const KEY_VALUE_VALUE_CLASS =
+  "min-w-0 break-words text-[11px] leading-relaxed text-notion-text-muted";
 
 type SurfaceCardProps = React.ComponentPropsWithoutRef<typeof Box>;
 
@@ -206,4 +217,52 @@ type StatusPillProps = React.HTMLAttributes<HTMLSpanElement>;
 
 export function StatusPill({ className, ...props }: StatusPillProps) {
   return <span className={cx(STATUS_PILL_BASE_CLASS, className)} {...props} />;
+}
+
+type EmptyStateProps = React.ComponentPropsWithoutRef<typeof Box> & {
+  title?: React.ReactNode;
+  body?: React.ReactNode;
+};
+
+export function EmptyState({ title, body, className, children, ...props }: EmptyStateProps) {
+  return (
+    <Box className={cx(EMPTY_STATE_BASE_CLASS, className)} {...props}>
+      {title ? <Box className={EMPTY_STATE_TITLE_CLASS}>{title}</Box> : null}
+      {body ? <Box className={EMPTY_STATE_BODY_CLASS}>{body}</Box> : null}
+      {children}
+    </Box>
+  );
+}
+
+type KeyValueListProps = React.ComponentPropsWithoutRef<typeof Box>;
+
+export function KeyValueList({ className, ...props }: KeyValueListProps) {
+  return <Box className={cx(KEY_VALUE_LIST_BASE_CLASS, className)} {...props} />;
+}
+
+type KeyValueItemProps = {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  labelClassName?: string;
+  valueClassName?: string;
+} & Omit<React.ComponentPropsWithoutRef<typeof Box>, "children">;
+
+export function KeyValueItem({
+  label,
+  value,
+  className,
+  labelClassName,
+  valueClassName,
+  ...props
+}: KeyValueItemProps) {
+  return (
+    <Box className={cx(KEY_VALUE_ITEM_BASE_CLASS, className)} {...props}>
+      <Box component="span" className={cx(KEY_VALUE_LABEL_CLASS, labelClassName)}>
+        {label}
+      </Box>
+      <Box component="span" className={cx(KEY_VALUE_VALUE_CLASS, valueClassName)}>
+        {value}
+      </Box>
+    </Box>
+  );
 }

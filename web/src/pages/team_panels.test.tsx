@@ -3084,6 +3084,85 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("route");
   });
 
+  it("TeamTaskPanel renders message details with shared key/value metadata when developer mode expands an item", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[
+            buildTaskMessage(7, {
+              from_actor_id: "leader-agent",
+              to_actor_id: "worker-agent",
+              route: "direct",
+              payload: { type: "chat_message", text: "debug details" },
+            }),
+          ]}
+          humanActorId="user"
+          memberLiveStates={[
+            {
+              member_id: "leader-agent",
+              role: "leader",
+              agent_name: "LeaderAgent",
+              lifecycle_status: "working",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "waiting",
+              pending_inbox_count: 0,
+              current_work: "reviewing worker progress",
+            },
+          ]}
+          memberIds={["leader-agent", "worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+    );
+
+    clickElement(findButtonByText(container, "Show details"));
+    expect(container.textContent).toContain("source");
+    expect(container.textContent).toContain("from");
+    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("to");
+    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("route");
+    expect(container.textContent).toContain("work");
+    expect(container.textContent).toContain("working/waiting");
+    expect(container.textContent).toContain("current_work");
+    expect(container.textContent).toContain("reviewing worker progress");
+  });
+
+  it("TeamTaskPanel renders the shared empty state when the channel has no messages", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          onRefreshMessages={vi.fn()}
+          messages={[]}
+          humanActorId="user"
+          memberLiveStates={[]}
+          memberIds={["leader-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+    );
+
+    expect(container.textContent).toContain("No channel messages yet.");
+  });
+
   it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", () => {
     const onSelectedTaskIdChange = vi.fn();
     const onRefreshTasks = vi.fn();

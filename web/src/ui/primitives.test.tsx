@@ -4,8 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ActionButton,
+  EmptyState,
   IconButton,
   InsetSurface,
+  KeyValueItem,
+  KeyValueList,
   PanelHeader,
   SelectableListItem,
   StatusPill,
@@ -94,5 +97,25 @@ describe("ui primitives", () => {
     expect(activeHtml).not.toContain("mantine-UnstyledButton-root");
     expect(idleHtml).not.toContain("ring-1 ring-notion-accent/30");
     expect(activeHtml).toContain('type="button"');
+  });
+
+  it("renders empty states and key/value metadata primitives", () => {
+    const emptyHtml = renderHtml(
+      <EmptyState title="No messages yet" body="Start the conversation from the channel composer." />
+    );
+    const metadataHtml = renderHtml(
+      <KeyValueList>
+        <KeyValueItem label="source" value="group_chat" data-testid="meta-source" />
+        <KeyValueItem label="from" value="leader-agent" valueClassName="mono" />
+      </KeyValueList>
+    );
+
+    expect(emptyHtml).toContain("border-dashed border-notion-border/80");
+    expect(emptyHtml).toContain("No messages yet");
+    expect(emptyHtml).toContain("Start the conversation from the channel composer.");
+    expect(metadataHtml).toContain("grid-cols-[auto,minmax(0,1fr)]");
+    expect(metadataHtml).toContain('data-testid="meta-source"');
+    expect(metadataHtml).toContain("leader-agent");
+    expect(metadataHtml).toContain("mono");
   });
 });
