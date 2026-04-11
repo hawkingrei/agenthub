@@ -5,6 +5,7 @@ mod triggers;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) use manager::derive_team_runtime_workdir;
 pub use manager::{AgentManager, AgentSendInputError};
 pub(crate) use node::{
     AGENT_NODE_MAIN_ID, build_main_agent_node_record, normalize_target_node_id,

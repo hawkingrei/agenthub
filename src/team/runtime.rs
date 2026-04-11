@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Error as SqlxError;
 
-use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
+use crate::acp::AcpActorSkillContext;
 use crate::agent::{AgentManager, AgentRecord, WorktreeMode, normalize_target_node_id};
 use crate::path_utils::{expand_tilde, is_path_allowed, normalize_path};
-use crate::team::{TeamDefinitionRecord, TeamRuntimeStatus};
+use crate::team::{
+    TeamDefinitionRecord, TeamRuntimeStatus, build_team_member_actor_context_for_role,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TeamRuntimeStartError {
@@ -125,16 +127,12 @@ fn build_team_member_actor_context(
     team_id: &str,
     member: &TeamRuntimeMemberSpec,
 ) -> anyhow::Result<AcpActorSkillContext> {
-    Ok(AcpActorSkillContext {
-        team_id: Some(team_id.to_string()),
-        current_run_id: None,
-        actor_id: member.member_id.clone(),
-        default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-        member_role: Some(member.role.clone()),
-        member_skills: Vec::new(),
-        contract_version: None,
-        continuity: None,
-    })
+    Ok(build_team_member_actor_context_for_role(
+        team_id,
+        None,
+        &member.member_id,
+        &member.role,
+    ))
 }
 
 fn team_member_actor_context_matches(

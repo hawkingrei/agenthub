@@ -44,8 +44,10 @@ use super::{
     TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
-    normalize_optional_idempotency_key_input,
+    build_team_member_actor_context_for_role, normalize_optional_idempotency_key_input,
+    team_member_role_from_spec,
 };
+use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
@@ -91,6 +93,11 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
 enum TaskConversationMessageStoreError {
     #[error("idempotency_key conflicts with an existing task conversation message payload")]
     IdempotencyConflict,
+}
+
+#[derive(Debug, Clone)]
+struct TeamMemberContextWorkspace {
+    runtime_workdir: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -1887,18 +1894,10 @@ impl TeamManager {
         artifact_payload: Value,
         now: i64,
     ) -> anyhow::Result<Option<ContextArtifactPointer>> {
-        let Some(workdir) = sqlx::query_scalar::<_, String>(
-            r#"
-            SELECT workdir
-            FROM agents
-            WHERE id = ?1
-            "#,
-        )
-        .bind(owner.member_id)
-        .fetch_optional(&mut **tx)
-        .await?
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty()) else {
+        let Some(workspace) =
+            load_team_member_context_workspace_tx(tx, owner.team_id, owner.member_id)
+                .await?
+        else {
             return Ok(None);
         };
 
@@ -1913,7 +1912,7 @@ impl TeamManager {
         .fetch_one(&mut **tx)
         .await?;
 
-        let run_context_dir = PathBuf::from(&workdir)
+        let run_context_dir = PathBuf::from(&workspace.runtime_workdir)
             .join(".cache")
             .join("context")
             .join("run")
@@ -3463,6 +3462,53 @@ fn build_context_artifact_pointer_payload(pointer: &ContextArtifactPointer) -> V
         "size_bytes": pointer.artifact_size_bytes,
         "checksum": pointer.content_checksum.as_str(),
     })
+}
+
+async fn load_team_member_context_workspace_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    team_id: &str,
+    member_id: &str,
+) -> anyhow::Result<Option<TeamMemberContextWorkspace>> {
+    let row = sqlx::query(
+        r#"
+        SELECT a.workdir, a.worktree_mode, td.spec_json
+        FROM agents a, team_definitions td
+        WHERE a.id = ?2
+          AND td.id = ?1
+        "#,
+    )
+    .bind(team_id)
+    .bind(member_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let workdir = row.get::<String, _>("workdir").trim().to_string();
+    if workdir.is_empty() {
+        return Ok(None);
+    }
+    let worktree_mode = match row.get::<String, _>("worktree_mode").trim() {
+        "create_worktree" => WorktreeMode::CreateWorktree,
+        "reuse_worktree" => WorktreeMode::ReuseWorktree,
+        _ => WorktreeMode::UseExisting,
+    };
+    let spec_json = row.get::<String, _>("spec_json");
+
+    let runtime_workdir = if let Some(member_role) =
+        serde_json::from_str::<Value>(&spec_json)
+            .ok()
+            .and_then(|spec| team_member_role_from_spec(&spec, member_id))
+    {
+        let actor_context =
+            build_team_member_actor_context_for_role(team_id, None, member_id, &member_role);
+        derive_team_runtime_workdir(&workdir, &actor_context, &worktree_mode)
+    } else {
+        workdir
+    };
+
+    Ok(Some(TeamMemberContextWorkspace { runtime_workdir }))
 }
 
 async fn load_memory_flush_team_id_tx(
