@@ -12,16 +12,21 @@ shells.
   - added `EmptyState`
   - added `KeyValueList`
   - added `KeyValueItem`
+  - added `ConversationBubble`
+  - added `MenuOptionButton`
 - `web/src/pages/team_task_panel.tsx`
   - moved the seen-progress hovercard into a focused local component
   - moved developer-mode message details into a focused local component backed by
     shared key/value primitives
   - switched channel loading/empty feedback to the shared empty-state primitive
+  - switched mention suggestions onto shared compact option rows
+  - switched chat and command shells onto a shared conversation-bubble primitive
 - `web/src/ui/primitives.test.tsx`
-  - added SSR coverage for the new empty-state and key/value primitives
+  - added SSR coverage for the new empty-state, metadata, bubble, and menu-row primitives
 - `web/src/pages/team_panels.test.tsx`
   - added regression coverage for the expanded message-details panel
   - added regression coverage for the empty channel state
+  - added regression coverage for mention suggestion rows and shared bubble shell rendering
 
 ## Validation
 

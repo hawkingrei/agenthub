@@ -4,11 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ActionButton,
+  ConversationBubble,
   EmptyState,
   IconButton,
   InsetSurface,
   KeyValueItem,
   KeyValueList,
+  MenuOptionButton,
   PanelHeader,
   SelectableListItem,
   StatusPill,
@@ -117,5 +119,21 @@ describe("ui primitives", () => {
     expect(metadataHtml).toContain('data-testid="meta-source"');
     expect(metadataHtml).toContain("leader-agent");
     expect(metadataHtml).toContain("mono");
+  });
+
+  it("renders conversation bubbles and compact menu option buttons", () => {
+    const bubbleHtml = renderHtml(
+      <ConversationBubble className="border-notion-border-subtle bg-white">Bubble</ConversationBubble>
+    );
+    const optionHtml = renderHtml(
+      <MenuOptionButton active data-testid="mention-worker">
+        Worker
+      </MenuOptionButton>
+    );
+
+    expect(bubbleHtml).toContain("rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft");
+    expect(bubbleHtml).toContain("Bubble");
+    expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");
+    expect(optionHtml).toContain('data-testid="mention-worker"');
   });
 });

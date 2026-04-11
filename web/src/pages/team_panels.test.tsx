@@ -1796,6 +1796,55 @@ describe("team panels interactions", () => {
     expect(bodyShell.nextElementSibling).toBe(composer);
   });
 
+  it("TeamTaskPanel renders mention suggestions with shared option rows", () => {
+    function TeamTaskPanelHarness() {
+      const [draft, setDraft] = React.useState("");
+      return (
+        <TeamTaskPanel
+          developerMode={false}
+          messageDraft={draft}
+          onMessageDraftChange={setDraft}
+          onSendMessage={vi.fn()}
+          messages={[]}
+          memberLiveStates={[
+            {
+              member_id: "worker-agent",
+              role: "worker",
+              agent_name: "Worker Agent",
+              lifecycle_status: "running",
+              lifecycle_tone: "active",
+              run_status: "working",
+              step_status: "working",
+              pending_inbox_count: 0,
+              current_work: "shipping patch",
+            },
+          ]}
+          memberIds={["worker-agent"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+      );
+    }
+
+    renderWithMantine(root, <TeamTaskPanelHarness />);
+
+    const draftTextarea = required(
+      container.querySelector("#team-task-panel-message") as HTMLTextAreaElement | null,
+      "draft textarea missing"
+    );
+    changeInputValue(draftTextarea, "@W");
+
+    const option = required(
+      container.querySelector('[data-team-mention-option="worker-agent"]') as HTMLButtonElement | null,
+      "mention option missing"
+    );
+    expect(option.textContent).toContain("Worker Agent");
+    expect(option.textContent).toContain("@Worker Agent");
+    expect(option.className).toContain("flex w-full items-center justify-between");
+  });
+
   it("TeamTaskPanel renders canonical agent replies already persisted in shared thread", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
@@ -2744,6 +2793,9 @@ describe("team panels interactions", () => {
 
     expect(container.querySelector('[data-team-channel-bubble="human"]')).not.toBeNull();
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-team-channel-bubble="agent"]')?.className
+    ).toContain("rounded-[18px]");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {

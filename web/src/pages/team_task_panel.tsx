@@ -16,11 +16,13 @@ import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import {
   ActionButton,
+  ConversationBubble,
   EmptyState,
   IconButton,
   InsetSurface,
   KeyValueItem,
   KeyValueList,
+  MenuOptionButton,
   SurfaceCard,
   ToolbarRow,
 } from "../ui/primitives";
@@ -43,8 +45,6 @@ import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
   TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS,
@@ -180,12 +180,10 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
-const TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS =
-  "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
-const TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS =
-  "bg-brand-primary/10 text-brand-primary";
-const TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS =
-  "text-ui-text-primary hover:bg-ui-surface-soft";
+const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
+  "border-notion-accent/15 bg-notion-accent-bg/72";
+const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
+  "border-notion-border-subtle bg-white";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -288,13 +286,13 @@ function resolveActivityContentClassName(
   }`;
 }
 
-function resolveActivityBubbleClassName(
+function resolveActivityBubbleToneClassName(
   actorId: string,
   humanActorId: string
 ): string {
   return isHumanMailboxActor(actorId, humanActorId)
-    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
-    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS;
+    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS
+    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -1324,23 +1322,23 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       />
                     </div>
                   ) : isCompactCommandLikeText(item.text) ? (
-                    <div
+                    <ConversationBubble
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
                     >
                       <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                    </div>
+                    </ConversationBubble>
                   ) : (
-                    <div
+                    <ConversationBubble
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
                     >
                       <TeamThreadRichText
                         className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                         text={item.text}
                         renderSanitizedHtml={renderTeamMessageHtml}
                       />
-                    </div>
+                    </ConversationBubble>
                   )}
                   {developerMode && expandedItemKeys[item.key] && (
                     <ActivityDetailsPanel item={item} state={state} />
@@ -1463,20 +1461,16 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           }}
         />
         {activeMention && filteredMentionCandidates.length > 0 && (
-          <div className="mt-2 rounded-lg border border-ui-border bg-ui-surface shadow-sm">
+          <SurfaceCard className="mt-2 overflow-hidden border-ui-border bg-ui-surface shadow-sm">
             <div className="px-3 py-1 text-xs text-ui-text-muted">
               Select teammate mention (`@` without selection stays plain text)
             </div>
             <div className="max-h-44 overflow-auto py-1">
               {filteredMentionCandidates.map((candidate, index) => (
-                <button
-                  type="button"
+                <MenuOptionButton
                   key={candidate.actorId}
-                  className={`${TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS} ${
-                    index === activeMentionIndex
-                      ? TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS
-                      : TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS
-                  }`}
+                  active={index === activeMentionIndex}
+                  data-team-mention-option={candidate.actorId}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     applyMentionSelection(candidate);
@@ -1484,10 +1478,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 >
                   <span>{candidate.label}</span>
                   <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </button>
+                </MenuOptionButton>
               ))}
             </div>
-          </div>
+          </SurfaceCard>
         )}
         <ToolbarRow className="mt-0.5 gap-2">
           <span className={TEAM_TASK_SHORTCUT_CLASS}>

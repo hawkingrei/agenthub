@@ -62,6 +62,12 @@ const ICON_BUTTON_TONE_CLASS = {
 
 const STATUS_PILL_BASE_CLASS =
   "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+const CONVERSATION_BUBBLE_BASE_CLASS =
+  "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft";
+const MENU_OPTION_BUTTON_BASE_CLASS =
+  "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
+const MENU_OPTION_BUTTON_ACTIVE_CLASS = "bg-brand-primary/10 text-brand-primary";
+const MENU_OPTION_BUTTON_IDLE_CLASS = "text-ui-text-primary hover:bg-ui-surface-soft";
 const EMPTY_STATE_BASE_CLASS =
   "rounded-xl border border-dashed border-notion-border/80 bg-notion-sidebar/10 px-4 py-5 text-center";
 const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
@@ -218,6 +224,35 @@ type StatusPillProps = React.HTMLAttributes<HTMLSpanElement>;
 export function StatusPill({ className, ...props }: StatusPillProps) {
   return <span className={cx(STATUS_PILL_BASE_CLASS, className)} {...props} />;
 }
+
+type ConversationBubbleProps = React.ComponentPropsWithoutRef<typeof Box>;
+
+export function ConversationBubble({ className, ...props }: ConversationBubbleProps) {
+  return <Box className={cx(CONVERSATION_BUBBLE_BASE_CLASS, className)} {...props} />;
+}
+
+type MenuOptionButtonProps = React.ComponentPropsWithoutRef<"button"> & {
+  active?: boolean;
+};
+
+export const MenuOptionButton = React.forwardRef<HTMLButtonElement, MenuOptionButtonProps>(
+  function MenuOptionButton({ active = false, className, type = "button", ...props }, ref) {
+    return (
+      <Box
+        ref={ref}
+        component="button"
+        type={type}
+        className={cx(
+          MENU_OPTION_BUTTON_BASE_CLASS,
+          active ? MENU_OPTION_BUTTON_ACTIVE_CLASS : MENU_OPTION_BUTTON_IDLE_CLASS,
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+MenuOptionButton.displayName = "MenuOptionButton";
 
 type EmptyStateProps = React.ComponentPropsWithoutRef<typeof Box> & {
   title?: React.ReactNode;
