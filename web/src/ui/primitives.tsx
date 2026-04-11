@@ -270,7 +270,7 @@ type KeyValueItemProps = {
   className?: string;
   labelClassName?: string;
   valueClassName?: string;
-};
+} & React.ComponentPropsWithoutRef<typeof Box>;
 
 export function KeyValueItem({
   label,
@@ -278,9 +278,10 @@ export function KeyValueItem({
   className,
   labelClassName,
   valueClassName,
+  ...props
 }: KeyValueItemProps) {
   return (
-    <Box className={cx(KEY_VALUE_ITEM_BASE_CLASS, className)}>
+    <Box className={cx(KEY_VALUE_ITEM_BASE_CLASS, className)} {...props}>
       <Box component="span" className={cx(KEY_VALUE_LABEL_CLASS, labelClassName)}>
         {label}
       </Box>

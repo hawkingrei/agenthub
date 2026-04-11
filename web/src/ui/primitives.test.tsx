@@ -109,7 +109,7 @@ describe("ui primitives", () => {
     );
     const keyValueHtml = renderHtml(
       <KeyValueList>
-        <KeyValueItem label="role" value="leader" />
+        <KeyValueItem label="role" value="leader" data-testid="role-row" />
       </KeyValueList>
     );
     expect(emptyHtml).toContain("border-dashed border-notion-border");
@@ -119,5 +119,6 @@ describe("ui primitives", () => {
     expect(keyValueHtml).toContain("grid min-w-0 gap-x-3 gap-y-1");
     expect(keyValueHtml).toContain("role");
     expect(keyValueHtml).toContain("leader");
+    expect(keyValueHtml).toContain("data-testid=\"role-row\"");
   });
 });

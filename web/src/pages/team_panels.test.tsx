@@ -1280,6 +1280,50 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamStepsPanel
+            developerMode={true}
+            mode="list_only"
+            steps={[]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+    expect(container.textContent).toContain("No steps yet");
+    expect(container.textContent).toContain(
+      "Start a run or open Debug -> Step Ops to seed execution steps."
+    );
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel
             developerMode={false}
             mode="list_only"
             steps={[buildStep({ id: "step-1", status: "working" })]}

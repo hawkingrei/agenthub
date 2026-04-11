@@ -165,4 +165,16 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("No team members");
     expect(html).toContain("No team members found in current team spec.");
   });
+
+  it("renders current work metadata when available and omits it otherwise", () => {
+    const withCurrentWork = renderHtml(
+      <TeamMemberStatusStrip members={[buildMember({ current_work: "follow up" })]} />
+    );
+    const withoutCurrentWork = renderHtml(
+      <TeamMemberStatusStrip members={[buildMember({ current_work: "" })]} />
+    );
+    expect(withCurrentWork).toContain("current");
+    expect(withCurrentWork).toContain("follow up");
+    expect(withoutCurrentWork).not.toContain("current");
+  });
 });
