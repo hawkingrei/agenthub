@@ -6,7 +6,7 @@ use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AgentRecord, AgentStatus, OutputStream, WorktreeMode, build_runtime_start_policy,
-    ensure_team_leader_workdir_exists, status_to_str, stream_from_str,
+    ensure_team_runtime_workspace_layout, status_to_str, stream_from_str,
 };
 use crate::acp::{AcpActorSkillContext, AcpPromptDeliveryPolicy, AcpRuntimeLocation};
 use crate::path_utils::expand_tilde;
@@ -393,7 +393,7 @@ fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
 }
 
 #[test]
-fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
+fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
     let path = std::env::temp_dir().join(format!("agenthub-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
@@ -408,13 +408,65 @@ fn ensure_team_leader_workdir_exists_creates_missing_leader_dir() {
     };
 
     assert!(!path.exists(), "temp path should not exist before test");
-    ensure_team_leader_workdir_exists(Some(&ctx), &workdir).expect("create leader workdir");
+    ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .expect("create leader runtime workspace");
     assert!(path.exists(), "leader workdir should be created");
     assert!(path.is_dir(), "leader workdir should be a directory");
+    assert!(
+        path.join(".cache/context/run").is_dir(),
+        "leader context run dir should exist"
+    );
+    assert!(
+        path.join(".cache/context/memory").is_dir(),
+        "leader context memory dir should exist"
+    );
+    for relative_path in [
+        ".cache/context/state.md",
+        ".cache/context/decisions.md",
+        ".cache/context/errors.md",
+        ".cache/context/log.md",
+        ".cache/context/memory/profile.md",
+        ".cache/context/memory/project_facts.md",
+        ".cache/context/memory/decision_journal.md",
+        ".cache/context/memory/open_questions.md",
+    ] {
+        assert!(
+            path.join(relative_path).is_file(),
+            "leader context file should exist: {relative_path}"
+        );
+    }
 }
 
 #[test]
-fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
+fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_existing_workdir() {
+    let path = std::env::temp_dir().join(format!("agenthub-worker-workdir-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&path).expect("create temp workdir");
+    let workdir = path.to_string_lossy().to_string();
+    let ctx = AcpActorSkillContext {
+        team_id: Some("team-worker".to_string()),
+        current_run_id: Some("run-worker".to_string()),
+        actor_id: "worker-1".to_string(),
+        default_channel: "default".to_string(),
+        member_role: Some("worker".to_string()),
+        member_skills: Vec::new(),
+        contract_version: None,
+        continuity: None,
+    };
+
+    ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .expect("worker runtime workspace should initialize context layout");
+    assert!(
+        path.join(".cache/context/run").is_dir(),
+        "worker context run dir should exist"
+    );
+    assert!(
+        path.join(".cache/context/memory").is_dir(),
+        "worker context memory dir should exist"
+    );
+}
+
+#[test]
+fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
     let path = std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
@@ -429,16 +481,16 @@ fn ensure_team_leader_workdir_exists_ignores_non_leader_context() {
     };
 
     assert!(!path.exists(), "temp path should not exist before test");
-    ensure_team_leader_workdir_exists(Some(&ctx), &workdir)
-        .expect("non-leader should not require directory creation");
+    ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .expect("non-team context should not require directory creation");
     assert!(
         !path.exists(),
-        "non-leader helper path should not be created automatically"
+        "non-team helper path should not be created automatically"
     );
 }
 
 #[test]
-fn ensure_team_leader_workdir_exists_reports_creation_error() {
+fn ensure_team_runtime_workspace_layout_reports_creation_error() {
     let root = std::env::temp_dir().join(format!("agenthub-leader-file-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).expect("create temp root");
     let file_path = root.join("not-a-dir");
@@ -456,10 +508,10 @@ fn ensure_team_leader_workdir_exists_reports_creation_error() {
         continuity: None,
     };
 
-    let err = ensure_team_leader_workdir_exists(Some(&ctx), &workdir)
+    let err = ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
         .expect_err("invalid leader path should fail directory creation");
     assert!(
-        err.to_string().contains("failed to create leader workdir"),
+        err.to_string().contains("failed to create team runtime workdir"),
         "err={err}"
     );
 }

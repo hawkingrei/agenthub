@@ -186,7 +186,7 @@ fn short_random_token() -> String {
         .collect::<String>()
 }
 
-fn derive_worker_runtime_root(workdir: &str) -> String {
+pub(crate) fn derive_worker_runtime_root(workdir: &str) -> String {
     let path = Path::new(workdir);
     path.parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -194,7 +194,10 @@ fn derive_worker_runtime_root(workdir: &str) -> String {
         .unwrap_or_else(|| workdir.to_string())
 }
 
-fn derive_leader_runtime_workdir(workdir: &str, actor_context: &AcpActorSkillContext) -> String {
+pub(crate) fn derive_leader_runtime_workdir(
+    workdir: &str,
+    actor_context: &AcpActorSkillContext,
+) -> String {
     // Team leader continuity should survive ordinary runtime restarts, so the derived
     // coordination workspace is keyed by actor + scope and intentionally excludes the
     // per-launch AgentHub runtime session id.
@@ -210,6 +213,31 @@ fn derive_leader_runtime_workdir(workdir: &str, actor_context: &AcpActorSkillCon
         .join(format!("{actor_token}-{scope_token}"))
         .to_string_lossy()
         .to_string()
+}
+
+pub(crate) fn derive_team_runtime_workdir(
+    workdir: &str,
+    actor_context: &AcpActorSkillContext,
+    worktree_mode: &WorktreeMode,
+) -> String {
+    match actor_context.member_role.as_deref() {
+        Some(TEAM_MEMBER_ROLE_LEADER) => derive_leader_runtime_workdir(workdir, actor_context),
+        Some(TEAM_MEMBER_ROLE_WORKER) if matches!(worktree_mode, WorktreeMode::CreateWorktree) => {
+            let actor_token = compact_token(&actor_context.actor_id, "worker", 24);
+            let scope_token = actor_context
+                .current_run_id
+                .as_deref()
+                .or(actor_context.team_id.as_deref())
+                .map(|value| compact_token(value, "scope", 24))
+                .unwrap_or_else(|| "scope".to_string());
+            let root = derive_worker_runtime_root(workdir);
+            Path::new(&root)
+                .join(format!("{actor_token}-{scope_token}"))
+                .to_string_lossy()
+                .to_string()
+        }
+        _ => workdir.to_string(),
+    }
 }
 
 fn build_runtime_start_policy(
@@ -241,7 +269,8 @@ fn build_runtime_start_policy(
             }
             let context = actor_context
                 .ok_or_else(|| anyhow::anyhow!("leader role policy requires actor context"))?;
-            policy.workdir = derive_leader_runtime_workdir(expanded_workdir, context);
+            policy.workdir =
+                derive_team_runtime_workdir(expanded_workdir, context, &policy.worktree_mode);
             if Path::new(&policy.workdir).exists() && !Path::new(&policy.workdir).is_dir() {
                 anyhow::bail!(
                     "team leader policy requires directory workdir (agent_id={} workdir={})",
@@ -262,19 +291,10 @@ fn build_runtime_start_policy(
                 let context = actor_context
                     .ok_or_else(|| anyhow::anyhow!("worker role policy requires actor context"))?;
                 let actor_token = compact_token(&context.actor_id, "worker", 24);
-                let scope_token = context
-                    .current_run_id
-                    .as_deref()
-                    .or(context.team_id.as_deref())
-                    .map(|value| compact_token(value, "scope", 24))
-                    .unwrap_or_else(|| "scope".to_string());
                 // Worker runtime workdirs are stable for the current actor + scope and should
                 // not change just because AgentHub generated a new per-launch runtime session id.
-                let root = derive_worker_runtime_root(expanded_workdir);
-                let workdir = Path::new(&root)
-                    .join(format!("{actor_token}-{scope_token}"))
-                    .to_string_lossy()
-                    .to_string();
+                let workdir =
+                    derive_team_runtime_workdir(expanded_workdir, context, &policy.worktree_mode);
                 let branch = format!("worker-{actor_token}-{}", short_random_token());
                 policy.workdir = workdir;
                 policy.worktree_repo = Some(repo.to_string());
@@ -295,24 +315,73 @@ fn build_runtime_start_policy(
     Ok(policy)
 }
 
-fn ensure_team_leader_workdir_exists(
+fn ensure_team_runtime_workspace_layout(
     actor_context: Option<&AcpActorSkillContext>,
     workdir: &str,
 ) -> anyhow::Result<()> {
-    let is_team_leader = matches!(
-        actor_context.and_then(|context| context.member_role.as_deref()),
-        Some(TEAM_MEMBER_ROLE_LEADER)
-    );
-    if is_team_leader
-        && !Path::new(workdir).exists()
-        && let Err(err) = std::fs::create_dir_all(workdir)
-    {
-        return Err(anyhow::anyhow!(
-            "failed to create leader workdir: workdir={} error={}",
+    let Some(role) = actor_context.and_then(|context| context.member_role.as_deref()) else {
+        return Ok(());
+    };
+    if role != TEAM_MEMBER_ROLE_LEADER && role != TEAM_MEMBER_ROLE_WORKER {
+        return Ok(());
+    }
+
+    let workdir_path = Path::new(workdir);
+    if role == TEAM_MEMBER_ROLE_LEADER && !workdir_path.exists() {
+        std::fs::create_dir_all(workdir_path).map_err(|err| {
+            anyhow::anyhow!(
+                "failed to create team runtime workdir: workdir={} error={}",
+                workdir,
+                err
+            )
+        })?;
+    }
+
+    if !workdir_path.exists() {
+        return Ok(());
+    }
+    if !workdir_path.is_dir() {
+        anyhow::bail!("team runtime workdir is not a directory: workdir={workdir}");
+    }
+
+    let context_root = workdir_path.join(".cache").join("context");
+    std::fs::create_dir_all(context_root.join("run")).map_err(|err| {
+        anyhow::anyhow!(
+            "failed to create team runtime context run dir: workdir={} error={}",
             workdir,
             err
-        ));
+        )
+    })?;
+    std::fs::create_dir_all(context_root.join("memory")).map_err(|err| {
+        anyhow::anyhow!(
+            "failed to create team runtime context memory dir: workdir={} error={}",
+            workdir,
+            err
+        )
+    })?;
+
+    for relative_path in [
+        "state.md",
+        "decisions.md",
+        "errors.md",
+        "log.md",
+        "memory/profile.md",
+        "memory/project_facts.md",
+        "memory/decision_journal.md",
+        "memory/open_questions.md",
+    ] {
+        let path = context_root.join(relative_path);
+        if !path.exists() {
+            std::fs::write(&path, "").map_err(|err| {
+                anyhow::anyhow!(
+                    "failed to initialize team runtime context file: path={} error={}",
+                    path.display(),
+                    err
+                )
+            })?;
+        }
     }
+
     Ok(())
 }
 

@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::codec::team_run_status_from_str;
 use super::{TeamManager, TeamRunResumeError};
+use crate::acp::{AcpActorSkillContext, DEFAULT_ACTOR_CHANNEL};
+use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use crate::team::{
@@ -2048,6 +2050,124 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
     assert!(
         continuity_event.payload.get("artifact_pointer").is_some(),
         "continuity_state_updated should include artifact pointer metadata"
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
+async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context_artifact() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace =
+        std::env::temp_dir().join(format!("agenthub-leader-context-artifact-{unique_suffix}"));
+    std::fs::create_dir_all(&workspace).expect("create workspace directory");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "leader-artifact-team".to_string(),
+            description: Some("team with leader continuity output".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-artifact"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "large_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"emit large output"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("remote-task-artifact"))
+        .await
+        .expect("start step");
+
+    manager
+        .complete_step(
+            &step.id,
+            Some(json!({
+                "summary":"large payload",
+                "details": "x".repeat(12_000),
+                "api_key":"secret-value"
+            })),
+        )
+        .await
+        .expect("complete step");
+
+    let artifact_row = sqlx::query(
+        r#"
+        SELECT artifact_path
+        FROM team_context_artifacts
+        WHERE run_id = ?1 AND member_id = ?2
+        ORDER BY artifact_seq DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&run.id)
+    .bind("planner")
+    .fetch_one(&db)
+    .await
+    .expect("fetch context artifact row");
+    let artifact_path: String = artifact_row.get("artifact_path");
+    let expected_runtime_workdir = derive_team_runtime_workdir(
+        &workspace_text,
+        &AcpActorSkillContext {
+            team_id: Some(team.id.clone()),
+            current_run_id: Some(run.id.clone()),
+            actor_id: "planner".to_string(),
+            default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
+            member_role: Some("leader".to_string()),
+            member_skills: Vec::new(),
+            contract_version: None,
+            continuity: None,
+        },
+        &WorktreeMode::UseExisting,
+    );
+    let expected_prefix = std::path::Path::new(&expected_runtime_workdir)
+        .join(".cache/context/run")
+        .to_string_lossy()
+        .to_string();
+    assert!(
+        artifact_path.starts_with(&expected_prefix),
+        "artifact path should be under derived leader runtime workspace: {artifact_path}"
     );
 
     let _ = std::fs::remove_dir_all(workspace);
