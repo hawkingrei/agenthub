@@ -1,3 +1,4 @@
+import { MantineProvider } from "@mantine/core";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,10 @@ function buildMember(
     current_work: "plan",
     ...patch,
   };
+}
+
+function renderHtml(node: React.ReactElement): string {
+  return renderToStaticMarkup(<MantineProvider>{node}</MantineProvider>);
 }
 
 describe("TeamMemberStatusStrip", () => {
@@ -88,49 +93,51 @@ describe("TeamMemberStatusStrip", () => {
 
   it("renders top summary and per-member work/agent badges", () => {
     const html = renderToStaticMarkup(
-      <TeamMemberStatusStrip
-        members={[
-          buildMember({
-            member_id: "leader-1",
-            role: "leader",
-            lifecycle_status: "running",
-            run_status: "working",
-            step_status: "working",
-          }),
-          buildMember({
-            member_id: "worker-1",
-            lifecycle_status: "idle",
-            run_status: "submitted",
-            step_status: "input_required",
-          }),
-          buildMember({
-            member_id: "worker-2",
-            lifecycle_status: "stopped",
-            run_status: "working",
-            step_status: "done",
-          }),
-          buildMember({
-            member_id: "worker-3",
-            lifecycle_status: "failed",
-            run_status: "working",
-            step_status: "blocked",
-          }),
-          buildMember({
-            member_id: "worker-4",
-            lifecycle_status: "missing",
-            lifecycle_tone: "missing",
-            agent_name: undefined,
-            run_status: "-",
-            step_status: "-",
-          }),
-          buildMember({
-            member_id: "worker-5",
-            lifecycle_status: "unknown_state",
-            run_status: "unknown_state",
-            step_status: "-",
-          }),
-        ]}
-      />
+      <MantineProvider>
+        <TeamMemberStatusStrip
+          members={[
+            buildMember({
+              member_id: "leader-1",
+              role: "leader",
+              lifecycle_status: "running",
+              run_status: "working",
+              step_status: "working",
+            }),
+            buildMember({
+              member_id: "worker-1",
+              lifecycle_status: "idle",
+              run_status: "submitted",
+              step_status: "input_required",
+            }),
+            buildMember({
+              member_id: "worker-2",
+              lifecycle_status: "stopped",
+              run_status: "working",
+              step_status: "done",
+            }),
+            buildMember({
+              member_id: "worker-3",
+              lifecycle_status: "failed",
+              run_status: "working",
+              step_status: "blocked",
+            }),
+            buildMember({
+              member_id: "worker-4",
+              lifecycle_status: "missing",
+              lifecycle_tone: "missing",
+              agent_name: undefined,
+              run_status: "-",
+              step_status: "-",
+            }),
+            buildMember({
+              member_id: "worker-5",
+              lifecycle_status: "unknown_state",
+              run_status: "unknown_state",
+              step_status: "-",
+            }),
+          ]}
+        />
+      </MantineProvider>
     );
     expect(html).toContain("Member Status");
     expect(html).toContain("working=1");
@@ -140,8 +147,10 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("unknown=1");
     expect(html).toContain("leader-1");
     expect(html).toContain("worker-4");
-    expect(html).toContain("role=leader");
-    expect(html).toContain("agent=-");
+    expect(html).toContain("role");
+    expect(html).toContain("leader");
+    expect(html).toContain("agent");
+    expect(html).toMatch(/>-\s*</);
     expect(html).toContain("work:working");
     expect(html).toContain("work:pending");
     expect(html).toContain("work:done");
@@ -152,7 +161,8 @@ describe("TeamMemberStatusStrip", () => {
   });
 
   it("renders empty hint when team has no members", () => {
-    const html = renderToStaticMarkup(<TeamMemberStatusStrip members={[]} />);
+    const html = renderHtml(<TeamMemberStatusStrip members={[]} />);
+    expect(html).toContain("No team members");
     expect(html).toContain("No team members found in current team spec.");
   });
 });

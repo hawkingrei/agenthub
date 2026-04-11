@@ -1,13 +1,22 @@
+import { Box, SimpleGrid } from "@mantine/core";
 import React, { useMemo } from "react";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberLiveState } from "./team/member_helpers";
+import {
+  EmptyState,
+  InsetSurface,
+  KeyValueItem,
+  KeyValueList,
+  StatusPill,
+  SurfaceCard,
+  ToolbarRow,
+} from "../ui/primitives";
 import {
   TEAM_MEMBER_CARD_CLASS,
   TEAM_MEMBER_META_CLASS,
   TEAM_MEMBER_NAME_CLASS,
   TEAM_MEMBER_SUMMARY_CLASS,
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_PANEL_CARD_CLASS,
   TEAM_SECTION_TITLE_CLASS,
 } from "../ui/tailwind_classes";
 
@@ -151,38 +160,39 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
   const summary = useMemo(() => createLifecycleSummary(members), [members]);
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <SurfaceCard className="p-4">
+      <ToolbarRow className="mb-4">
         <h3 className={TEAM_SECTION_TITLE_CLASS}>Member Status</h3>
-        <div className={TEAM_MEMBER_SUMMARY_CLASS}>
+        <Box className={TEAM_MEMBER_SUMMARY_CLASS}>
           {TEAM_MEMBER_SUMMARY_STATUSES.map((status) => (
-            <span
+            <StatusPill
               key={status}
-              className={`rounded-sm border ${TEAM_MEMBER_SUMMARY_BADGE_CLASS[status]} px-1.5 py-0.5`}
+              className={TEAM_MEMBER_SUMMARY_BADGE_CLASS[status]}
             >
               {status}={summary[status]}
-            </span>
+            </StatusPill>
           ))}
-        </div>
-      </div>
+        </Box>
+      </ToolbarRow>
       {members.length === 0 ? (
-        <p className={TEAM_MUTED_TEXT_CLASS}>No team members found in current team spec.</p>
+        <EmptyState
+          title="No team members"
+          body="No team members found in current team spec."
+          className={TEAM_MUTED_TEXT_CLASS}
+        />
       ) : (
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <SimpleGrid cols={{ base: 1, sm: 2, xl: 3 }} spacing="sm">
           {members.map((member) => {
             const lifecycle = normalizeTeamMemberLifecycle(member);
             const workStatus = normalizeTeamMemberWorkStatus(member);
             return (
-              <div
-                key={member.member_id}
-                className={TEAM_MEMBER_CARD_CLASS}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className={TEAM_MEMBER_NAME_CLASS}>
+              <InsetSurface key={member.member_id} className={TEAM_MEMBER_CARD_CLASS}>
+                <Box className="flex min-w-0 items-center gap-2">
+                  <Box component="span" className={TEAM_MEMBER_NAME_CLASS}>
                     {member.member_id}
-                  </span>
-                </div>
-                <div className={TEAM_MEMBER_STATUS_ROW_CLASS}>
+                  </Box>
+                </Box>
+                <Box className={TEAM_MEMBER_STATUS_ROW_CLASS}>
                   <StatusBadge
                     label={`work:${workStatus}`}
                     tone={resolveWorkStatusTone(workStatus)}
@@ -195,20 +205,21 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
                     className="team-status"
                     title={`agent status: ${member.lifecycle_status}`}
                   />
-                </div>
-                <div className={TEAM_MEMBER_META_CLASS}>
-                  role={member.role} agent={member.agent_name ?? "-"}
-                </div>
+                </Box>
+                <KeyValueList className={TEAM_MEMBER_META_CLASS}>
+                  <KeyValueItem label="role" value={member.role} />
+                  <KeyValueItem label="agent" value={member.agent_name ?? "-"} />
+                </KeyValueList>
                 {member.current_work && (
-                  <div className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
-                    current={member.current_work}
-                  </div>
+                  <KeyValueList className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
+                    <KeyValueItem label="current" value={member.current_work} />
+                  </KeyValueList>
                 )}
-              </div>
+              </InsetSurface>
             );
           })}
-        </div>
+        </SimpleGrid>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

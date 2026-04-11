@@ -4,8 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ActionButton,
+  EmptyState,
   IconButton,
+  InlineNotice,
   InsetSurface,
+  KeyValueItem,
+  KeyValueList,
   PanelHeader,
   SelectableListItem,
   StatusPill,
@@ -94,5 +98,26 @@ describe("ui primitives", () => {
     expect(activeHtml).not.toContain("mantine-UnstyledButton-root");
     expect(idleHtml).not.toContain("ring-1 ring-notion-accent/30");
     expect(activeHtml).toContain('type="button"');
+  });
+
+  it("renders empty state, inline notice, and key/value metadata primitives", () => {
+    const emptyHtml = renderHtml(
+      <EmptyState title="No steps" body="Nothing has executed yet." />
+    );
+    const noticeHtml = renderHtml(
+      <InlineNotice tone="warning">Developer Mode only.</InlineNotice>
+    );
+    const keyValueHtml = renderHtml(
+      <KeyValueList>
+        <KeyValueItem label="role" value="leader" />
+      </KeyValueList>
+    );
+    expect(emptyHtml).toContain("border-dashed border-notion-border");
+    expect(emptyHtml).toContain("No steps");
+    expect(noticeHtml).toContain("border-state-warning-border bg-state-warning-bg/60");
+    expect(noticeHtml).toContain("Developer Mode only.");
+    expect(keyValueHtml).toContain("grid min-w-0 gap-x-3 gap-y-1");
+    expect(keyValueHtml).toContain("role");
+    expect(keyValueHtml).toContain("leader");
   });
 });
