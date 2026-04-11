@@ -315,7 +315,7 @@ fn build_runtime_start_policy(
     Ok(policy)
 }
 
-fn ensure_team_runtime_workspace_layout(
+async fn ensure_team_runtime_workspace_layout(
     actor_context: Option<&AcpActorSkillContext>,
     workdir: &str,
 ) -> anyhow::Result<()> {
@@ -327,32 +327,46 @@ fn ensure_team_runtime_workspace_layout(
     }
 
     let workdir_path = Path::new(workdir);
-    if role == TEAM_MEMBER_ROLE_LEADER && !workdir_path.exists() {
-        std::fs::create_dir_all(workdir_path).map_err(|err| {
-            anyhow::anyhow!(
-                "failed to create team runtime workdir: workdir={} error={}",
+    match tokio::fs::metadata(workdir_path).await {
+        Ok(metadata) => {
+            if !metadata.is_dir() {
+                anyhow::bail!("team runtime workdir is not a directory: workdir={workdir}");
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            if role != TEAM_MEMBER_ROLE_LEADER {
+                return Ok(());
+            }
+            tokio::fs::create_dir_all(workdir_path).await.map_err(|create_err| {
+                anyhow::anyhow!(
+                    "failed to create team runtime workdir: workdir={} error={}",
+                    workdir,
+                    create_err
+                )
+            })?;
+        }
+        Err(err) => {
+            return Err(anyhow::anyhow!(
+                "failed to stat team runtime workdir: workdir={} error={}",
                 workdir,
                 err
-            )
-        })?;
-    }
-
-    if !workdir_path.exists() {
-        return Ok(());
-    }
-    if !workdir_path.is_dir() {
-        anyhow::bail!("team runtime workdir is not a directory: workdir={workdir}");
+            ));
+        }
     }
 
     let context_root = workdir_path.join(".cache").join("context");
-    std::fs::create_dir_all(context_root.join("run")).map_err(|err| {
+    tokio::fs::create_dir_all(context_root.join("run"))
+        .await
+        .map_err(|err| {
         anyhow::anyhow!(
             "failed to create team runtime context run dir: workdir={} error={}",
             workdir,
             err
         )
     })?;
-    std::fs::create_dir_all(context_root.join("memory")).map_err(|err| {
+    tokio::fs::create_dir_all(context_root.join("memory"))
+        .await
+        .map_err(|err| {
         anyhow::anyhow!(
             "failed to create team runtime context memory dir: workdir={} error={}",
             workdir,
@@ -371,14 +385,31 @@ fn ensure_team_runtime_workspace_layout(
         "memory/open_questions.md",
     ] {
         let path = context_root.join(relative_path);
-        if !path.exists() {
-            std::fs::write(&path, "").map_err(|err| {
-                anyhow::anyhow!(
-                    "failed to initialize team runtime context file: path={} error={}",
+        match tokio::fs::metadata(&path).await {
+            Ok(metadata) => {
+                if !metadata.is_file() {
+                    anyhow::bail!(
+                        "team runtime context path is not a file: path={}",
+                        path.display()
+                    );
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                tokio::fs::write(&path, "").await.map_err(|write_err| {
+                    anyhow::anyhow!(
+                        "failed to initialize team runtime context file: path={} error={}",
+                        path.display(),
+                        write_err
+                    )
+                })?;
+            }
+            Err(err) => {
+                return Err(anyhow::anyhow!(
+                    "failed to stat team runtime context file: path={} error={}",
                     path.display(),
                     err
-                )
-            })?;
+                ));
+            }
         }
     }
 

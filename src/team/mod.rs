@@ -65,6 +65,7 @@ pub(crate) fn collect_team_member_ids(spec: &Value) -> Vec<String> {
 }
 
 pub(crate) fn team_member_role_from_spec(spec: &Value, member_id: &str) -> Option<String> {
+    let member_id = member_id.trim();
     let members = spec.get("members")?.as_array()?;
     members
         .iter()

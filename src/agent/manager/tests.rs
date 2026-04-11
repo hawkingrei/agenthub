@@ -392,8 +392,8 @@ fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
     assert_eq!(first.workdir, second.workdir);
 }
 
-#[test]
-fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
+#[tokio::test]
+async fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
     let path = std::env::temp_dir().join(format!("agenthub-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
@@ -409,6 +409,7 @@ fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
 
     assert!(!path.exists(), "temp path should not exist before test");
     ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .await
         .expect("create leader runtime workspace");
     assert!(path.exists(), "leader workdir should be created");
     assert!(path.is_dir(), "leader workdir should be a directory");
@@ -437,8 +438,8 @@ fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
     }
 }
 
-#[test]
-fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_existing_workdir() {
+#[tokio::test]
+async fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_existing_workdir() {
     let path = std::env::temp_dir().join(format!("agenthub-worker-workdir-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&path).expect("create temp workdir");
     let workdir = path.to_string_lossy().to_string();
@@ -454,6 +455,7 @@ fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_existing_w
     };
 
     ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .await
         .expect("worker runtime workspace should initialize context layout");
     assert!(
         path.join(".cache/context/run").is_dir(),
@@ -465,8 +467,8 @@ fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_existing_w
     );
 }
 
-#[test]
-fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
+#[tokio::test]
+async fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
     let path = std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
@@ -482,6 +484,7 @@ fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
 
     assert!(!path.exists(), "temp path should not exist before test");
     ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .await
         .expect("non-team context should not require directory creation");
     assert!(
         !path.exists(),
@@ -489,8 +492,8 @@ fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
     );
 }
 
-#[test]
-fn ensure_team_runtime_workspace_layout_reports_creation_error() {
+#[tokio::test]
+async fn ensure_team_runtime_workspace_layout_reports_creation_error() {
     let root = std::env::temp_dir().join(format!("agenthub-leader-file-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).expect("create temp root");
     let file_path = root.join("not-a-dir");
@@ -509,9 +512,40 @@ fn ensure_team_runtime_workspace_layout_reports_creation_error() {
     };
 
     let err = ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .await
         .expect_err("invalid leader path should fail directory creation");
     assert!(
-        err.to_string().contains("failed to create team runtime workdir"),
+        err.to_string().contains("failed to stat team runtime workdir"),
+        "err={err}"
+    );
+}
+
+#[tokio::test]
+async fn ensure_team_runtime_workspace_layout_reports_non_file_context_entries() {
+    let path = std::env::temp_dir().join(format!(
+        "agenthub-leader-workdir-conflict-{}",
+        Uuid::new_v4()
+    ));
+    let conflicting_file = path.join(".cache/context/state.md");
+    std::fs::create_dir_all(&conflicting_file).expect("create conflicting directory");
+    let workdir = path.to_string_lossy().to_string();
+    let ctx = AcpActorSkillContext {
+        team_id: Some("team-leader".to_string()),
+        current_run_id: Some("run-leader".to_string()),
+        actor_id: "leader-3".to_string(),
+        default_channel: "default".to_string(),
+        member_role: Some("leader".to_string()),
+        member_skills: Vec::new(),
+        contract_version: None,
+        continuity: None,
+    };
+
+    let err = ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
+        .await
+        .expect_err("directory at context file path should fail");
+    assert!(
+        err.to_string()
+            .contains("team runtime context path is not a file"),
         "err={err}"
     );
 }

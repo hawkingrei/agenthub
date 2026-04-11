@@ -2151,7 +2151,7 @@ async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context
         &workspace_text,
         &AcpActorSkillContext {
             team_id: Some(team.id.clone()),
-            current_run_id: Some(run.id.clone()),
+            current_run_id: None,
             actor_id: "planner".to_string(),
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
             member_role: Some("leader".to_string()),

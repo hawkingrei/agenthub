@@ -423,6 +423,7 @@ impl AgentManager {
         }
         if let Err(err) =
             ensure_team_runtime_workspace_layout(actor_context.as_ref(), &start_policy.workdir)
+                .await
         {
             let message = err.to_string();
             let _ = self

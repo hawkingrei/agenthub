@@ -1895,7 +1895,7 @@ impl TeamManager {
         now: i64,
     ) -> anyhow::Result<Option<ContextArtifactPointer>> {
         let Some(workspace) =
-            load_team_member_context_workspace_tx(tx, owner.team_id, owner.run_id, owner.member_id)
+            load_team_member_context_workspace_tx(tx, owner.team_id, owner.member_id)
                 .await?
         else {
             return Ok(None);
@@ -3467,15 +3467,14 @@ fn build_context_artifact_pointer_payload(pointer: &ContextArtifactPointer) -> V
 async fn load_team_member_context_workspace_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     team_id: &str,
-    run_id: &str,
     member_id: &str,
 ) -> anyhow::Result<Option<TeamMemberContextWorkspace>> {
     let row = sqlx::query(
         r#"
         SELECT a.workdir, a.worktree_mode, td.spec_json
-        FROM agents a
-        JOIN team_definitions td ON td.id = ?1
+        FROM agents a, team_definitions td
         WHERE a.id = ?2
+          AND td.id = ?1
         "#,
     )
     .bind(team_id)
@@ -3503,7 +3502,7 @@ async fn load_team_member_context_workspace_tx(
             .and_then(|spec| team_member_role_from_spec(&spec, member_id))
     {
         let actor_context =
-            build_team_member_actor_context_for_role(team_id, Some(run_id), member_id, &member_role);
+            build_team_member_actor_context_for_role(team_id, None, member_id, &member_role);
         derive_team_runtime_workdir(&workdir, &actor_context, &worktree_mode)
     } else {
         workdir
