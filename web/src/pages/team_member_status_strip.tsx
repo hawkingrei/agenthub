@@ -13,7 +13,6 @@ import {
 } from "../ui/primitives";
 import {
   TEAM_MEMBER_CARD_CLASS,
-  TEAM_MEMBER_META_CLASS,
   TEAM_MEMBER_NAME_CLASS,
   TEAM_MEMBER_SUMMARY_CLASS,
   TEAM_MUTED_TEXT_CLASS,
@@ -186,7 +185,10 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
             const lifecycle = normalizeTeamMemberLifecycle(member);
             const workStatus = normalizeTeamMemberWorkStatus(member);
             return (
-              <InsetSurface key={member.member_id} className={TEAM_MEMBER_CARD_CLASS}>
+              <InsetSurface
+                key={member.member_id}
+                className={`p-0 sm:p-0 ${TEAM_MEMBER_CARD_CLASS}`}
+              >
                 <Box className="flex min-w-0 items-center gap-2">
                   <Box component="span" className={TEAM_MEMBER_NAME_CLASS}>
                     {member.member_id}
@@ -206,15 +208,17 @@ export function TeamMemberStatusStrip({ members }: TeamMemberStatusStripProps) {
                     title={`agent status: ${member.lifecycle_status}`}
                   />
                 </Box>
-                <KeyValueList className={TEAM_MEMBER_META_CLASS}>
+                <KeyValueList className="mono text-[10px] text-notion-text-muted opacity-70">
                   <KeyValueItem label="role" value={member.role} />
                   <KeyValueItem label="agent" value={member.agent_name ?? "-"} />
+                  {member.current_work ? (
+                    <KeyValueItem
+                      label="current"
+                      value={member.current_work}
+                      title={member.current_work}
+                    />
+                  ) : null}
                 </KeyValueList>
-                {member.current_work && (
-                  <KeyValueList className={TEAM_MEMBER_META_CLASS} title={member.current_work}>
-                    <KeyValueItem label="current" value={member.current_work} />
-                  </KeyValueList>
-                )}
               </InsetSurface>
             );
           })}

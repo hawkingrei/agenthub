@@ -53,19 +53,17 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS =
-  "teams-step-panel min-w-0 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const STEPS_PANEL_CLASS = "teams-step-panel min-w-0 gap-3";
 const STEPS_LIST_CLASS =
   "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
-const STEPS_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const STEPS_ITEM_CLASS = "rounded-lg sm:p-2";
 const STEPS_ITEM_HEAD_CLASS =
   "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
 const STEPS_ITEM_BODY_CLASS =
-  "teams-step-body mono flex flex-col gap-1 text-ui-xs text-ui-text-muted break-words";
-const STEPS_LIST_ONLY_NOTE_CLASS =
-  "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
+  "teams-step-body mono text-ui-xs text-ui-text-muted break-words";
+const STEPS_LIST_ONLY_NOTE_CLASS = "mb-3 text-ui-sm";
 
 function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const {
@@ -283,7 +281,8 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
                     <span>{step.step_key}</span>
                     <span>{step.status}</span>
                   </div>
-                  <KeyValueList className={STEPS_ITEM_BODY_CLASS}>
+                  <div className={STEPS_ITEM_BODY_CLASS}>
+                    <KeyValueList>
                     <KeyValueItem label="member_id" value={step.member_id} />
                     <KeyValueItem label="attempt" value={step.attempt} />
                     <KeyValueItem
@@ -297,7 +296,8 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
                     {step.error_text ? (
                       <KeyValueItem label="error_text" value={step.error_text} />
                     ) : null}
-                  </KeyValueList>
+                    </KeyValueList>
+                  </div>
                 </InsetSurface>
               </li>
             ))}
