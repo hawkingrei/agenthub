@@ -9,8 +9,7 @@ const SURFACE_CARD_BASE_CLASS =
   "min-h-0 rounded-xl border border-notion-border bg-white shadow-sm transition-all";
 const INSET_SURFACE_BASE_CLASS =
   "min-h-0 rounded-xl border border-notion-border bg-notion-sidebar/10 p-4 sm:p-6";
-const TOOLBAR_ROW_BASE_CLASS =
-  "flex flex-wrap items-center justify-between gap-3";
+const TOOLBAR_ROW_BASE_CLASS = "flex flex-wrap items-center justify-between gap-3";
 const SELECTABLE_LIST_ITEM_BASE_CLASS =
   "team-item group relative flex w-full flex-col gap-1.5 rounded-xl border border-notion-border bg-white p-4 text-left shadow-sm transition-all hover:border-notion-accent/20 hover:bg-notion-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60";
 const SELECTABLE_LIST_ITEM_ACTIVE_CLASS =
@@ -20,10 +19,8 @@ const PANEL_HEADER_ROOT_CLASS =
   "flex flex-wrap items-start justify-between gap-3 border-b border-notion-border/60 pb-4";
 const PANEL_HEADER_CONTENT_CLASS = "min-w-0 flex flex-1 flex-col gap-1";
 const PANEL_HEADER_TITLE_CLASS = "text-lg font-bold tracking-tight text-notion-text";
-const PANEL_HEADER_SUBTITLE_CLASS =
-  "text-[13px] leading-relaxed text-notion-text-muted";
-const PANEL_HEADER_ACTIONS_CLASS =
-  "flex shrink-0 flex-wrap items-center gap-2 justify-end";
+const PANEL_HEADER_SUBTITLE_CLASS = "text-[13px] leading-relaxed text-notion-text-muted";
+const PANEL_HEADER_ACTIONS_CLASS = "flex shrink-0 flex-wrap items-center gap-2 justify-end";
 
 const ACTION_BUTTON_BASE_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
@@ -55,13 +52,12 @@ const ICON_BUTTON_TONE_CLASS = {
     "border border-notion-border bg-white text-notion-text-muted shadow-sm hover:bg-notion-hover hover:text-notion-text",
   active:
     "border border-notion-accent/30 bg-notion-accent-bg text-notion-accent shadow-sm hover:bg-notion-accent/10",
-  subtle:
-    "text-notion-text-muted hover:bg-notion-hover hover:text-notion-text",
+  subtle: "text-notion-text-muted hover:bg-notion-hover hover:text-notion-text",
   danger: "text-notion-text-muted hover:bg-state-error-bg hover:text-state-error-text",
 } as const;
 
 const STATUS_PILL_BASE_CLASS =
-  "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+  "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider";
 const BADGE_BASE_CLASS = "inline-flex items-center font-bold text-notion-text-muted";
 const BADGE_TONE_CLASS = {
   subtle: "bg-notion-hover",
@@ -83,16 +79,22 @@ const COMPACT_BUTTON_BASE_CLASS =
 const COMPACT_ICON_BUTTON_BASE_CLASS =
   "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
 const EMPTY_STATE_BASE_CLASS =
-  "rounded-xl border border-dashed border-notion-border/80 bg-notion-sidebar/10 px-4 py-5 text-center";
+  "rounded-xl border border-dashed border-notion-border bg-notion-sidebar/20 px-4 py-5 text-sm text-notion-text-muted";
 const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
-const EMPTY_STATE_BODY_CLASS = "mt-1 text-[13px] leading-relaxed text-notion-text-muted";
+const EMPTY_STATE_BODY_CLASS = "mt-1 leading-relaxed text-notion-text-muted";
+const INLINE_NOTICE_BASE_CLASS = "rounded-lg border px-3 py-2 text-sm leading-relaxed";
+const INLINE_NOTICE_TONE_CLASS = {
+  info: "border-notion-border bg-notion-sidebar/20 text-notion-text-muted",
+  warning: "border-state-warning-border bg-state-warning-bg/60 text-state-warning-text",
+  danger: "border-state-error-border bg-state-error-bg/60 text-state-error-text",
+} as const;
 const KEY_VALUE_LIST_BASE_CLASS =
-  "grid grid-cols-[auto,minmax(0,1fr)] items-start gap-x-3 gap-y-1.5";
+  "grid min-w-0 gap-x-3 gap-y-1 sm:grid-cols-[auto_minmax(0,1fr)]";
 const KEY_VALUE_ITEM_BASE_CLASS = "contents";
 const KEY_VALUE_LABEL_CLASS =
-  "mono text-[11px] font-bold uppercase tracking-wide text-notion-text opacity-70";
+  "text-[10px] font-bold uppercase tracking-wider text-notion-text-muted/80";
 const KEY_VALUE_VALUE_CLASS =
-  "min-w-0 break-words text-[11px] leading-relaxed text-notion-text-muted";
+  "min-w-0 break-words text-[12px] leading-relaxed text-notion-text";
 
 type SurfaceCardProps = React.ComponentPropsWithoutRef<typeof Box>;
 
@@ -244,12 +246,7 @@ type BadgeProps = React.ComponentPropsWithoutRef<typeof Box> & {
   shape?: keyof typeof BADGE_SHAPE_CLASS;
 };
 
-export function Badge({
-  tone = "subtle",
-  shape = "tag",
-  className,
-  ...props
-}: BadgeProps) {
+export function Badge({ tone = "subtle", shape = "tag", className, ...props }: BadgeProps) {
   return (
     <Box
       component="span"
@@ -334,6 +331,19 @@ export function EmptyState({ title, body, className, children, ...props }: Empty
       {body ? <Box className={EMPTY_STATE_BODY_CLASS}>{body}</Box> : null}
       {children}
     </Box>
+  );
+}
+
+type InlineNoticeProps = React.ComponentPropsWithoutRef<typeof Box> & {
+  tone?: keyof typeof INLINE_NOTICE_TONE_CLASS;
+};
+
+export function InlineNotice({ tone = "info", className, ...props }: InlineNoticeProps) {
+  return (
+    <Box
+      className={cx(INLINE_NOTICE_BASE_CLASS, INLINE_NOTICE_TONE_CLASS[tone], className)}
+      {...props}
+    />
   );
 }
 

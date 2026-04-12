@@ -158,8 +158,7 @@ const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
-const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-3 p-3 sm:p-3";
+const TEAM_TASK_ACTIVITY_DETAILS_CLASS = "mt-3 p-3 sm:p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
@@ -522,20 +521,103 @@ type SeenDialStyle = React.CSSProperties & {
   "--thickness": string;
 };
 
-type PermissionReviewCardProps = {
-  payload: PermissionReviewCardPayload;
-  permissionRecord?: AcpPermissionRecord;
-  busy: boolean;
-  errorText?: string;
-  onRespond: (payload: PermissionReviewCardPayload, optionId?: string) => void;
-};
-
-type SeenProgressHoverCardProps = {
+type SeenProgressHoverProps = {
   itemKey: string;
   seenActorIds: string[];
   seenProgress: SeenProgressState;
   memberDisplayNamesById: Record<string, string>;
 };
+
+function SeenProgressHoverCard({
+  itemKey,
+  seenActorIds,
+  seenProgress,
+  memberDisplayNamesById,
+}: SeenProgressHoverProps) {
+  return (
+    <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
+      <HoverCard.Target>
+        {seenActorIds.length === 0 ? (
+          <CompactIconButton aria-label="Pending delivery" title="Pending delivery">
+            <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
+          </CompactIconButton>
+        ) : (
+          <CompactIconButton
+            aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+            title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+          >
+            <span
+              className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
+              role="progressbar"
+              aria-valuenow={seenProgress.readCount}
+              aria-valuemin={0}
+              aria-valuemax={seenProgress.totalCount}
+              style={
+                {
+                  "--value": seenProgress.progress,
+                  "--size": "1rem",
+                  "--thickness": "1rem",
+                  width: "var(--size)",
+                  height: "var(--size)",
+                  background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
+                } satisfies SeenDialStyle
+              }
+            />
+          </CompactIconButton>
+        )}
+      </HoverCard.Target>
+      <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
+        {seenActorIds.length === 0 ? (
+          <>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending delivery</div>
+          </>
+        ) : (
+          <>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
+              {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
+            </div>
+            {seenProgress.readActorIds.length > 0 && (
+              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
+                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                  {seenProgress.readActorIds.map((actorId) => (
+                    <Badge
+                      key={`${itemKey}-read-${actorId}`}
+                      tone="outline"
+                      shape="pill"
+                      className="text-[11px]"
+                    >
+                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {seenProgress.unreadActorIds.length > 0 && (
+              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
+                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
+                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
+                  {seenProgress.unreadActorIds.map((actorId) => (
+                    <Badge
+                      key={`${itemKey}-unread-${actorId}`}
+                      tone="dashed"
+                      shape="pill"
+                      className="text-[11px]"
+                    >
+                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </HoverCard.Dropdown>
+    </HoverCard>
+  );
+}
 
 type ActivityDetailsPanelProps = {
   item: {
@@ -546,6 +628,37 @@ type ActivityDetailsPanelProps = {
     routeOrStatus: string;
   };
   state?: TeamMemberLiveState;
+};
+
+function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
+  return (
+    <InsetSurface className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
+      <KeyValueList>
+        <KeyValueItem label="source" value={item.streamLabel} />
+        <KeyValueItem label="seq" value={item.sequence} />
+        <KeyValueItem label="from" value={item.fromActorId} valueClassName="mono" />
+        <KeyValueItem label="to" value={item.toActorId ?? "-"} valueClassName="mono" />
+        <KeyValueItem label="route" value={item.routeOrStatus} />
+        {state ? (
+          <>
+            <KeyValueItem label="work" value={`${state.run_status}/${state.step_status}`} />
+            <KeyValueItem label="agent" value={state.lifecycle_status} />
+            {state.current_work ? (
+              <KeyValueItem label="current_work" value={state.current_work} />
+            ) : null}
+          </>
+        ) : null}
+      </KeyValueList>
+    </InsetSurface>
+  );
+}
+
+type PermissionReviewCardProps = {
+  payload: PermissionReviewCardPayload;
+  permissionRecord?: AcpPermissionRecord;
+  busy: boolean;
+  errorText?: string;
+  onRespond: (payload: PermissionReviewCardPayload, optionId?: string) => void;
 };
 
 function PermissionReviewCard(props: PermissionReviewCardProps) {
@@ -652,123 +765,6 @@ function resolveSeenProgressState(
     unreadCount: unreadActorIds.length,
     progress: totalCount > 0 ? Math.round((readCount / totalCount) * 100) : 0,
   };
-}
-
-function SeenProgressHoverCard({
-  itemKey,
-  seenActorIds,
-  seenProgress,
-  memberDisplayNamesById,
-}: SeenProgressHoverCardProps) {
-  return (
-    <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
-      <HoverCard.Target>
-        {seenActorIds.length === 0 ? (
-          <CompactIconButton
-            aria-label="Pending delivery"
-            title="Pending delivery"
-          >
-            <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-          </CompactIconButton>
-        ) : (
-          <CompactIconButton
-            aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-            title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-          >
-            <span
-              className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
-              role="progressbar"
-              aria-valuenow={seenProgress.readCount}
-              aria-valuemin={0}
-              aria-valuemax={seenProgress.totalCount}
-              style={
-                {
-                  "--value": seenProgress.progress,
-                  "--size": "1rem",
-                  "--thickness": "1rem",
-                  width: "var(--size)",
-                  height: "var(--size)",
-                  background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
-                } satisfies SeenDialStyle
-              }
-            />
-          </CompactIconButton>
-        )}
-      </HoverCard.Target>
-      <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
-        {seenActorIds.length === 0 ? (
-          <>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending delivery</div>
-          </>
-        ) : (
-          <>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Read state</div>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>
-              {`${seenProgress.readCount} read · ${seenProgress.unreadCount} unread`}
-            </div>
-            {seenProgress.readActorIds.length > 0 && (
-              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
-                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                  {seenProgress.readActorIds.map((actorId) => (
-                    <Badge
-                      key={`${itemKey}-read-${actorId}`}
-                      tone="outline"
-                      shape="pill"
-                      className="text-[11px]"
-                    >
-                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            {seenProgress.unreadActorIds.length > 0 && (
-              <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_CLASS}>
-                <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
-                <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
-                  {seenProgress.unreadActorIds.map((actorId) => (
-                    <Badge
-                      key={`${itemKey}-unread-${actorId}`}
-                      tone="dashed"
-                      shape="pill"
-                      className="text-[11px]"
-                    >
-                      {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </HoverCard.Dropdown>
-    </HoverCard>
-  );
-}
-
-function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
-  return (
-    <InsetSurface className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
-      <KeyValueList>
-        <KeyValueItem label="source" value={item.streamLabel} />
-        <KeyValueItem label="seq" value={item.sequence} />
-        <KeyValueItem label="from" value={item.fromActorId} valueClassName="mono" />
-        <KeyValueItem label="to" value={item.toActorId ?? "-"} valueClassName="mono" />
-        <KeyValueItem label="route" value={item.routeOrStatus} />
-        {state ? (
-          <>
-            <KeyValueItem label="work" value={`${state.run_status}/${state.step_status}`} />
-            <KeyValueItem label="agent" value={state.lifecycle_status} />
-            {state.current_work ? (
-              <KeyValueItem label="current_work" value={state.current_work} />
-            ) : null}
-          </>
-        ) : null}
-      </KeyValueList>
-    </InsetSurface>
-  );
 }
 
 function TeamTaskPanelImpl(props: TeamTaskPanelProps) {

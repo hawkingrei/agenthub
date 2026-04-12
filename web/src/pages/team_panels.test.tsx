@@ -1280,6 +1280,50 @@ describe("team panels interactions", () => {
       root.render(
         <MantineProvider>
           <TeamStepsPanel
+            developerMode={true}
+            mode="list_only"
+            steps={[]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+    expect(container.textContent).toContain("No steps yet");
+    expect(container.textContent).toContain(
+      "Start a run or open Debug -> Step Ops to seed execution steps."
+    );
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel
             developerMode={false}
             mode="list_only"
             steps={[buildStep({ id: "step-1", status: "working" })]}
@@ -1317,6 +1361,83 @@ describe("team panels interactions", () => {
     });
     expect(container.textContent).toContain("Step controls are available in Developer Mode.");
     expect(container.querySelector(".teams-step-list")).not.toBeNull();
+  });
+
+  it("TeamStepsPanel renders key-value step metadata and stable notice styling", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel
+            developerMode={true}
+            mode="list_only"
+            steps={[
+              buildStep({
+                id: "step-2",
+                step_key: "dispatch",
+                member_id: "worker-2",
+                attempt: 3,
+                depends_on: ["plan", "seed"],
+                runtime_handle_id: "runtime-7",
+                error_text: "needs retry",
+              }),
+            ]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const warningNotice = required(
+      container.querySelector(".mb-3.text-ui-sm"),
+      "warning notice missing"
+    );
+    expect(warningNotice.className).toContain("border-state-warning-border");
+    expect(warningNotice.className).toContain("bg-state-warning-bg/60");
+    expect(warningNotice.className).toContain("mb-3");
+    expect(container.textContent).toContain("member_id");
+    expect(container.textContent).toContain("worker-2");
+    expect(container.textContent).toContain("attempt");
+    expect(container.textContent).toContain("3");
+    expect(container.textContent).toContain("depends_on");
+    expect(container.textContent).toContain("plan, seed");
+    expect(container.textContent).toContain("runtime_handle_id");
+    expect(container.textContent).toContain("runtime-7");
+    expect(container.textContent).toContain("error_text");
+    expect(container.textContent).toContain("needs retry");
+    const stepItem = required(
+      container.querySelector(".teams-step-list li .min-h-0.rounded-xl"),
+      "step item surface missing"
+    );
+    expect(stepItem.className).toContain("p-2");
+    expect(stepItem.className).toContain("sm:p-2");
+    expect(stepItem.className).not.toContain("rounded-lg");
   });
 
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
@@ -2540,6 +2661,71 @@ describe("team panels interactions", () => {
     const progressbar = container.querySelector('[role="progressbar"]');
     expect(progressbar?.getAttribute("aria-valuenow")).toBe("1");
     expect(progressbar?.getAttribute("aria-valuemax")).toBe("1");
+  });
+
+  it("TeamTaskPanel renders expandable activity details in developer mode", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onRefreshMessages={vi.fn()}
+        messages={[
+          buildTaskMessage(7, {
+            from_actor_id: "leader-agent",
+            to_actor_id: "worker-agent",
+            route: "to_worker",
+            payload: { type: "chat_message", text: "please verify the runtime output" },
+          }),
+        ]}
+        seenByMessageId={{ 7: ["worker-agent"] }}
+        humanActorId="user"
+        memberLiveStates={[
+          {
+            member_id: "leader-agent",
+            role: "leader",
+            agent_name: "LeaderAgent",
+            lifecycle_status: "working",
+            lifecycle_tone: "active",
+            run_status: "working",
+            step_status: "in_review",
+            pending_inbox_count: 0,
+            current_work: "triaging worker evidence",
+          },
+        ]}
+        memberIds={["leader-agent", "worker-agent"]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={toPrettyJson}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Show details"));
+
+    expect(container.textContent).toContain("source");
+    expect(container.textContent).toContain("conversation");
+    expect(container.textContent).toContain("seq");
+    expect(container.textContent).toContain("7");
+    expect(container.textContent).toContain("from");
+    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("to");
+    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("route");
+    expect(container.textContent).toContain("to_worker");
+    expect(container.textContent).toContain("work");
+    expect(container.textContent).toContain("working/in_review");
+    expect(container.textContent).toContain("agent");
+    expect(container.textContent).toContain("current_work");
+    expect(container.textContent).toContain("triaging worker evidence");
+    expect(findButtonByText(container, "Hide details")).toBeDefined();
+    expect(container.innerHTML).not.toContain("sm:col-span-2");
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {

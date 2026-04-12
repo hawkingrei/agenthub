@@ -1,8 +1,16 @@
 import React from "react";
 import { TeamStepRecord } from "../api";
-import { ActionButton, ToolbarRow } from "../ui/primitives";
 import {
-  TEAM_PANEL_CARD_CLASS,
+  ActionButton,
+  EmptyState,
+  InlineNotice,
+  InsetSurface,
+  KeyValueItem,
+  KeyValueList,
+  SurfaceCard,
+  ToolbarRow,
+} from "../ui/primitives";
+import {
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
@@ -45,19 +53,17 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS =
-  "teams-step-panel min-w-0 rounded-xl border border-ui-border bg-ui-surface-soft/70 p-3";
+const STEPS_PANEL_CLASS = "teams-step-panel min-w-0 flex flex-col gap-3";
 const STEPS_LIST_CLASS =
   "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
-const STEPS_ITEM_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
+const STEPS_ITEM_CLASS = "p-2 sm:p-2";
 const STEPS_ITEM_HEAD_CLASS =
   "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
 const STEPS_ITEM_BODY_CLASS =
-  "teams-step-body mono flex flex-col gap-1 text-ui-xs text-ui-text-muted break-words";
-const STEPS_LIST_ONLY_NOTE_CLASS =
-  "mb-3 rounded-lg border border-state-warning-border bg-state-warning-bg px-3 py-2 text-ui-sm text-state-warning-text";
+  "teams-step-body mono text-ui-xs text-ui-text-muted break-words";
+const STEPS_LIST_ONLY_NOTE_CLASS = "mb-3 text-ui-sm";
 
 function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const {
@@ -97,7 +103,7 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
   const showList = mode !== "controls_only";
 
   return (
-    <div className={TEAM_PANEL_CARD_CLASS}>
+    <SurfaceCard className="p-4">
       <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Steps</h3>
         <ActionButton
@@ -116,7 +122,7 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
 
       {showControls && (
         <div className={STEPS_GRID_CLASS}>
-          <div className={STEPS_PANEL_CLASS}>
+          <InsetSurface className={STEPS_PANEL_CLASS}>
             <h4 className={STEPS_PANEL_TITLE_CLASS}>Submit Step</h4>
             <input
               className={TEAM_PANEL_INPUT_CLASS}
@@ -152,9 +158,9 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
             >
               Submit Step
             </ActionButton>
-          </div>
+          </InsetSurface>
 
-          <div className={STEPS_PANEL_CLASS}>
+          <InsetSurface className={STEPS_PANEL_CLASS}>
             <h4 className={STEPS_PANEL_TITLE_CLASS}>Step Action</h4>
             <select
               className={TEAM_PANEL_INPUT_CLASS}
@@ -242,12 +248,12 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
             >
               Apply Step Action
             </ActionButton>
-          </div>
+          </InsetSurface>
         </div>
       )}
 
       {mode === "list_only" && (
-        <div className={STEPS_LIST_ONLY_NOTE_CLASS}>
+        <InlineNotice tone="warning" className={STEPS_LIST_ONLY_NOTE_CLASS}>
           {developerMode ? (
             <>
               Step operations were moved to <strong>Debug -&gt; Step Ops</strong>.
@@ -255,32 +261,50 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
           ) : (
             "Step controls are available in Developer Mode."
           )}
-        </div>
+        </InlineNotice>
       )}
 
       {showList && (
-        <ul className={STEPS_LIST_CLASS}>
-          {steps.map((step) => (
-            <li key={step.id} className={STEPS_ITEM_CLASS}>
-              <div className={STEPS_ITEM_HEAD_CLASS}>
-                <span className="mono">{step.id}</span>
-                <span>{step.step_key}</span>
-                <span>{step.status}</span>
-              </div>
-              <div className={STEPS_ITEM_BODY_CLASS}>
-                <div>member_id: {step.member_id}</div>
-                <div>attempt: {step.attempt}</div>
-                <div>depends_on: {step.depends_on.length ? step.depends_on.join(", ") : "-"}</div>
-                <div>
-                  runtime_handle_id: {step.runtime_handle_id ?? step.remote_task_id ?? "-"}
-                </div>
-                {step.error_text && <div>error_text: {step.error_text}</div>}
-              </div>
-            </li>
-          ))}
-        </ul>
+        steps.length === 0 ? (
+          <EmptyState
+            title="No steps yet"
+            body="Start a run or open Debug -> Step Ops to seed execution steps."
+            className="mt-3"
+          />
+        ) : (
+          <ul className={STEPS_LIST_CLASS}>
+            {steps.map((step) => (
+              <li key={step.id}>
+                <InsetSurface className={STEPS_ITEM_CLASS}>
+                  <div className={STEPS_ITEM_HEAD_CLASS}>
+                    <span className="mono">{step.id}</span>
+                    <span>{step.step_key}</span>
+                    <span>{step.status}</span>
+                  </div>
+                  <div className={STEPS_ITEM_BODY_CLASS}>
+                    <KeyValueList>
+                      <KeyValueItem label="member_id" value={step.member_id} />
+                      <KeyValueItem label="attempt" value={step.attempt} />
+                      <KeyValueItem
+                        label="depends_on"
+                        value={step.depends_on.length ? step.depends_on.join(", ") : "-"}
+                      />
+                      <KeyValueItem
+                        label="runtime_handle_id"
+                        value={step.runtime_handle_id ?? step.remote_task_id ?? "-"}
+                      />
+                      {step.error_text ? (
+                        <KeyValueItem label="error_text" value={step.error_text} />
+                      ) : null}
+                    </KeyValueList>
+                  </div>
+                </InsetSurface>
+              </li>
+            ))}
+          </ul>
+        )
       )}
-    </div>
+    </SurfaceCard>
   );
 }
 
