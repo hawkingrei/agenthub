@@ -241,7 +241,7 @@ export function StatusPill({ className, ...props }: StatusPillProps) {
   return <span className={cx(STATUS_PILL_BASE_CLASS, className)} {...props} />;
 }
 
-type BadgeProps = React.ComponentPropsWithoutRef<typeof Box> & {
+type BadgeProps = Omit<React.ComponentPropsWithoutRef<typeof Box>, "component"> & {
   tone?: keyof typeof BADGE_TONE_CLASS;
   shape?: keyof typeof BADGE_SHAPE_CLASS;
 };
@@ -347,7 +347,7 @@ export function InlineNotice({ tone = "info", className, ...props }: InlineNotic
   );
 }
 
-type KeyValueListProps = React.ComponentPropsWithoutRef<typeof Box>;
+type KeyValueListProps = Omit<React.ComponentPropsWithoutRef<typeof Box>, "component">;
 
 export function KeyValueList({ className, ...props }: KeyValueListProps) {
   return <Box component="dl" className={cx(KEY_VALUE_LIST_BASE_CLASS, className)} {...props} />;

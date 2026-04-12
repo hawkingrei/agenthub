@@ -67,7 +67,7 @@ const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-4";
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TASKS_BOARD_STACK_CLASS = "mt-4 flex min-h-0 flex-1 flex-col gap-2";
-const TASKS_BOARD_EMPTY_CLASS = "bg-white/50 italic";
+const TASKS_BOARD_EMPTY_CLASS = "italic";
 const TASKS_BOARD_CARD_IDLE_CLASS = TASKS_BOARD_CARD_CLASS;
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted opacity-70";

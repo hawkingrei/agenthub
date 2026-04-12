@@ -22,7 +22,6 @@ import {
   ConversationBubble,
   EmptyState,
   IconButton,
-  InsetSurface,
   KeyValueItem,
   KeyValueList,
   MenuOptionButton,
@@ -158,7 +157,8 @@ const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
-const TEAM_TASK_ACTIVITY_DETAILS_CLASS = "mt-3 p-3 sm:p-3";
+const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
+  "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
@@ -632,7 +632,7 @@ type ActivityDetailsPanelProps = {
 
 function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
   return (
-    <InsetSurface className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
+    <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
       <KeyValueList>
         <KeyValueItem label="source" value={item.streamLabel} />
         <KeyValueItem label="seq" value={item.sequence} />
@@ -649,7 +649,7 @@ function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
           </>
         ) : null}
       </KeyValueList>
-    </InsetSurface>
+    </div>
   );
 }
 
@@ -1454,7 +1454,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           }}
         />
         {activeMention && filteredMentionCandidates.length > 0 && (
-          <SurfaceCard className="mt-2 overflow-hidden border-ui-border bg-ui-surface shadow-sm">
+          <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
             <div className="px-3 py-1 text-xs text-ui-text-muted">
               Select teammate mention (`@` without selection stays plain text)
             </div>
@@ -1474,7 +1474,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 </MenuOptionButton>
               ))}
             </div>
-          </SurfaceCard>
+          </div>
         )}
         <ToolbarRow className="mt-0.5 gap-2">
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
