@@ -16,6 +16,7 @@ import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import {
   ActionButton,
+  Badge,
   CompactButton,
   CompactIconButton,
   ConversationBubble,
@@ -562,7 +563,7 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
     <div className={cardClassName} data-team-permission-card="true">
       <div className={TEAM_TASK_PERMISSION_CARD_HEADER_CLASS}>
         <span className={TEAM_TASK_PERMISSION_CARD_TITLE_CLASS}>{toolLabel}</span>
-        <span className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</span>
+        <Badge className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</Badge>
       </div>
       {!isPending && toolPreview && toolPreview !== toolLabel && (
         <div className={TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS}>{toolPreview}</div>
@@ -711,12 +712,14 @@ function SeenProgressHoverCard({
                 <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
                 <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
                   {seenProgress.readActorIds.map((actorId) => (
-                    <span
+                    <Badge
                       key={`${itemKey}-read-${actorId}`}
-                      className="rounded-full border border-notion-border bg-white px-2 py-0.5"
+                      tone="outline"
+                      shape="pill"
+                      className="text-[11px]"
                     >
                       {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -726,12 +729,14 @@ function SeenProgressHoverCard({
                 <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
                 <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
                   {seenProgress.unreadActorIds.map((actorId) => (
-                    <span
+                    <Badge
                       key={`${itemKey}-unread-${actorId}`}
-                      className="rounded-full border border-dashed border-notion-border bg-transparent px-2 py-0.5"
+                      tone="dashed"
+                      shape="pill"
+                      className="text-[11px]"
                     >
                       {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>

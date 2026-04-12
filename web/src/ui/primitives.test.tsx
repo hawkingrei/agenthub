@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ActionButton,
+  Badge,
   CompactButton,
   CompactIconButton,
   ConversationBubble,
@@ -153,5 +154,23 @@ describe("ui primitives", () => {
     expect(compactButtonHtml).toContain('data-testid="details-toggle"');
     expect(compactIconHtml).toContain("h-5 min-w-5 items-center justify-center");
     expect(compactIconHtml).toContain('aria-label="Seen by 1 recipient"');
+  });
+
+  it("renders badge variants for compact status and recipient chips", () => {
+    const subtleHtml = renderHtml(
+      <Badge className="text-[10px] uppercase tracking-wider">Awaiting human review</Badge>
+    );
+    const outlineHtml = renderHtml(
+      <Badge tone="outline" shape="pill">Worker Agent</Badge>
+    );
+    const dashedHtml = renderHtml(
+      <Badge tone="dashed" shape="pill">Leader Agent</Badge>
+    );
+
+    expect(subtleHtml).toContain("bg-notion-hover");
+    expect(subtleHtml).toContain("Awaiting human review");
+    expect(outlineHtml).toContain("border border-notion-border bg-white");
+    expect(outlineHtml).toContain("rounded-full px-2 py-0.5");
+    expect(dashedHtml).toContain("border border-dashed border-notion-border bg-transparent");
   });
 });

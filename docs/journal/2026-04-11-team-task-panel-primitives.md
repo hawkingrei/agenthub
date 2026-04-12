@@ -16,6 +16,7 @@ shells.
   - added `MenuOptionButton`
   - added `CompactButton`
   - added `CompactIconButton`
+  - added `Badge`
 - `web/src/pages/team_task_panel.tsx`
   - moved the seen-progress hovercard into a focused local component
   - moved developer-mode message details into a focused local component backed by
@@ -24,6 +25,7 @@ shells.
   - switched mention suggestions onto shared compact option rows
   - switched chat and command shells onto a shared conversation-bubble primitive
   - switched dense message meta controls onto shared compact button primitives
+  - switched permission status and seen-state recipient chips onto a shared badge primitive
 - `web/src/ui/primitives.test.tsx`
   - added SSR coverage for the new empty-state, metadata, bubble, and menu-row primitives
   - added SSR coverage for the compact button primitives

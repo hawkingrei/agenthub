@@ -62,6 +62,16 @@ const ICON_BUTTON_TONE_CLASS = {
 
 const STATUS_PILL_BASE_CLASS =
   "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+const BADGE_BASE_CLASS = "inline-flex items-center font-bold text-notion-text-muted";
+const BADGE_TONE_CLASS = {
+  subtle: "bg-notion-hover",
+  outline: "border border-notion-border bg-white",
+  dashed: "border border-dashed border-notion-border bg-transparent",
+} as const;
+const BADGE_SHAPE_CLASS = {
+  tag: "rounded-sm px-1.5 py-0.5",
+  pill: "rounded-full px-2 py-0.5",
+} as const;
 const CONVERSATION_BUBBLE_BASE_CLASS =
   "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft";
 const MENU_OPTION_BUTTON_BASE_CLASS =
@@ -227,6 +237,25 @@ type StatusPillProps = React.HTMLAttributes<HTMLSpanElement>;
 
 export function StatusPill({ className, ...props }: StatusPillProps) {
   return <span className={cx(STATUS_PILL_BASE_CLASS, className)} {...props} />;
+}
+
+type BadgeProps = React.ComponentPropsWithoutRef<typeof Box> & {
+  tone?: keyof typeof BADGE_TONE_CLASS;
+  shape?: keyof typeof BADGE_SHAPE_CLASS;
+};
+
+export function Badge({
+  tone = "subtle",
+  shape = "tag",
+  className,
+  ...props
+}: BadgeProps) {
+  return (
+    <Box
+      className={cx(BADGE_BASE_CLASS, BADGE_TONE_CLASS[tone], BADGE_SHAPE_CLASS[shape], className)}
+      {...props}
+    />
+  );
 }
 
 type ConversationBubbleProps = React.ComponentPropsWithoutRef<typeof Box>;
