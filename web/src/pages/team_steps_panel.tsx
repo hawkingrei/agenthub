@@ -58,7 +58,7 @@ const STEPS_LIST_CLASS =
   "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
-const STEPS_ITEM_CLASS = "rounded-lg p-2 sm:p-2";
+const STEPS_ITEM_CLASS = "p-2 sm:p-2";
 const STEPS_ITEM_HEAD_CLASS =
   "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
 const STEPS_ITEM_BODY_CLASS =

@@ -197,4 +197,20 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("title=\"long running sync task\"");
     expect(html).toContain("Worker Agent");
   });
+
+  it("uses summary badge tone classes without inheriting default primitive colors", () => {
+    const html = renderHtml(
+      <TeamMemberStatusStrip
+        members={[
+          buildMember({
+            member_id: "worker-8",
+            lifecycle_status: "idle",
+            step_status: "input_required",
+          }),
+        ]}
+      />
+    );
+    expect(html).toContain("border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-ink)]");
+    expect(html).not.toContain("border-notion-border bg-white text-notion-text-muted");
+  });
 });

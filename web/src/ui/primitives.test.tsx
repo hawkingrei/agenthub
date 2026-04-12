@@ -76,10 +76,15 @@ describe("ui primitives", () => {
         <i className="bi bi-plus" aria-hidden="true" />
       </IconButton>
     );
-    const pillHtml = renderHtml(<StatusPill>Leader</StatusPill>);
+    const pillHtml = renderHtml(
+      <StatusPill className="border-notion-border bg-white text-notion-text-muted">
+        Leader
+      </StatusPill>
+    );
     expect(iconHtml).toContain("bg-notion-accent-bg text-notion-accent");
     expect(iconHtml).toContain("h-7 w-7");
-    expect(pillHtml).toContain("rounded-full border border-notion-border");
+    expect(pillHtml).toContain("rounded-full border px-2 py-0.5");
+    expect(pillHtml).toContain("border-notion-border bg-white text-notion-text-muted");
     expect(pillHtml).toContain("Leader");
   });
 
@@ -117,6 +122,8 @@ describe("ui primitives", () => {
     expect(noticeHtml).toContain("border-state-warning-border bg-state-warning-bg/60");
     expect(noticeHtml).toContain("Developer Mode only.");
     expect(keyValueHtml).toContain("grid min-w-0 gap-x-3 gap-y-1");
+    expect(keyValueHtml).toContain("text-[10px] font-bold uppercase tracking-wider text-notion-text-muted/80");
+    expect(keyValueHtml).toContain("min-w-0 break-words text-[12px] leading-relaxed text-notion-text");
     expect(keyValueHtml).toContain("role");
     expect(keyValueHtml).toContain("leader");
     expect(keyValueHtml).toContain("data-testid=\"role-row\"");
@@ -136,5 +143,28 @@ describe("ui primitives", () => {
     expect(html).toContain("id=\"current-row\"");
     expect(html).toContain("title=\"collecting evidence\"");
     expect(html).toContain("collecting evidence");
+  });
+
+  it("keeps key-value and status pill primitives structure-first so callers can own tone classes", () => {
+    const keyValueHtml = renderHtml(
+      <KeyValueList className="text-[11px] text-brand-primary">
+        <KeyValueItem
+          label="route"
+          value="to_leader"
+          labelClassName="text-brand-primary/70"
+          valueClassName="mono text-brand-primary"
+        />
+      </KeyValueList>
+    );
+    const pillHtml = renderHtml(
+      <StatusPill className="border-state-warning-border bg-state-warning-bg text-state-warning-text">
+        idle=1
+      </StatusPill>
+    );
+    expect(keyValueHtml).toContain("text-[11px] text-brand-primary");
+    expect(keyValueHtml).toContain("text-brand-primary/70");
+    expect(keyValueHtml).toContain("mono text-brand-primary");
+    expect(pillHtml).toContain("border-state-warning-border bg-state-warning-bg text-state-warning-text");
+    expect(pillHtml).not.toContain("border-notion-border bg-white text-notion-text-muted");
   });
 });

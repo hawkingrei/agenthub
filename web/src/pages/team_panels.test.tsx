@@ -1431,6 +1431,13 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("runtime-7");
     expect(container.textContent).toContain("error_text");
     expect(container.textContent).toContain("needs retry");
+    const stepItem = required(
+      container.querySelector(".teams-step-list li .min-h-0.rounded-xl"),
+      "step item surface missing"
+    );
+    expect(stepItem.className).toContain("p-2");
+    expect(stepItem.className).toContain("sm:p-2");
+    expect(stepItem.className).not.toContain("rounded-lg");
   });
 
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
@@ -2668,6 +2675,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("current_work");
     expect(container.textContent).toContain("triaging worker evidence");
     expect(findButtonByText(container, "Hide details")).toBeDefined();
+    expect(container.innerHTML).not.toContain("sm:col-span-2");
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {

@@ -685,7 +685,6 @@ function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
               <KeyValueItem
                 label="current_work"
                 value={state.current_work}
-                className="sm:col-span-2"
                 labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
               />
             ) : null}

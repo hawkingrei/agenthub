@@ -61,7 +61,7 @@ const ICON_BUTTON_TONE_CLASS = {
 } as const;
 
 const STATUS_PILL_BASE_CLASS =
-  "inline-flex shrink-0 items-center rounded-full border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+  "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider";
 const EMPTY_STATE_BASE_CLASS =
   "rounded-xl border border-dashed border-notion-border bg-notion-sidebar/20 px-4 py-5 text-sm text-notion-text-muted";
 const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
@@ -75,11 +75,11 @@ const INLINE_NOTICE_TONE_CLASS = {
   danger: "border-state-error-border bg-state-error-bg/60 text-state-error-text",
 } as const;
 const KEY_VALUE_LIST_BASE_CLASS =
-  "grid min-w-0 gap-x-3 gap-y-1 text-[12px] leading-relaxed text-notion-text-muted sm:grid-cols-[auto_minmax(0,1fr)]";
+  "grid min-w-0 gap-x-3 gap-y-1 sm:grid-cols-[auto_minmax(0,1fr)]";
 const KEY_VALUE_ITEM_BASE_CLASS = "contents";
 const KEY_VALUE_LABEL_CLASS =
-  "font-bold uppercase tracking-wider text-[10px] text-notion-text-muted/80";
-const KEY_VALUE_VALUE_CLASS = "min-w-0 break-words text-notion-text";
+  "text-[10px] font-bold uppercase tracking-wider text-notion-text-muted/80";
+const KEY_VALUE_VALUE_CLASS = "min-w-0 break-words text-[12px] leading-relaxed text-notion-text";
 
 type SurfaceCardProps = React.ComponentPropsWithoutRef<typeof Box>;
 
