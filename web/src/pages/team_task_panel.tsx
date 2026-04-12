@@ -16,9 +16,15 @@ import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import {
   ActionButton,
+  Badge,
+  CompactButton,
+  CompactIconButton,
+  ConversationBubble,
+  EmptyState,
   IconButton,
   KeyValueItem,
   KeyValueList,
+  MenuOptionButton,
   SurfaceCard,
   ToolbarRow,
 } from "../ui/primitives";
@@ -41,8 +47,6 @@ import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS,
-  TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
   TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS,
@@ -154,16 +158,9 @@ const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-3 rounded-lg border border-notion-border bg-notion-sidebar/30 p-3";
-const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+  "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
-const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS = "gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted";
-const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
-  "mono font-bold text-notion-text opacity-70";
-const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
@@ -181,12 +178,10 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
-const TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS =
-  "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
-const TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS =
-  "bg-brand-primary/10 text-brand-primary";
-const TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS =
-  "text-ui-text-primary hover:bg-ui-surface-soft";
+const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
+  "border-notion-accent/15 bg-notion-accent-bg/72";
+const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
+  "border-notion-border-subtle bg-white";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -289,13 +284,13 @@ function resolveActivityContentClassName(
   }`;
 }
 
-function resolveActivityBubbleClassName(
+function resolveActivityBubbleToneClassName(
   actorId: string,
   humanActorId: string
 ): string {
   return isHumanMailboxActor(actorId, humanActorId)
-    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS
-    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS;
+    ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS
+    : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS;
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -530,10 +525,10 @@ type SeenProgressHoverProps = {
   itemKey: string;
   seenActorIds: string[];
   seenProgress: SeenProgressState;
-  memberDisplayNamesById: Map<string, string>;
+  memberDisplayNamesById: Record<string, string>;
 };
 
-function SeenProgressHover({
+function SeenProgressHoverCard({
   itemKey,
   seenActorIds,
   seenProgress,
@@ -543,18 +538,11 @@ function SeenProgressHover({
     <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
-          <button
-            type="button"
-            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
-            aria-label="Pending delivery"
-            title="Pending delivery"
-          >
+          <CompactIconButton aria-label="Pending delivery" title="Pending delivery">
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-          </button>
+          </CompactIconButton>
         ) : (
-          <button
-            type="button"
-            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+          <CompactIconButton
             aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
             title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
           >
@@ -575,7 +563,7 @@ function SeenProgressHover({
                 } satisfies SeenDialStyle
               }
             />
-          </button>
+          </CompactIconButton>
         )}
       </HoverCard.Target>
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
@@ -595,12 +583,14 @@ function SeenProgressHover({
                 <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Read</div>
                 <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
                   {seenProgress.readActorIds.map((actorId) => (
-                    <span
+                    <Badge
                       key={`${itemKey}-read-${actorId}`}
-                      className="rounded-full border border-notion-border bg-white px-2 py-0.5"
+                      tone="outline"
+                      shape="pill"
+                      className="text-[11px]"
                     >
                       {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -610,12 +600,14 @@ function SeenProgressHover({
                 <div className={TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS}>Unread</div>
                 <div className={TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS}>
                   {seenProgress.unreadActorIds.map((actorId) => (
-                    <span
+                    <Badge
                       key={`${itemKey}-unread-${actorId}`}
-                      className="rounded-full border border-dashed border-notion-border bg-transparent px-2 py-0.5"
+                      tone="dashed"
+                      shape="pill"
+                      className="text-[11px]"
                     >
                       {resolveDisplayName(actorId, memberDisplayNamesById, actorId)}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -632,8 +624,8 @@ type ActivityDetailsPanelProps = {
     streamLabel: string;
     sequence: number;
     fromActorId: string;
-    toActorId: string | null;
-    routeOrStatus: string | null;
+    toActorId?: string | null;
+    routeOrStatus: string;
   };
   state?: TeamMemberLiveState;
 };
@@ -641,52 +633,18 @@ type ActivityDetailsPanelProps = {
 function ActivityDetailsPanel({ item, state }: ActivityDetailsPanelProps) {
   return (
     <div className={TEAM_TASK_ACTIVITY_DETAILS_CLASS}>
-      <KeyValueList className={TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS}>
-        <KeyValueItem
-          label="source"
-          value={item.streamLabel}
-          labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-        />
-        <KeyValueItem
-          label="seq"
-          value={item.sequence}
-          labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-        />
-        <KeyValueItem
-          label="from"
-          value={item.fromActorId}
-          labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-          valueClassName="mono"
-        />
-        <KeyValueItem
-          label="to"
-          value={item.toActorId ?? "-"}
-          labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-          valueClassName="mono"
-        />
-        <KeyValueItem
-          label="route"
-          value={item.routeOrStatus ?? "-"}
-          labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-        />
+      <KeyValueList>
+        <KeyValueItem label="source" value={item.streamLabel} />
+        <KeyValueItem label="seq" value={item.sequence} />
+        <KeyValueItem label="from" value={item.fromActorId} valueClassName="mono" />
+        <KeyValueItem label="to" value={item.toActorId ?? "-"} valueClassName="mono" />
+        <KeyValueItem label="route" value={item.routeOrStatus} />
         {state ? (
           <>
-            <KeyValueItem
-              label="work"
-              value={`${state.run_status}/${state.step_status}`}
-              labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-            />
-            <KeyValueItem
-              label="agent"
-              value={state.lifecycle_status}
-              labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-            />
+            <KeyValueItem label="work" value={`${state.run_status}/${state.step_status}`} />
+            <KeyValueItem label="agent" value={state.lifecycle_status} />
             {state.current_work ? (
-              <KeyValueItem
-                label="current_work"
-                value={state.current_work}
-                labelClassName={TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS}
-              />
+              <KeyValueItem label="current_work" value={state.current_work} />
             ) : null}
           </>
         ) : null}
@@ -718,7 +676,7 @@ function PermissionReviewCard(props: PermissionReviewCardProps) {
     <div className={cardClassName} data-team-permission-card="true">
       <div className={TEAM_TASK_PERMISSION_CARD_HEADER_CLASS}>
         <span className={TEAM_TASK_PERMISSION_CARD_TITLE_CLASS}>{toolLabel}</span>
-        <span className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</span>
+        <Badge className={TEAM_TASK_PERMISSION_CARD_STATUS_CLASS}>{statusText}</Badge>
       </div>
       {!isPending && toolPreview && toolPreview !== toolLabel && (
         <div className={TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS}>{toolPreview}</div>
@@ -1323,7 +1281,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                     {(shouldShowSeenMeta || developerMode) && (
                       <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
                         {shouldShowSeenMeta && (
-                          <SeenProgressHover
+                          <SeenProgressHoverCard
                             itemKey={item.key}
                             seenActorIds={seenActorIds}
                             seenProgress={seenProgress}
@@ -1331,9 +1289,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                           />
                         )}
                         {developerMode && (
-                          <button
-                            type="button"
-                            className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                          <CompactButton
                             onClick={() =>
                               setExpandedItemKeys((current) => ({
                                 ...current,
@@ -1343,7 +1299,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                             aria-expanded={Boolean(expandedItemKeys[item.key])}
                           >
                             {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                          </button>
+                          </CompactButton>
                         )}
                       </div>
                     )}
@@ -1359,23 +1315,23 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       />
                     </div>
                   ) : isCompactCommandLikeText(item.text) ? (
-                    <div
+                    <ConversationBubble
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
                     >
                       <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                    </div>
+                    </ConversationBubble>
                   ) : (
-                    <div
+                    <ConversationBubble
                       data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleClassName(item.fromActorId, humanActorId)}
+                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
                     >
                       <TeamThreadRichText
                         className={TEAM_TASK_ACTIVITY_BODY_CLASS}
                         text={item.text}
                         renderSanitizedHtml={renderTeamMessageHtml}
                       />
-                    </div>
+                    </ConversationBubble>
                   )}
                   {developerMode && expandedItemKeys[item.key] && (
                     <ActivityDetailsPanel item={item} state={state} />
@@ -1385,14 +1341,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             );
           })}
           {showInitialThreadLoading && (
-            <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              Loading thread...
-            </div>
+            <EmptyState title="Loading thread..." className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
           )}
           {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
-            <div className={TEAM_TASK_MESSAGE_EMPTY_CLASS}>
-              {emptyStateText}
-            </div>
+            <EmptyState title={emptyStateText} className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
           )}
             </div>
           </div>
@@ -1502,20 +1454,16 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           }}
         />
         {activeMention && filteredMentionCandidates.length > 0 && (
-          <div className="mt-2 rounded-lg border border-ui-border bg-ui-surface shadow-sm">
+          <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
             <div className="px-3 py-1 text-xs text-ui-text-muted">
               Select teammate mention (`@` without selection stays plain text)
             </div>
             <div className="max-h-44 overflow-auto py-1">
               {filteredMentionCandidates.map((candidate, index) => (
-                <button
-                  type="button"
+                <MenuOptionButton
                   key={candidate.actorId}
-                  className={`${TEAM_TASK_MENTION_OPTION_BUTTON_BASE_CLASS} ${
-                    index === activeMentionIndex
-                      ? TEAM_TASK_MENTION_OPTION_BUTTON_ACTIVE_CLASS
-                      : TEAM_TASK_MENTION_OPTION_BUTTON_IDLE_CLASS
-                  }`}
+                  active={index === activeMentionIndex}
+                  data-team-mention-option={candidate.actorId}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     applyMentionSelection(candidate);
@@ -1523,7 +1471,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                 >
                   <span>{candidate.label}</span>
                   <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </button>
+                </MenuOptionButton>
               ))}
             </div>
           </div>

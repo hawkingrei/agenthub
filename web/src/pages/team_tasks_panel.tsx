@@ -9,6 +9,8 @@ import type {
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import {
   ActionButton,
+  Badge,
+  EmptyState,
   SelectableListItem,
   ToolbarRow,
 } from "../ui/primitives";
@@ -65,8 +67,7 @@ const TASKS_BOARD_SCROLL_CLASS = "-mx-1 overflow-x-auto px-1 pb-4";
 const TASKS_BOARD_COLUMN_META_CLASS =
   "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TASKS_BOARD_STACK_CLASS = "mt-4 flex min-h-0 flex-1 flex-col gap-2";
-const TASKS_BOARD_EMPTY_CLASS =
-  "rounded-md border border-dashed border-notion-border bg-white/50 px-3 py-4 text-sm text-notion-text-muted italic text-center";
+const TASKS_BOARD_EMPTY_CLASS = "italic";
 const TASKS_BOARD_CARD_IDLE_CLASS = TASKS_BOARD_CARD_CLASS;
 const TASKS_BOARD_CARD_META_ROW_CLASS =
   "flex w-full items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted opacity-70";
@@ -324,9 +325,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                       <h4 className="text-sm font-bold text-notion-text">
                         {column.label}
                       </h4>
-                      <span className="rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted">
+                      <Badge className="text-[10px]">
                         {laneTasks.length}
-                      </span>
+                      </Badge>
                     </div>
                     <p className={`mt-1 ${TASKS_BOARD_COLUMN_META_CLASS}`}>
                       {column.description}
@@ -342,19 +343,20 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
 
                 <div className={TASKS_BOARD_STACK_CLASS}>
                   {showInitialLoadingState && (
-                    <div className={TASKS_BOARD_EMPTY_CLASS}>Loading tasks...</div>
+                    <EmptyState title="Loading tasks..." className={TASKS_BOARD_EMPTY_CLASS} />
                   )}
                   {!showInitialLoadingState && tasks.length === 0 && (
-                    <div className={TASKS_BOARD_EMPTY_CLASS}>
-                      No tasks yet.
-                    </div>
+                    <EmptyState title="No tasks yet." className={TASKS_BOARD_EMPTY_CLASS} />
                   )}
                   {!showInitialLoadingState && tasks.length > 0 && laneTasks.length === 0 && (
-                    <div className={TASKS_BOARD_EMPTY_CLASS}>
-                      {statusFilter === "all"
-                        ? formatTaskEmptyLabel(column.status)
-                        : "No results."}
-                    </div>
+                    <EmptyState
+                      title={
+                        statusFilter === "all"
+                          ? formatTaskEmptyLabel(column.status)
+                          : "No results."
+                      }
+                      className={TASKS_BOARD_EMPTY_CLASS}
+                    />
                   )}
                   {!showInitialLoadingState &&
                     laneTasks.map((task) => (
@@ -528,9 +530,9 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                   <div>
                     <p className="text-sm font-bold text-notion-text">Previous runs</p>
                   </div>
-                  <span className="rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted">
+                  <Badge className="text-[10px]">
                     {relatedRuns.length - 1}
-                  </span>
+                  </Badge>
                 </div>
                 <div className="mt-4 space-y-2">
                   {relatedRuns.slice(1, 4).map((run) => (

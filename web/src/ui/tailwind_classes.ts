@@ -324,7 +324,7 @@ export const TEAM_TASK_PERMISSION_CARD_TITLE_CLASS =
   "text-[13px] font-bold tracking-tight text-notion-text";
 
 export const TEAM_TASK_PERMISSION_CARD_STATUS_CLASS =
-  "inline-flex items-center rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted";
+  "text-[10px] uppercase tracking-wider";
 
 export const TEAM_TASK_PERMISSION_CARD_COMPACT_PREVIEW_CLASS =
   "mono mt-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-notion-text-muted opacity-70";
