@@ -5,7 +5,8 @@ use super::acp_provider::{
 use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
-    AgentOutput, AgentRecord, AgentStatus, OutputStream, WorktreeMode,
+    AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
+    WorktreeMode,
     build_runtime_start_policy, ensure_team_runtime_workspace_layout,
     is_agent_loop_activity_output, should_rearm_agent_loop_for_output, status_to_str,
     stream_from_str,
@@ -92,8 +93,9 @@ fn agent_loop_activity_counts_non_loop_acp_output_only() {
     );
 
     let loop_input = AgentOutput {
-        message: r#"{"type":"user_message","text":"loop prompt","message_id":"agent-loop:seq-2"}"#
-            .to_string(),
+        message: format!(
+            r#"{{"type":"user_message","text":"loop prompt","message_id":"{AGENT_LOOP_MESSAGE_ID_PREFIX}seq-2"}}"#
+        ),
         ..base.clone()
     };
     assert!(
@@ -139,8 +141,9 @@ fn agent_loop_rearm_requires_same_session_and_real_acp_activity() {
     );
 
     let synthetic_loop = AgentOutput {
-        message: r#"{"type":"user_message","text":"loop prompt","message_id":"agent-loop:seq-2"}"#
-            .to_string(),
+        message: format!(
+            r#"{{"type":"user_message","text":"loop prompt","message_id":"{AGENT_LOOP_MESSAGE_ID_PREFIX}seq-2"}}"#
+        ),
         ..base.clone()
     };
     assert!(

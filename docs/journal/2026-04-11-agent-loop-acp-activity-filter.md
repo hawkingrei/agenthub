@@ -10,8 +10,10 @@ phase-1 contract.
 - Added a focused `is_agent_loop_activity_output(...)` helper in `src/agent/manager.rs`.
 - The loop controller now rearms only when the session receives non-loop `OutputStream::Acp`
   activity.
-- `system`, `stdout`, and `stderr` events no longer reset the idle deadline for ACP watchdog
-  prompts.
+- `system`, `stdout`, and `stderr` events no longer directly reset the idle deadline for ACP
+  watchdog prompts.
+- A `broadcast::RecvError::Lagged(_)` still rearms conservatively because receiver overflow can
+  hide real ACP activity even when noisy non-ACP output contributed to the lag.
 
 ## Why
 
