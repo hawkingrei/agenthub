@@ -89,6 +89,34 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
     )
 }
 
+fn build_step_runtime_handle_event_payload(step: &TeamStepRecord, status: &'static str) -> Value {
+    serde_json::json!({
+        "step_id": step.id,
+        "step_key": step.step_key,
+        "status": status,
+        "runtime_handle_id": step.runtime_handle_id,
+    })
+}
+
+fn build_continuity_event_payload(
+    continuity_state: &TeamMemberContinuityStateRecord,
+    step: &TeamStepRecord,
+    continuity_mode: &str,
+    artifact_offload_status: &str,
+) -> Value {
+    serde_json::json!({
+        "team_id": continuity_state.team_id,
+        "member_id": continuity_state.member_id,
+        "step_id": step.id,
+        "step_key": step.step_key,
+        "mode": continuity_mode,
+        "source_run_id": continuity_state.source_run_id,
+        "source_runtime_handle_id": continuity_state.source_session_id,
+        "summary_chars": continuity_state.summary_text.chars().count(),
+        "artifact_offload_status": artifact_offload_status,
+    })
+}
+
 #[derive(Debug, thiserror::Error)]
 enum TaskConversationMessageStoreError {
     #[error("idempotency_key conflicts with an existing task conversation message payload")]
@@ -2045,13 +2073,7 @@ impl TeamManager {
                 .await?;
             }
 
-            let step_payload = serde_json::json!({
-                "step_id": step.id,
-                "step_key": step.step_key,
-                "status": "working",
-                "runtime_handle_id": step.runtime_handle_id,
-                "remote_task_id": step.runtime_handle_id,
-            });
+            let step_payload = build_step_runtime_handle_event_payload(&step, "working");
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2263,13 +2285,7 @@ impl TeamManager {
                 .await?;
             }
 
-            let step_payload = serde_json::json!({
-                "step_id": step.id,
-                "step_key": step.step_key,
-                "status": "working",
-                "runtime_handle_id": step.runtime_handle_id,
-                "remote_task_id": step.runtime_handle_id,
-            });
+            let step_payload = build_step_runtime_handle_event_payload(&step, "working");
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2435,17 +2451,12 @@ impl TeamManager {
             };
             Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
 
-            let mut continuity_payload = serde_json::json!({
-                "team_id": continuity_state.team_id,
-                "member_id": continuity_state.member_id,
-                "step_id": step.id,
-                "step_key": step.step_key,
-                "mode": continuity_mode,
-                "source_run_id": continuity_state.source_run_id,
-                "source_session_id": continuity_state.source_session_id,
-                "summary_chars": continuity_state.summary_text.chars().count(),
-                "artifact_offload_status": artifact_offload_status,
-            });
+            let mut continuity_payload = build_continuity_event_payload(
+                &continuity_state,
+                &step,
+                &continuity_mode,
+                artifact_offload_status,
+            );
             if let Some(payload_obj) = continuity_payload.as_object_mut() {
                 if let Some(pointer_payload) = artifact_pointer_for_event {
                     payload_obj.insert("artifact_pointer".to_string(), pointer_payload);

@@ -1424,7 +1424,10 @@ async fn linked_run_sync_preserves_waiting_tasks() {
         )
         .await
         .expect("create linked run");
-    let after_create = manager.get_task(&task.id).await.expect("reload after create");
+    let after_create = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after create");
     assert_eq!(after_create.status, TeamTaskStatus::Waiting);
 
     let step = manager
@@ -1897,6 +1900,18 @@ async fn step_lifecycle_transitions_persist_and_emit_events() {
         .list_run_events(&run.id, 100, None)
         .await
         .expect("list run events");
+    let step_working_event = events
+        .iter()
+        .find(|event| event.event_type == "step_working")
+        .expect("step_working event should exist");
+    assert_eq!(
+        step_working_event.payload["runtime_handle_id"],
+        json!("remote-task-1")
+    );
+    assert!(
+        step_working_event.payload.get("remote_task_id").is_none(),
+        "step_working payload should not expose legacy remote_task_id"
+    );
     let event_types: Vec<&str> = events
         .iter()
         .map(|event| event.event_type.as_str())
@@ -2043,6 +2058,14 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
         .iter()
         .find(|event| event.event_type == "continuity_state_updated")
         .expect("continuity_state_updated event should exist");
+    assert_eq!(
+        continuity_event.payload["source_runtime_handle_id"],
+        json!("remote-task-artifact")
+    );
+    assert!(
+        continuity_event.payload.get("source_session_id").is_none(),
+        "continuity_state_updated should not expose legacy source_session_id"
+    );
     assert_eq!(
         continuity_event.payload["artifact_offload_status"],
         json!("persisted")
@@ -2474,6 +2497,32 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
         .list_run_events(&run.id, 100, None)
         .await
         .expect("list run events");
+    let step_resumed_event = events
+        .iter()
+        .find(|event| event.event_type == "step_resumed")
+        .expect("step_resumed event should exist");
+    assert_eq!(
+        step_resumed_event.payload["runtime_handle_id"],
+        json!("remote-task-input")
+    );
+    assert!(
+        step_resumed_event.payload.get("remote_task_id").is_none(),
+        "step_resumed payload should not expose legacy remote_task_id"
+    );
+
+    let continuity_event = events
+        .iter()
+        .find(|event| event.event_type == "continuity_state_updated")
+        .expect("continuity_state_updated event should exist");
+    assert_eq!(
+        continuity_event.payload["source_runtime_handle_id"],
+        json!("remote-task-input")
+    );
+    assert!(
+        continuity_event.payload.get("source_session_id").is_none(),
+        "continuity_state_updated should not expose legacy source_session_id"
+    );
+
     let event_types: Vec<&str> = events
         .iter()
         .map(|event| event.event_type.as_str())
