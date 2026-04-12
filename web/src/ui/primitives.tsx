@@ -358,7 +358,7 @@ type KeyValueItemProps = {
   value: React.ReactNode;
   labelClassName?: string;
   valueClassName?: string;
-} & Omit<React.ComponentPropsWithoutRef<typeof Box>, "children">;
+} & Omit<React.ComponentPropsWithoutRef<typeof Box>, "children" | "component">;
 
 export function KeyValueItem({
   label,
