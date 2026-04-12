@@ -2606,6 +2606,70 @@ describe("team panels interactions", () => {
     expect(progressbar?.getAttribute("aria-valuemax")).toBe("1");
   });
 
+  it("TeamTaskPanel renders expandable activity details in developer mode", () => {
+    const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onRefreshMessages={vi.fn()}
+        messages={[
+          buildTaskMessage(7, {
+            from_actor_id: "leader-agent",
+            to_actor_id: "worker-agent",
+            route: "to_worker",
+            payload: { type: "chat_message", text: "please verify the runtime output" },
+          }),
+        ]}
+        seenByMessageId={{ 7: ["worker-agent"] }}
+        humanActorId="user"
+        memberLiveStates={[
+          {
+            member_id: "leader-agent",
+            role: "leader",
+            agent_name: "LeaderAgent",
+            lifecycle_status: "working",
+            lifecycle_tone: "active",
+            run_status: "working",
+            step_status: "in_review",
+            pending_inbox_count: 0,
+            current_work: "triaging worker evidence",
+          },
+        ]}
+        memberIds={["leader-agent", "worker-agent"]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={toPrettyJson}
+      />
+    );
+
+    clickElement(findButtonByText(container, "Show details"));
+
+    expect(container.textContent).toContain("source");
+    expect(container.textContent).toContain("conversation");
+    expect(container.textContent).toContain("seq");
+    expect(container.textContent).toContain("7");
+    expect(container.textContent).toContain("from");
+    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("to");
+    expect(container.textContent).toContain("worker-agent");
+    expect(container.textContent).toContain("route");
+    expect(container.textContent).toContain("to_worker");
+    expect(container.textContent).toContain("work");
+    expect(container.textContent).toContain("working/in_review");
+    expect(container.textContent).toContain("agent");
+    expect(container.textContent).toContain("current_work");
+    expect(container.textContent).toContain("triaging worker evidence");
+    expect(findButtonByText(container, "Hide details")).toBeDefined();
+  });
+
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const rafSpy = vi
