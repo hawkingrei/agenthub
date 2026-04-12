@@ -1059,7 +1059,7 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::TurnStarted(TurnStartedEvent {
                         turn_id: payload.turn.id,
-                        started_at: None,
+                        started_at: payload.turn.started_at,
                         model_context_window: None,
                         collaboration_mode_kind: Default::default(),
                     }),
@@ -2494,14 +2494,14 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
             turn_id: turn.id.clone(),
             last_agent_message,
-            completed_at: None,
-            duration_ms: None,
+            completed_at: turn.completed_at,
+            duration_ms: turn.duration_ms,
         }),
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
             reason: TurnAbortReason::Interrupted,
-            completed_at: None,
-            duration_ms: None,
+            completed_at: turn.completed_at,
+            duration_ms: turn.duration_ms,
         }),
         TurnStatus::Failed => EventMsg::Error(ErrorEvent {
             message: turn
