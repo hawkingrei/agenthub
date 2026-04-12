@@ -21,17 +21,18 @@ use agent_client_protocol::{
 use agenthub_managed_skills::managed_skills_root;
 use codex_apply_patch::parse_patch;
 use codex_core::{
-    AuthManager, CodexThread,
+    CodexThread,
     config::{Config, set_project_trust_level},
-    error::CodexErr,
-    models_manager::manager::{ModelsManager, RefreshStrategy},
     review_format::format_review_findings_block,
     review_prompts::user_facing_hint,
 };
+use codex_login::AuthManager;
+use codex_models_manager::manager::{ModelsManager, RefreshStrategy};
 use codex_protocol::{
     approvals::{ElicitationRequest, ElicitationRequestEvent},
     config_types::TrustLevel,
     dynamic_tools::{DynamicToolCallOutputContentItem, DynamicToolCallRequest},
+    error::CodexErr,
     mcp::CallToolResult,
     models::{PermissionProfile, ResponseItem, WebSearchAction},
     openai_models::{ModelPreset, ReasoningEffort},
@@ -770,6 +771,7 @@ impl PromptState {
 
         match event {
             EventMsg::TurnStarted(TurnStartedEvent {
+                started_at: _,
                 model_context_window,
                 collaboration_mode_kind,
                 turn_id,
@@ -994,7 +996,12 @@ impl PromptState {
             }) => {
                 info!("Item completed: thread_id={}, turn_id={}, item={:?}", thread_id, turn_id, item);
             }
-            EventMsg::TurnComplete(TurnCompleteEvent { last_agent_message, turn_id }) => {
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                last_agent_message,
+                turn_id,
+                completed_at: _,
+                duration_ms: _,
+            }) => {
                 info!(
                     "Task {turn_id} completed successfully after {} events. Last agent message: {last_agent_message:?}",
                     self.event_count
@@ -1038,7 +1045,12 @@ impl PromptState {
                     json!({ "message": message, "codex_error_info": codex_error_info }),
                 ));
             }
-            EventMsg::TurnAborted(TurnAbortedEvent { reason, turn_id }) => {
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                reason,
+                turn_id,
+                completed_at: _,
+                duration_ms: _,
+            }) => {
                 info!("Turn {turn_id:?} aborted: {reason:?}");
                 self.abort_pending_interactions();
                 self.finish_ok(StopReason::Cancelled);
@@ -1150,7 +1162,9 @@ impl PromptState {
             | EventMsg::CollabAgentInteractionEnd(..)
             | EventMsg::RealtimeConversationStarted(..)
             | EventMsg::RealtimeConversationRealtime(..)
+            | EventMsg::RealtimeConversationSdp(..)
             | EventMsg::RealtimeConversationClosed(..)
+            | EventMsg::RealtimeConversationListVoicesResponse(..)
             | EventMsg::CollabWaitingBegin(..)
             | EventMsg::CollabWaitingEnd(..)
             | EventMsg::CollabResumeBegin(..)
@@ -3275,6 +3289,7 @@ impl<A: Auth> ThreadActor<A> {
                             text_elements: vec![],
                         }],
                         final_output_json_schema: None,
+                        responsesapi_client_metadata: None,
                     }
                 }
                 "review" => {
@@ -3325,6 +3340,7 @@ impl<A: Auth> ThreadActor<A> {
                     op = Op::UserInput {
                         items,
                         final_output_json_schema: None,
+                        responsesapi_client_metadata: None,
                     }
                 }
             }
@@ -3332,6 +3348,7 @@ impl<A: Auth> ThreadActor<A> {
             op = Op::UserInput {
                 items,
                 final_output_json_schema: None,
+                responsesapi_client_metadata: None,
             }
         }
 
@@ -3565,7 +3582,7 @@ impl<A: Auth> ThreadActor<A> {
         for hunk in &parsed.hunks {
             match hunk {
                 codex_apply_patch::Hunk::AddFile { path, contents } => {
-                    let full_path = self.config.cwd.join(path).ok()?;
+                    let full_path = self.config.cwd.join(path);
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(full_path.clone()));
                     // New file: no old_text, new_text is the contents
@@ -3575,7 +3592,7 @@ impl<A: Auth> ThreadActor<A> {
                     )));
                 }
                 codex_apply_patch::Hunk::DeleteFile { path } => {
-                    let full_path = self.config.cwd.join(path).ok()?;
+                    let full_path = self.config.cwd.join(path);
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(full_path.clone()));
                     // Delete file: old_text would be original content, new_text is empty
@@ -3588,10 +3605,10 @@ impl<A: Auth> ThreadActor<A> {
                     move_path,
                     chunks,
                 } => {
-                    let full_path = self.config.cwd.join(path).ok()?;
+                    let full_path = self.config.cwd.join(path);
                     let dest_path = move_path
                         .as_ref()
-                        .and_then(|p| self.config.cwd.join(p).ok())
+                        .map(|p| self.config.cwd.join(p))
                         .unwrap_or_else(|| full_path.clone());
                     file_names.push(path.display().to_string());
                     locations.push(ToolCallLocation::new(dest_path.clone()));
@@ -4644,6 +4661,7 @@ mod tests {
                     text_elements: vec![]
                 }],
                 final_output_json_schema: None,
+                responsesapi_client_metadata: None,
             }],
             "ops don't match {ops:?}"
         );
@@ -4918,6 +4936,7 @@ mod tests {
                     text_elements: vec![]
                 }],
                 final_output_json_schema: None,
+                responsesapi_client_metadata: None,
             }],
             "ops don't match {ops:?}"
         );
@@ -4968,6 +4987,8 @@ mod tests {
                 thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
                     last_agent_message: Some("done".to_string()),
                     turn_id: "shared-turn".to_string(),
+                    completed_at: None,
+                    duration_ms: None,
                 }));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
@@ -5033,6 +5054,8 @@ mod tests {
                         msg: EventMsg::TurnComplete(TurnCompleteEvent {
                             last_agent_message: Some("resumed output".to_string()),
                             turn_id: "resumed-turn".to_string(),
+                            completed_at: None,
+                            duration_ms: None,
                         }),
                     })
                     .await;
@@ -5253,6 +5276,8 @@ mod tests {
                 thread.emit(EventMsg::TurnComplete(TurnCompleteEvent {
                     last_agent_message: Some("done".to_string()),
                     turn_id: "shared-turn".to_string(),
+                    completed_at: None,
+                    duration_ms: None,
                 }));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
@@ -5479,6 +5504,8 @@ mod tests {
                         send(EventMsg::TurnComplete(TurnCompleteEvent {
                             last_agent_message: None,
                             turn_id,
+                            completed_at: None,
+                            duration_ms: None,
                         }));
                     } else if prompt == "approval-block" {
                         self.op_tx
@@ -5536,6 +5563,8 @@ mod tests {
                                 msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                     last_agent_message: None,
                                     turn_id: id.to_string(),
+                                    completed_at: None,
+                                    duration_ms: None,
                                 }),
                             })
                             .unwrap();
@@ -5547,6 +5576,7 @@ mod tests {
                             id: submission_id.clone(),
 
                             msg: EventMsg::TurnStarted(TurnStartedEvent {
+                                started_at: None,
                                 model_context_window: None,
                                 collaboration_mode_kind: ModeKind::default(),
                                 turn_id: id.to_string(),
@@ -5571,6 +5601,8 @@ mod tests {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
+                                completed_at: None,
+                                duration_ms: None,
                             }),
                         })
                         .unwrap();
@@ -5606,6 +5638,8 @@ mod tests {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
+                                completed_at: None,
+                                duration_ms: None,
                             }),
                         })
                         .unwrap();
@@ -5642,6 +5676,8 @@ mod tests {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 last_agent_message: None,
                                 turn_id: id.to_string(),
+                                completed_at: None,
+                                duration_ms: None,
                             }),
                         })
                         .unwrap();
@@ -5660,6 +5696,8 @@ mod tests {
                                 msg: EventMsg::TurnAborted(TurnAbortedEvent {
                                     turn_id: Some(active_prompt_id),
                                     reason: codex_protocol::protocol::TurnAbortReason::Interrupted,
+                                    completed_at: None,
+                                    duration_ms: None,
                                 }),
                             })
                             .unwrap();
