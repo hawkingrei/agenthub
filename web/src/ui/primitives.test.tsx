@@ -171,6 +171,7 @@ describe("ui primitives", () => {
     );
 
     expect(subtleHtml).toContain("bg-notion-hover");
+    expect(subtleHtml).toContain("<span");
     expect(subtleHtml).toContain("Awaiting human review");
     expect(outlineHtml).toContain("border border-notion-border bg-white");
     expect(outlineHtml).toContain("rounded-full px-2 py-0.5");

@@ -159,7 +159,7 @@ const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
-  "mt-3 p-3";
+  "mt-3 p-3 sm:p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =

@@ -252,6 +252,7 @@ export function Badge({
 }: BadgeProps) {
   return (
     <Box
+      component="span"
       className={cx(BADGE_BASE_CLASS, BADGE_TONE_CLASS[tone], BADGE_SHAPE_CLASS[shape], className)}
       {...props}
     />
