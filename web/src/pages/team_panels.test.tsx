@@ -2082,6 +2082,112 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
+  it("TeamTaskPanel covers thread loading state and partial read progress chips", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onRefreshMessages={vi.fn()}
+        messages={[]}
+        humanActorId="user"
+        memberLiveStates={[
+          buildMemberLiveState({
+            member_id: "leader-agent",
+            role: "leader",
+            agent_name: "Leader Agent",
+            current_work: "replying in thread",
+          }),
+          buildMemberLiveState({
+            member_id: "worker-agent",
+            role: "worker",
+            agent_name: "Worker Agent",
+            current_work: "reading shared updates",
+          }),
+          buildMemberLiveState({
+            member_id: "reviewer-agent",
+            role: "worker",
+            agent_name: "Reviewer Agent",
+            current_work: "waiting for inbox",
+          }),
+        ]}
+        memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
+        conversationTitle="worker-thread"
+        isSharedConversation={false}
+        messagesLoading={true}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    expect(container.textContent).toContain("Loading thread...");
+    const threadTextarea = required(
+      container.querySelector('textarea[placeholder="Reply in thread"]') as HTMLTextAreaElement | null,
+      "thread reply textarea missing"
+    );
+    expect(threadTextarea).not.toBeNull();
+    expect(findButtonByAriaLabel(container, "Refresh thread")).not.toBeNull();
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        onRefreshMessages={vi.fn()}
+        messages={[
+          buildTaskMessage(41, {
+            from_actor_id: "leader-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: { type: "chat_message", text: "partial read state" },
+          }),
+        ]}
+        seenByMessageId={{ 41: ["worker-agent"] }}
+        humanActorId="user"
+        memberLiveStates={[
+          buildMemberLiveState({
+            member_id: "leader-agent",
+            role: "leader",
+            agent_name: "Leader Agent",
+          }),
+          buildMemberLiveState({
+            member_id: "worker-agent",
+            role: "worker",
+            agent_name: "Worker Agent",
+          }),
+          buildMemberLiveState({
+            member_id: "reviewer-agent",
+            role: "worker",
+            agent_name: "Reviewer Agent",
+          }),
+        ]}
+        memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    const readProgressButton = findButtonByAriaLabel(container, "Seen by 1 of 2 recipients");
+    expect(readProgressButton.getAttribute("title")).toBe("Seen by 1 of 2 recipients");
+    const progressbar = required(
+      readProgressButton.querySelector('[role="progressbar"]'),
+      "progressbar missing"
+    );
+    expect(progressbar.getAttribute("aria-valuenow")).toBe("1");
+    expect(progressbar.getAttribute("aria-valuemax")).toBe("2");
+  });
+
   it("TeamTaskPanel renders permission review cards in channel and collapses to status after response", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi
@@ -3660,6 +3766,116 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("No tasks yet.");
+  });
+
+  it("TeamTasksPanel covers loading, filtered no-results, and previous-runs branches", () => {
+    const onOpenRun = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[]}
+            tasksLoading={true}
+            selectedTaskId=""
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={onOpenRun}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Loading tasks...");
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[
+              buildRun({
+                id: "run-2",
+                status: "completed",
+                summary: "Latest run summary.",
+                input: { task_id: "task-progress" },
+                created_at: 230,
+                started_at: 231,
+                ended_at: 240,
+              }),
+              buildRun({
+                id: "run-1",
+                status: "failed",
+                summary: "Earlier run failed.",
+                input: { task_id: "task-progress" },
+                created_at: 200,
+                started_at: 201,
+                ended_at: 210,
+              }),
+              buildRun({
+                id: "run-0",
+                status: "canceled",
+                summary: "",
+                input: { task_id: "task-progress" },
+                created_at: 180,
+                started_at: 181,
+                ended_at: 182,
+              }),
+            ]}
+            onOpenRun={onOpenRun}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findInteractiveByText(container, "Canceled", "button, label"));
+    expect(container.textContent).toContain("No results.");
+
+    clickElement(findInteractiveByText(container, "In progress", "button, label"));
+    expect(container.textContent).toContain("Previous runs");
+    expect(container.textContent).toContain("Earlier run failed.");
+    expect(container.textContent).toContain("No summary recorded.");
+    clickElement(findButtonByText(container, "run-1"));
+    expect(onOpenRun).toHaveBeenCalledWith("run-1");
   });
 
   it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {

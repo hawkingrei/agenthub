@@ -226,4 +226,20 @@ describe("ui primitives", () => {
     expect(outlineHtml).toContain("rounded-full px-2 py-0.5");
     expect(dashedHtml).toContain("border border-dashed border-notion-border bg-transparent");
   });
+
+  it("renders notice, menu, and empty-state fallback branches", () => {
+    const idleOptionHtml = renderHtml(<MenuOptionButton>Idle option</MenuOptionButton>);
+    const dangerNoticeHtml = renderHtml(
+      <InlineNotice tone="danger">Permission request failed.</InlineNotice>
+    );
+    const childEmptyStateHtml = renderHtml(
+      <EmptyState>
+        <span data-testid="empty-child">child</span>
+      </EmptyState>
+    );
+
+    expect(idleOptionHtml).toContain("text-ui-text-primary hover:bg-ui-surface-soft");
+    expect(dangerNoticeHtml).toContain("border-state-error-border bg-state-error-bg/60");
+    expect(childEmptyStateHtml).toContain('data-testid="empty-child"');
+  });
 });
