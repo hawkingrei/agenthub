@@ -119,6 +119,9 @@ describe("ui primitives", () => {
     expect(emptyHtml).toContain("No messages yet");
     expect(emptyHtml).toContain("Start the conversation from the channel composer.");
     expect(metadataHtml).toContain("grid-cols-[auto,minmax(0,1fr)]");
+    expect(metadataHtml).toContain("<dl");
+    expect(metadataHtml).toContain("<dt");
+    expect(metadataHtml).toContain("<dd");
     expect(metadataHtml).toContain('data-testid="meta-source"');
     expect(metadataHtml).toContain("leader-agent");
     expect(metadataHtml).toContain("mono");
@@ -134,7 +137,7 @@ describe("ui primitives", () => {
       </MenuOptionButton>
     );
 
-    expect(bubbleHtml).toContain("rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft");
+    expect(bubbleHtml).toContain("rounded-[18px] border px-3.5 py-2.5 shadow-notion-soft");
     expect(bubbleHtml).toContain("Bubble");
     expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");
     expect(optionHtml).toContain('data-testid="mention-worker"');

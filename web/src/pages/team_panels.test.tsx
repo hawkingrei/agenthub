@@ -2137,6 +2137,7 @@ describe("team panels interactions", () => {
       ) as HTMLElement;
       expect(permissionCard.textContent).toContain("git push");
       expect(permissionCard.textContent).toContain("Timed out");
+      expect(permissionCard.innerHTML).toContain("bg-notion-hover");
       expect(permissionCard.textContent).not.toContain("worker requests permission to execute git push.");
       expect(permissionCard.textContent).not.toContain("Agent review timed out");
       expect(queryButtonByText(permissionCard, "Allow once")).toBeNull();
@@ -3188,6 +3189,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("working/waiting");
     expect(container.textContent).toContain("current_work");
     expect(container.textContent).toContain("reviewing worker progress");
+    expect(container.innerHTML).toContain("<dl");
+    expect(container.innerHTML).toContain("<dt");
+    expect(container.innerHTML).toContain("<dd");
   });
 
   it("TeamTaskPanel renders the shared empty state when the channel has no messages", () => {

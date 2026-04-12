@@ -73,7 +73,7 @@ const BADGE_SHAPE_CLASS = {
   pill: "rounded-full px-2 py-0.5",
 } as const;
 const CONVERSATION_BUBBLE_BASE_CLASS =
-  "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft";
+  "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.5 shadow-notion-soft";
 const MENU_OPTION_BUTTON_BASE_CLASS =
   "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
 const MENU_OPTION_BUTTON_ACTIVE_CLASS = "bg-brand-primary/10 text-brand-primary";
@@ -339,7 +339,7 @@ export function EmptyState({ title, body, className, children, ...props }: Empty
 type KeyValueListProps = React.ComponentPropsWithoutRef<typeof Box>;
 
 export function KeyValueList({ className, ...props }: KeyValueListProps) {
-  return <Box className={cx(KEY_VALUE_LIST_BASE_CLASS, className)} {...props} />;
+  return <Box component="dl" className={cx(KEY_VALUE_LIST_BASE_CLASS, className)} {...props} />;
 }
 
 type KeyValueItemProps = {
@@ -359,10 +359,10 @@ export function KeyValueItem({
 }: KeyValueItemProps) {
   return (
     <Box className={cx(KEY_VALUE_ITEM_BASE_CLASS, className)} {...props}>
-      <Box component="span" className={cx(KEY_VALUE_LABEL_CLASS, labelClassName)}>
+      <Box component="dt" className={cx(KEY_VALUE_LABEL_CLASS, labelClassName)}>
         {label}
       </Box>
-      <Box component="span" className={cx(KEY_VALUE_VALUE_CLASS, valueClassName)}>
+      <Box component="dd" className={cx(KEY_VALUE_VALUE_CLASS, valueClassName)}>
         {value}
       </Box>
     </Box>
