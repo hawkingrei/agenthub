@@ -121,4 +121,20 @@ describe("ui primitives", () => {
     expect(keyValueHtml).toContain("leader");
     expect(keyValueHtml).toContain("data-testid=\"role-row\"");
   });
+
+  it("forwards box props through KeyValueItem without exposing children in the API", () => {
+    const html = renderHtml(
+      <KeyValueList>
+        <KeyValueItem
+          label="current"
+          value="collecting evidence"
+          title="collecting evidence"
+          id="current-row"
+        />
+      </KeyValueList>
+    );
+    expect(html).toContain("id=\"current-row\"");
+    expect(html).toContain("title=\"collecting evidence\"");
+    expect(html).toContain("collecting evidence");
+  });
 });

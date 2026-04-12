@@ -177,4 +177,24 @@ describe("TeamMemberStatusStrip", () => {
     expect(withCurrentWork).toContain("follow up");
     expect(withoutCurrentWork).not.toContain("current");
   });
+
+  it("keeps member metadata in one key-value block and forwards the current-work title", () => {
+    const html = renderHtml(
+      <TeamMemberStatusStrip
+        members={[
+          buildMember({
+            member_id: "worker-7",
+            role: "worker",
+            agent_name: "Worker Agent",
+            current_work: "long running sync task",
+          }),
+        ]}
+      />
+    );
+    expect(html).toContain("role");
+    expect(html).toContain("agent");
+    expect(html).toContain("current");
+    expect(html).toContain("title=\"long running sync task\"");
+    expect(html).toContain("Worker Agent");
+  });
 });

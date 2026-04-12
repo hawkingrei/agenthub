@@ -1363,6 +1363,76 @@ describe("team panels interactions", () => {
     expect(container.querySelector(".teams-step-list")).not.toBeNull();
   });
 
+  it("TeamStepsPanel renders key-value step metadata and stable notice styling", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamStepsPanel
+            developerMode={true}
+            mode="list_only"
+            steps={[
+              buildStep({
+                id: "step-2",
+                step_key: "dispatch",
+                member_id: "worker-2",
+                attempt: 3,
+                depends_on: ["plan", "seed"],
+                runtime_handle_id: "runtime-7",
+                error_text: "needs retry",
+              }),
+            ]}
+            onRefreshSteps={() => {}}
+            stepKey=""
+            onStepKeyChange={() => {}}
+            stepMemberId=""
+            onStepMemberIdChange={() => {}}
+            stepDependsOn=""
+            onStepDependsOnChange={() => {}}
+            stepInput="{}"
+            onStepInputChange={() => {}}
+            onSubmitStep={() => {}}
+            busy={null}
+            selectedStepId=""
+            onSelectedStepIdChange={() => {}}
+            stepAction="start"
+            onStepActionChange={() => {}}
+            stepRemoteTaskId=""
+            onStepRemoteTaskIdChange={() => {}}
+            stepOutput="{}"
+            onStepOutputChange={() => {}}
+            stepFailText=""
+            onStepFailTextChange={() => {}}
+            stepInputReason=""
+            onStepInputReasonChange={() => {}}
+            stepInputRequiredPayload="{}"
+            onStepInputRequiredPayloadChange={() => {}}
+            stepResumePayload="{}"
+            onStepResumePayloadChange={() => {}}
+            onApplyStepAction={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const warningNotice = required(
+      container.querySelector(".mb-3.text-ui-sm"),
+      "warning notice missing"
+    );
+    expect(warningNotice.className).toContain("border-state-warning-border");
+    expect(warningNotice.className).toContain("bg-state-warning-bg/60");
+    expect(warningNotice.className).toContain("mb-3");
+    expect(container.textContent).toContain("member_id");
+    expect(container.textContent).toContain("worker-2");
+    expect(container.textContent).toContain("attempt");
+    expect(container.textContent).toContain("3");
+    expect(container.textContent).toContain("depends_on");
+    expect(container.textContent).toContain("plan, seed");
+    expect(container.textContent).toContain("runtime_handle_id");
+    expect(container.textContent).toContain("runtime-7");
+    expect(container.textContent).toContain("error_text");
+    expect(container.textContent).toContain("needs retry");
+  });
+
   it("TeamEventsPanel supports auto-refresh toggle and load older actions", () => {
     const onEventsAutoRefreshChange = vi.fn();
     const onRefreshEvents = vi.fn();

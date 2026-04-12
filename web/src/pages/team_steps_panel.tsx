@@ -58,7 +58,7 @@ const STEPS_LIST_CLASS =
   "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";
 const STEPS_PANEL_TITLE_CLASS = "mb-2 text-ui-sm font-semibold text-ui-text-primary";
-const STEPS_ITEM_CLASS = "rounded-lg sm:p-2";
+const STEPS_ITEM_CLASS = "rounded-lg p-2 sm:p-2";
 const STEPS_ITEM_HEAD_CLASS =
   "teams-step-head mb-1 flex flex-wrap items-center gap-2 text-ui-xs text-ui-text-muted";
 const STEPS_ITEM_BODY_CLASS =
@@ -283,19 +283,19 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
                   </div>
                   <div className={STEPS_ITEM_BODY_CLASS}>
                     <KeyValueList>
-                    <KeyValueItem label="member_id" value={step.member_id} />
-                    <KeyValueItem label="attempt" value={step.attempt} />
-                    <KeyValueItem
-                      label="depends_on"
-                      value={step.depends_on.length ? step.depends_on.join(", ") : "-"}
-                    />
-                    <KeyValueItem
-                      label="runtime_handle_id"
-                      value={step.runtime_handle_id ?? step.remote_task_id ?? "-"}
-                    />
-                    {step.error_text ? (
-                      <KeyValueItem label="error_text" value={step.error_text} />
-                    ) : null}
+                      <KeyValueItem label="member_id" value={step.member_id} />
+                      <KeyValueItem label="attempt" value={step.attempt} />
+                      <KeyValueItem
+                        label="depends_on"
+                        value={step.depends_on.length ? step.depends_on.join(", ") : "-"}
+                      />
+                      <KeyValueItem
+                        label="runtime_handle_id"
+                        value={step.runtime_handle_id ?? step.remote_task_id ?? "-"}
+                      />
+                      {step.error_text ? (
+                        <KeyValueItem label="error_text" value={step.error_text} />
+                      ) : null}
                     </KeyValueList>
                   </div>
                 </InsetSurface>
