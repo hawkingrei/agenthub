@@ -53,7 +53,7 @@ type TeamStepsPanelProps = {
   onApplyStepAction: () => Promise<void> | void;
 };
 
-const STEPS_PANEL_CLASS = "teams-step-panel min-w-0 gap-3";
+const STEPS_PANEL_CLASS = "teams-step-panel min-w-0 flex flex-col gap-3";
 const STEPS_LIST_CLASS =
   "teams-step-list m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-auto rounded-xl border border-ui-border bg-ui-surface-soft/60 p-3";
 const STEPS_GRID_CLASS = "teams-step-grid grid gap-3 lg:grid-cols-2";

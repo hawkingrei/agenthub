@@ -159,8 +159,7 @@ const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
   "inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
-const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS =
-  "grid gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted sm:grid-cols-2";
+const TEAM_TASK_ACTIVITY_DETAILS_GRID_CLASS = "gap-x-4 gap-y-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DETAILS_LABEL_CLASS =
   "mono font-bold text-notion-text opacity-70";
 const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
