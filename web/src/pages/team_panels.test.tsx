@@ -3343,6 +3343,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Waiting");
     expect(container.textContent).toContain("In review");
     expect(container.textContent).toContain("Completed");
+    expect(container.textContent).toContain("1");
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).toContain("owner Worker One");
     expect(container.textContent).toContain(
@@ -3435,6 +3436,40 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Prepare rollout");
     expect(container.textContent).not.toContain("Loading tasks...");
+  });
+
+  it("TeamTasksPanel renders shared empty states for an empty board", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[]}
+            tasksLoading={false}
+            selectedTaskId=""
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("No tasks yet.");
   });
 
   it("TeamTasksPanel uses a separate compact detail page and can close back to Kanban", () => {
