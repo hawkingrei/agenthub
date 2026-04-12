@@ -24,7 +24,7 @@ use codex_app_server_protocol::{
 use codex_arg0::Arg0DispatchPaths;
 use codex_core::config::Config;
 use codex_core::config_loader::{CloudRequirementsLoader, LoaderOverrides};
-use codex_core::error::CodexErr;
+use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::{
@@ -33,6 +33,7 @@ use codex_protocol::approvals::{
 };
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::dynamic_tools::DynamicToolCallRequest;
+use codex_protocol::error::CodexErr;
 use codex_protocol::mcp::{CallToolResult, RequestId as McpRequestId};
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs};
@@ -260,11 +261,16 @@ impl AppServerCodexThread {
         active_turn: ActiveTurn,
         op: &Op,
     ) -> Result<SteerFollowUpAction, CodexErr> {
-        let (items, output_schema) = match op {
+        let (items, output_schema, responsesapi_client_metadata) = match op {
             Op::UserInput {
                 items,
                 final_output_json_schema,
-            } => (items.clone(), final_output_json_schema.clone()),
+                responsesapi_client_metadata,
+            } => (
+                items.clone(),
+                final_output_json_schema.clone(),
+                responsesapi_client_metadata.clone(),
+            ),
             _ => return Ok(SteerFollowUpAction::QueueFollowUp),
         };
 
@@ -291,6 +297,7 @@ impl AppServerCodexThread {
                     thread_id,
                     input: items.into_iter().map(Into::into).collect(),
                     expected_turn_id: turn_id,
+                    responsesapi_client_metadata,
                 },
             })
             .await;
@@ -474,6 +481,8 @@ impl AppServerCodexThread {
                             msg: EventMsg::TurnComplete(TurnCompleteEvent {
                                 turn_id: String::new(),
                                 last_agent_message: None,
+                                completed_at: None,
+                                duration_ms: None,
                             }),
                         });
                         Ok(())
@@ -1050,6 +1059,7 @@ impl AppServerCodexThread {
                     id: submission_id,
                     msg: EventMsg::TurnStarted(TurnStartedEvent {
                         turn_id: payload.turn.id,
+                        started_at: payload.turn.started_at,
                         model_context_window: None,
                         collaboration_mode_kind: Default::default(),
                     }),
@@ -1090,6 +1100,7 @@ impl AppServerCodexThread {
                     }),
                 }))
             }
+            ServerNotification::ThreadRealtimeSdp(_) => Ok(None),
             ServerNotification::TurnPlanUpdated(payload) => {
                 let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
                 Ok(submission_id.map(|id| Event {
@@ -1766,6 +1777,8 @@ fn cancel_queued_submissions(state: &mut AppServerState) {
             msg: EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
+                completed_at: None,
+                duration_ms: None,
             }),
         });
     }
@@ -2053,6 +2066,7 @@ fn prepare_submission_start(
         Op::UserInput {
             items,
             final_output_json_schema,
+            responsesapi_client_metadata,
         } => {
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2077,6 +2091,7 @@ fn prepare_submission_start(
                     summary: state.config.model_reasoning_summary,
                     personality: state.config.personality,
                     output_schema: final_output_json_schema.clone(),
+                    responsesapi_client_metadata: responsesapi_client_metadata.clone(),
                     collaboration_mode: None,
                 }),
             })
@@ -2479,10 +2494,14 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
         TurnStatus::Completed => EventMsg::TurnComplete(TurnCompleteEvent {
             turn_id: turn.id.clone(),
             last_agent_message,
+            completed_at: turn.completed_at,
+            duration_ms: turn.duration_ms,
         }),
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
             reason: TurnAbortReason::Interrupted,
+            completed_at: turn.completed_at,
+            duration_ms: turn.duration_ms,
         }),
         TurnStatus::Failed => EventMsg::Error(ErrorEvent {
             message: turn
@@ -2560,6 +2579,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         loader_overrides: LoaderOverrides::default(),
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
+        environment_manager: Arc::new(EnvironmentManager::from_env()),
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
         enable_codex_api_key_env: false,
@@ -2690,6 +2710,9 @@ mod tests {
             }],
             status: TurnStatus::InProgress,
             error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
         };
 
         let active_turn = resumed_active_turn(
@@ -2715,6 +2738,9 @@ mod tests {
             }],
             status: TurnStatus::InProgress,
             error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
         };
 
         let active_turn = resumed_active_turn(
@@ -2835,6 +2861,9 @@ mod tests {
             items: Vec::new(),
             status: TurnStatus::InProgress,
             error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
         };
 
         let event = turn_completed_event_msg(&turn, None);
@@ -2987,6 +3016,9 @@ mod tests {
             }],
             status: TurnStatus::InProgress,
             error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
         }];
 
         let pending = pending_patch_changes_from_turns(&turns);
