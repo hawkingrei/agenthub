@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   ActionButton,
+  CompactButton,
+  CompactIconButton,
   ConversationBubble,
   EmptyState,
   IconButton,
@@ -135,5 +137,21 @@ describe("ui primitives", () => {
     expect(bubbleHtml).toContain("Bubble");
     expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");
     expect(optionHtml).toContain('data-testid="mention-worker"');
+  });
+
+  it("renders compact action primitives for dense toolbars", () => {
+    const compactButtonHtml = renderHtml(
+      <CompactButton data-testid="details-toggle">Show details</CompactButton>
+    );
+    const compactIconHtml = renderHtml(
+      <CompactIconButton aria-label="Seen by 1 recipient">
+        <span />
+      </CompactIconButton>
+    );
+
+    expect(compactButtonHtml).toContain("text-[10px] font-bold uppercase tracking-wider");
+    expect(compactButtonHtml).toContain('data-testid="details-toggle"');
+    expect(compactIconHtml).toContain("h-5 min-w-5 items-center justify-center");
+    expect(compactIconHtml).toContain('aria-label="Seen by 1 recipient"');
   });
 });

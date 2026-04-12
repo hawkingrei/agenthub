@@ -16,6 +16,8 @@ import { isTeamImeComposing } from "./team/team_text_helpers";
 import { NOTION_FLOATING_PANEL_CLASS } from "../ui/floating_surfaces";
 import {
   ActionButton,
+  CompactButton,
+  CompactIconButton,
   ConversationBubble,
   EmptyState,
   IconButton,
@@ -157,12 +159,8 @@ const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 p-3 sm:p-3";
-const TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS =
-  "inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
   "text-[11px] font-medium text-red-600";
-const TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS =
-  "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover";
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
@@ -665,18 +663,14 @@ function SeenProgressHoverCard({
     <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
-          <button
-            type="button"
-            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+          <CompactIconButton
             aria-label="Pending delivery"
             title="Pending delivery"
           >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-          </button>
+          </CompactIconButton>
         ) : (
-          <button
-            type="button"
-            className={TEAM_TASK_ACTIVITY_SEEN_BUTTON_CLASS}
+          <CompactIconButton
             aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
             title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
           >
@@ -697,7 +691,7 @@ function SeenProgressHoverCard({
                 } satisfies SeenDialStyle
               }
             />
-          </button>
+          </CompactIconButton>
         )}
       </HoverCard.Target>
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
@@ -1294,9 +1288,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                           />
                         )}
                         {developerMode && (
-                          <button
-                            type="button"
-                            className={TEAM_TASK_ACTIVITY_DETAILS_BUTTON_CLASS}
+                          <CompactButton
                             onClick={() =>
                               setExpandedItemKeys((current) => ({
                                 ...current,
@@ -1306,7 +1298,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                             aria-expanded={Boolean(expandedItemKeys[item.key])}
                           >
                             {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
-                          </button>
+                          </CompactButton>
                         )}
                       </div>
                     )}

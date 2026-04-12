@@ -68,6 +68,10 @@ const MENU_OPTION_BUTTON_BASE_CLASS =
   "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
 const MENU_OPTION_BUTTON_ACTIVE_CLASS = "bg-brand-primary/10 text-brand-primary";
 const MENU_OPTION_BUTTON_IDLE_CLASS = "text-ui-text-primary hover:bg-ui-surface-soft";
+const COMPACT_BUTTON_BASE_CLASS =
+  "inline-flex items-center rounded-md border border-notion-border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
+const COMPACT_ICON_BUTTON_BASE_CLASS =
+  "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-notion-border bg-white p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
 const EMPTY_STATE_BASE_CLASS =
   "rounded-xl border border-dashed border-notion-border/80 bg-notion-sidebar/10 px-4 py-5 text-center";
 const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
@@ -253,6 +257,40 @@ export const MenuOptionButton = React.forwardRef<HTMLButtonElement, MenuOptionBu
   }
 );
 MenuOptionButton.displayName = "MenuOptionButton";
+
+type CompactButtonProps = React.ComponentPropsWithoutRef<"button">;
+
+export const CompactButton = React.forwardRef<HTMLButtonElement, CompactButtonProps>(
+  function CompactButton({ className, type = "button", ...props }, ref) {
+    return (
+      <Box
+        ref={ref}
+        component="button"
+        type={type}
+        className={cx(COMPACT_BUTTON_BASE_CLASS, className)}
+        {...props}
+      />
+    );
+  }
+);
+CompactButton.displayName = "CompactButton";
+
+type CompactIconButtonProps = React.ComponentPropsWithoutRef<"button">;
+
+export const CompactIconButton = React.forwardRef<HTMLButtonElement, CompactIconButtonProps>(
+  function CompactIconButton({ className, type = "button", ...props }, ref) {
+    return (
+      <Box
+        ref={ref}
+        component="button"
+        type={type}
+        className={cx(COMPACT_ICON_BUTTON_BASE_CLASS, className)}
+        {...props}
+      />
+    );
+  }
+);
+CompactIconButton.displayName = "CompactIconButton";
 
 type EmptyStateProps = React.ComponentPropsWithoutRef<typeof Box> & {
   title?: React.ReactNode;
