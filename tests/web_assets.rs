@@ -50,7 +50,10 @@ fn styles_keep_runtime_shell_constraints() {
         !css.contains("fonts.googleapis.com"),
         "styles.css should not depend on remote font imports"
     );
-    assert!(css.contains(":root {"), "styles.css should define root variables");
+    assert!(
+        css.contains(":root {"),
+        "styles.css should define root variables"
+    );
     assert!(
         css.contains("--agenthub-vh: 100vh;"),
         "styles.css should define viewport height fallback variable"
@@ -67,7 +70,10 @@ fn styles_keep_runtime_shell_constraints() {
         css.contains("@supports (height: 100dvh)"),
         "styles.css should keep dynamic viewport height support"
     );
-    assert!(css.contains("html, body {"), "html/body styles should exist");
+    assert!(
+        css.contains("html, body {"),
+        "html/body styles should exist"
+    );
     assert!(
         css.contains("width: 100%;"),
         "html/body should fill the viewport width"

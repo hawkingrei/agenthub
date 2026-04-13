@@ -211,7 +211,10 @@ mod tests {
         let ContentBlock::Text(text) = block else {
             panic!("expected text content block");
         };
-        assert!(text.text.contains("continuity_summary: Continue implementation with the same branch."));
+        assert!(
+            text.text
+                .contains("continuity_summary: Continue implementation with the same branch.")
+        );
         assert!(!text.text.contains("continuity_history_window_json"));
         assert!(!text.text.contains("continuity_detail_policy"));
         assert!(!text.text.contains("continuity_source_session_id"));
