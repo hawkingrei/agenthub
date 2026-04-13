@@ -11,8 +11,7 @@ use super::executor::LocalExecutionRequest;
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AGENT_STOP_WAIT_TIMEOUT, AgentHandle, AgentInput, AgentManager, build_runtime_start_policy,
-    ensure_team_runtime_workspace_layout, normalize_agent_loop_config,
-    spawn_agent_loop_controller,
+    ensure_team_runtime_workspace_layout, normalize_agent_loop_config, spawn_agent_loop_controller,
 };
 use crate::acp::{
     AcpActorSkillContext, AgenthubAcpEventSink, SpawnAcpSessionRequest, load_safe_paths,
