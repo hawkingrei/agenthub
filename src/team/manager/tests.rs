@@ -1327,14 +1327,21 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
             &team.id,
             Some("ctx-step-template"),
             json!({
-                "step_template": [{
-                    "step_key":"worker-implement",
-                    "member_id":"worker-1",
-                    "depends_on":["leader-plan"],
-                    "goal":"finish the patch",
-                    "acceptance":["tests pass"],
-                    "execution":{"mode":"reconcile_loop","max_rounds":5}
-                }]
+                "step_template": [
+                    {
+                        "step_key":"leader-plan",
+                        "member_id":"leader",
+                        "execution":{"mode":"single_pass"}
+                    },
+                    {
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "depends_on":["leader-plan"],
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":5}
+                    }
+                ]
             }),
         )
         .await
@@ -1344,12 +1351,16 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
         .list_steps(&run.id)
         .await
         .expect("list materialized steps");
-    assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0].step_key, "worker-implement");
-    assert_eq!(steps[0].member_id, "worker-1");
-    assert_eq!(steps[0].depends_on, vec!["leader-plan".to_string()]);
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0].step_key, "leader-plan");
+    assert_eq!(steps[0].member_id, "leader");
+    assert!(steps[0].depends_on.is_empty());
+    assert_eq!(steps[0].input, None);
+    assert_eq!(steps[1].step_key, "worker-implement");
+    assert_eq!(steps[1].member_id, "worker-1");
+    assert_eq!(steps[1].depends_on, vec!["leader-plan".to_string()]);
     assert_eq!(
-        steps[0].input,
+        steps[1].input,
         Some(json!({
             "task_execution_step": {
                 "goal":"finish the patch",
