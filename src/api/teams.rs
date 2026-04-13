@@ -2828,8 +2828,8 @@ fn compile_task_run_preview_response(
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
     let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
-    let execution_plan =
-        parse_task_execution_plan(&task.context).map_err(map_team_internal_error)?;
+    let execution_plan = parse_task_execution_plan(&task.context)
+        .map_err(|_| ApiError::bad_request("task context contains an invalid execution_plan"))?;
     let step_template = if let Some(plan) = execution_plan.as_ref() {
         compile_task_step_template_from_execution_plan(
             plan,

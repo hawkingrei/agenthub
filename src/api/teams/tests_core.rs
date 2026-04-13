@@ -6465,6 +6465,60 @@ async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
     );
 }
 
+#[tokio::test]
+async fn team_task_compile_preview_rejects_invalid_execution_plan_payload() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-execution-plan-invalid-preview-team".to_string(),
+            description: Some("invalid execution plan preview coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"leader"}]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Use invalid task execution plan".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "execution_plan": {
+                    "steps": "invalid"
+                }
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("execution-plan-invalid".to_string()),
+        },
+    )
+    .await
+    .expect("create task");
+
+    let err = compile_team_task_run_preview(
+        State(state),
+        headers,
+        Path((team.id, created.task.id)),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect_err("invalid execution plan should fail with bad request");
+    let body = decode_json_body(err.into_response()).await;
+    assert_eq!(
+        body["error"],
+        Value::from("task context contains an invalid execution_plan")
+    );
+}
+
 #[test]
 fn mailbox_type_hint_helpers_build_prompt_contains_context() {
     let prompt =
