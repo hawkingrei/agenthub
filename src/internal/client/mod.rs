@@ -68,6 +68,17 @@ pub struct InternalActorRunScopeResolution {
     pub source: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InternalStepTransitionResponse {
+    pub step_id: String,
+    pub run_id: String,
+    pub step_key: String,
+    pub member_id: String,
+    pub runtime_handle_id: String,
+    pub status: String,
+    pub error_text: String,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InternalTeamTaskPatch<'a> {
     pub status: Option<&'a str>,

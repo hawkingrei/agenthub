@@ -50,6 +50,81 @@ fn set_unique_json_value(
     Ok(())
 }
 
+fn parse_team_step_scope_flag(
+    args: &[String],
+    idx: &mut usize,
+    current_flag: &str,
+    run_id: &mut Option<String>,
+    actor_id: &mut Option<String>,
+    step_id: &mut Option<String>,
+    runtime_handle_id: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    match current_flag {
+        "--run-id" => {
+            *idx += 1;
+            *run_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+            );
+            Ok(true)
+        }
+        flag @ ("--actor-id" | "--agent-id") => {
+            *idx += 1;
+            *actor_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+            );
+            Ok(true)
+        }
+        "--step-id" => {
+            *idx += 1;
+            *step_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("--step-id requires a value"))?,
+            );
+            Ok(true)
+        }
+        "--runtime-handle-id" | "--session-id" => {
+            *idx += 1;
+            *runtime_handle_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("{current_flag} requires a value"))?,
+            );
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn parse_team_step_scope_argument(
+    args: &[String],
+    idx: &mut usize,
+    output_mode: &mut ActorOutputMode,
+    run_id: &mut Option<String>,
+    actor_id: &mut Option<String>,
+    step_id: &mut Option<String>,
+    runtime_handle_id: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    let current_flag = args[*idx].as_str();
+    if current_flag == "--json" {
+        *output_mode = ActorOutputMode::Json;
+        return Ok(true);
+    }
+    parse_team_step_scope_flag(
+        args,
+        idx,
+        current_flag,
+        run_id,
+        actor_id,
+        step_id,
+        runtime_handle_id,
+    )
+}
+
 fn resolve_team_run_scope(
     team_id: Option<String>,
     run_id: Option<String>,
@@ -873,6 +948,305 @@ pub(super) fn parse_actor_command(
                 shared_thread,
                 kind,
                 text: take_optional(text).ok_or_else(|| anyhow::anyhow!("text is required"))?,
+            })
+        }
+        "team-step-transition" => {
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut step_id = None;
+            let mut action = None;
+            let mut runtime_handle_id = None;
+            let mut output = None;
+            let mut input = None;
+            let mut reason = None;
+            let mut error_text = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                let current_flag = args[idx].as_str();
+                if parse_team_step_scope_argument(
+                    args,
+                    &mut idx,
+                    output_mode,
+                    &mut run_id,
+                    &mut actor_id,
+                    &mut step_id,
+                    &mut runtime_handle_id,
+                )? {
+                } else {
+                    match current_flag {
+                        "--action" => {
+                            idx += 1;
+                            action = Some(
+                                args.get(idx)
+                                    .cloned()
+                                    .ok_or_else(|| anyhow::anyhow!("--action requires a value"))?,
+                            );
+                        }
+                        "--output-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut output,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--output-json requires a value")
+                                    })?,
+                                    "--output-json",
+                                )?,
+                                "--output-json and --output-json-file cannot be used together",
+                            )?;
+                        }
+                        "--output-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut output,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--output-json-file requires a value")
+                                    })?,
+                                    "--output-json-file",
+                                )?,
+                                "--output-json and --output-json-file cannot be used together",
+                            )?;
+                        }
+                        "--input-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut input,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--input-json requires a value")
+                                    })?,
+                                    "--input-json",
+                                )?,
+                                "--input-json and --input-json-file cannot be used together",
+                            )?;
+                        }
+                        "--input-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut input,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--input-json-file requires a value")
+                                    })?,
+                                    "--input-json-file",
+                                )?,
+                                "--input-json and --input-json-file cannot be used together",
+                            )?;
+                        }
+                        "--reason" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                reason.is_none(),
+                                "--reason and --reason-file cannot be used together"
+                            );
+                            reason = Some(
+                                args.get(idx)
+                                    .cloned()
+                                    .ok_or_else(|| anyhow::anyhow!("--reason requires a value"))?,
+                            );
+                        }
+                        "--reason-file" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                reason.is_none(),
+                                "--reason and --reason-file cannot be used together"
+                            );
+                            reason = Some(read_actor_send_file(
+                                args.get(idx).ok_or_else(|| {
+                                    anyhow::anyhow!("--reason-file requires a value")
+                                })?,
+                                "--reason-file",
+                            )?);
+                        }
+                        "--error-text" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                error_text.is_none(),
+                                "--error-text and --error-text-file cannot be used together"
+                            );
+                            error_text =
+                                Some(args.get(idx).cloned().ok_or_else(|| {
+                                    anyhow::anyhow!("--error-text requires a value")
+                                })?);
+                        }
+                        "--error-text-file" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                error_text.is_none(),
+                                "--error-text and --error-text-file cannot be used together"
+                            );
+                            error_text = Some(read_actor_send_file(
+                                args.get(idx).ok_or_else(|| {
+                                    anyhow::anyhow!("--error-text-file requires a value")
+                                })?,
+                                "--error-text-file",
+                            )?);
+                        }
+                        other => {
+                            return Err(anyhow::anyhow!(
+                                "unknown flag for team-step-transition: {}",
+                                other
+                            ));
+                        }
+                    }
+                }
+                idx += 1;
+            }
+
+            let step_id =
+                take_optional(step_id).ok_or_else(|| anyhow::anyhow!("step_id is required"))?;
+            let action =
+                take_optional(action).ok_or_else(|| anyhow::anyhow!("action is required"))?;
+            anyhow::ensure!(
+                matches!(
+                    action.as_str(),
+                    "start" | "continue" | "complete" | "input_required" | "resume" | "fail"
+                ),
+                "invalid action '{}', expected one of: start, continue, complete, input_required, resume, fail",
+                action
+            );
+            if action == "fail" {
+                anyhow::ensure!(
+                    error_text
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty()),
+                    "team-step-transition action=fail requires --error-text or --error-text-file"
+                );
+            }
+            Ok(ActorCommand::TeamStepTransition {
+                run_id: take_optional(run_id),
+                actor_id: take_actor_id(actor_id)?,
+                step_id,
+                action,
+                runtime_handle_id: take_optional(runtime_handle_id),
+                output,
+                error_text: take_optional(error_text),
+                input,
+                reason: take_optional(reason),
+            })
+        }
+        "team-step-decision" => {
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut step_id = None;
+            let mut runtime_handle_id = None;
+            let mut decision = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                let current_flag = args[idx].as_str();
+                if parse_team_step_scope_argument(
+                    args,
+                    &mut idx,
+                    output_mode,
+                    &mut run_id,
+                    &mut actor_id,
+                    &mut step_id,
+                    &mut runtime_handle_id,
+                )? {
+                } else {
+                    match current_flag {
+                        "--decision-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut decision,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--decision-json requires a value")
+                                    })?,
+                                    "--decision-json",
+                                )?,
+                                "--decision-json and --decision-json-file cannot be used together",
+                            )?;
+                        }
+                        "--decision-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut decision,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--decision-json-file requires a value")
+                                    })?,
+                                    "--decision-json-file",
+                                )?,
+                                "--decision-json and --decision-json-file cannot be used together",
+                            )?;
+                        }
+                        other => {
+                            return Err(anyhow::anyhow!(
+                                "unknown flag for team-step-decision: {}",
+                                other
+                            ));
+                        }
+                    }
+                }
+                idx += 1;
+            }
+
+            let step_id =
+                take_optional(step_id).ok_or_else(|| anyhow::anyhow!("step_id is required"))?;
+            let decision = if let Some(decision) = decision {
+                let decision_obj = decision
+                    .as_object()
+                    .ok_or_else(|| anyhow::anyhow!("decision_json must be a JSON object"))?;
+                let action = decision_obj
+                    .get("action")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| anyhow::anyhow!("decision_json.action is required"))?;
+                anyhow::ensure!(
+                    matches!(
+                        action,
+                        "start" | "continue" | "complete" | "input_required" | "resume" | "fail"
+                    ),
+                    "invalid decision_json.action '{}', expected one of: start, continue, complete, input_required, resume, fail",
+                    action
+                );
+                let output = decision_obj.get("output").cloned();
+                let input = decision_obj.get("input").cloned();
+                let reason = decision_obj
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let error_text = decision_obj
+                    .get("error_text")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                if action == "fail" {
+                    anyhow::ensure!(
+                        error_text
+                            .as_deref()
+                            .map(str::trim)
+                            .is_some_and(|value| !value.is_empty()),
+                        "team-step-decision action=fail requires decision_json.error_text"
+                    );
+                }
+                let mut normalized_decision = serde_json::Map::new();
+                normalized_decision.insert("action".to_string(), Value::String(action.to_string()));
+                if let Some(output) = output {
+                    normalized_decision.insert("output".to_string(), output);
+                }
+                if let Some(input) = input {
+                    normalized_decision.insert("input".to_string(), input);
+                }
+                if let Some(reason) = reason {
+                    normalized_decision.insert("reason".to_string(), Value::String(reason));
+                }
+                if let Some(error_text) = error_text {
+                    normalized_decision.insert("error_text".to_string(), Value::String(error_text));
+                }
+                Value::Object(normalized_decision)
+            } else {
+                Value::Null
+            };
+            Ok(ActorCommand::TeamStepDecision {
+                run_id: take_optional(run_id),
+                actor_id: take_actor_id(actor_id)?,
+                step_id,
+                runtime_handle_id: take_optional(runtime_handle_id),
+                decision,
             })
         }
         "inbox" => {

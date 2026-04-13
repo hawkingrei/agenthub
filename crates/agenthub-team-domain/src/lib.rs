@@ -136,6 +136,40 @@ pub struct TeamTaskRecord {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamTaskStepExecutionMode {
+    #[default]
+    SinglePass,
+    ReconcileLoop,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct TeamTaskStepExecutionSpec {
+    pub mode: TeamTaskStepExecutionMode,
+    #[serde(default)]
+    pub max_rounds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamTaskExecutionStepSpec {
+    pub step_key: String,
+    pub member_id: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    #[serde(default)]
+    pub goal: Option<String>,
+    #[serde(default)]
+    pub acceptance: Vec<String>,
+    #[serde(default)]
+    pub execution: TeamTaskStepExecutionSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamTaskExecutionPlan {
+    pub steps: Vec<TeamTaskExecutionStepSpec>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamConversationRecord {
     pub id: String,

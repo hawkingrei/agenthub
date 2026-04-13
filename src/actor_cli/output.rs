@@ -30,7 +30,9 @@ pub(super) fn actor_output_preference_for_command(command: &ActorCommand) -> Act
         | ActorCommand::TimeTriggerCancel { .. } => ActorOutputPreference::ToonPreferred,
         ActorCommand::Ack { .. }
         | ActorCommand::Send { .. }
-        | ActorCommand::PermissionReviewRespond { .. } => ActorOutputPreference::JsonPreferred,
+        | ActorCommand::PermissionReviewRespond { .. }
+        | ActorCommand::TeamStepTransition { .. }
+        | ActorCommand::TeamStepDecision { .. } => ActorOutputPreference::JsonPreferred,
     }
 }
 

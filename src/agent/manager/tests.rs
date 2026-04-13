@@ -6,8 +6,7 @@ use super::codec::{is_acp_message, status_from_str, stream_to_str};
 use super::start_plan::{AgentStartPlan, build_agent_start_plan};
 use super::{
     AGENT_LOOP_MESSAGE_ID_PREFIX, AgentOutput, AgentRecord, AgentStatus, OutputStream,
-    WorktreeMode,
-    build_runtime_start_policy, ensure_team_runtime_workspace_layout,
+    WorktreeMode, build_runtime_start_policy, ensure_team_runtime_workspace_layout,
     is_agent_loop_activity_output, should_rearm_agent_loop_for_output, status_to_str,
     stream_from_str,
 };
@@ -611,7 +610,8 @@ async fn ensure_team_runtime_workspace_layout_reports_creation_error() {
         .await
         .expect_err("invalid leader path should fail directory creation");
     assert!(
-        err.to_string().contains("failed to stat team runtime workdir"),
+        err.to_string()
+            .contains("failed to stat team runtime workdir"),
         "err={err}"
     );
 }

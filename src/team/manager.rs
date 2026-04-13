@@ -43,12 +43,13 @@ use super::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TeamActorMessageRecord, TeamConversationMessageRecord,
     TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus,
+    TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionSpec,
     build_team_member_actor_context_for_role, normalize_optional_idempotency_key_input,
-    team_member_role_from_spec,
+    parse_task_execution_plan, team_member_role_from_spec, validate_task_execution_plan,
+    validate_task_execution_steps,
 };
-use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::agent::event_message_codec::decode_message_from_storage;
+use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
@@ -171,6 +172,22 @@ pub struct TeamPendingActorUnreadRecord {
 pub(crate) struct SharedThreadTargetRecord {
     pub task_id: String,
     pub conversation_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct MaterializedRunStepTemplate {
+    step_key: String,
+    member_id: String,
+    depends_on: Vec<String>,
+    input: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+struct ReconcileRoundRuntime {
+    current_round: i64,
+    goal: Option<String>,
+    acceptance: Vec<String>,
+    execution: TeamTaskStepExecutionSpec,
 }
 
 pub(crate) async fn fetch_canonical_shared_thread_target<'e, E>(
@@ -640,6 +657,8 @@ impl TeamManager {
         conversation_mode: &str,
         topic: Option<&str>,
     ) -> anyhow::Result<(TeamTaskRecord, TeamConversationRecord)> {
+        let team = self.get_team(team_id).await?;
+        validate_task_execution_plan(&team.spec, &context)?;
         let now = Utc::now().timestamp();
         let task_id = Uuid::new_v4().to_string();
         let conversation_id = Uuid::new_v4().to_string();
@@ -771,6 +790,37 @@ impl TeamManager {
         parse_team_task_row(&row)
     }
 
+    async fn get_task_for_team(
+        &self,
+        team_id: &str,
+        task_id: &str,
+    ) -> anyhow::Result<TeamTaskRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                title,
+                status,
+                created_by_actor_id,
+                assigned_member_id,
+                context_json,
+                created_at,
+                updated_at
+            FROM team_tasks
+            WHERE id = ?1
+              AND team_id = ?2
+            "#,
+        )
+        .bind(task_id)
+        .bind(team_id)
+        .fetch_optional(&self.db)
+        .await?;
+        let row = row
+            .ok_or_else(|| anyhow::anyhow!("linked task does not belong to the requested team"))?;
+        parse_team_task_row(&row)
+    }
+
     pub async fn get_task_detail(
         &self,
         task_id: &str,
@@ -851,6 +901,7 @@ impl TeamManager {
         context_patch: Option<TeamTaskContextPatch>,
     ) -> anyhow::Result<TeamTaskRecord> {
         let current = self.get_task(task_id).await?;
+        let team = self.get_team(&current.team_id).await?;
         let status_patch = status.filter(|candidate| *candidate != current.status);
         let assignment_patch = match assignment {
             TeamTaskAssignmentUpdate::Unchanged => None,
@@ -869,8 +920,13 @@ impl TeamManager {
                 }
             }
         };
-        let context_patch =
-            context_patch.and_then(|patch| resolve_task_context_patch(&current.context, patch));
+        let context_patch = context_patch
+            .and_then(|patch| resolve_task_context_patch(&current.context, patch))
+            .map(|next_context| {
+                validate_task_execution_plan(&team.spec, &next_context)?;
+                Ok::<_, anyhow::Error>(next_context)
+            })
+            .transpose()?;
         if status_patch.is_none() && assignment_patch.is_none() && context_patch.is_none() {
             return Ok(current);
         }
@@ -1184,6 +1240,7 @@ impl TeamManager {
         context_id: Option<&str>,
         input: Value,
     ) -> anyhow::Result<TeamRunRecord> {
+        let team = self.get_team(team_id).await?;
         let run_id = Uuid::new_v4().to_string();
         let resolved_context_id = context_id
             .map(str::trim)
@@ -1193,6 +1250,29 @@ impl TeamManager {
         let now = Utc::now().timestamp();
         let status = TeamRunStatus::Submitted;
         let input = normalize_run_input_continuity(input);
+        let linked_task = if let Some(task_id) = extract_linked_task_id_from_run_input(&input) {
+            Some(self.get_task_for_team(team_id, task_id).await?)
+        } else {
+            None
+        };
+        let (materialized_steps, materialized_steps_scope) = {
+            let from_input = extract_materialized_run_step_templates_from_input(&input)?;
+            if !from_input.is_empty() {
+                (from_input, "run input step_template")
+            } else if let Some(task) = linked_task.as_ref() {
+                (
+                    build_materialized_run_step_templates_from_task_execution_plan(task)?,
+                    "linked task execution_plan.steps",
+                )
+            } else {
+                (Vec::new(), "run input step_template")
+            }
+        };
+        validate_materialized_run_step_templates(
+            &team.spec,
+            &materialized_steps,
+            materialized_steps_scope,
+        )?;
         let input_json = serde_json::to_string(&input)?;
         let continuity_mode = extract_continuity_mode_from_input(&input);
 
@@ -1230,6 +1310,7 @@ impl TeamManager {
         .bind(payload.to_string())
         .execute(&mut *tx)
         .await?;
+        insert_materialized_run_steps_tx(&mut tx, &run_id, &materialized_steps, now).await?;
         sync_linked_task_status_tx(&mut tx, team_id, &input, TeamTaskStatus::InProgress, now)
             .await?;
         tx.commit().await?;
@@ -1923,8 +2004,7 @@ impl TeamManager {
         now: i64,
     ) -> anyhow::Result<Option<ContextArtifactPointer>> {
         let Some(workspace) =
-            load_team_member_context_workspace_tx(tx, owner.team_id, owner.member_id)
-                .await?
+            load_team_member_context_workspace_tx(tx, owner.team_id, owner.member_id).await?
         else {
             return Ok(None);
         };
@@ -2002,46 +2082,38 @@ impl TeamManager {
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let reconcile_started = build_reconcile_round_started_input(current.input.as_ref()).map(
+            |(next_input, round)| {
+                (
+                    serde_json::to_string(&next_input)
+                        .expect("reconcile round input should serialize"),
+                    round,
+                )
+            },
+        );
         let update = sqlx::query(
             r#"
             UPDATE team_steps
             SET
                 status = 'working',
                 remote_task_id = COALESCE(?1, remote_task_id),
-                started_at = COALESCE(started_at, ?2)
-            WHERE id = ?3 AND status IN ('submitted', 'input_required')
+                input_json = COALESCE(?2, input_json),
+                started_at = COALESCE(started_at, ?3)
+            WHERE id = ?4 AND status IN ('submitted', 'input_required')
             "#,
         )
         .bind(runtime_handle_id)
+        .bind(
+            reconcile_started
+                .as_ref()
+                .map(|(input_json, _)| input_json.as_str()),
+        )
         .bind(now)
         .bind(step_id)
         .execute(&mut *tx)
         .await?;
-
-        let step_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                step_key,
-                member_id,
-                remote_task_id,
-                status,
-                attempt,
-                depends_on_json,
-                input_json,
-                output_json,
-                error_text,
-                started_at,
-                ended_at
-            FROM team_steps
-            WHERE id = ?1
-            "#,
-        )
-        .bind(step_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let step = parse_team_step_row(&step_row)?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
             let run_update = sqlx::query(
@@ -2087,6 +2159,32 @@ impl TeamManager {
             .bind(step_payload.to_string())
             .execute(&mut *tx)
             .await?;
+
+            if let Some((_, round)) = reconcile_started.as_ref() {
+                let runtime = extract_reconcile_round_runtime(step.input.as_ref());
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "working",
+                    "goal": runtime.as_ref().and_then(|item| item.goal.clone()),
+                    "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
+                    "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind(&step.id)
+                .bind("step_reconcile_round_started")
+                .bind(now)
+                .bind(round_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
         }
 
         tx.commit().await?;
@@ -2101,8 +2199,31 @@ impl TeamManager {
         input: Option<Value>,
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
-        let input_json = input.as_ref().map(serde_json::to_string).transpose()?;
         let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let summary = reason
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| summarize_reconcile_output(input.as_ref()));
+        let merged_input = merge_step_input(current.input.as_ref(), input);
+        let reconcile_finished = build_reconcile_round_finished_input(
+            merged_input.as_ref().or(current.input.as_ref()),
+            "input_required",
+            summary.as_deref(),
+        );
+        let input_json = reconcile_finished
+            .as_ref()
+            .map(|(value, _)| serde_json::to_string(value))
+            .transpose()?
+            .or_else(|| {
+                merged_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .ok()
+                    .flatten()
+            });
         let update = sqlx::query(
             r#"
             UPDATE team_steps
@@ -2120,31 +2241,7 @@ impl TeamManager {
         .bind(step_id)
         .execute(&mut *tx)
         .await?;
-
-        let step_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                step_key,
-                member_id,
-                remote_task_id,
-                status,
-                attempt,
-                depends_on_json,
-                input_json,
-                output_json,
-                error_text,
-                started_at,
-                ended_at
-            FROM team_steps
-            WHERE id = ?1
-            "#,
-        )
-        .bind(step_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let step = parse_team_step_row(&step_row)?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
             let run_update = sqlx::query(
@@ -2198,6 +2295,29 @@ impl TeamManager {
             .bind(step_payload.to_string())
             .execute(&mut *tx)
             .await?;
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "input_required",
+                    "summary": summary,
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind(&step.id)
+                .bind("step_reconcile_round_finished")
+                .bind(now)
+                .bind(round_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
         }
 
         tx.commit().await?;
@@ -2211,8 +2331,23 @@ impl TeamManager {
         input: Option<Value>,
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
-        let input_json = input.as_ref().map(serde_json::to_string).transpose()?;
         let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let merged_input = merge_step_input(current.input.as_ref(), input);
+        let started_input =
+            build_reconcile_round_started_input(merged_input.as_ref().or(current.input.as_ref()));
+        let input_json = started_input
+            .as_ref()
+            .map(|(value, _)| serde_json::to_string(value))
+            .transpose()?
+            .or_else(|| {
+                merged_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .ok()
+                    .flatten()
+            });
         let update = sqlx::query(
             r#"
             UPDATE team_steps
@@ -2229,31 +2364,7 @@ impl TeamManager {
         .bind(step_id)
         .execute(&mut *tx)
         .await?;
-
-        let step_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                step_key,
-                member_id,
-                remote_task_id,
-                status,
-                attempt,
-                depends_on_json,
-                input_json,
-                output_json,
-                error_text,
-                started_at,
-                ended_at
-            FROM team_steps
-            WHERE id = ?1
-            "#,
-        )
-        .bind(step_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let step = parse_team_step_row(&step_row)?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
             let run_update = sqlx::query(
@@ -2299,6 +2410,157 @@ impl TeamManager {
             .bind(step_payload.to_string())
             .execute(&mut *tx)
             .await?;
+
+            if let Some((_, round)) = started_input.as_ref() {
+                let runtime = extract_reconcile_round_runtime(step.input.as_ref());
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "working",
+                    "goal": runtime.as_ref().and_then(|item| item.goal.clone()),
+                    "acceptance_count": runtime.as_ref().map(|item| item.acceptance.len()).unwrap_or(0),
+                    "max_rounds": runtime.and_then(|item| item.execution.max_rounds),
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind(&step.id)
+                .bind("step_reconcile_round_started")
+                .bind(now)
+                .bind(round_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(step)
+    }
+
+    #[allow(dead_code)]
+    pub async fn continue_step(
+        &self,
+        step_id: &str,
+        output: Option<Value>,
+    ) -> anyhow::Result<TeamStepRecord> {
+        let now = Utc::now().timestamp();
+        let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        if current.status != TeamStepStatus::Working {
+            anyhow::bail!("continue_step requires a working reconcile step");
+        }
+        let runtime = extract_reconcile_round_runtime(current.input.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("continue_step requires reconcile_loop step input"))?;
+        let current_round = runtime.current_round.max(1);
+        if let Some(max_rounds) = runtime.execution.max_rounds
+            && current_round >= max_rounds
+        {
+            anyhow::bail!(
+                "reconcile_loop step reached max_rounds={max_rounds}; use complete, input_required, or fail instead"
+            );
+        }
+
+        let summary = summarize_reconcile_output(output.as_ref());
+        let finished_input = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "continued",
+            summary.as_deref(),
+        )
+        .ok_or_else(|| anyhow::anyhow!("continue_step requires reconcile_loop round state"))?;
+        let started_input = build_reconcile_round_started_input(Some(&finished_input.0))
+            .ok_or_else(|| anyhow::anyhow!("continue_step failed to start next reconcile round"))?;
+        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
+        let update = sqlx::query(
+            r#"
+            UPDATE team_steps
+            SET
+                input_json = ?1,
+                output_json = COALESCE(?2, output_json),
+                error_text = NULL,
+                started_at = COALESCE(started_at, ?3)
+            WHERE id = ?4 AND status = 'working'
+            "#,
+        )
+        .bind(serde_json::to_string(&started_input.0)?)
+        .bind(output_json)
+        .bind(now)
+        .bind(step_id)
+        .execute(&mut *tx)
+        .await?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
+
+        if update.rows_affected() > 0 {
+            let continue_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "status": "working",
+                "continued_from_round": finished_input.1,
+                "continued_to_round": started_input.1,
+                "summary": summary,
+                "output": step.output,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_continued")
+            .bind(now)
+            .bind(continue_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+            let round_finished_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "round": finished_input.1,
+                "status": "continued",
+                "summary": summary,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_reconcile_round_finished")
+            .bind(now)
+            .bind(round_finished_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
+
+            let round_started_payload = serde_json::json!({
+                "step_id": step.id,
+                "step_key": step.step_key,
+                "round": started_input.1,
+                "status": "working",
+                "goal": runtime.goal,
+                "acceptance_count": runtime.acceptance.len(),
+                "max_rounds": runtime.execution.max_rounds,
+            });
+            sqlx::query(
+                r#"
+                INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+            )
+            .bind(&step.run_id)
+            .bind(&step.id)
+            .bind("step_reconcile_round_started")
+            .bind(now)
+            .bind(round_started_payload.to_string())
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -2312,48 +2574,38 @@ impl TeamManager {
         output: Option<Value>,
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
-        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
         let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let summary = summarize_reconcile_output(output.as_ref());
+        let reconcile_finished = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "completed",
+            summary.as_deref(),
+        );
+        let output_json = output.as_ref().map(serde_json::to_string).transpose()?;
         let update = sqlx::query(
             r#"
             UPDATE team_steps
             SET
                 status = 'completed',
-                output_json = ?1,
-                ended_at = COALESCE(ended_at, ?2)
-            WHERE id = ?3 AND status IN ('working', 'input_required')
+                input_json = COALESCE(?1, input_json),
+                output_json = ?2,
+                ended_at = COALESCE(ended_at, ?3)
+            WHERE id = ?4 AND status IN ('working', 'input_required')
             "#,
+        )
+        .bind(
+            reconcile_finished
+                .as_ref()
+                .map(|(value, _)| serde_json::to_string(value))
+                .transpose()?,
         )
         .bind(output_json)
         .bind(now)
         .bind(step_id)
         .execute(&mut *tx)
         .await?;
-
-        let step_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                step_key,
-                member_id,
-                remote_task_id,
-                status,
-                attempt,
-                depends_on_json,
-                input_json,
-                output_json,
-                error_text,
-                started_at,
-                ended_at
-            FROM team_steps
-            WHERE id = ?1
-            "#,
-        )
-        .bind(step_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let step = parse_team_step_row(&step_row)?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
             let payload = serde_json::json!({
@@ -2458,8 +2710,8 @@ impl TeamManager {
                 artifact_offload_status,
             );
             if let Some(payload_obj) = continuity_payload.as_object_mut() {
-                if let Some(pointer_payload) = artifact_pointer_for_event {
-                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload);
+                if let Some(pointer_payload) = artifact_pointer_for_event.as_ref() {
+                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload.clone());
                 }
                 if let Some(reason) = artifact_offload_reason {
                     payload_obj.insert(
@@ -2481,6 +2733,34 @@ impl TeamManager {
             .bind(continuity_payload.to_string())
             .execute(&mut *tx)
             .await?;
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let mut round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "completed",
+                    "summary": summary,
+                });
+                if let Some(payload_obj) = round_payload.as_object_mut()
+                    && let Some(pointer_payload) = artifact_pointer_for_event.clone()
+                {
+                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload);
+                }
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind(&step.id)
+                .bind("step_reconcile_round_finished")
+                .bind(now)
+                .bind(round_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
 
             let non_completed_count: i64 = sqlx::query_scalar(
                 r#"
@@ -2546,46 +2826,35 @@ impl TeamManager {
     ) -> anyhow::Result<TeamStepRecord> {
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
+        let current = load_step_record_tx(&mut tx, step_id).await?;
+        let reconcile_finished = build_reconcile_round_finished_input(
+            current.input.as_ref(),
+            "failed",
+            Some(error_text),
+        );
         let update = sqlx::query(
             r#"
             UPDATE team_steps
             SET
                 status = 'failed',
-                error_text = ?1,
-                ended_at = COALESCE(ended_at, ?2)
-            WHERE id = ?3 AND status IN ('submitted', 'working', 'input_required')
+                input_json = COALESCE(?1, input_json),
+                error_text = ?2,
+                ended_at = COALESCE(ended_at, ?3)
+            WHERE id = ?4 AND status IN ('submitted', 'working', 'input_required')
             "#,
+        )
+        .bind(
+            reconcile_finished
+                .as_ref()
+                .map(|(value, _)| serde_json::to_string(value))
+                .transpose()?,
         )
         .bind(error_text)
         .bind(now)
         .bind(step_id)
         .execute(&mut *tx)
         .await?;
-
-        let step_row = sqlx::query(
-            r#"
-            SELECT
-                id,
-                run_id,
-                step_key,
-                member_id,
-                remote_task_id,
-                status,
-                attempt,
-                depends_on_json,
-                input_json,
-                output_json,
-                error_text,
-                started_at,
-                ended_at
-            FROM team_steps
-            WHERE id = ?1
-            "#,
-        )
-        .bind(step_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        let step = parse_team_step_row(&step_row)?;
+        let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
             let payload = serde_json::json!({
@@ -2607,6 +2876,29 @@ impl TeamManager {
             .bind(payload.to_string())
             .execute(&mut *tx)
             .await?;
+
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                let round_payload = serde_json::json!({
+                    "step_id": step.id,
+                    "step_key": step.step_key,
+                    "round": round,
+                    "status": "failed",
+                    "summary": step.error_text,
+                });
+                sqlx::query(
+                    r#"
+                    INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    "#,
+                )
+                .bind(&step.run_id)
+                .bind(&step.id)
+                .bind("step_reconcile_round_finished")
+                .bind(now)
+                .bind(round_payload.to_string())
+                .execute(&mut *tx)
+                .await?;
+            }
 
             let run_update = sqlx::query(
                 r#"
@@ -3507,10 +3799,9 @@ async fn load_team_member_context_workspace_tx(
     };
     let spec_json = row.get::<String, _>("spec_json");
 
-    let runtime_workdir = if let Some(member_role) =
-        serde_json::from_str::<Value>(&spec_json)
-            .ok()
-            .and_then(|spec| team_member_role_from_spec(&spec, member_id))
+    let runtime_workdir = if let Some(member_role) = serde_json::from_str::<Value>(&spec_json)
+        .ok()
+        .and_then(|spec| team_member_role_from_spec(&spec, member_id))
     {
         let actor_context =
             build_team_member_actor_context_for_role(team_id, None, member_id, &member_role);
@@ -4037,6 +4328,393 @@ struct ContextArtifactPointer {
     relative_path: String,
     artifact_size_bytes: i64,
     content_checksum: String,
+}
+
+fn build_materialized_step_input(
+    goal: Option<String>,
+    acceptance: Vec<String>,
+    execution: TeamTaskStepExecutionSpec,
+) -> Option<Value> {
+    let goal = goal
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let acceptance = acceptance
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+
+    if goal.is_none() && acceptance.is_empty() && execution == TeamTaskStepExecutionSpec::default()
+    {
+        return None;
+    }
+
+    Some(serde_json::json!({
+        "task_execution_step": {
+            "goal": goal,
+            "acceptance": acceptance,
+            "execution": execution,
+            "round_state": {
+                "current_round": 0_i64,
+            },
+        }
+    }))
+}
+
+fn parse_task_execution_step_input(
+    input: Option<&Value>,
+) -> anyhow::Result<(Option<String>, Vec<String>, TeamTaskStepExecutionSpec)> {
+    let Some(step) = input
+        .and_then(|value| value.get("task_execution_step"))
+        .and_then(Value::as_object)
+    else {
+        return Ok((None, Vec::new(), TeamTaskStepExecutionSpec::default()));
+    };
+    let goal = step
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let acceptance = step
+        .get("acceptance")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let execution = step
+        .get("execution")
+        .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+        .transpose()?
+        .unwrap_or_default();
+    Ok((goal, acceptance, execution))
+}
+
+fn validate_materialized_run_step_templates(
+    team_spec: &Value,
+    steps: &[MaterializedRunStepTemplate],
+    scope: &str,
+) -> anyhow::Result<()> {
+    let execution_steps = steps
+        .iter()
+        .map(|step| {
+            let (goal, acceptance, execution) =
+                parse_task_execution_step_input(step.input.as_ref())?;
+            Ok(agenthub_team_domain::TeamTaskExecutionStepSpec {
+                step_key: step.step_key.clone(),
+                member_id: step.member_id.clone(),
+                depends_on: step.depends_on.clone(),
+                goal,
+                acceptance,
+                execution,
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    validate_task_execution_steps(team_spec, &execution_steps, scope)
+}
+
+fn merge_step_input(current_input: Option<&Value>, next_input: Option<Value>) -> Option<Value> {
+    next_input.map(|next_input| {
+        if let Some(current_input) = current_input
+            && next_input.get("task_execution_step").is_none()
+        {
+            let mut merged = current_input.clone();
+            merge_json_value(&mut merged, &next_input);
+            return merged;
+        }
+        next_input
+    })
+}
+
+fn extract_reconcile_round_runtime(input: Option<&Value>) -> Option<ReconcileRoundRuntime> {
+    let root = input?.as_object()?;
+    let step = root.get("task_execution_step")?.as_object()?;
+    let execution = step
+        .get("execution")
+        .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+        .transpose()
+        .ok()?
+        .unwrap_or_default();
+    if execution.mode != super::TeamTaskStepExecutionMode::ReconcileLoop {
+        return None;
+    }
+    let current_round = step
+        .get("round_state")
+        .and_then(Value::as_object)
+        .and_then(|round_state| round_state.get("current_round"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let goal = step
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let acceptance = step
+        .get("acceptance")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Some(ReconcileRoundRuntime {
+        current_round,
+        goal,
+        acceptance,
+        execution,
+    })
+}
+
+fn build_reconcile_round_started_input(input: Option<&Value>) -> Option<(Value, i64)> {
+    let runtime = extract_reconcile_round_runtime(input)?;
+    let next_round = runtime.current_round + 1;
+    let mut next = input.cloned().unwrap_or_else(|| serde_json::json!({}));
+    let root = next.as_object_mut()?;
+    let step = root.get_mut("task_execution_step")?.as_object_mut()?;
+    let round_state = step
+        .entry("round_state".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let round_state = round_state.as_object_mut()?;
+    round_state.insert("current_round".to_string(), Value::from(next_round));
+    round_state.insert("latest_status".to_string(), Value::from("working"));
+    round_state.remove("latest_outcome");
+    round_state.remove("latest_summary");
+    Some((next, next_round))
+}
+
+fn build_reconcile_round_finished_input(
+    input: Option<&Value>,
+    outcome: &str,
+    summary: Option<&str>,
+) -> Option<(Value, i64)> {
+    let runtime = extract_reconcile_round_runtime(input)?;
+    let mut next = input.cloned().unwrap_or_else(|| serde_json::json!({}));
+    let root = next.as_object_mut()?;
+    let step = root.get_mut("task_execution_step")?.as_object_mut()?;
+    let round_state = step
+        .entry("round_state".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let round_state = round_state.as_object_mut()?;
+    round_state.insert(
+        "current_round".to_string(),
+        Value::from(runtime.current_round.max(1)),
+    );
+    round_state.insert("latest_status".to_string(), Value::from(outcome));
+    round_state.insert("latest_outcome".to_string(), Value::from(outcome));
+    if let Some(summary) = summary.map(str::trim).filter(|value| !value.is_empty()) {
+        round_state.insert("latest_summary".to_string(), Value::from(summary));
+    } else {
+        round_state.remove("latest_summary");
+    }
+    Some((next, runtime.current_round.max(1)))
+}
+
+fn summarize_reconcile_output(output: Option<&Value>) -> Option<String> {
+    let output = output?;
+    output
+        .as_object()
+        .and_then(|obj| obj.get("summary"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            let text = output.to_string();
+            let trimmed = text.trim();
+            (!trimmed.is_empty()).then(|| truncate_chars(trimmed, 240))
+        })
+}
+
+fn extract_materialized_run_step_templates_from_input(
+    input: &Value,
+) -> anyhow::Result<Vec<MaterializedRunStepTemplate>> {
+    let Some(input_obj) = input.as_object() else {
+        return Ok(Vec::new());
+    };
+    let Some(raw_steps) = input_obj.get("step_template") else {
+        return Ok(Vec::new());
+    };
+    let steps = raw_steps
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("run input step_template must be an array"))?;
+    let mut out = Vec::with_capacity(steps.len());
+    for step in steps {
+        let step_obj = step
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("run input step_template entries must be objects"))?;
+        let step_key = step_obj
+            .get("step_key")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("run input step_template[].step_key is required"))?;
+        let member_id = step_obj
+            .get("member_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("run input step_template[].member_id is required"))?;
+        let depends_on = step_obj
+            .get("depends_on")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let goal = step_obj
+            .get("goal")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let acceptance = step_obj
+            .get("acceptance")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let execution = step_obj
+            .get("execution")
+            .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+            .transpose()?
+            .unwrap_or_default();
+        out.push(MaterializedRunStepTemplate {
+            step_key: step_key.to_string(),
+            member_id: member_id.to_string(),
+            depends_on,
+            input: build_materialized_step_input(goal, acceptance, execution),
+        });
+    }
+    Ok(out)
+}
+
+fn build_materialized_run_step_templates_from_task_execution_plan(
+    task: &TeamTaskRecord,
+) -> anyhow::Result<Vec<MaterializedRunStepTemplate>> {
+    let Some(plan) = parse_task_execution_plan(&task.context)? else {
+        return Ok(Vec::new());
+    };
+    Ok(plan
+        .steps
+        .into_iter()
+        .map(|step| MaterializedRunStepTemplate {
+            step_key: step.step_key.trim().to_string(),
+            member_id: step.member_id.trim().to_string(),
+            depends_on: step
+                .depends_on
+                .into_iter()
+                .map(|value| value.trim().to_string())
+                .collect(),
+            input: build_materialized_step_input(step.goal, step.acceptance, step.execution),
+        })
+        .collect())
+}
+
+async fn insert_materialized_run_steps_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+    steps: &[MaterializedRunStepTemplate],
+    now: i64,
+) -> anyhow::Result<()> {
+    for step in steps {
+        let step_id = Uuid::new_v4().to_string();
+        let depends_on_json = serde_json::to_string(&step.depends_on)?;
+        let input_json = step.input.as_ref().map(serde_json::to_string).transpose()?;
+        sqlx::query(
+            r#"
+            INSERT INTO team_steps (
+                id, run_id, step_key, member_id, remote_task_id, status, attempt, depends_on_json, input_json
+            )
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, ?6, ?7)
+            "#,
+        )
+        .bind(&step_id)
+        .bind(run_id)
+        .bind(&step.step_key)
+        .bind(&step.member_id)
+        .bind(team_step_status_to_str(&TeamStepStatus::Submitted))
+        .bind(depends_on_json)
+        .bind(input_json)
+        .execute(&mut **tx)
+        .await?;
+
+        let payload = serde_json::json!({
+            "step_id": step_id,
+            "step_key": step.step_key,
+            "member_id": step.member_id,
+            "status": team_step_status_to_str(&TeamStepStatus::Submitted),
+        });
+        sqlx::query(
+            r#"
+            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(run_id)
+        .bind(&step_id)
+        .bind("step_submitted")
+        .bind(now)
+        .bind(payload.to_string())
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn load_step_record_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    step_id: &str,
+) -> anyhow::Result<TeamStepRecord> {
+    let step_row = sqlx::query(
+        r#"
+        SELECT
+            id,
+            run_id,
+            step_key,
+            member_id,
+            remote_task_id,
+            status,
+            attempt,
+            depends_on_json,
+            input_json,
+            output_json,
+            error_text,
+            started_at,
+            ended_at
+        FROM team_steps
+        WHERE id = ?1
+        "#,
+    )
+    .bind(step_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    parse_team_step_row(&step_row)
 }
 
 fn normalize_run_input_continuity(mut input: Value) -> Value {

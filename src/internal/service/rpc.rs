@@ -858,11 +858,6 @@ impl TeamInternalControl for TeamInternalControlService {
         let principal = self.authz.authenticate(request.metadata())?;
         self.authz
             .ensure_permission(&principal, InternalAction::StepTransition)?;
-        if principal.role == InternalRole::Worker {
-            return Err(Status::permission_denied(
-                "worker token cannot transition team steps",
-            ));
-        }
         let payload = request.into_inner();
 
         let run_id = required_field(&payload.run_id, "run_id")?;
@@ -870,6 +865,21 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let step_id = required_field(&payload.step_id, "step_id")?;
         let action = required_field(&payload.action, "action")?;
+        let current = self
+            .deps
+            .teams
+            .get_step(step_id)
+            .await
+            .map_err(map_manager_error)?;
+        if current.run_id != run_id {
+            return Err(Status::permission_denied(
+                "step does not belong to requested run scope",
+            ));
+        }
+        if principal.role == InternalRole::Worker {
+            self.authz
+                .ensure_worker_actor(&principal, &current.member_id, "step member")?;
+        }
 
         let step = match action {
             "start" => {
@@ -919,14 +929,36 @@ impl TeamInternalControl for TeamInternalControlService {
                     )
                     .await
             }
+            "continue" => {
+                self.deps
+                    .teams
+                    .continue_step(
+                        step_id,
+                        optional_trimmed(&payload.output_json)
+                            .map(serde_json::from_str::<Value>)
+                            .transpose()
+                            .map_err(|err| Status::invalid_argument(err.to_string()))?,
+                    )
+                    .await
+            }
             _ => return Err(Status::invalid_argument("unsupported action")),
         }
         .map_err(map_manager_error)?;
-
-        if step.run_id != run_id {
-            return Err(Status::permission_denied(
-                "step does not belong to requested run scope",
-            ));
+        if matches!(action, "start" | "resume" | "continue")
+            && let Err(err) = crate::team::maybe_nudge_reconcile_step_prompt(
+                &self.deps.teams,
+                &self.deps.agents,
+                &step,
+            )
+            .await
+        {
+            tracing::warn!(
+                run_id = %run_id,
+                step_id = %step.id,
+                member_id = %step.member_id,
+                "internal transition failed to auto-nudge reconcile step prompt: {}",
+                err
+            );
         }
         Ok(Response::new(step_to_transition_response(step)))
     }

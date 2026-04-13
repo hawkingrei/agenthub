@@ -26,6 +26,8 @@ const ACTOR_HELP_TOPIC_SEND: &str = "send";
 const ACTOR_HELP_TOPIC_PERMISSION_REVIEW_RESPOND: &str = "permission-review-respond";
 const ACTOR_HELP_TOPIC_TEAM_TASK_SHOW: &str = "team-task-show";
 const ACTOR_HELP_TOPIC_TEAM_TASK_NOTE: &str = "team-task-note";
+const ACTOR_HELP_TOPIC_TEAM_STEP_DECISION: &str = "team-step-decision";
+const ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION: &str = "team-step-transition";
 const ACTOR_HELP_TOPICS: &[&str] = &[
     "team-members",
     "team-tasks",
@@ -33,6 +35,8 @@ const ACTOR_HELP_TOPICS: &[&str] = &[
     "team-task-update",
     ACTOR_HELP_TOPIC_TEAM_TASK_SHOW,
     ACTOR_HELP_TOPIC_TEAM_TASK_NOTE,
+    ACTOR_HELP_TOPIC_TEAM_STEP_DECISION,
+    ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION,
     ACTOR_HELP_TOPIC_INBOX,
     ACTOR_HELP_TOPIC_RECEIVE,
     ACTOR_HELP_TOPIC_ACK,
@@ -200,6 +204,24 @@ enum ActorCommand {
         shared_thread: bool,
         kind: TeamTaskNoteKind,
         text: String,
+    },
+    TeamStepTransition {
+        run_id: Option<String>,
+        actor_id: String,
+        step_id: String,
+        action: String,
+        runtime_handle_id: Option<String>,
+        output: Option<Value>,
+        error_text: Option<String>,
+        input: Option<Value>,
+        reason: Option<String>,
+    },
+    TeamStepDecision {
+        run_id: Option<String>,
+        actor_id: String,
+        step_id: String,
+        runtime_handle_id: Option<String>,
+        decision: Value,
     },
     TimeTriggerSet {
         actor_id: String,
@@ -2247,6 +2269,176 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_step_transition_uses_run_and_actor_env_fallbacks() {
+        let _guard = env_lock().blocking_lock();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-step-env");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-1");
+            std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
+        }
+        let args = vec![
+            "team-step-transition".to_string(),
+            "--step-id".to_string(),
+            "step-7".to_string(),
+            "--action".to_string(),
+            "continue".to_string(),
+            "--output-json".to_string(),
+            r#"{"summary":"need another round"}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-step-transition");
+        match parsed {
+            ActorCommand::TeamStepTransition {
+                run_id,
+                actor_id,
+                step_id,
+                action,
+                output,
+                ..
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker-1");
+                assert_eq!(step_id, "step-7");
+                assert_eq!(action, "continue");
+                assert_eq!(
+                    output
+                        .as_ref()
+                        .and_then(|value| value.get("summary"))
+                        .and_then(Value::as_str),
+                    Some("need another round")
+                );
+            }
+            other => panic!("expected team-step-transition command, got {other:?}"),
+        }
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+        restore_env(ACTOR_RUNTIME_AGENT_ID_ENV, prev_agent);
+    }
+
+    #[test]
+    fn parse_team_step_transition_requires_error_text_for_fail() {
+        let _guard = env_lock().blocking_lock();
+        let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-step-fail");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-1");
+        }
+        let args = vec![
+            "team-step-transition".to_string(),
+            "--step-id".to_string(),
+            "step-8".to_string(),
+            "--action".to_string(),
+            "fail".to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("fail action should require error text");
+        assert!(err.to_string().contains(
+            "team-step-transition action=fail requires --error-text or --error-text-file"
+        ));
+        restore_env(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, prev_run);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_step_decision_uses_structured_decision_payload() {
+        let _guard = env_lock().blocking_lock();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-1");
+        }
+        let args = vec![
+            "team-step-decision".to_string(),
+            "--step-id".to_string(),
+            "step-9".to_string(),
+            "--decision-json".to_string(),
+            r#"{"action":"continue","output":{"summary":"need another round"}}"#.to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-step-decision");
+        match parsed {
+            ActorCommand::TeamStepDecision {
+                run_id,
+                actor_id,
+                step_id,
+                runtime_handle_id,
+                decision,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker-1");
+                assert_eq!(step_id, "step-9");
+                assert!(runtime_handle_id.is_none());
+                assert_eq!(decision["action"], "continue");
+                assert_eq!(decision["output"]["summary"], "need another round");
+                assert!(decision.get("input").is_none());
+                assert!(decision.get("reason").is_none());
+                assert!(decision.get("error_text").is_none());
+            }
+            other => panic!("expected team-step-decision command, got {other:?}"),
+        }
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_step_decision_allows_default_workspace_decision_file() {
+        let _guard = env_lock().blocking_lock();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-1");
+        }
+        let args = vec![
+            "team-step-decision".to_string(),
+            "--step-id".to_string(),
+            "step-9".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-step-decision with default file fallback");
+        match parsed {
+            ActorCommand::TeamStepDecision {
+                run_id,
+                actor_id,
+                step_id,
+                runtime_handle_id,
+                decision,
+            } => {
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "worker-1");
+                assert_eq!(step_id, "step-9");
+                assert!(runtime_handle_id.is_none());
+                assert!(decision.is_null());
+            }
+            other => panic!("expected team-step-decision command, got {other:?}"),
+        }
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_step_decision_requires_error_text_for_fail() {
+        let _guard = env_lock().blocking_lock();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "worker-1");
+        }
+        let args = vec![
+            "team-step-decision".to_string(),
+            "--step-id".to_string(),
+            "step-9".to_string(),
+            "--decision-json".to_string(),
+            r#"{"action":"fail"}"#.to_string(),
+        ];
+        let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect_err("team-step-decision fail should require error_text");
+        assert!(
+            err.to_string()
+                .contains("team-step-decision action=fail requires decision_json.error_text")
+        );
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
     fn resolve_shared_thread_task_id_prefers_canonical_shared_thread_task() {
         let tasks = vec![
             crate::team::TeamTaskRecord {
@@ -2723,6 +2915,36 @@ mod tests {
                     text: "progress".to_string(),
                 },
                 ActorOutputPreference::ToonPreferred,
+            ),
+            (
+                ActorCommand::TeamStepTransition {
+                    run_id: Some("run-1".to_string()),
+                    actor_id: "worker".to_string(),
+                    step_id: "step-1".to_string(),
+                    action: "continue".to_string(),
+                    runtime_handle_id: Some("session-1".to_string()),
+                    output: Some(serde_json::json!({"summary":"need another round"})),
+                    error_text: None,
+                    input: None,
+                    reason: None,
+                },
+                ActorOutputPreference::JsonPreferred,
+            ),
+            (
+                ActorCommand::TeamStepDecision {
+                    run_id: Some("run-1".to_string()),
+                    actor_id: "worker".to_string(),
+                    step_id: "step-1".to_string(),
+                    runtime_handle_id: None,
+                    decision: serde_json::json!({
+                        "action":"continue",
+                        "output":{"summary":"need another round"},
+                        "input": null,
+                        "reason": null,
+                        "error_text": null
+                    }),
+                },
+                ActorOutputPreference::JsonPreferred,
             ),
             (
                 ActorCommand::Inbox {

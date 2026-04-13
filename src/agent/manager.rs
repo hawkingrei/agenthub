@@ -337,13 +337,15 @@ async fn ensure_team_runtime_workspace_layout(
             if role != TEAM_MEMBER_ROLE_LEADER {
                 return Ok(());
             }
-            tokio::fs::create_dir_all(workdir_path).await.map_err(|create_err| {
-                anyhow::anyhow!(
-                    "failed to create team runtime workdir: workdir={} error={}",
-                    workdir,
-                    create_err
-                )
-            })?;
+            tokio::fs::create_dir_all(workdir_path)
+                .await
+                .map_err(|create_err| {
+                    anyhow::anyhow!(
+                        "failed to create team runtime workdir: workdir={} error={}",
+                        workdir,
+                        create_err
+                    )
+                })?;
         }
         Err(err) => {
             return Err(anyhow::anyhow!(
@@ -358,21 +360,21 @@ async fn ensure_team_runtime_workspace_layout(
     tokio::fs::create_dir_all(context_root.join("run"))
         .await
         .map_err(|err| {
-        anyhow::anyhow!(
-            "failed to create team runtime context run dir: workdir={} error={}",
-            workdir,
-            err
-        )
-    })?;
+            anyhow::anyhow!(
+                "failed to create team runtime context run dir: workdir={} error={}",
+                workdir,
+                err
+            )
+        })?;
     tokio::fs::create_dir_all(context_root.join("memory"))
         .await
         .map_err(|err| {
-        anyhow::anyhow!(
-            "failed to create team runtime context memory dir: workdir={} error={}",
-            workdir,
-            err
-        )
-    })?;
+            anyhow::anyhow!(
+                "failed to create team runtime context memory dir: workdir={} error={}",
+                workdir,
+                err
+            )
+        })?;
 
     for relative_path in [
         "state.md",

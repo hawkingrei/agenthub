@@ -151,20 +151,25 @@ fn long_lived_test_agent_args() -> String {
 }
 
 pub(crate) async fn build_test_state() -> AppState {
-    build_test_state_with_db_source(None, true).await
+    build_test_state_with_db_source(None, true, true).await
+}
+
+pub(crate) async fn build_test_state_without_seeded_team_member_agents() -> AppState {
+    build_test_state_with_db_source(None, true, false).await
 }
 
 pub(crate) async fn build_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source(Some(path), true).await
+    build_test_state_with_db_source(Some(path), true, true).await
 }
 
 pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source(Some(path), false).await
+    build_test_state_with_db_source(Some(path), false, false).await
 }
 
 async fn build_test_state_with_db_source(
     path: Option<&StdPath>,
     initialize_schema: bool,
+    seed_default_agents: bool,
 ) -> AppState {
     let db = match path {
         Some(path) => create_test_db_at(path).await,
@@ -222,7 +227,7 @@ async fn build_test_state_with_db_source(
         acp_permissions: permissions,
         default_worktree_root: config.default_worktree_root(),
     };
-    if initialize_schema {
+    if seed_default_agents {
         seed_default_team_member_agents(&state).await;
     }
     state
