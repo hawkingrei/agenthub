@@ -46,6 +46,7 @@ use super::{
     TeamStepRecord, TeamStepStatus, TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionSpec,
     build_team_member_actor_context_for_role, normalize_optional_idempotency_key_input,
     parse_task_execution_plan, team_member_role_from_spec, validate_task_execution_plan,
+    validate_task_execution_steps,
 };
 use crate::agent::event_message_codec::decode_message_from_storage;
 use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
@@ -789,6 +790,37 @@ impl TeamManager {
         parse_team_task_row(&row)
     }
 
+    async fn get_task_for_team(
+        &self,
+        team_id: &str,
+        task_id: &str,
+    ) -> anyhow::Result<TeamTaskRecord> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                team_id,
+                title,
+                status,
+                created_by_actor_id,
+                assigned_member_id,
+                context_json,
+                created_at,
+                updated_at
+            FROM team_tasks
+            WHERE id = ?1
+              AND team_id = ?2
+            "#,
+        )
+        .bind(task_id)
+        .bind(team_id)
+        .fetch_optional(&self.db)
+        .await?;
+        let row = row
+            .ok_or_else(|| anyhow::anyhow!("linked task does not belong to the requested team"))?;
+        parse_team_task_row(&row)
+    }
+
     pub async fn get_task_detail(
         &self,
         task_id: &str,
@@ -1219,28 +1251,30 @@ impl TeamManager {
         let status = TeamRunStatus::Submitted;
         let input = normalize_run_input_continuity(input);
         let linked_task = if let Some(task_id) = extract_linked_task_id_from_run_input(&input) {
-            Some(self.get_task(task_id).await?)
+            Some(self.get_task_for_team(team_id, task_id).await?)
         } else {
             None
         };
-        let materialized_steps = {
+        let (materialized_steps, materialized_steps_scope) = {
             let from_input = extract_materialized_run_step_templates_from_input(&input)?;
             if !from_input.is_empty() {
-                from_input
+                (from_input, "run input step_template")
             } else if let Some(task) = linked_task.as_ref() {
-                build_materialized_run_step_templates_from_task_execution_plan(task)?
+                (
+                    build_materialized_run_step_templates_from_task_execution_plan(task)?,
+                    "linked task execution_plan.steps",
+                )
             } else {
-                Vec::new()
+                (Vec::new(), "run input step_template")
             }
         };
+        validate_materialized_run_step_templates(
+            &team.spec,
+            &materialized_steps,
+            materialized_steps_scope,
+        )?;
         let input_json = serde_json::to_string(&input)?;
         let continuity_mode = extract_continuity_mode_from_input(&input);
-
-        if let Some(task) = linked_task.as_ref()
-            && task.team_id != team.id
-        {
-            anyhow::bail!("linked task does not belong to the requested team");
-        }
 
         let mut tx = self.db.begin().await?;
         sqlx::query(
@@ -4343,6 +4377,65 @@ fn build_materialized_step_input(
             },
         }
     }))
+}
+
+fn parse_task_execution_step_input(
+    input: Option<&Value>,
+) -> anyhow::Result<(Option<String>, Vec<String>, TeamTaskStepExecutionSpec)> {
+    let Some(step) = input
+        .and_then(|value| value.get("task_execution_step"))
+        .and_then(Value::as_object)
+    else {
+        return Ok((None, Vec::new(), TeamTaskStepExecutionSpec::default()));
+    };
+    let goal = step
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let acceptance = step
+        .get("acceptance")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let execution = step
+        .get("execution")
+        .map(|value| serde_json::from_value::<TeamTaskStepExecutionSpec>(value.clone()))
+        .transpose()?
+        .unwrap_or_default();
+    Ok((goal, acceptance, execution))
+}
+
+fn validate_materialized_run_step_templates(
+    team_spec: &Value,
+    steps: &[MaterializedRunStepTemplate],
+    scope: &str,
+) -> anyhow::Result<()> {
+    let execution_steps = steps
+        .iter()
+        .map(|step| {
+            let (goal, acceptance, execution) =
+                parse_task_execution_step_input(step.input.as_ref())?;
+            Ok(agenthub_team_domain::TeamTaskExecutionStepSpec {
+                step_key: step.step_key.clone(),
+                member_id: step.member_id.clone(),
+                depends_on: step.depends_on.clone(),
+                goal,
+                acceptance,
+                execution,
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    validate_task_execution_steps(team_spec, &execution_steps, scope)
 }
 
 fn extract_reconcile_round_runtime(input: Option<&Value>) -> Option<ReconcileRoundRuntime> {

@@ -66,47 +66,47 @@ pub(crate) fn validate_task_execution_plan(
     if plan.steps.is_empty() {
         anyhow::bail!("task context execution_plan.steps must not be empty");
     }
+    validate_task_execution_steps(team_spec, &plan.steps, "task context execution_plan.steps")?;
+    Ok(Some(plan))
+}
 
+pub(crate) fn validate_task_execution_steps(
+    team_spec: &Value,
+    steps: &[agenthub_team_domain::TeamTaskExecutionStepSpec],
+    scope: &str,
+) -> anyhow::Result<()> {
     let member_ids = collect_team_member_ids(team_spec)
         .into_iter()
         .collect::<HashSet<_>>();
-    let mut seen_step_keys = HashSet::with_capacity(plan.steps.len());
-    for step in &plan.steps {
+    let mut seen_step_keys = HashSet::with_capacity(steps.len());
+    for step in steps {
         let step_key = step.step_key.trim();
         if step_key.is_empty() {
-            anyhow::bail!("task context execution_plan.steps[].step_key is required");
+            anyhow::bail!("{scope}[].step_key is required");
         }
         if !seen_step_keys.insert(step_key.to_string()) {
-            anyhow::bail!("task context execution_plan.steps[].step_key must be unique");
+            anyhow::bail!("{scope}[].step_key must be unique");
         }
 
         let member_id = step.member_id.trim();
         if member_id.is_empty() {
-            anyhow::bail!("task context execution_plan.steps[].member_id is required");
+            anyhow::bail!("{scope}[].member_id is required");
         }
         if !member_ids.contains(member_id) {
-            anyhow::bail!(
-                "task context execution_plan.steps[].member_id must reference spec.members[].member_id"
-            );
+            anyhow::bail!("{scope}[].member_id must reference spec.members[].member_id");
         }
 
         let mut seen_depends_on = HashSet::with_capacity(step.depends_on.len());
         for dependency in &step.depends_on {
             let dependency = dependency.trim();
             if dependency.is_empty() {
-                anyhow::bail!(
-                    "task context execution_plan.steps[].depends_on entries must be non-empty"
-                );
+                anyhow::bail!("{scope}[].depends_on entries must be non-empty");
             }
             if dependency == step_key {
-                anyhow::bail!(
-                    "task context execution_plan.steps[].depends_on must not self-reference"
-                );
+                anyhow::bail!("{scope}[].depends_on must not self-reference");
             }
             if !seen_depends_on.insert(dependency.to_string()) {
-                anyhow::bail!(
-                    "task context execution_plan.steps[].depends_on must not contain duplicates"
-                );
+                anyhow::bail!("{scope}[].depends_on must not contain duplicates");
             }
         }
 
@@ -117,40 +117,37 @@ pub(crate) fn validate_task_execution_plan(
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
             if goal.is_none() {
-                anyhow::bail!("task context reconcile_loop steps require a non-empty goal");
+                anyhow::bail!("{scope} reconcile_loop steps require a non-empty goal");
             }
             if step.acceptance.iter().all(|item| item.trim().is_empty()) {
-                anyhow::bail!(
-                    "task context reconcile_loop steps require at least one acceptance item"
-                );
+                anyhow::bail!("{scope} reconcile_loop steps require at least one acceptance item");
             }
             if let Some(max_rounds) = step.execution.max_rounds
                 && !(1..=32).contains(&max_rounds)
             {
-                anyhow::bail!(
-                    "task context execution_plan.steps[].execution.max_rounds must be between 1 and 32"
-                );
+                anyhow::bail!("{scope}[].execution.max_rounds must be between 1 and 32");
             }
         }
     }
 
-    for step in &plan.steps {
+    for step in steps {
         for dependency in &step.depends_on {
             if !seen_step_keys.contains(dependency.trim()) {
-                anyhow::bail!(
-                    "task context execution_plan.steps[].depends_on must reference existing step_key"
-                );
+                anyhow::bail!("{scope}[].depends_on must reference existing step_key");
             }
         }
     }
-    ensure_acyclic_task_execution_plan(&plan)?;
-    Ok(Some(plan))
+    ensure_acyclic_task_execution_steps(steps, scope)?;
+    Ok(())
 }
 
-fn ensure_acyclic_task_execution_plan(plan: &TeamTaskExecutionPlan) -> anyhow::Result<()> {
-    let mut indegree = std::collections::HashMap::with_capacity(plan.steps.len());
-    let mut dependents = std::collections::HashMap::with_capacity(plan.steps.len());
-    for step in &plan.steps {
+fn ensure_acyclic_task_execution_steps(
+    steps: &[agenthub_team_domain::TeamTaskExecutionStepSpec],
+    scope: &str,
+) -> anyhow::Result<()> {
+    let mut indegree = std::collections::HashMap::with_capacity(steps.len());
+    let mut dependents = std::collections::HashMap::with_capacity(steps.len());
+    for step in steps {
         let step_key = step.step_key.trim().to_string();
         indegree.insert(step_key.clone(), step.depends_on.len());
         for dependency in &step.depends_on {
@@ -184,8 +181,8 @@ fn ensure_acyclic_task_execution_plan(plan: &TeamTaskExecutionPlan) -> anyhow::R
         }
     }
 
-    if visited != plan.steps.len() {
-        anyhow::bail!("task context execution_plan.steps must be acyclic");
+    if visited != steps.len() {
+        anyhow::bail!("{scope} must be acyclic");
     }
     Ok(())
 }

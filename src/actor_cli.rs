@@ -2373,6 +2373,9 @@ mod tests {
                 assert!(runtime_handle_id.is_none());
                 assert_eq!(decision["action"], "continue");
                 assert_eq!(decision["output"]["summary"], "need another round");
+                assert!(decision.get("input").is_none());
+                assert!(decision.get("reason").is_none());
+                assert!(decision.get("error_text").is_none());
             }
             other => panic!("expected team-step-decision command, got {other:?}"),
         }

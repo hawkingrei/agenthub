@@ -1186,13 +1186,21 @@ pub(super) fn parse_actor_command(
                         "team-step-decision action=fail requires decision_json.error_text"
                     );
                 }
-                serde_json::json!({
-                    "action": action,
-                    "output": output,
-                    "input": input,
-                    "reason": reason,
-                    "error_text": error_text,
-                })
+                let mut normalized_decision = serde_json::Map::new();
+                normalized_decision.insert("action".to_string(), Value::String(action.to_string()));
+                if let Some(output) = output {
+                    normalized_decision.insert("output".to_string(), output);
+                }
+                if let Some(input) = input {
+                    normalized_decision.insert("input".to_string(), input);
+                }
+                if let Some(reason) = reason {
+                    normalized_decision.insert("reason".to_string(), Value::String(reason));
+                }
+                if let Some(error_text) = error_text {
+                    normalized_decision.insert("error_text".to_string(), Value::String(error_text));
+                }
+                Value::Object(normalized_decision)
             } else {
                 Value::Null
             };

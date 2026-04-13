@@ -182,14 +182,16 @@ async fn resolve_direct_mailbox_run_id(
     Ok(resolved.run_id)
 }
 
-fn load_default_team_step_decision() -> anyhow::Result<serde_json::Value> {
-    let raw = std::fs::read_to_string(DEFAULT_TEAM_STEP_DECISION_PATH).map_err(|err| {
-        anyhow::anyhow!(
-            "read default team step decision file '{}': {}",
-            DEFAULT_TEAM_STEP_DECISION_PATH,
-            err
-        )
-    })?;
+async fn load_default_team_step_decision() -> anyhow::Result<serde_json::Value> {
+    let raw = tokio::fs::read_to_string(DEFAULT_TEAM_STEP_DECISION_PATH)
+        .await
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "read default team step decision file '{}': {}",
+                DEFAULT_TEAM_STEP_DECISION_PATH,
+                err
+            )
+        })?;
     serde_json::from_str::<serde_json::Value>(&raw).map_err(|err| {
         anyhow::anyhow!(
             "parse default team step decision file '{}' as JSON: {}",
@@ -498,7 +500,7 @@ pub(super) async fn run_actor_command(
                 resolve_direct_mailbox_run_id(&actor_id, run_id, "actor team-step-decision")
                     .await?;
             let decision = if decision.is_null() {
-                load_default_team_step_decision()?
+                load_default_team_step_decision().await?
             } else {
                 decision
             };
@@ -764,7 +766,8 @@ pub(super) async fn run_actor_command(
 mod tests {
     use super::load_default_team_step_decision;
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
     use uuid::Uuid;
 
     fn cwd_lock() -> &'static Mutex<()> {
@@ -821,26 +824,29 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn load_default_team_step_decision_reads_workspace_file() {
-        let _guard = cwd_lock().lock().expect("lock cwd");
+    #[tokio::test]
+    async fn load_default_team_step_decision_reads_workspace_file() {
+        let _guard = cwd_lock().lock().await;
         let dir = TestDirGuard::new();
         dir.write_default_decision(
             r#"{"action":"continue","output":{"summary":"need another round"}}"#,
         );
 
-        let decision = load_default_team_step_decision().expect("load default decision file");
+        let decision = load_default_team_step_decision()
+            .await
+            .expect("load default decision file");
         assert_eq!(decision["action"], "continue");
         assert_eq!(decision["output"]["summary"], "need another round");
     }
 
-    #[test]
-    fn load_default_team_step_decision_reports_missing_file_path() {
-        let _guard = cwd_lock().lock().expect("lock cwd");
+    #[tokio::test]
+    async fn load_default_team_step_decision_reports_missing_file_path() {
+        let _guard = cwd_lock().lock().await;
         let dir = TestDirGuard::new();
         dir.remove_default_decision();
 
         let err = load_default_team_step_decision()
+            .await
             .expect_err("missing default decision file should fail");
         let message = err.to_string();
         assert!(message.contains(".agenthubmemory/step-decision.json"));

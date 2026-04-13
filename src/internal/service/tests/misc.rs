@@ -422,3 +422,158 @@ async fn worker_token_can_continue_own_reconcile_step_but_not_other_members_step
         "unexpected status: {err}"
     );
 }
+
+#[tokio::test]
+async fn leader_transition_step_checks_run_scope_before_mutation() {
+    let state = build_test_state_without_seeded_team_member_agents().await;
+    let now = chrono::Utc::now().timestamp();
+    let workdir =
+        std::env::temp_dir().join(format!("agenthub-internal-run-scope-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&workdir).expect("create internal run-scope test workdir");
+    let workdir = workdir.to_string_lossy().to_string();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert run-scope safe path");
+    for agent_id in ["planner", "worker-1"] {
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'created', ?6, ?7)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(format!("{agent_id}-agent"))
+        .bind(&workdir)
+        .bind("/bin/echo")
+        .bind("[]")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert run-scope test agent");
+    }
+
+    let team = state
+        .teams
+        .create_team(TeamDefinitionConfig {
+            name: format!("internal-transition-run-scope-{}", Uuid::new_v4()),
+            description: Some("team for run-scope step transition auth".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = state
+        .teams
+        .create_task(
+            &team.id,
+            "Internal scope task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [
+                        {
+                            "step_key":"worker-implement",
+                            "member_id":"worker-1",
+                            "goal":"finish implementation",
+                            "acceptance":["tests pass"],
+                            "execution":{"mode":"reconcile_loop","max_rounds":3}
+                        }
+                    ]
+                }
+            }),
+            "group_chat",
+            Some("internal-scope-task"),
+        )
+        .await
+        .expect("create task");
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"execute reconcile loop"}),
+        )
+        .await
+        .expect("create run");
+    let other_run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some("other-context"),
+            json!({"prompt":"other run"}),
+        )
+        .await
+        .expect("create other run");
+    let step = state
+        .teams
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("step");
+    state
+        .teams
+        .start_step(&step.id, Some("missing-session"))
+        .await
+        .expect("start step");
+
+    let authz = build_authz();
+    let (token, _expires_at) = authz
+        .issue_access_token(
+            InternalRole::Leader,
+            Some("planner"),
+            Some(&other_run.id),
+            vec![InternalAction::StepTransition.as_str().to_string()],
+            600,
+        )
+        .expect("issue mismatched leader token");
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let err = TeamInternalControl::transition_step(
+        &service,
+        authenticated_request(
+            TransitionStepRequest {
+                run_id: other_run.id.clone(),
+                step_id: step.id.clone(),
+                action: "continue".to_string(),
+                remote_task_id: String::new(),
+                output_json: json!({"summary":"should not mutate"}).to_string(),
+                error_text: String::new(),
+                input_json: String::new(),
+                reason: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("mismatched run scope should fail");
+    assert_eq!(err.code(), Code::PermissionDenied);
+    assert!(
+        err.message()
+            .contains("step does not belong to requested run scope"),
+        "unexpected status: {err}"
+    );
+
+    let step_after = state.teams.get_step(&step.id).await.expect("reload step");
+    assert_eq!(step_after.status, crate::team::TeamStepStatus::Working);
+    assert_eq!(step_after.output, None);
+}

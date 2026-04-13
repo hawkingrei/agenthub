@@ -49,8 +49,9 @@ The manager also validates:
 - Task creation and task context updates now reject invalid execution plans early.
 - Compile preview now prefers `task.context.execution_plan.steps[]` when present instead of falling
   back to default team-spec steps.
-- Runtime materialization still uses the existing run/step path for now; full run-step bridge stays
-  as Phase B work.
+- Runtime materialization stays additive on top of the existing run/step path; the remaining
+  follow-up is not step materialization itself, but tightening round-result artifacts and more
+  autonomous reconcile-loop execution on top of the stable lifecycle API.
 
 ## Phase B Bridge Progress
 

@@ -1439,6 +1439,107 @@ async fn create_run_materializes_linked_task_execution_plan_when_input_has_no_st
 }
 
 #[tokio::test]
+async fn create_run_rejects_invalid_input_step_template_member_scope() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "invalid-step-template-run-team".to_string(),
+            description: Some("team with invalid run input step template".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let err = manager
+        .create_run(
+            &team.id,
+            Some("ctx-invalid-step-template"),
+            json!({
+                "step_template": [{
+                    "step_key":"worker-implement",
+                    "member_id":"worker-2",
+                    "goal":"finish the patch",
+                    "acceptance":["tests pass"],
+                    "execution":{"mode":"reconcile_loop","max_rounds":5}
+                }]
+            }),
+        )
+        .await
+        .expect_err("invalid step template should fail");
+    assert!(
+        err.to_string()
+            .contains("run input step_template[].member_id must reference"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn create_run_hides_cross_team_linked_task_lookup_details() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team_a = manager
+        .create_team(TeamDefinitionConfig {
+            name: "run-team-a".to_string(),
+            description: Some("requesting team".to_string()),
+            spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"leader"}]}),
+        })
+        .await
+        .expect("create team a");
+    let team_b = manager
+        .create_team(TeamDefinitionConfig {
+            name: "run-team-b".to_string(),
+            description: Some("foreign team".to_string()),
+            spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"leader"}]}),
+        })
+        .await
+        .expect("create team b");
+
+    let (foreign_task, _) = manager
+        .create_task(
+            &team_b.id,
+            "Foreign task",
+            "leader",
+            json!({"source":"foreign"}),
+            "group_chat",
+            Some("foreign-task"),
+        )
+        .await
+        .expect("create foreign task");
+
+    let wrong_team_err = manager
+        .create_run(
+            &team_a.id,
+            Some("ctx-cross-team"),
+            json!({"task_id": foreign_task.id, "prompt":"run foreign task"}),
+        )
+        .await
+        .expect_err("cross-team task should fail");
+    let missing_task_err = manager
+        .create_run(
+            &team_a.id,
+            Some("ctx-missing-task"),
+            json!({"task_id": "missing-task", "prompt":"run missing task"}),
+        )
+        .await
+        .expect_err("missing task should fail");
+
+    assert_eq!(
+        wrong_team_err.to_string(),
+        "linked task does not belong to the requested team"
+    );
+    assert_eq!(wrong_team_err.to_string(), missing_task_err.to_string());
+}
+
+#[tokio::test]
 async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensitively() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

@@ -865,18 +865,18 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let step_id = required_field(&payload.step_id, "step_id")?;
         let action = required_field(&payload.action, "action")?;
+        let current = self
+            .deps
+            .teams
+            .get_step(step_id)
+            .await
+            .map_err(map_manager_error)?;
+        if current.run_id != run_id {
+            return Err(Status::permission_denied(
+                "step does not belong to requested run scope",
+            ));
+        }
         if principal.role == InternalRole::Worker {
-            let current = self
-                .deps
-                .teams
-                .get_step(step_id)
-                .await
-                .map_err(map_manager_error)?;
-            if current.run_id != run_id {
-                return Err(Status::permission_denied(
-                    "step does not belong to requested run scope",
-                ));
-            }
             self.authz
                 .ensure_worker_actor(&principal, &current.member_id, "step member")?;
         }
@@ -944,12 +944,6 @@ impl TeamInternalControl for TeamInternalControlService {
             _ => return Err(Status::invalid_argument("unsupported action")),
         }
         .map_err(map_manager_error)?;
-
-        if step.run_id != run_id {
-            return Err(Status::permission_denied(
-                "step does not belong to requested run scope",
-            ));
-        }
         if matches!(action, "start" | "resume" | "continue")
             && let Err(err) = crate::team::maybe_nudge_reconcile_step_prompt(
                 &self.deps.teams,
