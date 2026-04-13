@@ -27,6 +27,7 @@ use crate::team::{
 const TEAM_SHARED_THREAD_TITLE: &str = "all";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_SHARED_THREAD_LOOKUP_LIMIT: i64 = 500;
+const DEFAULT_TEAM_STEP_DECISION_PATH: &str = ".agenthubmemory/step-decision.json";
 const ACTOR_INBOX_RUN_ID_RESOLUTION_HINT: &str =
     "retry with --run-id <run_id> explicitly if team shared-thread inference is unavailable";
 const ACTOR_DIRECT_MAILBOX_RUN_ID_RESOLUTION_HINT: &str =
@@ -179,6 +180,23 @@ async fn resolve_direct_mailbox_run_id(
             )
         })?;
     Ok(resolved.run_id)
+}
+
+fn load_default_team_step_decision() -> anyhow::Result<serde_json::Value> {
+    let raw = std::fs::read_to_string(DEFAULT_TEAM_STEP_DECISION_PATH).map_err(|err| {
+        anyhow::anyhow!(
+            "read default team step decision file '{}': {}",
+            DEFAULT_TEAM_STEP_DECISION_PATH,
+            err
+        )
+    })?;
+    serde_json::from_str::<serde_json::Value>(&raw).map_err(|err| {
+        anyhow::anyhow!(
+            "parse default team step decision file '{}' as JSON: {}",
+            DEFAULT_TEAM_STEP_DECISION_PATH,
+            err
+        )
+    })
 }
 
 struct ActorSendIdempotencyContext<'a> {
@@ -434,6 +452,85 @@ pub(super) async fn run_actor_command(
                 .await?;
             write_actor_output(&message, output_mode, output_preference)?;
         }
+        ActorCommand::TeamStepTransition {
+            run_id,
+            actor_id,
+            step_id,
+            action,
+            runtime_handle_id,
+            output,
+            error_text,
+            input,
+            reason,
+        } => {
+            let run_id =
+                resolve_direct_mailbox_run_id(&actor_id, run_id, "actor team-step-transition")
+                    .await?;
+            let client = init_actor_control_client(
+                &actor_id,
+                Some(run_id.as_str()),
+                &[InternalAction::StepTransition],
+                "actor team step control",
+            )
+            .await?;
+            let response = client
+                .transition_step(
+                    &run_id,
+                    &step_id,
+                    &action,
+                    runtime_handle_id.as_deref(),
+                    output.as_ref(),
+                    error_text.as_deref(),
+                    input.as_ref(),
+                    reason.as_deref(),
+                )
+                .await?;
+            write_actor_output(&response, output_mode, output_preference)?;
+        }
+        ActorCommand::TeamStepDecision {
+            run_id,
+            actor_id,
+            step_id,
+            runtime_handle_id,
+            decision,
+        } => {
+            let run_id =
+                resolve_direct_mailbox_run_id(&actor_id, run_id, "actor team-step-decision")
+                    .await?;
+            let decision = if decision.is_null() {
+                load_default_team_step_decision()?
+            } else {
+                decision
+            };
+            let client = init_actor_control_client(
+                &actor_id,
+                Some(run_id.as_str()),
+                &[InternalAction::StepTransition],
+                "actor team step decision control",
+            )
+            .await?;
+            let action = decision
+                .get("action")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("decision_json.action is required"))?;
+            let response = client
+                .transition_step(
+                    &run_id,
+                    &step_id,
+                    action,
+                    runtime_handle_id.as_deref(),
+                    decision.get("output"),
+                    decision
+                        .get("error_text")
+                        .and_then(serde_json::Value::as_str),
+                    decision.get("input"),
+                    decision.get("reason").and_then(serde_json::Value::as_str),
+                )
+                .await?;
+            write_actor_output(&response, output_mode, output_preference)?;
+        }
         ActorCommand::Inbox {
             run_id,
             actor_id,
@@ -661,4 +758,92 @@ pub(super) async fn run_actor_command(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_default_team_step_decision;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use uuid::Uuid;
+
+    fn cwd_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct TestDirGuard {
+        original_cwd: PathBuf,
+        test_dir: PathBuf,
+    }
+
+    impl TestDirGuard {
+        fn new() -> Self {
+            let original_cwd = std::env::current_dir().expect("read current dir");
+            let test_dir = std::env::temp_dir()
+                .join(format!("agenthub-team-step-decision-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(test_dir.join(".agenthubmemory"))
+                .expect("create test decision directory");
+            std::env::set_current_dir(&test_dir).expect("switch to test dir");
+            Self {
+                original_cwd,
+                test_dir,
+            }
+        }
+
+        fn write_default_decision(&self, contents: &str) {
+            std::fs::write(
+                self.test_dir.join(".agenthubmemory/step-decision.json"),
+                contents,
+            )
+            .expect("write default decision file");
+        }
+
+        fn remove_default_decision(&self) {
+            let path = self.test_dir.join(".agenthubmemory/step-decision.json");
+            if path.exists() {
+                std::fs::remove_file(path).expect("remove default decision file");
+            }
+        }
+    }
+
+    impl Drop for TestDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original_cwd);
+            let _ = remove_dir_all_if_exists(&self.test_dir);
+        }
+    }
+
+    fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
+        if path.exists() {
+            std::fs::remove_dir_all(path)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn load_default_team_step_decision_reads_workspace_file() {
+        let _guard = cwd_lock().lock().expect("lock cwd");
+        let dir = TestDirGuard::new();
+        dir.write_default_decision(
+            r#"{"action":"continue","output":{"summary":"need another round"}}"#,
+        );
+
+        let decision = load_default_team_step_decision().expect("load default decision file");
+        assert_eq!(decision["action"], "continue");
+        assert_eq!(decision["output"]["summary"], "need another round");
+    }
+
+    #[test]
+    fn load_default_team_step_decision_reports_missing_file_path() {
+        let _guard = cwd_lock().lock().expect("lock cwd");
+        let dir = TestDirGuard::new();
+        dir.remove_default_decision();
+
+        let err = load_default_team_step_decision()
+            .expect_err("missing default decision file should fail");
+        let message = err.to_string();
+        assert!(message.contains(".agenthubmemory/step-decision.json"));
+        assert!(message.contains("read default team step decision file"));
+    }
 }

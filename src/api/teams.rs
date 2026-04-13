@@ -34,10 +34,11 @@ use crate::team::{
     TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
-    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskRecord,
-    build_actor_mailbox_immediate_hint_prompt, effective_team_member_skills,
-    ensure_team_runtime_started, force_team_member_new_session,
-    normalize_optional_idempotency_key_input, plan_actor_mailbox_immediate_hint, stop_team_runtime,
+    TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
+    TeamTaskStepExecutionSpec, build_actor_mailbox_immediate_hint_prompt,
+    effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
+    normalize_optional_idempotency_key_input, parse_task_execution_plan,
+    plan_actor_mailbox_immediate_hint, stop_team_runtime,
 };
 
 const TEAM_SPEC_VERSION_V1: i64 = 1;
@@ -377,6 +378,9 @@ pub struct TeamCompiledStepTemplate {
     pub member_id: String,
     pub role: String,
     pub depends_on: Vec<String>,
+    pub goal: Option<String>,
+    pub acceptance: Vec<String>,
+    pub execution: TeamTaskStepExecutionSpec,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -1295,6 +1299,17 @@ async fn start_team_run_step(
         .start_step(&step_id, runtime_handle_id)
         .await
         .map_err(map_team_internal_error)?;
+    if let Err(err) =
+        crate::team::maybe_nudge_reconcile_step_prompt(&state.teams, &state.agents, &step).await
+    {
+        tracing::warn!(
+            run_id = %run_id,
+            step_id = %step.id,
+            member_id = %step.member_id,
+            "failed to auto-nudge reconcile step prompt: {}",
+            err
+        );
+    }
     Ok(Json(step))
 }
 
@@ -1368,6 +1383,17 @@ async fn resume_team_run_step(
         .resume_step(&step_id, payload.input)
         .await
         .map_err(map_team_internal_error)?;
+    if let Err(err) =
+        crate::team::maybe_nudge_reconcile_step_prompt(&state.teams, &state.agents, &step).await
+    {
+        tracing::warn!(
+            run_id = %run_id,
+            step_id = %step.id,
+            member_id = %step.member_id,
+            "failed to auto-nudge reconcile step prompt: {}",
+            err
+        );
+    }
     Ok(Json(step))
 }
 
@@ -2802,8 +2828,17 @@ fn compile_task_run_preview_response(
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
     let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
-    let step_template =
-        compile_task_step_template(spec_obj, &member_specs, leader_member_id.as_deref())?;
+    let execution_plan =
+        parse_task_execution_plan(&task.context).map_err(map_team_internal_error)?;
+    let step_template = if let Some(plan) = execution_plan.as_ref() {
+        compile_task_step_template_from_execution_plan(
+            plan,
+            &member_specs,
+            leader_member_id.as_deref(),
+        )?
+    } else {
+        compile_task_step_template(spec_obj, &member_specs, leader_member_id.as_deref())?
+    };
     let mut extraction = extract_task_compile_extraction(&task.context);
     for message in messages {
         if apply_task_compile_message_update(&message.payload, &mut extraction) {
@@ -2944,6 +2979,63 @@ fn compile_task_step_template(
             member_id: member_id.to_string(),
             role: role.to_string(),
             depends_on,
+            goal: None,
+            acceptance: Vec::new(),
+            execution: TeamTaskStepExecutionSpec::default(),
+        });
+    }
+    Ok(out)
+}
+
+fn compile_task_step_template_from_execution_plan(
+    plan: &TeamTaskExecutionPlan,
+    member_specs: &[TeamMemberSpec],
+    leader_member_id: Option<&str>,
+) -> Result<Vec<TeamCompiledStepTemplate>, ApiError> {
+    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs)
+        .map(str::to_string)
+        .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
+
+    let member_role_by_id = member_specs
+        .iter()
+        .map(|member| {
+            (
+                member.member_id.clone(),
+                resolve_compiled_member_role(
+                    member.member_id.as_str(),
+                    member.role.as_str(),
+                    leader_member_id.as_str(),
+                ),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut out = Vec::with_capacity(plan.steps.len());
+    for step in &plan.steps {
+        let role = member_role_by_id
+            .get(step.member_id.trim())
+            .ok_or_else(|| {
+                ApiError::bad_request(
+                    "task context execution_plan.steps[].member_id must reference spec.members[].member_id",
+                )
+            })?;
+        out.push(TeamCompiledStepTemplate {
+            step_key: step.step_key.trim().to_string(),
+            member_id: step.member_id.trim().to_string(),
+            role: role.to_string(),
+            depends_on: step
+                .depends_on
+                .iter()
+                .map(|value| value.trim().to_string())
+                .collect(),
+            goal: step.goal.as_deref().map(str::trim).map(str::to_string),
+            acceptance: step
+                .acceptance
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect(),
+            execution: step.execution.clone(),
         });
     }
     Ok(out)

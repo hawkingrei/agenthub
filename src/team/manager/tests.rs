@@ -999,6 +999,112 @@ async fn task_context_patches_support_merge_and_replace() {
 }
 
 #[tokio::test]
+async fn create_task_rejects_invalid_reconcile_loop_execution_plan() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "invalid-execution-plan-team".to_string(),
+            description: Some("team for invalid execution plan coverage".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let err = manager
+        .create_task(
+            &team.id,
+            "Invalid execution plan",
+            "leader",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "execution":{"mode":"reconcile_loop","max_rounds":0},
+                        "acceptance":["tests pass"]
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("invalid"),
+        )
+        .await
+        .expect_err("invalid reconcile loop plan should fail");
+    assert!(
+        err.to_string()
+            .contains("reconcile_loop steps require a non-empty goal")
+            || err
+                .to_string()
+                .contains("execution_plan.steps[].execution.max_rounds"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn update_task_context_rejects_execution_plan_with_unknown_member() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "unknown-member-execution-plan-team".to_string(),
+            description: Some("team for execution plan member validation".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Execution plan patch",
+            "leader",
+            json!({"repo":"agenthub"}),
+            "group_chat",
+            Some("patch"),
+        )
+        .await
+        .expect("create task");
+
+    let err = manager
+        .update_task_with_context(
+            &task.id,
+            None,
+            TeamTaskAssignmentUpdate::Unchanged,
+            Some(TeamTaskContextPatch::Merge(json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"missing-worker",
+                        "execution":{"mode":"single_pass"}
+                    }]
+                }
+            }))),
+        )
+        .await
+        .expect_err("unknown member should fail validation");
+    assert!(
+        err.to_string()
+            .contains("task context execution_plan.steps[].member_id must reference"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
 async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -1194,6 +1300,142 @@ async fn create_run_marks_linked_task_in_progress() {
 
     let reloaded = manager.get_task(&task.id).await.expect("reload task");
     assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+}
+
+#[tokio::test]
+async fn create_run_materializes_input_step_template_into_run_steps() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "input-step-template-run-team".to_string(),
+            description: Some("team with run input step template".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-step-template"),
+            json!({
+                "step_template": [{
+                    "step_key":"worker-implement",
+                    "member_id":"worker-1",
+                    "depends_on":["leader-plan"],
+                    "goal":"finish the patch",
+                    "acceptance":["tests pass"],
+                    "execution":{"mode":"reconcile_loop","max_rounds":5}
+                }]
+            }),
+        )
+        .await
+        .expect("create run");
+
+    let steps = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list materialized steps");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].step_key, "worker-implement");
+    assert_eq!(steps[0].member_id, "worker-1");
+    assert_eq!(steps[0].depends_on, vec!["leader-plan".to_string()]);
+    assert_eq!(
+        steps[0].input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":5},
+                "round_state":{"current_round":0}
+            }
+        }))
+    );
+}
+
+#[tokio::test]
+async fn create_run_materializes_linked_task_execution_plan_when_input_has_no_step_template() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-execution-plan-run-team".to_string(),
+            description: Some("team with linked task execution plan".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Execution-plan task",
+            "leader",
+            json!({
+                "execution_plan": {
+                    "steps": [
+                        {
+                            "step_key":"leader-plan",
+                            "member_id":"leader",
+                            "execution":{"mode":"single_pass"}
+                        },
+                        {
+                            "step_key":"worker-implement",
+                            "member_id":"worker-1",
+                            "depends_on":["leader-plan"],
+                            "goal":"finish implementation",
+                            "acceptance":["tests pass","review notes addressed"],
+                            "execution":{"mode":"reconcile_loop","max_rounds":4}
+                        }
+                    ]
+                }
+            }),
+            "group_chat",
+            Some("execution-plan"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-linked-task-plan"),
+            json!({"task_id": task.id, "prompt":"run linked task"}),
+        )
+        .await
+        .expect("create run");
+
+    let steps = manager.list_steps(&run.id).await.expect("list steps");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0].step_key, "leader-plan");
+    assert_eq!(steps[1].step_key, "worker-implement");
+    assert_eq!(steps[1].depends_on, vec!["leader-plan".to_string()]);
+    assert_eq!(
+        steps[1].input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish implementation",
+                "acceptance":["tests pass","review notes addressed"],
+                "execution":{"mode":"reconcile_loop","max_rounds":4},
+                "round_state":{"current_round":0}
+            }
+        }))
+    );
 }
 
 #[tokio::test]
@@ -2467,7 +2709,10 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
         input_required.error_text.as_deref(),
         Some("approval is required")
     );
-    assert_eq!(input_required.input, Some(json!({"question":"approve?"})));
+    assert_eq!(
+        input_required.input,
+        Some(json!({"goal":"collect feedback","question":"approve?"}))
+    );
 
     let run_after_input_required = manager.get_run(&run.id).await.expect("get run");
     assert_eq!(
@@ -2481,7 +2726,14 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
         .expect("resume step");
     assert_eq!(resumed.status, TeamStepStatus::Working);
     assert!(resumed.error_text.is_none());
-    assert_eq!(resumed.input, Some(json!({"answer":"approved"})));
+    assert_eq!(
+        resumed.input,
+        Some(json!({
+            "goal":"collect feedback",
+            "question":"approve?",
+            "answer":"approved"
+        }))
+    );
 
     let run_after_resume = manager.get_run(&run.id).await.expect("get run");
     assert_eq!(run_after_resume.status, TeamRunStatus::Working);
@@ -2542,6 +2794,376 @@ async fn input_required_and_resume_transitions_update_run_and_emit_events() {
             "continuity_state_updated",
             "run_completed"
         ]
+    );
+}
+
+#[tokio::test]
+async fn reconcile_loop_step_tracks_round_state_and_events() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "reconcile-round-team".to_string(),
+            description: Some("team for reconcile round tracking".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Reconcile task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":3}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("reconcile"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-reconcile"),
+            json!({"task_id": task.id, "prompt":"execute reconcile step"}),
+        )
+        .await
+        .expect("create run");
+    let step = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    let started = manager
+        .start_step(&step.id, Some("session-reconcile"))
+        .await
+        .expect("start reconcile step");
+    assert_eq!(
+        started.input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":3},
+                "round_state":{
+                    "current_round":1,
+                    "latest_status":"working"
+                }
+            }
+        }))
+    );
+
+    let waiting = manager
+        .set_step_input_required(
+            &step.id,
+            Some("need review"),
+            Some(json!({"question":"approve?"})),
+        )
+        .await
+        .expect("input required");
+    assert_eq!(
+        waiting.input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":3},
+                "round_state":{
+                    "current_round":1,
+                    "latest_status":"input_required",
+                    "latest_outcome":"input_required",
+                    "latest_summary":"need review"
+                }
+            },
+            "question":"approve?"
+        }))
+    );
+
+    let resumed = manager
+        .resume_step(&step.id, Some(json!({"answer":"approved"})))
+        .await
+        .expect("resume step");
+    assert_eq!(
+        resumed.input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":3},
+                "round_state":{
+                    "current_round":2,
+                    "latest_status":"working"
+                }
+            },
+            "question":"approve?",
+            "answer":"approved"
+        }))
+    );
+
+    let completed = manager
+        .complete_step(
+            &step.id,
+            Some(json!({"summary":"patch is merge-ready","result":"done"})),
+        )
+        .await
+        .expect("complete step");
+    assert_eq!(
+        completed.input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":3},
+                "round_state":{
+                    "current_round":2,
+                    "latest_status":"completed",
+                    "latest_outcome":"completed",
+                    "latest_summary":"patch is merge-ready"
+                }
+            },
+            "question":"approve?",
+            "answer":"approved"
+        }))
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list events");
+    let reconcile_events = events
+        .iter()
+        .filter(|event| event.event_type.starts_with("step_reconcile_round_"))
+        .map(|event| (event.event_type.as_str(), event.payload.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(reconcile_events.len(), 4);
+    assert_eq!(reconcile_events[0].0, "step_reconcile_round_started");
+    assert_eq!(reconcile_events[0].1["round"], json!(1));
+    assert_eq!(reconcile_events[1].0, "step_reconcile_round_finished");
+    assert_eq!(reconcile_events[1].1["status"], json!("input_required"));
+    assert_eq!(reconcile_events[2].0, "step_reconcile_round_started");
+    assert_eq!(reconcile_events[2].1["round"], json!(2));
+    assert_eq!(reconcile_events[3].0, "step_reconcile_round_finished");
+    assert_eq!(reconcile_events[3].1["status"], json!("completed"));
+}
+
+#[tokio::test]
+async fn continue_step_advances_reconcile_round_without_leader_resume() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "continue-reconcile-team".to_string(),
+            description: Some("team for reconcile continue".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Continue reconcile task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":3}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("continue-reconcile"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-continue-reconcile"),
+            json!({"task_id": task.id, "prompt":"execute reconcile continue"}),
+        )
+        .await
+        .expect("create run");
+    let step = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    let started = manager
+        .start_step(&step.id, Some("session-reconcile"))
+        .await
+        .expect("start reconcile step");
+    assert_eq!(started.status, TeamStepStatus::Working);
+
+    let continued = manager
+        .continue_step(
+            &step.id,
+            Some(json!({"summary":"tests still failing on lint","artifact":"round-1.log"})),
+        )
+        .await
+        .expect("continue reconcile step");
+    assert_eq!(continued.status, TeamStepStatus::Working);
+    assert_eq!(
+        continued.input,
+        Some(json!({
+            "task_execution_step": {
+                "goal":"finish the patch",
+                "acceptance":["tests pass"],
+                "execution":{"mode":"reconcile_loop","max_rounds":3},
+                "round_state":{
+                    "current_round":2,
+                    "latest_status":"working"
+                }
+            }
+        }))
+    );
+    assert_eq!(
+        continued.output,
+        Some(json!({"summary":"tests still failing on lint","artifact":"round-1.log"}))
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let event_types = events
+        .iter()
+        .map(|event| event.event_type.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        event_types,
+        vec![
+            "run_submitted",
+            "step_submitted",
+            "run_working",
+            "step_working",
+            "step_reconcile_round_started",
+            "step_continued",
+            "step_reconcile_round_finished",
+            "step_reconcile_round_started",
+        ]
+    );
+    let continue_event = events
+        .iter()
+        .find(|event| event.event_type == "step_continued")
+        .expect("step_continued event");
+    assert_eq!(continue_event.payload["continued_from_round"], json!(1));
+    assert_eq!(continue_event.payload["continued_to_round"], json!(2));
+    assert_eq!(
+        continue_event.payload["summary"],
+        json!("tests still failing on lint")
+    );
+    let reconcile_events = events
+        .iter()
+        .filter(|event| event.event_type.starts_with("step_reconcile_round_"))
+        .map(|event| (event.event_type.as_str(), event.payload.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(reconcile_events.len(), 3);
+    assert_eq!(reconcile_events[0].1["round"], json!(1));
+    assert_eq!(reconcile_events[1].1["round"], json!(1));
+    assert_eq!(reconcile_events[1].1["status"], json!("continued"));
+    assert_eq!(reconcile_events[2].1["round"], json!(2));
+}
+
+#[tokio::test]
+async fn continue_step_rejects_reconcile_loop_after_max_rounds() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "continue-reconcile-max-rounds-team".to_string(),
+            description: Some("team for reconcile max rounds".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Continue reconcile max rounds task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":1}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("continue-reconcile-max-rounds"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-continue-reconcile-max-rounds"),
+            json!({"task_id": task.id, "prompt":"execute reconcile continue"}),
+        )
+        .await
+        .expect("create run");
+    let step = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    manager
+        .start_step(&step.id, Some("session-reconcile"))
+        .await
+        .expect("start reconcile step");
+    let err = manager
+        .continue_step(&step.id, Some(json!({"summary":"still working"})))
+        .await
+        .expect_err("continue step should reject at max rounds");
+    assert!(
+        err.to_string().contains("max_rounds=1"),
+        "unexpected error: {err}"
     );
 }
 

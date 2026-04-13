@@ -23,12 +23,13 @@ use super::super::proto::agenthub::internal::v1::{
     SendAgentInputRequest as GrpcSendAgentInputRequest,
     StartManagedAgentRequest as GrpcStartManagedAgentRequest,
     StopManagedAgentRequest as GrpcStopManagedAgentRequest,
+    TransitionStepRequest as GrpcTransitionStepRequest,
     UpdateTeamTaskRequest as GrpcUpdateTeamTaskRequest,
 };
 use super::{
     InternalActorRunScopeResolution, InternalGrpcMailboxClient, InternalPermissionReviewResponse,
-    InternalTeamTaskPatch, map_grpc_status_anyhow, parse_agent_events, parse_json_response,
-    timeout_internal_grpc_call,
+    InternalStepTransitionResponse, InternalTeamTaskPatch, map_grpc_status_anyhow,
+    parse_agent_events, parse_json_response, timeout_internal_grpc_call,
 };
 
 impl InternalGrpcMailboxClient {
@@ -161,6 +162,52 @@ impl InternalGrpcMailboxClient {
             permission_id: response.permission_id,
             request_status: response.request_status,
             reviewed_by_actor_id: response.reviewed_by_actor_id,
+        })
+    }
+
+    pub async fn transition_step(
+        &self,
+        run_id: &str,
+        step_id: &str,
+        action: &str,
+        runtime_handle_id: Option<&str>,
+        output_json: Option<&serde_json::Value>,
+        error_text: Option<&str>,
+        input_json: Option<&serde_json::Value>,
+        reason: Option<&str>,
+    ) -> anyhow::Result<InternalStepTransitionResponse> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(
+            client.transition_step(
+                self.control_request(GrpcTransitionStepRequest {
+                    run_id: run_id.trim().to_string(),
+                    step_id: step_id.trim().to_string(),
+                    action: action.trim().to_string(),
+                    remote_task_id: runtime_handle_id.unwrap_or_default().trim().to_string(),
+                    output_json: output_json
+                        .map(serde_json::to_string)
+                        .transpose()?
+                        .unwrap_or_default(),
+                    error_text: error_text.unwrap_or_default().trim().to_string(),
+                    input_json: input_json
+                        .map(serde_json::to_string)
+                        .transpose()?
+                        .unwrap_or_default(),
+                    reason: reason.unwrap_or_default().trim().to_string(),
+                })?,
+            ),
+        )
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        Ok(InternalStepTransitionResponse {
+            step_id: response.step_id,
+            run_id: response.run_id,
+            step_key: response.step_key,
+            member_id: response.member_id,
+            runtime_handle_id: response.remote_task_id,
+            status: response.status,
+            error_text: response.error_text,
         })
     }
 

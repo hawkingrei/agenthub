@@ -10,13 +10,15 @@ use super::super::proto::agenthub::internal::v1::{
     CreateTeamTaskRequest, CreateTimeTriggerRequest, DescribeTeamContextRequest,
     GetTeamTaskRequest, IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
     ListTimeTriggersRequest, ResolveActorRunScopeRequest, RespondPermissionReviewRequest,
-    SendActorMessageRequest, UpdateTeamTaskRequest,
+    SendActorMessageRequest, TransitionStepRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
 pub(super) use super::resolve_team_leader_member_id;
 use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
 use crate::agent::AgentTimeTriggerRecord;
-use crate::api::team_tests::build_test_state;
+use crate::api::team_tests::{
+    build_test_state, build_test_state_without_seeded_team_member_agents,
+};
 pub(super) use crate::internal::team_internal_control_deps as control_deps;
 use crate::team::{TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord};
 use agenthub_team_actor::ActorMessageStatus;

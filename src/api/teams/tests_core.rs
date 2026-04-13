@@ -2902,6 +2902,137 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
 }
 
 #[tokio::test]
+async fn start_team_run_step_requests_reconcile_prompt_for_reconcile_loop_steps() {
+    let state = build_test_state_without_seeded_team_member_agents().await;
+    let headers = auth_headers(&state).await;
+    let now = Utc::now().timestamp();
+    let workdir = std::env::temp_dir()
+        .join(format!("agenthub-reconcile-prompt-worker-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&workdir).expect("create reconcile prompt worker workdir");
+    let workdir = workdir.to_string_lossy().to_string();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert reconcile prompt worker safe path");
+    for agent_id in ["planner", "worker-1"] {
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'created', ?6, ?7)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(format!("{agent_id}-agent"))
+        .bind(&workdir)
+        .bind("/bin/echo")
+        .bind("[]")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert reconcile prompt test agent");
+    }
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "step-reconcile-prompt-team".to_string(),
+            description: Some("team for reconcile prompt wiring".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Reconcile prompt task".to_string(),
+            created_by_actor_id: Some("planner".to_string()),
+            context: Some(json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":2}
+                    }]
+                }
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("reconcile-prompt".to_string()),
+        },
+    )
+    .await
+    .expect("create task");
+
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some("ctx-reconcile-prompt"),
+            json!({"task_id": created.task.id, "prompt":"start reconcile step"}),
+        )
+        .await
+        .expect("create run");
+    let step = state
+        .teams
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    let Json(started) = start_team_run_step(
+        State(state.clone()),
+        headers.clone(),
+        Path((run.id.clone(), step.id.clone())),
+        Json(StartTeamRunStepRequest {
+            runtime_handle_id: Some("missing-session".to_string()),
+        }),
+    )
+    .await
+    .expect("start step");
+    assert_eq!(started.status, crate::team::TeamStepStatus::Working);
+
+    let events = state
+        .teams
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "step_reconcile_prompt_requested"
+                && event.payload["step_id"] == json!(step.id)),
+        "expected reconcile prompt requested event: {events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "step_reconcile_prompt_failed"
+                && event.payload["step_id"] == json!(step.id)),
+        "expected reconcile prompt failed event: {events:?}"
+    );
+}
+
+#[tokio::test]
 async fn team_run_messages_api_supports_actor_mailbox_flow() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -6211,6 +6342,114 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
             .acceptance_criteria
             .iter()
             .all(|item| !item.contains('{') && !item.contains('`'))
+    );
+}
+
+#[tokio::test]
+async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "task-execution-plan-preview-team".to_string(),
+            description: Some("task execution plan preview coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-dev","role":"worker"},
+                    {"member_id":"qa-review","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let created = create_team_task(
+        &state,
+        &headers,
+        &team.id,
+        CreateTeamTaskRequest {
+            title: "Use task execution plan".to_string(),
+            created_by_actor_id: Some("user".to_string()),
+            context: Some(json!({
+                "execution_plan": {
+                    "steps": [
+                        {
+                            "step_key":"design-plan",
+                            "member_id":"planner",
+                            "goal":"produce an implementation plan",
+                            "acceptance":["plan is reviewable"],
+                            "execution":{"mode":"reconcile_loop","max_rounds":3}
+                        },
+                        {
+                            "step_key":"implement-worker",
+                            "member_id":"worker-dev",
+                            "depends_on":["design-plan"],
+                            "execution":{"mode":"single_pass"}
+                        },
+                        {
+                            "step_key":"qa-review",
+                            "member_id":"qa-review",
+                            "depends_on":["implement-worker"],
+                            "execution":{"mode":"single_pass"}
+                        }
+                    ]
+                }
+            })),
+            conversation_mode: Some("group_chat".to_string()),
+            topic: Some("execution-plan".to_string()),
+        },
+    )
+    .await
+    .expect("create task");
+
+    let Json(preview) = compile_team_task_run_preview(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), created.task.id.clone())),
+        Json(CompileTeamTaskRunPreviewRequest { context_id: None }),
+    )
+    .await
+    .expect("compile preview");
+
+    let step_keys = preview
+        .plan
+        .step_template
+        .iter()
+        .map(|step| step.step_key.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        step_keys,
+        vec![
+            "design-plan".to_string(),
+            "implement-worker".to_string(),
+            "qa-review".to_string()
+        ]
+    );
+    assert_eq!(preview.plan.step_template.len(), 3);
+    assert_eq!(
+        preview.plan.step_template[0].goal.as_deref(),
+        Some("produce an implementation plan")
+    );
+    assert_eq!(
+        preview.plan.step_template[0].acceptance,
+        vec!["plan is reviewable".to_string()]
+    );
+    assert_eq!(
+        preview.plan.step_template[0].execution,
+        crate::team::TeamTaskStepExecutionSpec {
+            mode: crate::team::TeamTaskStepExecutionMode::ReconcileLoop,
+            max_rounds: Some(3),
+        }
+    );
+    assert_eq!(
+        preview.run_payload.input["step_template"][0]["execution"],
+        json!({"mode":"reconcile_loop","max_rounds":3})
     );
 }
 

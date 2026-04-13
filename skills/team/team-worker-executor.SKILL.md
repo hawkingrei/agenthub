@@ -29,6 +29,8 @@ findings.
 - Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
 - Leader owns canonical Team task creation and task lifecycle management; workers execute and
   advance assigned tasks instead of inventing parallel task records.
+- If the assigned task carries `task.context.execution_plan.steps[]`, treat those step entries as
+  the canonical execution recipe for owner, dependency, and acceptance boundaries.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
 - Treat your own identity card as the default boundary for accepted work; escalate to leader when the
@@ -188,6 +190,36 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    - do not wait for repeated nudges when the next executable step is already clear
    - send prompt progress updates when evidence changes, scope shifts, or blockers appear
    - escalate quickly when task acceptance or ownership needs leader intervention
+
+Step execution contract:
+- `single_pass` step: execute the bounded change once, then report evidence or blocker.
+- `reconcile_loop` step: run bounded rounds until one of these happens:
+  - step acceptance is met
+  - the step is blocked
+  - human or external input is required
+  - the step is ready for leader review
+- For `reconcile_loop`, each round should:
+  - restate the current step goal
+  - use the latest workspace evidence and memory artifacts
+  - produce a concise round summary plus artifact pointers
+  - decide explicitly whether to continue, stop as blocked, or hand off for review
+- When a `reconcile_loop` round is not done but should keep going, write the next structured
+  decision into `.agenthubmemory/step-decision.json` so the backend can advance to the next round
+  and auto-nudge the worker session again.
+- Canonical CLI path:
+  `agenthub actor team-step-transition --step-id <step_id> --action continue --output-json-file <path>`
+- Worker-friendly structured wrapper:
+  `agenthub actor team-step-decision --step-id <step_id>`
+- Recommended `.agenthubmemory/step-decision.json` template:
+  `{"action":"continue|complete|input_required|fail","output":{"summary":"what changed this round","artifacts":["relative/path/to/evidence"]},"input":{"question":"only when input is required"},"reason":"only when handing off or requesting input","error_text":"only when action=fail"}`
+- Keep the payload minimal:
+  - `output.summary` should be one short round summary
+  - `output.artifacts` should point at concrete workspace evidence paths
+  - omit `input`, `reason`, and `error_text` unless that action actually needs them
+- Use `action = "input_required"` with `--reason` and optional `--input-json-file` when a round
+  needs human or external input instead of another worker round.
+- Do not reinterpret `reconcile_loop` as permission to change task scope; if the step plan is
+  underspecified, escalate to leader instead of inventing a new step graph.
 
 ## Mention Discipline
 
