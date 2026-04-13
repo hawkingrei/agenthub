@@ -6494,7 +6494,15 @@ async fn team_task_compile_preview_rejects_invalid_execution_plan_payload() {
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({
                 "execution_plan": {
-                    "steps": "invalid"
+                    "steps": [
+                        {
+                            "step_key": "plan",
+                            "member_id": "planner",
+                            "goal": "produce a run plan",
+                            "acceptance": ["plan is available"],
+                            "execution": {"mode": "single_pass"}
+                        }
+                    ]
                 }
             })),
             conversation_mode: Some("group_chat".to_string()),
@@ -6503,6 +6511,17 @@ async fn team_task_compile_preview_rejects_invalid_execution_plan_payload() {
     )
     .await
     .expect("create task");
+
+    sqlx::query("UPDATE team_tasks SET context_json = ?1 WHERE id = ?2")
+        .bind(json!({
+            "execution_plan": {
+                "steps": "invalid"
+            }
+        }))
+        .bind(&created.task.id)
+        .execute(&state.db)
+        .await
+        .expect("corrupt task execution plan context");
 
     let err = compile_team_task_run_preview(
         State(state),
