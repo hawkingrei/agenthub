@@ -6,6 +6,24 @@ on:
   pull_request:
 
 jobs:
+  rust-fmt:
+    name: Rust (Fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          profile: minimal
+          components: rustfmt
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+      - name: Cargo fmt (workspace)
+        run: cargo fmt --all --check
+
   rust-cargo:
     name: Rust (Cargo)
     runs-on: ubuntu-latest
