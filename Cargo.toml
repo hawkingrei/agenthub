@@ -80,7 +80,7 @@ prost = "0.14"
 tonic-prost = "0.14"
 tonic = { version = "0.14", features = ["transport", "tls-native-roots"] }
 rcgen = "0.14"
-rustls = "0.23.37"
+rustls = "0.23.38"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
