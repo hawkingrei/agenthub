@@ -2801,7 +2801,10 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
     );
     assert_eq!(
         input_required_step.input,
-        Some(json!({"question":"approve?"}))
+        Some(json!({
+            "goal":"request approval",
+            "question":"approve?"
+        }))
     );
 
     let Json(run_after_input_required) =

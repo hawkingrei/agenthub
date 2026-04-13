@@ -136,9 +136,10 @@ pub struct TeamTaskRecord {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TeamTaskStepExecutionMode {
+    #[default]
     SinglePass,
     ReconcileLoop,
 }
@@ -148,12 +149,6 @@ pub struct TeamTaskStepExecutionSpec {
     pub mode: TeamTaskStepExecutionMode,
     #[serde(default)]
     pub max_rounds: Option<i64>,
-}
-
-impl Default for TeamTaskStepExecutionMode {
-    fn default() -> Self {
-        Self::SinglePass
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -165,6 +165,7 @@ impl InternalGrpcMailboxClient {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn transition_step(
         &self,
         run_id: &str,
