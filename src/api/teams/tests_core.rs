@@ -2844,7 +2844,14 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
     .expect("resume step");
     assert_eq!(resumed_step.status, crate::team::TeamStepStatus::Working);
     assert!(resumed_step.error_text.is_none());
-    assert_eq!(resumed_step.input, Some(json!({"answer":"approved"})));
+    assert_eq!(
+        resumed_step.input,
+        Some(json!({
+            "goal":"request approval",
+            "question":"approve?",
+            "answer":"approved"
+        }))
+    );
 
     let Json(run_after_resume) =
         get_team_run(State(state.clone()), headers.clone(), Path(run.id.clone()))
