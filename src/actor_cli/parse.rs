@@ -50,6 +50,81 @@ fn set_unique_json_value(
     Ok(())
 }
 
+fn parse_team_step_scope_flag(
+    args: &[String],
+    idx: &mut usize,
+    current_flag: &str,
+    run_id: &mut Option<String>,
+    actor_id: &mut Option<String>,
+    step_id: &mut Option<String>,
+    runtime_handle_id: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    match current_flag {
+        "--run-id" => {
+            *idx += 1;
+            *run_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+            );
+            Ok(true)
+        }
+        flag @ ("--actor-id" | "--agent-id") => {
+            *idx += 1;
+            *actor_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+            );
+            Ok(true)
+        }
+        "--step-id" => {
+            *idx += 1;
+            *step_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("--step-id requires a value"))?,
+            );
+            Ok(true)
+        }
+        "--runtime-handle-id" | "--session-id" => {
+            *idx += 1;
+            *runtime_handle_id = Some(
+                args.get(*idx)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("{current_flag} requires a value"))?,
+            );
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn parse_team_step_scope_argument(
+    args: &[String],
+    idx: &mut usize,
+    output_mode: &mut ActorOutputMode,
+    run_id: &mut Option<String>,
+    actor_id: &mut Option<String>,
+    step_id: &mut Option<String>,
+    runtime_handle_id: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    let current_flag = args[*idx].as_str();
+    if current_flag == "--json" {
+        *output_mode = ActorOutputMode::Json;
+        return Ok(true);
+    }
+    parse_team_step_scope_flag(
+        args,
+        idx,
+        current_flag,
+        run_id,
+        actor_id,
+        step_id,
+        runtime_handle_id,
+    )
+}
+
 fn resolve_team_run_scope(
     team_id: Option<String>,
     run_id: Option<String>,
@@ -887,152 +962,133 @@ pub(super) fn parse_actor_command(
             let mut error_text = None;
             let mut idx = 1;
             while idx < args.len() {
-                match args[idx].as_str() {
-                    "--json" => *output_mode = ActorOutputMode::Json,
-                    "--run-id" => {
-                        idx += 1;
-                        run_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
-                        );
-                    }
-                    flag @ ("--actor-id" | "--agent-id") => {
-                        idx += 1;
-                        actor_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
-                        );
-                    }
-                    "--step-id" => {
-                        idx += 1;
-                        step_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--step-id requires a value"))?,
-                        );
-                    }
-                    "--action" => {
-                        idx += 1;
-                        action = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--action requires a value"))?,
-                        );
-                    }
-                    "--runtime-handle-id" | "--session-id" => {
-                        idx += 1;
-                        runtime_handle_id = Some(args.get(idx).cloned().ok_or_else(|| {
-                            anyhow::anyhow!("{} requires a value", args[idx - 1])
-                        })?);
-                    }
-                    "--output-json" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut output,
-                            parse_json(
+                let current_flag = args[idx].as_str();
+                if parse_team_step_scope_argument(
+                    args,
+                    &mut idx,
+                    output_mode,
+                    &mut run_id,
+                    &mut actor_id,
+                    &mut step_id,
+                    &mut runtime_handle_id,
+                )? {
+                } else {
+                    match current_flag {
+                        "--action" => {
+                            idx += 1;
+                            action = Some(
+                                args.get(idx)
+                                    .cloned()
+                                    .ok_or_else(|| anyhow::anyhow!("--action requires a value"))?,
+                            );
+                        }
+                        "--output-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut output,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--output-json requires a value")
+                                    })?,
+                                    "--output-json",
+                                )?,
+                                "--output-json and --output-json-file cannot be used together",
+                            )?;
+                        }
+                        "--output-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut output,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--output-json-file requires a value")
+                                    })?,
+                                    "--output-json-file",
+                                )?,
+                                "--output-json and --output-json-file cannot be used together",
+                            )?;
+                        }
+                        "--input-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut input,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--input-json requires a value")
+                                    })?,
+                                    "--input-json",
+                                )?,
+                                "--input-json and --input-json-file cannot be used together",
+                            )?;
+                        }
+                        "--input-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut input,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--input-json-file requires a value")
+                                    })?,
+                                    "--input-json-file",
+                                )?,
+                                "--input-json and --input-json-file cannot be used together",
+                            )?;
+                        }
+                        "--reason" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                reason.is_none(),
+                                "--reason and --reason-file cannot be used together"
+                            );
+                            reason = Some(
+                                args.get(idx)
+                                    .cloned()
+                                    .ok_or_else(|| anyhow::anyhow!("--reason requires a value"))?,
+                            );
+                        }
+                        "--reason-file" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                reason.is_none(),
+                                "--reason and --reason-file cannot be used together"
+                            );
+                            reason = Some(read_actor_send_file(
                                 args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--output-json requires a value")
+                                    anyhow::anyhow!("--reason-file requires a value")
                                 })?,
-                                "--output-json",
-                            )?,
-                            "--output-json and --output-json-file cannot be used together",
-                        )?;
-                    }
-                    "--output-json-file" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut output,
-                            parse_json_file(
+                                "--reason-file",
+                            )?);
+                        }
+                        "--error-text" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                error_text.is_none(),
+                                "--error-text and --error-text-file cannot be used together"
+                            );
+                            error_text =
+                                Some(args.get(idx).cloned().ok_or_else(|| {
+                                    anyhow::anyhow!("--error-text requires a value")
+                                })?);
+                        }
+                        "--error-text-file" => {
+                            idx += 1;
+                            anyhow::ensure!(
+                                error_text.is_none(),
+                                "--error-text and --error-text-file cannot be used together"
+                            );
+                            error_text = Some(read_actor_send_file(
                                 args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--output-json-file requires a value")
+                                    anyhow::anyhow!("--error-text-file requires a value")
                                 })?,
-                                "--output-json-file",
-                            )?,
-                            "--output-json and --output-json-file cannot be used together",
-                        )?;
-                    }
-                    "--input-json" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut input,
-                            parse_json(
-                                args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--input-json requires a value")
-                                })?,
-                                "--input-json",
-                            )?,
-                            "--input-json and --input-json-file cannot be used together",
-                        )?;
-                    }
-                    "--input-json-file" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut input,
-                            parse_json_file(
-                                args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--input-json-file requires a value")
-                                })?,
-                                "--input-json-file",
-                            )?,
-                            "--input-json and --input-json-file cannot be used together",
-                        )?;
-                    }
-                    "--reason" => {
-                        idx += 1;
-                        anyhow::ensure!(
-                            reason.is_none(),
-                            "--reason and --reason-file cannot be used together"
-                        );
-                        reason = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--reason requires a value"))?,
-                        );
-                    }
-                    "--reason-file" => {
-                        idx += 1;
-                        anyhow::ensure!(
-                            reason.is_none(),
-                            "--reason and --reason-file cannot be used together"
-                        );
-                        reason = Some(read_actor_send_file(
-                            args.get(idx)
-                                .ok_or_else(|| anyhow::anyhow!("--reason-file requires a value"))?,
-                            "--reason-file",
-                        )?);
-                    }
-                    "--error-text" => {
-                        idx += 1;
-                        anyhow::ensure!(
-                            error_text.is_none(),
-                            "--error-text and --error-text-file cannot be used together"
-                        );
-                        error_text = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--error-text requires a value"))?,
-                        );
-                    }
-                    "--error-text-file" => {
-                        idx += 1;
-                        anyhow::ensure!(
-                            error_text.is_none(),
-                            "--error-text and --error-text-file cannot be used together"
-                        );
-                        error_text = Some(read_actor_send_file(
-                            args.get(idx).ok_or_else(|| {
-                                anyhow::anyhow!("--error-text-file requires a value")
-                            })?,
-                            "--error-text-file",
-                        )?);
-                    }
-                    other => {
-                        return Err(anyhow::anyhow!(
-                            "unknown flag for team-step-transition: {}",
-                            other
-                        ));
+                                "--error-text-file",
+                            )?);
+                        }
+                        other => {
+                            return Err(anyhow::anyhow!(
+                                "unknown flag for team-step-transition: {}",
+                                other
+                            ));
+                        }
                     }
                 }
                 idx += 1;
@@ -1079,69 +1135,50 @@ pub(super) fn parse_actor_command(
             let mut decision = None;
             let mut idx = 1;
             while idx < args.len() {
-                match args[idx].as_str() {
-                    "--json" => *output_mode = ActorOutputMode::Json,
-                    "--run-id" => {
-                        idx += 1;
-                        run_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
-                        );
-                    }
-                    flag @ ("--actor-id" | "--agent-id") => {
-                        idx += 1;
-                        actor_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
-                        );
-                    }
-                    "--step-id" => {
-                        idx += 1;
-                        step_id = Some(
-                            args.get(idx)
-                                .cloned()
-                                .ok_or_else(|| anyhow::anyhow!("--step-id requires a value"))?,
-                        );
-                    }
-                    "--runtime-handle-id" | "--session-id" => {
-                        idx += 1;
-                        runtime_handle_id = Some(args.get(idx).cloned().ok_or_else(|| {
-                            anyhow::anyhow!("{} requires a value", args[idx - 1])
-                        })?);
-                    }
-                    "--decision-json" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut decision,
-                            parse_json(
-                                args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--decision-json requires a value")
-                                })?,
-                                "--decision-json",
-                            )?,
-                            "--decision-json and --decision-json-file cannot be used together",
-                        )?;
-                    }
-                    "--decision-json-file" => {
-                        idx += 1;
-                        set_unique_json_value(
-                            &mut decision,
-                            parse_json_file(
-                                args.get(idx).ok_or_else(|| {
-                                    anyhow::anyhow!("--decision-json-file requires a value")
-                                })?,
-                                "--decision-json-file",
-                            )?,
-                            "--decision-json and --decision-json-file cannot be used together",
-                        )?;
-                    }
-                    other => {
-                        return Err(anyhow::anyhow!(
-                            "unknown flag for team-step-decision: {}",
-                            other
-                        ));
+                let current_flag = args[idx].as_str();
+                if parse_team_step_scope_argument(
+                    args,
+                    &mut idx,
+                    output_mode,
+                    &mut run_id,
+                    &mut actor_id,
+                    &mut step_id,
+                    &mut runtime_handle_id,
+                )? {
+                } else {
+                    match current_flag {
+                        "--decision-json" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut decision,
+                                parse_json(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--decision-json requires a value")
+                                    })?,
+                                    "--decision-json",
+                                )?,
+                                "--decision-json and --decision-json-file cannot be used together",
+                            )?;
+                        }
+                        "--decision-json-file" => {
+                            idx += 1;
+                            set_unique_json_value(
+                                &mut decision,
+                                parse_json_file(
+                                    args.get(idx).ok_or_else(|| {
+                                        anyhow::anyhow!("--decision-json-file requires a value")
+                                    })?,
+                                    "--decision-json-file",
+                                )?,
+                                "--decision-json and --decision-json-file cannot be used together",
+                            )?;
+                        }
+                        other => {
+                            return Err(anyhow::anyhow!(
+                                "unknown flag for team-step-decision: {}",
+                                other
+                            ));
+                        }
                     }
                 }
                 idx += 1;

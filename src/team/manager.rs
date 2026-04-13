@@ -2206,16 +2206,7 @@ impl TeamManager {
             .filter(|value| !value.is_empty())
             .map(str::to_string)
             .or_else(|| summarize_reconcile_output(input.as_ref()));
-        let merged_input = input.map(|next_input| {
-            if let Some(current_input) = current.input.as_ref()
-                && next_input.get("task_execution_step").is_none()
-            {
-                let mut merged = current_input.clone();
-                merge_json_value(&mut merged, &next_input);
-                return merged;
-            }
-            next_input
-        });
+        let merged_input = merge_step_input(current.input.as_ref(), input);
         let reconcile_finished = build_reconcile_round_finished_input(
             merged_input.as_ref().or(current.input.as_ref()),
             "input_required",
@@ -2342,16 +2333,7 @@ impl TeamManager {
         let now = Utc::now().timestamp();
         let mut tx = self.db.begin().await?;
         let current = load_step_record_tx(&mut tx, step_id).await?;
-        let merged_input = input.map(|next_input| {
-            if let Some(current_input) = current.input.as_ref()
-                && next_input.get("task_execution_step").is_none()
-            {
-                let mut merged = current_input.clone();
-                merge_json_value(&mut merged, &next_input);
-                return merged;
-            }
-            next_input
-        });
+        let merged_input = merge_step_input(current.input.as_ref(), input);
         let started_input =
             build_reconcile_round_started_input(merged_input.as_ref().or(current.input.as_ref()));
         let input_json = started_input
@@ -4436,6 +4418,19 @@ fn validate_materialized_run_step_templates(
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
     validate_task_execution_steps(team_spec, &execution_steps, scope)
+}
+
+fn merge_step_input(current_input: Option<&Value>, next_input: Option<Value>) -> Option<Value> {
+    next_input.map(|next_input| {
+        if let Some(current_input) = current_input
+            && next_input.get("task_execution_step").is_none()
+        {
+            let mut merged = current_input.clone();
+            merge_json_value(&mut merged, &next_input);
+            return merged;
+        }
+        next_input
+    })
 }
 
 fn extract_reconcile_round_runtime(input: Option<&Value>) -> Option<ReconcileRoundRuntime> {
