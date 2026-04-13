@@ -3028,7 +3028,12 @@ fn compile_task_step_template_from_execution_plan(
                 .iter()
                 .map(|value| value.trim().to_string())
                 .collect(),
-            goal: step.goal.as_deref().map(str::trim).map(str::to_string),
+            goal: step
+                .goal
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
             acceptance: step
                 .acceptance
                 .iter()

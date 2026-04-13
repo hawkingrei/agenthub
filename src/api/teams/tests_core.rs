@@ -6400,6 +6400,7 @@ async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
                             "step_key":"implement-worker",
                             "member_id":"worker-dev",
                             "depends_on":["design-plan"],
+                            "goal":"   ",
                             "execution":{"mode":"single_pass"}
                         },
                         {
@@ -6450,6 +6451,7 @@ async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
         preview.plan.step_template[0].acceptance,
         vec!["plan is reviewable".to_string()]
     );
+    assert_eq!(preview.plan.step_template[1].goal, None);
     assert_eq!(
         preview.plan.step_template[0].execution,
         crate::team::TeamTaskStepExecutionSpec {
