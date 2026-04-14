@@ -1,5 +1,11 @@
 # Worker Action-First Contract Tightening
 
+## Summary
+
+- tightened the worker execution skill so concrete assignments cannot stop at intent narration
+- required the worker to execute the first actionable step in the same turn when no blocker exists
+- documented the expected first-turn execution artifacts for new concrete assignments
+
 ## Why
 
 Worker sessions were too willing to acknowledge a new concrete assignment with a clean status
@@ -27,3 +33,7 @@ failing to advance execution.
 - Keep the reporting discipline, but make reporting subordinate to immediate execution when the
   task is already actionable.
 - Reduce cases where leader/human sees progress language without any new evidence artifact.
+
+## Validation
+
+- N/A (docs-only skill/journal change)

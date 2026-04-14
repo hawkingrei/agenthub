@@ -193,7 +193,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
      real blocker prevents tool use.
    - If a blocker exists, report the blocker together with the missing prerequisite instead of
      writing a generic plan.
-4. Execute with minimal, auditable changes.
+4. Continue execution with minimal, auditable changes.
 5. Reply to leader with status, evidence, and findings:
    `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`
 6. Include phase metadata when reporting substantial progress:
