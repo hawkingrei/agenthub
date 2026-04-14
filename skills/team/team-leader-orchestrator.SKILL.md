@@ -217,9 +217,10 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 2. Parse each accepted message before making routing decisions.
 3. Execute the first concrete planning/investigation action immediately when the request is already
    actionable.
-   - Valid first actions include opening the referenced issue/PR, searching the relevant code path,
-     reading the suspect file/module, drafting the first task split, or running the narrowest
-     relevant reproduction command.
+   - Valid first actions include opening and summarizing the assigned issue/PR from direct
+     inspection, searching the relevant code path or reading the suspect file/module, writing the
+     first ordered plan or task split into coordination artifacts, dispatching the first
+     deterministic worker brief, or running the narrowest relevant reproduction command.
    - Do not spend the first coordination turn only restating scope, constraints, or next actions
      unless a real blocker prevents tool use.
    - If blocked, report the blocker together with the exact missing prerequisite or runtime failure.
@@ -230,12 +231,6 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 
 ## Reporting And Supervision Contract
 
-- Do not stop at intent narration when a concrete human/team request is assigned to the leader and
-  no blocker exists.
-- If you say what you will do next, execute that first concrete step in the same turn.
-- Treat a pure `I will investigate/plan/check next` message without any accompanying action
-  artifact as a contract violation unless missing permissions, missing inputs, or runtime failure
-  genuinely block execution.
 - Every active worker assignment must have an owner, latest status, latest evidence, and next
   checkpoint recorded in leader coordination artifacts.
 - Require worker updates at assignment start, meaningful progress, blocker discovery, and
@@ -265,7 +260,7 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - In shared-channel progress updates, explicitly `@` the responsible workers, reviewers, and
   affected stakeholders instead of posting anonymous team-wide status text.
 
-New-request first-turn contract:
+## New-request First-turn Contract
 
 - When a new concrete request arrives and the scope is already clear enough to begin, the first
   leader turn must produce at least one action artifact.

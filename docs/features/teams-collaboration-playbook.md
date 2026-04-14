@@ -201,7 +201,7 @@ Policy:
 - First-turn leader artifacts may include:
   - opening and summarizing the assigned issue/PR from direct inspection
   - searching the relevant code path or reading the suspect file/module
-  - writing the first ordered plan or task split
+  - writing the first ordered plan or task split into coordination artifacts
   - dispatching the first deterministic worker brief
   - running the narrowest relevant reproduction command
 - A blocker report is valid only when it names the exact missing prerequisite or failure mode; a
