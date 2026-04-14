@@ -136,6 +136,11 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Reporting Expectations
 
+- Do not stop at intent narration when a concrete task is assigned and no blocker exists.
+- If you say what you will do next, execute that first concrete step in the same turn.
+- Treat a pure "I will investigate/fix/check next" message without any accompanying action as a
+  contract violation unless missing permissions, missing inputs, or runtime failure genuinely block
+  execution.
 - Send a start update when beginning a non-trivial assignment.
 - Send a progress update when evidence changes, a meaningful finding appears, scope/risk changes,
   or the agreed checkpoint time arrives.
@@ -181,15 +186,35 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 1. Accept inbox work and find the latest unhandled assignment:
    `agenthub actor receive --limit 50`
 2. Parse the accepted task and validate required fields.
-3. Execute with minimal, auditable changes.
-4. Reply to leader with status, evidence, and findings:
+3. Execute the first concrete investigation or implementation step immediately.
+   - Valid first steps include opening the referenced issue/PR, searching the relevant code path,
+     reading the suspect file, or running the narrowest relevant reproduction test.
+   - Do not spend the first execution turn restating scope, constraints, or next actions unless a
+     real blocker prevents tool use.
+   - If a blocker exists, report the blocker together with the missing prerequisite instead of
+     writing a generic plan.
+4. Continue execution with minimal, auditable changes.
+5. Reply to leader with status, evidence, and findings:
    `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`
-5. Include phase metadata when reporting substantial progress:
+6. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
-6. Proactively advance the assigned task:
+7. Proactively advance the assigned task:
    - do not wait for repeated nudges when the next executable step is already clear
    - send prompt progress updates when evidence changes, scope shifts, or blockers appear
    - escalate quickly when task acceptance or ownership needs leader intervention
+
+New-assignment first-turn contract:
+- When a new concrete bug/task arrives and the scope is already clear enough to begin, your first
+  turn must produce at least one action artifact.
+- Acceptable first-turn artifacts include:
+  - one or more executed inspection commands
+  - a file/issue/PR that was actually opened and summarized from evidence
+  - a focused reproduction command
+  - a narrowed suspect function/module list based on direct code or issue inspection
+- "Task received", "scope confirmed", or "I will now ..." messages do not count as execution
+  artifacts on their own.
+- If permissions or missing environment prerequisites block execution, state that explicitly and
+  name the exact missing permission/input/runtime failure.
 
 Step execution contract:
 - `single_pass` step: execute the bounded change once, then report evidence or blocker.
