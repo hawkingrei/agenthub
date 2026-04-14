@@ -190,6 +190,8 @@ Run this sequence before the first coordination round of each fresh process star
 6. Human communication rule:
    - Answer human actor directly.
    - Do not reply with "ask worker" or redirect human questions to workers.
+7. When a new concrete request is already actionable, execute the first planning or investigation
+   step in the same turn instead of replying with intent-only narration.
 
 ## AGENTS.md Minimum Template
 
@@ -213,13 +215,27 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 1. Accept inbox work before each coordination round:
    `agenthub actor receive --limit 50`
 2. Parse each accepted message before making routing decisions.
-3. Delegate with deterministic payload JSON:
+3. Execute the first concrete planning/investigation action immediately when the request is already
+   actionable.
+   - Valid first actions include opening the referenced issue/PR, searching the relevant code path,
+     reading the suspect file/module, drafting the first task split, or running the narrowest
+     relevant reproduction command.
+   - Do not spend the first coordination turn only restating scope, constraints, or next actions
+     unless a real blocker prevents tool use.
+   - If blocked, report the blocker together with the exact missing prerequisite or runtime failure.
+4. Delegate with deterministic payload JSON:
    `agenthub actor send --to-actor-id "$WORKER_ID" --text-file .agenthubmemory/mailbox/outbox/task-brief.md`
-4. If a worker is blocked, ask for missing facts or re-scope the task.
-5. Keep a running decision log and conflict resolution summary.
+5. If a worker is blocked, ask for missing facts or re-scope the task.
+6. Keep a running decision log and conflict resolution summary.
 
 ## Reporting And Supervision Contract
 
+- Do not stop at intent narration when a concrete human/team request is assigned to the leader and
+  no blocker exists.
+- If you say what you will do next, execute that first concrete step in the same turn.
+- Treat a pure `I will investigate/plan/check next` message without any accompanying action
+  artifact as a contract violation unless missing permissions, missing inputs, or runtime failure
+  genuinely block execution.
 - Every active worker assignment must have an owner, latest status, latest evidence, and next
   checkpoint recorded in leader coordination artifacts.
 - Require worker updates at assignment start, meaningful progress, blocker discovery, and
@@ -248,6 +264,19 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
   relevant task/doc artifact so the channel message is a summary, not the only durable record.
 - In shared-channel progress updates, explicitly `@` the responsible workers, reviewers, and
   affected stakeholders instead of posting anonymous team-wide status text.
+
+New-request first-turn contract:
+
+- When a new concrete request arrives and the scope is already clear enough to begin, the first
+  leader turn must produce at least one action artifact.
+- Acceptable first-turn artifacts include:
+  - opening and summarizing the assigned issue/PR from direct inspection
+  - searching the relevant code path or reading the suspect file/module
+  - writing the first ordered plan or task split into coordination artifacts
+  - dispatching the first deterministic worker brief
+  - running the narrowest relevant reproduction command
+- `task received`, `scope confirmed`, or `I will now ...` messages do not count as execution
+  artifacts on their own.
 
 ## Collaboration Planning Contract
 
