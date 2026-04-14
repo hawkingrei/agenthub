@@ -296,7 +296,6 @@ Mailbox polling discipline:
   - a human/operator explicitly interrupts or reassigns work
   - ACP/runtime requires immediate control-flow handling such as permission review
   - a worker reply is required to unblock a waiting coordination path
-
 ## Collaboration Planning Contract
 
 - Read worker cards before delegation and treat them as the primary source for capability matching.
