@@ -103,6 +103,8 @@ Leader cold-start:
 3. inspect unfinished items in `TODO.md`
 4. detect whether an existing plan can be resumed
 5. if no resumable plan exists, create a new planning round
+6. when a new concrete request is already actionable, execute the first planning or investigation
+   step in the same turn instead of replying with intent-only narration
 
 Worker cold-start:
 
@@ -185,7 +187,33 @@ Operational consequence:
 - Team prompts and worker skills may still require concise status reporting, but reporting must not
   substitute for the first actionable step when the task is already executable.
 
-### 5.2) CLI-First Enforcement Profile
+### 5.2) Leader Action-First Rule
+
+Leader coordination should also prefer immediate planning evidence over safe intent narration when
+the request is already concrete and no blocker exists.
+
+Policy:
+
+- A leader must not stop at `task received`, `scope confirmed`, or `I will investigate/plan next`
+  when the next planning step is already clear.
+- If a leader describes the next step, it should execute that step in the same turn unless blocked
+  by missing permissions, missing inputs, or runtime failure.
+- First-turn leader artifacts may include:
+  - opening and summarizing the assigned issue/PR from direct inspection
+  - searching the relevant code path or reading the suspect file/module
+  - writing the first ordered plan or task split into coordination artifacts
+  - dispatching the first deterministic worker brief
+  - running the narrowest relevant reproduction command
+- A blocker report is valid only when it names the exact missing prerequisite or failure mode; a
+  generic planning statement without action or blocker evidence is not sufficient progress.
+
+Operational consequence:
+
+- Team prompts and leader skills may still require concise human-facing status reporting, but
+  reporting must not substitute for the first actionable planning step when the request is already
+  executable.
+
+### 5.3) CLI-First Enforcement Profile
 
 Team collaboration should run with the canonical actor CLI mailbox path as the primary communication path:
 
@@ -205,7 +233,7 @@ Detailed enforcement design:
 
 - `docs/features/actor-foundation.md`
 
-### 5.3) Conversation Event Bus Profile
+### 5.4) Conversation Event Bus Profile
 
 Conversation lane should use event bus as the realtime chat/timeline carrier, while keeping mailbox
 as execution command authority:
