@@ -113,8 +113,9 @@ Worker cold-start:
 1. load shared Team AGENTS index (injected builtin `team-agents-index`) and role-relevant guidance from `AGENTS.md` + required skills
 2. load worker-specific AGENTS index (injected builtin `team-worker-agents-index`)
 3. inspect unfinished `TODO.md` entries and, in concrete project repos, `.agenthubmemory/TODO.md`
-4. if startup/resume finds pending assignment state in local TODO/runtime continuity artifacts,
-   pull mailbox and continue resumable assignments; otherwise wait for an explicit mailbox wake
+4. if startup/resume finds pending assignment state already visible in local TODOs,
+   `.agenthubmemory/`, or runtime continuity artifacts, pull mailbox and continue resumable
+   assignments; otherwise send an idle summary/request and then wait for an explicit mailbox wake
    signal instead of proactive polling
 5. when a new concrete assignment is already actionable, execute the first inspection or implementation step in the same turn instead of replying with intent-only narration
 6. report status/evidence back to leader

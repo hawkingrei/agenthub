@@ -196,6 +196,29 @@ Run this sequence before the first coordination round of each fresh process star
    mailbox just to decide the next step; continue from the current evidence until the lane reaches
    a clear checkpoint, completion, or blocker.
 
+## Mailbox Polling Discipline
+
+- Do not proactively poll mailbox just to discover or choose the next coordination lane.
+- Only consume mailbox when one of these entry conditions is true:
+  - startup/resume requires processing already-pending assignments already visible in `TODO.md`,
+    leader coordination artifacts, or runtime continuity artifacts
+  - runtime surfaces an explicit mailbox wake signal
+  - a human/operator explicitly instructs you to check mailbox
+  - ACP/runtime requires immediate control-flow handling such as permission review
+- After you accept a concrete leader-owned request or coordination lane, do not poll mailbox again
+  just to decide the next step while the current lane still has a clear executable path.
+- Only return to mailbox early when:
+  - the current lane is fully delegated, answered, blocked, waiting, in review, or otherwise
+    reaches a clear checkpoint
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
+  - a human/operator explicitly interrupts or reassigns the current lane
+  - ACP/runtime requires an immediate permission review or equivalent control-flow action
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
+
 ## AGENTS.md Minimum Template
 
 Use this structure when creating or refreshing leader workspace `AGENTS.md`:

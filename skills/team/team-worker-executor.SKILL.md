@@ -129,18 +129,18 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
-4. If no unfinished worker items or locally resumable assignment artifacts exist, wait for an
-   explicit mailbox wake signal instead of proactively polling mailbox in a loop.
-5. If no unfinished worker items or locally resumable assignment artifacts exist, send an `idle`
+4. If no unfinished worker items or locally resumable assignment artifacts exist, send an `idle`
    status summary and request next task from leader.
+5. Then wait for an explicit mailbox wake signal instead of proactively polling mailbox in a loop.
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
 
-Mailbox polling discipline:
+## Mailbox Polling Discipline
 
 - Do not proactively poll mailbox just to discover or choose the next task.
 - Only consume mailbox when one of these entry conditions is true:
-  - startup/resume requires processing already-pending assignments
+  - startup/resume requires processing already-pending assignments already visible in local TODOs,
+    `.agenthubmemory/`, or runtime continuity artifacts
   - runtime surfaces an explicit mailbox wake signal
   - a human/operator explicitly instructs you to check mailbox
   - ACP/runtime requires immediate control-flow handling such as permission review
@@ -208,7 +208,7 @@ Mailbox polling discipline:
 
 ## Worker Loop
 
-1. Enter mailbox only when startup/resume or an explicit mailbox wake signal requires it:
+1. Enter mailbox only when one of the mailbox polling discipline entry conditions applies:
    `agenthub actor receive --limit 50`
 2. Parse the accepted task and validate required fields.
 3. Execute the first concrete investigation or implementation step immediately.
