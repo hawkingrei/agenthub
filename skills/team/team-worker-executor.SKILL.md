@@ -129,10 +129,35 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
-4. If no unfinished worker items exist, proceed to mailbox assignment loop.
-5. If no assignment exists, send an `idle` status summary and request next task from leader.
+4. If no unfinished worker items or locally resumable assignment artifacts exist, send an `idle`
+   status summary and request next task from leader.
+5. Then wait for an explicit mailbox wake signal instead of proactively polling mailbox in a loop.
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
+
+## Mailbox Polling Discipline
+
+- Do not proactively poll mailbox just to discover or choose the next task.
+- Only consume mailbox when one of these entry conditions is true:
+  - startup/resume requires processing already-pending assignments already visible in local TODOs,
+    `.agenthubmemory/`, or runtime continuity artifacts
+  - runtime surfaces an explicit mailbox wake signal
+  - a human/operator explicitly instructs you to check mailbox
+  - ACP/runtime requires immediate control-flow handling such as permission review
+- After you accept a concrete assignment, do not poll mailbox again just to decide the next step.
+- Treat the accepted assignment as the active lane and keep executing from local evidence, TODOs,
+  and workspace state until one of these happens:
+  - the task/step is completed
+  - a real blocker is reached
+  - human or external input is required
+  - a required checkpoint/report has been sent
+- Only return to mailbox early when:
+  - the current task is fully handed off or finished
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
+  - a human/operator explicitly interrupts or reassigns work
+  - ACP/runtime requires an immediate permission review or equivalent control-flow action
+- Do not use newly fetched mailbox traffic as the default source of "what should I do next?" while
+  the current assignment still has a clear executable path.
 
 ## Reporting Expectations
 
@@ -183,7 +208,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 
 ## Worker Loop
 
-1. Accept inbox work and find the latest unhandled assignment:
+1. Enter mailbox only when one of the mailbox polling discipline entry conditions applies:
    `agenthub actor receive --limit 50`
 2. Parse the accepted task and validate required fields.
 3. Execute the first concrete investigation or implementation step immediately.
@@ -202,6 +227,9 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    - do not wait for repeated nudges when the next executable step is already clear
    - send prompt progress updates when evidence changes, scope shifts, or blockers appear
    - escalate quickly when task acceptance or ownership needs leader intervention
+8. Return to mailbox only after the current assignment reaches a clear checkpoint (`completed`,
+   `blocked`, `input_required`, explicit handoff, equivalent review-ready state, or a new explicit
+   mailbox wake signal).
 
 New-assignment first-turn contract:
 - When a new concrete bug/task arrives and the scope is already clear enough to begin, your first
@@ -215,6 +243,11 @@ New-assignment first-turn contract:
   artifacts on their own.
 - If permissions or missing environment prerequisites block execution, state that explicitly and
   name the exact missing permission/input/runtime failure.
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
 
 Step execution contract:
 - `single_pass` step: execute the bounded change once, then report evidence or blocker.

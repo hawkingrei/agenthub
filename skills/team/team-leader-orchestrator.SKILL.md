@@ -192,6 +192,32 @@ Run this sequence before the first coordination round of each fresh process star
    - Do not reply with "ask worker" or redirect human questions to workers.
 7. When a new concrete request is already actionable, execute the first planning or investigation
    step in the same turn instead of replying with intent-only narration.
+8. After you accept a concrete leader-owned request or active coordination lane, do not re-poll
+   mailbox just to decide the next step; continue from the current evidence until the lane reaches
+   a clear checkpoint, completion, or blocker.
+
+## Mailbox Polling Discipline
+
+- Do not proactively poll mailbox just to discover or choose the next coordination lane.
+- Only consume mailbox when one of these entry conditions is true:
+  - startup/resume requires processing already-pending assignments already visible in `TODO.md`,
+    leader coordination artifacts, or runtime continuity artifacts
+  - runtime surfaces an explicit mailbox wake signal
+  - a human/operator explicitly instructs you to check mailbox
+  - ACP/runtime requires immediate control-flow handling such as permission review
+- After you accept a concrete leader-owned request or coordination lane, do not poll mailbox again
+  just to decide the next step while the current lane still has a clear executable path.
+- Only return to mailbox early when:
+  - the current lane is fully delegated, answered, blocked, waiting, in review, or otherwise
+    reaches a clear checkpoint
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
+  - a human/operator explicitly interrupts or reassigns the current lane
+  - ACP/runtime requires an immediate permission review or equivalent control-flow action
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
 
 ## AGENTS.md Minimum Template
 
@@ -228,6 +254,8 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
    `agenthub actor send --to-actor-id "$WORKER_ID" --text-file .agenthubmemory/mailbox/outbox/task-brief.md`
 5. If a worker is blocked, ask for missing facts or re-scope the task.
 6. Keep a running decision log and conflict resolution summary.
+7. Return to mailbox only after the current coordination lane reaches a clear checkpoint
+   (`delegated`, `answered`, `blocked`, `waiting`, `in_review`, or equivalent completion state).
 
 ## Reporting And Supervision Contract
 
@@ -273,6 +301,29 @@ Use this structure when creating or refreshing leader workspace `AGENTS.md`:
 - `task received`, `scope confirmed`, or `I will now ...` messages do not count as execution
   artifacts on their own.
 
+Mailbox polling discipline:
+
+- Do not proactively poll mailbox just to discover or choose the next task.
+- Only consume mailbox when one of these entry conditions is true:
+  - startup/resume requires processing already-pending coordination messages
+  - runtime surfaces an explicit mailbox wake signal
+  - a human/operator explicitly instructs the leader to check mailbox
+  - ACP/runtime requires immediate control-flow handling such as permission review
+- After a leader accepts a concrete request or active coordination lane, mailbox polling must not
+  become the default mechanism for choosing the next step.
+- Continue from the current issue/code/task evidence until the lane reaches a clear checkpoint,
+  completion, blocker, or explicit handoff.
+- Only re-enter mailbox early when:
+  - the current lane is finished or fully handed off
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
+  - a human/operator explicitly interrupts or reassigns work
+  - ACP/runtime requires immediate control-flow handling such as permission review
+  - a worker reply is required to unblock a waiting coordination path
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
 ## Collaboration Planning Contract
 
 - Read worker cards before delegation and treat them as the primary source for capability matching.
