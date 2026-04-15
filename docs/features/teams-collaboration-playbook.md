@@ -113,8 +113,9 @@ Worker cold-start:
 1. load shared Team AGENTS index (injected builtin `team-agents-index`) and role-relevant guidance from `AGENTS.md` + required skills
 2. load worker-specific AGENTS index (injected builtin `team-worker-agents-index`)
 3. inspect unfinished `TODO.md` entries and, in concrete project repos, `.agenthubmemory/TODO.md`
-4. if startup/resume finds pending assignment state, pull mailbox and continue resumable
-   assignments; otherwise wait for an explicit pushed mailbox signal instead of proactive polling
+4. if startup/resume finds pending assignment state in local TODO/runtime continuity artifacts,
+   pull mailbox and continue resumable assignments; otherwise wait for an explicit mailbox wake
+   signal instead of proactive polling
 5. when a new concrete assignment is already actionable, execute the first inspection or implementation step in the same turn instead of replying with intent-only narration
 6. report status/evidence back to leader
 7. once an assignment is accepted, keep executing that lane until completion, blocker, input wait,
@@ -193,7 +194,7 @@ Operational consequence:
   substitute for the first actionable step when the task is already executable.
 - Mailbox remains the authoritative coordination path, but it should not be used as the default
   source of "what next?" while an accepted worker lane is still executable.
-- New worker work should normally start from an explicit pushed mailbox signal, not from proactive
+- New worker work should normally start from an explicit mailbox wake signal, not from proactive
   polling.
 
 ### 5.2) Leader Action-First Rule
@@ -223,7 +224,7 @@ Operational consequence:
   executable.
 - Mailbox remains authoritative for coordination, but the leader should not keep re-polling it to
   choose the next move while the current coordination lane still has a clear executable path.
-- New leader coordination work should normally start from an explicit pushed mailbox signal, not
+- New leader coordination work should normally start from an explicit mailbox wake signal, not
   from proactive polling.
 
 ### 5.3) CLI-First Enforcement Profile

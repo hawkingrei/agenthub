@@ -129,9 +129,10 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
-4. If no unfinished worker items exist, wait for an explicit pushed assignment signal instead of
-   proactively polling mailbox in a loop.
-5. If no assignment exists, send an `idle` status summary and request next task from leader.
+4. If no unfinished worker items or locally resumable assignment artifacts exist, wait for an
+   explicit mailbox wake signal instead of proactively polling mailbox in a loop.
+5. If no unfinished worker items or locally resumable assignment artifacts exist, send an `idle`
+   status summary and request next task from leader.
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
 
@@ -140,7 +141,7 @@ Mailbox polling discipline:
 - Do not proactively poll mailbox just to discover or choose the next task.
 - Only consume mailbox when one of these entry conditions is true:
   - startup/resume requires processing already-pending assignments
-  - runtime surfaces an explicit direct-mailbox pending/push signal
+  - runtime surfaces an explicit mailbox wake signal
   - a human/operator explicitly instructs you to check mailbox
   - ACP/runtime requires immediate control-flow handling such as permission review
 - After you accept a concrete assignment, do not poll mailbox again just to decide the next step.
@@ -152,7 +153,7 @@ Mailbox polling discipline:
   - a required checkpoint/report has been sent
 - Only return to mailbox early when:
   - the current task is fully handed off or finished
-  - runtime surfaces a new explicit direct-mailbox pending/push signal that changes priority
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
   - a human/operator explicitly interrupts or reassigns work
   - ACP/runtime requires an immediate permission review or equivalent control-flow action
 - Do not use newly fetched mailbox traffic as the default source of "what should I do next?" while
@@ -207,7 +208,7 @@ Mailbox polling discipline:
 
 ## Worker Loop
 
-1. Enter mailbox only when startup/resume or an explicit pushed pending-message signal requires it:
+1. Enter mailbox only when startup/resume or an explicit mailbox wake signal requires it:
    `agenthub actor receive --limit 50`
 2. Parse the accepted task and validate required fields.
 3. Execute the first concrete investigation or implementation step immediately.
@@ -228,7 +229,7 @@ Mailbox polling discipline:
    - escalate quickly when task acceptance or ownership needs leader intervention
 8. Return to mailbox only after the current assignment reaches a clear checkpoint (`completed`,
    `blocked`, `input_required`, explicit handoff, equivalent review-ready state, or a new explicit
-   pushed pending-message signal).
+   mailbox wake signal).
 
 New-assignment first-turn contract:
 - When a new concrete bug/task arrives and the scope is already clear enough to begin, your first
@@ -242,6 +243,11 @@ New-assignment first-turn contract:
   artifacts on their own.
 - If permissions or missing environment prerequisites block execution, state that explicitly and
   name the exact missing permission/input/runtime failure.
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
 
 Step execution contract:
 - `single_pass` step: execute the bounded change once, then report evidence or blocker.

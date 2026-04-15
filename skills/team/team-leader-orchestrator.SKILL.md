@@ -283,7 +283,7 @@ Mailbox polling discipline:
 - Do not proactively poll mailbox just to discover or choose the next task.
 - Only consume mailbox when one of these entry conditions is true:
   - startup/resume requires processing already-pending coordination messages
-  - runtime surfaces an explicit direct-mailbox pending/push signal
+  - runtime surfaces an explicit mailbox wake signal
   - a human/operator explicitly instructs the leader to check mailbox
   - ACP/runtime requires immediate control-flow handling such as permission review
 - After a leader accepts a concrete request or active coordination lane, mailbox polling must not
@@ -292,10 +292,15 @@ Mailbox polling discipline:
   completion, blocker, or explicit handoff.
 - Only re-enter mailbox early when:
   - the current lane is finished or fully handed off
-  - runtime surfaces a new explicit direct-mailbox pending/push signal that changes priority
+  - runtime surfaces a new explicit mailbox wake signal that changes priority
   - a human/operator explicitly interrupts or reassigns work
   - ACP/runtime requires immediate control-flow handling such as permission review
   - a worker reply is required to unblock a waiting coordination path
+
+Definition:
+- `explicit mailbox wake signal`: an external runtime-visible notification that new direct mailbox
+  work is pending for the current run/session, for example a surfaced "direct mailbox message
+  pending" prompt or equivalent provider/runtime push.
 ## Collaboration Planning Contract
 
 - Read worker cards before delegation and treat them as the primary source for capability matching.
