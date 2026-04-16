@@ -69,6 +69,7 @@ const CONTINUITY_MODE_RESET: &str = "reset";
 const CONTINUITY_MAX_SUMMARY_CHARS: usize = 2048;
 const CONTINUITY_MAX_HISTORY_CHARS: usize = 4096;
 const CONTINUITY_ARTIFACT_KIND_OUTPUT: &str = "continuity_output";
+const RECONCILE_ROUND_ARTIFACT_KIND: &str = "reconcile_round_result";
 const MEMORY_FLUSH_MAX_EVENTS_DEFAULT: i64 = 200;
 const MEMORY_FLUSH_MAX_EVENTS_MAX: i64 = 1000;
 const MEMORY_FLUSH_MAX_SUMMARY_CHARS: usize = 2048;
@@ -1995,6 +1996,63 @@ impl TeamManager {
         .await
     }
 
+    async fn persist_reconcile_round_artifact_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        step: &TeamStepRecord,
+        round: i64,
+        status: &str,
+        summary: Option<&str>,
+        output: Option<&Value>,
+        input: Option<&Value>,
+        reason: Option<&str>,
+        error_text: Option<&str>,
+        now: i64,
+    ) -> anyhow::Result<Option<ContextArtifactPointer>> {
+        let team_id: String = sqlx::query_scalar(
+            r#"
+            SELECT team_id
+            FROM team_runs
+            WHERE id = ?1
+            "#,
+        )
+        .bind(&step.run_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        let team_id_for_payload = team_id.clone();
+
+        let artifact_payload = serde_json::json!({
+            "schema_version": 1,
+            "team_id": team_id_for_payload,
+            "run_id": step.run_id,
+            "step_id": step.id,
+            "step_key": step.step_key,
+            "member_id": step.member_id,
+            "session_id": step.runtime_handle_id,
+            "round": round,
+            "status": status,
+            "summary": summary,
+            "output": output,
+            "input": input,
+            "reason": reason,
+            "error_text": error_text,
+            "created_at": now,
+        });
+        self.persist_context_artifact_tx(
+            tx,
+            ContextArtifactOwner {
+                team_id: &team_id,
+                run_id: &step.run_id,
+                member_id: &step.member_id,
+                session_id: step.runtime_handle_id.as_deref(),
+            },
+            RECONCILE_ROUND_ARTIFACT_KIND,
+            artifact_payload,
+            now,
+        )
+        .await
+    }
+
     async fn persist_context_artifact_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, Sqlite>,
@@ -2244,6 +2302,39 @@ impl TeamManager {
         let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        *round,
+                        "input_required",
+                        summary.as_deref(),
+                        None,
+                        step.input.as_ref(),
+                        step.error_text.as_deref(),
+                        None,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
             let run_update = sqlx::query(
                 r#"
                 UPDATE team_runs
@@ -2282,6 +2373,12 @@ impl TeamManager {
                 "reason": step.error_text,
                 "input": step.input,
             });
+            let mut step_payload = step_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut step_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2304,6 +2401,12 @@ impl TeamManager {
                     "status": "input_required",
                     "summary": summary,
                 });
+                let mut round_payload = round_payload;
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
                 sqlx::query(
                     r#"
                     INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2495,6 +2598,37 @@ impl TeamManager {
         let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            match self
+                .persist_reconcile_round_artifact_tx(
+                    &mut tx,
+                    &step,
+                    finished_input.1,
+                    "continued",
+                    summary.as_deref(),
+                    step.output.as_ref(),
+                    step.input.as_ref(),
+                    None,
+                    None,
+                    now,
+                )
+                .await
+            {
+                Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                Err(err) => {
+                    tracing::warn!(
+                        run_id = %step.run_id,
+                        step_id = %step.id,
+                        member_id = %step.member_id,
+                        "team manager failed to persist reconcile round artifact: {}",
+                        err
+                    );
+                    round_artifact_offload_reason = Some("artifact_write_failed");
+                }
+            }
+
             let continue_payload = serde_json::json!({
                 "step_id": step.id,
                 "step_key": step.step_key,
@@ -2502,8 +2636,13 @@ impl TeamManager {
                 "continued_from_round": finished_input.1,
                 "continued_to_round": started_input.1,
                 "summary": summary,
-                "output": step.output,
             });
+            let mut continue_payload = continue_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut continue_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2525,6 +2664,12 @@ impl TeamManager {
                 "status": "continued",
                 "summary": summary,
             });
+            let mut round_finished_payload = round_finished_payload;
+            maybe_attach_context_artifact_pointer(
+                &mut round_finished_payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2608,11 +2753,50 @@ impl TeamManager {
         let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        *round,
+                        "completed",
+                        summary.as_deref(),
+                        step.output.as_ref(),
+                        step.input.as_ref(),
+                        None,
+                        None,
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
             let payload = serde_json::json!({
                 "step_id": step.id,
                 "step_key": step.step_key,
                 "status": "completed",
             });
+            let mut payload = payload;
+            maybe_attach_context_artifact_pointer(
+                &mut payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2742,11 +2926,11 @@ impl TeamManager {
                     "status": "completed",
                     "summary": summary,
                 });
-                if let Some(payload_obj) = round_payload.as_object_mut()
-                    && let Some(pointer_payload) = artifact_pointer_for_event.clone()
-                {
-                    payload_obj.insert("artifact_pointer".to_string(), pointer_payload);
-                }
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
                 sqlx::query(
                     r#"
                     INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2857,12 +3041,51 @@ impl TeamManager {
         let step = load_step_record_tx(&mut tx, step_id).await?;
 
         if update.rows_affected() > 0 {
+            let mut round_artifact_pointer = None;
+            let mut round_artifact_offload_reason: Option<&str> = None;
+            if let Some((_, round)) = reconcile_finished.as_ref() {
+                match self
+                    .persist_reconcile_round_artifact_tx(
+                        &mut tx,
+                        &step,
+                        *round,
+                        "failed",
+                        step.error_text.as_deref(),
+                        None,
+                        step.input.as_ref(),
+                        None,
+                        step.error_text.as_deref(),
+                        now,
+                    )
+                    .await
+                {
+                    Ok(Some(pointer)) => round_artifact_pointer = Some(pointer),
+                    Ok(None) => round_artifact_offload_reason = Some("agent_workdir_missing"),
+                    Err(err) => {
+                        tracing::warn!(
+                            run_id = %step.run_id,
+                            step_id = %step.id,
+                            member_id = %step.member_id,
+                            "team manager failed to persist reconcile round artifact: {}",
+                            err
+                        );
+                        round_artifact_offload_reason = Some("artifact_write_failed");
+                    }
+                }
+            }
+
             let payload = serde_json::json!({
                 "step_id": step.id,
                 "step_key": step.step_key,
                 "status": "failed",
                 "error_text": step.error_text,
             });
+            let mut payload = payload;
+            maybe_attach_context_artifact_pointer(
+                &mut payload,
+                round_artifact_pointer.as_ref(),
+                round_artifact_offload_reason,
+            );
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2885,6 +3108,12 @@ impl TeamManager {
                     "status": "failed",
                     "summary": step.error_text,
                 });
+                let mut round_payload = round_payload;
+                maybe_attach_context_artifact_pointer(
+                    &mut round_payload,
+                    round_artifact_pointer.as_ref(),
+                    round_artifact_offload_reason,
+                );
                 sqlx::query(
                     r#"
                     INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -3765,6 +3994,35 @@ fn build_context_artifact_pointer_payload(pointer: &ContextArtifactPointer) -> V
         "size_bytes": pointer.artifact_size_bytes,
         "checksum": pointer.content_checksum.as_str(),
     })
+}
+
+fn maybe_attach_context_artifact_pointer(
+    payload: &mut Value,
+    pointer: Option<&ContextArtifactPointer>,
+    offload_reason: Option<&str>,
+) {
+    let Some(payload_obj) = payload.as_object_mut() else {
+        return;
+    };
+    if let Some(pointer) = pointer {
+        payload_obj.insert(
+            "artifact_pointer".to_string(),
+            build_context_artifact_pointer_payload(pointer),
+        );
+        payload_obj.insert(
+            "artifact_offload_status".to_string(),
+            Value::String("persisted".to_string()),
+        );
+    } else if let Some(reason) = offload_reason {
+        payload_obj.insert(
+            "artifact_offload_status".to_string(),
+            Value::String("skipped".to_string()),
+        );
+        payload_obj.insert(
+            "artifact_offload_reason".to_string(),
+            Value::String(reason.to_string()),
+        );
+    }
 }
 
 async fn load_team_member_context_workspace_tx(
