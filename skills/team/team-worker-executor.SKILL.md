@@ -52,8 +52,14 @@ findings.
 - Only review a Team ACP permission request when ACP exposes the review action in your current
   session.
 - Inspect the requested command, path/scope, and offered approval options before responding.
-- Approve only the least-privilege option justified by the current task; otherwise cancel/reject
+- Approve only the least-privilege scope justified by the current task; otherwise cancel/reject
   and report the blocker or follow-up work back to leader.
+- If that same least-privilege scope is offered with different approval persistence options
+  (for example, one-time vs reusable), choose the shortest duration that still avoids unnecessary
+  repeated prompts for the current workflow.
+- For frequently repeated trusted command families such as actor (`agenthub actor`), prefer a
+  session-scoped reusable approval when available; otherwise choose the least broad reusable option
+  offered so the session does not churn on identical prompts.
 - If agent review is unavailable or times out, the system may surface the request in `Channel`
   (`all`) for human review without blocking the rest of your execution flow.
 
