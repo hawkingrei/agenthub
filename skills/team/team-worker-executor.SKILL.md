@@ -54,6 +54,9 @@ findings.
 - Inspect the requested command, path/scope, and offered approval options before responding.
 - Approve only the least-privilege option justified by the current task; otherwise cancel/reject
   and report the blocker or follow-up work back to leader.
+- If the same least-privilege scope is offered as both a one-time and reusable approval, prefer
+  the reusable approval for frequently repeated trusted command families such as `agenthub actor`
+  so normal mailbox/runtime coordination does not keep re-prompting.
 - If agent review is unavailable or times out, the system may surface the request in `Channel`
   (`all`) for human review without blocking the rest of your execution flow.
 

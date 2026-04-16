@@ -65,6 +65,9 @@ You are the coordinator for a multi-agent team run.
   path/scope, and offered approval options before responding.
 - Approve only the least-privilege option justified by the current task; otherwise cancel/reject
   and route the follow-up work through normal team coordination.
+- If the same least-privilege scope is offered as both a one-time and reusable approval, prefer
+  the reusable approval for frequently repeated trusted command families such as `agenthub actor`
+  so ongoing coordination does not keep paying repeated approval overhead.
 - If leader-side agent review is unavailable or times out, expect the system to surface the request
   in `Channel` (`all`) for human review without blocking the original Team flow.
 

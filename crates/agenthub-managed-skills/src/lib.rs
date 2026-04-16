@@ -389,6 +389,9 @@ Protocol rules:
 - Treat the runtime context block as the canonical source for the current actor identity and default run scope.
 - Use `actor inbox` only for inspection/debugging or historical mailbox review.
 - Keep `actor ack` for repair, recovery, or manual compensation flows.
+- When ACP approval offers the same least-privilege scope as both a one-time and a reusable option,
+  prefer the reusable approval for frequently repeated trusted command families (for example
+  `agenthub actor ...`) so the session does not churn on identical prompts.
 - For `actor permission-review-respond`, choose any allow/session/persistent approval by passing the
   concrete request-provided `--option-id`; do not invent `--outcome always`.
 - `actor permission-review-respond --outcome` currently supports only `cancelled`.
