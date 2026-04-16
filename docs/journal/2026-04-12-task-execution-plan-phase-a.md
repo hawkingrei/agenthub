@@ -50,8 +50,8 @@ The manager also validates:
 - Compile preview now prefers `task.context.execution_plan.steps[]` when present instead of falling
   back to default team-spec steps.
 - Runtime materialization stays additive on top of the existing run/step path; the remaining
-  follow-up is not step materialization itself, but tightening round-result artifacts and more
-  autonomous reconcile-loop execution on top of the stable lifecycle API.
+  follow-up is not step materialization itself, but more autonomous reconcile-loop execution on top
+  of the stable lifecycle API.
 
 ## Phase B Bridge Progress
 
@@ -143,6 +143,37 @@ The worker-facing contract is now narrower and more stable:
 - the actor CLI execute layer now has focused regression tests for default decision-file loading and
   missing-file diagnostics.
 
+## Round Result Artifact Progress
+
+Reconcile-loop round results now reuse the existing Team context-artifact persistence path instead
+of living only in `team_steps.output_json` and ephemeral run events:
+
+- `continue_step(...)`, `set_step_input_required(...)`, `complete_step(...)`, and `fail_step(...)`
+  now attempt to persist a `reconcile_round_result` artifact under the member runtime workspace
+  `.cache/context/run/<run_id>/`;
+- persisted artifact payloads include:
+  - `run_id`
+  - `step_id`
+  - `step_key`
+  - `member_id`
+  - `session_id`
+  - `round`
+  - `status`
+  - `summary`
+  - optional `output`
+  - optional `input`
+  - optional `reason`
+  - optional `error_text`
+- step-level run events now carry `artifact_pointer` plus `artifact_offload_status` for reconcile
+  round finish/decision events, so downstream consumers can treat the artifact as the canonical
+  round ledger instead of depending on inline large payload echoes.
+
+This tightens the autonomous reconcile-loop path in two ways:
+
+- worker-produced round decisions now leave a stable filesystem-backed audit trail per round;
+- backend follow-up nudges can rely on a durable round-result contract even when the output is too
+  large or too structured to keep duplicating inline.
+
 ## Validation
 
 Focused validation for this phase should cover:
@@ -155,3 +186,5 @@ Focused validation for this phase should cover:
 - reconcile `continue` advances the round without forcing a leader-side `resume`
 - internal `transition_step(action = "continue")` keeps the step in `working` and requests the
   next reconcile prompt
+- reconcile round result artifacts persist for `continue`
+- reconcile round result artifacts persist for `input_required`

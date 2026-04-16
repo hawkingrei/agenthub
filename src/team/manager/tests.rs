@@ -3280,6 +3280,338 @@ async fn continue_step_rejects_reconcile_loop_after_max_rounds() {
 }
 
 #[tokio::test]
+async fn continue_step_persists_reconcile_round_result_artifact() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace = std::env::temp_dir().join(format!(
+        "agenthub-reconcile-continue-artifact-{unique_suffix}"
+    ));
+    std::fs::create_dir_all(&workspace).expect("create workspace directory");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("worker")
+    .bind("Worker Agent")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert worker agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "continue-round-artifact-team".to_string(),
+            description: Some("team for reconcile round artifact persistence".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Round artifact task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":3}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("round-artifact"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-round-artifact"),
+            json!({"task_id": task.id, "prompt":"execute reconcile continue"}),
+        )
+        .await
+        .expect("create run");
+    let step = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    manager
+        .start_step(&step.id, Some("session-reconcile"))
+        .await
+        .expect("start reconcile step");
+    manager
+        .continue_step(
+            &step.id,
+            Some(json!({
+                "summary":"tests still failing on lint",
+                "artifacts":["logs/round-1.txt"]
+            })),
+        )
+        .await
+        .expect("continue reconcile step");
+
+    let artifact_row = sqlx::query(
+        r#"
+        SELECT artifact_path, artifact_size_bytes
+        FROM team_context_artifacts
+        WHERE run_id = ?1 AND member_id = ?2 AND artifact_kind = ?3
+        ORDER BY artifact_seq DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&run.id)
+    .bind("worker")
+    .bind("reconcile_round_result")
+    .fetch_one(&db)
+    .await
+    .expect("fetch reconcile round artifact row");
+    let artifact_path: String = artifact_row.get("artifact_path");
+    assert!(artifact_row.get::<i64, _>("artifact_size_bytes") > 0);
+    let artifact_content =
+        std::fs::read_to_string(&artifact_path).expect("read persisted artifact content");
+    assert!(artifact_content.contains("\"status\":\"continued\""));
+    assert!(artifact_content.contains("\"round\":1"));
+    assert!(artifact_content.contains("tests still failing on lint"));
+    assert!(
+        artifact_path.starts_with(
+            &workspace
+                .join(".cache/context/run")
+                .to_string_lossy()
+                .to_string()
+        ),
+        "artifact path should be under worker runtime workspace: {artifact_path}"
+    );
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let continue_event = events
+        .iter()
+        .find(|event| event.event_type == "step_continued")
+        .expect("step_continued event");
+    assert_eq!(
+        continue_event.payload["artifact_offload_status"],
+        json!("persisted")
+    );
+    assert!(continue_event.payload.get("artifact_pointer").is_some());
+    assert!(
+        continue_event.payload.get("output").is_none(),
+        "step_continued should rely on artifact pointer instead of echoing full output"
+    );
+    let round_finished_event = events
+        .iter()
+        .find(|event| {
+            event.event_type == "step_reconcile_round_finished"
+                && event.payload["status"] == json!("continued")
+        })
+        .expect("continued round event");
+    assert_eq!(
+        round_finished_event.payload["artifact_offload_status"],
+        json!("persisted")
+    );
+    assert!(
+        round_finished_event
+            .payload
+            .get("artifact_pointer")
+            .is_some()
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
+async fn input_required_persists_reconcile_round_result_artifact() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace =
+        std::env::temp_dir().join(format!("agenthub-reconcile-input-artifact-{unique_suffix}"));
+    std::fs::create_dir_all(&workspace).expect("create workspace directory");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("worker")
+    .bind("Worker Agent")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert worker agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "input-round-artifact-team".to_string(),
+            description: Some("team for reconcile input artifact persistence".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Input artifact task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker",
+                        "goal":"request review",
+                        "acceptance":["review granted"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":3}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some("input-artifact"),
+        )
+        .await
+        .expect("create task");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-input-artifact"),
+            json!({"task_id": task.id, "prompt":"execute reconcile input-required"}),
+        )
+        .await
+        .expect("create run");
+    let step = manager
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("materialized step");
+
+    manager
+        .start_step(&step.id, Some("session-reconcile"))
+        .await
+        .expect("start reconcile step");
+    manager
+        .set_step_input_required(
+            &step.id,
+            Some("need human review"),
+            Some(json!({"question":"approve?"})),
+        )
+        .await
+        .expect("mark input required");
+
+    let artifact_row = sqlx::query(
+        r#"
+        SELECT artifact_path
+        FROM team_context_artifacts
+        WHERE run_id = ?1 AND member_id = ?2 AND artifact_kind = ?3
+        ORDER BY artifact_seq DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&run.id)
+    .bind("worker")
+    .bind("reconcile_round_result")
+    .fetch_one(&db)
+    .await
+    .expect("fetch reconcile round artifact row");
+    let artifact_path: String = artifact_row.get("artifact_path");
+    let artifact_content =
+        std::fs::read_to_string(&artifact_path).expect("read persisted artifact content");
+    assert!(artifact_content.contains("\"status\":\"input_required\""));
+    assert!(artifact_content.contains("need human review"));
+    assert!(artifact_content.contains("\"question\":\"approve?\""));
+
+    let events = manager
+        .list_run_events(&run.id, 100, None)
+        .await
+        .expect("list run events");
+    let input_required_event = events
+        .iter()
+        .find(|event| event.event_type == "step_input_required")
+        .expect("step_input_required event");
+    assert_eq!(
+        input_required_event.payload["artifact_offload_status"],
+        json!("persisted")
+    );
+    assert!(
+        input_required_event
+            .payload
+            .get("artifact_pointer")
+            .is_some()
+    );
+    let round_finished_event = events
+        .iter()
+        .find(|event| {
+            event.event_type == "step_reconcile_round_finished"
+                && event.payload["status"] == json!("input_required")
+        })
+        .expect("input_required round event");
+    assert_eq!(
+        round_finished_event.payload["artifact_offload_status"],
+        json!("persisted")
+    );
+    assert!(
+        round_finished_event
+            .payload
+            .get("artifact_pointer")
+            .is_some()
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
 async fn list_steps_returns_sorted_steps_for_a_run() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
