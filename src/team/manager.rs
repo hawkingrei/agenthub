@@ -2077,13 +2077,12 @@ impl TeamManager {
             .join("context")
             .join("run")
             .join(owner.run_id);
-        std::fs::create_dir_all(&run_context_dir)?;
-
         let file_name = format!("artifact-{artifact_seq}-{artifact_kind}.json");
         let absolute_path = run_context_dir.join(&file_name);
         let relative_path = format!(".cache/context/run/{}/{file_name}", owner.run_id);
         let artifact_bytes = serde_json::to_vec(&artifact_payload)?;
-        std::fs::write(&absolute_path, &artifact_bytes)?;
+        write_context_artifact_file(&run_context_dir, &absolute_path, artifact_bytes.as_slice())
+            .await?;
         let artifact_size_bytes = i64::try_from(artifact_bytes.len()).ok().unwrap_or(i64::MAX);
         let content_checksum = hex_encode(&Sha256::digest(&artifact_bytes));
         let absolute_path_string = absolute_path.to_string_lossy().to_string();
@@ -4095,6 +4094,16 @@ async fn load_team_member_context_workspace_tx(
     };
 
     Ok(Some(TeamMemberContextWorkspace { runtime_workdir }))
+}
+
+async fn write_context_artifact_file(
+    run_context_dir: &Path,
+    absolute_path: &Path,
+    artifact_bytes: &[u8],
+) -> anyhow::Result<()> {
+    tokio::fs::create_dir_all(run_context_dir).await?;
+    tokio::fs::write(absolute_path, artifact_bytes).await?;
+    Ok(())
 }
 
 async fn load_memory_flush_team_id_tx(
