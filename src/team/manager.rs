@@ -2000,13 +2000,7 @@ impl TeamManager {
         &self,
         tx: &mut sqlx::Transaction<'_, Sqlite>,
         step: &TeamStepRecord,
-        round: i64,
-        status: &str,
-        summary: Option<&str>,
-        output: Option<&Value>,
-        input: Option<&Value>,
-        reason: Option<&str>,
-        error_text: Option<&str>,
+        snapshot: ReconcileRoundArtifactSnapshot<'_>,
         now: i64,
     ) -> anyhow::Result<Option<ContextArtifactPointer>> {
         let team_id: String = sqlx::query_scalar(
@@ -2029,13 +2023,13 @@ impl TeamManager {
             "step_key": step.step_key,
             "member_id": step.member_id,
             "session_id": step.runtime_handle_id,
-            "round": round,
-            "status": status,
-            "summary": summary,
-            "output": output,
-            "input": input,
-            "reason": reason,
-            "error_text": error_text,
+            "round": snapshot.round,
+            "status": snapshot.status,
+            "summary": snapshot.summary,
+            "output": snapshot.output,
+            "input": snapshot.input,
+            "reason": snapshot.reason,
+            "error_text": snapshot.error_text,
             "created_at": now,
         });
         self.persist_context_artifact_tx(
@@ -2309,13 +2303,15 @@ impl TeamManager {
                     .persist_reconcile_round_artifact_tx(
                         &mut tx,
                         &step,
-                        *round,
-                        "input_required",
-                        summary.as_deref(),
-                        None,
-                        step.input.as_ref(),
-                        step.error_text.as_deref(),
-                        None,
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "input_required",
+                            summary: summary.as_deref(),
+                            output: None,
+                            input: step.input.as_ref(),
+                            reason: step.error_text.as_deref(),
+                            error_text: None,
+                        },
                         now,
                     )
                     .await
@@ -2604,13 +2600,15 @@ impl TeamManager {
                 .persist_reconcile_round_artifact_tx(
                     &mut tx,
                     &step,
-                    finished_input.1,
-                    "continued",
-                    summary.as_deref(),
-                    step.output.as_ref(),
-                    step.input.as_ref(),
-                    None,
-                    None,
+                    ReconcileRoundArtifactSnapshot {
+                        round: finished_input.1,
+                        status: "continued",
+                        summary: summary.as_deref(),
+                        output: output.as_ref(),
+                        input: Some(&finished_input.0),
+                        reason: None,
+                        error_text: None,
+                    },
                     now,
                 )
                 .await
@@ -2643,6 +2641,18 @@ impl TeamManager {
                 round_artifact_pointer.as_ref(),
                 round_artifact_offload_reason,
             );
+            if round_artifact_pointer.is_none()
+                && let (Some(output), Some(payload_obj)) =
+                    (output.as_ref(), continue_payload.as_object_mut())
+            {
+                payload_obj.insert("output".to_string(), output.clone());
+                payload_obj.insert(
+                    "output_inlined_because".to_string(),
+                    serde_json::json!(
+                        round_artifact_offload_reason.unwrap_or("artifact_pointer_missing")
+                    ),
+                );
+            }
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2670,6 +2680,18 @@ impl TeamManager {
                 round_artifact_pointer.as_ref(),
                 round_artifact_offload_reason,
             );
+            if round_artifact_pointer.is_none()
+                && let (Some(output), Some(payload_obj)) =
+                    (output.as_ref(), round_finished_payload.as_object_mut())
+            {
+                payload_obj.insert("output".to_string(), output.clone());
+                payload_obj.insert(
+                    "output_inlined_because".to_string(),
+                    serde_json::json!(
+                        round_artifact_offload_reason.unwrap_or("artifact_pointer_missing")
+                    ),
+                );
+            }
             sqlx::query(
                 r#"
                 INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
@@ -2760,13 +2782,15 @@ impl TeamManager {
                     .persist_reconcile_round_artifact_tx(
                         &mut tx,
                         &step,
-                        *round,
-                        "completed",
-                        summary.as_deref(),
-                        step.output.as_ref(),
-                        step.input.as_ref(),
-                        None,
-                        None,
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "completed",
+                            summary: summary.as_deref(),
+                            output: step.output.as_ref(),
+                            input: step.input.as_ref(),
+                            reason: None,
+                            error_text: None,
+                        },
                         now,
                     )
                     .await
@@ -3048,13 +3072,15 @@ impl TeamManager {
                     .persist_reconcile_round_artifact_tx(
                         &mut tx,
                         &step,
-                        *round,
-                        "failed",
-                        step.error_text.as_deref(),
-                        None,
-                        step.input.as_ref(),
-                        None,
-                        step.error_text.as_deref(),
+                        ReconcileRoundArtifactSnapshot {
+                            round: *round,
+                            status: "failed",
+                            summary: step.error_text.as_deref(),
+                            output: None,
+                            input: step.input.as_ref(),
+                            reason: None,
+                            error_text: step.error_text.as_deref(),
+                        },
                         now,
                     )
                     .await
@@ -4586,6 +4612,17 @@ struct ContextArtifactPointer {
     relative_path: String,
     artifact_size_bytes: i64,
     content_checksum: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReconcileRoundArtifactSnapshot<'a> {
+    round: i64,
+    status: &'a str,
+    summary: Option<&'a str>,
+    output: Option<&'a Value>,
+    input: Option<&'a Value>,
+    reason: Option<&'a str>,
+    error_text: Option<&'a str>,
 }
 
 fn build_materialized_step_input(
