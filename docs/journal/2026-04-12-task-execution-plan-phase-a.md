@@ -174,6 +174,21 @@ This tightens the autonomous reconcile-loop path in two ways:
 - backend follow-up nudges can rely on a durable round-result contract even when the output is too
   large or too structured to keep duplicating inline.
 
+## Linked Task Waiting / Review Sync Progress
+
+Linked tasks now stay aligned with execution-plan step blocking/review transitions through the
+existing lifecycle APIs:
+
+- `set_step_input_required(...)` moves a linked task to `waiting` when the active run pauses on
+  human/external input;
+- `resume_step(...)` treats explicit resume as a real execution restart and moves the linked task
+  back to `in_progress`, including the case where the task was previously `waiting`;
+- `complete_step(...)` continues to move linked tasks into `in_review` once the linked run
+  finishes, so the `waiting -> in_progress -> in_review` path now works end to end for
+  task-authored execution-plan runs;
+- create/cancel/completion paths still preserve manually parked `waiting` tasks unless there is an
+  explicit resume transition.
+
 ## Validation
 
 Focused validation for this phase should cover:
@@ -188,3 +203,5 @@ Focused validation for this phase should cover:
   next reconcile prompt
 - reconcile round result artifacts persist for `continue`
 - reconcile round result artifacts persist for `input_required`
+- linked task status moves `in_progress -> waiting -> in_progress -> in_review` across
+  `input_required`, `resume`, and `complete`
