@@ -16,6 +16,12 @@ type AgentNodeDraft = {
   defaultWorktreeRoot: string;
 };
 
+type BootstrapJoinContentProps = {
+  nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
+  nodeJoinBootstrapLoading: boolean;
+  nodeJoinBootstrapError: string | null;
+};
+
 export type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
   agents: AgentRecord[];
@@ -49,6 +55,88 @@ function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
     tlsServerName: node.tls_server_name ?? "",
     defaultWorktreeRoot: node.default_worktree_root ?? "",
   };
+}
+
+function renderBootstrapJoinContent({
+  nodeJoinBootstrap,
+  nodeJoinBootstrapLoading,
+  nodeJoinBootstrapError,
+}: BootstrapJoinContentProps): React.ReactNode {
+  if (nodeJoinBootstrapLoading) {
+    return (
+      <Text size="xs" c="dimmed">
+        Loading node bootstrap details...
+      </Text>
+    );
+  }
+
+  if (nodeJoinBootstrapError) {
+    return (
+      <Alert color="red" variant="light" title="Bootstrap unavailable">
+        <Text size="sm">{nodeJoinBootstrapError}</Text>
+      </Alert>
+    );
+  }
+
+  if (!nodeJoinBootstrap) {
+    return (
+      <Text size="xs" c="dimmed">
+        Agent Node Join Bootstrap details are not available yet.
+      </Text>
+    );
+  }
+
+  if (!nodeJoinBootstrap.enabled) {
+    return (
+      <Alert color="yellow" variant="light" title="Internal gRPC required">
+        <Text size="sm">
+          Enable
+          {" "}
+          <code>[internal_grpc]</code>
+          {" "}
+          on the main control plane before joining remote nodes by token.
+        </Text>
+      </Alert>
+    );
+  }
+
+  return (
+    <Stack gap="sm">
+      <Alert color="blue" variant="light" title="Token-based node bootstrap">
+        <Text size="sm">
+          Copy this token into the remote node&apos;s
+          {" "}
+          <code>[internal_grpc.bootstrap].token</code>
+          {" "}
+          setting, then restart the node and register the reachable gRPC target here.
+        </Text>
+      </Alert>
+      <Group grow align="end">
+        <TextInput label="Join token" value={nodeJoinBootstrap.bootstrap_token ?? ""} readOnly />
+        <TextInput
+          label="Control-plane gRPC listen"
+          value={nodeJoinBootstrap.grpc_listen_addr ?? ""}
+          readOnly
+        />
+      </Group>
+      <Group grow align="end">
+        <TextInput label="Security mode" value={nodeJoinBootstrap.security_mode ?? ""} readOnly />
+        <TextInput label="Issuer" value={nodeJoinBootstrap.issuer ?? ""} readOnly />
+        <TextInput label="Audience" value={nodeJoinBootstrap.audience ?? ""} readOnly />
+      </Group>
+      <TextInput label="Cert directory" value={nodeJoinBootstrap.cert_dir ?? ""} readOnly />
+      <Text size="xs" c="dimmed">
+        If the listen address uses
+        {" "}
+        <code>0.0.0.0</code>
+        {" "}
+        or
+        {" "}
+        <code>localhost</code>
+        , replace it with a host or IP that the remote node can actually reach.
+      </Text>
+    </Stack>
+  );
 }
 
 export function AgentNodeSection({
@@ -158,87 +246,11 @@ export function AgentNodeSection({
               below.
             </Text>
           </div>
-          {nodeJoinBootstrapLoading ? (
-            <Text size="xs" c="dimmed">
-              Loading node bootstrap details...
-            </Text>
-          ) : nodeJoinBootstrapError ? (
-            <Alert color="red" variant="light" title="Bootstrap unavailable">
-              <Text size="sm">{nodeJoinBootstrapError}</Text>
-            </Alert>
-          ) : nodeJoinBootstrap ? (
-            nodeJoinBootstrap.enabled ? (
-            <Stack gap="sm">
-              <Alert color="blue" variant="light" title="Token-based node bootstrap">
-                <Text size="sm">
-                  Copy this token into the remote node&apos;s
-                  {" "}
-                  <code>[internal_grpc.bootstrap].token</code>
-                  {" "}
-                  setting, then restart the node and register the reachable gRPC target here.
-                </Text>
-              </Alert>
-              <Group grow align="end">
-                <TextInput
-                  label="Join token"
-                  value={nodeJoinBootstrap.bootstrap_token ?? ""}
-                  readOnly
-                />
-                <TextInput
-                  label="Control-plane gRPC listen"
-                  value={nodeJoinBootstrap.grpc_listen_addr ?? ""}
-                  readOnly
-                />
-              </Group>
-              <Group grow align="end">
-                <TextInput
-                  label="Security mode"
-                  value={nodeJoinBootstrap.security_mode ?? ""}
-                  readOnly
-                />
-                <TextInput
-                  label="Issuer"
-                  value={nodeJoinBootstrap.issuer ?? ""}
-                  readOnly
-                />
-                <TextInput
-                  label="Audience"
-                  value={nodeJoinBootstrap.audience ?? ""}
-                  readOnly
-                />
-              </Group>
-              <TextInput
-                label="Cert directory"
-                value={nodeJoinBootstrap.cert_dir ?? ""}
-                readOnly
-              />
-              <Text size="xs" c="dimmed">
-                If the listen address uses
-                {" "}
-                <code>0.0.0.0</code>
-                {" "}
-                or
-                {" "}
-                <code>localhost</code>
-                , replace it with a host or IP that the remote node can actually reach.
-              </Text>
-            </Stack>
-          ) : (
-            <Alert color="yellow" variant="light" title="Internal gRPC required">
-              <Text size="sm">
-                Enable
-                {" "}
-                <code>[internal_grpc]</code>
-                {" "}
-                on the main control plane before joining remote nodes by token.
-              </Text>
-            </Alert>
-            )
-          ) : (
-            <Text size="xs" c="dimmed">
-              Agent Node Join Bootstrap details are not available yet.
-            </Text>
-          )}
+          {renderBootstrapJoinContent({
+            nodeJoinBootstrap,
+            nodeJoinBootstrapLoading,
+            nodeJoinBootstrapError,
+          })}
         </Stack>
       </div>
 

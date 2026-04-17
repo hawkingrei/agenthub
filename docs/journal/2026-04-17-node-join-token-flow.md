@@ -21,4 +21,5 @@
 - Follow-up hardening on the PR branch added an explicit `Agent Node Join Bootstrap` error state in the Agents UI, URL-encoded join-link tokens, and a copy-link affordance for Admin device join.
 - Review follow-up coverage now also locks the root-only authz boundary for `GET /api/agent_nodes/bootstrap`.
 - Additional review cleanup removed the unused `qrcode` web dependency and restored `navigator.clipboard` in `AdminPage` tests so JSDOM globals do not leak across suites.
+- The `AgentNodeSection` token bootstrap UI now renders through a dedicated helper so loading, missing, disabled, error, and enabled states are flat and easier to extend.
 - Chrome DevTools MCP baseline/regression check could not be completed in this environment because the transport closed before page enumeration.

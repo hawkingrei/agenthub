@@ -172,6 +172,11 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Agent Node Join Bootstrap: Error: boom");
   });
 
+  it("renders an unavailable hint when bootstrap details have not loaded yet", () => {
+    const html = renderSection();
+    expect(html).toContain("Agent Node Join Bootstrap details are not available yet.");
+  });
+
   it("renders selected node default worktree root guidance", () => {
     const html = renderSection({
       nodes: [
