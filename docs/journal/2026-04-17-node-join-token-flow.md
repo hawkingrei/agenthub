@@ -22,4 +22,5 @@
 - Review follow-up coverage now also locks the root-only authz boundary for `GET /api/agent_nodes/bootstrap`.
 - Additional review cleanup removed the unused `qrcode` web dependency and restored `navigator.clipboard` in `AdminPage` tests so JSDOM globals do not leak across suites.
 - The `AgentNodeSection` token bootstrap UI now renders through a dedicated helper so loading, missing, disabled, error, and enabled states are flat and easier to extend.
+- Focused follow-up coverage now exercises `AppState::build_agent_node_join_bootstrap(...)` and `useAppAdmin.onCreateJoin()` so bootstrap defaults and encoded join-link generation stay locked.
 - Chrome DevTools MCP baseline/regression check could not be completed in this environment because the transport closed before page enumeration.

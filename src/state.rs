@@ -338,8 +338,8 @@ mod tests {
         append_gitignore_entry, resolve_global_gitignore_paths,
     };
     use agenthub_config::{
-        AppConfig, InternalGrpcConfig, InternalGrpcSecurityConfig, PushConfig, ServerConfig,
-        ServerRole, WebConfig,
+        AppConfig, InternalGrpcAuthConfig, InternalGrpcBootstrapConfig, InternalGrpcConfig,
+        InternalGrpcSecurityConfig, PushConfig, ServerConfig, ServerRole, WebConfig,
     };
     use agenthub_db::AgentEventDbRouter;
     use sqlx::Row;
@@ -723,5 +723,89 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn build_agent_node_join_bootstrap_returns_disabled_when_internal_grpc_is_off() {
+        let info = AppState::build_agent_node_join_bootstrap(&AppConfig::default())
+            .expect("build disabled bootstrap info");
+
+        assert!(!info.enabled);
+        assert_eq!(info.bootstrap_token, None);
+        assert_eq!(info.grpc_listen_addr, None);
+        assert_eq!(info.security_mode, None);
+        assert_eq!(info.cert_dir, None);
+        assert_eq!(info.issuer, None);
+        assert_eq!(info.audience, None);
+    }
+
+    #[test]
+    fn build_agent_node_join_bootstrap_uses_defaults_for_auth_fields() {
+        let cert_dir =
+            std::env::temp_dir().join(format!("agenthub-bootstrap-defaults-{}", Uuid::new_v4()));
+        let config = AppConfig {
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("0.0.0.0:50051".to_string()),
+                security: Some(InternalGrpcSecurityConfig {
+                    mode: Some("tls".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: None,
+                bootstrap: Some(InternalGrpcBootstrapConfig {
+                    token: Some("provided-token".to_string()),
+                }),
+            }),
+            ..Default::default()
+        };
+
+        let info = AppState::build_agent_node_join_bootstrap(&config)
+            .expect("build bootstrap info with default auth fields");
+
+        assert!(info.enabled);
+        assert_eq!(info.bootstrap_token.as_deref(), Some("provided-token"));
+        assert_eq!(info.grpc_listen_addr.as_deref(), Some("0.0.0.0:50051"));
+        assert_eq!(info.security_mode.as_deref(), Some("tls"));
+        assert_eq!(
+            info.cert_dir.as_deref(),
+            Some(cert_dir.to_string_lossy().as_ref())
+        );
+        assert_eq!(info.issuer.as_deref(), Some("agenthub"));
+        assert_eq!(info.audience.as_deref(), Some("agenthub-internal"));
+
+        let _ = std::fs::remove_dir_all(&cert_dir);
+    }
+
+    #[test]
+    fn build_agent_node_join_bootstrap_respects_configured_auth_fields() {
+        let cert_dir =
+            std::env::temp_dir().join(format!("agenthub-bootstrap-auth-{}", Uuid::new_v4()));
+        let config = AppConfig {
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: Some(InternalGrpcSecurityConfig {
+                    mode: Some("disabled".to_string()),
+                    cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+                }),
+                auth: Some(InternalGrpcAuthConfig {
+                    shared_secret: None,
+                    issuer: Some("custom-issuer".to_string()),
+                    audience: Some("custom-audience".to_string()),
+                }),
+                bootstrap: Some(InternalGrpcBootstrapConfig {
+                    token: Some("provided-token".to_string()),
+                }),
+            }),
+            ..Default::default()
+        };
+
+        let info = AppState::build_agent_node_join_bootstrap(&config)
+            .expect("build bootstrap info with explicit auth fields");
+
+        assert_eq!(info.issuer.as_deref(), Some("custom-issuer"));
+        assert_eq!(info.audience.as_deref(), Some("custom-audience"));
+
+        let _ = std::fs::remove_dir_all(&cert_dir);
     }
 }
