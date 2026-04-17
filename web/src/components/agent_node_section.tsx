@@ -1,6 +1,11 @@
 import React from "react";
 import { Alert, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
-import { AgentNodeRecord, AgentNodeUpdate, AgentRecord } from "../api";
+import {
+  AgentNodeJoinBootstrapInfo,
+  AgentNodeRecord,
+  AgentNodeUpdate,
+  AgentRecord,
+} from "../api";
 import { SelectableListItem } from "../ui/primitives";
 import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
 
@@ -11,9 +16,18 @@ type AgentNodeDraft = {
   defaultWorktreeRoot: string;
 };
 
+type BootstrapJoinContentProps = {
+  nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
+  nodeJoinBootstrapLoading: boolean;
+  nodeJoinBootstrapError: string | null;
+};
+
 export type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
   agents: AgentRecord[];
+  nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
+  nodeJoinBootstrapLoading: boolean;
+  nodeJoinBootstrapError: string | null;
   targetNodeId: string;
   onTargetNodeIdChange: (value: string) => void;
   nodeIdInput: string;
@@ -43,9 +57,94 @@ function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
   };
 }
 
+function renderBootstrapJoinContent({
+  nodeJoinBootstrap,
+  nodeJoinBootstrapLoading,
+  nodeJoinBootstrapError,
+}: BootstrapJoinContentProps): React.ReactNode {
+  if (nodeJoinBootstrapLoading) {
+    return (
+      <Text size="xs" c="dimmed">
+        Loading node bootstrap details...
+      </Text>
+    );
+  }
+
+  if (nodeJoinBootstrapError) {
+    return (
+      <Alert color="red" variant="light" title="Bootstrap unavailable">
+        <Text size="sm">{nodeJoinBootstrapError}</Text>
+      </Alert>
+    );
+  }
+
+  if (!nodeJoinBootstrap) {
+    return (
+      <Text size="xs" c="dimmed">
+        Agent Node Join Bootstrap details are not available yet.
+      </Text>
+    );
+  }
+
+  if (!nodeJoinBootstrap.enabled) {
+    return (
+      <Alert color="yellow" variant="light" title="Internal gRPC required">
+        <Text size="sm">
+          Enable
+          {" "}
+          <code>[internal_grpc]</code>
+          {" "}
+          on the main control plane before joining remote nodes by token.
+        </Text>
+      </Alert>
+    );
+  }
+
+  return (
+    <Stack gap="sm">
+      <Alert color="blue" variant="light" title="Token-based node bootstrap">
+        <Text size="sm">
+          Copy this token into the remote node&apos;s
+          {" "}
+          <code>[internal_grpc.bootstrap].token</code>
+          {" "}
+          setting, then restart the node and register the reachable gRPC target here.
+        </Text>
+      </Alert>
+      <Group grow align="end">
+        <TextInput label="Join token" value={nodeJoinBootstrap.bootstrap_token ?? ""} readOnly />
+        <TextInput
+          label="Control-plane gRPC listen"
+          value={nodeJoinBootstrap.grpc_listen_addr ?? ""}
+          readOnly
+        />
+      </Group>
+      <Group grow align="end">
+        <TextInput label="Security mode" value={nodeJoinBootstrap.security_mode ?? ""} readOnly />
+        <TextInput label="Issuer" value={nodeJoinBootstrap.issuer ?? ""} readOnly />
+        <TextInput label="Audience" value={nodeJoinBootstrap.audience ?? ""} readOnly />
+      </Group>
+      <TextInput label="Cert directory" value={nodeJoinBootstrap.cert_dir ?? ""} readOnly />
+      <Text size="xs" c="dimmed">
+        If the listen address uses
+        {" "}
+        <code>0.0.0.0</code>
+        {" "}
+        or
+        {" "}
+        <code>localhost</code>
+        , replace it with a host or IP that the remote node can actually reach.
+      </Text>
+    </Stack>
+  );
+}
+
 export function AgentNodeSection({
   nodes,
   agents,
+  nodeJoinBootstrap,
+  nodeJoinBootstrapLoading,
+  nodeJoinBootstrapError,
   targetNodeId,
   onTargetNodeIdChange,
   nodeIdInput,
@@ -137,6 +236,24 @@ export function AgentNodeSection({
 
   return (
     <Stack gap="sm">
+      <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-4 shadow-sm">
+        <Stack gap="sm">
+          <div>
+            <Text fw={600}>Join node with token</Text>
+            <Text size="xs" c="dimmed">
+              Use a copy/paste bootstrap token on the remote node. QR onboarding is not used for
+              Agent Node join. After the node can reach the control plane, register its gRPC target
+              below.
+            </Text>
+          </div>
+          {renderBootstrapJoinContent({
+            nodeJoinBootstrap,
+            nodeJoinBootstrapLoading,
+            nodeJoinBootstrapError,
+          })}
+        </Stack>
+      </div>
+
       <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-4 shadow-sm">
         <Stack gap="sm">
           <div>

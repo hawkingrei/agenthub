@@ -171,7 +171,11 @@ Internal gRPC control plane for remote nodes and actor CLI.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `token` | string | none | Bootstrap token for remote nodes |
+| `token` | string | none | Bootstrap token for token-based Agent Node join |
+
+This token is the primary Agent Node onboarding path. Operators copy it from the
+`Agents` page, configure it on the remote node, and then register the node's
+reachable `grpc_target` in the UI. QR onboarding is not used for Agent Nodes.
 
 **Complete Internal gRPC Example**:
 

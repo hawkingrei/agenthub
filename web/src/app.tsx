@@ -245,6 +245,9 @@ export function App() {
     createAgentNodeBusy,
     updatingAgentNodeIds,
     deletingAgentNodeIds,
+    agentNodeJoinBootstrap,
+    agentNodeJoinBootstrapLoading,
+    agentNodeJoinBootstrapError,
     onCreateAgent,
     onStartAgent,
     onStopAgent,
@@ -350,7 +353,7 @@ export function App() {
     selectedSafePaths,
     safePathInput,
     setSafePathInput,
-    joinQr,
+    joinUrl,
     joinPin,
     joinToken,
     error: adminError,
@@ -1001,6 +1004,9 @@ export function App() {
               createBusy: createAgentNodeBusy,
               updatingNodeIds: updatingAgentNodeIds,
               deletingNodeIds: deletingAgentNodeIds,
+              nodeJoinBootstrap: agentNodeJoinBootstrap,
+              nodeJoinBootstrapLoading: agentNodeJoinBootstrapLoading,
+              nodeJoinBootstrapError: agentNodeJoinBootstrapError,
               onCreateNode: onCreateAgentNode,
               onUpdateNode: onUpdateAgentNode,
               onDeleteNode: onDeleteAgentNode,
@@ -1026,6 +1032,9 @@ export function App() {
       createAgentNodeBusy,
       updatingAgentNodeIds,
       deletingAgentNodeIds,
+      agentNodeJoinBootstrap,
+      agentNodeJoinBootstrapLoading,
+      agentNodeJoinBootstrapError,
       onCreateAgentNode,
       onUpdateAgentNode,
       onDeleteAgentNode,
@@ -1080,7 +1089,7 @@ export function App() {
               onDeleteSafePath={onDeleteSafePath}
               onRevokeDevice={onRevokeDevice}
               onCreateJoin={onCreateJoin}
-              joinQr={joinQr}
+              joinUrl={joinUrl}
               joinToken={joinToken}
               joinPin={joinPin}
               safePathInput={safePathInput}

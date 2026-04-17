@@ -1,5 +1,5 @@
 import { UnstyledButton } from "@mantine/core";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AuditRecord, DeviceRecord, SafePath, VapidInfo } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
@@ -20,7 +20,6 @@ import {
   ADMIN_LIST_ITEM_CLASS,
   ADMIN_MUTED_TEXT_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
-  ADMIN_QR_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SECTION_CLASS,
   ADMIN_SESSION_CLASS,
@@ -50,7 +49,7 @@ type AdminProps = {
   onDeleteSafePath: (path: string) => void;
   onRevokeDevice: (id: string) => void;
   onCreateJoin: () => void;
-  joinQr: string | null;
+  joinUrl: string | null;
   joinToken: string | null;
   joinPin: string | null;
   safePathInput: string;
@@ -101,6 +100,24 @@ export function AdminPage(props: AdminProps) {
   const [tab, setTab] = useState<
     "safe" | "devices" | "audits" | "join" | "vapid" | "ui" | "system"
   >("safe");
+  const [joinLinkCopyState, setJoinLinkCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle"
+  );
+
+  useEffect(() => {
+    setJoinLinkCopyState("idle");
+  }, [props.joinUrl]);
+
+  const handleCopyJoinLink = async () => {
+    if (!props.joinUrl) return;
+    try {
+      await navigator.clipboard.writeText(props.joinUrl);
+      setJoinLinkCopyState("copied");
+    } catch {
+      setJoinLinkCopyState("failed");
+    }
+  };
+
   return (
     <div className={ADMIN_APP_CLASS}>
       <header className={ADMIN_HEADER_CLASS}>
@@ -126,7 +143,7 @@ export function AdminPage(props: AdminProps) {
             className={ADMIN_PRIMARY_BUTTON_CLASS}
             onClick={props.onCreateJoin}
           >
-            Create Join QR
+            Create Join Token
           </ActionButton>
         </div>
         <div className={ADMIN_TAB_BAR_CLASS}>
@@ -286,12 +303,32 @@ export function AdminPage(props: AdminProps) {
           {tab === "join" && (
             <div className={`${ADMIN_CARD_CLASS} join-card`}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>Join Device</h3>
-              {props.joinQr && (
-                <img
-                  className={ADMIN_QR_CLASS}
-                  src={props.joinQr}
-                  alt="Join device QR code (encodes token and PIN)"
-                />
+              <p className={ADMIN_MUTED_TEXT_CLASS}>
+                Use the token/link below on the destination browser. QR onboarding is no longer
+                required.
+              </p>
+              {props.joinUrl && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    className={`${ADMIN_MUTED_TEXT_CLASS} break-all underline underline-offset-2`}
+                    href={props.joinUrl}
+                  >
+                    Join link: {props.joinUrl}
+                  </a>
+                  <ActionButton
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void handleCopyJoinLink();
+                    }}
+                  >
+                    {joinLinkCopyState === "copied"
+                      ? "Copied"
+                      : joinLinkCopyState === "failed"
+                        ? "Copy failed"
+                        : "Copy link"}
+                  </ActionButton>
+                </div>
               )}
               {props.joinToken && (
                 <p className={ADMIN_MUTED_TEXT_CLASS}>Token: {props.joinToken}</p>

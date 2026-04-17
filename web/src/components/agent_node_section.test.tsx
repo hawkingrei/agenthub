@@ -23,6 +23,9 @@ const baseNodes: AgentNodeRecord[] = [
 const baseProps: ComponentProps<typeof AgentNodeSection> = {
   nodes: baseNodes,
   agents: [],
+  nodeJoinBootstrap: null,
+  nodeJoinBootstrapLoading: false,
+  nodeJoinBootstrapError: null,
   targetNodeId: "main",
   onTargetNodeIdChange: () => {},
   nodeIdInput: "",
@@ -117,23 +120,61 @@ describe("AgentNodeSection", () => {
 
   it("renders inline validation guidance when the draft is incomplete", () => {
     const html = renderSection({
+      nodeJoinBootstrapLoading: true,
       nodeNameInput: "Node East",
       grpcTargetInput: "https://node-east.internal:50051",
     });
     expect(html).toContain("Node ID is required.");
     expect(html).toContain("Add Node");
     expect(html).toContain("disabled");
+    expect(html).toContain("Loading node bootstrap details...");
   });
 
   it("keeps the default helper copy when the draft is complete", () => {
     const html = renderSection({
+      nodeJoinBootstrap: {
+        enabled: true,
+        bootstrap_token: "bootstrap-token",
+        grpc_listen_addr: "0.0.0.0:50051",
+        security_mode: "tls",
+        cert_dir: "/etc/agenthub/internal-grpc",
+        issuer: "agenthub",
+        audience: "agenthub-internal",
+      },
       nodeIdInput: "node-east",
       nodeNameInput: "Node East",
       grpcTargetInput: "https://node-east.internal:50051",
     });
+    expect(html).toContain("Join node with token");
+    expect(html).toContain("bootstrap-token");
+    expect(html).toContain("Control-plane gRPC listen");
+    expect(html).toContain("0.0.0.0:50051");
     expect(html).toContain("AgentHub to node and node to node traffic uses encrypted gRPC.");
     expect(html).toContain("Add Node");
     expect(html).not.toContain("Node ID is required.");
+  });
+
+  it("renders a disabled bootstrap hint when internal gRPC is unavailable", () => {
+    const html = renderSection({
+      nodeJoinBootstrap: {
+        enabled: false,
+      },
+    });
+    expect(html).toContain("Internal gRPC required");
+    expect(html).toContain("before joining remote nodes by token");
+  });
+
+  it("renders a named bootstrap error state when loading fails", () => {
+    const html = renderSection({
+      nodeJoinBootstrapError: "Agent Node Join Bootstrap: Error: boom",
+    });
+    expect(html).toContain("Bootstrap unavailable");
+    expect(html).toContain("Agent Node Join Bootstrap: Error: boom");
+  });
+
+  it("renders an unavailable hint when bootstrap details have not loaded yet", () => {
+    const html = renderSection();
+    expect(html).toContain("Agent Node Join Bootstrap details are not available yet.");
   });
 
   it("renders selected node default worktree root guidance", () => {

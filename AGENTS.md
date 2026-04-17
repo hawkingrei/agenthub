@@ -28,6 +28,7 @@ AgentHub is a tool for remotely controlling AI Agents. It supports starting, man
 - CSS guardrail: do not introduce new large handcrafted global CSS blocks; keep legacy `web/src/styles.css` changes limited to compatibility fixes during migration
 - Maintainability policy: low-risk maintainability review suggestions should be implemented directly in the active change instead of being deferred by default
 - Agent context/file-boundary policy: there is no hard single-file LOC cap, but code should be organized for token-efficient navigation; prefer cohesive files plus thin routing/index files, and split files when mixed responsibilities or sustained work would require reading large unrelated sections (rough warning threshold: ~800-1000 LOC or multi-domain ownership)
+- Specification-driven development policy: non-trivial work should start from an explicit specification in `docs/features/` or another reviewed spec surface that defines scope, contracts, and validation; implementation, tests, and follow-up TODOs should align to that spec instead of letting code become the primary source of truth.
 - Development policy: AgentHub follows TDD / test-first for non-trivial changes; add or update focused tests before or alongside implementation, and treat missing regression coverage as unfinished work
 - Database: SQLite
 - Deployment: single binary, no separate frontend deployment

@@ -7,10 +7,12 @@ import { useAppAgents } from "./use_app_agents";
 const {
   listAgentsMock,
   listAgentNodesMock,
+  getAgentNodeJoinBootstrapMock,
   getRuntimeDefaultsMock,
 } = vi.hoisted(() => ({
   listAgentsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
+  getAgentNodeJoinBootstrapMock: vi.fn(),
   getRuntimeDefaultsMock: vi.fn(),
 }));
 
@@ -18,6 +20,7 @@ vi.mock("./api", () => ({
   api: {
     listAgents: listAgentsMock,
     listAgentNodes: listAgentNodesMock,
+    getAgentNodeJoinBootstrap: getAgentNodeJoinBootstrapMock,
     getRuntimeDefaults: getRuntimeDefaultsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
@@ -53,9 +56,19 @@ describe("useAppAgents", () => {
     root = createRoot(container);
     listAgentsMock.mockReset();
     listAgentNodesMock.mockReset();
+    getAgentNodeJoinBootstrapMock.mockReset();
     getRuntimeDefaultsMock.mockReset();
     listAgentsMock.mockResolvedValue([]);
     listAgentNodesMock.mockResolvedValue([]);
+    getAgentNodeJoinBootstrapMock.mockResolvedValue({
+      enabled: true,
+      bootstrap_token: "bootstrap-token",
+      grpc_listen_addr: "0.0.0.0:50051",
+      security_mode: "tls",
+      cert_dir: "/etc/agenthub/internal-grpc",
+      issuer: "agenthub",
+      audience: "agenthub-internal",
+    });
     getRuntimeDefaultsMock.mockResolvedValue({
       default_worktree_root: "~/.agenthub/worktrees",
     });
@@ -121,6 +134,9 @@ describe("useAppAgents", () => {
     expect(latest.targetNodeId).toBe("main");
     expect(latest.agents).toEqual([]);
     expect(latest.agentNodes).toEqual([]);
+    expect(latest.agentNodeJoinBootstrap).toBeNull();
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBeNull();
   });
 
   it("falls back to main when the selected target node no longer exists", async () => {
@@ -176,5 +192,63 @@ describe("useAppAgents", () => {
     latest = captures[captures.length - 1];
     expect(latest.agentNodes).toEqual([]);
     expect(latest.targetNodeId).toBe("main");
+  });
+
+  it("loads root-only node bootstrap details on the agents route", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth = {
+      token: "token-1",
+      role: "root",
+      rootInitialized: true,
+    } as HookProps[0];
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(getAgentNodeJoinBootstrapMock).toHaveBeenCalledWith("token-1");
+    expect(latest.agentNodeJoinBootstrap).toEqual({
+      enabled: true,
+      bootstrap_token: "bootstrap-token",
+      grpc_listen_addr: "0.0.0.0:50051",
+      security_mode: "tls",
+      cert_dir: "/etc/agenthub/internal-grpc",
+      issuer: "agenthub",
+      audience: "agenthub-internal",
+    });
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBeNull();
+  });
+
+  it("stores a named bootstrap error when the loader fails", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth = {
+      token: "token-1",
+      role: "root",
+      rootInitialized: true,
+    } as HookProps[0];
+    getAgentNodeJoinBootstrapMock.mockRejectedValueOnce(new Error("boom"));
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(latest.agentNodeJoinBootstrap).toBeNull();
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBe(
+      "Agent Node Join Bootstrap: Error: boom"
+    );
   });
 });

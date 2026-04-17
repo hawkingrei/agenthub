@@ -85,6 +85,16 @@ export type AgentNodeRecord = {
   updated_at: number;
 };
 
+export type AgentNodeJoinBootstrapInfo = {
+  enabled: boolean;
+  bootstrap_token?: string | null;
+  grpc_listen_addr?: string | null;
+  security_mode?: string | null;
+  cert_dir?: string | null;
+  issuer?: string | null;
+  audience?: string | null;
+};
+
 export type AgentDiscoveryCardRecord = {
   card_id: string;
   schema_version: string;
@@ -1066,6 +1076,8 @@ export const api = {
   listAgents: (token: string) => apiFetch<AgentRecord[]>("/api/agents", token),
   listAgentNodes: (token: string) =>
     apiFetch<AgentNodeRecord[]>("/api/agent_nodes", token),
+  getAgentNodeJoinBootstrap: (token: string) =>
+    apiFetch<AgentNodeJoinBootstrapInfo>("/api/agent_nodes/bootstrap", token),
   createAgentNode: (token: string, payload: AgentNodeConfig) =>
     apiFetch<AgentNodeRecord>("/api/agent_nodes", token, {
       method: "POST",

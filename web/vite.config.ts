@@ -137,9 +137,6 @@ export function resolveChunkGroupName(id: string): string | undefined {
   ) {
     return "vendor-markdown";
   }
-  if (normalized.includes("/node_modules/qrcode/")) {
-    return "vendor-qrcode";
-  }
   if (includesAny(normalized, ROUTE_UI_SHARED_IDS)) {
     return "route-ui-shared";
   }
