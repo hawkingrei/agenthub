@@ -20,4 +20,5 @@
 - The node registry still stores routing only. Shared internal gRPC TLS/auth configuration is still cluster-wide.
 - Follow-up hardening on the PR branch added an explicit `Agent Node Join Bootstrap` error state in the Agents UI, URL-encoded join-link tokens, and a copy-link affordance for Admin device join.
 - Review follow-up coverage now also locks the root-only authz boundary for `GET /api/agent_nodes/bootstrap`.
+- Additional review cleanup removed the unused `qrcode` web dependency and restored `navigator.clipboard` in `AdminPage` tests so JSDOM globals do not leak across suites.
 - Chrome DevTools MCP baseline/regression check could not be completed in this environment because the transport closed before page enumeration.

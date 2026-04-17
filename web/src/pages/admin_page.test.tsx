@@ -31,8 +31,12 @@ function required<T>(value: T | null | undefined, message: string): T {
 describe("AdminPage", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let originalClipboard: Clipboard | undefined;
+  let hadClipboard = false;
 
   beforeEach(() => {
+    hadClipboard = "clipboard" in navigator;
+    originalClipboard = navigator.clipboard;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -49,6 +53,14 @@ describe("AdminPage", () => {
       root.unmount();
     });
     container.remove();
+    if (hadClipboard) {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
   });
 
   it("exposes browser-local developer mode controls in UI tab", () => {
