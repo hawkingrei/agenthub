@@ -1665,6 +1665,7 @@ mod tests {
             push,
             auth,
             acp_permissions: permissions,
+            agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
             default_worktree_root: config.default_worktree_root(),
         }
     }

@@ -7,11 +7,14 @@ use uuid::Uuid;
 
 use crate::acp::AcpPermissionService;
 use crate::agent::{
-    AgentManager, AgentTimeTriggerManager, AgentTimeTriggerWorker, AgentTimeTriggerWorkerSettings,
+    AgentManager, AgentNodeJoinBootstrapInfo, AgentTimeTriggerManager, AgentTimeTriggerWorker,
+    AgentTimeTriggerWorkerSettings,
 };
 use crate::auth::AuthService;
 use crate::internal::client::InternalGrpcPeerClientConfig;
-use crate::internal::tls::{InternalGrpcSecurityMode, ensure_shared_secret, ensure_tls_material};
+use crate::internal::tls::{
+    InternalGrpcSecurityMode, ensure_bootstrap_token, ensure_shared_secret, ensure_tls_material,
+};
 use crate::push::PushService;
 use crate::team::{
     TeamMailboxUnreadHintWorker, TeamMailboxUnreadHintWorkerSettings, TeamManager,
@@ -27,6 +30,7 @@ pub struct AppState {
     pub push: Arc<PushService>,
     pub auth: Arc<AuthService>,
     pub acp_permissions: Arc<AcpPermissionService>,
+    pub agent_node_join_bootstrap: AgentNodeJoinBootstrapInfo,
     pub default_worktree_root: String,
 }
 
@@ -48,6 +52,7 @@ impl AppState {
 
         let (agents, teams, push, auth, acp_permissions) =
             Self::initialize_services(&config, db.clone(), event_dbs.clone()).await?;
+        let agent_node_join_bootstrap = Self::build_agent_node_join_bootstrap(&config)?;
 
         Self::run_startup_cleanup(&agents, &teams).await?;
 
@@ -72,7 +77,37 @@ impl AppState {
             push,
             auth,
             acp_permissions,
+            agent_node_join_bootstrap,
             default_worktree_root,
+        })
+    }
+
+    fn build_agent_node_join_bootstrap(
+        config: &agenthub_config::AppConfig,
+    ) -> anyhow::Result<AgentNodeJoinBootstrapInfo> {
+        if !config.internal_grpc_enabled() {
+            return Ok(AgentNodeJoinBootstrapInfo::disabled());
+        }
+
+        let cert_dir = PathBuf::from(config.internal_grpc_cert_dir());
+        let bootstrap_token =
+            ensure_bootstrap_token(&cert_dir, config.internal_grpc_bootstrap_token())?;
+        Ok(AgentNodeJoinBootstrapInfo {
+            enabled: true,
+            bootstrap_token: Some(bootstrap_token),
+            grpc_listen_addr: Some(config.internal_grpc_listen_addr()),
+            security_mode: Some(config.internal_grpc_security_mode()),
+            cert_dir: Some(cert_dir.to_string_lossy().to_string()),
+            issuer: Some(
+                config
+                    .internal_grpc_auth_issuer()
+                    .unwrap_or_else(|| "agenthub".to_string()),
+            ),
+            audience: Some(
+                config
+                    .internal_grpc_auth_audience()
+                    .unwrap_or_else(|| "agenthub-internal".to_string()),
+            ),
         })
     }
 

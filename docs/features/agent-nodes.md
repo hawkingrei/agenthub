@@ -115,16 +115,17 @@ GitHub Actions:
 Manual checks:
 
 1. Open `Agents -> Create Agent`.
-2. Register a remote node with an `https://` gRPC target.
-3. Update that node and set `default_worktree_root`.
-4. Select that node for a new `create_worktree` agent, leave `Workdir` blank, start it directly from the `Agents` page, and confirm the card shows `node:<id>`.
-5. Open the agent workbench and confirm remote output appears through event polling after start/input.
-6. Confirm local `main` execution remains the default selection.
-7. Log in as a non-root user and confirm the `Agents` page does not attempt `agent_nodes` admin requests.
+2. Confirm the root-only `Join node with token` helper shows the bootstrap token, gRPC listen address, auth issuer/audience, and cert directory.
+3. Start a remote node with the matching `[internal_grpc]` config and bootstrap token, then register it with an `https://` gRPC target.
+4. Update that node and set `default_worktree_root`.
+5. Select that node for a new `create_worktree` agent, leave `Workdir` blank, start it directly from the `Agents` page, and confirm the card shows `node:<id>`.
+6. Open the agent workbench and confirm remote output appears through event polling after start/input.
+7. Confirm local `main` execution remains the default selection.
+8. Log in as a non-root user and confirm the `Agents` page does not attempt `agent_nodes` admin requests.
 
 ## Operational Notes
 
-- gRPC relay route material currently carries scoped credentials directly so the relay pipeline can be exercised before node bootstrap is fully surfaced in the UI.
+- The `Agents` page now surfaces node bootstrap as a token-first helper for root operators; QR onboarding is not part of the Agent Node flow.
 - Remote agent control currently depends on cluster peers sharing internal gRPC auth/TLS configuration (shared secret / CA trust chain); the node registry itself does not store bootstrap secrets.
 - Remote node shadow records remain in the main AgentHub DB, while the execution node persists only its local runtime record with `target_node_id = NULL`.
 - Remote-target agent creation now fails fast if the cluster has no internal peer config or if the local schema cannot persist `agents.target_node_id`; AgentHub does not create shadow records that it cannot later control.

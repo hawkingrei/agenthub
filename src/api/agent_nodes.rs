@@ -5,7 +5,9 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::agent::{AgentNodeConfig, AgentNodeRecord, AgentNodeUpdate};
+use crate::agent::{
+    AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate,
+};
 use crate::api::authz::require_root;
 use crate::api::error::ApiError;
 use crate::state::AppState;
@@ -13,6 +15,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", post(create_agent_node).get(list_agent_nodes))
+        .route("/bootstrap", get(get_agent_node_bootstrap))
         .route(
             "/{id}",
             get(get_agent_node)
@@ -78,6 +81,14 @@ async fn get_agent_node(
         .await
         .map_err(|err| map_agent_node_error(err, "agent node not found"))?;
     Ok(Json(node))
+}
+
+async fn get_agent_node_bootstrap(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AgentNodeJoinBootstrapInfo>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    Ok(Json(state.agent_node_join_bootstrap.clone()))
 }
 
 async fn update_agent_node(
@@ -182,6 +193,41 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = decode_json_body(response).await;
         assert_eq!(body["error"], json!("root required"));
+    }
+
+    #[tokio::test]
+    async fn get_agent_node_bootstrap_returns_root_only_join_info() {
+        let mut state = build_test_state().await;
+        state.agent_node_join_bootstrap = crate::agent::AgentNodeJoinBootstrapInfo {
+            enabled: true,
+            bootstrap_token: Some("bootstrap-token".to_string()),
+            grpc_listen_addr: Some("0.0.0.0:50051".to_string()),
+            security_mode: Some("tls".to_string()),
+            cert_dir: Some("/etc/agenthub/internal-grpc".to_string()),
+            issuer: Some("agenthub".to_string()),
+            audience: Some("agenthub-internal".to_string()),
+        };
+        let token = create_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::GET,
+                "/bootstrap",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("run get agent node bootstrap request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["enabled"], json!(true));
+        assert_eq!(body["bootstrap_token"], json!("bootstrap-token"));
+        assert_eq!(body["grpc_listen_addr"], json!("0.0.0.0:50051"));
+        assert_eq!(body["security_mode"], json!("tls"));
+        assert_eq!(body["cert_dir"], json!("/etc/agenthub/internal-grpc"));
+        assert_eq!(body["issuer"], json!("agenthub"));
+        assert_eq!(body["audience"], json!("agenthub-internal"));
     }
 
     #[tokio::test]
