@@ -196,6 +196,26 @@ if (typeof globalThis.ResizeObserver !== "function") {
   } as typeof ResizeObserver;
 }
 
+const documentWithFonts = document as Document & {
+  fonts?: {
+    addEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void;
+    removeEventListener?: (type: string, listener: EventListenerOrEventListenerObject) => void;
+  };
+};
+
+if (!documentWithFonts.fonts) {
+  Object.defineProperty(documentWithFonts, "fonts", {
+    configurable: true,
+    value: {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  });
+} else {
+  documentWithFonts.fonts.addEventListener ??= () => {};
+  documentWithFonts.fonts.removeEventListener ??= () => {};
+}
+
 describe("TeamPage agent loop profile flow", () => {
   const flushEffects = async () => {
     await Promise.resolve();
@@ -265,9 +285,11 @@ describe("TeamPage agent loop profile flow", () => {
             model: "gpt-5.4",
             prompt: "Stay focused on regressions.",
             skills: [],
-            agent_loop_enabled: true,
-            agent_loop_idle_seconds: 900,
-            agent_loop_prompt: "Resume by checking inbox.",
+            runtime: {
+              agent_loop_enabled: true,
+              agent_loop_idle_seconds: 900,
+              agent_loop_prompt: "Resume by checking inbox.",
+            },
           },
         ],
       },
@@ -326,8 +348,13 @@ describe("TeamPage agent loop profile flow", () => {
           {
             ...team.spec.members[0],
             description: "Investigate regressions and summarize blockers",
-            agent_loop_idle_seconds: 1200,
-            agent_loop_prompt: "Resume by checking inbox and summarizing current blockers.",
+            runtime: {
+              ...(team.spec.members[0].runtime ?? {}),
+              agent_loop_enabled: true,
+              agent_loop_idle_seconds: 1200,
+              agent_loop_prompt:
+                "Resume by checking inbox and summarizing current blockers.",
+            },
           },
         ],
       },
@@ -421,8 +448,8 @@ describe("TeamPage agent loop profile flow", () => {
               expect.objectContaining({
                 member_id: "worker-1",
                 description: "Investigate regressions and summarize blockers",
-                agent_loop_enabled: true,
                 runtime: expect.objectContaining({
+                  agent_loop_enabled: true,
                   agent_loop_idle_seconds: 1200,
                   agent_loop_prompt:
                     "Resume by checking inbox and summarizing current blockers.",
