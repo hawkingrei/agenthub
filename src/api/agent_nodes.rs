@@ -5,9 +5,7 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::agent::{
-    AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate,
-};
+use crate::agent::{AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate};
 use crate::api::authz::require_root;
 use crate::api::error::ApiError;
 use crate::state::AppState;
