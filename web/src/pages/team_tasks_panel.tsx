@@ -671,7 +671,10 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   );
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-4`} data-team-surface="kanban">
+    <div
+      className={`${TEAM_PANEL_CARD_CLASS} overflow-y-auto overscroll-y-contain p-4`}
+      data-team-surface="kanban"
+    >
       <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
         <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
         <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>

@@ -3823,6 +3823,51 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Prepare rolloutAgents pick this task up automatically");
   });
 
+  it("TeamTasksPanel keeps the kanban surface vertically scrollable", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-open", { title: "Investigate bug", status: "open" }),
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-open"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const kanbanSurface = required(
+      container.querySelector('[data-team-surface="kanban"]') as HTMLDivElement | null,
+      "kanban surface missing"
+    );
+    expect(kanbanSurface.className).toContain("overflow-y-auto");
+    expect(kanbanSurface.className).toContain("overscroll-y-contain");
+  });
+
   it("TeamTasksPanel keeps rendered task cards visible during background refresh", () => {
     act(() => {
       root.render(
