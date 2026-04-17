@@ -24,6 +24,8 @@ const baseProps: ComponentProps<typeof AgentNodeSection> = {
   nodes: baseNodes,
   agents: [],
   nodeJoinBootstrap: null,
+  nodeJoinBootstrapLoading: false,
+  nodeJoinBootstrapError: null,
   targetNodeId: "main",
   onTargetNodeIdChange: () => {},
   nodeIdInput: "",
@@ -118,12 +120,14 @@ describe("AgentNodeSection", () => {
 
   it("renders inline validation guidance when the draft is incomplete", () => {
     const html = renderSection({
+      nodeJoinBootstrapLoading: true,
       nodeNameInput: "Node East",
       grpcTargetInput: "https://node-east.internal:50051",
     });
     expect(html).toContain("Node ID is required.");
     expect(html).toContain("Add Node");
     expect(html).toContain("disabled");
+    expect(html).toContain("Loading node bootstrap details...");
   });
 
   it("keeps the default helper copy when the draft is complete", () => {
@@ -158,6 +162,14 @@ describe("AgentNodeSection", () => {
     });
     expect(html).toContain("Internal gRPC required");
     expect(html).toContain("before joining remote nodes by token");
+  });
+
+  it("renders a named bootstrap error state when loading fails", () => {
+    const html = renderSection({
+      nodeJoinBootstrapError: "Agent Node Join Bootstrap: Error: boom",
+    });
+    expect(html).toContain("Bootstrap unavailable");
+    expect(html).toContain("Agent Node Join Bootstrap: Error: boom");
   });
 
   it("renders selected node default worktree root guidance", () => {

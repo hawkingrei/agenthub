@@ -18,4 +18,5 @@
 
 - Agent Node bootstrap is token-based; QR onboarding remains a device/browser join concern only.
 - The node registry still stores routing only. Shared internal gRPC TLS/auth configuration is still cluster-wide.
+- Follow-up hardening on the PR branch added an explicit `Agent Node Join Bootstrap` error state in the Agents UI, URL-encoded join-link tokens, and a copy-link affordance for Admin device join.
 - Chrome DevTools MCP baseline/regression check could not be completed in this environment because the transport closed before page enumeration.

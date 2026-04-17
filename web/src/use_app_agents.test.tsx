@@ -135,6 +135,8 @@ describe("useAppAgents", () => {
     expect(latest.agents).toEqual([]);
     expect(latest.agentNodes).toEqual([]);
     expect(latest.agentNodeJoinBootstrap).toBeNull();
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBeNull();
   });
 
   it("falls back to main when the selected target node no longer exists", async () => {
@@ -220,5 +222,33 @@ describe("useAppAgents", () => {
       issuer: "agenthub",
       audience: "agenthub-internal",
     });
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBeNull();
+  });
+
+  it("stores a named bootstrap error when the loader fails", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth = {
+      token: "token-1",
+      role: "root",
+      rootInitialized: true,
+    } as HookProps[0];
+    getAgentNodeJoinBootstrapMock.mockRejectedValueOnce(new Error("boom"));
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(latest.agentNodeJoinBootstrap).toBeNull();
+    expect(latest.agentNodeJoinBootstrapLoading).toBe(false);
+    expect(latest.agentNodeJoinBootstrapError).toBe(
+      "Agent Node Join Bootstrap: Error: boom"
+    );
   });
 });

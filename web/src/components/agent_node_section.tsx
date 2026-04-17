@@ -20,6 +20,8 @@ export type AgentNodeSectionProps = {
   nodes: AgentNodeRecord[];
   agents: AgentRecord[];
   nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
+  nodeJoinBootstrapLoading: boolean;
+  nodeJoinBootstrapError: string | null;
   targetNodeId: string;
   onTargetNodeIdChange: (value: string) => void;
   nodeIdInput: string;
@@ -53,6 +55,8 @@ export function AgentNodeSection({
   nodes,
   agents,
   nodeJoinBootstrap,
+  nodeJoinBootstrapLoading,
+  nodeJoinBootstrapError,
   targetNodeId,
   onTargetNodeIdChange,
   nodeIdInput,
@@ -154,11 +158,16 @@ export function AgentNodeSection({
               below.
             </Text>
           </div>
-          {nodeJoinBootstrap === null ? (
+          {nodeJoinBootstrapLoading ? (
             <Text size="xs" c="dimmed">
               Loading node bootstrap details...
             </Text>
-          ) : nodeJoinBootstrap.enabled ? (
+          ) : nodeJoinBootstrapError ? (
+            <Alert color="red" variant="light" title="Bootstrap unavailable">
+              <Text size="sm">{nodeJoinBootstrapError}</Text>
+            </Alert>
+          ) : nodeJoinBootstrap ? (
+            nodeJoinBootstrap.enabled ? (
             <Stack gap="sm">
               <Alert color="blue" variant="light" title="Token-based node bootstrap">
                 <Text size="sm">
@@ -224,6 +233,11 @@ export function AgentNodeSection({
                 on the main control plane before joining remote nodes by token.
               </Text>
             </Alert>
+            )
+          ) : (
+            <Text size="xs" c="dimmed">
+              Agent Node Join Bootstrap details are not available yet.
+            </Text>
           )}
         </Stack>
       </div>

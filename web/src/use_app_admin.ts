@@ -119,7 +119,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const data = await api.joinStartAdmin(token);
       setJoinPin(data.pin);
       setJoinToken(data.token);
-      setJoinUrl(`${location.origin}/join?token=${data.token}`);
+      setJoinUrl(`${location.origin}/join?token=${encodeURIComponent(data.token)}`);
     } catch (err: unknown) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }

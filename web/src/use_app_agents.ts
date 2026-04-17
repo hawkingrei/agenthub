@@ -40,6 +40,10 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
   const [agentNodeJoinBootstrap, setAgentNodeJoinBootstrap] =
     useState<AgentNodeJoinBootstrapInfo | null>(null);
+  const [agentNodeJoinBootstrapLoading, setAgentNodeJoinBootstrapLoading] =
+    useState(false);
+  const [agentNodeJoinBootstrapError, setAgentNodeJoinBootstrapError] =
+    useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -117,18 +121,29 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     ): Promise<AgentNodeJoinBootstrapInfo | null> => {
       if (!token || !canManageAgentNodes(auth)) {
         setAgentNodeJoinBootstrap(null);
+        setAgentNodeJoinBootstrapLoading(false);
+        setAgentNodeJoinBootstrapError(null);
         return null;
       }
       const silent = opts?.silent === true;
+      setAgentNodeJoinBootstrapLoading(true);
+      setAgentNodeJoinBootstrapError(null);
       try {
         const info = await api.getAgentNodeJoinBootstrap(token);
         setAgentNodeJoinBootstrap(info);
+        setAgentNodeJoinBootstrapError(null);
         return info;
       } catch (err: unknown) {
+        const message =
+          `Agent Node Join Bootstrap: ${parseApiErrorMessage(err) ?? String(err)}`;
+        setAgentNodeJoinBootstrap(null);
+        setAgentNodeJoinBootstrapError(message);
         if (!silent) {
-          setError(parseApiErrorMessage(err) ?? String(err));
+          setError(message);
         }
         return null;
+      } finally {
+        setAgentNodeJoinBootstrapLoading(false);
       }
     },
     [auth, token]
@@ -157,6 +172,8 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       setAgents([]);
       setAgentNodes([]);
       setAgentNodeJoinBootstrap(null);
+      setAgentNodeJoinBootstrapLoading(false);
+      setAgentNodeJoinBootstrapError(null);
       setError(null);
       setWorktreeError(null);
       setStartingAgentIds({});
@@ -552,6 +569,8 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     setAgents,
     agentNodes,
     agentNodeJoinBootstrap,
+    agentNodeJoinBootstrapLoading,
+    agentNodeJoinBootstrapError,
     error,
     setError,
     worktreeError,

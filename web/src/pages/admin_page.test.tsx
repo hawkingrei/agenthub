@@ -33,6 +33,12 @@ describe("AdminPage", () => {
   let root: Root;
 
   beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -257,6 +263,7 @@ describe("AdminPage", () => {
     expect(container.textContent).toContain(
       "Join link: https://agenthub.example.com/join?token=abc"
     );
+    expect(container.textContent).toContain("Copy link");
     expect(container.querySelector("img")).toBeNull();
   });
 });
