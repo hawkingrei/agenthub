@@ -9,6 +9,7 @@ import {
   chunkPermissionPollAgentIds,
   decidePermissionJump,
   filterPermissionsForAgent,
+  filterVisiblePermissionsForAgent,
   isAgentsWorkbenchRoute,
   loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
@@ -152,6 +153,24 @@ describe("filterPermissionsForAgent", () => {
     expect(filterPermissionsForAgent(input, null)).toEqual([]);
   });
 
+  it("keeps all permission records that belong to active agent", () => {
+    const input = [
+      buildPermission("p1", "agent-a"),
+      buildPermission("p2", "agent-b", "responded"),
+      buildPermission("p3", "agent-a", "timeout"),
+      buildPermission("p4", "agent-a", "responded", {
+        selected_option_id: "allow_once",
+      }),
+    ];
+    expect(filterPermissionsForAgent(input, "agent-a").map((item) => item.id)).toEqual([
+      "p1",
+      "p3",
+      "p4",
+    ]);
+  });
+});
+
+describe("filterVisiblePermissionsForAgent", () => {
   it("keeps only visible permission records that belong to active agent", () => {
     const input = [
       buildPermission("p1", "agent-a"),
@@ -161,7 +180,9 @@ describe("filterPermissionsForAgent", () => {
         selected_option_id: "allow_once",
       }),
     ];
-    expect(filterPermissionsForAgent(input, "agent-a").map((item) => item.id)).toEqual(["p1"]);
+    expect(filterVisiblePermissionsForAgent(input, "agent-a").map((item) => item.id)).toEqual([
+      "p1",
+    ]);
   });
 });
 
@@ -427,10 +448,10 @@ describe("app helper decisions", () => {
     ];
 
     expect(
-      filterPermissionsForAgent(permissions, "agent-a").map((item) => item.id)
+      filterVisiblePermissionsForAgent(permissions, "agent-a").map((item) => item.id)
     ).toEqual(["p-a-1", "p-a-2"]);
     expect(
-      filterPermissionsForAgent(permissions, "agent-b").map((item) => item.id)
+      filterVisiblePermissionsForAgent(permissions, "agent-b").map((item) => item.id)
     ).toEqual(["p-b-1"]);
   });
 

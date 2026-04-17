@@ -956,7 +956,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       if (shouldHidePermissionReviewCard(payload, record)) {
         continue;
       }
-      const status = permissionRecordsById[payload.permission_id]?.status ?? payload.status ?? "pending";
+      const status = resolvePermissionCardStatus(payload, record);
       if (status !== "pending" || seen.has(payload.permission_id)) {
         continue;
       }

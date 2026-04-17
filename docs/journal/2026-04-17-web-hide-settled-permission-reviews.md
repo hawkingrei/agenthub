@@ -13,6 +13,12 @@ them visible as compact status cards.
 - Pending reviews still render and still trigger the fallback human-review tone.
 - Cancelled reviews remain visible because they do not carry an approval option selection and can
   still be useful as audit context.
+- Review follow-up tightened the helper boundaries:
+  - `filterPermissionsForAgent(...)` once again scopes by `agent_id` only
+  - visibility filtering now lives in `filterVisiblePermissionRecords(...)` and
+    `filterVisiblePermissionsForAgent(...)`
+- Team task pending-review detection now reuses `resolvePermissionCardStatus(...)` so timeout cards
+  derived from `payload.reason` cannot slip back into the pending bucket before polling catches up.
 
 ## Intent
 

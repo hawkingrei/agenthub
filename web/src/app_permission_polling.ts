@@ -91,9 +91,20 @@ export function filterPermissionsForAgent(
   agentId: string | null
 ): AcpPermissionRecord[] {
   if (!agentId) return [];
-  return items.filter(
-    (item) => item.agent_id === agentId && shouldDisplayPermissionRecord(item)
-  );
+  return items.filter((item) => item.agent_id === agentId);
+}
+
+export function filterVisiblePermissionRecords(
+  items: AcpPermissionRecord[]
+): AcpPermissionRecord[] {
+  return items.filter(shouldDisplayPermissionRecord);
+}
+
+export function filterVisiblePermissionsForAgent(
+  items: AcpPermissionRecord[],
+  agentId: string | null
+): AcpPermissionRecord[] {
+  return filterVisiblePermissionRecords(filterPermissionsForAgent(items, agentId));
 }
 
 export function shouldDisplayPermissionRecord(item: AcpPermissionRecord): boolean {
@@ -104,9 +115,7 @@ export function shouldDisplayPermissionRecord(item: AcpPermissionRecord): boolea
   if (status !== "responded") {
     return true;
   }
-  const selectedOptionId =
-    typeof item.selected_option_id === "string" ? item.selected_option_id.trim() : "";
-  return selectedOptionId.length === 0;
+  return !(item.selected_option_id?.trim());
 }
 
 function defaultScheduleTimeout(

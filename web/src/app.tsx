@@ -98,6 +98,8 @@ export {
   buildPendingPermissionCountMap,
   chunkPermissionPollAgentIds,
   filterPermissionsForAgent,
+  filterVisiblePermissionRecords,
+  filterVisiblePermissionsForAgent,
   mergePendingPermissionCountMap,
   parsePermissionPollAgentIds,
   resolveGlobalPermissionPollIntervalMs,
