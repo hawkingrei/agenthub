@@ -205,3 +205,7 @@ Focused validation for this phase should cover:
 - reconcile round result artifacts persist for `input_required`
 - linked task status moves `in_progress -> waiting -> in_progress -> in_review` across
   `input_required`, `resume`, and `complete`
+- internal `transition_step` coverage locks the worker-side autonomous decision contract:
+  `input_required` pauses without a new reconcile nudge, `resume` requests exactly one new prompt,
+  `complete` ends the linked task in `in_review` without another nudge, and `fail` stays
+  terminal without restarting the loop
