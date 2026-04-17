@@ -17,6 +17,7 @@ import {
   TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS,
   TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS,
   TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS,
+  TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_SIDEBAR_WORK_CLASS,
   TEAM_SIDEBAR_BADGE_CLASS,
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
@@ -242,10 +243,13 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       data-team-surface="sidebar"
     >
       <div className={TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS}>
+        <div className="px-0.5 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted">
+          Workspace
+        </div>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             {showTeamSelector ? (
-              <div className="truncate text-[15px] font-bold tracking-tight text-notion-text">
+              <div className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
@@ -255,14 +259,14 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               >
                 <Menu.Target>
                   <UnstyledButton
-                    className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-left transition hover:bg-notion-hover"
+                    className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-left transition hover:bg-white/55"
                     aria-label="Open selected team menu"
                     title="Open selected team menu"
                   >
-                    <span className="truncate text-[15px] font-bold tracking-tight text-notion-text">
+                    <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                       {selectedTeam.name}
                     </span>
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-notion-text-muted">
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-notion-text-muted">
                       <i className="bi bi-three-dots" aria-hidden="true" />
                     </span>
                   </UnstyledButton>
@@ -354,7 +358,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               </div>
             )}
             {showTeamSelector && (
-              <p className="mt-0.5 text-[12px] leading-relaxed text-notion-text-muted">
+              <p className="mt-0.5 max-w-[28ch] text-[12px] leading-relaxed text-notion-text-muted">
                 {selectedTeam
                   ? "Switch teams from the index below."
                   : "Choose an existing team or create a new one."}
@@ -453,7 +457,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     onChange={(event) => setTeamFilter(event.currentTarget.value)}
                     size="xs"
                     radius="md"
-                    variant="filled"
+                    variant="unstyled"
+                    classNames={{
+                      input: `h-8 rounded-lg border border-notion-border/70 bg-white/68 px-3 text-[12px] text-notion-text ${TEAM_SOFT_CHROME_SHADOW_CLASS} placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white`,
+                      section:
+                        "text-notion-text-muted",
+                    }}
                     rightSection={
                       hasTeamFilter ? (
                         <CloseButton
@@ -524,7 +533,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       {selectedTeam && (
         <>
           <div className="mt-4 flex flex-col gap-0.5">
-            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted">
               Workflow
             </div>
             <SelectableListItem
@@ -543,7 +552,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               >
                 #
               </span>
-              <span className="truncate text-[13px]"># all</span>
+              <span className="truncate text-[12px] font-medium"># all</span>
             </SelectableListItem>
             <SelectableListItem
               active={tab === "tasks"}
@@ -556,7 +565,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               title="Kanban"
               >
                 <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
-                <span className="truncate text-[13px]">Kanban</span>
+                <span className="truncate text-[12px] font-medium">Kanban</span>
             </SelectableListItem>
           </div>
 
@@ -609,7 +618,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             )}`}
                             aria-hidden="true"
                           />
-                          <span className="truncate text-[13px] font-medium">
+                          <span className="truncate text-[12px] font-medium">
                             {primaryLabel}
                           </span>
                         </span>

@@ -486,8 +486,12 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Agents · 2");
     expect(container.textContent).toContain("Workflow");
     expect(container.textContent).toContain("# all");
+    expect(findButtonByText(container, "Team Two").className).toContain("rounded-lg");
+    expect(findButtonByText(container, "Team Two").className).toContain("px-2.5");
     const kanbanButton = findButtonByText(container, "Kanban");
     const channelButton = findButtonByText(container, "# all");
+    expect(kanbanButton.className).toContain("rounded-lg");
+    expect(kanbanButton.className).toContain("px-2.5");
     expect(
       Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);

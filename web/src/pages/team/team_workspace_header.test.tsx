@@ -101,6 +101,9 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("3/3 online");
     expect(html).toContain("Open more workspace actions");
     expect(html).toContain("team=abc");
+    expect(html).toContain("max-w-[64ch]");
+    expect(html).toContain("rounded-[10px]");
+    expect(html).toContain("bg-notion-sidebar/55");
   });
 
   it("renders agent workspace menu actions", () => {

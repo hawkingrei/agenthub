@@ -187,6 +187,7 @@ import {
   TEAM_SECTION_TITLE_CLASS,
   TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
   TEAM_WORKBENCH_HEADER_SHELL_CLASS,
+  TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_WORKBENCH_HEADER_STATUS_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
@@ -373,11 +374,11 @@ const teamDebugTabIdleClassName = TEAM_DEBUG_TAB_IDLE_CLASS;
 const teamRunMetaItemClassName =
   "rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] text-notion-text-muted";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1 bg-notion-sidebar p-1 rounded-lg border border-notion-border";
+  `flex flex-wrap items-center gap-1 rounded-[10px] border border-notion-border/70 bg-notion-sidebar/65 p-0.5 ${TEAM_SOFT_CHROME_SHADOW_CLASS}`;
 const workspaceToolbarButtonActiveClassName =
-  "inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-[12px] font-bold text-notion-text shadow-sm";
+  "inline-flex h-7 items-center gap-1 rounded-[8px] bg-white px-2.5 text-[11px] font-semibold text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
 const workspaceToolbarButtonIdleClassName =
-  "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-bold text-notion-text-muted transition hover:text-notion-text hover:bg-notion-hover";
+  "inline-flex h-7 items-center gap-1 rounded-[8px] px-2.5 text-[11px] font-semibold text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text";
 const workspaceNoticeClassName =
   "mt-1 flex flex-wrap items-center justify-between gap-2 px-1";
 const workspaceNoticeTextClassName =

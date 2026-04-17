@@ -2,6 +2,7 @@ import React from "react";
 import { Badge, Group, Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
 import { ActionButton } from "../../ui/primitives";
+import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
 import { TeamTabsBar } from "../team_tabs_bar";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
@@ -139,7 +140,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
       >
         <div className="min-w-0 flex-1">
           {workspaceEyebrow && (
-            <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted">
               {workspaceEyebrow}
             </p>
           )}
@@ -147,15 +148,15 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
             <h2
               className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
                 isAgentWorkspace
-                  ? "text-[15px] font-bold leading-[1.1]"
-                  : "text-[17px] font-bold leading-tight"
+                  ? "text-[15px] font-semibold leading-[1.15]"
+                  : "text-[18px] font-semibold leading-tight"
               } tracking-tight text-notion-text`}
             >
               {workspaceTitle}
             </h2>
           ) : null}
           {workspaceDescription && (
-            <p className="mt-1 text-[12px] leading-relaxed text-notion-text-muted">
+            <p className="mt-1 max-w-[64ch] text-[12px] leading-[1.55] text-notion-text-muted">
               {workspaceDescription}
             </p>
           )}
@@ -241,12 +242,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               <Group
                 gap={8}
                 wrap="nowrap"
-                className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
+                className={`rounded-[10px] border border-notion-border/65 bg-notion-sidebar/55 px-2 py-1 ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
               >
                 <Badge
                   variant="light"
                   color={selectedTeamRuntimeControlTone.statusColor}
                   radius="sm"
+                  className="font-semibold"
                 >
                   {selectedTeamRuntimeStatusLabel}
                 </Badge>
@@ -254,6 +256,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                   variant="dot"
                   color={selectedTeamRuntimeControlTone.countColor}
                   radius="sm"
+                  className="font-semibold"
                 >
                   {`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal} online`}
                 </Badge>

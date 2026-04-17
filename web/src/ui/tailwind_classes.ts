@@ -218,39 +218,41 @@ export const TEAM_TAB_BUTTON_IDLE_CLASS =
   `${TEAM_TAB_BUTTON_BASE_CLASS} border-notion-border-faint bg-white/88 text-notion-text-muted shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:border-notion-border-subtle hover:bg-notion-hover-subtle hover:text-notion-text`;
 
 export const TEAM_SIDEBAR_ROOT_CLASS =
-  "teams-sidebar flex min-h-0 min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto bg-notion-sidebar p-4 border-r border-notion-border";
+  "teams-sidebar flex min-h-0 min-w-0 flex-col gap-3.5 overflow-x-hidden overflow-y-auto bg-notion-sidebar/92 px-3.5 py-3 border-r border-notion-border/80";
 
 export const TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-md border border-notion-border bg-white text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text";
+  "inline-flex h-7 w-7 items-center justify-center rounded-md border border-notion-border/70 bg-white/80 text-notion-text-muted shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition hover:bg-notion-hover hover:text-notion-text";
 
 export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-1";
 
+export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "appearance-none border-0 bg-transparent shadow-none flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px] font-bold uppercase tracking-widest text-notion-text-muted transition hover:text-notion-text";
+  "appearance-none border-0 bg-transparent shadow-none flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted transition hover:text-notion-text";
 
 export const TEAM_SIDEBAR_NAV_LIST_CLASS =
   "flex min-w-0 flex-col gap-0.5";
 
 const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-3 py-1.5 text-left transition";
+  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-lg px-2.5 py-1.5 text-left transition";
 
 export const TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS =
-  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} bg-notion-hover text-notion-text font-medium`;
+  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} bg-white/78 text-notion-text font-medium shadow-[0_1px_2px_rgba(15,23,42,0.05)]`;
 
 export const TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS =
-  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} text-notion-text-muted hover:bg-notion-hover hover:text-notion-text`;
+  `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} text-notion-text-muted hover:bg-white/52 hover:text-notion-text`;
 
 export const TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS =
-  "flex w-full items-center gap-2 rounded-md bg-notion-hover px-3 py-1.5 text-left text-notion-text font-medium transition";
+  "flex w-full items-center gap-2 rounded-lg bg-white/78 px-2.5 py-1.5 text-left text-notion-text font-medium shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition";
 
 export const TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS =
-  "flex w-full items-center gap-2 rounded-md bg-transparent px-3 py-1.5 text-left text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
+  "flex w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-1.5 text-left text-notion-text-muted transition hover:bg-white/52 hover:text-notion-text";
 
 export const TEAM_SIDEBAR_WORK_CLASS =
-  "truncate pl-5 text-[11px] leading-relaxed text-notion-text-muted opacity-80";
+  "truncate pl-5 text-[10px] leading-relaxed text-notion-text-muted/85";
 
 export const TEAM_SIDEBAR_BADGE_CLASS =
-  "shrink-0 rounded-sm bg-notion-hover px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted";
+  "shrink-0 rounded-sm border border-notion-border/60 bg-white/72 px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted";
 
 export const TEAM_SIDEBAR_INDICATOR_DOT_CLASS =
   "h-2 w-2 shrink-0 rounded-full mt-0.5";
