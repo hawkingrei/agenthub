@@ -121,6 +121,9 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setJoinToken(data.token);
       setJoinUrl(`${location.origin}/join?token=${encodeURIComponent(data.token)}`);
     } catch (err: unknown) {
+      setJoinPin(null);
+      setJoinToken(null);
+      setJoinUrl(null);
       setError(parseApiErrorMessage(err) ?? String(err));
     }
   }, [token]);

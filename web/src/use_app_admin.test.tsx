@@ -135,11 +135,16 @@ describe("useAppAdmin", () => {
     );
   });
 
-  it("surfaces join creation failures through the hook error state", async () => {
+  it("clears stale join data when join creation fails", async () => {
     const captures: UseAppAdminResult[] = [];
     const auth = { token: "token-1", role: "root" } as HookProps[0];
     const error = new Error("join failed");
-    joinStartAdminMock.mockRejectedValue(error);
+    joinStartAdminMock
+      .mockResolvedValueOnce({
+        pin: "123456",
+        token: "stale-token",
+      })
+      .mockRejectedValueOnce(error);
     parseApiErrorMessageMock.mockReturnValue("unable to create join token");
 
     await act(async () => {
@@ -160,7 +165,19 @@ describe("useAppAdmin", () => {
       await Promise.resolve();
     });
 
-    const updated = captures[captures.length - 1];
+    let updated = captures[captures.length - 1];
+    expect(updated.joinPin).toBe("123456");
+    expect(updated.joinToken).toBe("stale-token");
+    expect(updated.joinUrl).toBe(
+      `${location.origin}/join?token=${encodeURIComponent("stale-token")}`
+    );
+
+    await act(async () => {
+      await updated.onCreateJoin();
+      await Promise.resolve();
+    });
+
+    updated = captures[captures.length - 1];
     expect(updated.error).toBe("unable to create join token");
     expect(updated.joinUrl).toBeNull();
     expect(updated.joinToken).toBeNull();
