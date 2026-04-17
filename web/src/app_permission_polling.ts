@@ -91,7 +91,22 @@ export function filterPermissionsForAgent(
   agentId: string | null
 ): AcpPermissionRecord[] {
   if (!agentId) return [];
-  return items.filter((item) => item.agent_id === agentId);
+  return items.filter(
+    (item) => item.agent_id === agentId && shouldDisplayPermissionRecord(item)
+  );
+}
+
+export function shouldDisplayPermissionRecord(item: AcpPermissionRecord): boolean {
+  const status = item.status.trim().toLowerCase();
+  if (status === "timeout") {
+    return false;
+  }
+  if (status !== "responded") {
+    return true;
+  }
+  const selectedOptionId =
+    typeof item.selected_option_id === "string" ? item.selected_option_id.trim() : "";
+  return selectedOptionId.length === 0;
 }
 
 function defaultScheduleTimeout(

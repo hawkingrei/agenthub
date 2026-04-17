@@ -122,7 +122,7 @@ describe("AcpDebug", () => {
     expect(html).toContain("1 fail");
   });
 
-  it("renders permissions tab with jump/copy controls", () => {
+  it("hides approved and timed out permissions from the permissions tab", () => {
     const html = renderHtml(
       {
         ...baseProps,
@@ -153,10 +153,11 @@ describe("AcpDebug", () => {
       }
     );
     expect(html).toContain("Permissions");
-    expect(html).toContain("Read file");
-    expect(html).toContain("Copy");
-    expect(html).toContain("tool_call call-1");
-    expect(html).toContain("no linked tool call in conversation");
+    expect(html).toContain("No permissions yet.");
+    expect(html).not.toContain("Read file");
+    expect(html).not.toContain("Copy");
+    expect(html).not.toContain("tool_call call-1");
+    expect(html).not.toContain("no linked tool call in conversation");
   });
 
   it("renders raw events tab list when initial tab is raw", () => {

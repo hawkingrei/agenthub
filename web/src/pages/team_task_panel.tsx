@@ -483,6 +483,18 @@ function resolvePermissionStatusText(
   return status;
 }
 
+function shouldHidePermissionReviewCard(
+  payload: PermissionReviewCardPayload,
+  record?: AcpPermissionRecord
+): boolean {
+  const status = resolvePermissionCardStatus(payload, record);
+  if (status === "timeout") {
+    return true;
+  }
+  const selectedOptionId = normalizeTrimmedString(record?.selected_option_id);
+  return status === "responded" && Boolean(selectedOptionId);
+}
+
 function resolvePermissionToolPreview(payload: PermissionReviewCardPayload): string | null {
   const preview = normalizeTrimmedString(payload.tool_name) ?? normalizeTrimmedString(payload.summary);
   if (!preview) {
@@ -914,11 +926,13 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     () =>
       orderedMessages.flatMap((message) => {
         const payload = parsePermissionReviewCardPayload(message.payload);
+        const record = payload ? permissionRecordsById[payload.permission_id] : undefined;
         return payload
+          && !shouldHidePermissionReviewCard(payload, record)
           ? [{ permissionId: payload.permission_id, agentId: payload.agent_id }]
           : [];
       }),
-    [orderedMessages]
+    [orderedMessages, permissionRecordsById]
   );
   const permissionCardTargetKey = React.useMemo(
     () =>
@@ -936,6 +950,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     for (const message of orderedMessages) {
       const payload = parsePermissionReviewCardPayload(message.payload);
       if (!payload) {
+        continue;
+      }
+      const record = permissionRecordsById[payload.permission_id];
+      if (shouldHidePermissionReviewCard(payload, record)) {
         continue;
       }
       const status = permissionRecordsById[payload.permission_id]?.status ?? payload.status ?? "pending";
@@ -1017,6 +1035,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         orderedMessages.flatMap((message) => {
           const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
           if (permissionCardPayload) {
+            const permissionRecord = permissionRecordsById[permissionCardPayload.permission_id];
+            if (shouldHidePermissionReviewCard(permissionCardPayload, permissionRecord)) {
+              return [];
+            }
             return [
               {
                 message,
@@ -1040,7 +1062,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         stickToBottom,
         TEAM_TASK_TAIL_WINDOW_SIZE
       ),
-    [orderedMessages, stickToBottom]
+    [orderedMessages, permissionRecordsById, stickToBottom]
   );
   const visibleWaterfallItems = React.useMemo(
     () =>
