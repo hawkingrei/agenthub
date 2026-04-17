@@ -19,7 +19,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [selectedSafePaths, setSelectedSafePaths] = useState<Set<string>>(() => new Set());
   const [safePathInput, setSafePathInput] = useState("");
-  const [joinQr, setJoinQr] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
   const [joinToken, setJoinToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +115,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const data = await api.joinStartAdmin(token);
       setJoinPin(data.pin);
       setJoinToken(data.token);
-      const url = `${location.origin}/join?token=${data.token}`;
-      const { toDataURL } = await import("qrcode");
-      const qr = await toDataURL(url);
-      setJoinQr(qr);
     } catch (err: unknown) {
       setError(parseApiErrorMessage(err) ?? String(err));
     }
@@ -168,7 +163,6 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     selectedSafePaths,
     safePathInput,
     setSafePathInput,
-    joinQr,
     joinPin,
     joinToken,
     error,

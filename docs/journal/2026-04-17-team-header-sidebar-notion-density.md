@@ -16,3 +16,5 @@
 ## Notes
 
 - Chrome DevTools MCP baseline/regression verification could not be completed in this environment because `chrome-devtools/list_pages` returned `Transport closed`.
+- follow-up review cleanup replaced the invalid `pl-4.5` sidebar padding utility with `pl-5` and centralized the shared light chrome shadow token in `tailwind_classes.ts`.
+- while re-running `web` build on the branch, an unrelated stale `qrcode` dependency path in `use_app_admin.ts` surfaced; the branch now uses token/PIN-only admin join output so the PR stays buildable on the current mainline dependency set.

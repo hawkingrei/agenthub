@@ -17,6 +17,7 @@ import {
   TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS,
   TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS,
   TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS,
+  TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_SIDEBAR_WORK_CLASS,
   TEAM_SIDEBAR_BADGE_CLASS,
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
@@ -458,8 +459,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     radius="md"
                     variant="unstyled"
                     classNames={{
-                      input:
-                        "h-8 rounded-lg border border-notion-border/70 bg-white/68 px-3 text-[12px] text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)] placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white",
+                      input: `h-8 rounded-lg border border-notion-border/70 bg-white/68 px-3 text-[12px] text-notion-text ${TEAM_SOFT_CHROME_SHADOW_CLASS} placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white`,
                       section:
                         "text-notion-text-muted",
                     }}

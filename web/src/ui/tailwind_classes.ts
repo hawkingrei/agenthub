@@ -225,6 +225,8 @@ export const TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS =
 
 export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-1";
 
+export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
   "appearance-none border-0 bg-transparent shadow-none flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted transition hover:text-notion-text";
 
@@ -247,7 +249,7 @@ export const TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS =
   "flex w-full items-center gap-2 rounded-lg bg-transparent px-2.5 py-1.5 text-left text-notion-text-muted transition hover:bg-white/52 hover:text-notion-text";
 
 export const TEAM_SIDEBAR_WORK_CLASS =
-  "truncate pl-4.5 text-[10px] leading-relaxed text-notion-text-muted/85";
+  "truncate pl-5 text-[10px] leading-relaxed text-notion-text-muted/85";
 
 export const TEAM_SIDEBAR_BADGE_CLASS =
   "shrink-0 rounded-sm border border-notion-border/60 bg-white/72 px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted";

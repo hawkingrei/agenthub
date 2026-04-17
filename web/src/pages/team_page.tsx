@@ -187,6 +187,7 @@ import {
   TEAM_SECTION_TITLE_CLASS,
   TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
   TEAM_WORKBENCH_HEADER_SHELL_CLASS,
+  TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_WORKBENCH_HEADER_STATUS_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
@@ -373,7 +374,7 @@ const teamDebugTabIdleClassName = TEAM_DEBUG_TAB_IDLE_CLASS;
 const teamRunMetaItemClassName =
   "rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] text-notion-text-muted";
 const workspaceToolbarClassName =
-  "flex flex-wrap items-center gap-1 rounded-[10px] border border-notion-border/70 bg-notion-sidebar/65 p-0.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  `flex flex-wrap items-center gap-1 rounded-[10px] border border-notion-border/70 bg-notion-sidebar/65 p-0.5 ${TEAM_SOFT_CHROME_SHADOW_CLASS}`;
 const workspaceToolbarButtonActiveClassName =
   "inline-flex h-7 items-center gap-1 rounded-[8px] bg-white px-2.5 text-[11px] font-semibold text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
 const workspaceToolbarButtonIdleClassName =

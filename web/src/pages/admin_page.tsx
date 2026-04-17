@@ -20,7 +20,6 @@ import {
   ADMIN_LIST_ITEM_CLASS,
   ADMIN_MUTED_TEXT_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
-  ADMIN_QR_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SECTION_CLASS,
   ADMIN_SESSION_CLASS,
@@ -50,7 +49,6 @@ type AdminProps = {
   onDeleteSafePath: (path: string) => void;
   onRevokeDevice: (id: string) => void;
   onCreateJoin: () => void;
-  joinQr: string | null;
   joinToken: string | null;
   joinPin: string | null;
   safePathInput: string;
@@ -126,7 +124,7 @@ export function AdminPage(props: AdminProps) {
             className={ADMIN_PRIMARY_BUTTON_CLASS}
             onClick={props.onCreateJoin}
           >
-            Create Join QR
+            Create Join Token
           </ActionButton>
         </div>
         <div className={ADMIN_TAB_BAR_CLASS}>
@@ -286,18 +284,16 @@ export function AdminPage(props: AdminProps) {
           {tab === "join" && (
             <div className={`${ADMIN_CARD_CLASS} join-card`}>
               <h3 className={ADMIN_CARD_TITLE_CLASS}>Join Device</h3>
-              {props.joinQr && (
-                <img
-                  className={ADMIN_QR_CLASS}
-                  src={props.joinQr}
-                  alt="Join device QR code (encodes token and PIN)"
-                />
-              )}
               {props.joinToken && (
                 <p className={ADMIN_MUTED_TEXT_CLASS}>Token: {props.joinToken}</p>
               )}
               {props.joinPin && (
                 <p className={ADMIN_MUTED_TEXT_CLASS}>PIN: {props.joinPin}</p>
+              )}
+              {!props.joinToken && !props.joinPin && (
+                <p className={ADMIN_EMPTY_TEXT_CLASS}>
+                  Create a join token to add a new device.
+                </p>
               )}
             </div>
           )}

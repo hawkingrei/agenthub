@@ -68,7 +68,6 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
-            joinQr={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""
@@ -129,7 +128,6 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
-            joinQr={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""
@@ -183,7 +181,6 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
-            joinQr={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""

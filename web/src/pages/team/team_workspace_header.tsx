@@ -2,6 +2,7 @@ import React from "react";
 import { Badge, Group, Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
 import { ActionButton } from "../../ui/primitives";
+import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
 import { TeamTabsBar } from "../team_tabs_bar";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
@@ -241,7 +242,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               <Group
                 gap={8}
                 wrap="nowrap"
-                className="rounded-[10px] border border-notion-border/65 bg-notion-sidebar/55 px-2 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                className={`rounded-[10px] border border-notion-border/65 bg-notion-sidebar/55 px-2 py-1 ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
               >
                 <Badge
                   variant="light"
