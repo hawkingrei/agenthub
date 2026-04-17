@@ -1312,8 +1312,15 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         insert_materialized_run_steps_tx(&mut tx, &run_id, &materialized_steps, now).await?;
-        sync_linked_task_status_tx(&mut tx, team_id, &input, TeamTaskStatus::InProgress, now)
-            .await?;
+        sync_linked_task_status_tx(
+            &mut tx,
+            team_id,
+            &input,
+            TeamTaskStatus::InProgress,
+            now,
+            true,
+        )
+        .await?;
         tx.commit().await?;
 
         Ok(TeamRunRecord {
@@ -2360,6 +2367,17 @@ impl TeamManager {
                 .bind(run_payload.to_string())
                 .execute(&mut *tx)
                 .await?;
+                let (team_id, run_input) =
+                    load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
+                sync_linked_task_status_tx(
+                    &mut tx,
+                    &team_id,
+                    &run_input,
+                    TeamTaskStatus::Waiting,
+                    now,
+                    true,
+                )
+                .await?;
             }
 
             let step_payload = serde_json::json!({
@@ -2492,6 +2510,17 @@ impl TeamManager {
                 .bind(now)
                 .bind(run_payload.to_string())
                 .execute(&mut *tx)
+                .await?;
+                let (team_id, run_input) =
+                    load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
+                sync_linked_task_status_tx(
+                    &mut tx,
+                    &team_id,
+                    &run_input,
+                    TeamTaskStatus::InProgress,
+                    now,
+                    false,
+                )
                 .await?;
             }
 
@@ -2835,20 +2864,7 @@ impl TeamManager {
             .execute(&mut *tx)
             .await?;
 
-            let run_meta_row = sqlx::query(
-                r#"
-                SELECT team_id, input_json
-                FROM team_runs
-                WHERE id = ?1
-                "#,
-            )
-            .bind(&step.run_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            let team_id: String = run_meta_row.get("team_id");
-            let run_input_json: String = run_meta_row.get("input_json");
-            let run_input: Value =
-                serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
+            let (team_id, run_input) = load_run_status_sync_meta_tx(&mut tx, &step.run_id).await?;
             let continuity_mode = extract_continuity_mode_from_input(&run_input);
             let mut continuity_snapshot = build_continuity_snapshot(step.output.as_ref());
             let mut artifact_pointer_for_event: Option<Value> = None;
@@ -3016,6 +3032,7 @@ impl TeamManager {
                         &run_input,
                         TeamTaskStatus::InReview,
                         now,
+                        true,
                     )
                     .await?;
                 }
@@ -3473,20 +3490,7 @@ impl TeamManager {
         .await?;
 
         if result.rows_affected() > 0 {
-            let run_meta_row = sqlx::query(
-                r#"
-                SELECT team_id, input_json
-                FROM team_runs
-                WHERE id = ?1
-                "#,
-            )
-            .bind(run_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            let team_id: String = run_meta_row.get("team_id");
-            let run_input_json: String = run_meta_row.get("input_json");
-            let run_input: Value =
-                serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
+            let (team_id, run_input) = load_run_status_sync_meta_tx(&mut tx, run_id).await?;
             let active_steps = sqlx::query(
                 r#"
                 SELECT id, step_key
@@ -3555,6 +3559,7 @@ impl TeamManager {
                 &run_input,
                 TeamTaskStatus::Canceled,
                 now,
+                true,
             )
             .await?;
         }
@@ -4498,31 +4503,60 @@ fn extract_linked_task_id_from_run_input(input: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+async fn load_run_status_sync_meta_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    run_id: &str,
+) -> anyhow::Result<(String, Value)> {
+    let run_meta_row = sqlx::query(
+        r#"
+        SELECT team_id, input_json
+        FROM team_runs
+        WHERE id = ?1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    let team_id: String = run_meta_row.get("team_id");
+    let run_input_json: String = run_meta_row.get("input_json");
+    let run_input: Value =
+        serde_json::from_str(&run_input_json).unwrap_or_else(|_| serde_json::json!({}));
+    Ok((team_id, run_input))
+}
+
 async fn sync_linked_task_status_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     team_id: &str,
     input: &Value,
     status: TeamTaskStatus,
     now: i64,
+    preserve_waiting: bool,
 ) -> anyhow::Result<()> {
     let Some(task_id) = extract_linked_task_id_from_run_input(input) else {
         return Ok(());
     };
 
     let status_raw = team_task_status_to_str(&status);
-    sqlx::query(
+    let query = if preserve_waiting {
         r#"
         UPDATE team_tasks
         SET status = ?3, updated_at = ?4
         WHERE id = ?1 AND team_id = ?2 AND status <> ?3 AND status <> 'waiting'
-        "#,
-    )
-    .bind(task_id)
-    .bind(team_id)
-    .bind(status_raw)
-    .bind(now)
-    .execute(&mut **tx)
-    .await?;
+        "#
+    } else {
+        r#"
+        UPDATE team_tasks
+        SET status = ?3, updated_at = ?4
+        WHERE id = ?1 AND team_id = ?2 AND status <> ?3
+        "#
+    };
+    sqlx::query(query)
+        .bind(task_id)
+        .bind(team_id)
+        .bind(status_raw)
+        .bind(now)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 

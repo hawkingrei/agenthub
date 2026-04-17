@@ -1808,6 +1808,96 @@ async fn linked_run_sync_preserves_waiting_tasks() {
 }
 
 #[tokio::test]
+async fn linked_run_input_required_and_resume_sync_task_waiting_transitions() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-waiting-transition-team".to_string(),
+            description: Some("team with linked waiting/resume transitions".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Wait for approval and resume",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("waiting-transition"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"pause for approval then resume"}),
+        )
+        .await
+        .expect("create linked run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "planner_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"wait for approval"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("linked-session-waiting-transition"))
+        .await
+        .expect("start step");
+
+    let after_start = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after start");
+    assert_eq!(after_start.status, TeamTaskStatus::InProgress);
+
+    let _ = manager
+        .set_step_input_required(
+            &step.id,
+            Some("approval is required"),
+            Some(json!({"question":"approve?"})),
+        )
+        .await
+        .expect("mark input required");
+    let after_input_required = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after input required");
+    assert_eq!(after_input_required.status, TeamTaskStatus::Waiting);
+
+    let _ = manager
+        .resume_step(&step.id, Some(json!({"answer":"approved"})))
+        .await
+        .expect("resume step");
+    let after_resume = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after resume");
+    assert_eq!(after_resume.status, TeamTaskStatus::InProgress);
+
+    let _ = manager
+        .complete_step(&step.id, Some(json!({"result":"done"})))
+        .await
+        .expect("complete step");
+    let after_complete = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after complete");
+    assert_eq!(after_complete.status, TeamTaskStatus::InReview);
+}
+
+#[tokio::test]
 async fn cancel_run_preserves_waiting_task() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
