@@ -194,6 +194,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_agent_node_bootstrap_requires_root() {
+        let state = build_test_state().await;
+        let token = create_non_root_auth_token(&state).await;
+        let app = router(state);
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::GET,
+                "/bootstrap",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("run non-root get agent node bootstrap request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["error"], json!("root required"));
+    }
+
+    #[tokio::test]
     async fn get_agent_node_bootstrap_returns_root_only_join_info() {
         let mut state = build_test_state().await;
         state.agent_node_join_bootstrap = crate::agent::AgentNodeJoinBootstrapInfo {
