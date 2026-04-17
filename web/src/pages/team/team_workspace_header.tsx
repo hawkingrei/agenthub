@@ -139,7 +139,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
       >
         <div className="min-w-0 flex-1">
           {workspaceEyebrow && (
-            <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted">
               {workspaceEyebrow}
             </p>
           )}
@@ -147,15 +147,15 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
             <h2
               className={`${workspaceEyebrow ? "mt-0.5" : ""} ${
                 isAgentWorkspace
-                  ? "text-[15px] font-bold leading-[1.1]"
-                  : "text-[17px] font-bold leading-tight"
+                  ? "text-[15px] font-semibold leading-[1.15]"
+                  : "text-[18px] font-semibold leading-tight"
               } tracking-tight text-notion-text`}
             >
               {workspaceTitle}
             </h2>
           ) : null}
           {workspaceDescription && (
-            <p className="mt-1 text-[12px] leading-relaxed text-notion-text-muted">
+            <p className="mt-1 max-w-[64ch] text-[12px] leading-[1.55] text-notion-text-muted">
               {workspaceDescription}
             </p>
           )}
@@ -241,12 +241,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               <Group
                 gap={8}
                 wrap="nowrap"
-                className="rounded-[12px] border border-ui-border bg-ui-surface px-2.5 py-1.5 shadow-sm"
+                className="rounded-[10px] border border-notion-border/65 bg-notion-sidebar/55 px-2 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
               >
                 <Badge
                   variant="light"
                   color={selectedTeamRuntimeControlTone.statusColor}
                   radius="sm"
+                  className="font-semibold"
                 >
                   {selectedTeamRuntimeStatusLabel}
                 </Badge>
@@ -254,6 +255,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                   variant="dot"
                   color={selectedTeamRuntimeControlTone.countColor}
                   radius="sm"
+                  className="font-semibold"
                 >
                   {`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal} online`}
                 </Badge>
