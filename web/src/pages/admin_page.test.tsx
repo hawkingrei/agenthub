@@ -31,8 +31,18 @@ function required<T>(value: T | null | undefined, message: string): T {
 describe("AdminPage", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let originalClipboard: Clipboard | undefined;
+  let hadClipboard = false;
 
   beforeEach(() => {
+    hadClipboard = "clipboard" in navigator;
+    originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -43,6 +53,14 @@ describe("AdminPage", () => {
       root.unmount();
     });
     container.remove();
+    if (hadClipboard) {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
   });
 
   it("exposes browser-local developer mode controls in UI tab", () => {
@@ -68,6 +86,7 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
+            joinUrl={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""
@@ -128,6 +147,7 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
+            joinUrl={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""
@@ -181,6 +201,7 @@ describe("AdminPage", () => {
             onDeleteSafePath={() => {}}
             onRevokeDevice={() => {}}
             onCreateJoin={() => {}}
+            joinUrl={null}
             joinToken={null}
             joinPin={null}
             safePathInput=""
@@ -200,5 +221,61 @@ describe("AdminPage", () => {
       toggle.click();
     });
     expect(onPasskeyEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("shows token-based join guidance instead of a QR code", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <AdminPage
+            auth={{ username: "root", role: "root" }}
+            error={null}
+            setError={() => {}}
+            safePaths={[]}
+            selectedSafePaths={new Set<string>()}
+            onToggleSafePath={() => {}}
+            onToggleAllSafePaths={() => {}}
+            onDeleteSelectedSafePaths={() => {}}
+            devices={[]}
+            audits={[]}
+            vapidInfo={null}
+            onRotateVapid={() => {}}
+            onAddSafePath={() => {}}
+            onDeleteSafePath={() => {}}
+            onRevokeDevice={() => {}}
+            onCreateJoin={() => {}}
+            joinUrl="https://agenthub.example.com/join?token=abc"
+            joinToken="abc"
+            joinPin="123456"
+            safePathInput=""
+            setSafePathInput={() => {}}
+            developerMode={false}
+            onDeveloperModeChange={() => {}}
+            passkeyEnabled={false}
+            onPasskeyEnabledChange={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Create Join Token");
+    const joinTab = required(
+      Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Join Device")
+      ),
+      "join tab missing"
+    );
+    act(() => {
+      joinTab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.textContent).toContain(
+      "Use the token/link below on the destination browser. QR onboarding is no longer required."
+    );
+    expect(container.textContent).toContain(
+      "Join link: https://agenthub.example.com/join?token=abc"
+    );
+    expect(container.textContent).toContain("Copy link");
+    expect(container.querySelector("img")).toBeNull();
   });
 });

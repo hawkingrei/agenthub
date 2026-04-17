@@ -1,5 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { api, AgentRecord, AgentNodeRecord, parseApiErrorMessage } from "./api";
+import {
+  api,
+  AgentNodeJoinBootstrapInfo,
+  AgentRecord,
+  AgentNodeRecord,
+  parseApiErrorMessage,
+} from "./api";
 import { AuthState } from "./types";
 import { 
   canManageAgentNodes, 
@@ -32,6 +38,12 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
   const token = auth?.token ?? null;
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
+  const [agentNodeJoinBootstrap, setAgentNodeJoinBootstrap] =
+    useState<AgentNodeJoinBootstrapInfo | null>(null);
+  const [agentNodeJoinBootstrapLoading, setAgentNodeJoinBootstrapLoading] =
+    useState(false);
+  const [agentNodeJoinBootstrapError, setAgentNodeJoinBootstrapError] =
+    useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
@@ -103,10 +115,49 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     [auth, token]
   );
 
+  const refreshAgentNodeJoinBootstrap = useCallback(
+    async (
+      opts?: { silent?: boolean }
+    ): Promise<AgentNodeJoinBootstrapInfo | null> => {
+      if (!token || !canManageAgentNodes(auth)) {
+        setAgentNodeJoinBootstrap(null);
+        setAgentNodeJoinBootstrapLoading(false);
+        setAgentNodeJoinBootstrapError(null);
+        return null;
+      }
+      const silent = opts?.silent === true;
+      setAgentNodeJoinBootstrapLoading(true);
+      setAgentNodeJoinBootstrapError(null);
+      try {
+        const info = await api.getAgentNodeJoinBootstrap(token);
+        setAgentNodeJoinBootstrap(info);
+        setAgentNodeJoinBootstrapError(null);
+        return info;
+      } catch (err: unknown) {
+        const message =
+          `Agent Node Join Bootstrap: ${parseApiErrorMessage(err) ?? String(err)}`;
+        setAgentNodeJoinBootstrap(null);
+        setAgentNodeJoinBootstrapError(message);
+        if (!silent) {
+          setError(message);
+        }
+        return null;
+      } finally {
+        setAgentNodeJoinBootstrapLoading(false);
+      }
+    },
+    [auth, token]
+  );
+
   useEffect(() => {
     if (!token || !isAgentsRoute) return;
     void refreshAgents();
   }, [isAgentsRoute, token, refreshAgents]);
+
+  useEffect(() => {
+    if (!token || !isAgentsRoute) return;
+    void refreshAgentNodeJoinBootstrap({ silent: true });
+  }, [isAgentsRoute, token, refreshAgentNodeJoinBootstrap]);
 
   useEffect(() => {
     if (!token || !isAgentsRoute) return;
@@ -120,6 +171,9 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     if (!token) {
       setAgents([]);
       setAgentNodes([]);
+      setAgentNodeJoinBootstrap(null);
+      setAgentNodeJoinBootstrapLoading(false);
+      setAgentNodeJoinBootstrapError(null);
       setError(null);
       setWorktreeError(null);
       setStartingAgentIds({});
@@ -244,7 +298,14 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     setTargetNodeId("main");
     setShowCreateAgent(true);
     void refreshAgentNodes({ silent: true });
-  }, [agentNodes, defaultWorktreeRoot, refreshAgentNodes, worktreeMode]);
+    void refreshAgentNodeJoinBootstrap({ silent: true });
+  }, [
+    agentNodes,
+    defaultWorktreeRoot,
+    refreshAgentNodeJoinBootstrap,
+    refreshAgentNodes,
+    worktreeMode,
+  ]);
 
   const onCreateAgentNode = useCallback(async () => {
     if (!token || createAgentNodeBusy) return;
@@ -507,6 +568,9 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     agents,
     setAgents,
     agentNodes,
+    agentNodeJoinBootstrap,
+    agentNodeJoinBootstrapLoading,
+    agentNodeJoinBootstrapError,
     error,
     setError,
     worktreeError,
@@ -556,6 +620,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     openCreateAgentModal,
     refreshAgents,
     refreshAgentNodes,
+    refreshAgentNodeJoinBootstrap,
     defaultWorktreeRoot,
   };
 }

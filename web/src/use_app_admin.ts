@@ -19,6 +19,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
   const [rootInitialized, setRootInitialized] = useState<boolean | null>(null);
   const [selectedSafePaths, setSelectedSafePaths] = useState<Set<string>>(() => new Set());
   const [safePathInput, setSafePathInput] = useState("");
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
   const [joinPin, setJoinPin] = useState<string | null>(null);
   const [joinToken, setJoinToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,9 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setDevices([]);
       setAudits([]);
       setVapidInfo(null);
+      setJoinUrl(null);
+      setJoinPin(null);
+      setJoinToken(null);
       return;
     }
     api.listSafePaths(token).then(setSafePaths).catch(() => {});
@@ -115,7 +119,11 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const data = await api.joinStartAdmin(token);
       setJoinPin(data.pin);
       setJoinToken(data.token);
+      setJoinUrl(`${location.origin}/join?token=${encodeURIComponent(data.token)}`);
     } catch (err: unknown) {
+      setJoinPin(null);
+      setJoinToken(null);
+      setJoinUrl(null);
       setError(parseApiErrorMessage(err) ?? String(err));
     }
   }, [token]);
@@ -163,6 +171,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
     selectedSafePaths,
     safePathInput,
     setSafePathInput,
+    joinUrl,
     joinPin,
     joinToken,
     error,

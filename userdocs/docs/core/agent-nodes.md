@@ -74,7 +74,13 @@ cert_dir = "/etc/agenthub/certs"
 shared_secret = "your-256-bit-secret-here"
 issuer = "agenthub"
 audience = "agenthub-internal"
+
+[internal_grpc.bootstrap]
+token = "bootstrap-token-for-remote-nodes"
 ```
+
+Root operators can copy the bootstrap token from `Agents -> Join node with token`.
+Agent Node onboarding is token-based; QR is not part of the node join path.
 
 ### Remote Node
 
@@ -93,11 +99,19 @@ cert_dir = "/etc/agenthub/certs"
 
 [internal_grpc.auth]
 shared_secret = "same-secret-as-main"  # Must match!
+issuer = "agenthub"
+audience = "agenthub-internal"
+
+[internal_grpc.bootstrap]
+token = "bootstrap-token-from-main-control-plane"
 ```
 
 `node_id` must match the node you register on the main control plane. In node
 mode, AgentHub only starts the internal gRPC execution/control surface; it does
 not serve the public web UI or HTTP API.
+
+The bootstrap token is only the join handshake. TLS material, JWT issuer/audience,
+and the shared secret must still match the main control plane configuration today.
 
 ### Network Requirements
 
@@ -201,9 +215,11 @@ shared_secret = "CHANGE-ME-256-BIT-SECRET"
 default_root = "/data/agenthub/worktrees"
 ```
 
-**Registration**:
+**Bootstrap and registration**:
 ```bash
-# Via UI or API
+# 1. Copy the bootstrap token from Agents -> Join node with token.
+# 2. Start the remote node with the matching [internal_grpc] config above.
+# 3. Register the reachable node route via UI or API.
 curl -X POST http://hub.example.com:8080/api/admin/agent-nodes \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \

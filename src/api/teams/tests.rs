@@ -225,6 +225,7 @@ async fn build_test_state_with_db_source(
         push,
         auth,
         acp_permissions: permissions,
+        agent_node_join_bootstrap: crate::agent::AgentNodeJoinBootstrapInfo::disabled(),
         default_worktree_root: config.default_worktree_root(),
     };
     if seed_default_agents {

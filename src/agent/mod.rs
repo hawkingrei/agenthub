@@ -118,6 +118,31 @@ pub struct AgentNodeUpdate {
     pub default_worktree_root: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentNodeJoinBootstrapInfo {
+    pub enabled: bool,
+    pub bootstrap_token: Option<String>,
+    pub grpc_listen_addr: Option<String>,
+    pub security_mode: Option<String>,
+    pub cert_dir: Option<String>,
+    pub issuer: Option<String>,
+    pub audience: Option<String>,
+}
+
+impl AgentNodeJoinBootstrapInfo {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            bootstrap_token: None,
+            grpc_listen_addr: None,
+            security_mode: None,
+            cert_dir: None,
+            issuer: None,
+            audience: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentNodeRecord {
     pub id: String,

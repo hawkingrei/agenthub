@@ -32,6 +32,9 @@ const baseCreateAgentModalProps: CreateAgentModalProps = {
 const baseAgentNodeSectionProps: AgentNodeSectionProps = {
   nodes: [],
   agents: [],
+  nodeJoinBootstrap: null,
+  nodeJoinBootstrapLoading: false,
+  nodeJoinBootstrapError: null,
   targetNodeId: "main",
   onTargetNodeIdChange: vi.fn(),
   nodeIdInput: "",
