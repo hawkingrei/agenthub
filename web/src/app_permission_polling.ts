@@ -94,6 +94,30 @@ export function filterPermissionsForAgent(
   return items.filter((item) => item.agent_id === agentId);
 }
 
+export function filterVisiblePermissionRecords(
+  items: AcpPermissionRecord[]
+): AcpPermissionRecord[] {
+  return items.filter(shouldDisplayPermissionRecord);
+}
+
+export function filterVisiblePermissionsForAgent(
+  items: AcpPermissionRecord[],
+  agentId: string | null
+): AcpPermissionRecord[] {
+  return filterVisiblePermissionRecords(filterPermissionsForAgent(items, agentId));
+}
+
+export function shouldDisplayPermissionRecord(item: AcpPermissionRecord): boolean {
+  const status = item.status.trim().toLowerCase();
+  if (status === "timeout") {
+    return false;
+  }
+  if (status !== "responded") {
+    return true;
+  }
+  return !(item.selected_option_id?.trim());
+}
+
 function defaultScheduleTimeout(
   callback: () => void,
   delayMs: number

@@ -7,13 +7,13 @@ import {
   isSamePermissionList, 
 } from "./app_agents_helpers";
 import {
-  parsePermissionPollAgentIds, 
-  buildGlobalPermissionPollAgentIds, 
-  chunkPermissionPollAgentIds, 
-  resolveGlobalPermissionPollIntervalMs, 
-  mergePendingPermissionCountMap, 
-  schedulePermissionPollLoop, 
-  filterPermissionsForAgent 
+  parsePermissionPollAgentIds,
+  buildGlobalPermissionPollAgentIds,
+  chunkPermissionPollAgentIds,
+  resolveGlobalPermissionPollIntervalMs,
+  mergePendingPermissionCountMap,
+  schedulePermissionPollLoop,
+  filterVisiblePermissionsForAgent,
 } from "./app_permission_polling";
 
 const GLOBAL_PERMISSION_POLL_MAX_CONCURRENCY = 4;
@@ -158,8 +158,14 @@ export function useAppPermissions(
     };
   }, [isAgentsRoute, token, activeAgent, developerMode, acpTab, setAcpPermissionHistory]);
 
-  const scopedAcpPermissions = useMemo(() => filterPermissionsForAgent(acpPermissions, activeAgent), [acpPermissions, activeAgent]);
-  const scopedAcpPermissionHistory = useMemo(() => filterPermissionsForAgent(acpPermissionHistory, activeAgent), [acpPermissionHistory, activeAgent]);
+  const scopedAcpPermissions = useMemo(
+    () => filterVisiblePermissionsForAgent(acpPermissions, activeAgent),
+    [acpPermissions, activeAgent]
+  );
+  const scopedAcpPermissionHistory = useMemo(
+    () => filterVisiblePermissionsForAgent(acpPermissionHistory, activeAgent),
+    [acpPermissionHistory, activeAgent]
+  );
 
   return {
     acpPermissions,

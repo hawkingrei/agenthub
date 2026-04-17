@@ -2317,7 +2317,7 @@ describe("team panels interactions", () => {
     expect(progressbar.getAttribute("aria-valuemax")).toBe("2");
   });
 
-  it("TeamTaskPanel renders permission review cards in channel and collapses to status after response", async () => {
+  it("TeamTaskPanel removes approved permission review cards from the channel after response", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi
       .spyOn(api, "listAcpPermissions")
@@ -2366,8 +2366,6 @@ describe("team panels interactions", () => {
                 agent_id: "worker-agent",
                 tool_name: "git push",
                 summary: "worker requests permission to execute git push.",
-                reason: "review_timeout",
-                reason_text: "Agent review timed out",
                 status: "pending",
                 options: [
                   { option_id: "allow", name: "Allow once", kind: "allow_once" },
@@ -2402,7 +2400,6 @@ describe("team panels interactions", () => {
       await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
       await waitForCondition(() => container.textContent?.includes("Awaiting human review") ?? false);
       expect(container.textContent).toContain("git push");
-      expect(container.textContent).toContain("Agent review timed out");
       expect(container.textContent).toContain("Awaiting human review");
       expect(queryButtonByText(container, "Allow once")).not.toBeNull();
       clickElement(queryButtonByText(container, "Allow once"));
@@ -2412,21 +2409,21 @@ describe("team panels interactions", () => {
         option_id: "allow",
         outcome: undefined,
       });
-      await waitForCondition(() =>
-        container.textContent?.includes("Approved · Allow once") ?? false
+      await waitForCondition(
+        () => container.querySelector("[data-team-permission-card='true']") === null
       );
-      expect(container.textContent).toContain("Approved · Allow once");
+      expect(container.textContent).not.toContain("Approved · Allow once");
       expect(queryButtonByText(container, "Allow once")).toBeNull();
       expect(queryButtonByText(container, "Cancel")).toBeNull();
       expect(container.textContent).not.toContain("worker requests permission to execute git push.");
-      expect(container.textContent).not.toContain("Agent review timed out");
+      expect(container.textContent).not.toContain("git push");
     } finally {
       listPermissionsSpy.mockRestore();
       respondPermissionSpy.mockRestore();
     }
   });
 
-  it("TeamTaskPanel collapses timed out permission review cards even before permission polling catches up", async () => {
+  it("TeamTaskPanel hides timed out permission review cards even before permission polling catches up", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([]);
 
@@ -2486,18 +2483,15 @@ describe("team panels interactions", () => {
         />
       );
 
-      await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
-      const permissionCard = required(
-        container.querySelector("[data-team-permission-card='true']"),
-        "permission card missing"
-      ) as HTMLElement;
-      expect(permissionCard.textContent).toContain("git push");
-      expect(permissionCard.textContent).toContain("Timed out");
-      expect(permissionCard.innerHTML).toContain("bg-notion-hover");
-      expect(permissionCard.textContent).not.toContain("worker requests permission to execute git push.");
-      expect(permissionCard.textContent).not.toContain("Agent review timed out");
-      expect(queryButtonByText(permissionCard, "Allow once")).toBeNull();
-      expect(queryButtonByText(permissionCard, "Cancel")).toBeNull();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(listPermissionsSpy).not.toHaveBeenCalled();
+      expect(container.querySelector("[data-team-permission-card='true']")).toBeNull();
+      expect(container.textContent).not.toContain("git push");
+      expect(container.textContent).not.toContain("Timed out");
+      expect(container.textContent).not.toContain("worker requests permission to execute git push.");
+      expect(container.textContent).not.toContain("Agent review timed out");
     } finally {
       listPermissionsSpy.mockRestore();
     }
@@ -2713,8 +2707,6 @@ describe("team panels interactions", () => {
         agent_id: "worker-agent",
         tool_name: "git push",
         summary: "worker requests permission to execute git push.",
-        reason: "review_timeout",
-        reason_text: "Agent review timed out",
         status: "pending",
         options: [{ option_id: "allow", name: "Allow once", kind: "allow_once" }],
       },
@@ -2757,7 +2749,7 @@ describe("team panels interactions", () => {
     }
   });
 
-  it("TeamTaskPanel tolerates malformed permission record options after refresh", async () => {
+  it("TeamTaskPanel hides approved permission review cards after refresh even with malformed options", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi.spyOn(api, "listAcpPermissions").mockResolvedValue([
       {
@@ -2835,15 +2827,11 @@ describe("team panels interactions", () => {
 
       await waitForCondition(() => listPermissionsSpy.mock.calls.length > 0);
       await waitForCondition(
-        () => container.textContent?.includes("Approved · Allow once") ?? false
+        () => container.querySelector("[data-team-permission-card='true']") === null
       );
-      const permissionCard = required(
-        container.querySelector("[data-team-permission-card='true']"),
-        "permission card missing"
-      ) as HTMLElement;
-      expect(permissionCard.textContent).toContain("Approved · Allow once");
-      expect(queryButtonByText(permissionCard, "Allow once")).toBeNull();
-      expect(queryButtonByText(permissionCard, "Cancel")).toBeNull();
+      expect(container.textContent).not.toContain("Approved · Allow once");
+      expect(queryButtonByText(container, "Allow once")).toBeNull();
+      expect(queryButtonByText(container, "Cancel")).toBeNull();
     } finally {
       listPermissionsSpy.mockRestore();
     }

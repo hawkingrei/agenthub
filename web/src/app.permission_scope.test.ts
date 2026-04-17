@@ -9,6 +9,7 @@ import {
   chunkPermissionPollAgentIds,
   decidePermissionJump,
   filterPermissionsForAgent,
+  filterVisiblePermissionsForAgent,
   isAgentsWorkbenchRoute,
   loadAgentsPanelWidthPreference,
   mergePendingPermissionCountMap,
@@ -44,7 +45,8 @@ import {
 const buildPermission = (
   id: string,
   agentId: string,
-  status = "pending"
+  status = "pending",
+  overrides: Partial<AcpPermissionRecord> = {}
 ): AcpPermissionRecord => ({
   id,
   agent_id: agentId,
@@ -52,6 +54,7 @@ const buildPermission = (
   options: [],
   status,
   created_at: 1,
+  ...overrides,
 });
 
 const buildEvent = (
@@ -150,15 +153,35 @@ describe("filterPermissionsForAgent", () => {
     expect(filterPermissionsForAgent(input, null)).toEqual([]);
   });
 
-  it("keeps only permission records that belong to active agent", () => {
+  it("keeps all permission records that belong to active agent", () => {
     const input = [
       buildPermission("p1", "agent-a"),
       buildPermission("p2", "agent-b", "responded"),
       buildPermission("p3", "agent-a", "timeout"),
+      buildPermission("p4", "agent-a", "responded", {
+        selected_option_id: "allow_once",
+      }),
     ];
     expect(filterPermissionsForAgent(input, "agent-a").map((item) => item.id)).toEqual([
       "p1",
       "p3",
+      "p4",
+    ]);
+  });
+});
+
+describe("filterVisiblePermissionsForAgent", () => {
+  it("keeps only visible permission records that belong to active agent", () => {
+    const input = [
+      buildPermission("p1", "agent-a"),
+      buildPermission("p2", "agent-b", "responded"),
+      buildPermission("p3", "agent-a", "timeout"),
+      buildPermission("p4", "agent-a", "responded", {
+        selected_option_id: "allow_once",
+      }),
+    ];
+    expect(filterVisiblePermissionsForAgent(input, "agent-a").map((item) => item.id)).toEqual([
+      "p1",
     ]);
   });
 });
@@ -418,14 +441,17 @@ describe("app helper decisions", () => {
       buildPermission("p-a-1", "agent-a"),
       buildPermission("p-b-1", "agent-b"),
       buildPermission("p-a-2", "agent-a", "responded"),
+      buildPermission("p-a-3", "agent-a", "responded", {
+        selected_option_id: "allow_once",
+      }),
       buildPermission("p-c-1", "agent-c"),
     ];
 
     expect(
-      filterPermissionsForAgent(permissions, "agent-a").map((item) => item.id)
+      filterVisiblePermissionsForAgent(permissions, "agent-a").map((item) => item.id)
     ).toEqual(["p-a-1", "p-a-2"]);
     expect(
-      filterPermissionsForAgent(permissions, "agent-b").map((item) => item.id)
+      filterVisiblePermissionsForAgent(permissions, "agent-b").map((item) => item.id)
     ).toEqual(["p-b-1"]);
   });
 

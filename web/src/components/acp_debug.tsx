@@ -2,6 +2,7 @@ import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import { AcpConfigOption, AcpRawEvent } from "../acp";
 import { AcpPermissionRecord } from "../api";
+import { shouldDisplayPermissionRecord } from "../app_permission_polling";
 import { OutputLine } from "../output_cache";
 import { ActionButton, ToolbarRow, cx } from "../ui/primitives";
 import {
@@ -140,6 +141,7 @@ function AcpDebugView({
   const [copiedPermissionId, setCopiedPermissionId] = React.useState<string | null>(null);
   const copiedResetTimerRef = React.useRef<number | null>(null);
   const rawRef = React.useRef<HTMLUListElement | null>(null);
+  const visiblePermissionHistory = acpPermissionHistory.filter(shouldDisplayPermissionRecord);
   const markdownTotal = runtimeMetrics.markdownCacheHits + runtimeMetrics.markdownCacheMisses;
   const ansiTotal = runtimeMetrics.ansiCacheHits + runtimeMetrics.ansiCacheMisses;
   const payloadParseSuccess = Math.max(
@@ -502,12 +504,12 @@ function AcpDebugView({
       {tab === "permissions" && (
         <div className={`acp-permissions ${ACP_DEBUG_SECTION_CLASS}`}>
           <h4 className="text-sm font-bold text-notion-text uppercase tracking-widest">Permissions</h4>
-          {acpPermissionHistory.length === 0 && (
+          {visiblePermissionHistory.length === 0 && (
             <div className={ACP_DEBUG_EMPTY_CLASS}>
               No permissions yet.
             </div>
           )}
-          {acpPermissionHistory.map((permission) => {
+          {visiblePermissionHistory.map((permission) => {
             const toolCall = toPermissionToolCall(permission.tool_call);
             const copied = copiedPermissionId === permission.id;
             const canJump = Boolean(permission.tool_call_id?.trim());
