@@ -76,6 +76,134 @@ fn parse_team_task_status_reports_trimmed_input() {
     );
 }
 
+async fn build_started_reconcile_transition_fixture(
+    name_suffix: &str,
+) -> (
+    crate::state::AppState,
+    TeamInternalControlService,
+    String,
+    String,
+    String,
+    String,
+) {
+    let state = build_test_state_without_seeded_team_member_agents().await;
+    let now = chrono::Utc::now().timestamp();
+    let workdir = std::env::temp_dir().join(format!(
+        "agenthub-internal-{name_suffix}-{}",
+        Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workdir).expect("create reconcile transition test workdir");
+    let workdir = workdir.to_string_lossy().to_string();
+    sqlx::query("INSERT OR IGNORE INTO safe_paths (path, created_at) VALUES (?1, ?2)")
+        .bind(&workdir)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert reconcile transition safe path");
+    for agent_id in ["planner", "worker-1"] {
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'use_existing', NULL, NULL, 0, 'created', ?6, ?7)
+            "#,
+        )
+        .bind(agent_id)
+        .bind(format!("{agent_id}-agent"))
+        .bind(&workdir)
+        .bind("/bin/echo")
+        .bind("[]")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert reconcile transition test agent");
+    }
+
+    let team = state
+        .teams
+        .create_team(TeamDefinitionConfig {
+            name: format!("internal-{name_suffix}-{}", Uuid::new_v4()),
+            description: Some(format!("internal {name_suffix} reconcile transition test")),
+            spec: json!({
+                "entrypoint":"planner",
+                "leader_member_id":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let (task, _) = state
+        .teams
+        .create_task(
+            &team.id,
+            "Internal reconcile task",
+            "planner",
+            json!({
+                "execution_plan": {
+                    "steps": [{
+                        "step_key":"worker-implement",
+                        "member_id":"worker-1",
+                        "goal":"finish the patch",
+                        "acceptance":["tests pass"],
+                        "execution":{"mode":"reconcile_loop","max_rounds":3}
+                    }]
+                }
+            }),
+            "group_chat",
+            Some(name_suffix),
+        )
+        .await
+        .expect("create task");
+    let run = state
+        .teams
+        .create_run(
+            &team.id,
+            Some(&format!("ctx-{name_suffix}")),
+            json!({"task_id": task.id, "prompt":"execute reconcile loop"}),
+        )
+        .await
+        .expect("create run");
+    let step = state
+        .teams
+        .list_steps(&run.id)
+        .await
+        .expect("list steps")
+        .into_iter()
+        .next()
+        .expect("step");
+    state
+        .teams
+        .start_step(&step.id, Some("missing-session"))
+        .await
+        .expect("start step");
+
+    let authz = build_authz();
+    let (token, _expires_at) = authz
+        .issue_access_token(
+            InternalRole::Leader,
+            Some("planner"),
+            Some(&run.id),
+            vec![InternalAction::StepTransition.as_str().to_string()],
+            600,
+        )
+        .expect("issue step transition token");
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    (state, service, token, task.id, run.id, step.id)
+}
+
 #[tokio::test]
 async fn transition_step_continue_advances_reconcile_round_and_keeps_step_working() {
     let state = build_test_state_without_seeded_team_member_agents().await;
@@ -248,6 +376,238 @@ async fn transition_step_continue_advances_reconcile_round_and_keeps_step_workin
             .iter()
             .any(|event| event.event_type == "step_reconcile_prompt_requested"),
         "expected reconcile prompt request after continue: {events:?}"
+    );
+}
+
+#[tokio::test]
+async fn transition_step_input_required_resume_and_complete_follow_reconcile_contract() {
+    let (state, service, token, task_id, run_id, step_id) =
+        build_started_reconcile_transition_fixture("transition-input-resume-complete").await;
+
+    let input_required = TeamInternalControl::transition_step(
+        &service,
+        authenticated_request(
+            TransitionStepRequest {
+                run_id: run_id.clone(),
+                step_id: step_id.clone(),
+                action: "input_required".to_string(),
+                remote_task_id: String::new(),
+                output_json: String::new(),
+                error_text: String::new(),
+                input_json: json!({"question":"approve?"}).to_string(),
+                reason: "need review".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("input_required transition")
+    .into_inner();
+    assert_eq!(input_required.status, "input_required");
+
+    let step_after_input_required = state.teams.get_step(&step_id).await.expect("get step");
+    assert_eq!(
+        step_after_input_required.status,
+        crate::team::TeamStepStatus::InputRequired
+    );
+    let run_after_input_required = state.teams.get_run(&run_id).await.expect("get run");
+    assert_eq!(
+        run_after_input_required.status,
+        crate::team::TeamRunStatus::InputRequired
+    );
+    let task_after_input_required = state.teams.get_task(&task_id).await.expect("get task");
+    assert_eq!(
+        task_after_input_required.status,
+        crate::team::TeamTaskStatus::Waiting
+    );
+
+    let events_after_input_required = state
+        .teams
+        .list_run_events(&run_id, 100, None)
+        .await
+        .expect("list events after input_required");
+    assert!(
+        events_after_input_required
+            .iter()
+            .all(|event| event.event_type != "step_reconcile_prompt_requested"),
+        "input_required should not auto-nudge another reconcile prompt: {events_after_input_required:?}"
+    );
+
+    let resumed = TeamInternalControl::transition_step(
+        &service,
+        authenticated_request(
+            TransitionStepRequest {
+                run_id: run_id.clone(),
+                step_id: step_id.clone(),
+                action: "resume".to_string(),
+                remote_task_id: String::new(),
+                output_json: String::new(),
+                error_text: String::new(),
+                input_json: json!({"answer":"approved"}).to_string(),
+                reason: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("resume transition")
+    .into_inner();
+    assert_eq!(resumed.status, "working");
+
+    let run_after_resume = state
+        .teams
+        .get_run(&run_id)
+        .await
+        .expect("get run after resume");
+    assert_eq!(run_after_resume.status, crate::team::TeamRunStatus::Working);
+    let task_after_resume = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .expect("get task after resume");
+    assert_eq!(
+        task_after_resume.status,
+        crate::team::TeamTaskStatus::InProgress
+    );
+
+    let events_after_resume = state
+        .teams
+        .list_run_events(&run_id, 100, None)
+        .await
+        .expect("list events after resume");
+    let prompt_request_count_after_resume = events_after_resume
+        .iter()
+        .filter(|event| event.event_type == "step_reconcile_prompt_requested")
+        .count();
+    assert_eq!(prompt_request_count_after_resume, 1);
+
+    let completed = TeamInternalControl::transition_step(
+        &service,
+        authenticated_request(
+            TransitionStepRequest {
+                run_id: run_id.clone(),
+                step_id: step_id.clone(),
+                action: "complete".to_string(),
+                remote_task_id: String::new(),
+                output_json: json!({"summary":"patch is merge-ready"}).to_string(),
+                error_text: String::new(),
+                input_json: String::new(),
+                reason: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("complete transition")
+    .into_inner();
+    assert_eq!(completed.status, "completed");
+
+    let step_after_complete = state
+        .teams
+        .get_step(&step_id)
+        .await
+        .expect("get completed step");
+    assert_eq!(
+        step_after_complete.status,
+        crate::team::TeamStepStatus::Completed
+    );
+    let run_after_complete = state
+        .teams
+        .get_run(&run_id)
+        .await
+        .expect("get run after complete");
+    assert_eq!(
+        run_after_complete.status,
+        crate::team::TeamRunStatus::Completed
+    );
+    let task_after_complete = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .expect("get task after complete");
+    assert_eq!(
+        task_after_complete.status,
+        crate::team::TeamTaskStatus::InReview
+    );
+
+    let events_after_complete = state
+        .teams
+        .list_run_events(&run_id, 100, None)
+        .await
+        .expect("list events after complete");
+    let prompt_request_count_after_complete = events_after_complete
+        .iter()
+        .filter(|event| event.event_type == "step_reconcile_prompt_requested")
+        .count();
+    assert_eq!(prompt_request_count_after_complete, 1);
+}
+
+#[tokio::test]
+async fn transition_step_fail_keeps_reconcile_loop_terminal_without_auto_nudge() {
+    let (state, service, token, task_id, run_id, step_id) =
+        build_started_reconcile_transition_fixture("transition-fail").await;
+
+    let failed = TeamInternalControl::transition_step(
+        &service,
+        authenticated_request(
+            TransitionStepRequest {
+                run_id: run_id.clone(),
+                step_id: step_id.clone(),
+                action: "fail".to_string(),
+                remote_task_id: String::new(),
+                output_json: String::new(),
+                error_text: "lint failed".to_string(),
+                input_json: String::new(),
+                reason: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("fail transition")
+    .into_inner();
+    assert_eq!(failed.status, "failed");
+
+    let step_after_fail = state
+        .teams
+        .get_step(&step_id)
+        .await
+        .expect("get failed step");
+    assert_eq!(step_after_fail.status, crate::team::TeamStepStatus::Failed);
+    assert_eq!(step_after_fail.error_text.as_deref(), Some("lint failed"));
+    let run_after_fail = state.teams.get_run(&run_id).await.expect("get failed run");
+    assert_eq!(run_after_fail.status, crate::team::TeamRunStatus::Failed);
+    let task_after_fail = state
+        .teams
+        .get_task(&task_id)
+        .await
+        .expect("get linked task");
+    assert_eq!(
+        task_after_fail.status,
+        crate::team::TeamTaskStatus::InProgress
+    );
+
+    let events = state
+        .teams
+        .list_run_events(&run_id, 100, None)
+        .await
+        .expect("list fail events");
+    assert!(
+        events
+            .iter()
+            .all(|event| event.event_type != "step_reconcile_prompt_requested"),
+        "fail should not auto-nudge another reconcile prompt: {events:?}"
+    );
+    let round_finished_event = events
+        .iter()
+        .find(|event| {
+            event.event_type == "step_reconcile_round_finished"
+                && event.payload["status"] == json!("failed")
+        })
+        .expect("failed reconcile round event");
+    assert_eq!(
+        round_finished_event.payload["summary"],
+        json!("lint failed")
     );
 }
 
