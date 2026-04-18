@@ -29,6 +29,7 @@ const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col 
 const RUN_PANEL_SUBTITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const RUN_PANEL_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
 const RUN_PANEL_FOOT_META_CLASS = "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
+const RUN_PANEL_HELP_TEXT = "Concrete execution history and replay partitions for this team.";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -107,13 +108,13 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
         <div className="flex flex-col gap-1">
           <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
           <p className={TEAM_MUTED_TEXT_CLASS}>
-            Team execution is agent-driven.
+            {RUN_PANEL_HELP_TEXT}
           </p>
         </div>
 
         <ToolbarRow className="border-b border-notion-border/50 pb-4">
           <span className={RUN_PANEL_HINT_TEXT_CLASS}>
-            {runBlockedReason ?? "Start a new run for this team."}
+            {runBlockedReason ?? "Start a new execution run for this team."}
           </span>
           <ActionButton
             tone="primary"
@@ -122,10 +123,10 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
               void onStartRun();
             }}
             disabled={busy === "create-run" || !selectedTeamId || !canStartRun}
-            title={runBlockedReason ?? "Start a new run"}
-            aria-label="Start run"
+            title={runBlockedReason ?? "Start a new execution run"}
+            aria-label="Start execution run"
           >
-            {busy === "create-run" ? "Starting..." : "Start Run"}
+            {busy === "create-run" ? "Starting..." : "Start Execution Run"}
           </ActionButton>
         </ToolbarRow>
 
@@ -160,8 +161,8 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
           {visibleRuns.length === 0 && (
             <p className={TEAM_MUTED_TEXT_CLASS}>
               {developerMode
-                ? "No runs loaded yet. Use Debug → Run Ops to create or load runs."
-                : "No runs loaded yet. Enable Developer Mode for manual run debugging tools."}
+                ? "No execution runs loaded yet. Use Debug → Run Ops to create or load runs."
+                : "No execution runs loaded yet. Enable Developer Mode for manual run debugging tools."}
             </p>
           )}
           {isActiveRunHiddenByFilter && activeRun && (
