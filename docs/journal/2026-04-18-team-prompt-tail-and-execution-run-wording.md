@@ -34,3 +34,13 @@
 - `cargo fmt`
 - `cd web && npm run test -- vite.config.test.ts src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx src/pages/team/team_debug_panels.test.tsx src/pages/team/team_workspace_header.test.tsx`
 - `cd web && npm run build`
+
+## Review Follow-up
+
+- moved runtime state snapshot and continuity note writes out of the open SQLite transaction: the
+  transaction now prepares a write plan, commits, then performs best-effort filesystem writes
+- switched the continuity note history-window fence to four backticks to avoid accidental markdown
+  fence breakage from embedded JSON content
+- aligned the continuity note regression test with `source_run_id`
+- updated Team page Playwright fixtures to look for `Execution Runs` instead of the old `Runs`
+  label
