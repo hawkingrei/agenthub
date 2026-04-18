@@ -5,6 +5,7 @@
 - reduced shell header chrome so the workspace title and global lenses read closer to a compact directory shell
 - tightened Team selector rows and Team sidebar rows into a `title + one compact meta line` pattern
 - reduced Agents rail metadata so rows behave more like a DM directory instead of a status console
+- converted the collapsed Agents rail from dual metric cards into a single directory summary block
 
 ## Validation
 
@@ -23,3 +24,4 @@ make build-web
   - `http://127.0.0.1:4173/`
   - `http://127.0.0.1:4173/workspace/teams`
   - backend was intentionally absent, so the local pages showed the expected bootstrap JSON error; shell/header and selector structure still rendered and were verified
+  - collapsed Agents rail now renders `Show agents` + `AGENTS` + count + `Create agent`, without the previous `Running` metric card

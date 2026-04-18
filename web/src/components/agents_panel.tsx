@@ -40,9 +40,10 @@ const AGENTS_WORKBENCH_STATUS_DOT_CLASS =
 const AGENTS_WORKBENCH_META_SEGMENT_CLASS = "truncate";
 const AGENTS_WORKBENCH_META_SEPARATOR_CLASS =
   "inline-flex h-1 w-1 shrink-0 rounded-full bg-notion-text-muted/35";
-const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-3 py-3 bg-notion-sidebar border-r border-notion-border";
-const AGENTS_WORKBENCH_METRIC_CLASS =
-  "relative grid gap-0.5 justify-items-center rounded-md border border-notion-border/75 bg-white px-2.5 py-1.5 text-[9px] font-medium tracking-[0.12em] text-notion-text-muted shadow-sm";
+const AGENTS_WORKBENCH_RAIL_CLASS =
+  "flex h-full w-full flex-col items-center justify-between gap-3 py-3 bg-notion-sidebar border-r border-notion-border";
+const AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS =
+  "relative flex flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-notion-text-muted";
 const AGENTS_WORKBENCH_RAIL_DOT_CLASS =
   "agents-rail-dot absolute right-1.5 top-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
@@ -84,9 +85,6 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   onStopAgent,
   onDeleteAgent,
 }: AgentsPanelProps) {
-  const runningCount = agents.filter((agent) => agent.status === "running")
-    .length;
-
   function resolveAgentMetaParts(agent: AgentRecord, modelLabel: string | null): string[] {
     const parts = [isAgentActiveStatus(agent.status) ? "online" : agent.status];
     if (modelLabel) {
@@ -113,32 +111,34 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         }
       >
         {agentsCollapsed ? (
-            <Box className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
-            <IconButton
-              size="md"
-              tone="default"
-              onClick={onExpand}
-              title="Show agents"
-              aria-label="Show agents"
-            >
-              <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
-            </IconButton>
-            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
-              <Box component="span" className="value">{agents.length}</Box>
-              <Box component="span" className="label">Agents</Box>
-              {hasPendingPermissions ? (
-                <Box
-                  component="span"
-                  className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
-                  role="img"
-                  aria-label="Pending permissions"
-                  title="Pending permissions"
-                />
-              ) : null}
-            </Box>
-            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Running">
-              <Box component="span" className="value">{runningCount}</Box>
-              <Box component="span" className="label">Running</Box>
+          <Box className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
+            <Box className="flex flex-col items-center gap-2">
+              <IconButton
+                size="md"
+                tone="default"
+                onClick={onExpand}
+                title="Show agents"
+                aria-label="Show agents"
+              >
+                <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
+              </IconButton>
+              <Box className={AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS} title={`${agents.length} agents`}>
+                <Box component="span" className="text-[9px] font-semibold uppercase tracking-[0.12em]">
+                  Agents
+                </Box>
+                <Box component="span" className="text-[10px] font-medium">
+                  {agents.length}
+                </Box>
+                {hasPendingPermissions ? (
+                  <Box
+                    component="span"
+                    className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
+                    role="img"
+                    aria-label="Pending permissions"
+                    title="Pending permissions"
+                  />
+                ) : null}
+              </Box>
             </Box>
             <IconButton
               size="md"

@@ -67,7 +67,7 @@ describe("AgentsPanel", () => {
     expect(html).toContain('aria-label="Show agents"');
     expect(html).toContain('aria-label="Create agent"');
     expect(html).toContain("Agents");
-    expect(html).toContain("Running");
+    expect(html).toContain('title="2 agents"');
     expect(html).not.toContain("Create Agent");
     expect(html).not.toContain('aria-label="Hide agents"');
     expect(html).not.toContain("agents-backdrop");
