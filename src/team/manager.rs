@@ -2150,18 +2150,18 @@ impl TeamManager {
             .join(".cache")
             .join("context")
             .join("state.md");
-        if let Some(parent) = state_path.parent() {
-            if let Err(err) = tokio::fs::create_dir_all(parent).await {
-                tracing::warn!(
-                    team_id = owner.team_id,
-                    run_id = owner.run_id,
-                    member_id = owner.member_id,
-                    path = %state_path.display(),
-                    "team manager failed to create runtime state snapshot dir: {}",
-                    err
-                );
-                return Ok(());
-            }
+        if let Some(parent) = state_path.parent()
+            && let Err(err) = tokio::fs::create_dir_all(parent).await
+        {
+            tracing::warn!(
+                team_id = owner.team_id,
+                run_id = owner.run_id,
+                member_id = owner.member_id,
+                path = %state_path.display(),
+                "team manager failed to create runtime state snapshot dir: {}",
+                err
+            );
+            return Ok(());
         }
         let state_text =
             build_runtime_state_snapshot_text(owner, continuity_mode, continuity_state);
