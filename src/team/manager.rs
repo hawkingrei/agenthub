@@ -2150,6 +2150,36 @@ impl TeamManager {
             .join(".cache")
             .join("context")
             .join("state.md");
+        if let Some(relative_note_path) =
+            continuity_note_relative_path(&continuity_state.source_run_id)
+        {
+            let note_path = PathBuf::from(&workspace.runtime_workdir).join(&relative_note_path);
+            if let Some(parent) = note_path.parent()
+                && let Err(err) = tokio::fs::create_dir_all(parent).await
+            {
+                tracing::warn!(
+                    team_id = owner.team_id,
+                    run_id = owner.run_id,
+                    member_id = owner.member_id,
+                    path = %note_path.display(),
+                    "team manager failed to create runtime continuity note dir: {}",
+                    err
+                );
+            } else {
+                let note_text =
+                    build_runtime_continuity_note_text(owner, continuity_mode, continuity_state);
+                if let Err(err) = tokio::fs::write(&note_path, note_text).await {
+                    tracing::warn!(
+                        team_id = owner.team_id,
+                        run_id = owner.run_id,
+                        member_id = owner.member_id,
+                        path = %note_path.display(),
+                        "team manager failed to write runtime continuity note: {}",
+                        err
+                    );
+                }
+            }
+        }
         if let Some(parent) = state_path.parent()
             && let Err(err) = tokio::fs::create_dir_all(parent).await
         {
@@ -4708,14 +4738,16 @@ fn build_runtime_state_snapshot_text(
         format!("- updated_at: {}", continuity_state.updated_at),
         format!("- team_id: {}", owner.team_id),
         format!("- member_id: {}", owner.member_id),
-        format!("- current_run_id: {}", owner.run_id),
+        format!("- current_execution_run_id: {}", owner.run_id),
         format!("- continuity_mode: {continuity_mode}"),
         format!(
-            "- continuity_source_run_id: {}",
+            "- continuity_source_execution_run_id: {}",
             continuity_state.source_run_id
         ),
-        format!("- continuity_summary: {}", continuity_state.summary_text),
     ];
+    if let Some(note_path) = continuity_note_relative_path(&continuity_state.source_run_id) {
+        lines.push(format!("- continuity_note_path: {note_path}"));
+    }
     if let Some(artifact_path) = continuity_state
         .history_window
         .get("artifact_pointer")
@@ -4727,6 +4759,57 @@ fn build_runtime_state_snapshot_text(
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn build_runtime_continuity_note_text(
+    owner: ContextArtifactOwner<'_>,
+    continuity_mode: &str,
+    continuity_state: &TeamMemberContinuityStateRecord,
+) -> String {
+    let history_window = serde_json::to_string_pretty(&continuity_state.history_window)
+        .unwrap_or_else(|_| continuity_state.history_window.to_string());
+    let mut lines = vec![
+        "# Team Continuity Note".to_string(),
+        String::new(),
+        format!("- updated_at: {}", continuity_state.updated_at),
+        format!("- team_id: {}", owner.team_id),
+        format!("- member_id: {}", owner.member_id),
+        format!("- current_execution_run_id: {}", owner.run_id),
+        format!(
+            "- continuity_source_execution_run_id: {}",
+            continuity_state.source_run_id
+        ),
+        format!("- continuity_mode: {continuity_mode}"),
+    ];
+    if let Some(artifact_path) = continuity_state
+        .history_window
+        .get("artifact_pointer")
+        .and_then(extract_context_artifact_path)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        lines.push(format!("- continuity_artifact_path: {artifact_path}"));
+    }
+    lines.extend([
+        String::new(),
+        "## Summary".to_string(),
+        continuity_state.summary_text.clone(),
+        String::new(),
+        "## History Window".to_string(),
+        "```json".to_string(),
+        history_window,
+        "```".to_string(),
+        String::new(),
+    ]);
+    lines.join("\n")
+}
+
+fn continuity_note_relative_path(source_run_id: &str) -> Option<String> {
+    let source_run_id = source_run_id.trim();
+    if source_run_id.is_empty() {
+        return None;
+    }
+    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
 }
 
 fn extract_context_artifact_path(value: &Value) -> Option<&str> {

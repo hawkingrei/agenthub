@@ -566,7 +566,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("# all");
-    expect(container.textContent).not.toContain("Runs");
+    expect(container.textContent).not.toContain("Execution Runs");
     expect(container.textContent).not.toContain("Advanced");
 
     act(() => {
@@ -814,7 +814,7 @@ describe("team panels interactions", () => {
 
     clickElement(findButtonByText(container, "Delete Team"));
     clickElement(findButtonByText(container, "Start Execution Run"));
-    clickElement(findButtonByAriaLabel(container, "Refresh runs"));
+    clickElement(findButtonByAriaLabel(container, "Refresh execution runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
 
@@ -863,7 +863,7 @@ describe("team panels interactions", () => {
       "No execution runs loaded yet. Use Debug → Run Ops to create or load runs."
     );
     expect(container.textContent).toContain(
-      "Concrete execution history and replay partitions for this team."
+      "Concrete execution runs and replay partitions for this team."
     );
     expect(
       findButtonByAriaLabel(container, "Start execution run").getAttribute("title")
@@ -971,7 +971,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
-    expect(container.textContent).toContain("Runs");
+    expect(container.textContent).toContain("Execution Runs");
     expect(container.textContent).toContain("Conversation");
     expect(container.textContent).toContain("Agent ACP");
     expect(container.textContent).toContain("Debug");
@@ -1019,9 +1019,9 @@ describe("team panels interactions", () => {
       findButtonByAriaLabel(container, "Refresh active execution run").getAttribute("title")
     ).toBe("Refresh active execution run");
     clickElement(findButtonByAriaLabel(container, "Refresh active execution run"));
-    clickElement(findButtonByText(container, "Cancel Run"));
-    clickElement(findButtonByText(container, "Resume Run"));
-    clickElement(findButtonByText(container, "Restart Run"));
+    clickElement(findButtonByText(container, "Cancel Execution Run"));
+    clickElement(findButtonByText(container, "Resume Execution Run"));
+    clickElement(findButtonByText(container, "Restart Execution Run"));
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onResume).toHaveBeenCalledTimes(1);
@@ -3756,7 +3756,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Compile Preview"));
     clickElement(findButtonByText(container, "Use Payload in Create Run"));
     clickElement(findButtonByText(container, "Create Run from Preview"));
-    clickElement(findButtonByText(container, "Open Run"));
+    clickElement(findButtonByText(container, "Open Execution Run"));
 
     expect(container.querySelector('[data-team-compile-preview="true"]')).not.toBeNull();
     expect(onRefreshTasks).toHaveBeenCalledTimes(1);

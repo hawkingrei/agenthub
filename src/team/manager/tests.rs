@@ -2495,13 +2495,24 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
     );
     let state_path = workspace.join(".cache/context/state.md");
     let state_text = std::fs::read_to_string(&state_path).expect("read runtime state snapshot");
+    let note_path = workspace
+        .join(".cache/context/run")
+        .join(&run.id)
+        .join("continuity.md");
+    let note_text = std::fs::read_to_string(&note_path).expect("read runtime continuity note");
     assert!(state_text.contains("# Team Runtime State"));
     assert!(state_text.contains("- team_id:"));
     assert!(state_text.contains("- member_id: planner"));
-    assert!(state_text.contains("- current_run_id:"));
+    assert!(state_text.contains("- current_execution_run_id:"));
     assert!(state_text.contains("- continuity_mode: inherit_recent"));
-    assert!(state_text.contains("- continuity_summary: large payload"));
+    assert!(state_text.contains("- continuity_note_path: .cache/context/run/"));
     assert!(state_text.contains(pointer_path));
+    assert!(note_text.contains("# Team Continuity Note"));
+    assert!(note_text.contains("- current_execution_run_id:"));
+    assert!(note_text.contains("- continuity_source_execution_run_id:"));
+    assert!(note_text.contains("## Summary"));
+    assert!(note_text.contains("large payload"));
+    assert!(note_text.contains("## History Window"));
 
     let events = manager
         .list_run_events(&run.id, 100, None)

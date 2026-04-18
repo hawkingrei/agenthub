@@ -78,14 +78,14 @@ describe("Team debug panels", () => {
         <TeamRunRequiredPanel
           chrome={chrome}
           title="Mailbox Raw"
-          body="Mailbox raw operations require an active run."
+          body="Mailbox raw operations require an active execution run."
           onGoToRuns={vi.fn()}
         />
       </MantineProvider>
     );
 
     expect(html).toContain("Mailbox Raw");
-    expect(html).toContain("Mailbox raw operations require an active run.");
-    expect(html).toContain("Go to Runs");
+    expect(html).toContain("Mailbox raw operations require an active execution run.");
+    expect(html).toContain("Go to Execution Runs");
   });
 });

@@ -58,7 +58,7 @@ function renderHtml(override: Partial<React.ComponentProps<typeof TeamWorkspaceH
         selectedTeamRuntimeOnline={3}
         selectedTeamRuntimeTotal={3}
         selectedTeamRuntimeControlTone={baseRuntimeTone}
-        workspaceAdvancedTabItems={[{ value: "runs", label: "Runs" }]}
+        workspaceAdvancedTabItems={[{ value: "runs", label: "Execution Runs" }]}
         isAdvancedWorkspace={false}
         showRunActionsInAdvanced
         activeRunStatus="working"

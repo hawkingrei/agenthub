@@ -2370,16 +2370,25 @@ Fallback to the user-level review contract.
         };
         assert!(runtime_block.text.contains("AgentHub runtime context:"));
         assert!(runtime_block.text.contains("actor_id: planner"));
-        assert!(runtime_block.text.contains("current_run_id: run-42"));
         assert!(
             runtime_block
                 .text
-                .contains("continuity_source_run_id: run-41")
+                .contains("current_execution_run_id: run-42")
+        );
+        assert!(
+            runtime_block
+                .text
+                .contains("continuity_source_execution_run_id: run-41")
         );
         assert!(
             runtime_block
                 .text
                 .contains("continuity_state_path: .cache/context/state.md")
+        );
+        assert!(
+            runtime_block
+                .text
+                .contains("continuity_note_path: .cache/context/run/run-41/continuity.md")
         );
         assert!(!runtime_block.text.contains("continuity_summary:"));
     }

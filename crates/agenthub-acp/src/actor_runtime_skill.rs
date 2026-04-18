@@ -55,7 +55,7 @@ fn build_actor_runtime_context_text(context: &AcpActorSkillContext) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        lines.push(format!("- current_run_id: {run_id}"));
+        lines.push(format!("- current_execution_run_id: {run_id}"));
     }
     if let Some(member_role) = context
         .member_role
@@ -87,9 +87,15 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
     };
     let mut lines = vec![
         format!("- continuity_mode: {}", continuity.mode),
-        format!("- continuity_source_run_id: {}", continuity.source_run_id),
+        format!(
+            "- continuity_source_execution_run_id: {}",
+            continuity.source_run_id
+        ),
         "- continuity_state_path: .cache/context/state.md".to_string(),
     ];
+    if let Some(note_path) = continuity_note_path(&continuity.source_run_id) {
+        lines.push(format!("- continuity_note_path: {note_path}"));
+    }
     if let Some(artifact_path) = continuity
         .history_window
         .get("artifact_pointer")
@@ -100,6 +106,14 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
         lines.push(format!("- continuity_artifact_path: {artifact_path}"));
     }
     lines
+}
+
+fn continuity_note_path(source_run_id: &str) -> Option<String> {
+    let source_run_id = source_run_id.trim();
+    if source_run_id.is_empty() {
+        return None;
+    }
+    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
 }
 
 fn extract_artifact_pointer_path(value: &serde_json::Value) -> Option<&str> {
@@ -176,7 +190,7 @@ mod tests {
             panic!("expected text content block");
         };
         assert!(text.text.contains("team_id: team-7"));
-        assert!(text.text.contains("current_run_id: run-42"));
+        assert!(text.text.contains("current_execution_run_id: run-42"));
         assert!(text.text.contains("actor_id: planner"));
         assert!(text.text.contains("default_channel: coordination"));
         assert!(text.text.contains("contract_version: v1"));
@@ -198,7 +212,7 @@ mod tests {
         let ContentBlock::Text(text) = block else {
             panic!("expected text content block");
         };
-        assert!(!text.text.contains("current_run_id: n/a"));
+        assert!(!text.text.contains("current_execution_run_id: n/a"));
     }
 
     #[test]
@@ -229,6 +243,10 @@ mod tests {
         assert!(
             text.text
                 .contains("continuity_state_path: .cache/context/state.md")
+        );
+        assert!(
+            text.text
+                .contains("continuity_note_path: .cache/context/run/run-41/continuity.md")
         );
         assert!(
             text.text.contains(

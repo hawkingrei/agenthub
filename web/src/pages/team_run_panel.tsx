@@ -29,7 +29,7 @@ const RUN_PANEL_LIST_ITEMS_CLASS = "teams-run-list-items flex max-h-80 flex-col 
 const RUN_PANEL_SUBTITLE_CLASS = "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 const RUN_PANEL_HINT_TEXT_CLASS = "text-[13px] text-notion-text-muted italic";
 const RUN_PANEL_FOOT_META_CLASS = "mono text-[10px] font-bold uppercase tracking-widest text-notion-text-muted opacity-70";
-const RUN_PANEL_HELP_TEXT = "Concrete execution history and replay partitions for this team.";
+const RUN_PANEL_HELP_TEXT = "Concrete execution runs and replay partitions for this team.";
 
 type TeamRunPanelProps = {
   selectedTeam: TeamDefinitionRecord;
@@ -106,7 +106,7 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
 
       <InsetSurface className="teams-run-list flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <p className={RUN_PANEL_SUBTITLE_CLASS}>Run Browser</p>
+          <p className={RUN_PANEL_SUBTITLE_CLASS}>Execution Run Browser</p>
           <p className={TEAM_MUTED_TEXT_CLASS}>
             {RUN_PANEL_HELP_TEXT}
           </p>
@@ -131,7 +131,7 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
         </ToolbarRow>
 
         <ToolbarRow className="teams-run-list-head mt-2">
-          <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Runs</h3>
+          <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Execution Runs</h3>
           <div className="actions flex flex-wrap items-center gap-2">
             <NativeSelect
               className="w-full sm:w-[164px]"
@@ -149,8 +149,8 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
                 void onRefreshRuns();
               }}
               disabled={runsLoading}
-              title="Refresh runs"
-              aria-label="Refresh runs"
+              title="Refresh execution runs"
+              aria-label="Refresh execution runs"
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </ActionButton>

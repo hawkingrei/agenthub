@@ -270,7 +270,7 @@ export const TeamRunRequiredPanel = React.memo(function TeamRunRequiredPanel({
           className={chrome.panelSecondaryButtonClassName}
           onClick={onGoToRuns}
         >
-          Go to Runs
+          Go to Execution Runs
         </ActionButton>
       </div>
     </SurfaceCard>
