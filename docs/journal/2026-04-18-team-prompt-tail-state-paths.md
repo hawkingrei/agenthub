@@ -39,3 +39,8 @@
 
 - This does not close the broader TODO item yet; it only moves one dynamic continuity slice from
   prompt prose into filesystem-backed runtime state.
+- Review follow-up tightened the runtime path:
+  - `state.md` snapshot writes are now async and best-effort, so transient filesystem issues do
+    not roll back `complete_step`;
+  - manager-side snapshot rendering now accepts both legacy string and current object-shaped
+    `artifact_pointer` payloads, matching the ACP runtime block compatibility path.

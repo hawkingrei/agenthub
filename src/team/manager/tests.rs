@@ -2532,6 +2532,95 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
 }
 
 #[tokio::test]
+async fn complete_step_keeps_success_when_runtime_state_snapshot_write_fails() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time after epoch")
+        .as_nanos();
+    let workspace =
+        std::env::temp_dir().join(format!("agenthub-context-state-write-fail-{unique_suffix}"));
+    std::fs::create_dir_all(workspace.join(".cache/context"))
+        .expect("create workspace context directory");
+    std::fs::create_dir_all(workspace.join(".cache/context/state.md"))
+        .expect("create conflicting state snapshot path");
+    let workspace_text = workspace.to_string_lossy().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO agents (
+            id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
+        "#,
+    )
+    .bind("planner")
+    .bind("planner")
+    .bind(&workspace_text)
+    .bind("codex")
+    .bind("[]")
+    .bind("use_existing")
+    .bind("manual")
+    .bind("idle")
+    .bind(1_i64)
+    .bind(1_i64)
+    .execute(&db)
+    .await
+    .expect("insert planner agent");
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "state-write-fail-team".to_string(),
+            description: Some("team with conflicting runtime state path".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(&team.id, Some("ctx-write-fail"), json!({"payload":"start"}))
+        .await
+        .expect("create run");
+    let step = manager
+        .submit_step(
+            &run.id,
+            "state_write_fail_step",
+            "planner",
+            Vec::new(),
+            Some(json!({"goal":"exercise best-effort state snapshot write"})),
+        )
+        .await
+        .expect("submit step");
+    let _ = manager
+        .start_step(&step.id, Some("remote-task-state-write-fail"))
+        .await
+        .expect("start step");
+
+    let completed = manager
+        .complete_step(
+            &step.id,
+            Some(json!({
+                "summary":"best effort snapshot",
+                "details":"state snapshot should not block completion"
+            })),
+        )
+        .await
+        .expect("complete step should succeed despite snapshot write failure");
+
+    assert_eq!(completed.status, TeamStepStatus::Completed);
+    let continuity = manager
+        .get_member_continuity_state(&team.id, "planner")
+        .await
+        .expect("get continuity state")
+        .expect("continuity state should exist");
+    assert_eq!(continuity.summary_text, "best effort snapshot");
+
+    let run_after_complete = manager.get_run(&run.id).await.expect("get run");
+    assert_eq!(run_after_complete.status, TeamRunStatus::Completed);
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[tokio::test]
 async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context_artifact() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

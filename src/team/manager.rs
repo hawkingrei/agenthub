@@ -2151,11 +2151,30 @@ impl TeamManager {
             .join("context")
             .join("state.md");
         if let Some(parent) = state_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            if let Err(err) = tokio::fs::create_dir_all(parent).await {
+                tracing::warn!(
+                    team_id = owner.team_id,
+                    run_id = owner.run_id,
+                    member_id = owner.member_id,
+                    path = %state_path.display(),
+                    "team manager failed to create runtime state snapshot dir: {}",
+                    err
+                );
+                return Ok(());
+            }
         }
         let state_text =
             build_runtime_state_snapshot_text(owner, continuity_mode, continuity_state);
-        std::fs::write(&state_path, state_text)?;
+        if let Err(err) = tokio::fs::write(&state_path, state_text).await {
+            tracing::warn!(
+                team_id = owner.team_id,
+                run_id = owner.run_id,
+                member_id = owner.member_id,
+                path = %state_path.display(),
+                "team manager failed to write runtime state snapshot: {}",
+                err
+            );
+        }
         Ok(())
     }
 
@@ -4700,8 +4719,7 @@ fn build_runtime_state_snapshot_text(
     if let Some(artifact_path) = continuity_state
         .history_window
         .get("artifact_pointer")
-        .and_then(|value| value.get("path"))
-        .and_then(Value::as_str)
+        .and_then(extract_context_artifact_path)
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
@@ -4709,6 +4727,13 @@ fn build_runtime_state_snapshot_text(
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn extract_context_artifact_path(value: &Value) -> Option<&str> {
+    value
+        .get("path")
+        .and_then(Value::as_str)
+        .or_else(|| value.as_str())
 }
 
 #[derive(Debug, Clone)]
