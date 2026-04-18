@@ -34,7 +34,6 @@ import {
   normalizeWorkdirInput,
   resolveWorkdirForModeChange,
 } from "../worktree_defaults";
-import { normalizeTeamMemberLifecycle } from "./team_member_status_strip";
 import { TeamConversationPanel } from "./team_conversation_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -52,7 +51,6 @@ import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamWorkbenchContent } from "./team/team_workbench_content";
 import {
-  buildTeamMemberDraftFromSpec,
   parseErrorMessage,
   teamSpecHasConfiguredMembers,
   teamSpecHasLeader,
@@ -69,7 +67,6 @@ import {
   MailboxTemplateKey,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
-  createDisplayNameLookup,
   countUnreadConversationMessages,
   mergeMailboxMessages,
   resolveConversationMaxMessageId,
@@ -88,21 +85,12 @@ import {
   summarizeTeamMemberAgentStatuses,
 } from "./team/member_helpers";
 import {
-  DEFAULT_TEAM_THREAD_TITLE,
   formatTs,
-  isSharedThreadTask,
-  listTeamWorkspaceTasks,
-  resolveAgentWorkspaceStatusView,
   resolveTeamPageNotice,
-  resolveSelectedAgentWorkspaceLabel,
-  resolveSelectedConversationTask,
-  resolveSelectedTeamTask,
-  shouldClearSelectedConversationTask,
   resolveTaskConversationMemberIds,
   resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
-  sortTasksByActivity,
   toPrettyJson,
   updateCachedTeamRuntimeStatus,
   upsertRun,
@@ -114,11 +102,13 @@ import {
 import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
 import { useTeamManagementActions } from "./team/use_team_management_actions";
+import { useTeamTaskWorkspaceData } from "./team/use_team_task_workspace_data";
 import { useTeamConversationActions } from "./team/use_team_conversation_actions";
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAcpEffects } from "./team/use_team_member_acp_effects";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
+import { useTeamWorkspaceViewModel } from "./team/use_team_workspace_view_model";
 import { useTeamTaskEffects } from "./team/use_team_task_effects";
 import { useTeamRuntimeEffects } from "./team/use_team_runtime_effects";
 import { useTeamRunLifecycleEffects } from "./team/use_team_run_lifecycle_effects";
@@ -132,7 +122,6 @@ import {
   MAILBOX_TEMPLATE_OPTIONS,
   TEAM_TAB_ITEMS,
   TEAM_RUN_STATUS_FILTER_OPTIONS,
-  tabRequiresActiveRun,
   createInitialTeamCreateState,
   reduceTeamControlState,
   reduceTeamCreateState,
@@ -290,17 +279,6 @@ function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   }
 }
 
-function resolveWorkspaceLensForTab(tab: TeamTab): WorkspaceLens {
-  switch (tab) {
-    case "tasks":
-      return "tasks";
-    case "overview":
-      return "members";
-    default:
-      return "chat";
-  }
-}
-
 function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   switch (lens) {
     case "chat":
@@ -317,7 +295,6 @@ function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   }
 }
 
-const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>(["conversation", "tasks"]);
 const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   { value: "conversation", label: "# all" },
   { value: "tasks", label: "Kanban" },
@@ -413,8 +390,6 @@ const workspaceNoticeClassName =
   "mt-1 flex flex-wrap items-center justify-between gap-2 px-1";
 const workspaceNoticeTextClassName =
   "flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-notion-text-muted";
-const workspaceNoticeDotBaseClassName =
-  "inline-flex h-2 w-2 shrink-0 rounded-full";
 const teamRuntimeNoticeClassName =
   "mb-4 flex items-start justify-between gap-3 rounded-lg border border-state-success-border bg-state-success-bg px-4 py-3 text-state-success-text shadow-sm";
 const teamRuntimeNoticeTitleClassName =
@@ -1789,39 +1764,40 @@ export function TeamPage(props: TeamPageProps) {
     setMsgPayload(toPrettyJson(buildMailboxPayloadTemplate(msgTemplate)));
   }, [msgTemplate, setMsgPayload]);
 
-  const resolvedSelectedConversationTaskId = selectedConversationTaskId.trim();
-  const selectedConversation = useMemo(() => {
-    if (!effectiveSelectedTeamId) {
-      return null;
-    }
-    return resolveSelectedConversationTask({
-      taskList,
-      selectedTaskId: resolvedSelectedConversationTaskId,
-      sharedConversation,
-      fallbackTask: selectedConversationDetail?.task ?? null,
-    });
-  }, [
+  const {
+    resolvedSelectedConversationTaskId,
+    selectedConversation,
+    selectedConversationLatestRun,
+    selectedConversationId,
+    workspaceTasks,
+    selectedTask,
+    refreshTasks,
+    refreshSharedConversation,
+    onRefreshTasks,
+  } = useTeamTaskWorkspaceData({
+    token: props.token,
     effectiveSelectedTeamId,
-    resolvedSelectedConversationTaskId,
-    selectedConversationDetail?.task,
-    sharedConversation,
-    taskList,
-  ]);
-  const selectedConversationLatestRun = useMemo(() => {
-    if (!resolvedSelectedConversationTaskId) {
-      return sharedConversationLatestRun;
-    }
-    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
-      return sharedConversationLatestRun;
-    }
-    return selectedConversationDetail?.latest_run ?? null;
-  }, [
-    resolvedSelectedConversationTaskId,
+    selectedConversationTaskId,
     selectedConversationDetail,
-    sharedConversation?.id,
+    sharedConversation,
     sharedConversationLatestRun,
-  ]);
-  const selectedConversationId = selectedConversation?.id ?? null;
+    taskList,
+    tasksLoading,
+    selectedTaskId,
+    sharedConversationRequestScopeRef,
+    setError,
+    setTaskList,
+    setSharedConversation,
+    setSharedConversationLatestRun,
+    setSelectedConversationDetail,
+    setTasksLoading,
+    setSelectedTaskId,
+    setTaskMessages,
+    setConversationMailboxMessages,
+    setSelectedConversationTaskId,
+    setCompiledRunPreview,
+    setCompilePreviewContextId,
+  });
   const hasConversationStreamTarget = Boolean(
     eventsAutoRefresh &&
       effectiveSelectedTeamId &&
@@ -1836,149 +1812,6 @@ export function TeamPage(props: TeamPageProps) {
       ),
     [conversationSseState, hasConversationStreamTarget, networkOnline]
   );
-  const workspaceTasks = useMemo(() => {
-    if (!effectiveSelectedTeamId) {
-      return [];
-    }
-    return listTeamWorkspaceTasks(taskList, effectiveSelectedTeamId);
-  }, [effectiveSelectedTeamId, taskList]);
-
-  const selectedTask = useMemo(() => {
-    if (!effectiveSelectedTeamId) {
-      return null;
-    }
-    return resolveSelectedTeamTask(taskList, selectedTaskId, effectiveSelectedTeamId);
-  }, [effectiveSelectedTeamId, selectedTaskId, taskList]);
-
-  const refreshTasks = useCallback(
-    async (teamId: string) => {
-      setTasksLoading(true);
-      try {
-        const list = await api.listTeamTasks(props.token, teamId, 100, {
-          include_shared_thread: true,
-        });
-        const sorted = sortTasksByActivity(list);
-        setTaskList(sorted);
-        setSelectedTaskId((prev) => {
-          return resolveSelectedTeamTask(sorted, prev, teamId)?.id ?? "";
-        });
-      } catch (err) {
-        setError(parseErrorMessage(err));
-      } finally {
-        setTasksLoading(false);
-      }
-    },
-    [props.token]
-  );
-
-  const refreshSharedConversation = useCallback(
-    async (teamId: string) => {
-      const normalizedTeamId = teamId.trim();
-      const requestSeq = sharedConversationRequestScopeRef.current.requestSeq;
-      const isCurrentRequest = () =>
-        isCurrentTeamScopedRequest(
-          sharedConversationRequestScopeRef.current,
-          normalizedTeamId,
-          requestSeq
-        );
-      try {
-        const detail = await api.getTeamSharedThread(props.token, normalizedTeamId);
-        if (!isCurrentRequest()) {
-          return;
-        }
-        setSharedConversation(detail.task);
-        setSharedConversationLatestRun(detail.latest_run ?? null);
-      } catch (err) {
-        if (!isCurrentRequest()) {
-          return;
-        }
-        if (getApiErrorStatus(err) === 404) {
-          setSharedConversation(null);
-          setSharedConversationLatestRun(null);
-          setTaskMessages([]);
-          setConversationMailboxMessages([]);
-          return;
-        }
-        setError(parseErrorMessage(err));
-      }
-    },
-    [props.token, setError, setConversationMailboxMessages, setTaskMessages]
-  );
-
-  useEffect(() => {
-    if (!effectiveSelectedTeamId) {
-      return;
-    }
-    const taskId = resolvedSelectedConversationTaskId;
-    if (!taskId) {
-      setSelectedConversationDetail(null);
-      return;
-    }
-    if (sharedConversation?.id === taskId) {
-      setSelectedConversationDetail(null);
-      return;
-    }
-    let active = true;
-    void api
-      .getTeamTask(props.token, effectiveSelectedTeamId, taskId)
-      .then((detail) => {
-        if (!active) {
-          return;
-        }
-        setSelectedConversationDetail(detail);
-      })
-      .catch((err) => {
-        if (!active) {
-          return;
-        }
-        setSelectedConversationDetail(null);
-        setError(parseErrorMessage(err));
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    effectiveSelectedTeamId,
-    props.token,
-    resolvedSelectedConversationTaskId,
-    setError,
-    sharedConversation?.id,
-  ]);
-
-  useEffect(() => {
-    const shouldClearSelection = shouldClearSelectedConversationTask({
-      selectedConversationTaskId: resolvedSelectedConversationTaskId,
-      sharedConversationTaskId: sharedConversation?.id ?? null,
-      taskList,
-      selectedConversationDetailPresent: Boolean(selectedConversationDetail),
-      tasksLoading,
-    });
-    if (!shouldClearSelection) {
-      return;
-    }
-    setSelectedConversationTaskId("");
-    setSelectedConversationDetail(null);
-  }, [
-    resolvedSelectedConversationTaskId,
-    selectedConversationDetail,
-    sharedConversation?.id,
-    taskList,
-    tasksLoading,
-  ]);
-
-  useEffect(() => {
-    setCompiledRunPreview(null);
-    setCompilePreviewContextId("");
-  }, [selectedTaskId, effectiveSelectedTeamId]);
-
-  useEffect(() => {
-    if (!effectiveSelectedTeamId) {
-      return;
-    }
-    void refreshTasks(effectiveSelectedTeamId);
-    void refreshSharedConversation(effectiveSelectedTeamId);
-  }, [effectiveSelectedTeamId, refreshSharedConversation, refreshTasks]);
-
   const {
     refreshTaskMessages,
     sendTaskMessage: onSendTaskMessage,
@@ -2057,91 +1890,6 @@ export function TeamPage(props: TeamPageProps) {
     }
   }, [activeRunIdForSelectedTeam, refreshSnapshot]);
 
-  const onOpenMailboxForMember = useCallback((memberId: string) => {
-    setSelectedMemberId(memberId);
-    setFocusedAgentMemberId("");
-    setTab("mailbox");
-    if (isCompactWorkbench) {
-      setTeamsSidebarCollapsed(true);
-    }
-  }, [isCompactWorkbench, setSelectedMemberId, setTab]);
-  const onSelectConversationSubject = useCallback((taskId?: string | null) => {
-    setFocusedAgentMemberId("");
-    setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
-    setTab("conversation");
-    if (effectiveSelectedTeamId) {
-      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "chat"));
-    }
-    if (isCompactWorkbench) {
-      setTeamsSidebarCollapsed(true);
-    }
-  }, [effectiveSelectedTeamId, isCompactWorkbench, setTab]);
-  const onSelectKanbanSubject = useCallback(() => {
-    setFocusedAgentMemberId("");
-    setTab("tasks");
-    if (effectiveSelectedTeamId) {
-      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "tasks"));
-    }
-    if (isCompactWorkbench) {
-      setTeamsSidebarCollapsed(true);
-    }
-  }, [effectiveSelectedTeamId, isCompactWorkbench, setTab]);
-  const onSelectAgentWorkspace = useCallback(
-    (memberId: string, nextTab: TeamTab = "agent_acp") => {
-      setSelectedMemberId(memberId);
-      setFocusedAgentMemberId(memberId);
-      setTab(nextTab);
-      if (isCompactWorkbench) {
-        setTeamsSidebarCollapsed(true);
-      }
-    },
-    [isCompactWorkbench, setSelectedMemberId, setTab]
-  );
-  const onSelectUtilityWorkspace = useCallback(
-    (nextTab: TeamTab) => {
-      setFocusedAgentMemberId("");
-      setTab(nextTab);
-      if (isCompactWorkbench) {
-        setTeamsSidebarCollapsed(true);
-      }
-    },
-    [isCompactWorkbench, setTab]
-  );
-  const onSelectSidebarTeam = useCallback(
-    (teamId: string) => {
-      if (teamId !== effectiveSelectedTeamId) {
-        navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens));
-      }
-    },
-    [effectiveSelectedTeamId, routeWorkspaceLens]
-  );
-  const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
-  const workspaceLensItems = useMemo(
-    () => [
-      { value: "chat", label: "Chat", active: activeWorkspaceLens === "chat" },
-      { value: "threads", label: "Threads", active: activeWorkspaceLens === "threads" },
-      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
-      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
-      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
-    ],
-    [activeWorkspaceLens]
-  );
-  const onSelectWorkspaceLens = useCallback(
-    (value: string) => {
-      if (!effectiveSelectedTeamId) {
-        return;
-      }
-      const lens = value as WorkspaceLens;
-      if (lens === "search") {
-        setFocusedAgentMemberId("");
-      }
-      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, lens));
-      if (isCompactWorkbench) {
-        setTeamsSidebarCollapsed(true);
-      }
-    },
-    [effectiveSelectedTeamId, isCompactWorkbench]
-  );
   const onRefreshActiveRunSteps = useCallback(async () => {
     if (!activeRunForSelectedTeam) {
       return;
@@ -2185,13 +1933,17 @@ export function TeamPage(props: TeamPageProps) {
     }
     await triggerCreateRun();
   }, [selectedTeamHasConfiguredMembers, setError, teamExecutionBlockedReason, triggerCreateRun]);
-  const tabNeedsActiveRun = tabRequiresActiveRun(tab);
-  const showRunContextLoading = tab !== "runs" && tabNeedsActiveRun && runsLoading && !activeRunForSelectedTeam;
-  const showNoActiveRunNotice = tab !== "runs" && tabNeedsActiveRun && !runsLoading && !activeRunForSelectedTeam;
-  const selectedMemberLiveState = useMemo(
-    () =>
-      selectedTeamMemberLiveStates.find((member) => member.member_id === selectedMemberId) ?? null,
-    [selectedMemberId, selectedTeamMemberLiveStates]
+  const navigateToTeamLens = useCallback(
+    (teamId: string, lens: WorkspaceLens) => {
+      navigateTeamRoute(buildTeamWorkspacePath(teamId, lens));
+    },
+    []
+  );
+  const navigateToSidebarTeam = useCallback(
+    (teamId: string) => {
+      navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens));
+    },
+    [routeWorkspaceLens]
   );
   const selectedAgentWorkspaceLiveState = useMemo(
     () =>
@@ -2200,15 +1952,65 @@ export function TeamPage(props: TeamPageProps) {
       ) ?? null,
     [selectedAgentWorkspaceMemberId, selectedTeamMemberLiveStates]
   );
-  const selectedAgentLiveState = useMemo(
-    () =>
-      selectedTeamMemberLiveStates.find((member) => member.member_id === focusedAgentMemberId) ??
-      null,
-    [focusedAgentMemberId, selectedTeamMemberLiveStates]
-  );
-  const hasSelectedAgentContext = focusedAgentMemberId.trim().length > 0;
-  const isAgentWorkspace =
-    hasSelectedAgentContext && (TEAM_AGENT_WORKSPACE_TABS.has(tab) || tab === "mailbox");
+  const {
+    activeWorkspaceLens,
+    workspaceLensItems,
+    isAgentWorkspace,
+    selectedAgentLabel,
+    selectedAgentSpecDraft,
+    selectedAgentStatusView,
+    activeConversationTitle,
+    selectedConversationIsShared,
+    workspaceTitle,
+    workspaceDescription,
+    showWorkspaceRuntimeBadge,
+    showDedicatedWorkspaceHeading,
+    workspaceNoticeText,
+    workspaceNoticeDotClassName,
+    workspaceDetailItems,
+    mailboxDisplayNameByActorId,
+    onOpenTaskRun,
+    onOpenMailboxForMember,
+    onSelectConversationSubject,
+    onSelectKanbanSubject,
+    onSelectAgentWorkspace,
+    onSelectUtilityWorkspace,
+    onSelectSidebarTeam,
+    onSelectWorkspaceLens,
+    showRunContextLoading,
+    showNoActiveRunNotice,
+  } = useTeamWorkspaceViewModel({
+    selectedTeam,
+    routeWorkspaceLens,
+    tab,
+    focusedAgentMemberId,
+    selectedMemberId,
+    selectedTeamId,
+    selectedTeamMemberLiveStates,
+    selectedTeamMemberSummary,
+    selectedTeamRuntimeStatus,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceAgent,
+    selectedAgentWorkspaceLiveState,
+    activeRunForSelectedTeam,
+    activeRunIdForSelectedTeam,
+    selectedConversation,
+    runsLoading,
+    isCompactWorkbench,
+    teamPromptDefaults,
+    teamMemberAgentsById,
+    agents,
+    developerMode: props.developerMode,
+    setTab,
+    setFocusedAgentMemberId,
+    setSelectedConversationTaskId,
+    setSelectedMemberId,
+    setTeamsSidebarCollapsed,
+    setActiveRunId,
+    setRunLookupId,
+    navigateToTeamLens,
+    navigateToSidebarTeam,
+  });
   const workspaceAdvancedTabItems = (isAgentWorkspace
     ? TEAM_AGENT_ADVANCED_TAB_ITEMS
     : TEAM_UTILITY_ADVANCED_TAB_ITEMS
@@ -2216,26 +2018,6 @@ export function TeamPage(props: TeamPageProps) {
   const isAdvancedWorkspace = workspaceAdvancedTabItems.some((item) => item.value === tab);
   const showRunActionsInAdvanced = Boolean(activeRunForSelectedTeam && tab !== "runs");
   const workspaceEyebrow = null;
-  const selectedAgentFallbackName = useMemo(() => {
-    const memberId = focusedAgentMemberId.trim();
-    if (!memberId) {
-      return null;
-    }
-    return (
-      teamMemberAgentsById[memberId]?.name?.trim() ??
-      agents.find((agent) => agent.id === memberId)?.name?.trim() ??
-      null
-    );
-  }, [agents, focusedAgentMemberId, teamMemberAgentsById]);
-  const selectedAgentLabel = useMemo(
-    () =>
-      resolveSelectedAgentWorkspaceLabel(
-        focusedAgentMemberId,
-        selectedAgentLiveState,
-        selectedAgentFallbackName
-      ),
-    [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
-  );
   const {
     openCreateTeamModal,
     closeCreateTeamModal,
@@ -2320,227 +2102,6 @@ export function TeamPage(props: TeamPageProps) {
     setMemberDiscoveryCardsById,
     setMemberDiscoveryCardLoadingById,
   });
-  const selectedAgentSpecDraft = useMemo(() => {
-    if (!selectedTeam) {
-      return null;
-    }
-    return buildTeamMemberDraftFromSpec(
-      selectedTeam.spec,
-      selectedAgentWorkspaceMemberId,
-      selectedAgentWorkspaceMemberId
-        ? teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null
-        : null,
-      teamPromptDefaults
-    );
-  }, [selectedAgentWorkspaceMemberId, selectedTeam, teamMemberAgentsById, teamPromptDefaults]);
-  const selectedAgentStatusView = useMemo(
-    () => resolveAgentWorkspaceStatusView(selectedAgentLiveState),
-    [selectedAgentLiveState]
-  );
-  const activeConversationTitle = useMemo(
-    () => selectedConversation?.title?.trim() || DEFAULT_TEAM_THREAD_TITLE,
-    [selectedConversation]
-  );
-  const selectedConversationIsShared = useMemo(
-    () => (selectedConversation ? isSharedThreadTask(selectedConversation) : true),
-    [selectedConversation]
-  );
-  const currentWorkspaceTabLabel = useMemo(
-    () => TEAM_TAB_ITEMS.find((item) => item.value === tab)?.label ?? selectedTeam?.name ?? "Team",
-    [selectedTeam?.name, tab]
-  );
-  const workspaceTitle = !selectedTeam
-    ? "Team Workbench"
-    : isAgentWorkspace
-      ? selectedAgentLabel
-    : tab === "conversation"
-      ? selectedConversationIsShared
-        ? `# ${activeConversationTitle}`
-        : activeConversationTitle
-    : tab === "tasks"
-      ? "Kanban"
-    : tab === "mailbox"
-      ? selectedMemberLiveState
-        ? selectedAgentLabel
-        : "Execution Mailbox"
-    : selectedMemberLiveState && isAgentWorkspace
-      ? selectedAgentLabel
-      : currentWorkspaceTabLabel;
-  const workspaceDescription = !selectedTeam
-    ? "Select a team from the left rail to start team conversations and supervise execution."
-    : isAgentWorkspace
-      ? null
-    : tab === "conversation"
-      ? selectedConversationIsShared
-        ? "Shared channel for human requests, planning discussion, and team-visible progress updates."
-        : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
-    : tab === "tasks"
-        ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
-      : tab === "mailbox"
-        ? selectedMemberLiveState
-          ? "Direct mailbox thread for the selected agent."
-          : "Run-scoped mailbox delivery and direct member conversations."
-      : tab === "runs"
-        ? "Browse runs and choose the active execution context."
-        : isAgentWorkspace
-          ? "Direct thread for the selected agent."
-          : "Operational views stay available without displacing the main thread.";
-  const showWorkspaceRuntimeBadge =
-    !isAgentWorkspace && !TEAM_PRIMARY_WORKSPACE_TABS.has(tab);
-  const showDedicatedWorkspaceHeading =
-    isAgentWorkspace || !selectedTeam || workspaceTitle !== selectedTeam.name;
-  const workspaceMemberAvailability = useMemo(() => {
-    if (selectedTeamMemberSummary) {
-      return {
-        online: selectedTeamMemberSummary.active,
-        offline: selectedTeamMemberSummary.inactive,
-        missing: selectedTeamMemberSummary.missing,
-      };
-    }
-    let online = 0;
-    let offline = 0;
-    let missing = 0;
-    for (const member of selectedTeamMemberLiveStates) {
-      const lifecycle = normalizeTeamMemberLifecycle(member);
-      if (lifecycle === "missing") {
-        missing += 1;
-      } else if (lifecycle === "stopped") {
-        offline += 1;
-      } else {
-        online += 1;
-      }
-    }
-    return { online, offline, missing };
-  }, [selectedTeamMemberLiveStates, selectedTeamMemberSummary]);
-  const workspaceNoticeText = useMemo(() => {
-    if (isAgentWorkspace) {
-      return null;
-    }
-    if (tab === "conversation" || tab === "tasks") {
-      return null;
-    }
-    const runtimeLabel = selectedTeam ? selectedTeamRuntimeStatus.label : null;
-    const runLabel = activeRunForSelectedTeam
-      ? `run ${activeRunForSelectedTeam.status}`
-      : "no active run";
-    const rosterLabel = `${selectedTeamMemberLiveStates.length} members`;
-    const availabilityLabel =
-      workspaceMemberAvailability.missing > 0
-        ? `${workspaceMemberAvailability.missing} missing`
-        : workspaceMemberAvailability.offline > 0
-          ? `${workspaceMemberAvailability.offline} offline`
-          : `${workspaceMemberAvailability.online} online`;
-    return [runtimeLabel, runLabel, rosterLabel, availabilityLabel]
-      .filter((value): value is string => Boolean(value))
-      .join(" · ");
-  }, [
-    activeRunForSelectedTeam,
-    isAgentWorkspace,
-    selectedTeam,
-    selectedTeamMemberLiveStates.length,
-    selectedTeamRuntimeStatus.label,
-    tab,
-    workspaceMemberAvailability,
-  ]);
-  const workspaceNoticeDotClassName = useMemo(() => {
-    if (isAgentWorkspace) {
-      if (selectedAgentStatusView.lifecycle === "missing") {
-        return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
-      }
-      if (selectedAgentStatusView.work === "blocked") {
-        return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
-      }
-      if (
-        selectedAgentStatusView.lifecycle === "working" ||
-        selectedAgentStatusView.work === "working" ||
-        selectedAgentStatusView.work === "pending" ||
-        selectedAgentStatusView.work === "done"
-      ) {
-        return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
-      }
-      if (selectedAgentStatusView.lifecycle === "stopped") {
-        return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-      }
-    }
-    if (workspaceMemberAvailability.missing > 0) {
-      return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
-    }
-    if (selectedTeamRuntimeStatus.status === "degraded") {
-      return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
-    }
-    if (selectedTeamRuntimeStatus.status === "stopped") {
-      return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-    }
-    if (!activeRunForSelectedTeam) {
-      return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-    }
-    if (activeRunForSelectedTeam.status === "working") {
-      return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
-    }
-    if (activeRunForSelectedTeam.status === "completed") {
-      return `${workspaceNoticeDotBaseClassName} bg-emerald-500`;
-    }
-    if (activeRunForSelectedTeam.status === "failed") {
-      return `${workspaceNoticeDotBaseClassName} bg-rose-500`;
-    }
-    if (activeRunForSelectedTeam.status === "canceled") {
-      return `${workspaceNoticeDotBaseClassName} bg-amber-500`;
-    }
-    return `${workspaceNoticeDotBaseClassName} bg-slate-400`;
-  }, [
-    activeRunForSelectedTeam,
-    isAgentWorkspace,
-    selectedAgentStatusView.lifecycle,
-    selectedAgentStatusView.work,
-    selectedTeamRuntimeStatus.status,
-    workspaceMemberAvailability.missing,
-  ]);
-  const workspaceDetailItems = useMemo(
-    () =>
-      [
-        `team=${selectedTeam?.id ?? "-"}`,
-        `team_runtime=${selectedTeamRuntimeStatus.status}`,
-        `active_run=${activeRunIdForSelectedTeam ?? "-"}`,
-        `run_status=${activeRunForSelectedTeam?.status ?? "-"}`,
-        `context=${activeRunForSelectedTeam?.context_id ?? "-"}`,
-        isAgentWorkspace &&
-        selectedAgentWorkspaceLiveState?.agent_name &&
-        selectedAgentWorkspaceLiveState.agent_name !== selectedAgentWorkspaceLiveState.member_id
-          ? `agent=${selectedAgentWorkspaceLiveState.agent_name}`
-          : null,
-        isAgentWorkspace ? `member=${selectedAgentWorkspaceLiveState?.member_id ?? "-"}` : null,
-      ].filter((value): value is string => value !== null),
-    [
-      activeRunForSelectedTeam?.context_id,
-      activeRunForSelectedTeam?.status,
-      activeRunIdForSelectedTeam,
-      isAgentWorkspace,
-      selectedAgentWorkspaceLiveState?.agent_name,
-      selectedAgentWorkspaceLiveState?.member_id,
-      selectedTeam?.id,
-      selectedTeamRuntimeStatus.status,
-    ]
-  );
-  const mailboxDisplayNameByActorId = useMemo(
-    () =>
-      createDisplayNameLookup([
-        [HUMAN_MAILBOX_ACTOR_ID, "You"],
-        ...selectedTeamMemberLiveStates.map((member) => [
-          member.member_id,
-          member.agent_name?.trim() || member.member_id,
-        ]),
-      ]),
-    [selectedTeamMemberLiveStates]
-  );
-  const onOpenTaskRun = useCallback(
-    (runId: string) => {
-      setActiveRunId(runId);
-      setRunLookupId(runId);
-      setFocusedAgentMemberId("");
-      setTab("runs");
-    },
-    [setActiveRunId, setRunLookupId, setTab]
-  );
   React.useEffect(() => {
     setWorkspaceDetailsOpen(false);
   }, [props.developerMode, selectedTeamId, tab]);
@@ -2736,14 +2297,6 @@ export function TeamPage(props: TeamPageProps) {
       setError(parseErrorMessage(err));
     },
   });
-  const onRefreshTasks = useCallback(async () => {
-    if (!selectedTeamId) {
-      setError("Select a team first");
-      return;
-    }
-    setError(null);
-    await refreshTasks(selectedTeamId);
-  }, [refreshTasks, selectedTeamId]);
   const onCompileTaskRunPreview = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
