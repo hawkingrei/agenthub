@@ -3,7 +3,6 @@ use std::path::Path;
 use agent_client_protocol::{ContentBlock, TextContent};
 use agenthub_acp_core::{AcpSkill, build_skill};
 use agenthub_managed_skills::{ManagedSkillKind, managed_skill_doc};
-use agenthub_text::truncate_chars;
 use anyhow::{Result, bail};
 
 use crate::AcpActorSkillContext;
@@ -86,12 +85,28 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
     let Some(continuity) = context.continuity.as_ref() else {
         return Vec::new();
     };
-    let summary = truncate_chars(continuity.summary_text.as_str(), 400);
-    vec![
+    let mut lines = vec![
         format!("- continuity_mode: {}", continuity.mode),
         format!("- continuity_source_run_id: {}", continuity.source_run_id),
-        format!("- continuity_summary: {summary}"),
-    ]
+        "- continuity_state_path: .cache/context/state.md".to_string(),
+    ];
+    if let Some(artifact_path) = continuity
+        .history_window
+        .get("artifact_pointer")
+        .and_then(extract_artifact_pointer_path)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        lines.push(format!("- continuity_artifact_path: {artifact_path}"));
+    }
+    lines
+}
+
+fn extract_artifact_pointer_path(value: &serde_json::Value) -> Option<&str> {
+    value
+        .get("path")
+        .and_then(|path| path.as_str())
+        .or_else(|| value.as_str())
 }
 
 #[cfg(test)]
@@ -213,11 +228,16 @@ mod tests {
         };
         assert!(
             text.text
-                .contains("continuity_summary: Continue implementation with the same branch.")
+                .contains("continuity_state_path: .cache/context/state.md")
         );
+        assert!(
+            text.text.contains(
+                "continuity_artifact_path: .cache/context/run/run-41/artifact-0001-continuity-output.json"
+            )
+        );
+        assert!(!text.text.contains("continuity_summary:"));
         assert!(!text.text.contains("continuity_history_window_json"));
         assert!(!text.text.contains("continuity_detail_policy"));
         assert!(!text.text.contains("continuity_source_session_id"));
-        assert!(!text.text.contains("artifact-0001-continuity-output.json"));
     }
 }

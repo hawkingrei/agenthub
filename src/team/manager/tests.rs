@@ -2493,6 +2493,15 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
         artifact_content.contains("[redacted]"),
         "sensitive keys should be redacted in persisted artifact"
     );
+    let state_path = workspace.join(".cache/context/state.md");
+    let state_text = std::fs::read_to_string(&state_path).expect("read runtime state snapshot");
+    assert!(state_text.contains("# Team Runtime State"));
+    assert!(state_text.contains("- team_id:"));
+    assert!(state_text.contains("- member_id: planner"));
+    assert!(state_text.contains("- current_run_id:"));
+    assert!(state_text.contains("- continuity_mode: inherit_recent"));
+    assert!(state_text.contains("- continuity_summary: large payload"));
+    assert!(state_text.contains(pointer_path));
 
     let events = manager
         .list_run_events(&run.id, 100, None)

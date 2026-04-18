@@ -2376,6 +2376,12 @@ Fallback to the user-level review contract.
                 .text
                 .contains("continuity_source_run_id: run-41")
         );
+        assert!(
+            runtime_block
+                .text
+                .contains("continuity_state_path: .cache/context/state.md")
+        );
+        assert!(!runtime_block.text.contains("continuity_summary:"));
     }
 
     #[test]
