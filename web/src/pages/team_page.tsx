@@ -8,7 +8,6 @@ import {
   type SseConnectionState,
 } from "../connection_status";
 import {
-  AGENT_SOURCE_TEAM_FORGE,
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
@@ -28,11 +27,7 @@ import {
   TeamStepRecord,
 } from "../api";
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
-import {
-  DEFAULT_AGENT_PRESET_ID,
-  getAgentPreset,
-  type AgentPresetId,
-} from "../agent_presets";
+import { type AgentPresetId } from "../agent_presets";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import {
@@ -57,28 +52,18 @@ import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamWorkbenchContent } from "./team/team_workbench_content";
 import {
-  appendTeamMemberToSpec,
   buildTeamMemberDraftFromSpec,
-  buildEmptyTeamSpec,
-  buildLeaderForgeDefaultWorkdir,
-  formatTeamForgeWorktreeError,
   parseErrorMessage,
   teamSpecHasConfiguredMembers,
   teamSpecHasLeader,
-  updateTeamMemberProfileInSpec,
   type TeamMemberProfileDraft,
 } from "./team/create_helpers";
 import {
-  clearTeamCreateDraft,
-  loadTeamCreateDraft,
   persistTeamCreateDraft,
 } from "./team/create_draft_storage";
 import {
-  resolveInitialTeamMemberRole,
-  resolveTeamForgeDefaults,
   resolveTeamMemberRoleOptions,
   resolveTeamMemberRoleProfile,
-  type TeamMemberRole,
 } from "./team/forge_helpers";
 import {
   MailboxTemplateKey,
@@ -114,7 +99,6 @@ import {
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
   resolveTaskConversationMemberIds,
-  removeTeamMemberLookupEntry,
   resolveTeamMemberAgentControlState,
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
@@ -129,6 +113,7 @@ import {
 } from "./team/run_helpers";
 import { useTeamActions } from "./team/use_team_actions";
 import { useTeamMailboxActions } from "./team/use_team_mailbox_actions";
+import { useTeamManagementActions } from "./team/use_team_management_actions";
 import { useTeamConversationActions } from "./team/use_team_conversation_actions";
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAcpEffects } from "./team/use_team_member_acp_effects";
@@ -1785,484 +1770,6 @@ export function TeamPage(props: TeamPageProps) {
     markConversationSeen,
   });
 
-  const openCreateTeamModal = useCallback(() => {
-    const { draft: restoredDraft, error: restoreError } = loadTeamCreateDraft("wizard");
-    setError(null);
-    setWarning(null);
-    if (restoreError) {
-      setError(restoreError);
-    }
-    resetTeamDraft();
-    if (restoredDraft) {
-      patchTeamCreate({
-        ...restoredDraft,
-        leaderPrompt: restoredDraft.leaderPrompt || teamPromptDefaults.leader_prompt,
-        workers: backfillEmptyWorkerDraftPrompts(
-          restoredDraft.workers,
-          teamPromptDefaults
-        ),
-        showCreateTeamModal: true,
-        showForgeAgentForm: false,
-        forgeAgentWorktreeError: null,
-        forgeAgentBusy: false,
-      });
-      return;
-    }
-    setShowCreateTeamModal(true);
-    setShowForgeAgentForm(false);
-    setForgeAgentWorktreeError(null);
-  }, [
-    patchTeamCreate,
-    resetTeamDraft,
-    teamPromptDefaults,
-    setError,
-    setShowCreateTeamModal,
-    setShowForgeAgentForm,
-    setForgeAgentWorktreeError,
-    setWarning,
-  ]);
-
-  const closeCreateTeamModal = useCallback(() => {
-    if (busy === "create-team") {
-      return;
-    }
-    setShowCreateTeamModal(false);
-  }, [busy, setShowCreateTeamModal]);
-
-  const openTeamMemberForgeModal = useCallback(() => {
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    const role = resolveInitialTeamMemberRole(selectedTeamHasLeader);
-    const defaults = resolveTeamForgeDefaults({
-      teamName: selectedTeam.name,
-      teamSpec: selectedTeam.spec,
-      role,
-      workerCount: selectedTeamWorkerCount,
-      defaultWorktreeRoot: forgeDefaultWorktreeRoot,
-      agentPresetId: DEFAULT_AGENT_PRESET_ID,
-      promptDefaults: teamPromptDefaults,
-    });
-
-    setError(null);
-    setWarning(null);
-    setTeamMemberDraft(defaults.draft);
-    setShowForgeAgentForm(true);
-    setForgeAgentName(defaults.agentName);
-    setForgeAgentWorktreeMode(defaults.worktreeMode);
-    setForgeAgentWorktreeRepo(defaults.worktreeRepo);
-    setForgeAgentWorktreeRef(defaults.worktreeRef);
-    setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
-    setForgeAgentCodeMode(true);
-    setForgeAgentWorktreeError(null);
-    setForgeAgentWorkdir(defaults.agentWorkdir);
-  }, [
-    forgeDefaultWorktreeRoot,
-    selectedTeam,
-    selectedTeamHasLeader,
-    selectedTeamWorkerCount,
-    teamPromptDefaults,
-    setError,
-    setWarning,
-    setShowForgeAgentForm,
-    setForgeAgentCodeMode,
-    setForgeAgentName,
-    setForgeAgentPresetId,
-    setForgeAgentWorkdir,
-    setForgeAgentWorktreeError,
-    setForgeAgentWorktreeMode,
-    setForgeAgentWorktreeRef,
-    setForgeAgentWorktreeRepo,
-  ]);
-
-  const handleTeamMemberRoleChange = useCallback(
-    (nextRole: string) => {
-      if (!selectedTeam) {
-        return;
-      }
-      if (nextRole !== "leader" && nextRole !== "worker") {
-        return;
-      }
-      const role = nextRole as TeamMemberRole;
-      const roleOption = teamMemberRoleOptions.find((option) => option.value === role);
-      if (!roleOption || roleOption.disabled) {
-        return;
-      }
-      const defaults = resolveTeamForgeDefaults({
-        teamName: selectedTeam.name,
-        teamSpec: selectedTeam.spec,
-        role,
-        workerCount: selectedTeamWorkerCount,
-        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
-        agentPresetId: forgeAgentPresetId,
-        promptDefaults: teamPromptDefaults,
-      });
-      setError(null);
-      setWarning(null);
-      setTeamMemberDraft(defaults.draft);
-      setForgeAgentName(defaults.agentName);
-      setForgeAgentWorktreeMode(defaults.worktreeMode);
-      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
-      setForgeAgentWorktreeRef(defaults.worktreeRef);
-      setForgeAgentWorktreeError(null);
-      setForgeAgentWorkdir(defaults.agentWorkdir);
-    },
-    [
-      forgeAgentPresetId,
-      forgeDefaultWorktreeRoot,
-      selectedTeam,
-      selectedTeamWorkerCount,
-      teamPromptDefaults,
-      setError,
-      setWarning,
-      setForgeAgentName,
-      setForgeAgentWorkdir,
-      setForgeAgentWorktreeError,
-      setForgeAgentWorktreeMode,
-      setForgeAgentWorktreeRef,
-      setForgeAgentWorktreeRepo,
-      teamMemberRoleOptions,
-    ]
-  );
-
-  const closeTeamMemberForgeModal = useCallback(() => {
-    if (forgeAgentBusy) {
-      return;
-    }
-    setShowForgeAgentForm(false);
-    setForgeAgentWorktreeError(null);
-    setTeamMemberDraft(null);
-  }, [forgeAgentBusy, setShowForgeAgentForm, setForgeAgentWorktreeError]);
-
-  const openTeamMemberEditModal = useCallback(() => {
-    if (!selectedTeam || !selectedAgentWorkspaceMemberId) {
-      setError("Select an agent first");
-      return;
-    }
-    const draft = buildTeamMemberDraftFromSpec(
-      selectedTeam.spec,
-      selectedAgentWorkspaceMemberId,
-      teamMemberAgentsById[selectedAgentWorkspaceMemberId] ?? null,
-      teamPromptDefaults
-    );
-    if (!draft) {
-      setError("Unable to load the selected agent profile");
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setTeamMemberEditDraft(draft);
-    setShowTeamMemberEditModal(true);
-  }, [
-    teamPromptDefaults,
-    selectedAgentWorkspaceMemberId,
-    selectedTeam,
-    setError,
-    setWarning,
-    teamMemberAgentsById,
-  ]);
-
-  const closeTeamMemberEditModal = useCallback(() => {
-    if (busy === "save-team-member-profile") {
-      return;
-    }
-    setShowTeamMemberEditModal(false);
-    setTeamMemberEditDraft(null);
-  }, [busy]);
-
-  const refreshTeamRuntime = useCallback(
-    async (teamId: string, options?: { apply?: boolean }) => {
-      const runtime = await api.getTeamRuntime(props.token, teamId);
-      if (options?.apply !== false) {
-        setTeamRuntimeByTeamId((prev) => ({ ...prev, [teamId]: runtime }));
-      }
-      return runtime;
-    },
-    [props.token]
-  );
-  const applyOptimisticTeamRuntime = useCallback(
-    (
-      teamId: string,
-      teamName: string,
-      runtime: Awaited<ReturnType<typeof api.startTeam>>,
-      memberStatuses: TeamMemberAgentStatus[]
-    ) => {
-      setTeamRuntimeByTeamId((prev) => {
-        const previousRuntime = prev[teamId];
-        const optimisticRuntime = updateCachedTeamRuntimeStatus(
-          previousRuntime,
-          teamId,
-          teamName,
-          runtime.status as TeamRuntimeRecord["status"],
-          runtime.members,
-          (sessionStatus) => {
-            if (runtime.status !== "running") {
-              return sessionStatus ?? undefined;
-            }
-            return "running";
-          },
-          memberStatuses
-        );
-        if (!optimisticRuntime) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [teamId]: optimisticRuntime,
-        };
-      });
-    },
-    []
-  );
-
-  const onCreateForgeAgent = async () => {
-    if (forgeAgentBusy) {
-      return;
-    }
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    if (!teamMemberDraft) {
-      setError("Open Add Agent first");
-      return;
-    }
-
-    const isLeaderRole = teamMemberDraft.role === "leader";
-    const effectiveWorktreeMode = isLeaderRole ? "use_existing" : forgeAgentWorktreeMode;
-    const effectiveWorktreeRepo = isLeaderRole ? "" : forgeAgentWorktreeRepo.trim();
-    const effectiveWorktreeRef = isLeaderRole ? "" : forgeAgentWorktreeRef.trim();
-    const normalizedRoot =
-      normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
-    const name = forgeAgentName.trim() || "agent";
-    const workdirInput = normalizeWorkdirInput(forgeAgentWorkdir);
-    const workdir =
-      isLeaderRole && !workdirInput
-        ? buildLeaderForgeDefaultWorkdir(normalizedRoot, name)
-        : workdirInput;
-    const workdirPayload =
-      effectiveWorktreeMode === "create_worktree" &&
-      normalizedRoot &&
-      workdir === normalizedRoot
-        ? ""
-        : workdir;
-
-    if (!workdirPayload && effectiveWorktreeMode !== "create_worktree") {
-      setError("Agent workdir is required");
-      return;
-    }
-    if (effectiveWorktreeMode !== "use_existing" && !effectiveWorktreeRepo) {
-      setError("Worktree repo is required");
-      return;
-    }
-
-    setForgeAgentBusy(true);
-    setError(null);
-    setForgeAgentWorktreeError(null);
-    try {
-      const preset = getAgentPreset(forgeAgentPresetId);
-      const created = await api.createAgent(props.token, {
-        name,
-        workdir: workdirPayload,
-        command: preset.command,
-        args: preset.args.slice(),
-        source: AGENT_SOURCE_TEAM_FORGE,
-        worktree_mode: effectiveWorktreeMode,
-        worktree_repo: effectiveWorktreeRepo || null,
-        worktree_ref: effectiveWorktreeRef || null,
-        code_mode: forgeAgentCodeMode,
-      });
-      const nextSpec = appendTeamMemberToSpec(
-        selectedTeam.spec,
-        { ...teamMemberDraft, member_id: created.id },
-        created,
-        teamPromptDefaults
-      );
-      const updated = await api.updateTeamSpec(props.token, selectedTeam.id, {
-        spec: nextSpec,
-        expected_updated_at: selectedTeam.updated_at,
-      });
-      setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
-      setTeams((prev) =>
-        [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
-          left.name.localeCompare(right.name)
-        )
-      );
-      setSelectedTeamId(updated.id);
-      setShowForgeAgentForm(false);
-      setForgeAgentWorktreeError(null);
-      setTeamMemberDraft(null);
-      void refreshTeamRuntime(updated.id).catch(() => undefined);
-    } catch (err) {
-      const hint = formatTeamForgeWorktreeError(err);
-      setForgeAgentWorktreeError(hint);
-      setError(hint ?? parseErrorMessage(err));
-    } finally {
-      setForgeAgentBusy(false);
-    }
-  };
-
-  const onSaveTeamMemberProfile = useCallback(async () => {
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    if (!teamMemberEditDraft) {
-      setError("Open Edit Profile first");
-      return;
-    }
-    setBusy("save-team-member-profile");
-    setError(null);
-    setWarning(null);
-    try {
-      const nextSpec = updateTeamMemberProfileInSpec(
-        selectedTeam.spec,
-        teamMemberEditDraft,
-        teamPromptDefaults
-      );
-      const updated = await api.updateTeamSpec(props.token, selectedTeam.id, {
-        spec: nextSpec,
-        expected_updated_at: selectedTeam.updated_at,
-      });
-      const idleSeconds = teamMemberEditDraft.agent_loop_idle_seconds.trim();
-      const parsedIdleSeconds = Number.parseInt(idleSeconds, 10);
-      const loopPayload = {
-        enabled: teamMemberEditDraft.agent_loop_enabled,
-        idle_seconds:
-          teamMemberEditDraft.agent_loop_enabled &&
-          idleSeconds !== "" &&
-          Number.isFinite(parsedIdleSeconds)
-            ? parsedIdleSeconds
-            : null,
-        prompt:
-          teamMemberEditDraft.agent_loop_enabled && teamMemberEditDraft.agent_loop_prompt.trim()
-            ? teamMemberEditDraft.agent_loop_prompt.trim()
-            : null,
-      };
-      try {
-        await api.setAgentLoop(props.token, teamMemberEditDraft.member_id, loopPayload);
-        setAgents((prev) =>
-          prev.map((agent) =>
-            agent.id === teamMemberEditDraft.member_id
-              ? {
-                  ...agent,
-                  agent_loop_enabled: loopPayload.enabled,
-                  agent_loop_idle_seconds: loopPayload.idle_seconds,
-                  agent_loop_prompt: loopPayload.prompt,
-                }
-              : agent
-          )
-        );
-        setTeamMemberAgentsById((prev) => ({
-          ...prev,
-          [teamMemberEditDraft.member_id]: prev[teamMemberEditDraft.member_id]
-            ? {
-                ...prev[teamMemberEditDraft.member_id],
-                agent_loop_enabled: loopPayload.enabled,
-                agent_loop_idle_seconds: loopPayload.idle_seconds,
-                agent_loop_prompt: loopPayload.prompt,
-              }
-            : prev[teamMemberEditDraft.member_id],
-        }));
-      } catch (loopErr) {
-        setWarning(
-          `Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`
-        );
-      }
-      setTeams((prev) =>
-        [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
-          left.name.localeCompare(right.name)
-        )
-      );
-      setSelectedTeamId(updated.id);
-      setShowTeamMemberEditModal(false);
-      setTeamMemberEditDraft(null);
-      void refreshTeamRuntime(updated.id).catch(() => undefined);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    props.token,
-    refreshTeamRuntime,
-    selectedTeam,
-    setBusy,
-    setError,
-    setWarning,
-    teamPromptDefaults,
-    teamMemberEditDraft,
-  ]);
-
-  const onCreateTeam = async () => {
-    const name = newTeamName.trim();
-    if (!name) {
-      setError("Team name is required");
-      return;
-    }
-    setBusy("create-team");
-    setError(null);
-    setWarning(null);
-    try {
-      const created = await api.createTeam(props.token, {
-        name,
-        description: newTeamDescription.trim() || undefined,
-        spec: buildEmptyTeamSpec(),
-      });
-      setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      clearTeamCreateDraft();
-      resetTeamDraft();
-      setShowCreateTeamModal(false);
-      navigateToTeamDetail(created.id);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onDeleteTeam = async () => {
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    const confirmed = window.confirm(
-      `Delete team "${selectedTeam.name}" and all associated runs/events/messages?`
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setBusy("delete-team");
-    setError(null);
-    try {
-      await api.deleteTeam(props.token, selectedTeam.id);
-
-      const remainingTeams = teams.filter((team) => team.id !== selectedTeam.id);
-      const remainingRuns = runs.filter((run) => run.team_id !== selectedTeam.id);
-
-      setTeams(remainingTeams);
-      setRuns(remainingRuns);
-      setTeamRunBrowserByTeam((prev) => {
-        const next = { ...prev };
-        delete next[selectedTeam.id];
-        return next;
-      });
-      setSelectedTeamId((current) => (current === selectedTeam.id ? null : current));
-      setActiveRunId((current) =>
-        current && remainingRuns.some((run) => run.id === current) ? current : null
-      );
-      setRunLookupId("");
-      setTeamSelectorFilter("");
-      navigateToTeamSelector();
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const onRunStatusFilterChange = useCallback(
     (nextFilter: TeamRunStatusFilter) => {
       if (!effectiveSelectedTeamId) return;
@@ -2729,6 +2236,90 @@ export function TeamPage(props: TeamPageProps) {
       ),
     [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
   );
+  const {
+    openCreateTeamModal,
+    closeCreateTeamModal,
+    openTeamMemberForgeModal,
+    handleTeamMemberRoleChange,
+    closeTeamMemberForgeModal,
+    openTeamMemberEditModal,
+    closeTeamMemberEditModal,
+    refreshTeamRuntime,
+    onCreateForgeAgent,
+    onSaveTeamMemberProfile,
+    onCreateTeam,
+    onDeleteTeam,
+    onStartSelectedTeamAgent,
+    onStopSelectedTeamAgent,
+    onDeleteSelectedTeamAgent,
+    onForceNewTeamMemberSession,
+    onStartTeamRuntime,
+    onStopTeamRuntime,
+  } = useTeamManagementActions({
+    token: props.token,
+    busy,
+    teams,
+    runs,
+    selectedTeam,
+    selectedTeamId,
+    selectedTeamHasLeader,
+    selectedTeamHasConfiguredMembers,
+    selectedTeamWorkerCount,
+    selectedTeamMemberStatuses,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceAgent,
+    selectedAgentLabel,
+    newTeamName,
+    newTeamDescription,
+    teamMemberDraft,
+    teamMemberEditDraft,
+    teamMemberRoleOptions,
+    teamPromptDefaults,
+    forgeDefaultWorktreeRoot,
+    forgeAgentName,
+    forgeAgentWorkdir,
+    forgeAgentPresetId,
+    forgeAgentWorktreeMode,
+    forgeAgentWorktreeRepo,
+    forgeAgentWorktreeRef,
+    forgeAgentCodeMode,
+    forgeAgentBusy,
+    patchTeamCreate,
+    resetTeamDraft,
+    refreshTeams,
+    refreshAgents,
+    navigateToTeamDetail,
+    navigateToTeamSelector,
+    setError,
+    setWarning,
+    setBusy,
+    setAgents,
+    setTeams,
+    setSelectedTeamId,
+    setRuns,
+    setTeamRunBrowserByTeam,
+    setActiveRunId,
+    setRunLookupId,
+    setTeamSelectorFilter,
+    setTeamMemberDraft,
+    setTeamMemberEditDraft,
+    setShowTeamMemberEditModal,
+    setTeamRuntimeByTeamId,
+    setShowCreateTeamModal,
+    setShowForgeAgentForm,
+    setForgeAgentName,
+    setForgeAgentWorkdir,
+    setForgeAgentPresetId,
+    setForgeAgentWorktreeMode,
+    setForgeAgentWorktreeRepo,
+    setForgeAgentWorktreeRef,
+    setForgeAgentCodeMode,
+    setForgeAgentWorktreeError,
+    setForgeAgentBusy,
+    setTeamMemberAgentsById,
+    setMemberDiscoveryCardsById,
+    setMemberDiscoveryCardLoadingById,
+  });
   const selectedAgentSpecDraft = useMemo(() => {
     if (!selectedTeam) {
       return null;
@@ -3098,154 +2689,6 @@ export function TeamPage(props: TeamPageProps) {
       setError(parseErrorMessage(err));
     }
   }, [loadMemberEvents, props.token, selectedAgentWorkspaceAgent]);
-  const onForceNewTeamMemberSession = useCallback(async () => {
-    if (!props.token || !selectedTeamId || !selectedAgentWorkspaceMemberId) {
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setBusy("force-new-session");
-    try {
-      const runtime = await api.forceTeamMemberNewSession(
-        props.token,
-        selectedTeamId,
-        selectedAgentWorkspaceMemberId
-      );
-      void Promise.all([
-        refreshTeamRuntime(selectedTeamId),
-        refreshAgents(),
-      ]).catch(() => undefined);
-      setWarning(formatTeamRuntimeActionSummary("force", runtime.members));
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    selectedAgentWorkspaceMemberId,
-    selectedTeamId,
-    setBusy,
-    setError,
-    setWarning,
-  ]);
-  const onStartSelectedTeamAgent = useCallback(async () => {
-    if (!props.token || !selectedAgentWorkspaceAgent) {
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setBusy("start-team-member-agent");
-    try {
-      await api.startAgent(props.token, selectedAgentWorkspaceAgent.id);
-      void Promise.all([
-        refreshAgents(),
-        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
-      ]).catch(() => undefined);
-      setWarning(`Started ${selectedAgentLabel}.`);
-    } catch (err) {
-      const message = parseErrorMessage(err);
-      if (message.toLowerCase().includes("agent already running")) {
-        void Promise.all([
-          refreshAgents(),
-          selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
-        ]).catch(() => undefined);
-        setWarning(`${selectedAgentLabel} is already running.`);
-        return;
-      }
-      setError(message);
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    selectedAgentLabel,
-    selectedAgentWorkspaceAgent,
-    selectedTeamId,
-    setBusy,
-    setError,
-    setWarning,
-  ]);
-  const onStopSelectedTeamAgent = useCallback(async () => {
-    if (!props.token || !selectedAgentWorkspaceAgent) {
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setBusy("stop-team-member-agent");
-    try {
-      await api.stopAgent(props.token, selectedAgentWorkspaceAgent.id);
-      void Promise.all([
-        refreshAgents(),
-        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
-      ]).catch(() => undefined);
-      setWarning(`Stopped ${selectedAgentLabel}.`);
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    selectedAgentLabel,
-    selectedAgentWorkspaceAgent,
-    selectedTeamId,
-    setBusy,
-    setError,
-    setWarning,
-  ]);
-  const onDeleteSelectedTeamAgent = useCallback(async () => {
-    if (!props.token || !selectedAgentWorkspaceAgent || !selectedAgentWorkspaceMemberId) {
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setBusy("delete-team-member-agent");
-    try {
-      await api.deleteAgent(props.token, selectedAgentWorkspaceAgent.id);
-      setAgents((prev) =>
-        prev.filter((agent) => agent.id !== selectedAgentWorkspaceAgent.id)
-      );
-      setTeamMemberAgentsById((prev) => ({
-        ...prev,
-        [selectedAgentWorkspaceMemberId]: null,
-      }));
-      setMemberDiscoveryCardsById((prev) => {
-        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
-      });
-      setMemberDiscoveryCardLoadingById((prev) => {
-        return removeTeamMemberLookupEntry(prev, selectedAgentWorkspaceMemberId);
-      });
-      void Promise.all([
-        refreshAgents(),
-        selectedTeamId ? refreshTeamRuntime(selectedTeamId) : Promise.resolve(null),
-      ]).catch(() => undefined);
-      setWarning(
-        `Deleted ${selectedAgentLabel}. The Team member remains in the spec until you edit the profile.`
-      );
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    selectedAgentLabel,
-    selectedAgentWorkspaceAgent,
-    selectedAgentWorkspaceMemberId,
-    selectedTeamId,
-    setBusy,
-    setError,
-    setWarning,
-  ]);
   const selectedAgentControlState = useMemo(
     () =>
       resolveTeamMemberAgentControlState(
@@ -3293,88 +2736,6 @@ export function TeamPage(props: TeamPageProps) {
       setError(parseErrorMessage(err));
     },
   });
-  const onStartTeamRuntime = useCallback(async () => {
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    if (!selectedTeamHasConfiguredMembers) {
-      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
-      return;
-    }
-    setBusy("start-team");
-    setError(null);
-    setWarning(null);
-    try {
-      const runtime = await api.startTeam(props.token, selectedTeam.id);
-      applyOptimisticTeamRuntime(
-        selectedTeam.id,
-        selectedTeam.name,
-        runtime,
-        selectedTeamMemberStatuses
-      );
-      void Promise.all([refreshTeams(), refreshAgents()]).catch((err) => {
-        setError(parseErrorMessage(err));
-      });
-      void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
-      setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    applyOptimisticTeamRuntime,
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    refreshTeams,
-    selectedTeamHasConfiguredMembers,
-    selectedTeamMemberStatuses,
-    selectedTeam,
-    setBusy,
-    setError,
-    setWarning,
-    teamExecutionBlockedReason,
-  ]);
-  const onStopTeamRuntime = useCallback(async () => {
-    if (!selectedTeam) {
-      setError("Select a team first");
-      return;
-    }
-    setBusy("stop-team");
-    setError(null);
-    setWarning(null);
-    try {
-      const runtime = await api.stopTeam(props.token, selectedTeam.id);
-      applyOptimisticTeamRuntime(
-        selectedTeam.id,
-        selectedTeam.name,
-        runtime,
-        selectedTeamMemberStatuses
-      );
-      void Promise.all([refreshTeams(), refreshAgents()]).catch((err) => {
-        setError(parseErrorMessage(err));
-      });
-      void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
-      setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
-    } catch (err) {
-      setError(parseErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }, [
-    applyOptimisticTeamRuntime,
-    props.token,
-    refreshAgents,
-    refreshTeamRuntime,
-    refreshTeams,
-    selectedTeamMemberStatuses,
-    selectedTeam,
-    setBusy,
-    setError,
-    setWarning,
-  ]);
   const onRefreshTasks = useCallback(async () => {
     if (!selectedTeamId) {
       setError("Select a team first");
