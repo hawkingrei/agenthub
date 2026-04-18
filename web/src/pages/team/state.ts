@@ -19,7 +19,7 @@ export type TeamTab =
 export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   { value: "conversation", label: "Conversation" },
   { value: "tasks", label: "Tasks" },
-  { value: "runs", label: "Runs" },
+  { value: "runs", label: "Execution Runs" },
   { value: "agent_acp", label: "Agent ACP" },
   { value: "overview", label: "Overview" },
   { value: "events", label: "Events" },

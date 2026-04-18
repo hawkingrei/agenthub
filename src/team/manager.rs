@@ -2133,44 +2133,89 @@ impl TeamManager {
         }))
     }
 
-    async fn write_runtime_state_snapshot_tx(
+    async fn prepare_runtime_state_snapshot_write_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, Sqlite>,
         owner: ContextArtifactOwner<'_>,
         continuity_mode: &str,
         continuity_state: &TeamMemberContinuityStateRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<RuntimeStateSnapshotWritePlan>> {
         let Some(workspace) =
             load_team_member_context_workspace_tx(tx, owner.team_id, owner.member_id).await?
         else {
-            return Ok(());
+            return Ok(None);
         };
 
-        let state_path = PathBuf::from(&workspace.runtime_workdir)
+        let workspace_root = PathBuf::from(&workspace.runtime_workdir);
+        let state_path = workspace_root
             .join(".cache")
             .join("context")
             .join("state.md");
-        if let Some(parent) = state_path.parent()
+        let continuity_note = continuity_note_relative_path(&continuity_state.source_run_id).map(
+            |relative_note_path| {
+                let note_path = workspace_root.join(relative_note_path);
+                let note_text =
+                    build_runtime_continuity_note_text(owner, continuity_mode, continuity_state);
+                (note_path, note_text)
+            },
+        );
+        let state_text =
+            build_runtime_state_snapshot_text(owner, continuity_mode, continuity_state);
+        Ok(Some(RuntimeStateSnapshotWritePlan {
+            team_id: owner.team_id.to_string(),
+            run_id: owner.run_id.to_string(),
+            member_id: owner.member_id.to_string(),
+            state_path,
+            state_text,
+            continuity_note,
+        }))
+    }
+
+    async fn write_runtime_state_snapshot_best_effort(
+        plan: RuntimeStateSnapshotWritePlan,
+    ) -> anyhow::Result<()> {
+        if let Some((note_path, note_text)) = plan.continuity_note.as_ref() {
+            if let Some(parent) = note_path.parent()
+                && let Err(err) = tokio::fs::create_dir_all(parent).await
+            {
+                tracing::warn!(
+                    team_id = plan.team_id,
+                    run_id = plan.run_id,
+                    member_id = plan.member_id,
+                    path = %note_path.display(),
+                    "team manager failed to create runtime continuity note dir: {}",
+                    err
+                );
+            } else if let Err(err) = tokio::fs::write(note_path, note_text).await {
+                tracing::warn!(
+                    team_id = plan.team_id,
+                    run_id = plan.run_id,
+                    member_id = plan.member_id,
+                    path = %note_path.display(),
+                    "team manager failed to write runtime continuity note: {}",
+                    err
+                );
+            }
+        }
+        if let Some(parent) = plan.state_path.parent()
             && let Err(err) = tokio::fs::create_dir_all(parent).await
         {
             tracing::warn!(
-                team_id = owner.team_id,
-                run_id = owner.run_id,
-                member_id = owner.member_id,
-                path = %state_path.display(),
+                team_id = plan.team_id,
+                run_id = plan.run_id,
+                member_id = plan.member_id,
+                path = %plan.state_path.display(),
                 "team manager failed to create runtime state snapshot dir: {}",
                 err
             );
             return Ok(());
         }
-        let state_text =
-            build_runtime_state_snapshot_text(owner, continuity_mode, continuity_state);
-        if let Err(err) = tokio::fs::write(&state_path, state_text).await {
+        if let Err(err) = tokio::fs::write(&plan.state_path, plan.state_text).await {
             tracing::warn!(
-                team_id = owner.team_id,
-                run_id = owner.run_id,
-                member_id = owner.member_id,
-                path = %state_path.display(),
+                team_id = plan.team_id,
+                run_id = plan.run_id,
+                member_id = plan.member_id,
+                path = %plan.state_path.display(),
                 "team manager failed to write runtime state snapshot: {}",
                 err
             );
@@ -2847,6 +2892,7 @@ impl TeamManager {
         .execute(&mut *tx)
         .await?;
         let step = load_step_record_tx(&mut tx, step_id).await?;
+        let mut runtime_state_snapshot: Option<RuntimeStateSnapshotWritePlan> = None;
 
         if update.rows_affected() > 0 {
             let mut round_artifact_pointer = None;
@@ -2971,18 +3017,19 @@ impl TeamManager {
                 updated_at: now,
             };
             Self::upsert_member_continuity_state_tx(&mut tx, &continuity_state).await?;
-            self.write_runtime_state_snapshot_tx(
-                &mut tx,
-                ContextArtifactOwner {
-                    team_id: &team_id,
-                    run_id: &step.run_id,
-                    member_id: &step.member_id,
-                    session_id: step.runtime_handle_id.as_deref(),
-                },
-                &continuity_mode,
-                &continuity_state,
-            )
-            .await?;
+            runtime_state_snapshot = self
+                .prepare_runtime_state_snapshot_write_tx(
+                    &mut tx,
+                    ContextArtifactOwner {
+                        team_id: &team_id,
+                        run_id: &step.run_id,
+                        member_id: &step.member_id,
+                        session_id: step.runtime_handle_id.as_deref(),
+                    },
+                    &continuity_mode,
+                    &continuity_state,
+                )
+                .await?;
 
             let mut continuity_payload = build_continuity_event_payload(
                 &continuity_state,
@@ -3097,6 +3144,9 @@ impl TeamManager {
         }
 
         tx.commit().await?;
+        if let Some(plan) = runtime_state_snapshot {
+            Self::write_runtime_state_snapshot_best_effort(plan).await?;
+        }
         Ok(step)
     }
 
@@ -4697,6 +4747,16 @@ struct ContextArtifactOwner<'a> {
     session_id: Option<&'a str>,
 }
 
+#[derive(Debug, Clone)]
+struct RuntimeStateSnapshotWritePlan {
+    team_id: String,
+    run_id: String,
+    member_id: String,
+    state_path: PathBuf,
+    state_text: String,
+    continuity_note: Option<(PathBuf, String)>,
+}
+
 fn build_runtime_state_snapshot_text(
     owner: ContextArtifactOwner<'_>,
     continuity_mode: &str,
@@ -4708,14 +4768,16 @@ fn build_runtime_state_snapshot_text(
         format!("- updated_at: {}", continuity_state.updated_at),
         format!("- team_id: {}", owner.team_id),
         format!("- member_id: {}", owner.member_id),
-        format!("- current_run_id: {}", owner.run_id),
+        format!("- current_execution_run_id: {}", owner.run_id),
         format!("- continuity_mode: {continuity_mode}"),
         format!(
-            "- continuity_source_run_id: {}",
+            "- continuity_source_execution_run_id: {}",
             continuity_state.source_run_id
         ),
-        format!("- continuity_summary: {}", continuity_state.summary_text),
     ];
+    if let Some(note_path) = continuity_note_relative_path(&continuity_state.source_run_id) {
+        lines.push(format!("- continuity_note_path: {note_path}"));
+    }
     if let Some(artifact_path) = continuity_state
         .history_window
         .get("artifact_pointer")
@@ -4727,6 +4789,57 @@ fn build_runtime_state_snapshot_text(
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn build_runtime_continuity_note_text(
+    owner: ContextArtifactOwner<'_>,
+    continuity_mode: &str,
+    continuity_state: &TeamMemberContinuityStateRecord,
+) -> String {
+    let history_window = serde_json::to_string_pretty(&continuity_state.history_window)
+        .unwrap_or_else(|_| continuity_state.history_window.to_string());
+    let mut lines = vec![
+        "# Team Continuity Note".to_string(),
+        String::new(),
+        format!("- updated_at: {}", continuity_state.updated_at),
+        format!("- team_id: {}", owner.team_id),
+        format!("- member_id: {}", owner.member_id),
+        format!("- current_execution_run_id: {}", owner.run_id),
+        format!(
+            "- continuity_source_execution_run_id: {}",
+            continuity_state.source_run_id
+        ),
+        format!("- continuity_mode: {continuity_mode}"),
+    ];
+    if let Some(artifact_path) = continuity_state
+        .history_window
+        .get("artifact_pointer")
+        .and_then(extract_context_artifact_path)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        lines.push(format!("- continuity_artifact_path: {artifact_path}"));
+    }
+    lines.extend([
+        String::new(),
+        "## Summary".to_string(),
+        continuity_state.summary_text.clone(),
+        String::new(),
+        "## History Window".to_string(),
+        "````json".to_string(),
+        history_window,
+        "````".to_string(),
+        String::new(),
+    ]);
+    lines.join("\n")
+}
+
+fn continuity_note_relative_path(source_run_id: &str) -> Option<String> {
+    let source_run_id = source_run_id.trim();
+    if source_run_id.is_empty() {
+        return None;
+    }
+    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
 }
 
 fn extract_context_artifact_path(value: &Value) -> Option<&str> {

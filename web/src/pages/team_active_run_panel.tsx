@@ -55,7 +55,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
             onClick={onCancel}
             disabled={busy === "cancel-run" || run.status === "canceled"}
           >
-            Cancel Run
+            Cancel Execution Run
           </ActionButton>
           <ActionButton
             tone="secondary"
@@ -68,7 +68,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
                 : "Resume is available for failed/canceled runs"
             }
           >
-            Resume Run
+            Resume Execution Run
           </ActionButton>
           <ActionButton
             tone="secondary"
@@ -81,13 +81,13 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
                 : "Restart is available for completed/failed/canceled runs"
             }
           >
-            Restart Run
+            Restart Execution Run
           </ActionButton>
         </div>
       </ToolbarRow>
       <div className="mt-3 grid min-w-0 gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
         <span className={metaItemClassName}>
-          <strong>ID:</strong> <code>{run.id}</code>
+          <strong>Execution run:</strong> <code>{run.id}</code>
         </span>
         <span className={metaItemClassName}>
           <strong>Execution status:</strong>{" "}

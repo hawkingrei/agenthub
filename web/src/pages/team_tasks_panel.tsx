@@ -497,7 +497,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 <>
                   <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div className={TASKS_DETAIL_META_ITEM_CLASS}>
-                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Run</strong>
+                      <strong className="text-[9px] font-bold uppercase tracking-widest text-notion-text-muted">Execution run</strong>
                       <div className="mono mt-1 text-[11px] text-notion-text">{latestRun.id}</div>
                     </div>
                     <div className={TASKS_DETAIL_META_ITEM_CLASS}>
@@ -521,7 +521,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <ActionButton tone="secondary" size="md" onClick={() => onOpenRun(latestRun.id)}>
-                      Open Run
+                      Open Execution Run
                     </ActionButton>
                   </div>
                 </>

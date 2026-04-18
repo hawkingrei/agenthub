@@ -3733,9 +3733,9 @@ export function TeamPage(props: TeamPageProps) {
 
               {showNoActiveRunNotice && (
                 <div className={teamSectionCardClassName}>
-                  <h3 className={teamSectionTitleClassName}>No Active Run</h3>
+                  <h3 className={teamSectionTitleClassName}>No Active Execution Run</h3>
                   <p className={teamSectionBodyTextClassName}>
-                    Select an existing run or start one in the Runs tab before opening this panel.
+                    Select an existing execution run or start one in the Execution Runs tab before opening this panel.
                   </p>
                   <div className="mt-3">
                     <ActionButton
@@ -3744,7 +3744,7 @@ export function TeamPage(props: TeamPageProps) {
                       className={panelSecondaryButtonClassName}
                       onClick={() => setTab("runs")}
                     >
-                      Go to Runs
+                      Go to Execution Runs
                     </ActionButton>
                   </div>
                 </div>
@@ -3875,7 +3875,7 @@ export function TeamPage(props: TeamPageProps) {
                       </h3>
                       <p className={teamSectionBodyTextClassName}>
                         {isAgentWorkspace
-                          ? "This agent is selected, but there is no active run context for its direct thread yet. Use Runs to inspect execution history or wait for the next task."
+                          ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
                           : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."}
                       </p>
                       <div className="mt-3">
@@ -3885,7 +3885,7 @@ export function TeamPage(props: TeamPageProps) {
                           className={panelSecondaryButtonClassName}
                           onClick={() => setTab("runs")}
                         >
-                          Go to Runs
+                          Go to Execution Runs
                         </ActionButton>
                       </div>
                     </div>
@@ -3983,7 +3983,7 @@ export function TeamPage(props: TeamPageProps) {
                         <TeamRunRequiredPanel
                           chrome={teamDebugChrome}
                           title="Step Ops"
-                          body="Step operations require an active run. Start or select one in the Runs tab first."
+                          body="Step operations require an active execution run. Start or select one in the Execution Runs tab first."
                           onGoToRuns={() => setTab("runs")}
                         />
                       )}
@@ -4028,7 +4028,7 @@ export function TeamPage(props: TeamPageProps) {
                         <TeamRunRequiredPanel
                           chrome={teamDebugChrome}
                           title="Mailbox Raw"
-                          body="Mailbox raw operations require an active run. Start or select one in the Runs tab first."
+                          body="Mailbox raw operations require an active execution run. Start or select one in the Execution Runs tab first."
                           onGoToRuns={() => setTab("runs")}
                         />
                       )}

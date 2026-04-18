@@ -791,7 +791,7 @@ describe("TeamPage smoke render", () => {
         button.textContent?.replace(/\s+/g, " ").trim() ?? ""
       );
       expect(buttonLabels).toContain("More");
-      expect(buttonLabels).not.toContain("Runs");
+      expect(buttonLabels).not.toContain("Execution Runs");
     } finally {
       act(() => {
         root.unmount();

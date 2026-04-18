@@ -1585,7 +1585,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Mobile");
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
 
   await expect(page.locator(".teams-main").getByText("Team Mobile", { exact: true })).toBeVisible();
 
@@ -1781,7 +1781,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   await page.setViewportSize({ width: 1366, height: 900 });
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team Desktop");
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await expect(page.locator(".teams-main").getByText("Team Desktop", { exact: true })).toBeVisible();
   await openAdvancedView(page, "Overview");
   await expect(page.locator(".teams-member-list .team-member-row")).toHaveCount(3);
@@ -2199,7 +2199,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     .fill('{"objective":"daily rebalance + crypto hedge","risk_limit":"max_dd_5pct"}');
   await page.getByRole("button", { name: "Create Run", exact: true }).click();
 
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(
     "quant-run-1"
   );
@@ -2735,7 +2735,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await expect(page.locator(".teams-run-list .team-item").first()).toContainText(runId);
   expect(createRunRequests).toHaveLength(1);
   expect(createRunRequests[0]).toMatchObject({
@@ -2765,7 +2765,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
   await expect(page.locator(".teams-step-body")).not.toContainText("Loading discovery card...");
   await expect(page.locator(".teams-step-body")).toContainText("acp_gemini");
 
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await openAdvancedView(page, "Events");
   await expect(page.locator(".teams-event-list")).toContainText(
     "Final deliverable prepared and returned to user."
@@ -3306,7 +3306,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .fill('{"type":"chat_message","text":"advanced-mailbox-ping"}');
   await advancedPanel.getByRole("button", { name: "Send Message" }).click();
 
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await openAdvancedView(page, "Overview");
   await page
     .locator(".teams-member-list .team-member-row", { hasText: "Worker Agent Two (worker)" })
@@ -3348,7 +3348,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   await expect(page.locator(".team-item", { hasText: "Team Delete A" })).toBeVisible();
   await expect(page.locator(".team-item", { hasText: "Team Delete B" })).toBeVisible();
   await openTeamFromSelector(page, "Team Delete A");
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
   await expect(page.locator(".teams-main").getByText("Team Delete A", { exact: true })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
@@ -3424,7 +3424,7 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
 
   await gotoTeams(page);
   await openTeamFromSelector(page, "Team A");
-  await openMainTeamAction(page, "Runs");
+  await openMainTeamAction(page, "Execution Runs");
 
   const runFilter = page.getByLabel("Run status filter");
   await expect(runFilter).toHaveValue("all");
