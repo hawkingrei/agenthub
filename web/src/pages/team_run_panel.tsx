@@ -123,10 +123,10 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
               void onStartRun();
             }}
             disabled={busy === "create-run" || !selectedTeamId || !canStartRun}
-            title={runBlockedReason ?? "Start a new run"}
-            aria-label="Start run"
+            title={runBlockedReason ?? "Start a new execution run"}
+            aria-label="Start execution run"
           >
-            {busy === "create-run" ? "Starting..." : "Start Run"}
+            {busy === "create-run" ? "Starting..." : "Start Execution Run"}
           </ActionButton>
         </ToolbarRow>
 

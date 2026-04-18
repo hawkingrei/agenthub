@@ -813,7 +813,7 @@ describe("team panels interactions", () => {
     );
 
     clickElement(findButtonByText(container, "Delete Team"));
-    clickElement(findButtonByText(container, "Start Run"));
+    clickElement(findButtonByText(container, "Start Execution Run"));
     clickElement(findButtonByAriaLabel(container, "Refresh runs"));
     clickElement(required(container.querySelector(".teams-run-list .team-item"), "run list item missing"));
     clickElement(findButtonByText(container, "Load More"));
@@ -824,6 +824,9 @@ describe("team panels interactions", () => {
     expect(onRefreshRuns).toHaveBeenCalledTimes(1);
     expect(onActiveRunChange).toHaveBeenCalledWith("run-1");
     expect(onLoadMoreRuns).toHaveBeenCalledTimes(1);
+    expect(
+      findButtonByAriaLabel(container, "Start execution run").getAttribute("title")
+    ).toBe("Start a new execution run");
 
     act(() => {
       root.render(
@@ -862,6 +865,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain(
       "Concrete execution history and replay partitions for this team."
     );
+    expect(
+      findButtonByAriaLabel(container, "Start execution run").getAttribute("title")
+    ).toBe("Add at least one agent before starting the team runtime or a run.");
   });
 
   it("TeamSidebar hides selector controls in detail mode", () => {
@@ -949,7 +955,7 @@ describe("team panels interactions", () => {
       "Add at least one agent before starting the team runtime or a run."
     );
     expect(container.textContent).not.toContain("Debug → Run Ops");
-    expect(container.textContent).toContain("Start Run");
+    expect(container.textContent).toContain("Start Execution Run");
     expect(container.textContent).not.toContain("Create Run");
     expect(container.querySelector('textarea[aria-label="Run input JSON"]')).toBeNull();
   });
@@ -1006,9 +1012,13 @@ describe("team panels interactions", () => {
     });
 
     expect(container.textContent).toContain("Active Execution Run");
+    expect(container.textContent).toContain("Execution status:");
     expect(container.textContent).toContain("run-1");
     expect(container.textContent).toContain("ctx-1");
-    clickElement(findButtonByAriaLabel(container, "Refresh active run"));
+    expect(
+      findButtonByAriaLabel(container, "Refresh active execution run").getAttribute("title")
+    ).toBe("Refresh active execution run");
+    clickElement(findButtonByAriaLabel(container, "Refresh active execution run"));
     clickElement(findButtonByText(container, "Cancel Run"));
     clickElement(findButtonByText(container, "Resume Run"));
     clickElement(findButtonByText(container, "Restart Run"));
@@ -3771,7 +3781,7 @@ describe("team panels interactions", () => {
     );
     expect(container.textContent).toContain("Open thread");
     expect(container.textContent).toContain("Open # all");
-    expect(container.textContent).toContain("Latest run");
+    expect(container.textContent).toContain("Latest execution run");
     expect(container.textContent).toContain("Shipped the rollout summary.");
     expect(container.textContent).toContain("Task context");
   });
@@ -3994,8 +4004,8 @@ describe("team panels interactions", () => {
             runs={[
               buildRun({
                 id: "run-2",
-                status: "completed",
-                summary: "Latest run summary.",
+                status: "failed",
+                summary: "",
                 input: { task_id: "task-progress" },
                 created_at: 230,
                 started_at: 231,
@@ -4040,6 +4050,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No results.");
 
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
+    expect(container.textContent).toContain("Latest execution run");
+    expect(container.textContent).toContain("Latest execution run failed.");
     expect(container.textContent).toContain("Previous execution runs");
     expect(container.textContent).toContain("Earlier run failed.");
     expect(container.textContent).toContain("No summary recorded.");
@@ -4098,7 +4110,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Prepare rollout"));
 
     expect(container.textContent).toContain("Task detail");
-    expect(container.textContent).toContain("Latest run");
+    expect(container.textContent).toContain("Latest execution run");
     expect(container.querySelector('[aria-label="Back to Kanban"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Board lanes");
 
@@ -4111,6 +4123,56 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Board lanes");
     expect(container.textContent).not.toContain("Task detail");
+  });
+
+  it("TeamTasksPanel uses terminal fallback copy for canceled latest execution runs", () => {
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamTasksPanel
+            compactMode={false}
+            developerMode={false}
+            tasks={[
+              buildPanelTask("task-progress", {
+                title: "Prepare rollout",
+                status: "in_progress",
+              }),
+            ]}
+            tasksLoading={false}
+            selectedTaskId="task-progress"
+            onSelectedTaskIdChange={vi.fn()}
+            onRefreshTasks={vi.fn()}
+            onOpenConversation={vi.fn()}
+            busy={null}
+            runs={[
+              buildRun({
+                id: "run-9",
+                status: "canceled",
+                summary: "",
+                input: { task_id: "task-progress" },
+                created_at: 230,
+                started_at: 231,
+                ended_at: 240,
+              }),
+            ]}
+            onOpenRun={vi.fn()}
+            compilePreviewContextId=""
+            onCompilePreviewContextIdChange={vi.fn()}
+            onCompileTaskRunPreview={vi.fn()}
+            canCompileTask={false}
+            compiledRunPreview={null}
+            onUseCompiledRunPayload={vi.fn()}
+            onCreateRunFromCompiledPreview={vi.fn()}
+            formatTs={(ts) => `ts-${String(ts)}`}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            memberLiveStates={[]}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Latest execution run");
+    expect(container.textContent).toContain("Latest execution run was canceled.");
   });
 
   it("TeamTasksPanel covers compact reset, run warning tones, and debug disclosure toggles", () => {

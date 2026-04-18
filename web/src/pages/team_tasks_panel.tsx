@@ -470,13 +470,17 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
             <div className={TASKS_RUN_CARD_CLASS}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-notion-text">Latest run</p>
+                  <p className="text-sm font-bold text-notion-text">Latest execution run</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-notion-text-muted">
                     {latestRun
                       ? latestRun.summary?.trim() ||
                         (latestRun.status === "completed"
                           ? "Completed."
-                          : "Latest execution run is still in progress.")
+                          : latestRun.status === "failed"
+                            ? "Latest execution run failed."
+                            : latestRun.status === "canceled"
+                              ? "Latest execution run was canceled."
+                              : "Latest execution run is still in progress.")
                       : "No execution run recorded yet."}
                   </p>
                 </div>

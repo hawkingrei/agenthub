@@ -42,8 +42,8 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
           <ActionButton
             tone="secondary"
             size="sm"
-            title="Refresh active run"
-            aria-label="Refresh active run"
+            title="Refresh active execution run"
+            aria-label="Refresh active execution run"
             onClick={onRefresh}
           >
             <i className="bi bi-arrow-clockwise" aria-hidden="true" />
@@ -90,7 +90,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
           <strong>ID:</strong> <code>{run.id}</code>
         </span>
         <span className={metaItemClassName}>
-          <strong>Execution:</strong>{" "}
+          <strong>Execution status:</strong>{" "}
           <StatusBadge
             label={run.status}
             tone={resolveTeamRunStatusTone(run.status)}
