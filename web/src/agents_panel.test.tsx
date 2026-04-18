@@ -106,6 +106,8 @@ describe("AgentsPanel", () => {
     expect(html).toContain("agents-workbench-row");
     expect(html).toContain("agents-workbench-name");
     expect(html).toContain("agents-workbench-row-badges");
+    expect(html).toContain("md:opacity-0");
+    expect(html).toContain("md:group-hover:opacity-100");
     expect(html).toContain("running");
   });
 

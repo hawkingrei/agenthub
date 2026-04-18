@@ -237,11 +237,12 @@ describe("TeamPage smoke render", () => {
             onLogout={() => {}}
             developerMode={false}
             routeTeamId={null}
+            routeSearch=""
           />
         </MantineProvider>
       );
 
-    expect(markup).toContain("Team Selector");
+    expect(markup).toContain("Teams");
     expect(markup).toContain("Choose a team");
     expect(markup).toContain("No teams yet.");
     expect(markup).not.toContain("Workspace Flow");
@@ -262,6 +263,7 @@ describe("TeamPage smoke render", () => {
             onLogout={() => {}}
             developerMode={false}
             routeTeamId="team-1"
+            routeSearch=""
           />
         </MantineProvider>
       );
@@ -783,7 +785,7 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
-      expect(container.querySelector("h1")).toBeNull();
+      expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
       expect(container.textContent).toContain("Shared channel for human requests");
       expect(container.textContent).not.toContain("Toggle agents section");

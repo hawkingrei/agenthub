@@ -2,7 +2,7 @@ import React, { Suspense } from "react";
 import { ErrorBanner } from "../error_banner";
 import { ConnectionBadge } from "../connection_status";
 import { AuthState } from "../types";
-import { ActionButton, IconButton } from "../ui/primitives";
+import { ActionButton } from "../ui/primitives";
 import {
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   APP_WORKBENCH_HEADER_CLASS,
@@ -21,8 +21,7 @@ import { AgentsWorkbenchProps } from "./agents_workbench_types";
 import { CreateAgentModalProps } from "./create_agent_modal";
 import { OutputHeaderProps } from "./output_header";
 import { PermissionModalProps } from "./permission_modal";
-import { WorkbenchConnectionBadge } from "./workbench_connection_badge";
-import { WorkbenchHeaderMenu } from "./workbench_header_menu";
+import { WorkspaceShellHeader } from "./workspace_shell_header";
 
 const LazyCreateAgentModal = React.lazy(async () => {
   const module = await import("./create_agent_modal");
@@ -108,37 +107,28 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
 }: AgentsRootPageProps) {
   return (
     <div className="app bg-white" ref={appRootRef}>
-      <header className={APP_WORKBENCH_HEADER_CLASS} ref={appHeaderRef}>
-        {auth ? (
-          <div className="session flex items-center gap-2 sm:gap-3">
-            <IconButton
-              className={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"}`}
-              onClick={agentsCollapsed ? onExpandAgents : onCollapseAgents}
-              title={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-label={agentsCollapsed ? "Show agents" : "Hide agents"}
-              aria-pressed={!agentsCollapsed}
-              tone={agentsCollapsed ? "default" : "active"}
-            >
-              <i
-                className={`bi ${agentsCollapsed ? "bi-layout-sidebar-inset" : "bi-layout-sidebar-inset-reverse"}`}
-                aria-hidden="true"
-              />
-            </IconButton>
-            <WorkbenchConnectionBadge
-              badge={connectionBadge}
-              className={APP_WORKBENCH_HEADER_STATUS_CLASS}
-            />
-            <WorkbenchHeaderMenu
-              active="agents"
-              username={auth.username}
-              isRoot={auth.role === "root"}
-              onLogout={onLogout}
-              onNavigate={navigateWorkbenchRoute}
-              buttonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
-            />
-          </div>
-        ) : null}
-      </header>
+      {auth ? (
+        <WorkspaceShellHeader
+          ref={appHeaderRef}
+          activeSurface="workspace"
+          title="Workspace"
+          subtitle={null}
+          sidebarToggleLabel={agentsCollapsed ? "Show agents" : "Hide agents"}
+          sidebarCollapsed={agentsCollapsed}
+          onToggleSidebar={agentsCollapsed ? onExpandAgents : onCollapseAgents}
+          connectionBadge={connectionBadge}
+          username={auth.username}
+          isRoot={auth.role === "root"}
+          headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
+          headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
+            agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
+          }`}
+          headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
+          menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+          onNavigate={navigateWorkbenchRoute}
+          onLogout={onLogout}
+        />
+      ) : null}
 
       {normalizedError ? (
         <ErrorBanner message={normalizedError} onClose={onClearError} />

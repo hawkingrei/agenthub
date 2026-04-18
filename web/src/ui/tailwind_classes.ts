@@ -507,16 +507,28 @@ export const ADMIN_VALUE_CLASS = "value break-all text-[14px] font-medium text-n
 export const ADMIN_EMPTY_TEXT_CLASS = "text-sm text-notion-text-muted italic py-4";
 
 export const APP_WORKBENCH_HEADER_CLASS =
-  "flex flex-wrap items-center justify-end gap-2 bg-white px-4 py-3 sm:gap-3 sm:px-6 sm:py-4 border-b border-notion-border";
+  "flex flex-wrap items-center justify-end gap-2 bg-white px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3 border-b border-notion-border";
 
 export const APP_WORKBENCH_HEADER_STATUS_CLASS =
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted shadow-sm transition hover:bg-notion-hover";
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-notion-border/70 bg-notion-sidebar/72 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-notion-text-muted transition hover:bg-notion-hover";
 
 export const APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text lg:hidden";
 
 export const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[13px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
+  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md border border-notion-border/75 bg-white px-2.5 text-[12px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
+
+export const WORKSPACE_SHELL_LENS_BAR_CLASS =
+  "flex min-w-0 flex-wrap items-center gap-1 rounded-[10px] bg-notion-sidebar/52 p-1";
+
+const WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS =
+  "inline-flex h-6 items-center justify-center rounded-md px-2 text-[11px] font-medium tracking-[0.01em] transition";
+
+export const WORKSPACE_SHELL_LENS_BUTTON_ACTIVE_CLASS =
+  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-notion-border/80 bg-white text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)]`;
+
+export const WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS =
+  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-transparent bg-transparent text-notion-text-muted hover:bg-white/72 hover:text-notion-text`;
 
 export const APP_WORKSPACE_ROOT_CLASS =
   "workspace flex min-h-0 w-full flex-1 flex-row items-stretch overflow-hidden";
@@ -559,11 +571,11 @@ export const AGENTS_PANEL_BACKDROP_CLASS =
 export const AGENTS_PANEL_BODY_CLASS =
   "agent-layout flex min-h-0 flex-1 flex-col overflow-hidden";
 
-export const AGENTS_TOOLBAR_CLASS = "mb-4 flex items-center justify-between px-2 pt-2";
+export const AGENTS_TOOLBAR_CLASS = "mb-2 flex items-center justify-between px-2 pt-1.5";
 export const AGENTS_TOOLBAR_ACTIONS_CLASS = "flex items-center gap-1.5";
 
 export const AGENTS_CREATE_BUTTON_CLASS =
-  "flex h-8 items-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-xs font-semibold text-notion-text shadow-sm transition hover:bg-notion-hover hover:text-notion-accent active:translate-y-px";
+  "flex h-7 items-center gap-1.5 rounded-md border border-notion-border/75 bg-white px-2.5 text-[11px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover hover:text-notion-accent active:translate-y-px";
 
 export const AGENTS_ROW_CLASS =
   "agents-workbench-row group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-transparent px-3 py-2.5 text-notion-text transition-all hover:bg-notion-hover/80";
@@ -685,13 +697,13 @@ export const TEAM_WORKBENCH_PANEL_CLASS =
   "shrink-0 rounded-xl border border-notion-border bg-white p-2 shadow-lg backdrop-blur-md";
 
 export const TEAM_WORKBENCH_HEADER_SHELL_CLASS =
-  "flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 sm:px-6 sm:py-4 border-b border-notion-border transition-all";
+  "flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-2.5 sm:px-6 sm:py-3 border-b border-notion-border transition-all";
 
 export const TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
 
 export const TEAM_WORKBENCH_HEADER_STATUS_CLASS =
-  "inline-flex items-center gap-1.5 rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
+  "inline-flex items-center gap-1.5 rounded-md border border-notion-border/70 bg-notion-sidebar/72 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-notion-text-muted transition hover:bg-notion-hover";
 
 export const TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS =
   "shrink-0 flex min-h-0 flex-col rounded-xl border border-notion-border bg-white px-4 py-3 shadow-sm transition-all";

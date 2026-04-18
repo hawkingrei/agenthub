@@ -24,6 +24,7 @@ describe("team route auth redirect", () => {
 
   it("redirects unauthenticated teams route to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
+    expect(shouldRedirectTeamsToLogin("/workspace/teams", null, null)).toBe(true);
     expect(
       shouldRedirectTeamsToLogin("/teams/run-1", null, "token-only")
     ).toBe(true);
@@ -50,6 +51,8 @@ describe("team route auth redirect", () => {
 
   it("does not affect non-team routes", () => {
     expect(shouldRedirectTeamsToLogin("/", null, null)).toBe(false);
+    expect(shouldRedirectTeamsToLogin("/workspace", null, null)).toBe(false);
+    expect(shouldRedirectTeamsToLogin("/workspace/agents/agent-1", null, null)).toBe(false);
     expect(shouldRedirectTeamsToLogin("/admin", null, null)).toBe(false);
     expect(shouldRedirectTeamsToLogin("/teams-workbench", null, null)).toBe(false);
   });
@@ -57,7 +60,13 @@ describe("team route auth redirect", () => {
   it("resolves selector and detail team routes", () => {
     expect(resolveTeamRoute("/teams")).toEqual({ mode: "selector", teamId: null });
     expect(resolveTeamRoute("/teams/")).toEqual({ mode: "selector", teamId: null });
+    expect(resolveTeamRoute("/workspace/teams")).toEqual({ mode: "selector", teamId: null });
+    expect(resolveTeamRoute("/workspace/teams/")).toEqual({ mode: "selector", teamId: null });
     expect(resolveTeamRoute("/teams/team-1")).toEqual({
+      mode: "detail",
+      teamId: "team-1",
+    });
+    expect(resolveTeamRoute("/workspace/teams/team-1")).toEqual({
       mode: "detail",
       teamId: "team-1",
     });
@@ -83,6 +92,15 @@ describe("team route auth redirect", () => {
     expect(resolvePostAuthRedirectTarget("/", "?next=%2Fteams%3Ftab%3Druns%23active", auth, "token-1"))
       .toBe("/teams?tab=runs#active");
     expect(resolvePostAuthRedirectTarget("/", "", auth, "token-1")).toBeNull();
+    expect(resolvePostAuthRedirectTarget("/workspace", "", auth, "token-1")).toBeNull();
+    expect(
+      resolvePostAuthRedirectTarget(
+        "/workspace",
+        "?next=%2Fteams",
+        auth,
+        "token-1"
+      )
+    ).toBe("/teams");
     expect(
       resolvePostAuthRedirectTarget(
         "/teams",

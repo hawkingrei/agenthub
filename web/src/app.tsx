@@ -20,6 +20,7 @@ import {
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   isAgentsWorkbenchRoute,
+  resolveWorkspaceAgentRoute,
 } from "./app_route_selection";
 import {
   OFFLINE_MESSAGE,
@@ -70,6 +71,10 @@ import { useAppPermissionState } from "./use_app_permission_state";
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
 
+function buildWorkspaceAgentPath(agentId: string): string {
+  return `/workspace/agents/${encodeURIComponent(agentId)}`;
+}
+
 export {
   AGENT_SOURCE_MANUAL,
   AGENT_SOURCE_TEAM_FORGE,
@@ -118,6 +123,7 @@ export {
   isAgentsWorkbenchRoute,
   isTeamsRoute,
   resolveAppRouteKind,
+  resolveWorkspaceAgentRoute,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   shouldRedirectTeamsToLogin,
@@ -405,6 +411,11 @@ export function App() {
   const terminalStickToBottomRef = useRef(true);
   const isComposingRef = useRef(false);
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
+  const workspaceAgentRoute = useMemo(
+    () => resolveWorkspaceAgentRoute(routeLocation.pathname),
+    [routeLocation.pathname]
+  );
+  const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
 
   useEffect(() => {
     setLocalStorageItemSafe(
@@ -479,7 +490,8 @@ export function App() {
     setActiveAgent(id);
     setActiveSessionId(agentSessions[id] ?? null);
     setAgentsCollapsed(true);
-  }, [agentSessions, setActiveSessionId]);
+    navigateWorkbenchRoute(buildWorkspaceAgentPath(id));
+  }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId]);
 
   const onRespondPermission = useCallback(async (
     agentId: string,
@@ -689,6 +701,20 @@ export function App() {
       return;
     }
 
+    if (routeAgentId) {
+      const routeAgentStillExists = agents.some((agent) => agent.id === routeAgentId);
+      if (routeAgentStillExists) {
+        if (routeAgentId !== activeAgent) {
+          setActiveAgent(routeAgentId);
+        }
+        const nextSessionId = agentSessions[routeAgentId] ?? null;
+        if (nextSessionId !== activeSessionId) {
+          setActiveSessionId(nextSessionId);
+        }
+        return;
+      }
+    }
+
     if (activeAgent) {
       const activeAgentStillExists = agents.some((agent) => agent.id === activeAgent);
       if (activeAgentStillExists) {
@@ -713,7 +739,15 @@ export function App() {
         setActiveSessionId(null);
       }
     }
-  }, [agents, activeAgent, activeSessionId, agentSessions, setActiveAgent, setActiveSessionId]);
+  }, [
+    agents,
+    activeAgent,
+    activeSessionId,
+    agentSessions,
+    routeAgentId,
+    setActiveAgent,
+    setActiveSessionId,
+  ]);
 
   useEffect(() => {
     if (auth?.token) {
@@ -1115,6 +1149,7 @@ export function App() {
               onLogout={onLogout}
               developerMode={developerMode}
               routeTeamId={teamRoute?.teamId ?? null}
+              routeSearch={routeLocation.search}
               defaultWorktreeRoot={defaultWorktreeRoot}
             />
           </Suspense>
@@ -1123,7 +1158,7 @@ export function App() {
     }
     case "post-auth-redirect":
       return <PostLoginRedirect target={postAuthRedirectTarget!} />;
-    case "agents":
+    case "workspace":
       break;
   }
 

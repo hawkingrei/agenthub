@@ -10,6 +10,11 @@ const connectionBadge = {
   tone: "ok" as const,
 };
 
+const lensItems = [
+  { value: "chat", label: "Chat", active: true },
+  { value: "tasks", label: "Tasks", active: false },
+];
+
 describe("TeamPageHeader", () => {
   it("renders selector header copy on the selector route", () => {
     const html = renderToStaticMarkup(
@@ -25,7 +30,9 @@ describe("TeamPageHeader", () => {
           headerIconButtonClassName="icon"
           headerMutedButtonClassName="muted"
           headerStatusClassName="status"
+          lensItems={lensItems}
           onToggleSidebar={vi.fn()}
+          onSelectLens={vi.fn()}
           onNavigateToSelector={vi.fn()}
           onNavigate={vi.fn()}
           onLogout={vi.fn()}
@@ -33,7 +40,7 @@ describe("TeamPageHeader", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Team Selector");
+    expect(html).toContain("Teams");
     expect(html).toContain("Choose a team");
     expect(html).toContain("ONLINE · SSE CONNECTED");
   });
@@ -52,7 +59,9 @@ describe("TeamPageHeader", () => {
           headerIconButtonClassName="icon"
           headerMutedButtonClassName="muted"
           headerStatusClassName="status"
+          lensItems={lensItems}
           onToggleSidebar={vi.fn()}
+          onSelectLens={vi.fn()}
           onNavigateToSelector={vi.fn()}
           onNavigate={vi.fn()}
           onLogout={vi.fn()}
@@ -61,7 +70,10 @@ describe("TeamPageHeader", () => {
     );
 
     expect(html).toContain("Hide teams panel");
-    expect(html).toContain("Team Selector");
+    expect(html).toContain("Workspace");
+    expect(html).toContain("Chat");
+    expect(html).toContain("Tasks");
+    expect(html).toContain("Teams");
     expect(html).toContain("Open workbench menu");
   });
 });

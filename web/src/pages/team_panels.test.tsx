@@ -484,7 +484,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Teams · 2");
     expect(container.textContent).toContain("Kanban");
     expect(container.textContent).toContain("Agents · 2");
-    expect(container.textContent).toContain("Workflow");
+    expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("# all");
     expect(findButtonByText(container, "Team Two").className).toContain("rounded-lg");
     expect(findButtonByText(container, "Team Two").className).toContain("px-2.5");
@@ -914,10 +914,12 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Browse this team's channels, members, and operations.");
     expect(container.textContent).not.toContain("Team Selector");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
-    expect(container.textContent).not.toContain("Teams 1");
+    expect(container.textContent).toContain("Teams · 1");
     expect(container.textContent).not.toContain("Create Team");
     expect(container.textContent).not.toContain("Shared team thread");
     expect(container.textContent).not.toContain("Task board");
+    expect(container.textContent).toContain("Channels");
+    expect(container.textContent).toContain("Agents · 1");
   });
 
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {

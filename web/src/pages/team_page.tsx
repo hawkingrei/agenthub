@@ -255,8 +255,11 @@ type TeamPageProps = {
   onLogout: () => void;
   developerMode: boolean;
   routeTeamId: string | null;
+  routeSearch?: string;
   defaultWorktreeRoot?: string | null;
 };
+
+type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
 
 export function parseTeamAgentInputSessionMismatch(
   message: string
@@ -276,15 +279,69 @@ export function parseTeamAgentInputSessionMismatch(
 }
 
 export function buildTeamDetailPath(teamId: string): string {
-  return `/teams/${encodeURIComponent(teamId)}`;
+  return `/workspace/teams/${encodeURIComponent(teamId)}`;
 }
 
 function navigateTeamRoute(pathname: string): void {
-  if (location.pathname === pathname) {
+  if (`${location.pathname}${location.search}` === pathname) {
     return;
   }
   window.history.pushState({}, "", pathname);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function buildTeamSelectorPath(): string {
+  return "/workspace/teams";
+}
+
+function buildTeamWorkspacePath(teamId: string, lens?: WorkspaceLens | null): string {
+  const pathname = `/workspace/teams/${encodeURIComponent(teamId)}`;
+  if (!lens) {
+    return pathname;
+  }
+  return `${pathname}?lens=${encodeURIComponent(lens)}`;
+}
+
+function resolveWorkspaceLens(search: string): WorkspaceLens | null {
+  const params = new URLSearchParams(search);
+  const lens = params.get("lens");
+  switch (lens) {
+    case "chat":
+    case "threads":
+    case "tasks":
+    case "members":
+    case "search":
+      return lens;
+    default:
+      return null;
+  }
+}
+
+function resolveWorkspaceLensForTab(tab: TeamTab): WorkspaceLens {
+  switch (tab) {
+    case "tasks":
+      return "tasks";
+    case "overview":
+      return "members";
+    default:
+      return "chat";
+  }
+}
+
+function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
+  switch (lens) {
+    case "chat":
+    case "threads":
+      return "conversation";
+    case "tasks":
+      return "tasks";
+    case "members":
+      return "overview";
+    case "search":
+      return null;
+    default:
+      return "conversation";
+  }
 }
 
 const TEAM_PRIMARY_WORKSPACE_TABS = new Set<TeamTab>(["conversation", "tasks"]);
@@ -416,6 +473,10 @@ const teamWorkbenchInfoStripLabelClassName = TEAM_WORKBENCH_INFO_STRIP_LABEL_CLA
 const teamWorkbenchInfoStripValueClassName = TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS;
 export function TeamPage(props: TeamPageProps) {
   const routeTeamId = props.routeTeamId?.trim() || null;
+  const routeWorkspaceLens = useMemo(
+    () => resolveWorkspaceLens(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
   const isSelectorRoute = routeTeamId == null;
   const routeDefaultWorktreeRoot = React.useMemo(() => {
     const normalized = normalizeWorkdirInput(props.defaultWorktreeRoot ?? "");
@@ -478,7 +539,7 @@ export function TeamPage(props: TeamPageProps) {
     navigateTeamRoute(buildTeamDetailPath(teamId));
   }, []);
   const navigateToTeamSelector = useCallback(() => {
-    navigateTeamRoute("/teams");
+    navigateTeamRoute(buildTeamSelectorPath());
   }, []);
 
   const [teamUiState, dispatchTeamUi] = useReducer(
@@ -497,6 +558,16 @@ export function TeamPage(props: TeamPageProps) {
   const setEventsAutoRefresh = useCallback((next: boolean) => {
     dispatchTeamUi({ type: "set_events_auto_refresh", eventsAutoRefresh: next });
   }, []);
+
+  useEffect(() => {
+    if (!routeWorkspaceLens) {
+      return;
+    }
+    const nextTab = resolveTeamTabForWorkspaceLens(routeWorkspaceLens);
+    if (nextTab && nextTab !== tab) {
+      setTab(nextTab);
+    }
+  }, [routeWorkspaceLens, setTab, tab]);
   const [teamControlState, dispatchTeamControl] = useReducer(
     reduceTeamControlState,
     DEFAULT_TEAM_CONTROL_STATE
@@ -2503,17 +2574,23 @@ export function TeamPage(props: TeamPageProps) {
     setFocusedAgentMemberId("");
     setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
     setTab("conversation");
+    if (effectiveSelectedTeamId) {
+      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "chat"));
+    }
     if (isCompactWorkbench) {
       setTeamsSidebarCollapsed(true);
     }
-  }, [isCompactWorkbench, setTab]);
+  }, [effectiveSelectedTeamId, isCompactWorkbench, setTab]);
   const onSelectKanbanSubject = useCallback(() => {
     setFocusedAgentMemberId("");
     setTab("tasks");
+    if (effectiveSelectedTeamId) {
+      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "tasks"));
+    }
     if (isCompactWorkbench) {
       setTeamsSidebarCollapsed(true);
     }
-  }, [isCompactWorkbench, setTab]);
+  }, [effectiveSelectedTeamId, isCompactWorkbench, setTab]);
   const onSelectAgentWorkspace = useCallback(
     (memberId: string, nextTab: TeamTab = "agent_acp") => {
       setSelectedMemberId(memberId);
@@ -2538,10 +2615,37 @@ export function TeamPage(props: TeamPageProps) {
   const onSelectSidebarTeam = useCallback(
     (teamId: string) => {
       if (teamId !== effectiveSelectedTeamId) {
-        navigateToTeamDetail(teamId);
+        navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens));
       }
     },
-    [effectiveSelectedTeamId, navigateToTeamDetail]
+    [effectiveSelectedTeamId, routeWorkspaceLens]
+  );
+  const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
+  const workspaceLensItems = useMemo(
+    () => [
+      { value: "chat", label: "Chat", active: activeWorkspaceLens === "chat" },
+      { value: "threads", label: "Threads", active: activeWorkspaceLens === "threads" },
+      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
+      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
+      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
+    ],
+    [activeWorkspaceLens]
+  );
+  const onSelectWorkspaceLens = useCallback(
+    (value: string) => {
+      if (!effectiveSelectedTeamId) {
+        return;
+      }
+      const lens = value as WorkspaceLens;
+      if (lens === "search") {
+        setFocusedAgentMemberId("");
+      }
+      navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, lens));
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
+    },
+    [effectiveSelectedTeamId, isCompactWorkbench]
   );
   const onRefreshActiveRunSteps = useCallback(async () => {
     if (!activeRunForSelectedTeam) {
@@ -3527,7 +3631,9 @@ export function TeamPage(props: TeamPageProps) {
         headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
         headerMutedButtonClassName={teamWorkbenchMutedButtonClassName}
         headerStatusClassName={teamWorkbenchHeaderStatusClassName}
+        lensItems={workspaceLensItems}
         onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
+        onSelectLens={onSelectWorkspaceLens}
         onNavigateToSelector={navigateToTeamSelector}
         onNavigate={navigateTeamRoute}
         onLogout={props.onLogout}
@@ -3752,13 +3858,26 @@ export function TeamPage(props: TeamPageProps) {
 
               {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-                  {tab === "conversation" && (
+                  {activeWorkspaceLens === "search" && (
+                    <div className={teamSectionCardClassName}>
+                      <div className={teamSectionHeadingClassName}>Workspace Search</div>
+                      <h3 className={teamSectionTitleClassName}>
+                        Search is converging into the workspace shell
+                      </h3>
+                      <p className={teamSectionHintTextClassName}>
+                        Use Chat, Tasks, or Members while the shared search rollup is being wired
+                        into canonical workspace entities.
+                      </p>
+                    </div>
+                  )}
+
+                  {activeWorkspaceLens !== "search" && tab === "conversation" && (
                     <>
                       {conversationPanel}
                     </>
                   )}
 
-                  {tab === "tasks" && tasksPanel}
+                  {activeWorkspaceLens !== "search" && tab === "tasks" && tasksPanel}
 
                   {tab === "agent_acp" && (
                     <Suspense

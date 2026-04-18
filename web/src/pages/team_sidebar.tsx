@@ -429,112 +429,110 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
         )}
       </div>
 
-      {showTeamSelector && (
-        <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
-          <ActionButton
-            tone="ghost"
-            size="sm"
-            className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
-            onClick={() => toggleSection("teams")}
-            aria-expanded={sectionOpen.teams}
-            aria-label="Toggle teams section"
-          >
-            <span>{`Teams · ${teams.length}`}</span>
-            <i
-              className={sectionOpen.teams ? "bi bi-chevron-down" : "bi bi-chevron-right"}
-              aria-hidden="true"
-            />
-          </ActionButton>
-          {sectionOpen.teams && (
-            <div className="mt-1.5 space-y-1">
-              {teams.length > 0 && (
-                <div className="px-2 pb-2">
-                  <TextInput
-                    className="flex-1"
-                    placeholder="Search teams..."
-                    aria-label="Search teams"
-                    value={teamFilter}
-                    onChange={(event) => setTeamFilter(event.currentTarget.value)}
-                    size="xs"
-                    radius="md"
-                    variant="unstyled"
-                    classNames={{
-                      input: `h-8 rounded-lg border border-notion-border/70 bg-white/68 px-3 text-[12px] text-notion-text ${TEAM_SOFT_CHROME_SHADOW_CLASS} placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white`,
-                      section:
-                        "text-notion-text-muted",
-                    }}
-                    rightSection={
-                      hasTeamFilter ? (
-                        <CloseButton
-                          aria-label="Clear filter"
-                          title="Clear filter"
-                          onClick={() => setTeamFilter("")}
-                          size="xs"
-                        />
-                      ) : undefined
-                    }
-                  />
-                </div>
-              )}
-
-              <div className="teams-list flex max-h-72 min-h-0 flex-col gap-0.5 overflow-auto px-1">
-                {teams.length === 0 && <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No teams yet.</p>}
-                {teams.length > 0 && filteredTeams.length === 0 && (
-                  <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No results found.</p>
-                )}
-                {filteredTeams.map((team) => {
-                  const summary = teamMemberSummaryByTeamId.get(team.id);
-                  const summaryLabel = formatTeamMemberSummary(summary);
-                  const isSelected = team.id === selectedTeamId;
-                  return (
-                    <SelectableListItem
-                      key={team.id}
-                      active={isSelected}
-                      className={
-                        isSelected
-                          ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
-                          : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
-                      }
-                      onClick={() => {
-                        onSelectTeam(team.id);
-                      }}
-                      aria-current={isSelected ? "true" : undefined}
-                      data-team-selected={isSelected ? "true" : "false"}
-                      title={developerMode ? team.id : team.name}
-                    >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-medium`}>
-                          {team.name}
-                        </span>
-                      </span>
-                      {summaryLabel && (
-                        <span className={TEAM_LIST_ITEM_META_CLASS}>
-                          {summaryLabel}
-                        </span>
-                      )}
-                    </SelectableListItem>
-                  );
-                })}
+      <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>
+        <ActionButton
+          tone="ghost"
+          size="sm"
+          className={TEAM_SIDEBAR_SECTION_TOGGLE_CLASS}
+          onClick={() => toggleSection("teams")}
+          aria-expanded={sectionOpen.teams}
+          aria-label="Toggle teams section"
+        >
+          <span>{`Teams · ${teams.length}`}</span>
+          <i
+            className={sectionOpen.teams ? "bi bi-chevron-down" : "bi bi-chevron-right"}
+            aria-hidden="true"
+          />
+        </ActionButton>
+        {sectionOpen.teams && (
+          <div className="mt-1.5 space-y-1">
+            {showTeamSelector && teams.length > 0 && (
+              <div className="px-2 pb-2">
+                <TextInput
+                  className="flex-1"
+                  placeholder="Search teams..."
+                  aria-label="Search teams"
+                  value={teamFilter}
+                  onChange={(event) => setTeamFilter(event.currentTarget.value)}
+                  size="xs"
+                  radius="md"
+                  variant="unstyled"
+                  classNames={{
+                    input: `h-8 rounded-lg border border-notion-border/70 bg-white/68 px-3 text-[12px] text-notion-text ${TEAM_SOFT_CHROME_SHADOW_CLASS} placeholder:text-notion-text-muted focus:border-notion-border-subtle focus:bg-white`,
+                    section:
+                      "text-notion-text-muted",
+                  }}
+                  rightSection={
+                    hasTeamFilter ? (
+                      <CloseButton
+                        aria-label="Clear filter"
+                        title="Clear filter"
+                        onClick={() => setTeamFilter("")}
+                        size="xs"
+                      />
+                    ) : undefined
+                  }
+                />
               </div>
+            )}
 
-              {teams.length === 0 && (
-                <div className="mt-2 px-2">
-                  <ActionButton tone="secondary" size="md" className="w-full justify-start gap-2 px-3 py-1.5 text-[13px] font-medium" onClick={onOpenCreateTeam}>
-                    <i className="bi bi-plus-lg" aria-hidden="true" />
-                    <span>New Team</span>
-                  </ActionButton>
-                </div>
+            <div className="teams-list flex max-h-72 min-h-0 flex-col gap-0.5 overflow-auto px-1">
+              {teams.length === 0 && <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No teams yet.</p>}
+              {showTeamSelector && teams.length > 0 && filteredTeams.length === 0 && (
+                <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No results found.</p>
               )}
+              {filteredTeams.map((team) => {
+                const summary = teamMemberSummaryByTeamId.get(team.id);
+                const summaryLabel = formatTeamMemberSummary(summary);
+                const isSelected = team.id === selectedTeamId;
+                return (
+                  <SelectableListItem
+                    key={team.id}
+                    active={isSelected}
+                    className={
+                      isSelected
+                        ? TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS
+                        : TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS
+                    }
+                    onClick={() => {
+                      onSelectTeam(team.id);
+                    }}
+                    aria-current={isSelected ? "true" : undefined}
+                    data-team-selected={isSelected ? "true" : "false"}
+                    title={developerMode ? team.id : team.name}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-medium`}>
+                        {team.name}
+                      </span>
+                    </span>
+                    {summaryLabel && (
+                      <span className={TEAM_LIST_ITEM_META_CLASS}>
+                        {summaryLabel}
+                      </span>
+                    )}
+                  </SelectableListItem>
+                );
+              })}
             </div>
-          )}
-        </section>
-      )}
+
+            {showTeamSelector && teams.length === 0 && (
+              <div className="mt-2 px-2">
+                <ActionButton tone="secondary" size="md" className="w-full justify-start gap-2 px-3 py-1.5 text-[13px] font-medium" onClick={onOpenCreateTeam}>
+                  <i className="bi bi-plus-lg" aria-hidden="true" />
+                  <span>New Team</span>
+                </ActionButton>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {selectedTeam && (
         <>
           <div className="mt-4 flex flex-col gap-0.5">
             <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-notion-text-muted">
-              Workflow
+              Channels
             </div>
             <SelectableListItem
               active={tab === "conversation"}
@@ -562,7 +560,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
               }
               onClick={onSelectKanban}
-              title="Kanban"
+              title="Team kanban"
               >
                 <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
                 <span className="truncate text-[12px] font-medium">Kanban</span>

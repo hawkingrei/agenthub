@@ -6,6 +6,16 @@ export type RouteLocationState = {
   search: string;
 };
 
+export type WorkspaceAgentRouteState =
+  | {
+      mode: "root";
+      agentId: null;
+    }
+  | {
+      mode: "agent";
+      agentId: string;
+    };
+
 export type TeamRouteState =
   | {
       mode: "selector";
@@ -24,21 +34,33 @@ export type AppRouteKind =
   | "teams-auth-redirect"
   | "teams"
   | "post-auth-redirect"
-  | "agents";
+  | "workspace";
 
 export function isTeamsRoute(pathname: string): boolean {
-  return pathname === "/teams" || pathname === "/teams/" || pathname.startsWith("/teams/");
+  return (
+    pathname === "/teams" ||
+    pathname === "/teams/" ||
+    pathname.startsWith("/teams/") ||
+    pathname === "/workspace/teams" ||
+    pathname === "/workspace/teams/" ||
+    pathname.startsWith("/workspace/teams/")
+  );
+}
+
+export function isWorkspaceRootRoute(pathname: string): boolean {
+  return pathname === "/" || pathname === "/workspace" || pathname === "/workspace/";
 }
 
 export function isAgentsWorkbenchRoute(pathname: string): boolean {
-  return pathname === "/";
+  return isWorkspaceRootRoute(pathname) || pathname.startsWith("/workspace/agents/");
 }
 
 export function resolveTeamRoute(pathname: string): TeamRouteState | null {
   if (!isTeamsRoute(pathname)) {
     return null;
   }
-  const suffix = pathname.slice("/teams".length);
+  const prefix = pathname.startsWith("/workspace/teams") ? "/workspace/teams" : "/teams";
+  const suffix = pathname.slice(prefix.length);
   if (!suffix || suffix === "/") {
     return { mode: "selector", teamId: null };
   }
@@ -60,6 +82,31 @@ export function resolveTeamRoute(pathname: string): TeamRouteState | null {
   }
 }
 
+export function resolveWorkspaceAgentRoute(pathname: string): WorkspaceAgentRouteState | null {
+  if (isWorkspaceRootRoute(pathname)) {
+    return { mode: "root", agentId: null };
+  }
+  if (!pathname.startsWith("/workspace/agents/")) {
+    return null;
+  }
+  const suffix = pathname.slice("/workspace/agents/".length);
+  const [rawAgentId] = suffix.split("/");
+  if (!rawAgentId) {
+    return { mode: "root", agentId: null };
+  }
+  try {
+    return {
+      mode: "agent",
+      agentId: decodeURIComponent(rawAgentId),
+    };
+  } catch {
+    return {
+      mode: "agent",
+      agentId: rawAgentId,
+    };
+  }
+}
+
 export function shouldRedirectTeamsToLogin(
   pathname: string,
   auth: AuthState | null,
@@ -74,7 +121,7 @@ export function resolvePostAuthRedirectTarget(
   auth: AuthState | null,
   token: string | null
 ): string | null {
-  if (pathname !== "/") return null;
+  if (!isWorkspaceRootRoute(pathname)) return null;
   if (!auth || !token) return null;
   return resolvePostLoginRedirectTarget(search);
 }
@@ -102,5 +149,5 @@ export function resolveAppRouteKind(
   if (postAuthRedirectTarget) {
     return "post-auth-redirect";
   }
-  return "agents";
+  return "workspace";
 }

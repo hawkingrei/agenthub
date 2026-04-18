@@ -9,7 +9,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof WorkbenchHeaderMe
   return renderToStaticMarkup(
     <MantineProvider theme={mantineTheme}>
       <WorkbenchHeaderMenu
-        active="agents"
+        active="workspace"
         username="root"
         isRoot={true}
         onLogout={() => {}}
@@ -25,16 +25,16 @@ function renderMenu(props: Partial<React.ComponentProps<typeof WorkbenchHeaderMe
 describe("WorkbenchHeaderMenu", () => {
   it("renders workspace and account actions in one menu", () => {
     const html = renderMenu();
-    expect(html).toContain("Agents");
+    expect(html).toContain("Workspace");
     expect(html).toContain("Teams");
     expect(html).toContain("Settings");
     expect(html).toContain("Logout");
-    expect(html).toContain("Menu");
+    expect(html).toContain("Workspace");
   });
 
   it("hides settings for non-root users", () => {
     const html = renderMenu({ isRoot: false });
-    expect(html).toContain("Agents");
+    expect(html).toContain("Workspace");
     expect(html).toContain("Teams");
     expect(html).not.toContain("Settings");
     expect(html).toContain("Logout");
