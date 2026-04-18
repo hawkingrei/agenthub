@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use serde_json::Value;
+use std::collections::BTreeMap;
+
+pub const TEAM_RUNTIME_STATE_SCHEMA_FAMILY: &str = "team_runtime_state";
+pub const TEAM_RUNTIME_STATE_SCHEMA_VERSION: i64 = 1;
+pub const TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY: &str = "team_continuity_note";
+pub const TEAM_CONTINUITY_NOTE_SCHEMA_VERSION: i64 = 1;
+pub const TEAM_RUNTIME_STATE_RELATIVE_PATH: &str = ".cache/context/state.md";
 
 pub const TEAM_RUN_STATUS_VALUES: [&str; 6] = [
     "submitted",
@@ -121,6 +128,121 @@ impl std::str::FromStr for TeamTaskStatus {
             other => Err(other.to_string()),
         }
     }
+}
+
+pub fn continuity_note_relative_path(source_run_id: &str) -> Option<String> {
+    let source_run_id = source_run_id.trim();
+    if source_run_id.is_empty() {
+        return None;
+    }
+    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
+}
+
+pub fn extract_context_artifact_path(value: &Value) -> Option<&str> {
+    value
+        .get("path")
+        .and_then(Value::as_str)
+        .or_else(|| value.as_str())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamRuntimeStateIndex {
+    pub schema_family: Option<String>,
+    pub schema_version: Option<i64>,
+    pub updated_at: Option<String>,
+    pub team_id: Option<String>,
+    pub member_id: Option<String>,
+    pub current_execution_run_id: Option<String>,
+    pub continuity_mode: Option<String>,
+    pub continuity_source_execution_run_id: Option<String>,
+    pub continuity_note_path: Option<String>,
+    pub continuity_artifact_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamContinuityNoteHeader {
+    pub schema_family: Option<String>,
+    pub schema_version: Option<i64>,
+    pub updated_at: Option<String>,
+    pub team_id: Option<String>,
+    pub member_id: Option<String>,
+    pub current_execution_run_id: Option<String>,
+    pub continuity_source_execution_run_id: Option<String>,
+    pub continuity_mode: Option<String>,
+    pub continuity_artifact_path: Option<String>,
+}
+
+pub fn parse_team_runtime_state_index(contents: &str) -> Option<TeamRuntimeStateIndex> {
+    let metadata = parse_machine_read_markdown_metadata(contents, "# Team Runtime State")?;
+    Some(TeamRuntimeStateIndex {
+        schema_family: metadata.get("schema_family").cloned(),
+        schema_version: metadata
+            .get("schema_version")
+            .and_then(|value| value.parse::<i64>().ok()),
+        updated_at: metadata.get("updated_at").cloned(),
+        team_id: metadata.get("team_id").cloned(),
+        member_id: metadata.get("member_id").cloned(),
+        current_execution_run_id: metadata.get("current_execution_run_id").cloned(),
+        continuity_mode: metadata.get("continuity_mode").cloned(),
+        continuity_source_execution_run_id: metadata
+            .get("continuity_source_execution_run_id")
+            .cloned(),
+        continuity_note_path: metadata.get("continuity_note_path").cloned(),
+        continuity_artifact_path: metadata.get("continuity_artifact_path").cloned(),
+    })
+}
+
+pub fn parse_team_continuity_note_header(contents: &str) -> Option<TeamContinuityNoteHeader> {
+    let metadata = parse_machine_read_markdown_metadata(contents, "# Team Continuity Note")?;
+    Some(TeamContinuityNoteHeader {
+        schema_family: metadata.get("schema_family").cloned(),
+        schema_version: metadata
+            .get("schema_version")
+            .and_then(|value| value.parse::<i64>().ok()),
+        updated_at: metadata.get("updated_at").cloned(),
+        team_id: metadata.get("team_id").cloned(),
+        member_id: metadata.get("member_id").cloned(),
+        current_execution_run_id: metadata.get("current_execution_run_id").cloned(),
+        continuity_source_execution_run_id: metadata
+            .get("continuity_source_execution_run_id")
+            .cloned(),
+        continuity_mode: metadata.get("continuity_mode").cloned(),
+        continuity_artifact_path: metadata.get("continuity_artifact_path").cloned(),
+    })
+}
+
+fn parse_machine_read_markdown_metadata(
+    contents: &str,
+    expected_title: &str,
+) -> Option<BTreeMap<String, String>> {
+    let mut lines = contents.lines();
+    let title = lines.next()?.trim();
+    if title != expected_title {
+        return None;
+    }
+
+    let mut metadata = BTreeMap::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("## ") {
+            break;
+        }
+        let Some(rest) = trimmed.strip_prefix("- ") else {
+            continue;
+        };
+        let Some((key, value)) = rest.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        metadata.insert(key.to_string(), value.trim().to_string());
+    }
+    Some(metadata)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,9 +402,12 @@ pub enum TeamRunResumeError {
 #[cfg(test)]
 mod tests {
     use super::{
-        TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
-        TEAM_TASK_STATUS_VALUES, TeamRunResumeError, TeamStepRecord, TeamStepStatus,
-        TeamTaskStatus,
+        TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY, TEAM_CONTINUITY_NOTE_SCHEMA_VERSION,
+        TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_RUNTIME_STATE_SCHEMA_FAMILY,
+        TEAM_RUNTIME_STATE_SCHEMA_VERSION, TEAM_STEP_STATUS_VALUES, TEAM_TASK_STATUS_VALUES,
+        TeamRunResumeError, TeamStepRecord, TeamStepStatus, TeamTaskStatus,
+        continuity_note_relative_path, extract_context_artifact_path,
+        parse_team_continuity_note_header, parse_team_runtime_state_index,
     };
     use serde_json::json;
 
@@ -323,6 +448,92 @@ mod tests {
                 .parse::<TeamTaskStatus>()
                 .expect_err("invalid status"),
             "invalid"
+        );
+    }
+
+    #[test]
+    fn continuity_note_relative_path_uses_source_run_id() {
+        assert_eq!(
+            continuity_note_relative_path("run-42").as_deref(),
+            Some(".cache/context/run/run-42/continuity.md")
+        );
+        assert_eq!(continuity_note_relative_path("   ").as_deref(), None);
+    }
+
+    #[test]
+    fn extract_context_artifact_path_accepts_object_and_legacy_string() {
+        assert_eq!(
+            extract_context_artifact_path(&json!({
+                "path": ".cache/context/run/run-42/artifact-0001.json"
+            })),
+            Some(".cache/context/run/run-42/artifact-0001.json")
+        );
+        assert_eq!(
+            extract_context_artifact_path(&json!(".cache/context/run/run-42/artifact-0001.json")),
+            Some(".cache/context/run/run-42/artifact-0001.json")
+        );
+        assert_eq!(
+            extract_context_artifact_path(&json!({ "other": "value" })),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_team_runtime_state_index_reads_current_schema_metadata() {
+        let parsed = parse_team_runtime_state_index(
+            format!(
+                "# Team Runtime State\n\n- schema_family: {TEAM_RUNTIME_STATE_SCHEMA_FAMILY}\n- schema_version: {TEAM_RUNTIME_STATE_SCHEMA_VERSION}\n- updated_at: 123\n- team_id: team-1\n- member_id: worker\n- current_execution_run_id: run-7\n- continuity_mode: inherit_recent\n- continuity_source_execution_run_id: run-6\n- continuity_note_path: .cache/context/run/run-6/continuity.md\n- continuity_artifact_path: .cache/context/run/run-6/artifact-0001.json\n"
+            )
+            .as_str(),
+        )
+        .expect("parse runtime state");
+        assert_eq!(
+            parsed.schema_family.as_deref(),
+            Some(TEAM_RUNTIME_STATE_SCHEMA_FAMILY)
+        );
+        assert_eq!(
+            parsed.schema_version,
+            Some(TEAM_RUNTIME_STATE_SCHEMA_VERSION)
+        );
+        assert_eq!(parsed.current_execution_run_id.as_deref(), Some("run-7"));
+        assert_eq!(
+            parsed.continuity_note_path.as_deref(),
+            Some(".cache/context/run/run-6/continuity.md")
+        );
+    }
+
+    #[test]
+    fn parse_team_runtime_state_index_accepts_legacy_shape_without_schema() {
+        let parsed = parse_team_runtime_state_index(
+            "# Team Runtime State\n\n- updated_at: 123\n- team_id: team-1\n- member_id: worker\n- current_execution_run_id: run-7\n- continuity_mode: inherit_recent\n",
+        )
+        .expect("parse runtime state");
+        assert_eq!(parsed.schema_family, None);
+        assert_eq!(parsed.schema_version, None);
+        assert_eq!(parsed.team_id.as_deref(), Some("team-1"));
+        assert_eq!(parsed.member_id.as_deref(), Some("worker"));
+    }
+
+    #[test]
+    fn parse_team_continuity_note_header_stops_before_summary_body() {
+        let parsed = parse_team_continuity_note_header(
+            format!(
+                "# Team Continuity Note\n\n- schema_family: {TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY}\n- schema_version: {TEAM_CONTINUITY_NOTE_SCHEMA_VERSION}\n- updated_at: 123\n- team_id: team-1\n- member_id: worker\n- current_execution_run_id: run-7\n- continuity_source_execution_run_id: run-6\n- continuity_mode: inherit_recent\n- continuity_artifact_path: .cache/context/run/run-6/artifact-0001.json\n\n## Summary\nlarge payload\n\n## History Window\n````json\n{{\"schema_version\":1}}\n````\n"
+            )
+            .as_str(),
+        )
+        .expect("parse continuity note");
+        assert_eq!(
+            parsed.schema_family.as_deref(),
+            Some(TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY)
+        );
+        assert_eq!(
+            parsed.schema_version,
+            Some(TEAM_CONTINUITY_NOTE_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            parsed.continuity_artifact_path.as_deref(),
+            Some(".cache/context/run/run-6/artifact-0001.json")
         );
     }
 

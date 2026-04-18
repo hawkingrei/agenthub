@@ -3,6 +3,9 @@ use std::path::Path;
 use agent_client_protocol::{ContentBlock, TextContent};
 use agenthub_acp_core::{AcpSkill, build_skill};
 use agenthub_managed_skills::{ManagedSkillKind, managed_skill_doc};
+use agenthub_team_domain::{
+    TEAM_RUNTIME_STATE_RELATIVE_PATH, continuity_note_relative_path, extract_context_artifact_path,
+};
 use anyhow::{Result, bail};
 
 use crate::AcpActorSkillContext;
@@ -91,36 +94,21 @@ fn build_continuity_lines(context: &AcpActorSkillContext) -> Vec<String> {
             "- continuity_source_execution_run_id: {}",
             continuity.source_run_id
         ),
-        "- continuity_state_path: .cache/context/state.md".to_string(),
+        format!("- continuity_state_path: {TEAM_RUNTIME_STATE_RELATIVE_PATH}"),
     ];
-    if let Some(note_path) = continuity_note_path(&continuity.source_run_id) {
+    if let Some(note_path) = continuity_note_relative_path(&continuity.source_run_id) {
         lines.push(format!("- continuity_note_path: {note_path}"));
     }
     if let Some(artifact_path) = continuity
         .history_window
         .get("artifact_pointer")
-        .and_then(extract_artifact_pointer_path)
+        .and_then(extract_context_artifact_path)
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
         lines.push(format!("- continuity_artifact_path: {artifact_path}"));
     }
     lines
-}
-
-fn continuity_note_path(source_run_id: &str) -> Option<String> {
-    let source_run_id = source_run_id.trim();
-    if source_run_id.is_empty() {
-        return None;
-    }
-    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
-}
-
-fn extract_artifact_pointer_path(value: &serde_json::Value) -> Option<&str> {
-    value
-        .get("path")
-        .and_then(|path| path.as_str())
-        .or_else(|| value.as_str())
 }
 
 #[cfg(test)]

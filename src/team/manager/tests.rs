@@ -2505,6 +2505,8 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
         .join("continuity.md");
     let note_text = std::fs::read_to_string(&note_path).expect("read runtime continuity note");
     assert!(state_text.contains("# Team Runtime State"));
+    assert!(state_text.contains("- schema_family: team_runtime_state"));
+    assert!(state_text.contains("- schema_version: 1"));
     assert!(state_text.contains("- team_id:"));
     assert!(state_text.contains("- member_id: planner"));
     assert!(state_text.contains("- current_execution_run_id:"));
@@ -2512,6 +2514,8 @@ async fn complete_step_offloads_large_output_to_workspace_context_artifact() {
     assert!(state_text.contains(format!("- continuity_note_path: {note_relative_path}").as_str()));
     assert!(state_text.contains(pointer_path));
     assert!(note_text.contains("# Team Continuity Note"));
+    assert!(note_text.contains("- schema_family: team_continuity_note"));
+    assert!(note_text.contains("- schema_version: 1"));
     assert!(note_text.contains("- current_execution_run_id:"));
     assert!(note_text.contains("- continuity_source_execution_run_id:"));
     assert!(note_text.contains("## Summary"));

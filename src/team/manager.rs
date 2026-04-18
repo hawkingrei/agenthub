@@ -12,6 +12,11 @@ use std::{
 };
 
 pub use agenthub_team_domain::TeamRunResumeError;
+use agenthub_team_domain::{
+    TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY, TEAM_CONTINUITY_NOTE_SCHEMA_VERSION,
+    TEAM_RUNTIME_STATE_SCHEMA_FAMILY, TEAM_RUNTIME_STATE_SCHEMA_VERSION,
+    continuity_note_relative_path, extract_context_artifact_path,
+};
 use agenthub_text::truncate_chars;
 use chrono::Utc;
 use serde_json::Value;
@@ -4765,6 +4770,8 @@ fn build_runtime_state_snapshot_text(
     let mut lines = vec![
         "# Team Runtime State".to_string(),
         String::new(),
+        format!("- schema_family: {TEAM_RUNTIME_STATE_SCHEMA_FAMILY}"),
+        format!("- schema_version: {TEAM_RUNTIME_STATE_SCHEMA_VERSION}"),
         format!("- updated_at: {}", continuity_state.updated_at),
         format!("- team_id: {}", owner.team_id),
         format!("- member_id: {}", owner.member_id),
@@ -4801,6 +4808,8 @@ fn build_runtime_continuity_note_text(
     let mut lines = vec![
         "# Team Continuity Note".to_string(),
         String::new(),
+        format!("- schema_family: {TEAM_CONTINUITY_NOTE_SCHEMA_FAMILY}"),
+        format!("- schema_version: {TEAM_CONTINUITY_NOTE_SCHEMA_VERSION}"),
         format!("- updated_at: {}", continuity_state.updated_at),
         format!("- team_id: {}", owner.team_id),
         format!("- member_id: {}", owner.member_id),
@@ -4832,21 +4841,6 @@ fn build_runtime_continuity_note_text(
         String::new(),
     ]);
     lines.join("\n")
-}
-
-fn continuity_note_relative_path(source_run_id: &str) -> Option<String> {
-    let source_run_id = source_run_id.trim();
-    if source_run_id.is_empty() {
-        return None;
-    }
-    Some(format!(".cache/context/run/{source_run_id}/continuity.md"))
-}
-
-fn extract_context_artifact_path(value: &Value) -> Option<&str> {
-    value
-        .get("path")
-        .and_then(Value::as_str)
-        .or_else(|| value.as_str())
 }
 
 #[derive(Debug, Clone)]

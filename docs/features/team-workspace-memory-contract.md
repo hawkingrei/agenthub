@@ -206,6 +206,53 @@ The same rule applies to worker project memory:
 - Durable facts promoted from flush output should be written into `.cache/context/memory/*.md` or
   `.agenthubmemory/note/` as concise summaries with source pointers.
 
+### 7) Rolling Upgrade Compatibility Contract
+
+Filesystem-backed Team memory must support mixed-version runtime deployments without requiring one
+atomic workspace rewrite.
+
+Compatibility rules:
+
+- Treat machine-read index files as versioned file protocols, not ad-hoc prompt dumps.
+- Prefer additive evolution:
+  - add new fields or new pointed-to files first;
+  - keep existing stable pointer fields readable for at least one compatibility window;
+  - remove or rename fields only after every supported reader no longer depends on them.
+- Readers must be more tolerant than writers:
+  - new readers should accept missing optional fields, unknown extra fields, and older field
+    shapes when the core pointer contract still resolves;
+  - writers may emit the latest schema, but should preserve compatibility-facing fields until the
+    previous reader generation is retired.
+- Do not require startup-time full-workspace rewrites or destructive migrations just to load
+  context state.
+
+Machine-read file requirements:
+
+- Stable index files such as `state.md` should declare:
+  - `schema_family`
+  - `schema_version`
+- Run-scoped artifacts and machine-read markdown or JSON notes should also carry self-describing
+  schema metadata whenever a runtime parser depends on their structure.
+- `state.md` is the compatibility-facing index for current runtime context, not the full-fidelity
+  state source; detailed continuity or replay material should live behind stable pointers under
+  `.cache/context/run/<run_id>/...`.
+
+Migration strategy:
+
+1. land a backward-compatible reader first;
+2. start writing the new schema or new pointed-to file shape;
+3. keep compatibility fields or dual-read support during the rollout window;
+4. remove legacy fields only after the old reader path is no longer supported.
+
+Practical consequences:
+
+- Pointer paths are the primary stability boundary; index files should change more slowly than the
+  deeper artifact payloads they reference.
+- Append-only files (`decisions.md`, `errors.md`, `log.md`) should accept entry-shape evolution by
+  appending new records rather than rewriting historical entries in place.
+- If a field rename is semantically necessary, prefer a staged dual-read or dual-write window over
+  a one-shot replacement.
+
 ## Operational Notes
 
 - Treat prompt text as the bounded working set, not the durable notebook.
@@ -226,3 +273,5 @@ The same rule applies to worker project memory:
 - [2026-04-10-team-prompt-tail-slimming.md](../journal/2026-04-10-team-prompt-tail-slimming.md)
 - [2026-04-10-runtime-context-identity-compaction.md](../journal/2026-04-10-runtime-context-identity-compaction.md)
 - [2026-04-10-team-workspace-memory-contract.md](../journal/2026-04-10-team-workspace-memory-contract.md)
+- [2026-04-18-team-memory-index-rolling-upgrade.md](../journal/2026-04-18-team-memory-index-rolling-upgrade.md)
+- [2026-04-18-team-memory-index-schema-metadata.md](../journal/2026-04-18-team-memory-index-schema-metadata.md)
