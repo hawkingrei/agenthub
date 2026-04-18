@@ -519,7 +519,7 @@ export const APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS =
   "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md border border-notion-border/75 bg-white px-2.5 text-[12px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover active:translate-y-px";
 
 export const WORKSPACE_SHELL_LENS_BAR_CLASS =
-  "flex min-w-0 flex-wrap items-center gap-1 rounded-[10px] bg-notion-sidebar/52 p-1";
+  "flex min-w-0 flex-wrap items-center gap-0.5";
 
 const WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS =
   "inline-flex h-6 items-center justify-center rounded-md px-2 text-[11px] font-medium tracking-[0.01em] transition";
@@ -667,7 +667,7 @@ export const INPUT_DOCK_SEND_BUTTON_CLASS =
   "inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-notion-accent px-3.5 text-[12px] font-semibold text-white transition hover:bg-notion-accent/90 disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px";
 
 export const TEAM_PAGE_ROOT_CLASS =
-  "mx-auto flex min-h-0 flex-1 w-full max-w-[1680px] flex-col gap-3 overflow-hidden bg-white px-3 py-2 sm:px-4 lg:px-6";
+  "mx-auto flex min-h-0 flex-1 w-full max-w-[1680px] flex-col gap-3 bg-white px-3 py-2 sm:px-4 lg:px-6";
 
 export const TEAM_SECTION_CARD_CLASS =
   "min-h-0 min-w-0 rounded-lg border border-notion-border bg-white px-3 py-2 shadow-sm transition-all";

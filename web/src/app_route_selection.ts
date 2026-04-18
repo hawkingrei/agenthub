@@ -36,6 +36,33 @@ export type AppRouteKind =
   | "post-auth-redirect"
   | "workspace";
 
+export type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
+
+export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
+  const params = new URLSearchParams(search);
+  const lens = params.get("lens");
+  switch (lens) {
+    case "chat":
+    case "threads":
+    case "tasks":
+    case "members":
+    case "search":
+      return lens;
+    default:
+      return null;
+  }
+}
+
+export function buildWorkspacePath(agentId?: string | null, lens?: WorkspaceLens | null): string {
+  const pathname = agentId
+    ? `/workspace/agents/${encodeURIComponent(agentId)}`
+    : "/workspace";
+  if (!lens) {
+    return pathname;
+  }
+  return `${pathname}?lens=${encodeURIComponent(lens)}`;
+}
+
 export function isTeamsRoute(pathname: string): boolean {
   return (
     pathname === "/teams" ||

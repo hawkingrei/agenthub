@@ -70,6 +70,8 @@ export type AgentsRootPageProps = {
   createAgentModalProps: CreateAgentModalProps;
   agentNodeSectionProps: AgentNodeSectionProps | null;
   permissionModalProps: PermissionModalProps | null;
+  lensItems?: readonly WorkspaceShellLensItem[];
+  onSelectLens?: (value: string) => void;
 };
 
 export const AgentsRootPage = React.memo(function AgentsRootPage({
@@ -104,9 +106,11 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   createAgentModalProps,
   agentNodeSectionProps,
   permissionModalProps,
+  lensItems = [],
+  onSelectLens,
 }: AgentsRootPageProps) {
   return (
-    <div className="app bg-white" ref={appRootRef}>
+    <div className="flex h-screen flex-col overflow-hidden bg-white" ref={appRootRef}>
       {auth ? (
         <WorkspaceShellHeader
           ref={appHeaderRef}
@@ -125,14 +129,19 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           }`}
           headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
           menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+          lensItems={lensItems}
+          onSelectLens={onSelectLens}
           onNavigate={navigateWorkbenchRoute}
           onLogout={onLogout}
         />
       ) : null}
 
-      {normalizedError ? (
-        <ErrorBanner message={normalizedError} onClose={onClearError} />
-      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {normalizedError ? (
+          <div className="px-4 py-2 sm:px-6">
+            <ErrorBanner message={normalizedError} onClose={onClearError} />
+          </div>
+        ) : null}
 
       {!auth ? (
         <form
@@ -210,6 +219,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           workbenchProps={workbenchProps}
         />
       )}
+      </div>
 
       {auth && showCreateAgent ? (
         <Suspense fallback={null}>

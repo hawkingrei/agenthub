@@ -21,6 +21,9 @@ import {
   resolveTeamRoute,
   isAgentsWorkbenchRoute,
   resolveWorkspaceAgentRoute,
+  resolveWorkspaceLens,
+  buildWorkspacePath,
+  type WorkspaceLens,
 } from "./app_route_selection";
 import {
   OFFLINE_MESSAGE,
@@ -70,10 +73,6 @@ import { useAppPermissionState } from "./use_app_permission_state";
 
 const AGENTS_DESKTOP_BREAKPOINT_PX = 1024;
 const AGENTS_PANEL_COMPACT_ROWS_THRESHOLD = 320;
-
-function buildWorkspaceAgentPath(agentId: string): string {
-  return `/workspace/agents/${encodeURIComponent(agentId)}`;
-}
 
 export {
   AGENT_SOURCE_MANUAL,
@@ -416,6 +415,29 @@ export function App() {
     [routeLocation.pathname]
   );
   const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
+  const activeWorkspaceLens = useMemo(
+    () => resolveWorkspaceLens(routeLocation.search) ?? "chat",
+    [routeLocation.search]
+  );
+
+  const workspaceLensItems = useMemo(
+    () => [
+      { value: "chat", label: "Chat", active: activeWorkspaceLens === "chat" },
+      { value: "threads", label: "Threads", active: activeWorkspaceLens === "threads" },
+      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
+      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
+      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
+    ],
+    [activeWorkspaceLens]
+  );
+
+  const onSelectWorkspaceLens = useCallback(
+    (value: string) => {
+      const lens = value as WorkspaceLens;
+      navigateWorkbenchRoute(buildWorkspacePath(activeAgent, lens));
+    },
+    [activeAgent, navigateWorkbenchRoute]
+  );
 
   useEffect(() => {
     setLocalStorageItemSafe(
@@ -490,8 +512,8 @@ export function App() {
     setActiveAgent(id);
     setActiveSessionId(agentSessions[id] ?? null);
     setAgentsCollapsed(true);
-    navigateWorkbenchRoute(buildWorkspaceAgentPath(id));
-  }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId]);
+    navigateWorkbenchRoute(buildWorkspacePath(id, activeWorkspaceLens));
+  }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId, activeWorkspaceLens]);
 
   const onRespondPermission = useCallback(async (
     agentId: string,
@@ -1195,6 +1217,8 @@ export function App() {
       createAgentModalProps={createAgentModalProps}
       agentNodeSectionProps={agentNodeSectionProps}
       permissionModalProps={permissionModalProps}
+      lensItems={workspaceLensItems}
+      onSelectLens={onSelectWorkspaceLens}
     />
   );
 }

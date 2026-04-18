@@ -66,8 +66,8 @@ export const WorkspaceShellHeader = React.memo(
 
     return (
       <header className={className} ref={ref}>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex min-w-0 items-start gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="flex min-w-0 items-center gap-2">
             {showSidebarToggle ? (
               <IconButton
                 className={headerIconButtonClassName}
@@ -76,26 +76,30 @@ export const WorkspaceShellHeader = React.memo(
                 aria-label={sidebarToggleLabel ?? undefined}
               >
                 <i
-                  className={sidebarCollapsed ? "bi bi-chevron-right" : "bi bi-chevron-left"}
+                  className={sidebarCollapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset"}
                   aria-hidden="true"
                 />
               </IconButton>
             ) : null}
             {(title || subtitle) && (
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
                 {title ? (
-                  <h1 className="text-[clamp(1rem,1.45vw,1.2rem)] font-semibold leading-[1.08] tracking-tight text-black">
+                  <h1 className="truncate text-[14px] font-semibold tracking-tight text-black/85">
                     {title}
                   </h1>
                 ) : null}
+                {title && subtitle ? (
+                  <span className="text-black/15 font-normal" aria-hidden="true">/</span>
+                ) : null}
                 {subtitle ? (
-                  <p className="mt-0.5 text-[11px] text-black/48">{subtitle}</p>
+                  <p className="truncate text-[13px] font-medium text-black/45">{subtitle}</p>
                 ) : null}
               </div>
             )}
           </div>
+
           {lensItems.length > 0 && onSelectLens ? (
-            <div className={WORKSPACE_SHELL_LENS_BAR_CLASS}>
+            <div className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} hidden md:flex ml-2`}>
               {lensItems.map((item) => (
                 <ActionButton
                   key={item.value}
@@ -118,7 +122,9 @@ export const WorkspaceShellHeader = React.memo(
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+
+        <div className="flex shrink-0 items-center justify-end gap-3">
+
           {secondaryActions}
           <WorkbenchConnectionBadge badge={connectionBadge} className={headerStatusClassName} />
           <WorkbenchHeaderMenu

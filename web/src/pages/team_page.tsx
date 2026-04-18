@@ -51,17 +51,14 @@ import { TeamSetupPanel } from "./team_setup_panel";
 import { TeamSidebar } from "./team_sidebar";
 import { TeamStepsPanel } from "./team_steps_panel";
 import {
-  TeamCreateDialog,
-  TeamEditMemberDialog,
-  TeamForgeAgentDialog,
-} from "./team/team_management_modals";
-import {
   TeamDebugToolsHeader,
   TeamRunOpsPanel,
   TeamRunRequiredPanel,
   type TeamDebugTag,
 } from "./team/team_debug_panels";
 import { TeamPageHeader } from "./team/team_page_header";
+import { TeamPageModals } from "./team/team_page_modals";
+import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamWorkspaceHeader } from "./team/team_workspace_header";
 import {
@@ -3617,62 +3614,105 @@ export function TeamPage(props: TeamPageProps) {
     : teamsSidebarCollapsed
       ? teamWorkbenchDetailLayoutCollapsedClassName
       : teamWorkbenchDetailLayoutExpandedClassName;
+  const modalChrome = {
+    panelClassName: teamWorkbenchPanelClassName,
+    accentButtonClassName: teamWorkbenchAccentButtonClassName,
+    mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+    badgeClassName: teamWorkbenchBadgeClassName,
+    modalHeaderClassName:
+      "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
+    setupChecklistClassName: teamWorkbenchSetupChecklistClassName,
+    infoStripGridClassName: teamWorkbenchInfoStripGridClassName,
+    infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
+    infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
+    infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
+  };
+  const forgeModalProps = {
+    title: "Add Agent",
+    confirmLabel: "Create Agent",
+    agentPresetLabel: "Role model",
+    agentPresetSummaryLabel: "Model",
+    teamStyled: true,
+    agentName: forgeAgentName,
+    setAgentName: setForgeAgentName,
+    agentWorkdir: forgeAgentWorkdir,
+    setAgentWorkdir: setForgeAgentWorkdir,
+    agentPresetId: forgeAgentPresetId,
+    setAgentPresetId: setForgeAgentPresetId,
+    worktreeMode: forgeAgentWorktreeMode,
+    setWorktreeMode: handleForgeWorktreeModeChange,
+    worktreeRepo: forgeAgentWorktreeRepo,
+    setWorktreeRepo: setForgeAgentWorktreeRepo,
+    worktreeRef: forgeAgentWorktreeRef,
+    setWorktreeRef: setForgeAgentWorktreeRef,
+    codeMode: forgeAgentCodeMode,
+    setCodeMode: setForgeAgentCodeMode,
+    worktreeError: forgeAgentWorktreeError,
+    showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
+    createBusy: forgeAgentBusy,
+    workdirPlaceholder: forgeDefaultWorktreeRoot,
+    withinPortal: true,
+    onCreateAgent: onCreateForgeAgent,
+  };
 
   return (
     <div className={TEAM_PAGE_ROOT_CLASS}>
-      <TeamPageHeader
+      <TeamPageShell
+        header={
+          <TeamPageHeader
+            isSelectorRoute={isSelectorRoute}
+            teamsSidebarCollapsed={teamsSidebarCollapsed}
+            teamPanelToggleLabel={teamPanelToggleLabel}
+            connectionBadge={connectionBadge}
+            username={props.auth.username}
+            isRoot={props.auth.role === "root"}
+            headerShellClassName={teamWorkbenchHeaderShellClassName}
+            headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
+            headerMutedButtonClassName={teamWorkbenchMutedButtonClassName}
+            headerStatusClassName={teamWorkbenchHeaderStatusClassName}
+            lensItems={workspaceLensItems}
+            onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
+            onSelectLens={onSelectWorkspaceLens}
+            onNavigateToSelector={navigateToTeamSelector}
+            onNavigate={navigateTeamRoute}
+            onLogout={props.onLogout}
+          />
+        }
+        errorBanner={error ? <ErrorBanner message={error} onClose={() => setError(null)} /> : null}
+        warningNotice={
+          warningNotice?.kind === "runtime" ? (
+            <div className={teamRuntimeNoticeClassName} role="status">
+              <div className="min-w-0 flex-1">
+                <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
+                <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
+              </div>
+              <IconButton
+                tone="subtle"
+                size="md"
+                className="h-8 w-8 shrink-0 rounded-full border border-emerald-200 bg-white/80 text-emerald-700 hover:bg-white"
+                aria-label="Dismiss runtime notice"
+                onClick={() => setWarning(null)}
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </IconButton>
+            </div>
+          ) : warningNotice?.kind === "warning" ? (
+            <Alert
+              color="yellow"
+              variant="light"
+              radius="xl"
+              role="status"
+              title={warningNotice.title}
+              icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
+              withCloseButton
+              onClose={() => setWarning(null)}
+            >
+              <span className="text-sm text-amber-900">{warningNotice.message}</span>
+            </Alert>
+          ) : null
+        }
         isSelectorRoute={isSelectorRoute}
-        teamsSidebarCollapsed={teamsSidebarCollapsed}
-        teamPanelToggleLabel={teamPanelToggleLabel}
-        connectionBadge={connectionBadge}
-        username={props.auth.username}
-        isRoot={props.auth.role === "root"}
-        headerShellClassName={teamWorkbenchHeaderShellClassName}
-        headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
-        headerMutedButtonClassName={teamWorkbenchMutedButtonClassName}
-        headerStatusClassName={teamWorkbenchHeaderStatusClassName}
-        lensItems={workspaceLensItems}
-        onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
-        onSelectLens={onSelectWorkspaceLens}
-        onNavigateToSelector={navigateToTeamSelector}
-        onNavigate={navigateTeamRoute}
-        onLogout={props.onLogout}
-      />
-
-      {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
-      {warningNotice?.kind === "runtime" && (
-        <div className={teamRuntimeNoticeClassName} role="status">
-          <div className="min-w-0 flex-1">
-            <div className={teamRuntimeNoticeTitleClassName}>{warningNotice.title}</div>
-            <div className={teamRuntimeNoticeBodyClassName}>{warningNotice.message}</div>
-          </div>
-          <IconButton
-            tone="subtle"
-            size="md"
-            className="h-8 w-8 shrink-0 rounded-full border border-emerald-200 bg-white/80 text-emerald-700 hover:bg-white"
-            aria-label="Dismiss runtime notice"
-            onClick={() => setWarning(null)}
-          >
-            <i className="bi bi-x-lg" aria-hidden="true" />
-          </IconButton>
-        </div>
-      )}
-      {warningNotice?.kind === "warning" && (
-        <Alert
-          color="yellow"
-          variant="light"
-          radius="xl"
-          role="status"
-          title={warningNotice.title}
-          icon={<i className="bi bi-exclamation-triangle" aria-hidden="true" />}
-          withCloseButton
-          onClose={() => setWarning(null)}
-        >
-          <span className="text-sm text-amber-900">{warningNotice.message}</span>
-        </Alert>
-      )}
-
-      {isSelectorRoute ? (
+        selectorContent={
         <TeamSelectorPanel
           busy={busy}
           filter={teamSelectorFilter}
@@ -3687,9 +3727,10 @@ export function TeamPage(props: TeamPageProps) {
           onCreateTeam={openCreateTeamModal}
           onSelectTeam={navigateToTeamDetail}
         />
-      ) : (
-        <div className={detailLayoutClassName}>
-          {showSidebarPane && (
+        }
+        detailLayoutClassName={detailLayoutClassName}
+        showSidebarPane={showSidebarPane}
+        sidebarPane={
             <TeamSidebar
               showTeamSelector={false}
               developerMode={props.developerMode}
@@ -3720,9 +3761,9 @@ export function TeamPage(props: TeamPageProps) {
               onStartTeamRuntime={onStartTeamRuntime}
               onStopTeamRuntime={onStopTeamRuntime}
             />
-          )}
-
-          {showWorkbenchPane && (
+        }
+        showWorkbenchPane={showWorkbenchPane}
+        workbenchPane={
           <div
             className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0"
             data-team-surface="workbench"
@@ -3734,7 +3775,7 @@ export function TeamPage(props: TeamPageProps) {
             )}
 
             {selectedTeam && (
-              <>
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
                 <div
                   className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
                     isAgentWorkspace ? "py-0.5" : ""
@@ -3871,11 +3912,7 @@ export function TeamPage(props: TeamPageProps) {
                     </div>
                   )}
 
-                  {activeWorkspaceLens !== "search" && tab === "conversation" && (
-                    <>
-                      {conversationPanel}
-                    </>
-                  )}
+                  {activeWorkspaceLens !== "search" && tab === "conversation" && conversationPanel}
 
                   {activeWorkspaceLens !== "search" && tab === "tasks" && tasksPanel}
 
@@ -4210,105 +4247,39 @@ export function TeamPage(props: TeamPageProps) {
                   )}
                 </div>
               )}
-            </>
-          )}
-          </div>
+            </div>
           )}
         </div>
-      )}
+        }
+      />
 
-      <TeamCreateDialog
-        open={showCreateTeamModal}
+      <TeamPageModals
+        showCreateTeamModal={showCreateTeamModal}
+        showForgeAgentForm={showForgeAgentForm}
+        showTeamMemberEditModal={showTeamMemberEditModal}
         busy={busy}
-        teamName={newTeamName}
-        teamDescription={newTeamDescription}
+        newTeamName={newTeamName}
+        newTeamDescription={newTeamDescription}
         onTeamNameChange={setNewTeamName}
         onTeamDescriptionChange={setNewTeamDescription}
         onCreateTeam={onCreateTeam}
-        onClose={closeCreateTeamModal}
-        chrome={{
-          panelClassName: teamWorkbenchPanelClassName,
-          accentButtonClassName: teamWorkbenchAccentButtonClassName,
-          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
-          badgeClassName: teamWorkbenchBadgeClassName,
-          modalHeaderClassName:
-            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
-          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
-          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
-          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
-        }}
-      />
-
-      <TeamForgeAgentDialog
-        open={showForgeAgentForm}
-        draft={teamMemberDraft}
-        roleProfile={teamMemberRoleProfile}
-        roleOptions={teamMemberRoleOptions}
+        closeCreateTeamModal={closeCreateTeamModal}
+        teamMemberDraft={teamMemberDraft}
+        teamMemberRoleProfile={teamMemberRoleProfile}
+        teamMemberRoleOptions={teamMemberRoleOptions}
         selectedTeamHasLeader={selectedTeamHasLeader}
-        onRoleChange={handleTeamMemberRoleChange}
-        onPatchDraft={patchTeamMemberDraft}
-        chrome={{
-          panelClassName: teamWorkbenchPanelClassName,
-          accentButtonClassName: teamWorkbenchAccentButtonClassName,
-          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
-          badgeClassName: teamWorkbenchBadgeClassName,
-          modalHeaderClassName:
-            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
-          setupChecklistClassName: teamWorkbenchSetupChecklistClassName,
-          infoStripGridClassName: teamWorkbenchInfoStripGridClassName,
-          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
-          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
-          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
-        }}
-        modalProps={{
-          title: "Add Agent",
-          confirmLabel: "Create Agent",
-          agentPresetLabel: "Role model",
-          agentPresetSummaryLabel: "Model",
-          teamStyled: true,
-          agentName: forgeAgentName,
-          setAgentName: setForgeAgentName,
-          agentWorkdir: forgeAgentWorkdir,
-          setAgentWorkdir: setForgeAgentWorkdir,
-          agentPresetId: forgeAgentPresetId,
-          setAgentPresetId: setForgeAgentPresetId,
-          worktreeMode: forgeAgentWorktreeMode,
-          setWorktreeMode: handleForgeWorktreeModeChange,
-          worktreeRepo: forgeAgentWorktreeRepo,
-          setWorktreeRepo: setForgeAgentWorktreeRepo,
-          worktreeRef: forgeAgentWorktreeRef,
-          setWorktreeRef: setForgeAgentWorktreeRef,
-          codeMode: forgeAgentCodeMode,
-          setCodeMode: setForgeAgentCodeMode,
-          worktreeError: forgeAgentWorktreeError,
-          showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
-          createBusy: forgeAgentBusy,
-          workdirPlaceholder: forgeDefaultWorktreeRoot,
-          withinPortal: true,
-          onCreateAgent: onCreateForgeAgent,
-          onClose: closeTeamMemberForgeModal,
-        }}
-      />
-
-      <TeamEditMemberDialog
-        open={showTeamMemberEditModal}
-        busy={busy}
+        handleTeamMemberRoleChange={handleTeamMemberRoleChange}
+        patchTeamMemberDraft={patchTeamMemberDraft}
+        forgeModalProps={forgeModalProps}
+        closeTeamMemberForgeModal={closeTeamMemberForgeModal}
         selectedAgentLabel={selectedAgentLabel}
-        draft={teamMemberEditDraft}
-        onPatchDraft={patchTeamMemberEditDraft}
-        onClose={closeTeamMemberEditModal}
-        onSave={onSaveTeamMemberProfile}
-        chrome={{
-          panelClassName: teamWorkbenchPanelClassName,
-          accentButtonClassName: teamWorkbenchAccentButtonClassName,
-          mutedButtonClassName: teamWorkbenchMutedButtonClassName,
-          badgeClassName: teamWorkbenchBadgeClassName,
-          modalHeaderClassName:
-            "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
-          infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
-          infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
-          infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
-        }}
+        teamMemberEditDraft={teamMemberEditDraft}
+        patchTeamMemberEditDraft={patchTeamMemberEditDraft}
+        closeTeamMemberEditModal={closeTeamMemberEditModal}
+        onSaveTeamMemberProfile={onSaveTeamMemberProfile}
+        createChrome={modalChrome}
+        forgeChrome={modalChrome}
+        editChrome={modalChrome}
       />
     </div>
   );

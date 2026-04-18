@@ -21,7 +21,7 @@ import { ActionButton, SurfaceCard } from "../../ui/primitives";
 
 type TeamCreateNoteTone = "info" | "warning";
 
-type TeamModalChrome = {
+export type TeamModalChrome = {
   panelClassName: string;
   accentButtonClassName: string;
   mutedButtonClassName: string;
