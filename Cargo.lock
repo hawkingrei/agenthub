@@ -377,6 +377,7 @@ dependencies = [
  "agenthub-acp-core",
  "agenthub-config",
  "agenthub-managed-skills",
+ "agenthub-team-domain",
  "agenthub-text",
  "anyhow",
  "async-trait",
