@@ -108,7 +108,7 @@ describe("AgentsPanel", () => {
     expect(html).toContain("agents-workbench-row-badges");
     expect(html).toContain("md:opacity-0");
     expect(html).toContain("md:group-hover:opacity-100");
-    expect(html).toContain("running");
+    expect(html).toContain("online");
   });
 
   it("renders per-agent permission indicator in expanded mode", () => {
@@ -182,7 +182,7 @@ describe("AgentsPanel", () => {
         activeAgent="agent-remote"
       />
     );
-    expect(html).toContain("node:node-east");
+    expect(html).toContain("node-east");
     expect(html).toContain("agents-workbench-row-badges");
     expect(html).toContain("Start on node node-east");
     expect(html).toContain('aria-label="Start agent on node node-east"');

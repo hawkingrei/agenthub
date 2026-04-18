@@ -525,10 +525,10 @@ const WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS =
   "inline-flex h-6 items-center justify-center rounded-md px-2 text-[11px] font-medium tracking-[0.01em] transition";
 
 export const WORKSPACE_SHELL_LENS_BUTTON_ACTIVE_CLASS =
-  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-notion-border/80 bg-white text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)]`;
+  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-transparent bg-notion-hover text-notion-text`;
 
 export const WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS =
-  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-transparent bg-transparent text-notion-text-muted hover:bg-white/72 hover:text-notion-text`;
+  `${WORKSPACE_SHELL_LENS_BUTTON_BASE_CLASS} border border-transparent bg-transparent text-notion-text-muted hover:bg-notion-hover hover:text-notion-text`;
 
 export const APP_WORKSPACE_ROOT_CLASS =
   "workspace flex min-h-0 w-full flex-1 flex-row items-stretch overflow-hidden";
@@ -578,10 +578,10 @@ export const AGENTS_CREATE_BUTTON_CLASS =
   "flex h-7 items-center gap-1.5 rounded-md border border-notion-border/75 bg-white px-2.5 text-[11px] font-medium text-notion-text shadow-sm transition hover:bg-notion-hover hover:text-notion-accent active:translate-y-px";
 
 export const AGENTS_ROW_CLASS =
-  "agents-workbench-row group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-transparent px-3 py-2.5 text-notion-text transition-all hover:bg-notion-hover/80";
+  "agents-workbench-row group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-transparent px-2.5 py-2 text-notion-text transition-all hover:bg-notion-hover/80";
 
 export const AGENTS_ROW_ACTIVE_CLASS =
-  "agents-workbench-row active group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-notion-accent/10 bg-notion-hover px-3 py-2.5 text-notion-text ring-1 ring-notion-accent/20 shadow-notion-row";
+  "agents-workbench-row active group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-lg border border-notion-accent/10 bg-notion-hover px-2.5 py-2 text-notion-text ring-1 ring-notion-accent/20 shadow-notion-row";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
   "output-header sticky top-0 z-30 flex flex-col gap-1.5 bg-notion-surface-overlay px-4 py-2.5 backdrop-blur-md transition-all sm:px-6 sm:py-3";

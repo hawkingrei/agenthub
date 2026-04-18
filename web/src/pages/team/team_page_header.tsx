@@ -44,7 +44,7 @@ export const TeamPageHeader = React.memo(function TeamPageHeader({
     <WorkspaceShellHeader
       activeSurface="teams"
       title={isSelectorRoute ? "Teams" : "Workspace"}
-      subtitle={isSelectorRoute ? "Choose a team" : null}
+      subtitle={null}
       sidebarToggleLabel={isSelectorRoute ? null : teamPanelToggleLabel}
       sidebarCollapsed={teamsSidebarCollapsed}
       onToggleSidebar={isSelectorRoute ? null : onToggleSidebar}

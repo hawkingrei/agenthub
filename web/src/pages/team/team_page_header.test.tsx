@@ -41,7 +41,6 @@ describe("TeamPageHeader", () => {
     );
 
     expect(html).toContain("Teams");
-    expect(html).toContain("Choose a team");
     expect(html).toContain("ONLINE · SSE CONNECTED");
   });
 

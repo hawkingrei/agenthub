@@ -5,7 +5,6 @@ import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import { ActionButton, IconButton, SelectableListItem } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
-  TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_SIDEBAR_META_GRID_CLASS,
   TEAM_SIDEBAR_ROOT_CLASS,
@@ -19,7 +18,6 @@ import {
   TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS,
   TEAM_SOFT_CHROME_SHADOW_CLASS,
   TEAM_SIDEBAR_WORK_CLASS,
-  TEAM_SIDEBAR_BADGE_CLASS,
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
 } from "../ui/tailwind_classes";
 import { TeamMemberLiveState } from "./team/member_helpers";
@@ -360,8 +358,8 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             {showTeamSelector && (
               <p className="mt-0.5 max-w-[28ch] text-[12px] leading-relaxed text-notion-text-muted">
                 {selectedTeam
-                  ? "Switch teams from the index below."
-                  : "Choose an existing team or create a new one."}
+                  ? "Switch teams from the list."
+                  : "Choose a team or create one."}
               </p>
             )}
           </div>
@@ -507,7 +505,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       </span>
                     </span>
                     {summaryLabel && (
-                      <span className={TEAM_LIST_ITEM_META_CLASS}>
+                      <span className="truncate text-[10px] font-medium text-notion-text-muted">
                         {summaryLabel}
                       </span>
                     )}
@@ -621,11 +619,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
-                          <span className={TEAM_SIDEBAR_BADGE_CLASS}>
+                          <span className="shrink-0 text-[10px] font-medium text-notion-text-muted">
                             {memberStateLabel}
                           </span>
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="shrink-0 rounded-sm bg-notion-accent text-white px-1 py-0.5 text-[10px] font-bold leading-none shadow-sm">
+                            <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-notion-accent/12 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-notion-accent">
                               {member.pending_inbox_count}
                             </span>
                           )}

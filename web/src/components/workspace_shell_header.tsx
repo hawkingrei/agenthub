@@ -82,17 +82,14 @@ export const WorkspaceShellHeader = React.memo(
               </IconButton>
             ) : null}
             {(title || subtitle) && (
-              <div className="flex min-w-0 items-center gap-1.5">
+              <div className="flex min-w-0 items-baseline gap-1.5">
                 {title ? (
                   <h1 className="truncate text-[14px] font-semibold tracking-tight text-black/85">
                     {title}
                   </h1>
                 ) : null}
-                {title && subtitle ? (
-                  <span className="text-black/15 font-normal" aria-hidden="true">/</span>
-                ) : null}
                 {subtitle ? (
-                  <p className="truncate text-[13px] font-medium text-black/45">{subtitle}</p>
+                  <p className="truncate text-[12px] font-medium text-black/45">{subtitle}</p>
                 ) : null}
               </div>
             )}

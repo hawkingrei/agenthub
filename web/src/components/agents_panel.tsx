@@ -88,14 +88,13 @@ export const AgentsPanel = React.memo(function AgentsPanel({
     .length;
 
   function resolveAgentMetaParts(agent: AgentRecord, modelLabel: string | null): string[] {
-    const parts = [agent.status];
+    const parts = [isAgentActiveStatus(agent.status) ? "online" : agent.status];
     if (modelLabel) {
       parts.push(modelLabel);
     }
     if (agent.target_node_id) {
-      parts.push(`node:${agent.target_node_id}`);
+      parts.push(agent.target_node_id);
     }
-    parts.push(agent.workdir);
     return parts;
   }
 
@@ -338,12 +337,14 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                             </Box>
                           </React.Fragment>
                         ))}
-                        <Box
-                          component="span"
-                          className="shrink-0 text-[10px] font-medium text-notion-text-muted"
-                        >
-                          code {agent.code_mode ? "on" : "off"}
-                        </Box>
+                        {agent.code_mode ? (
+                          <Box
+                            component="span"
+                            className="shrink-0 text-[10px] font-medium text-notion-text-muted"
+                          >
+                            code
+                          </Box>
+                        ) : null}
                       </Box>
                     </Box>
                   );

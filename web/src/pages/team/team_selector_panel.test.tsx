@@ -23,8 +23,7 @@ describe("TeamSelectorPanel", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Create Team");
-    expect(html).toContain("Workspace");
+    expect(html).toContain("New Team");
     expect(html).toContain("No teams yet. Create one to open its workspace.");
   });
 
@@ -54,7 +53,7 @@ describe("TeamSelectorPanel", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Filter teams by name or id");
+    expect(html).toContain("Search teams");
     expect(html).toContain("TiDB fuzz");
     expect(html).toContain("3 members · 2 active");
     expect(html).toContain("running");

@@ -45,10 +45,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
       <section className="flex min-h-0 w-full max-w-[680px] flex-col">
         <ToolbarRow className="items-start px-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-notion-text-muted">
-              Workspace
-            </div>
-            <h2 className="mt-1 text-[17px] font-semibold tracking-tight text-black">Teams</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight text-black">Teams</h2>
           </div>
           <ActionButton
             type="button"
@@ -57,7 +54,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             className={accentButtonClassName}
             onClick={onCreateTeam}
           >
-            Create Team
+            New Team
           </ActionButton>
         </ToolbarRow>
 
@@ -66,7 +63,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             <TextInput
               className="flex-1"
               radius="md"
-              placeholder="Filter teams by name or id"
+              placeholder="Search teams"
               aria-label="Filter teams"
               value={filter}
               onChange={(event) => onFilterChange(event.target.value)}
@@ -106,16 +103,15 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
                 onClick={() => onSelectTeam(team.id)}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-medium text-ui-text-primary">
+                  <div className="truncate text-[13px] font-medium text-ui-text-primary">
                     {team.name}
                   </div>
-                  <div className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-ui-text-secondary">
+                  <div className="mt-0.5 line-clamp-1 text-[11px] leading-5 text-ui-text-secondary">
                     {team.description}
                   </div>
                   <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] leading-4 text-ui-text-muted">
                     <span className="truncate">{team.summary}</span>
                     <span className="inline-flex h-1 w-1 shrink-0 rounded-full bg-ui-text-muted/35" />
-                    <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                     <span className="shrink-0 capitalize">{team.runtimeLabel}</span>
                   </div>
                 </div>
