@@ -857,7 +857,10 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Active run `run-hidden` is hidden by filter `completed`.");
     expect(container.textContent).toContain(
-      "No runs loaded yet. Use Debug → Run Ops to create or load runs."
+      "No execution runs loaded yet. Use Debug → Run Ops to create or load runs."
+    );
+    expect(container.textContent).toContain(
+      "Concrete execution history and replay partitions for this team."
     );
   });
 
@@ -1002,7 +1005,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(container.textContent).toContain("Active Run");
+    expect(container.textContent).toContain("Active Execution Run");
     expect(container.textContent).toContain("run-1");
     expect(container.textContent).toContain("ctx-1");
     clickElement(findButtonByAriaLabel(container, "Refresh active run"));
@@ -4037,7 +4040,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No results.");
 
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
-    expect(container.textContent).toContain("Previous runs");
+    expect(container.textContent).toContain("Previous execution runs");
     expect(container.textContent).toContain("Earlier run failed.");
     expect(container.textContent).toContain("No summary recorded.");
     clickElement(findButtonByText(container, "run-1"));

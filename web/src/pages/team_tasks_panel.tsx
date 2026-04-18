@@ -476,8 +476,8 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                       ? latestRun.summary?.trim() ||
                         (latestRun.status === "completed"
                           ? "Completed."
-                          : "Execution in progress.")
-                      : "No run recorded yet."}
+                          : "Latest execution run is still in progress.")
+                      : "No execution run recorded yet."}
                   </p>
                 </div>
                 {latestRun && (
@@ -528,7 +528,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
               <div className={TASKS_RUN_CARD_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-notion-text">Previous runs</p>
+                    <p className="text-sm font-bold text-notion-text">Previous execution runs</p>
                   </div>
                   <Badge className="text-[10px]">
                     {relatedRuns.length - 1}

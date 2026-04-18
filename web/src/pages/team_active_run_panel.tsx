@@ -37,7 +37,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
   return (
     <div className={cardClassName}>
       <ToolbarRow className="mb-3">
-        <h3 className={titleClassName}>Active Run</h3>
+        <h3 className={titleClassName}>Active Execution Run</h3>
         <div className="flex flex-wrap items-center gap-2">
           <ActionButton
             tone="secondary"
@@ -90,7 +90,7 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
           <strong>ID:</strong> <code>{run.id}</code>
         </span>
         <span className={metaItemClassName}>
-          <strong>Status:</strong>{" "}
+          <strong>Execution:</strong>{" "}
           <StatusBadge
             label={run.status}
             tone={resolveTeamRunStatusTone(run.status)}
