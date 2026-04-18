@@ -215,7 +215,7 @@ fn parse_machine_read_markdown_metadata(
     contents: &str,
     expected_title: &str,
 ) -> Option<BTreeMap<String, String>> {
-    let mut lines = contents.lines();
+    let mut lines = contents.lines().skip_while(|line| line.trim().is_empty());
     let title = lines.next()?.trim();
     if title != expected_title {
         return None;
@@ -512,6 +512,16 @@ mod tests {
         assert_eq!(parsed.schema_version, None);
         assert_eq!(parsed.team_id.as_deref(), Some("team-1"));
         assert_eq!(parsed.member_id.as_deref(), Some("worker"));
+    }
+
+    #[test]
+    fn parse_team_runtime_state_index_skips_leading_blank_lines() {
+        let parsed = parse_team_runtime_state_index(
+            "\n\n  \n# Team Runtime State\n- team_id: team-1\n- member_id: worker-1\n",
+        )
+        .expect("parse runtime state after leading blank lines");
+        assert_eq!(parsed.team_id.as_deref(), Some("team-1"));
+        assert_eq!(parsed.member_id.as_deref(), Some("worker-1"));
     }
 
     #[test]
