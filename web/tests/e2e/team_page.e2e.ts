@@ -373,9 +373,7 @@ async function openTeamFromSelector(
     }
   }
   await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
-  const selectorPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Teams", exact: true }),
-  });
+  const selectorPanel = teamSelectorPanel(page);
   await expect(selectorPanel).toBeVisible();
   const filterInput = selectorPanel.getByLabel(/Filter teams|Search teams/);
   if ((await filterInput.count()) > 0) {
@@ -442,10 +440,13 @@ async function isTeamDetailReady(
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/teams", { waitUntil: "domcontentloaded" });
-  const selectorPanel = page.locator("section").filter({
+  await expect(teamSelectorPanel(page)).toBeVisible();
+}
+
+function teamSelectorPanel(page: import("@playwright/test").Page) {
+  return page.locator("section").filter({
     has: page.getByRole("heading", { name: "Teams", exact: true }),
   });
-  await expect(selectorPanel).toBeVisible();
 }
 
 async function selectAgentFromSidebar(
@@ -580,7 +581,7 @@ async function openMainTeamAction(
   }
 
   const moreTrigger = page
-    .getByRole("button", { name: "Open more workspace actions" })
+    .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
     .first();
   if ((await moreTrigger.count()) > 0) {
     await expect(moreTrigger).toBeVisible();
@@ -626,8 +627,9 @@ async function openAdvancedView(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  const trigger =
-    page.getByRole("button", { name: "Open more workspace actions" }).first();
+  const trigger = page
+    .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
+    .first();
   await expect(trigger).toBeVisible();
   await trigger.click();
   const menuItem = page.getByRole("menuitem", { name: label, exact: true });
@@ -1475,7 +1477,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
 
   await gotoTeams(page);
 
-  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+  await expect(teamSelectorPanel(page)).toBeVisible();
   await createTeamFromModal(page, {
     name: "quest-team",
     goal: "Build a goal-first team and add members afterward.",
@@ -3348,8 +3350,16 @@ test("team list supports deleting selected team", async ({ page }) => {
   );
 
   await gotoTeams(page);
-  await expect(page.locator(".team-item", { hasText: "Team Delete A" })).toBeVisible();
-  await expect(page.locator(".team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(
+    teamSelectorPanel(page)
+      .locator('[data-team-selector-entry="true"]', { hasText: "Team Delete A" })
+      .first()
+  ).toBeVisible();
+  await expect(
+    teamSelectorPanel(page)
+      .locator('[data-team-selector-entry="true"]', { hasText: "Team Delete B" })
+      .first()
+  ).toBeVisible();
   await openTeamFromSelector(page, "Team Delete A");
   await openMainTeamAction(page, "Execution Runs");
   await expect(page.locator(".teams-main").getByText("Team Delete A", { exact: true })).toBeVisible();
@@ -3357,9 +3367,15 @@ test("team list supports deleting selected team", async ({ page }) => {
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Team" }).click();
 
-  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
-  await expect(page.locator(".team-item", { hasText: "Team Delete A" })).toHaveCount(0);
-  await expect(page.locator(".team-item", { hasText: "Team Delete B" })).toBeVisible();
+  await expect(teamSelectorPanel(page)).toBeVisible();
+  await expect(
+    teamSelectorPanel(page).locator('[data-team-selector-entry="true"]', { hasText: "Team Delete A" })
+  ).toHaveCount(0);
+  await expect(
+    teamSelectorPanel(page)
+      .locator('[data-team-selector-entry="true"]', { hasText: "Team Delete B" })
+      .first()
+  ).toBeVisible();
 });
 
 test("team run list keeps per-team filters and uses before_created_at cursor paging", async ({
