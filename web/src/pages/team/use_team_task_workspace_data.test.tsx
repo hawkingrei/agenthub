@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React, { act, useEffect } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api";
 import { useTeamTaskWorkspaceData } from "./use_team_task_workspace_data";
