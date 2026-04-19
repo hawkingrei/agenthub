@@ -442,7 +442,10 @@ async function isTeamDetailReady(
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/teams", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
+  const selectorPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Teams", exact: true }),
+  });
+  await expect(selectorPanel).toBeVisible();
 }
 
 async function selectAgentFromSidebar(
