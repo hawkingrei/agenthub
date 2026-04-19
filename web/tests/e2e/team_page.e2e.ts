@@ -204,7 +204,7 @@ async function createTeamFromModal(
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
-  await expect.poll(() => isTeamDetailReady(page)).toBe(true);
+  await expect.poll(() => isTeamDetailReady(page, options.name)).toBe(true);
   await expectAddAgentEntryVisible(page, options.name);
 }
 
@@ -369,7 +369,10 @@ async function openTeamFromSelector(
 ): Promise<void> {
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
-    const selectorButton = selectedTeamMenuLocator(page);
+    const selectorButton = page.getByRole("button", {
+      name: "Show teams panel",
+      exact: true,
+    });
     if ((await selectorButton.count()) > 0) {
       await selectorButton.first().click();
     } else {
@@ -448,8 +451,8 @@ async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
 
 function teamSelectorPanel(page: import("@playwright/test").Page) {
   return page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Teams", exact: true }),
-  });
+    has: page.getByRole("button", { name: "New Team", exact: true }),
+  }).first();
 }
 
 async function selectAgentFromSidebar(
