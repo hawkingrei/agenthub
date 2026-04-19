@@ -18,6 +18,10 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
+  return page.getByRole("button", { name: /^Team menu:/ });
+}
+
 type StoredAuthState = {
   token: string;
   userId: string;
@@ -293,10 +297,7 @@ async function createTeamMemberFromModal(
     .getByRole("button", { name: openButtonLabel, exact: true })
     .first();
   const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
-  const menuTrigger = page.getByRole("button", {
-    name: "Team",
-    exact: true,
-  });
+  const menuTrigger = selectedTeamMenuLocator(page);
   const selectionError = page.getByText("Select a team first", { exact: true });
   const dialog = page
     .locator("[role='dialog']")
@@ -368,7 +369,7 @@ async function openTeamFromSelector(
 ): Promise<void> {
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
-    const selectorButton = page.getByRole("button", { name: "Team", exact: true });
+    const selectorButton = selectedTeamMenuLocator(page);
     if ((await selectorButton.count()) > 0) {
       await selectorButton.first().click();
     } else {
@@ -489,7 +490,7 @@ async function expectTeamRuntimeBadge(
 async function openSelectedTeamMenu(
   page: import("@playwright/test").Page
 ): Promise<void> {
-  const trigger = page.getByRole("button", { name: "Team", exact: true });
+  const trigger = selectedTeamMenuLocator(page);
   await expect(trigger).toBeVisible();
   if ((await trigger.getAttribute("aria-expanded")) !== "true") {
     await trigger.click();
@@ -514,10 +515,7 @@ async function expectAddAgentEntryVisible(
   if (lane === "primary" || lane === "menuItem") {
     return;
   }
-  const menuTrigger = page.getByRole("button", {
-    name: "Team",
-    exact: true,
-  });
+  const menuTrigger = selectedTeamMenuLocator(page);
   await expect(menuTrigger).toBeVisible();
   await openSelectedTeamMenu(page);
   await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
