@@ -7,7 +7,7 @@ AgentHub currently exposes `Agents` and `Teams` as separate top-level product su
 This preserves domain boundaries, but it also creates product drift:
 
 - operators switch between two different mental models for closely related work;
-- shared cross-cutting views such as chat, tasks, members, and search do not have one canonical
+- shared cross-cutting views such as channels, tasks, members, and search do not have one canonical
   home;
 - `Agent` objects feel runtime-centric while `Team` objects feel collaboration-centric, even though
   both live inside the same workspace boundary;
@@ -64,6 +64,12 @@ The unified shell should treat the following as first-class workspace entities:
 - `channel`
   - human-facing communication lanes such as `# all`
   - Team review/coordination lanes that are not themselves canonical task objects
+  - detailed Team-local channel/thread behavior lives in
+    [team-channels-threads.md](./team-channels-threads.md)
+- `thread`
+  - a focused collaboration context rooted inside a channel
+  - not a primary shell entity, but a reusable recent-activity/event unit that can be indexed later
+  - must stay subordinate to `channel` in the shell even if a future “recent threads” view is added
 - `team`
   - the collaboration boundary with conversation, tasks, runs, and members
 - `agent`
@@ -78,8 +84,7 @@ Important constraint:
 
 The unified workspace shell should use one shared set of top-level views:
 
-- `Chat`
-- `Threads`
+- `Channels`
 - `Tasks`
 - `Members`
 - `Search`
@@ -98,8 +103,7 @@ The left rail should be split into two conceptual layers.
 
 The upper navigation row or compact left-rail header should expose:
 
-- `Chat`
-- `Threads`
+- `Channels`
 - `Tasks`
 - `Members`
 - `Search`
@@ -148,7 +152,7 @@ But the actual tabs remain entity-specific.
 
 A Team should preserve its current strengths. The primary tabs should be:
 
-- `Chat`
+- `Channels`
 - `Kanban`
 - `Execution Runs`
 - `Members`
@@ -164,7 +168,7 @@ Secondary or advanced tabs may include:
 Constraints:
 
 - `Kanban` remains the canonical Team task lane
-- `Chat` remains the human-facing conversation lane
+- `Channels` remains the human-facing Team communication lane
 - `Execution Runs` remains an execution/debug lens, not the primary ownership surface
 
 #### 5.2) Agent Entity Tabs
@@ -173,7 +177,6 @@ An Agent should become a richer first-class object, not just a card in the Agent
 
 The primary tabs should be:
 
-- `Chat`
 - `Tasks`
 - `Workspace`
 - `Profile`
@@ -189,11 +192,10 @@ Constraints:
 
 - `Workspace` should preserve the current AgentHub strength of file/workdir awareness
 - `Activity` should preserve runtime/event introspection
-- `Chat` should allow direct communication without requiring Team context
 
 ### 6) Team-Specific Semantics That Must Be Preserved
 
-The unified shell must not flatten Team semantics into generic chat/task UI.
+The unified shell must not flatten Team semantics into generic communication/task UI.
 
 Specifically:
 
@@ -206,6 +208,8 @@ UI consequence:
 
 - we may learn from Slock-style "message can become task" affordances
 - but Team UI should not directly bypass the canonical task-first Team contract
+- Team channel/thread rollout should use a focused split view (`channel timeline + thread pane`)
+  instead of turning Team communication into a flat message log
 
 ### 7) Agent-Specific Semantics That Must Be Preserved
 
@@ -252,7 +256,13 @@ Target direction:
 Recommended front-end entity view model:
 
 - `WorkspaceEntity = channel | team | agent`
-- `WorkspaceLens = chat | threads | tasks | members | search`
+- `WorkspaceLens = channels | tasks | members | search`
+
+Important constraint:
+
+- `thread` is intentionally not part of `WorkspaceEntity` or the top-level lens grammar in v1
+- if a later `Threads` view is added, it should behave as an index of recent active thread contexts,
+  not as a new root object type
 
 This is a frontend shell convergence first, not a backend contract rewrite.
 
@@ -275,7 +285,7 @@ Lens and tab state should remain additive rather than encoded into many top-leve
 
 Preferred query parameters:
 
-- `lens=<chat|threads|tasks|members|search>`
+- `lens=<channels|tasks|members|search>`
 - `tab=<entity-local-tab>`
 - `panel=<secondary-panel>`
 
@@ -317,7 +327,7 @@ Rules:
 - narrow screens should behave as two panes, not one long stacked dashboard
 - the entity rail and the workspace content pane should be switchable from the header
 - the current primary workflow must always stay one tap away:
-  - `Chat`
+  - `Channels`
   - `Kanban` for Team
   - Agent primary tabs for Agent objects
 - global lenses should remain reachable without requiring a permanently visible wide desktop rail
@@ -354,14 +364,15 @@ The rollout should happen in phases.
 
 #### Phase 2: Cross-Cutting Lenses
 
-- introduce canonical `Threads`, `Tasks`, `Members`, and `Search` workspace-level views
+- introduce canonical `Channels`, `Tasks`, `Members`, and `Search` workspace-level views
 - wire Team and Agent objects into those shared views
+- keep `thread` as a channel-level secondary pane instead of a global shell lens
 - keep entity-local tabs distinct from global lenses
 
 #### Phase 3: Agent Object Promotion
 
-- promote Agent from card/list item into a first-class object with `Chat`, `Workspace`,
-  `Profile`, and `Activity`
+- promote Agent from card/list item into a first-class object with `Workspace`, `Profile`, and
+  `Activity`
 - align Agent object chrome with Team object chrome inside the same shell
 
 #### Phase 4: Rail Convergence
@@ -391,7 +402,7 @@ Suggested validation surfaces:
 
 - route-shell smoke tests for workspace navigation
 - Team and Agent entity open/switch flows
-- shared-lens navigation tests (`Tasks`, `Threads`, `Members`, `Search`)
+- shared-lens navigation tests (`Channels`, `Tasks`, `Members`, `Search`)
 - Chrome DevTools MCP verification for desktop and compact layouts
 
 Suggested minimum validation by phase:

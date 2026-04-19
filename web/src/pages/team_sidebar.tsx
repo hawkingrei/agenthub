@@ -48,7 +48,6 @@ type TeamSidebarProps = {
     total: number;
     status: string;
   };
-  selectedTeamMemberCount?: number;
   selectedTeamHasConfiguredMembers?: boolean;
   teamMemberSummaryByTeamId: Map<string, TeamMemberSummary>;
   memberLiveStates: TeamMemberLiveState[];
@@ -82,20 +81,6 @@ export function resolveMemberPrimaryLabel(member: TeamMemberLiveState): string {
     return agentName;
   }
   return member.member_id;
-}
-
-export function formatTeamMemberSummary(summary?: TeamMemberSummary): string | null {
-  if (!summary) {
-    return null;
-  }
-  const parts = [`${summary.total} members`, `${summary.active} active`];
-  if (summary.inactive > 0) {
-    parts.push(`${summary.inactive} idle`);
-  }
-  if (summary.missing > 0) {
-    parts.push(`${summary.missing} missing`);
-  }
-  return parts.join(" · ");
 }
 
 export function formatWorkLabel(workLabel: string): string {
@@ -189,9 +174,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeam,
     selectedTeamId,
     selectedTeamRuntimeStatus,
-    selectedTeamMemberCount = 0,
     selectedTeamHasConfiguredMembers = false,
-    teamMemberSummaryByTeamId,
     memberLiveStates,
     focusedAgentMemberId,
     tab,
@@ -211,10 +194,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
   });
   const deferredTeamFilter = React.useDeferredValue(teamFilter);
   const normalizedTeamFilter = deferredTeamFilter.trim().toLowerCase();
-  const selectedTeamWorkerCount = React.useMemo(
-    () => memberLiveStates.filter((member) => member.role === "worker").length,
-    [memberLiveStates]
-  );
   const filteredTeams = React.useMemo(() => {
     if (!normalizedTeamFilter) {
       return teams;
@@ -443,8 +422,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No results found.</p>
               )}
               {filteredTeams.map((team) => {
-                const summary = teamMemberSummaryByTeamId.get(team.id);
-                const summaryLabel = formatTeamMemberSummary(summary);
                 const isSelected = team.id === selectedTeamId;
                 return (
                   <button

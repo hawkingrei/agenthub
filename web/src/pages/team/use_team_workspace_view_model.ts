@@ -1,18 +1,23 @@
 import { useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
-import type { AgentRecord, TeamDefinitionRecord, TeamPromptDefaultsRecord, TeamRunRecord } from "../../api";
+import type {
+  AgentRecord,
+  TeamDefinitionRecord,
+  TeamPromptDefaultsRecord,
+  TeamRunRecord,
+  TeamTaskRecord,
+} from "../../api";
+import type { WorkspaceLens } from "../../app_route_selection";
 import { createDisplayNameLookup } from "./mailbox_helpers";
 import type { TeamMemberLiveState, TeamMemberAgentStatusSummary } from "./member_helpers";
 import { normalizeTeamMemberLifecycle } from "../team_member_status_strip";
 import {
+  isSharedThreadTask,
   resolveAgentWorkspaceStatusView,
   resolveSelectedAgentWorkspaceLabel,
   type AgentWorkspaceStatusView,
 } from "./page_helpers";
 import { buildTeamMemberDraftFromSpec, type TeamMemberProfileDraft } from "./create_helpers";
 import { TEAM_TAB_ITEMS, tabRequiresActiveRun, type TeamTab } from "./state";
-import { isSharedThreadTask } from "./page_helpers";
-
-type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
 
 type UseTeamWorkspaceViewModelOptions = {
   selectedTeam: TeamDefinitionRecord | null;
@@ -28,17 +33,15 @@ type UseTeamWorkspaceViewModelOptions = {
     status: string;
   };
   selectedAgentWorkspaceMemberId: string;
-  selectedAgentWorkspaceAgent: AgentRecord | null;
   selectedAgentWorkspaceLiveState: TeamMemberLiveState | null;
   activeRunForSelectedTeam: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
-  selectedConversation: { title?: string | null } | null;
+  selectedConversation: TeamTaskRecord | null;
   runsLoading: boolean;
   isCompactWorkbench: boolean;
   teamPromptDefaults: TeamPromptDefaultsRecord;
   teamMemberAgentsById: Record<string, AgentRecord | null>;
   agents: AgentRecord[];
-  developerMode: boolean;
   setTab: (tab: TeamTab) => void;
   setFocusedAgentMemberId: Dispatch<SetStateAction<string>>;
   setSelectedConversationTaskId: Dispatch<SetStateAction<string>>;
@@ -47,6 +50,7 @@ type UseTeamWorkspaceViewModelOptions = {
   setActiveRunId: Dispatch<SetStateAction<string | null>>;
   setRunLookupId: (next: string) => void;
   navigateToTeamLens: (teamId: string, lens: WorkspaceLens) => void;
+  navigateToTeamDetail: (teamId: string) => void;
   navigateToSidebarTeam: (teamId: string) => void;
 };
 
@@ -62,7 +66,6 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     selectedTeamMemberSummary,
     selectedTeamRuntimeStatus,
     selectedAgentWorkspaceMemberId,
-    selectedAgentWorkspaceAgent,
     selectedAgentWorkspaceLiveState,
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
@@ -72,7 +75,6 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     teamPromptDefaults,
     teamMemberAgentsById,
     agents,
-    developerMode,
     setTab,
     setFocusedAgentMemberId,
     setSelectedConversationTaskId,
@@ -81,6 +83,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     setActiveRunId,
     setRunLookupId,
     navigateToTeamLens,
+    navigateToTeamDetail,
     navigateToSidebarTeam,
   } = options;
 
@@ -99,8 +102,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
   const workspaceLensItems = useMemo(
     () => [
-      { value: "chat", label: "Chat", active: activeWorkspaceLens === "chat" },
-      { value: "threads", label: "Threads", active: activeWorkspaceLens === "threads" },
+      { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
       { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
       { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
       { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
@@ -187,7 +189,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       ? null
       : tab === "conversation"
         ? selectedConversationIsShared
-          ? "Shared channel for human requests, planning discussion, and team-visible progress updates."
+          ? "Shared channel for team requests and updates."
           : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
         : tab === "tasks"
           ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
@@ -352,7 +354,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
       setTab("conversation");
       if (selectedTeamId) {
-        navigateToTeamLens(selectedTeamId, "chat");
+        navigateToTeamLens(selectedTeamId, "channels");
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
@@ -377,22 +379,43 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       setSelectedMemberId(memberId);
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
+      if (selectedTeamId) {
+        navigateToTeamDetail(selectedTeamId);
+      }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
       }
     },
-    [isCompactWorkbench, setFocusedAgentMemberId, setSelectedMemberId, setTab, setTeamsSidebarCollapsed]
+    [
+      isCompactWorkbench,
+      navigateToTeamDetail,
+      selectedTeamId,
+      setFocusedAgentMemberId,
+      setSelectedMemberId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
   );
 
   const onSelectUtilityWorkspace = useCallback(
     (nextTab: TeamTab) => {
       setFocusedAgentMemberId("");
       setTab(nextTab);
+      if (selectedTeamId) {
+        navigateToTeamDetail(selectedTeamId);
+      }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
       }
     },
-    [isCompactWorkbench, setFocusedAgentMemberId, setTab, setTeamsSidebarCollapsed]
+    [
+      isCompactWorkbench,
+      navigateToTeamDetail,
+      selectedTeamId,
+      setFocusedAgentMemberId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
   );
 
   const onSelectSidebarTeam = useCallback(
@@ -466,6 +489,6 @@ function resolveWorkspaceLensForTab(tab: TeamTab): WorkspaceLens {
     case "overview":
       return "members";
     default:
-      return "chat";
+      return "channels";
   }
 }

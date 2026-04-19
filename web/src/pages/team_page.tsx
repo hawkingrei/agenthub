@@ -1,13 +1,12 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Alert } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { ActionButton, IconButton } from "../ui/primitives";
+import { IconButton } from "../ui/primitives";
 import {
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
   api,
-  getApiErrorStatus,
   getTeamStepRuntimeHandleId,
   TeamConversationMessageRecord,
   TeamActorMessageRecord,
@@ -24,6 +23,7 @@ import {
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import { type AgentPresetId } from "../agent_presets";
 import { ErrorBanner } from "../error_banner";
+import { resolveWorkspaceLens, type WorkspaceLens } from "../app_route_selection";
 import { AuthState } from "../types";
 import {
   normalizeWorkdirInput,
@@ -89,7 +89,6 @@ import {
   resolveTeamRuntimeControlTone,
   resolveTeamRuntimeStatus,
   toPrettyJson,
-  updateCachedTeamRuntimeStatus,
   upsertRun,
 } from "./team/page_helpers";
 import {
@@ -217,7 +216,6 @@ type TeamPageProps = {
   defaultWorktreeRoot?: string | null;
 };
 
-type WorkspaceLens = "channels" | "tasks" | "members" | "search";
 export type TeamChannelId = "all";
 
 export function resolveTeamChannelId(search: string): TeamChannelId {
@@ -293,23 +291,6 @@ export function buildTeamWorkspacePath(
   return `${pathname}?${search}`;
 }
 
-function resolveWorkspaceLens(search: string): WorkspaceLens | null {
-  const params = new URLSearchParams(search);
-  const lens = params.get("lens");
-  switch (lens) {
-    case "channels":
-    case "chat":
-    case "threads":
-      return "channels";
-    case "tasks":
-    case "members":
-    case "search":
-      return lens;
-    default:
-      return null;
-  }
-}
-
 function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   switch (lens) {
     case "channels":
@@ -328,7 +309,6 @@ function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
 const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
   
 ];
-const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
   "mailbox",
   "member_console",
@@ -1784,14 +1764,12 @@ export function TeamPage(props: TeamPageProps) {
   }, [msgTemplate, setMsgPayload]);
 
   const {
-    resolvedSelectedConversationTaskId,
     selectedConversation,
     selectedConversationLatestRun,
     selectedConversationId,
     workspaceTasks,
     selectedTask,
     refreshTasks,
-    refreshSharedConversation,
     onRefreshTasks,
   } = useTeamTaskWorkspaceData({
     token: props.token,
@@ -1994,7 +1972,6 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeamMemberSummary,
     selectedTeamRuntimeStatus,
     selectedAgentWorkspaceMemberId,
-    selectedAgentWorkspaceAgent,
     selectedAgentWorkspaceLiveState,
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
@@ -2004,7 +1981,6 @@ export function TeamPage(props: TeamPageProps) {
     teamPromptDefaults,
     teamMemberAgentsById,
     agents,
-    developerMode: props.developerMode,
     setTab,
     setFocusedAgentMemberId,
     setSelectedConversationTaskId,
@@ -2013,6 +1989,7 @@ export function TeamPage(props: TeamPageProps) {
     setActiveRunId,
     setRunLookupId,
     navigateToTeamLens,
+    navigateToTeamDetail,
     navigateToSidebarTeam,
   });
   const workspaceAdvancedTabItems = (isAgentWorkspace
@@ -2050,6 +2027,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeamId,
     selectedTeamHasLeader,
     selectedTeamHasConfiguredMembers,
+    teamExecutionBlockedReason,
     selectedTeamWorkerCount,
     selectedTeamMemberStatuses,
     selectedAgentWorkspaceMemberId,
@@ -2860,46 +2838,72 @@ export function TeamPage(props: TeamPageProps) {
     : teamsSidebarCollapsed
       ? teamWorkbenchDetailLayoutCollapsedClassName
       : teamWorkbenchDetailLayoutExpandedClassName;
-  const modalChrome = {
-    panelClassName: teamWorkbenchPanelClassName,
-    accentButtonClassName: teamWorkbenchAccentButtonClassName,
-    mutedButtonClassName: teamWorkbenchMutedButtonClassName,
-    badgeClassName: teamWorkbenchBadgeClassName,
-    modalHeaderClassName:
-      "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
-    setupChecklistClassName: teamWorkbenchSetupChecklistClassName,
-    infoStripGridClassName: teamWorkbenchInfoStripGridClassName,
-    infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
-    infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
-    infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
-  };
-  const forgeModalProps = {
-    title: "Add Agent",
-    confirmLabel: "Create Agent",
-    agentPresetLabel: "Role model",
-    agentPresetSummaryLabel: "Model",
-    teamStyled: true,
-    agentName: forgeAgentName,
-    setAgentName: setForgeAgentName,
-    agentWorkdir: forgeAgentWorkdir,
-    setAgentWorkdir: setForgeAgentWorkdir,
-    agentPresetId: forgeAgentPresetId,
-    setAgentPresetId: setForgeAgentPresetId,
-    worktreeMode: forgeAgentWorktreeMode,
-    setWorktreeMode: handleForgeWorktreeModeChange,
-    worktreeRepo: forgeAgentWorktreeRepo,
-    setWorktreeRepo: setForgeAgentWorktreeRepo,
-    worktreeRef: forgeAgentWorktreeRef,
-    setWorktreeRef: setForgeAgentWorktreeRef,
-    codeMode: forgeAgentCodeMode,
-    setCodeMode: setForgeAgentCodeMode,
-    worktreeError: forgeAgentWorktreeError,
-    showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
-    createBusy: forgeAgentBusy,
-    workdirPlaceholder: forgeDefaultWorktreeRoot,
-    withinPortal: true,
-    onCreateAgent: onCreateForgeAgent,
-  };
+  const modalChrome = useMemo(
+    () => ({
+      panelClassName: teamWorkbenchPanelClassName,
+      accentButtonClassName: teamWorkbenchAccentButtonClassName,
+      mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+      badgeClassName: teamWorkbenchBadgeClassName,
+      modalHeaderClassName:
+        "modal-head flex flex-wrap items-start justify-between gap-3 border-b border-notion-border pb-4",
+      setupChecklistClassName: teamWorkbenchSetupChecklistClassName,
+      infoStripGridClassName: teamWorkbenchInfoStripGridClassName,
+      infoStripItemClassName: teamWorkbenchInfoStripItemClassName,
+      infoStripLabelClassName: teamWorkbenchInfoStripLabelClassName,
+      infoStripValueClassName: teamWorkbenchInfoStripValueClassName,
+    }),
+    []
+  );
+  const forgeModalProps = useMemo(
+    () => ({
+      title: "Add Agent",
+      confirmLabel: "Create Agent",
+      agentPresetLabel: "Role model",
+      agentPresetSummaryLabel: "Model",
+      teamStyled: true,
+      agentName: forgeAgentName,
+      setAgentName: setForgeAgentName,
+      agentWorkdir: forgeAgentWorkdir,
+      setAgentWorkdir: setForgeAgentWorkdir,
+      agentPresetId: forgeAgentPresetId,
+      setAgentPresetId: setForgeAgentPresetId,
+      worktreeMode: forgeAgentWorktreeMode,
+      setWorktreeMode: handleForgeWorktreeModeChange,
+      worktreeRepo: forgeAgentWorktreeRepo,
+      setWorktreeRepo: setForgeAgentWorktreeRepo,
+      worktreeRef: forgeAgentWorktreeRef,
+      setWorktreeRef: setForgeAgentWorktreeRef,
+      codeMode: forgeAgentCodeMode,
+      setCodeMode: setForgeAgentCodeMode,
+      worktreeError: forgeAgentWorktreeError,
+      showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
+      createBusy: forgeAgentBusy,
+      workdirPlaceholder: forgeDefaultWorktreeRoot,
+      withinPortal: true,
+      onCreateAgent: onCreateForgeAgent,
+    }),
+    [
+      forgeAgentBusy,
+      forgeAgentCodeMode,
+      forgeAgentName,
+      forgeAgentPresetId,
+      forgeAgentWorkdir,
+      forgeAgentWorktreeError,
+      forgeAgentWorktreeMode,
+      forgeAgentWorktreeRef,
+      forgeAgentWorktreeRepo,
+      forgeDefaultWorktreeRoot,
+      handleForgeWorktreeModeChange,
+      onCreateForgeAgent,
+      setForgeAgentCodeMode,
+      setForgeAgentName,
+      setForgeAgentPresetId,
+      setForgeAgentWorkdir,
+      setForgeAgentWorktreeRef,
+      setForgeAgentWorktreeRepo,
+      teamMemberDraft?.role,
+    ]
+  );
 
   return (
     <div className={TEAM_PAGE_ROOT_CLASS}>
@@ -2988,7 +2992,6 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeam={selectedTeam}
             selectedTeamId={effectiveSelectedTeamId}
             selectedTeamRuntimeStatus={selectedTeamRuntimeStatus}
-            selectedTeamMemberCount={selectedTeamMembers.length}
             selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             memberLiveStates={selectedTeamMemberLiveStates}

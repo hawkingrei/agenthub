@@ -290,7 +290,6 @@ export function App() {
 
   const {
     networkOnline,
-    connectionBadge,
     error: sseError,
   } = useAppSseEvents(
     auth,
@@ -390,13 +389,14 @@ export function App() {
 
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
-      if (routeLocation.pathname === pathname) {
+      const currentPath = `${routeLocation.pathname}${routeLocation.search}`;
+      if (currentPath === pathname) {
         return;
       }
       window.history.pushState({}, "", pathname);
       window.dispatchEvent(new PopStateEvent("popstate"));
     },
-    [routeLocation.pathname]
+    [routeLocation.pathname, routeLocation.search]
   );
 
   const [input, setInput] = useState("");
@@ -416,14 +416,13 @@ export function App() {
   );
   const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
   const activeWorkspaceLens = useMemo(
-    () => resolveWorkspaceLens(routeLocation.search) ?? "chat",
+    () => resolveWorkspaceLens(routeLocation.search) ?? "channels",
     [routeLocation.search]
   );
 
   const workspaceLensItems = useMemo(
     () => [
-      { value: "chat", label: "Chat", active: activeWorkspaceLens === "chat" },
-      { value: "threads", label: "Threads", active: activeWorkspaceLens === "threads" },
+      { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
       { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
       { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
       { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
@@ -1204,7 +1203,6 @@ export function App() {
       agentsCollapsed={agentsCollapsed}
       onCollapseAgents={handleCollapseAgents}
       onExpandAgents={handleExpandAgents}
-      connectionBadge={connectionBadge}
       onLogout={onLogout}
       navigateWorkbenchRoute={navigateWorkbenchRoute}
       workspaceRef={workspaceRef}

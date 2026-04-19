@@ -69,7 +69,7 @@ describe("WorkbenchHeaderMenu interactions", () => {
     });
 
     act(() => {
-      findButtonByText(container, "Agents").dispatchEvent(
+      findButtonByText(container, "Workspace").dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true })
       );
     });
@@ -79,7 +79,7 @@ describe("WorkbenchHeaderMenu interactions", () => {
       );
     });
 
-    expect(onNavigate).toHaveBeenNthCalledWith(1, "/");
+    expect(onNavigate).toHaveBeenNthCalledWith(1, "/workspace");
     expect(onNavigate).toHaveBeenNthCalledWith(2, "/admin");
   });
 });

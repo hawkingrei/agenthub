@@ -41,6 +41,7 @@ type UseTeamManagementActionsOptions = {
   selectedTeamId: string | null;
   selectedTeamHasLeader: boolean;
   selectedTeamHasConfiguredMembers: boolean;
+  teamExecutionBlockedReason: string | null;
   selectedTeamWorkerCount: number;
   selectedTeamMemberStatuses: TeamMemberAgentStatus[];
   selectedAgentWorkspaceMemberId: string;
@@ -108,6 +109,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     selectedTeamId,
     selectedTeamHasLeader,
     selectedTeamHasConfiguredMembers,
+    teamExecutionBlockedReason,
     selectedTeamWorkerCount,
     selectedTeamMemberStatuses,
     selectedAgentWorkspaceMemberId,
@@ -175,6 +177,12 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     },
     [setTeamRuntimeByTeamId, token]
   );
+
+  const refreshCatalogAfterRuntimeChange = useCallback(() => {
+    void Promise.all([refreshTeams(), refreshAgents()]).catch((err) => {
+      setWarning(parseErrorMessage(err));
+    });
+  }, [refreshAgents, refreshTeams, setWarning]);
 
   const applyOptimisticTeamRuntime = useCallback(
     (
@@ -855,7 +863,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       return;
     }
     if (!selectedTeamHasConfiguredMembers) {
-      setError("Add at least one agent first");
+      setError(teamExecutionBlockedReason ?? "Add at least one agent first");
       return;
     }
     setBusy("start-team");
@@ -869,7 +877,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         runtime,
         selectedTeamMemberStatuses
       );
-      void Promise.all([refreshTeams(), refreshAgents()]).catch(() => undefined);
+      refreshCatalogAfterRuntimeChange();
       void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("start", runtime.members));
     } catch (err) {
@@ -879,12 +887,12 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     }
   }, [
     applyOptimisticTeamRuntime,
-    refreshAgents,
     refreshTeamRuntime,
-    refreshTeams,
+    refreshCatalogAfterRuntimeChange,
     selectedTeam,
     selectedTeamHasConfiguredMembers,
     selectedTeamMemberStatuses,
+    teamExecutionBlockedReason,
     setBusy,
     setError,
     setWarning,
@@ -907,7 +915,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         runtime,
         selectedTeamMemberStatuses
       );
-      void Promise.all([refreshTeams(), refreshAgents()]).catch(() => undefined);
+      refreshCatalogAfterRuntimeChange();
       void refreshTeamRuntime(selectedTeam.id).catch(() => undefined);
       setWarning(formatTeamRuntimeActionSummary("stop", runtime.members));
     } catch (err) {
@@ -917,9 +925,8 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     }
   }, [
     applyOptimisticTeamRuntime,
-    refreshAgents,
     refreshTeamRuntime,
-    refreshTeams,
+    refreshCatalogAfterRuntimeChange,
     selectedTeam,
     selectedTeamMemberStatuses,
     setBusy,

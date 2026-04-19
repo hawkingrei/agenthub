@@ -26,7 +26,7 @@ export const TeamPageShell = React.memo(function TeamPageShell({
   workbenchPane,
 }: TeamPageShellProps) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       {header}
       {errorBanner}
       {warningNotice}

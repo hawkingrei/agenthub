@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { AuthState } from "./types";
 import {
+  buildWorkspacePath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
+  resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
@@ -64,6 +66,16 @@ describe("app route selection", () => {
       agentId: "agent/1",
     });
     expect(resolveWorkspaceAgentRoute("/teams/team-1")).toBeNull();
+  });
+
+  it("maps legacy chat and threads lens values to channels", () => {
+    expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
+    expect(buildWorkspacePath("agent-1", "channels")).toBe(
+      "/workspace/agents/agent-1?lens=channels"
+    );
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {

@@ -797,7 +797,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     token = null,
     messageDraft,
     onMessageDraftChange,
-    onRefreshMessages,
     onSendMessage,
     messages,
     seenByMessageId = {},

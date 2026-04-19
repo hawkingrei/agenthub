@@ -90,7 +90,7 @@ export const WorkspaceShellHeader = React.memo(
           </div>
 
           {lensItems.length > 0 && onSelectLens ? (
-            <div className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} hidden md:flex ml-2`}>
+            <div className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} ml-2 min-w-0 overflow-x-auto`}>
               {lensItems.map((item) => (
                 <ActionButton
                   key={item.value}

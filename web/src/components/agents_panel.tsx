@@ -47,9 +47,6 @@ const AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS =
 const AGENTS_WORKBENCH_RAIL_DOT_CLASS =
   "agents-rail-dot absolute right-1.5 top-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
-const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
-  "text-[11px] font-semibold tracking-[0.08em] text-notion-text-muted px-2";
-
 export type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
@@ -122,12 +119,9 @@ export const AgentsPanel = React.memo(function AgentsPanel({
               >
                 <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
               </IconButton>
-              <Box className={AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS} title={`${agents.length} agents`}>
-                <Box component="span" className="text-[9px] font-semibold uppercase tracking-[0.12em]">
+              <Box className={AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS} title="Agents">
+                <Box component="span" className="text-[9px] font-medium tracking-[0.01em]">
                   Agents
-                </Box>
-                <Box component="span" className="text-[10px] font-medium">
-                  {agents.length}
                 </Box>
                 {hasPendingPermissions ? (
                   <Box
@@ -153,7 +147,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         ) : (
           <>
             <Box className={AGENTS_TOOLBAR_CLASS}>
-              <Box component="h2" className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</Box>
+              <Box component="h2" className="px-2 text-[14px] font-medium tracking-tight text-notion-text-muted">Agents</Box>
               <Box className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
                 <IconButton
                   size="md"

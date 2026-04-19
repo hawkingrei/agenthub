@@ -1,12 +1,10 @@
 import React, { Suspense } from "react";
 import { ErrorBanner } from "../error_banner";
-import { ConnectionBadge } from "../connection_status";
 import { AuthState } from "../types";
 import { ActionButton } from "../ui/primitives";
 import {
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   APP_WORKBENCH_HEADER_CLASS,
-  APP_WORKBENCH_HEADER_STATUS_CLASS,
   APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
   AUTH_ACTIONS_CLASS,
   AUTH_FORM_CARD_CLASS,
@@ -21,7 +19,7 @@ import { AgentsWorkbenchProps } from "./agents_workbench_types";
 import { CreateAgentModalProps } from "./create_agent_modal";
 import { OutputHeaderProps } from "./output_header";
 import { PermissionModalProps } from "./permission_modal";
-import { WorkspaceShellHeader } from "./workspace_shell_header";
+import { WorkspaceShellHeader, type WorkspaceShellLensItem } from "./workspace_shell_header";
 
 const LazyCreateAgentModal = React.lazy(async () => {
   const module = await import("./create_agent_modal");
@@ -57,7 +55,6 @@ export type AgentsRootPageProps = {
   agentsCollapsed: boolean;
   onCollapseAgents: () => void;
   onExpandAgents: () => void;
-  connectionBadge: ConnectionBadge;
   onLogout: () => void;
   navigateWorkbenchRoute: (pathname: string) => void;
   workspaceRef: React.RefObject<HTMLElement | null>;
@@ -93,7 +90,6 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   agentsCollapsed,
   onCollapseAgents,
   onExpandAgents,
-  connectionBadge,
   onLogout,
   navigateWorkbenchRoute,
   workspaceRef,
@@ -120,14 +116,12 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           sidebarToggleLabel={agentsCollapsed ? "Show agents" : "Hide agents"}
           sidebarCollapsed={agentsCollapsed}
           onToggleSidebar={agentsCollapsed ? onExpandAgents : onCollapseAgents}
-          connectionBadge={connectionBadge}
           username={auth.username}
           isRoot={auth.role === "root"}
           headerShellClassName={APP_WORKBENCH_HEADER_CLASS}
           headerIconButtonClassName={`${APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS} ${
             agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
           }`}
-          headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
           menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
           lensItems={lensItems}
           onSelectLens={onSelectLens}
