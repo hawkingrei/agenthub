@@ -44,7 +44,7 @@ function clickElement(element: Element | null): void {
 }
 
 async function openDebugTabAndWait(container: HTMLElement): Promise<void> {
-  clickElement(findButtonByText(container, "Debug"));
+  clickElement(findButtonByText(container, "Inspect"));
   await act(async () => {
     await vi.dynamicImportSettled();
   });
@@ -481,17 +481,17 @@ describe("team panels interactions", () => {
     expect(onSelectConversation).toHaveBeenCalledTimes(1);
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
-    expect(container.textContent).toContain("Teams · 2");
+    expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("Kanban");
-    expect(container.textContent).toContain("Agents · 2");
-    expect(container.textContent).toContain("Workflow");
+    expect(container.textContent).toContain("Agents");
+    expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("# all");
-    expect(findButtonByText(container, "Team Two").className).toContain("rounded-lg");
-    expect(findButtonByText(container, "Team Two").className).toContain("px-2.5");
+    expect(findButtonByText(container, "Team Two").className).toContain("rounded-md");
+    expect(findButtonByText(container, "Team Two").className).toContain("px-2");
     const kanbanButton = findButtonByText(container, "Kanban");
     const channelButton = findButtonByText(container, "# all");
-    expect(kanbanButton.className).toContain("rounded-lg");
-    expect(kanbanButton.className).toContain("px-2.5");
+    expect(kanbanButton.className).toContain("rounded-md");
+    expect(kanbanButton.className).toContain("px-2");
     expect(
       Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
@@ -564,7 +564,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Show Team Details");
     expect(container.textContent).not.toContain("team-1");
 
-    expect(container.textContent).toContain("Teams · 2");
+    expect(container.textContent).toContain("Teams");
     expect(container.textContent).toContain("# all");
     expect(container.textContent).not.toContain("Execution Runs");
     expect(container.textContent).not.toContain("Advanced");
@@ -692,7 +692,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(container.textContent).toContain("No teams yet.");
+    expect(container.textContent).toContain("Create a team to begin.");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
     clickElement(findButtonByText(container, "Create Team"));
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
@@ -755,7 +755,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(findButtonByAriaLabel(container, "Open selected team menu")).not.toBeNull();
+    expect(findButtonByAriaLabel(container, "Team menu: Team One")).not.toBeNull();
     expect(container.textContent).not.toContain("Team running · 3/3 online");
     expect(container.textContent).not.toContain("Triage TiDB issues and coordinate the fuzzing backlog.");
     expect(container.textContent).toContain("Team One");
@@ -914,10 +914,12 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Browse this team's channels, members, and operations.");
     expect(container.textContent).not.toContain("Team Selector");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
-    expect(container.textContent).not.toContain("Teams 1");
+    expect(container.textContent).toContain("Teams");
     expect(container.textContent).not.toContain("Create Team");
     expect(container.textContent).not.toContain("Shared team thread");
     expect(container.textContent).not.toContain("Task board");
+    expect(container.textContent).toContain("Channels");
+    expect(container.textContent).toContain("Agents");
   });
 
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {
@@ -1857,13 +1859,13 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline"
+      "@name to reply · Enter to send"
     );
     expect(container.textContent).not.toContain("status_update");
     expect(container.textContent).not.toContain("work:working");
     expect(container.textContent).not.toContain("agent:working");
     const detailButtons = Array.from(container.querySelectorAll("button")).filter((candidate) =>
-      candidate.textContent?.includes("Show details")
+      candidate.textContent?.includes("Details")
     );
     clickElement(detailButtons[1] ?? null);
     expect(container.textContent).toContain("work");
@@ -2124,7 +2126,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "user:u-1",
@@ -2189,7 +2190,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -2222,9 +2222,9 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("queued update");
-    const pendingButton = container.querySelector('button[aria-label="Pending delivery"]');
+    const pendingButton = container.querySelector('button[aria-label="Pending"]');
     expect(pendingButton).not.toBeNull();
-    expect(pendingButton?.getAttribute("title")).toBe("Pending delivery");
+    expect(pendingButton?.getAttribute("title")).toBe("Pending");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
@@ -2238,7 +2238,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[]}
         humanActorId="user"
         memberLiveStates={[
@@ -2277,8 +2276,6 @@ describe("team panels interactions", () => {
       "thread reply textarea missing"
     );
     expect(threadTextarea).not.toBeNull();
-    expect(findButtonByAriaLabel(container, "Refresh thread")).not.toBeNull();
-
     renderWithMantine(
       root,
       <TeamTaskPanel
@@ -2288,7 +2285,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(41, {
             from_actor_id: "leader-agent",
@@ -2324,8 +2320,8 @@ describe("team panels interactions", () => {
       />
     );
 
-    const readProgressButton = findButtonByAriaLabel(container, "Seen by 1 of 2 recipients");
-    expect(readProgressButton.getAttribute("title")).toBe("Seen by 1 of 2 recipients");
+    const readProgressButton = findButtonByAriaLabel(container, "Seen 1/2");
+    expect(readProgressButton.getAttribute("title")).toBe("Seen 1/2");
     const progressbar = required(
       readProgressButton.querySelector('[role="progressbar"]'),
       "progressbar missing"
@@ -2371,7 +2367,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2455,7 +2450,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2553,7 +2547,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2688,7 +2681,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={messages}
           seenByMessageId={{}}
           humanActorId="user"
@@ -2802,7 +2794,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2866,7 +2857,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -2915,7 +2905,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(7, {
             from_actor_id: "leader-agent",
@@ -2947,7 +2936,7 @@ describe("team panels interactions", () => {
       />
     );
 
-    clickElement(findButtonByText(container, "Show details"));
+    clickElement(findButtonByText(container, "Details"));
 
     expect(container.textContent).toContain("source");
     expect(container.textContent).toContain("conversation");
@@ -2964,7 +2953,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("agent");
     expect(container.textContent).toContain("current_work");
     expect(container.textContent).toContain("triaging worker evidence");
-    expect(findButtonByText(container, "Hide details")).toBeDefined();
+    expect(findButtonByText(container, "Hide")).toBeDefined();
     expect(container.innerHTML).not.toContain("sm:col-span-2");
   });
 
@@ -2991,7 +2980,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: totalMessages - 1 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
@@ -3039,7 +3027,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: totalMessages }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id:
@@ -3117,7 +3104,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: 213 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
@@ -3189,7 +3175,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "user:u-1",
@@ -3237,7 +3222,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3297,7 +3281,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3344,7 +3327,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3379,7 +3361,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(11, {
               from_actor_id: "leader-agent",
@@ -3416,7 +3397,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(12, {
               from_actor_id: "worker-agent",
@@ -3439,7 +3419,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("No channel messages yet.");
+    expect(container.textContent).toContain("No messages yet.");
     expect(container.textContent).not.toContain("idle update:");
     expect(container.textContent).not.toContain("Awaiting next task.");
     expect(container.textContent).not.toContain('"type": "task_note"');
@@ -3458,7 +3438,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(13, {
               from_actor_id: "worker-agent",
@@ -3481,7 +3460,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("No channel messages yet.");
+    expect(container.textContent).toContain("No messages yet.");
     expect(container.textContent).not.toContain("status_update");
     expect(container.textContent).not.toContain("running compile preview");
     expect(toPrettyJson).not.toHaveBeenCalled();
@@ -3497,7 +3476,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(12, {
               from_actor_id: "leader-agent",
@@ -3549,7 +3527,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[buildTaskMessage(1)]}
           messagesLoading={false}
           busy={null}
@@ -3558,7 +3535,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).not.toContain("Show details");
+    expect(container.textContent).not.toContain("Details");
     expect(container.textContent).not.toContain("source");
     expect(container.textContent).not.toContain("route");
   });
@@ -3573,7 +3550,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(7, {
               from_actor_id: "leader-agent",
@@ -3604,7 +3580,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    clickElement(findButtonByText(container, "Show details"));
+    clickElement(findButtonByText(container, "Details"));
     expect(container.textContent).toContain("source");
     expect(container.textContent).toContain("from");
     expect(container.textContent).toContain("leader-agent");
@@ -3630,7 +3606,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[]}
           humanActorId="user"
           memberLiveStates={[]}
@@ -3642,7 +3617,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("No channel messages yet.");
+    expect(container.textContent).toContain("No messages yet.");
   });
 
   it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", () => {
@@ -4306,9 +4281,9 @@ describe("team panels interactions", () => {
     );
 
     expect(container.querySelector("h3")).toBeNull();
-    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
-    expect(container.textContent).toContain("Debug");
+    expect(container.textContent).toContain("Inspect");
     expect(container.textContent).toContain("Please investigate this issue.");
     expect(container.textContent).toContain("Acknowledged. I am checking logs now.");
     expect(onLoadOlder).toHaveBeenCalledTimes(0);
@@ -4435,7 +4410,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Load Older");
   });
 
-  it("TeamTaskPanel keeps the composer pinned while exposing channel refresh", () => {
+  it("TeamTaskPanel keeps the composer pinned without adding channel toolbar chrome", () => {
     renderWithMantine(
       root,
       <TeamTaskPanel
@@ -4443,7 +4418,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(21, {
             from_actor_id: "leader-agent",
@@ -4466,7 +4440,6 @@ describe("team panels interactions", () => {
       "channel composer missing"
     );
 
-    expect(findButtonByText(container, "Refresh")).not.toBeNull();
     expect(channelBody.classList.contains("flex")).toBe(true);
     expect(composer.classList.contains("shrink-0")).toBe(true);
   });
@@ -4710,9 +4683,9 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
-    expect(container.textContent).not.toContain("Debug");
+    expect(container.textContent).not.toContain("Inspect");
     expect(container.textContent).not.toContain("Refresh");
     expect(container.textContent).toContain("Details");
     expect(container.textContent).not.toContain("member=worker-agent");
@@ -4774,7 +4747,7 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("No active thread session yet");
-    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
   });
 
@@ -4798,7 +4771,7 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("Active thread has no events yet");
-    expect(container.textContent).toContain("Conversation");
+    expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
   });
 

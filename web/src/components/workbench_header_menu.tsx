@@ -3,7 +3,7 @@ import { Menu, UnstyledButton } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 
 type WorkbenchHeaderMenuProps = {
-  active: "agents" | "teams";
+  active: "workspace" | "teams";
   username: string;
   isRoot: boolean;
   onLogout: () => void;
@@ -32,6 +32,7 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
           type="button"
           className={buttonClassName}
           aria-label="Open workbench menu"
+          title="Open workbench menu"
         >
           <i className="bi bi-grid-3x3-gap text-[13px] sm:text-[14px]" aria-hidden="true" />
           <span className="hidden sm:inline">Menu</span>
@@ -40,10 +41,11 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>{username}</Menu.Label>
-        <Menu.Item onClick={() => onNavigate("/")} disabled={active === "agents"}>
-          Agents
+        <Menu.Label>Workspace</Menu.Label>
+        <Menu.Item onClick={() => onNavigate("/workspace")} disabled={active === "workspace"}>
+          Workspace
         </Menu.Item>
-        <Menu.Item onClick={() => onNavigate("/teams")} disabled={active === "teams"}>
+        <Menu.Item onClick={() => onNavigate("/workspace/teams")} disabled={active === "teams"}>
           Teams
         </Menu.Item>
         <Menu.Divider />

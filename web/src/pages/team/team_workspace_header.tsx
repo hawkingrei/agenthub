@@ -1,5 +1,5 @@
 import React from "react";
-import { Badge, Group, Menu, Tooltip } from "@mantine/core";
+import { Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
 import { ActionButton } from "../../ui/primitives";
 import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
@@ -111,6 +111,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
   onStopSelectedTeamAgent: () => void;
   onDeleteSelectedTeamAgent: () => void;
 }) {
+  const runtimeDotClassNameByColor: Record<TeamRuntimeControlTone["countColor"], string> = {
+    teal: "bg-teal-500",
+    yellow: "bg-yellow-500",
+    gray: "bg-slate-400",
+  };
+  const runtimeDotClassName =
+    runtimeDotClassNameByColor[selectedTeamRuntimeControlTone.countColor];
   const agentWorkspaceSummaryItems = [
     {
       label: "Member",
@@ -167,13 +174,15 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               <Menu.Target>
                 <ActionButton
                   type="button"
-                  tone="secondary"
+                  tone="ghost"
                   size="sm"
-                  className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold`}
-                  aria-label="Open agent workspace menu"
+                  className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium`}
+                  aria-label="Agent"
+                  title="Agent"
                 >
-                  <i className="bi bi-person-badge" aria-hidden="true" />
-                  <span>Agent</span>
+                  <i className="bi bi-person" aria-hidden="true" />
+                  <span className="max-w-[12rem] truncate">{selectedAgentLabel}</span>
+                  <i className="bi bi-chevron-down text-[10px]" aria-hidden="true" />
                 </ActionButton>
               </Menu.Target>
               <Menu.Dropdown>
@@ -239,28 +248,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               label={`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal} members online`}
               withArrow
             >
-              <Group
-                gap={8}
-                wrap="nowrap"
-                className={`rounded-[10px] border border-notion-border/65 bg-notion-sidebar/55 px-2 py-1 ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-notion-text-muted ${TEAM_SOFT_CHROME_SHADOW_CLASS}`}
               >
-                <Badge
-                  variant="light"
-                  color={selectedTeamRuntimeControlTone.statusColor}
-                  radius="sm"
-                  className="font-semibold"
-                >
-                  {selectedTeamRuntimeStatusLabel}
-                </Badge>
-                <Badge
-                  variant="dot"
-                  color={selectedTeamRuntimeControlTone.countColor}
-                  radius="sm"
-                  className="font-semibold"
-                >
-                  {`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal} online`}
-                </Badge>
-              </Group>
+                <span className={`inline-flex h-1.5 w-1.5 rounded-full ${runtimeDotClassName}`} aria-hidden="true" />
+                <span>{selectedTeamRuntimeStatusLabel}</span>
+                <span className="text-notion-text-muted/60">{`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal}`}</span>
+              </div>
             </Tooltip>
           ) : null}
           <div className={chrome.toolbarClassName}>
@@ -273,13 +267,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                     size="sm"
                     className={
                       isAdvancedWorkspace
-                        ? chrome.toolbarButtonActiveClassName
-                        : chrome.toolbarButtonIdleClassName
+                        ? `${chrome.toolbarButtonActiveClassName} h-7 w-7 rounded-md px-0`
+                        : `${chrome.toolbarButtonIdleClassName} h-7 w-7 rounded-md px-0`
                     }
-                    aria-label="Open more workspace actions"
+                    aria-label="More"
+                    title="More"
                   >
                     <i className="bi bi-three-dots" aria-hidden="true" />
-                    <span>More</span>
                   </ActionButton>
                 </Menu.Target>
                 <Menu.Dropdown>
@@ -337,7 +331,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
           </div>
         </div>
       </div>
-      {!isAgentWorkspace && (
+      {!isAgentWorkspace && workflowTabItems.length > 0 && (
         <TeamTabsBar tab={tab} onTabChange={onTabChange} items={workflowTabItems} />
       )}
       {(workspaceNoticeText || developerMode) && (
@@ -345,7 +339,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
           {workspaceNoticeText && (
             <div className={chrome.noticeTextClassName}>
               <span className={workspaceNoticeDotClassName} aria-hidden="true" />
-              <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted">
+              <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted/85">
                 {workspaceNoticeText}
               </span>
             </div>

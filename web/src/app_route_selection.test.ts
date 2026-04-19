@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { AuthState } from "./types";
 import {
+  buildWorkspacePath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
+  resolveWorkspaceLens,
+  resolveWorkspaceAgentRoute,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
 } from "./app_route_selection";
@@ -23,13 +26,22 @@ function location(pathname: string, search = ""): RouteLocationState {
 describe("app route selection", () => {
   it("redirects unauthenticated team routes to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
+    expect(shouldRedirectTeamsToLogin("/workspace/teams", null, null)).toBe(true);
     expect(shouldRedirectTeamsToLogin("/teams/team-1", rootAuth, "token-1")).toBe(false);
     expect(shouldRedirectTeamsToLogin("/admin", null, null)).toBe(false);
   });
 
   it("resolves team selector and detail routes", () => {
     expect(resolveTeamRoute("/teams")).toEqual({ mode: "selector", teamId: null });
+    expect(resolveTeamRoute("/workspace/teams")).toEqual({
+      mode: "selector",
+      teamId: null,
+    });
     expect(resolveTeamRoute("/teams/team-1")).toEqual({
+      mode: "detail",
+      teamId: "team-1",
+    });
+    expect(resolveTeamRoute("/workspace/teams/team-1")).toEqual({
       mode: "detail",
       teamId: "team-1",
     });
@@ -40,7 +52,33 @@ describe("app route selection", () => {
     expect(resolveTeamRoute("/agents")).toBeNull();
   });
 
-  it("derives the post-auth redirect target only on the agents root", () => {
+  it("resolves canonical workspace agent routes", () => {
+    expect(resolveWorkspaceAgentRoute("/workspace")).toEqual({
+      mode: "root",
+      agentId: null,
+    });
+    expect(resolveWorkspaceAgentRoute("/workspace/agents/agent-1")).toEqual({
+      mode: "agent",
+      agentId: "agent-1",
+    });
+    expect(resolveWorkspaceAgentRoute("/workspace/agents/agent%2F1")).toEqual({
+      mode: "agent",
+      agentId: "agent/1",
+    });
+    expect(resolveWorkspaceAgentRoute("/teams/team-1")).toBeNull();
+  });
+
+  it("maps legacy chat and threads lens values to channels", () => {
+    expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
+    expect(buildWorkspacePath("agent-1", "channels")).toBe(
+      "/workspace/agents/agent-1?lens=channels"
+    );
+  });
+
+  it("derives the post-auth redirect target only on the workspace root aliases", () => {
     expect(
       resolvePostAuthRedirectTarget(
         "/",
@@ -49,7 +87,16 @@ describe("app route selection", () => {
         "token-1"
       )
     ).toBe("/teams?tab=runs#active");
+    expect(
+      resolvePostAuthRedirectTarget(
+        "/workspace",
+        "?next=%2Fteams%3Ftab%3Druns%23active",
+        rootAuth,
+        "token-1"
+      )
+    ).toBe("/teams?tab=runs#active");
     expect(resolvePostAuthRedirectTarget("/", "", rootAuth, "token-1")).toBeNull();
+    expect(resolvePostAuthRedirectTarget("/workspace", "", rootAuth, "token-1")).toBeNull();
     expect(resolvePostAuthRedirectTarget("/teams", "?next=%2Fteams", rootAuth, "token-1")).toBeNull();
   });
 
@@ -73,6 +120,13 @@ describe("app route selection", () => {
         "/teams?tab=runs#active"
       )
     ).toBe("post-auth-redirect");
-    expect(resolveAppRouteKind(location("/"), null, null, null)).toBe("agents");
+    expect(resolveAppRouteKind(location("/"), null, null, null)).toBe("workspace");
+    expect(resolveAppRouteKind(location("/workspace"), null, null, null)).toBe("workspace");
+    expect(resolveAppRouteKind(location("/workspace/agents/agent-1"), null, null, null)).toBe(
+      "workspace"
+    );
+    expect(resolveAppRouteKind(location("/workspace/teams/team-1"), rootAuth, "token-1", null)).toBe(
+      "teams"
+    );
   });
 });

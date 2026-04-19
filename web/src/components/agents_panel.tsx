@@ -3,8 +3,8 @@ import React from "react";
 import { AgentRecord } from "../api";
 import { isAgentActiveStatus } from "../agent_ws";
 import { formatAgentModelLabel } from "../agent_presets";
-import { StatusBadge, resolveAgentStatusTone } from "./status_badge";
-import { ActionButton, IconButton, StatusPill, cx } from "../ui/primitives";
+import { resolveAgentStatusTone } from "./status_badge";
+import { ActionButton, IconButton, cx } from "../ui/primitives";
 import {
   AGENTS_PANEL_BACKDROP_CLASS,
   AGENTS_PANEL_BODY_CLASS,
@@ -18,38 +18,35 @@ import {
 } from "../ui/tailwind_classes";
 
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_CLASS =
-  "text-[13px] sm:text-[14px]";
+  "h-6 w-6 rounded-md text-[12px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_ACTIVE_CLASS =
-  "text-[13px] sm:text-[14px]";
+  "h-6 w-6 rounded-md text-[12px]";
 const AGENTS_WORKBENCH_ROW_ICON_BUTTON_DANGER_CLASS =
-  "text-[13px] sm:text-[14px]";
+  "h-6 w-6 rounded-md text-[12px]";
 const AGENTS_WORKBENCH_ROW_HEAD_CLASS =
-  "agents-workbench-row-head flex min-w-0 items-start justify-between gap-2";
+  "agents-workbench-row-head flex min-w-0 items-center justify-between gap-2";
 const AGENTS_WORKBENCH_ROW_TITLE_CLASS =
-  "agents-workbench-row-title flex min-w-0 flex-1 items-start gap-1.5";
+  "agents-workbench-row-title flex min-w-0 flex-1 items-center gap-1.5";
 const AGENTS_WORKBENCH_NAME_CLASS =
-  "agents-workbench-name min-w-0 flex-1 truncate text-[14px] font-bold tracking-tight text-notion-text";
+  "agents-workbench-name min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-notion-text";
 const AGENTS_WORKBENCH_ROW_BADGES_CLASS =
-  "agents-workbench-row-badges mt-1 flex min-w-0 flex-wrap items-center gap-1.5";
+  "agents-workbench-row-badges mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-notion-text-muted";
 const AGENTS_WORKBENCH_PERMISSION_DOT_CLASS =
   "agents-workbench-permission-dot inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_ROW_ACTIONS_CLASS =
-  "agents-workbench-row-actions inline-flex shrink-0 items-center gap-1";
-const AGENTS_WORKBENCH_ROW_META_CLASS =
-  "agents-workbench-row-meta mt-1.5 hidden flex-col gap-0.5 sm:flex";
-const AGENTS_WORKBENCH_WORKDIR_CLASS =
-  "agents-workbench-workdir truncate text-[11px] leading-relaxed text-notion-text";
-const AGENTS_WORKBENCH_CODE_MODE_CLASS =
-  "agents-workbench-code-mode text-[10px] font-medium uppercase tracking-wider text-notion-text-muted";
-const AGENTS_WORKBENCH_RAIL_CLASS = "flex h-full w-full flex-col items-center gap-4 py-4 bg-notion-sidebar border-r border-notion-border";
-const AGENTS_WORKBENCH_METRIC_CLASS =
-  "relative grid gap-1 justify-items-center rounded-lg border border-notion-border bg-white px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-notion-text-muted shadow-sm";
+  "agents-workbench-row-actions inline-flex shrink-0 items-center gap-0.5 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100";
+const AGENTS_WORKBENCH_STATUS_DOT_CLASS =
+  "inline-flex h-1.5 w-1.5 shrink-0 rounded-full";
+const AGENTS_WORKBENCH_META_SEGMENT_CLASS = "truncate";
+const AGENTS_WORKBENCH_META_SEPARATOR_CLASS =
+  "inline-flex h-1 w-1 shrink-0 rounded-full bg-notion-text-muted/35";
+const AGENTS_WORKBENCH_RAIL_CLASS =
+  "flex h-full w-full flex-col items-center justify-between gap-3 py-3 bg-notion-sidebar border-r border-notion-border";
+const AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS =
+  "relative flex flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-notion-text-muted";
 const AGENTS_WORKBENCH_RAIL_DOT_CLASS =
   "agents-rail-dot absolute right-1.5 top-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
 const AGENTS_WORKBENCH_LIST_CLASS = "flex min-h-0 flex-1 flex-col gap-1 overflow-auto pr-1 mt-2";
-const AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS =
-  "text-sm font-bold uppercase tracking-widest text-notion-text-muted px-2";
-
 export type AgentsPanelProps = {
   agents: AgentRecord[];
   activeAgent: string | null;
@@ -85,8 +82,17 @@ export const AgentsPanel = React.memo(function AgentsPanel({
   onStopAgent,
   onDeleteAgent,
 }: AgentsPanelProps) {
-  const runningCount = agents.filter((agent) => agent.status === "running")
-    .length;
+  function resolveAgentMetaParts(agent: AgentRecord, modelLabel: string | null): string[] {
+    const parts = [isAgentActiveStatus(agent.status) ? "online" : agent.status];
+    if (modelLabel) {
+      parts.push(modelLabel);
+    }
+    if (agent.target_node_id) {
+      parts.push(agent.target_node_id);
+    }
+    return parts;
+  }
+
   return (
     <>
       {!agentsCollapsed && (
@@ -103,31 +109,30 @@ export const AgentsPanel = React.memo(function AgentsPanel({
       >
         {agentsCollapsed ? (
           <Box className={`agents-rail ${AGENTS_WORKBENCH_RAIL_CLASS}`}>
-            <IconButton
-              size="md"
-              tone="default"
-              onClick={onExpand}
-              title="Show agents"
-              aria-label="Show agents"
-            >
-              <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
-            </IconButton>
-            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Agents">
-              <Box component="span" className="value">{agents.length}</Box>
-              <Box component="span" className="label">Agents</Box>
-              {hasPendingPermissions ? (
-                <Box
-                  component="span"
-                  className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
-                  role="img"
-                  aria-label="Pending permissions"
-                  title="Pending permissions"
-                />
-              ) : null}
-            </Box>
-            <Box className={AGENTS_WORKBENCH_METRIC_CLASS} title="Running">
-              <Box component="span" className="value">{runningCount}</Box>
-              <Box component="span" className="label">Running</Box>
+            <Box className="flex flex-col items-center gap-2">
+              <IconButton
+                size="md"
+                tone="default"
+                onClick={onExpand}
+                title="Show agents"
+                aria-label="Show agents"
+              >
+                <i className="bi bi-layout-sidebar-inset" aria-hidden="true" />
+              </IconButton>
+              <Box className={AGENTS_WORKBENCH_RAIL_SUMMARY_CLASS} title="Agents">
+                <Box component="span" className="text-[9px] font-medium tracking-[0.01em]">
+                  Agents
+                </Box>
+                {hasPendingPermissions ? (
+                  <Box
+                    component="span"
+                    className={AGENTS_WORKBENCH_RAIL_DOT_CLASS}
+                    role="img"
+                    aria-label="Pending permissions"
+                    title="Pending permissions"
+                  />
+                ) : null}
+              </Box>
             </Box>
             <IconButton
               size="md"
@@ -142,7 +147,7 @@ export const AgentsPanel = React.memo(function AgentsPanel({
         ) : (
           <>
             <Box className={AGENTS_TOOLBAR_CLASS}>
-              <Box component="h2" className={AGENTS_WORKBENCH_TOOLBAR_TITLE_CLASS}>Agents</Box>
+              <Box component="h2" className="px-2 text-[14px] font-medium tracking-tight text-notion-text-muted">Agents</Box>
               <Box className={AGENTS_TOOLBAR_ACTIONS_CLASS}>
                 <IconButton
                   size="md"
@@ -298,29 +303,42 @@ export const AgentsPanel = React.memo(function AgentsPanel({
                         </Box>
                       </Box>
                       <Box className={AGENTS_WORKBENCH_ROW_BADGES_CLASS}>
-                        {modelLabel ? (
-                          <StatusPill className="agents-workbench-tag">{modelLabel}</StatusPill>
-                        ) : null}
-                        {isRemoteTarget ? (
-                          <StatusPill className="agents-workbench-tag">
-                            node:{agent.target_node_id}
-                          </StatusPill>
-                        ) : null}
-                        <StatusBadge
-                          label={agent.status}
-                          tone={resolveAgentStatusTone(agent.status)}
+                        <Box
+                          component="span"
                           className={cx(
-                            `agents-workbench-status status-${agent.status}`,
-                            "px-2 py-0.5 text-[10px]"
+                            AGENTS_WORKBENCH_STATUS_DOT_CLASS,
+                            resolveAgentStatusTone(agent.status) === "active"
+                              ? "bg-emerald-500"
+                              : resolveAgentStatusTone(agent.status) === "warning"
+                                ? "bg-amber-500"
+                                : resolveAgentStatusTone(agent.status) === "danger"
+                                  ? "bg-rose-500"
+                                  : "bg-slate-400"
                           )}
-                          title={`status: ${agent.status}`}
+                          aria-hidden="true"
                         />
-                      </Box>
-                      <Box className={AGENTS_WORKBENCH_ROW_META_CLASS}>
-                        <Box component="span" className={AGENTS_WORKBENCH_WORKDIR_CLASS}>{agent.workdir}</Box>
-                        <Box component="span" className={AGENTS_WORKBENCH_CODE_MODE_CLASS}>
-                          Code mode: {agent.code_mode ? "on" : "off"}
-                        </Box>
+                        {resolveAgentMetaParts(agent, modelLabel).map((part, index) => (
+                          <React.Fragment key={`${agent.id}-${part}-${index}`}>
+                            {index > 0 ? (
+                              <Box
+                                component="span"
+                                className={AGENTS_WORKBENCH_META_SEPARATOR_CLASS}
+                                aria-hidden="true"
+                              />
+                            ) : null}
+                            <Box component="span" className={AGENTS_WORKBENCH_META_SEGMENT_CLASS}>
+                              {part}
+                            </Box>
+                          </React.Fragment>
+                        ))}
+                        {agent.code_mode ? (
+                          <Box
+                            component="span"
+                            className="shrink-0 text-[10px] font-medium text-notion-text-muted"
+                          >
+                            code
+                          </Box>
+                        ) : null}
                       </Box>
                     </Box>
                   );

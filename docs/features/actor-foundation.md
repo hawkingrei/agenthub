@@ -51,6 +51,15 @@ Practical mapping:
 - `actor_ack`
   - mark a receiver-accepted message delivered.
 
+Team communication-specific capability direction:
+
+- Team actor should grow explicit conversation/thread operations above raw mailbox send when the
+  shell needs stable focused contexts:
+  - `team_thread_open`
+  - `team_thread_reply`
+- these operations should still respect actor identity, run/team scoping, and idempotent delivery
+  semantics instead of inventing a parallel transport path
+
 Client workflow note:
 
 - Client/runtime surfaces may compose `receive = inbox + ack` as an explicit accept-and-consume
@@ -131,6 +140,9 @@ Identity-kind projection (for UX/policy):
   operator-facing escalation.
 - Group chat / channel sends should fan out by channel scope, while `@member_id` is preserved as
   mention metadata for receivers instead of narrowing the recipient set.
+- Team channels should support a default broad lane (`# all`) plus additional descriptive work
+  lanes; thread opens should be rooted in an existing channel message, not detached from channel
+  history.
 - Channel fan-out should persist one canonical conversation message on the AgentHub authority node
   before mailbox delivery, then auto-route each recipient mailbox hop as local or p2p remote based
   on the recipient agent target node.

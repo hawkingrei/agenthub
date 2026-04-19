@@ -20,6 +20,10 @@ import {
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   isAgentsWorkbenchRoute,
+  resolveWorkspaceAgentRoute,
+  resolveWorkspaceLens,
+  buildWorkspacePath,
+  type WorkspaceLens,
 } from "./app_route_selection";
 import {
   OFFLINE_MESSAGE,
@@ -118,6 +122,7 @@ export {
   isAgentsWorkbenchRoute,
   isTeamsRoute,
   resolveAppRouteKind,
+  resolveWorkspaceAgentRoute,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   shouldRedirectTeamsToLogin,
@@ -285,8 +290,8 @@ export function App() {
 
   const {
     networkOnline,
-    connectionBadge,
     error: sseError,
+    connectionBadge,
   } = useAppSseEvents(
     auth,
     isAgentsRoute,
@@ -385,13 +390,14 @@ export function App() {
 
   const navigateWorkbenchRoute = useCallback(
     (pathname: string) => {
-      if (routeLocation.pathname === pathname) {
+      const currentPath = `${routeLocation.pathname}${routeLocation.search}`;
+      if (currentPath === pathname) {
         return;
       }
       window.history.pushState({}, "", pathname);
       window.dispatchEvent(new PopStateEvent("popstate"));
     },
-    [routeLocation.pathname]
+    [routeLocation.pathname, routeLocation.search]
   );
 
   const [input, setInput] = useState("");
@@ -405,6 +411,33 @@ export function App() {
   const terminalStickToBottomRef = useRef(true);
   const isComposingRef = useRef(false);
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
+  const workspaceAgentRoute = useMemo(
+    () => resolveWorkspaceAgentRoute(routeLocation.pathname),
+    [routeLocation.pathname]
+  );
+  const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
+  const activeWorkspaceLens = useMemo(
+    () => resolveWorkspaceLens(routeLocation.search) ?? "channels",
+    [routeLocation.search]
+  );
+
+  const workspaceLensItems = useMemo(
+    () => [
+      { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
+      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
+      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
+      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
+    ],
+    [activeWorkspaceLens]
+  );
+
+  const onSelectWorkspaceLens = useCallback(
+    (value: string) => {
+      const lens = value as WorkspaceLens;
+      navigateWorkbenchRoute(buildWorkspacePath(activeAgent, lens));
+    },
+    [activeAgent, navigateWorkbenchRoute]
+  );
 
   useEffect(() => {
     setLocalStorageItemSafe(
@@ -479,7 +512,8 @@ export function App() {
     setActiveAgent(id);
     setActiveSessionId(agentSessions[id] ?? null);
     setAgentsCollapsed(true);
-  }, [agentSessions, setActiveSessionId]);
+    navigateWorkbenchRoute(buildWorkspacePath(id, activeWorkspaceLens));
+  }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId, activeWorkspaceLens]);
 
   const onRespondPermission = useCallback(async (
     agentId: string,
@@ -689,6 +723,20 @@ export function App() {
       return;
     }
 
+    if (routeAgentId) {
+      const routeAgentStillExists = agents.some((agent) => agent.id === routeAgentId);
+      if (routeAgentStillExists) {
+        if (routeAgentId !== activeAgent) {
+          setActiveAgent(routeAgentId);
+        }
+        const nextSessionId = agentSessions[routeAgentId] ?? null;
+        if (nextSessionId !== activeSessionId) {
+          setActiveSessionId(nextSessionId);
+        }
+        return;
+      }
+    }
+
     if (activeAgent) {
       const activeAgentStillExists = agents.some((agent) => agent.id === activeAgent);
       if (activeAgentStillExists) {
@@ -713,7 +761,15 @@ export function App() {
         setActiveSessionId(null);
       }
     }
-  }, [agents, activeAgent, activeSessionId, agentSessions, setActiveAgent, setActiveSessionId]);
+  }, [
+    agents,
+    activeAgent,
+    activeSessionId,
+    agentSessions,
+    routeAgentId,
+    setActiveAgent,
+    setActiveSessionId,
+  ]);
 
   useEffect(() => {
     if (auth?.token) {
@@ -1115,6 +1171,7 @@ export function App() {
               onLogout={onLogout}
               developerMode={developerMode}
               routeTeamId={teamRoute?.teamId ?? null}
+              routeSearch={routeLocation.search}
               defaultWorktreeRoot={defaultWorktreeRoot}
             />
           </Suspense>
@@ -1123,7 +1180,7 @@ export function App() {
     }
     case "post-auth-redirect":
       return <PostLoginRedirect target={postAuthRedirectTarget!} />;
-    case "agents":
+    case "workspace":
       break;
   }
 
@@ -1160,6 +1217,8 @@ export function App() {
       createAgentModalProps={createAgentModalProps}
       agentNodeSectionProps={agentNodeSectionProps}
       permissionModalProps={permissionModalProps}
+      lensItems={workspaceLensItems}
+      onSelectLens={onSelectWorkspaceLens}
     />
   );
 }

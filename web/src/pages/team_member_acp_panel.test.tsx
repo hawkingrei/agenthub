@@ -23,9 +23,9 @@ async function openDebugTabAndWait(container: HTMLElement): Promise<void> {
   act(() => {
     required(
       Array.from(container.querySelectorAll("button")).find((button) =>
-        button.textContent?.includes("Debug")
+        button.textContent?.includes("Inspect")
       ) as HTMLButtonElement | undefined,
-      "debug tab button missing"
+      "inspect tab button missing"
     ).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 

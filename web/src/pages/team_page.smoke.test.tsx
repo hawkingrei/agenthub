@@ -237,13 +237,14 @@ describe("TeamPage smoke render", () => {
             onLogout={() => {}}
             developerMode={false}
             routeTeamId={null}
+            routeSearch=""
           />
         </MantineProvider>
       );
 
-    expect(markup).toContain("Team Selector");
-    expect(markup).toContain("Choose a team");
-    expect(markup).toContain("No teams yet.");
+    expect(markup).toContain("Teams");
+    expect(markup).toContain("New Team");
+    expect(markup).toContain("No teams yet. Create one to begin.");
     expect(markup).not.toContain("Workspace Flow");
     expect(markup).not.toContain("Mission before staffing");
   });
@@ -262,6 +263,7 @@ describe("TeamPage smoke render", () => {
             onLogout={() => {}}
             developerMode={false}
             routeTeamId="team-1"
+            routeSearch=""
           />
         </MantineProvider>
       );
@@ -783,14 +785,14 @@ describe("TeamPage smoke render", () => {
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
-      expect(container.querySelector("h1")).toBeNull();
+      expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
-      expect(container.textContent).toContain("Shared channel for human requests");
+      expect(container.textContent).toContain("Shared channel for team requests");
       expect(container.textContent).not.toContain("Toggle agents section");
       const buttonLabels = Array.from(container.querySelectorAll("button")).map((button) =>
         button.textContent?.replace(/\s+/g, " ").trim() ?? ""
       );
-      expect(buttonLabels).toContain("More");
+      expect(container.querySelector('[aria-label="More"]')).not.toBeNull();
       expect(buttonLabels).not.toContain("Execution Runs");
     } finally {
       act(() => {
@@ -1213,6 +1215,137 @@ describe("TeamPage smoke render", () => {
       };
       expect(lastOptions.selectedConversation?.id).toBe("task-work");
       expect(getTeamTask).toHaveBeenCalledWith("token", "team-1", "task-work");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("opens the selected agent workspace when clicking an agent in the team sidebar", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [
+          { member_id: "leader", role: "leader", prompt: "Plan" },
+          { member_id: "worker-agent", role: "worker", prompt: "Execute" },
+        ],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "task-all",
+        team_id: "team-1",
+        title: "all",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-task-all",
+        team_id: "team-1",
+        task_id: "task-all",
+        mode: "group_chat",
+        topic: "all",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+    getTeamRuntime.mockResolvedValue({
+      team_id: "team-1",
+      team_name: "Team One",
+      status: "running",
+      members: [
+        {
+          member_id: "leader",
+          display_name: "Leader",
+          role: "leader",
+          session_id: "session-leader",
+          session_status: "running",
+          agent_status: "running",
+          card: {
+            card_id: "card-leader",
+            schema_version: "1",
+            description: "Lead the team",
+            capability_tags: [],
+          },
+        },
+        {
+          member_id: "worker-agent",
+          display_name: "Worker Agent",
+          role: "worker",
+          session_id: "session-worker",
+          session_status: "running",
+          agent_status: "running",
+          card: {
+            card_id: "card-worker",
+            schema_version: "1",
+            description: "Execute work",
+            capability_tags: [],
+          },
+        },
+      ],
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const sharedChannelTextarea = container.querySelector(
+        'textarea[placeholder="Message #all"]'
+      ) as HTMLTextAreaElement | null;
+      expect(sharedChannelTextarea).not.toBeNull();
+
+      const workerAgentButton = Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Worker Agent")
+      ) as HTMLButtonElement | undefined;
+      expect(workerAgentButton).toBeDefined();
+
+      await act(async () => {
+        workerAgentButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(container.querySelector('textarea[placeholder="Message #all"]')).toBeNull();
+      expect(container.textContent).toContain("Loading agent ACP...");
     } finally {
       act(() => {
         root.unmount();

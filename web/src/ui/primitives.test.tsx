@@ -190,7 +190,7 @@ describe("ui primitives", () => {
 
   it("renders compact action primitives for dense toolbars", () => {
     const compactButtonHtml = renderHtml(
-      <CompactButton data-testid="details-toggle">Show details</CompactButton>
+      <CompactButton data-testid="details-toggle">Details</CompactButton>
     );
     const compactIconHtml = renderHtml(
       <CompactIconButton aria-label="Seen by 1 recipient">
@@ -198,7 +198,7 @@ describe("ui primitives", () => {
       </CompactIconButton>
     );
 
-    expect(compactButtonHtml).toContain("text-[10px] font-bold uppercase tracking-wider");
+    expect(compactButtonHtml).toContain("text-[10px] font-medium tracking-[0.01em]");
     expect(compactButtonHtml).toContain('data-testid="details-toggle"');
     expect(compactIconHtml).toContain("h-5 min-w-5 items-center justify-center");
     expect(compactIconHtml).toContain('aria-label="Seen by 1 recipient"');

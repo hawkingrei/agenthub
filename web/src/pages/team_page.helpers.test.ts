@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTeamDetailPath,
+  buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
-  isCurrentTeamScopedRequest,
   parseTeamAgentInputSessionMismatch,
+  resolveTeamChannelId,
+  resolveTeamThreadRootMessageId,
   validateRunInputJson,
 } from "./team_page";
+import { isCurrentTeamScopedRequest } from "./team/page_helpers";
 
 describe("team_page helpers", () => {
   it("parses agent session mismatch payloads and rejects malformed messages", () => {
@@ -25,8 +28,27 @@ describe("team_page helpers", () => {
   });
 
   it("builds team detail paths with escaped identifiers", () => {
-    expect(buildTeamDetailPath("team-1")).toBe("/teams/team-1");
-    expect(buildTeamDetailPath("team/1")).toBe("/teams/team%2F1");
+    expect(buildTeamDetailPath("team-1")).toBe("/workspace/teams/team-1");
+    expect(buildTeamDetailPath("team/1")).toBe("/workspace/teams/team%2F1");
+  });
+
+  it("builds team workspace paths with optional lens and thread query", () => {
+    expect(buildTeamWorkspacePath("team-1")).toBe("/workspace/teams/team-1");
+    expect(buildTeamWorkspacePath("team-1", "channels")).toBe(
+      "/workspace/teams/team-1?lens=channels"
+    );
+    expect(buildTeamWorkspacePath("team-1", "channels", "all", 42)).toBe(
+      "/workspace/teams/team-1?lens=channels&thread=42"
+    );
+  });
+
+  it("parses team channel and thread query state", () => {
+    expect(resolveTeamChannelId("")).toBe("all");
+    expect(resolveTeamChannelId("?channel=all")).toBe("all");
+    expect(resolveTeamChannelId("?channel=research")).toBe("all");
+    expect(resolveTeamThreadRootMessageId("")).toBeNull();
+    expect(resolveTeamThreadRootMessageId("?thread=17")).toBe(17);
+    expect(resolveTeamThreadRootMessageId("?thread=abc")).toBeNull();
   });
 
   it("summarizes runtime actions by grouped member operation", () => {

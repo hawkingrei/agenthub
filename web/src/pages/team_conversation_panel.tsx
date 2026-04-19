@@ -16,7 +16,6 @@ type TeamConversationPanelProps = {
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
-  onRefreshMessages?: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   conversationMailboxMessages: TeamActorMessageRecord[];
   snapshotMailboxMessages?: TeamActorMessageRecord[];
@@ -29,6 +28,8 @@ type TeamConversationPanelProps = {
   busy: string | null;
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
+  onOpenThread?: (messageId: number) => void;
+  activeThreadMessageId?: number | null;
 };
 
 function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
@@ -58,7 +59,6 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}
-        onRefreshMessages={props.onRefreshMessages}
         messages={messages}
         seenByMessageId={seenByMessageId}
         humanActorId={humanActorId}
@@ -70,6 +70,8 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         busy={props.busy}
         formatTs={props.formatTs}
         toPrettyJson={props.toPrettyJson}
+        onOpenThread={props.onOpenThread}
+        activeThreadMessageId={props.activeThreadMessageId}
       />
     </div>
   );

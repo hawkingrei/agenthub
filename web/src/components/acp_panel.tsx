@@ -140,7 +140,7 @@ function AcpPanelView({
         className={tabButtonClassName(effectiveTab === "conversation", true)}
         onClick={() => onSelectTab("conversation")}
       >
-        Conversation
+        Activity
         {showConversationBadge && (
           <span className={ACP_TAB_BADGE_CLASS}>
             +{conversation.pendingCount}
@@ -165,7 +165,7 @@ function AcpPanelView({
           className={tabButtonClassName(effectiveTab === "debug")}
           onClick={() => onSelectTab("debug")}
         >
-          Debug
+          Inspect
         </UnstyledButton>
       )}
     </div>
