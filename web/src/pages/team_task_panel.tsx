@@ -18,7 +18,6 @@ import {
   ActionButton,
   Badge,
   CompactButton,
-  CompactIconButton,
   ConversationBubble,
   EmptyState,
   IconButton,
@@ -90,6 +89,8 @@ type TeamTaskPanelProps = {
   busy: string | null;
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
+  onOpenThread?: (messageId: number) => void;
+  activeThreadMessageId?: number | null;
 };
 
 type PermissionReviewCardPayload = {
@@ -148,7 +149,7 @@ type TeamTaskPanelAudioWindow = Window &
     webkitAudioContext?: PermissionToneAudioContextConstructor;
   };
 
-const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-bold uppercase tracking-wider text-notion-text-muted";
+const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-normal tracking-[0.01em] text-notion-text-muted/65";
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
@@ -156,7 +157,11 @@ const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
   "mb-0.5 flex items-start justify-between gap-2";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
   "flex min-w-0 items-center gap-2";
-const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-2";
+const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-1";
+const TEAM_TASK_ACTIVITY_META_BUTTON_CLASS =
+  "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/58 hover:bg-transparent hover:text-notion-text-muted/82";
+const TEAM_TASK_ACTIVITY_META_STATUS_CLASS =
+  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/58 hover:bg-transparent hover:text-notion-text-muted/82";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
@@ -164,9 +169,9 @@ const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
-  "inline-flex h-2.5 w-2.5 rounded-full bg-notion-hover ring-1 ring-notion-border";
+  "inline-flex h-1.5 w-1.5 rounded-full bg-notion-text-muted/45";
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
-  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle";
+  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle opacity-85";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
   `min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
@@ -550,13 +555,19 @@ function SeenProgressHoverCard({
     <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
-          <CompactIconButton aria-label="Pending delivery" title="Pending delivery">
+          <CompactButton
+            aria-label="Pending"
+            title="Pending"
+            className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
+          >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-          </CompactIconButton>
+            <span>Pending</span>
+          </CompactButton>
         ) : (
-          <CompactIconButton
-            aria-label={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
-            title={`Seen by ${seenProgress.readCount} of ${seenProgress.totalCount} recipients`}
+          <CompactButton
+            aria-label={`Seen ${seenProgress.readCount}/${seenProgress.totalCount}`}
+            title={`Seen ${seenProgress.readCount}/${seenProgress.totalCount}`}
+            className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
           >
             <span
               className={TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS}
@@ -575,14 +586,15 @@ function SeenProgressHoverCard({
                 } satisfies SeenDialStyle
               }
             />
-          </CompactIconButton>
+            <span>{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>
+          </CompactButton>
         )}
       </HoverCard.Target>
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
         {seenActorIds.length === 0 ? (
           <>
             <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending delivery</div>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending</div>
           </>
         ) : (
           <>
@@ -797,6 +809,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading,
     busy,
     formatTs,
+    onOpenThread,
+    activeThreadMessageId = null,
   } = props;
 
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -858,10 +872,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [activeMention, mentionCandidates]);
   const normalizedConversationTitle =
     conversationTitle.trim().length > 0 ? conversationTitle.trim() : "all";
-  const refreshLabel = isSharedConversation ? "Refresh channel" : "Refresh thread";
   const emptyStateText = isSharedConversation
-    ? "No channel messages yet."
-    : "No thread messages yet.";
+    ? "No messages yet."
+    : "No replies yet.";
   const messagePlaceholder = isSharedConversation
     ? `Message #${normalizedConversationTitle}`
     : "Reply in thread";
@@ -1235,23 +1248,6 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5"
         data-team-channel-body="true"
       >
-        {onRefreshMessages && (
-          <ToolbarRow className="mb-2 w-full shrink-0 justify-end gap-2">
-            <ActionButton
-              tone="secondary"
-              size="md"
-              onClick={() => {
-                void onRefreshMessages();
-              }}
-              disabled={messagesLoading}
-              title={refreshLabel}
-              aria-label={refreshLabel}
-            >
-              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-              <span>Refresh</span>
-            </ActionButton>
-          </ToolbarRow>
-        )}
         <div
           ref={activityListRef}
           className={activityListClassName}
@@ -1312,6 +1308,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         )}
                         {developerMode && (
                           <CompactButton
+                            className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
                             onClick={() =>
                               setExpandedItemKeys((current) => ({
                                 ...current,
@@ -1320,7 +1317,19 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                             }
                             aria-expanded={Boolean(expandedItemKeys[item.key])}
                           >
-                            {expandedItemKeys[item.key] ? "Hide details" : "Show details"}
+                            {expandedItemKeys[item.key] ? "Hide" : "Details"}
+                          </CompactButton>
+                        )}
+                        {isSharedConversation && onOpenThread && (
+                          <CompactButton
+                            className={
+                              activeThreadMessageId === item.sequence
+                                ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
+                                : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
+                            }
+                            onClick={() => onOpenThread(item.sequence)}
+                          >
+                            Thread
                           </CompactButton>
                         )}
                       </div>
@@ -1500,7 +1509,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         )}
         <ToolbarRow className="mt-0.5 gap-2">
           <span className={TEAM_TASK_SHORTCUT_CLASS}>
-            {`@name for direct replies · Enter sends · Shift/Ctrl/Cmd + Enter newline`}
+            {`@name to reply · Enter to send`}
           </span>
           <ActionButton
             tone="primary"

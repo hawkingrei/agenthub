@@ -3,11 +3,6 @@ import { Alert } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { ActionButton, IconButton } from "../ui/primitives";
 import {
-  deriveConnectionBadge,
-  getNavigatorOnline,
-  type SseConnectionState,
-} from "../connection_status";
-import {
   AgentDiscoveryCardRecord,
   AgentRecord,
   AgentEvent,
@@ -49,6 +44,7 @@ import { TeamPageHeader } from "./team/team_page_header";
 import { TeamPageModals } from "./team/team_page_modals";
 import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
+import { TeamThreadPane } from "./team/team_thread_pane";
 import { TeamWorkbenchContent } from "./team/team_workbench_content";
 import {
   parseErrorMessage,
@@ -69,6 +65,7 @@ import {
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
   mergeMailboxMessages,
+  resolveChatMessageText,
   resolveConversationMaxMessageId,
   resolveMailboxChatActors,
   selectMailboxConversation,
@@ -150,7 +147,6 @@ import {
   TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS,
   TEAM_WORKBENCH_HEADER_SHELL_CLASS,
   TEAM_SOFT_CHROME_SHADOW_CLASS,
-  TEAM_WORKBENCH_HEADER_STATUS_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS,
@@ -221,7 +217,24 @@ type TeamPageProps = {
   defaultWorktreeRoot?: string | null;
 };
 
-type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
+type WorkspaceLens = "channels" | "tasks" | "members" | "search";
+export type TeamChannelId = "all";
+
+export function resolveTeamChannelId(search: string): TeamChannelId {
+  const params = new URLSearchParams(search);
+  const channel = (params.get("channel") ?? "").trim();
+  return channel === "all" || channel.length === 0 ? "all" : "all";
+}
+
+export function resolveTeamThreadRootMessageId(search: string): number | null {
+  const params = new URLSearchParams(search);
+  const raw = (params.get("thread") ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 export function parseTeamAgentInputSessionMismatch(
   message: string
@@ -256,20 +269,38 @@ function buildTeamSelectorPath(): string {
   return "/workspace/teams";
 }
 
-function buildTeamWorkspacePath(teamId: string, lens?: WorkspaceLens | null): string {
+export function buildTeamWorkspacePath(
+  teamId: string,
+  lens?: WorkspaceLens | null,
+  channelId?: TeamChannelId | null,
+  threadRootMessageId?: number | null
+): string {
   const pathname = `/workspace/teams/${encodeURIComponent(teamId)}`;
-  if (!lens) {
+  const params = new URLSearchParams();
+  if (lens) {
+    params.set("lens", lens);
+  }
+  if (channelId && channelId !== "all") {
+    params.set("channel", channelId);
+  }
+  if (threadRootMessageId && threadRootMessageId > 0) {
+    params.set("thread", String(threadRootMessageId));
+  }
+  const search = params.toString();
+  if (!search) {
     return pathname;
   }
-  return `${pathname}?lens=${encodeURIComponent(lens)}`;
+  return `${pathname}?${search}`;
 }
 
 function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   const params = new URLSearchParams(search);
   const lens = params.get("lens");
   switch (lens) {
+    case "channels":
     case "chat":
     case "threads":
+      return "channels";
     case "tasks":
     case "members":
     case "search":
@@ -281,8 +312,7 @@ function resolveWorkspaceLens(search: string): WorkspaceLens | null {
 
 function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   switch (lens) {
-    case "chat":
-    case "threads":
+    case "channels":
       return "conversation";
     case "tasks":
       return "tasks";
@@ -296,8 +326,7 @@ function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
 }
 
 const TEAM_WORKFLOW_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = [
-  { value: "conversation", label: "# all" },
-  { value: "tasks", label: "Kanban" },
+  
 ];
 const TEAM_AGENT_WORKSPACE_TABS = new Set<TeamTab>(["agent_acp", "member_console"]);
 const TEAM_AGENT_ADVANCED_TABS = new Set<TeamTab>([
@@ -406,7 +435,6 @@ const teamWorkbenchBadgeClassName =
   "inline-flex items-center rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-notion-text-muted transition hover:bg-notion-hover";
 const teamWorkbenchHeaderShellClassName = TEAM_WORKBENCH_HEADER_SHELL_CLASS;
 const teamWorkbenchHeaderIconButtonClassName = TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS;
-const teamWorkbenchHeaderStatusClassName = TEAM_WORKBENCH_HEADER_STATUS_CLASS;
 const teamWorkbenchDetailLayoutCollapsedClassName =
   "teams-layout grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)] bg-white";
 const teamWorkbenchDetailLayoutExpandedClassName =
@@ -425,6 +453,14 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveWorkspaceLens(props.routeSearch ?? ""),
     [props.routeSearch]
   );
+  const routeChannelId = useMemo(
+    () => resolveTeamChannelId(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
+  const routeThreadRootMessageId = useMemo(
+    () => resolveTeamThreadRootMessageId(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
   const isSelectorRoute = routeTeamId == null;
   const routeDefaultWorktreeRoot = React.useMemo(() => {
     const normalized = normalizeWorkdirInput(props.defaultWorktreeRoot ?? "");
@@ -434,35 +470,18 @@ export function TeamPage(props: TeamPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [networkOnline, setNetworkOnline] = useState<boolean>(getNavigatorOnline);
   const [teamRuntimeByTeamId, setTeamRuntimeByTeamId] = useState<Record<string, TeamRuntimeRecord>>(
     {}
   );
   const [teamsSidebarCollapsed, setTeamsSidebarCollapsed] = useState(false);
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
-  const [conversationSseState, setConversationSseState] = useState<SseConnectionState>("idle");
   const mobileRouteTeamIdRef = useRef<string | null>(null);
   const previousCompactWorkbenchRef = useRef<boolean>(isCompactWorkbench);
   useEffect(() => {
     document.body.classList.add("teams-page");
     return () => {
       document.body.classList.remove("teams-page");
-    };
-  }, []);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnline = () => {
-      setNetworkOnline(true);
-    };
-    const onOffline = () => {
-      setNetworkOnline(false);
-    };
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
     };
   }, []);
   useEffect(() => {
@@ -512,10 +531,10 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     const nextTab = resolveTeamTabForWorkspaceLens(routeWorkspaceLens);
-    if (nextTab && nextTab !== tab) {
+    if (nextTab) {
       setTab(nextTab);
     }
-  }, [routeWorkspaceLens, setTab, tab]);
+  }, [routeWorkspaceLens, setTab]);
   const [teamControlState, dispatchTeamControl] = useReducer(
     reduceTeamControlState,
     DEFAULT_TEAM_CONTROL_STATE
@@ -1798,20 +1817,6 @@ export function TeamPage(props: TeamPageProps) {
     setCompiledRunPreview,
     setCompilePreviewContextId,
   });
-  const hasConversationStreamTarget = Boolean(
-    eventsAutoRefresh &&
-      effectiveSelectedTeamId &&
-      (selectedConversationId ?? "").trim()
-  );
-  const connectionBadge = useMemo(
-    () =>
-      deriveConnectionBadge(
-        networkOnline,
-        hasConversationStreamTarget,
-        conversationSseState
-      ),
-    [conversationSseState, hasConversationStreamTarget, networkOnline]
-  );
   const {
     refreshTaskMessages,
     sendTaskMessage: onSendTaskMessage,
@@ -1843,7 +1848,6 @@ export function TeamPage(props: TeamPageProps) {
     refreshTaskMessages,
     setTaskMessages,
     setConversationMailboxMessages,
-    onSseStateChange: setConversationSseState,
   });
 
   const onRefreshMemberConsole = useCallback(async () => {
@@ -1941,9 +1945,9 @@ export function TeamPage(props: TeamPageProps) {
   );
   const navigateToSidebarTeam = useCallback(
     (teamId: string) => {
-      navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens));
+      navigateTeamRoute(buildTeamWorkspacePath(teamId, routeWorkspaceLens, routeChannelId));
     },
-    [routeWorkspaceLens]
+    [routeChannelId, routeWorkspaceLens]
   );
   const selectedAgentWorkspaceLiveState = useMemo(
     () =>
@@ -2403,8 +2407,53 @@ export function TeamPage(props: TeamPageProps) {
       busy={busy}
       formatTs={formatTs}
       toPrettyJson={toPrettyJson}
+      activeThreadMessageId={selectedConversationIsShared ? routeThreadRootMessageId : null}
+      onOpenThread={
+        effectiveSelectedTeamId && selectedConversationIsShared
+          ? (messageId) => {
+              navigateTeamRoute(
+                buildTeamWorkspacePath(
+                  effectiveSelectedTeamId,
+                  routeWorkspaceLens,
+                  routeChannelId,
+                  messageId
+                )
+              );
+            }
+          : undefined
+      }
     />
   );
+  const activeThreadRootMessage =
+    selectedConversationIsShared && routeThreadRootMessageId
+      ? taskMessages.find((message) => message.message_id === routeThreadRootMessageId) ?? null
+      : null;
+  const threadPane = selectedConversationIsShared && routeThreadRootMessageId ? (
+    <TeamThreadPane
+      channelLabel={routeChannelId === "all" ? "# all" : `# ${routeChannelId}`}
+      rootMessageId={activeThreadRootMessage?.message_id ?? routeThreadRootMessageId}
+      rootAuthorLabel={activeThreadRootMessage?.from_actor_id ?? null}
+      rootCreatedAt={activeThreadRootMessage?.created_at ?? null}
+      rootText={activeThreadRootMessage ? resolveChatMessageText(activeThreadRootMessage.payload) : null}
+      formatTs={formatTs}
+      onViewInChannel={() => {
+        if (!effectiveSelectedTeamId) {
+          return;
+        }
+        navigateTeamRoute(
+          buildTeamWorkspacePath(effectiveSelectedTeamId, routeWorkspaceLens, routeChannelId)
+        );
+      }}
+      onClose={() => {
+        if (!effectiveSelectedTeamId) {
+          return;
+        }
+        navigateTeamRoute(
+          buildTeamWorkspacePath(effectiveSelectedTeamId, routeWorkspaceLens, routeChannelId)
+        );
+      }}
+    />
+  ) : null;
 
   const tasksPanel = (
     <TeamTasksPanel
@@ -2860,17 +2909,13 @@ export function TeamPage(props: TeamPageProps) {
             isSelectorRoute={isSelectorRoute}
             teamsSidebarCollapsed={teamsSidebarCollapsed}
             teamPanelToggleLabel={teamPanelToggleLabel}
-            connectionBadge={connectionBadge}
             username={props.auth.username}
             isRoot={props.auth.role === "root"}
             headerShellClassName={teamWorkbenchHeaderShellClassName}
             headerIconButtonClassName={teamWorkbenchHeaderIconButtonClassName}
-            headerMutedButtonClassName={teamWorkbenchMutedButtonClassName}
-            headerStatusClassName={teamWorkbenchHeaderStatusClassName}
             lensItems={workspaceLensItems}
             onToggleSidebar={() => setTeamsSidebarCollapsed((previous) => !previous)}
             onSelectLens={onSelectWorkspaceLens}
-            onNavigateToSelector={navigateToTeamSelector}
             onNavigate={navigateTeamRoute}
             onLogout={props.onLogout}
           />
@@ -3058,6 +3103,7 @@ export function TeamPage(props: TeamPageProps) {
             showNoActiveRunNotice={showNoActiveRunNotice}
             activeWorkspaceLens={activeWorkspaceLens}
             conversationPanel={conversationPanel}
+            threadPane={threadPane}
             tasksPanel={tasksPanel}
             agentAcpPanel={agentAcpPanel}
             overviewPanelProps={overviewPanelProps}

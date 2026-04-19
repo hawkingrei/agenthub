@@ -1,12 +1,10 @@
 import React from "react";
-import type { ConnectionBadge } from "../connection_status";
 import {
   WORKSPACE_SHELL_LENS_BAR_CLASS,
   WORKSPACE_SHELL_LENS_BUTTON_ACTIVE_CLASS,
   WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 import { ActionButton, IconButton } from "../ui/primitives";
-import { WorkbenchConnectionBadge } from "./workbench_connection_badge";
 import { WorkbenchHeaderMenu } from "./workbench_header_menu";
 
 export type WorkspaceShellLensItem = {
@@ -24,12 +22,10 @@ type WorkspaceShellHeaderProps = {
   sidebarToggleLabel?: string | null;
   sidebarCollapsed?: boolean;
   onToggleSidebar?: (() => void) | null;
-  connectionBadge: ConnectionBadge;
   username: string;
   isRoot: boolean;
   headerShellClassName: string;
   headerIconButtonClassName: string;
-  headerStatusClassName: string;
   menuButtonClassName: string;
   secondaryActions?: React.ReactNode;
   lensItems?: readonly WorkspaceShellLensItem[];
@@ -47,12 +43,10 @@ export const WorkspaceShellHeader = React.memo(
       sidebarToggleLabel = null,
       sidebarCollapsed = false,
       onToggleSidebar = null,
-      connectionBadge,
       username,
       isRoot,
       headerShellClassName: className,
       headerIconButtonClassName,
-      headerStatusClassName,
       menuButtonClassName,
       secondaryActions = null,
       lensItems = [],
@@ -121,9 +115,7 @@ export const WorkspaceShellHeader = React.memo(
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-3">
-
           {secondaryActions}
-          <WorkbenchConnectionBadge badge={connectionBadge} className={headerStatusClassName} />
           <WorkbenchHeaderMenu
             active={activeSurface}
             username={username}
