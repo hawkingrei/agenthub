@@ -22,6 +22,9 @@ pub(super) fn actor_output_preference_for_command(command: &ActorCommand) -> Act
         | ActorCommand::TeamTaskShow { .. }
         | ActorCommand::Inbox { .. }
         | ActorCommand::Receive { .. }
+        | ActorCommand::TeamChannelCreate { .. }
+        | ActorCommand::TeamChannelDelete { .. }
+        | ActorCommand::TeamThreadOpen { .. }
         | ActorCommand::TeamTaskCreate { .. }
         | ActorCommand::TeamTaskUpdate { .. }
         | ActorCommand::TeamTaskNote { .. }

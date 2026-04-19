@@ -55,6 +55,18 @@ pub struct TeamDefinitionRecord {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamChannelRecord {
+    pub team_id: String,
+    pub channel_id: String,
+    pub task_id: String,
+    pub conversation_id: String,
+    pub description: Option<String>,
+    pub created_by_actor_id: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TeamRunStatus {
@@ -321,6 +333,16 @@ pub struct TeamTaskDetailRecord {
     pub conversation: TeamConversationRecord,
     pub latest_run: Option<TeamRunRecord>,
     pub recent_messages: Vec<TeamConversationMessageRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamThreadOpenRecord {
+    pub team_id: String,
+    pub channel_id: String,
+    pub task_id: String,
+    pub conversation_id: String,
+    pub root_message_id: i64,
+    pub thread_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

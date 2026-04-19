@@ -378,6 +378,33 @@ async fn setup_test_db() -> SqlitePool {
     pool
 }
 
+async fn insert_team_conversation_message(
+    db: &SqlitePool,
+    conversation_id: &str,
+    task_id: &str,
+    from_actor_id: &str,
+    payload_json: Value,
+) -> i64 {
+    let created_at = Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversation_messages (
+            conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, idempotency_key, created_at
+        )
+        VALUES (?1, ?2, ?3, NULL, 'broadcast', ?4, NULL, ?5)
+        "#,
+    )
+    .bind(conversation_id)
+    .bind(task_id)
+    .bind(from_actor_id)
+    .bind(payload_json.to_string())
+    .bind(created_at)
+    .execute(db)
+    .await
+    .expect("insert team conversation message")
+    .last_insert_rowid()
+}
+
 #[derive(Debug, Clone)]
 struct RelayHttpCapture {
     method: String,
@@ -1605,6 +1632,245 @@ async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensiti
         .expect("list visible tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, visible_task.id);
+}
+
+#[tokio::test]
+async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_task_list() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-create".to_string(),
+            description: Some("verify channel bootstrap records".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let channel = manager
+        .create_channel(&team.id, "review", Some("Review queue"), "leader")
+        .await
+        .expect("create review channel");
+    assert_eq!(channel.team_id, team.id);
+    assert_eq!(channel.channel_id, "review");
+    assert_eq!(channel.conversation_id, "review");
+    assert_eq!(channel.description.as_deref(), Some("Review queue"));
+    assert_eq!(channel.created_by_actor_id, "leader");
+
+    let conversation = sqlx::query(
+        r#"
+        SELECT c.id, c.task_id, t.context_json
+        FROM team_conversations c
+        INNER JOIN team_tasks t ON t.id = c.task_id
+        WHERE c.team_id = ?1 AND c.id = 'review'
+        LIMIT 1
+        "#,
+    )
+    .bind(&team.id)
+    .fetch_one(&db)
+    .await
+    .expect("fetch review conversation");
+    assert_eq!(conversation.get::<String, _>("id"), "review");
+    assert_eq!(conversation.get::<String, _>("task_id"), channel.task_id);
+    let context_json: Value = serde_json::from_str(&conversation.get::<String, _>("context_json"))
+        .expect("parse context");
+    assert_eq!(context_json["bootstrap_kind"], "team_channel");
+    assert_eq!(context_json["bootstrap_source"], "leader_created");
+    assert_eq!(context_json["channel_id"], "review");
+    assert_eq!(context_json["description"], "Review queue");
+
+    let listed = manager
+        .list_tasks_with_query(TeamTaskListQuery {
+            team_id: Some(team.id.clone()),
+            limit: 20,
+            include_shared_thread: false,
+            ..TeamTaskListQuery::default()
+        })
+        .await
+        .expect("list visible tasks");
+    assert!(
+        listed.is_empty(),
+        "channel bootstrap tasks should stay hidden"
+    );
+}
+
+#[tokio::test]
+async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-delete".to_string(),
+            description: Some("verify channel deletion cleanup".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let cannot_delete_all = manager
+        .delete_channel(&team.id, "all")
+        .await
+        .expect_err("shared channel should be reserved");
+    assert!(
+        cannot_delete_all
+            .to_string()
+            .contains("channel_id 'all' cannot be deleted")
+    );
+
+    let channel = manager
+        .create_channel(&team.id, "research", Some("Research lane"), "leader")
+        .await
+        .expect("create research channel");
+
+    let root_message_id = insert_team_conversation_message(
+        &db,
+        &channel.conversation_id,
+        &channel.task_id,
+        "leader",
+        json!({"text":"Investigate issue"}),
+    )
+    .await;
+    sqlx::query(
+        r#"
+        INSERT INTO team_channel_message_replicas (
+            authority_message_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json, stored_at
+        )
+        VALUES (?1, 'run-1', ?2, ?3, ?4, ?5, 'leader', 'main', '{"text":"Investigate issue"}', ?6)
+        "#,
+    )
+    .bind(root_message_id)
+    .bind(&team.id)
+    .bind(&channel.conversation_id)
+    .bind(&channel.task_id)
+    .bind(&channel.channel_id)
+    .bind(Utc::now().timestamp())
+    .execute(&db)
+    .await
+    .expect("insert channel replica");
+
+    let deleted = manager
+        .delete_channel(&team.id, "research")
+        .await
+        .expect("delete research channel");
+    assert_eq!(deleted.channel_id, "research");
+    assert_eq!(deleted.task_id, channel.task_id);
+
+    let remaining_conversations = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM team_conversations WHERE id = 'research'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("count conversations");
+    let remaining_tasks =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_tasks WHERE id = ?1")
+            .bind(&channel.task_id)
+            .fetch_one(&db)
+            .await
+            .expect("count tasks");
+    let remaining_messages = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM team_conversation_messages WHERE conversation_id = 'research'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("count messages");
+    let remaining_replicas = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM team_channel_message_replicas WHERE conversation_id = 'research'",
+    )
+    .fetch_one(&db)
+    .await
+    .expect("count replicas");
+
+    assert_eq!(remaining_conversations, 0);
+    assert_eq!(remaining_tasks, 0);
+    assert_eq!(remaining_messages, 0);
+    assert_eq!(remaining_replicas, 0);
+}
+
+#[tokio::test]
+async fn open_team_thread_supports_shared_and_custom_channels() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-open-thread".to_string(),
+            description: Some("verify open thread routes".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[
+                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"worker","role":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let (shared_task, shared_conversation) = manager
+        .create_task(
+            &team.id,
+            "all",
+            "leader",
+            json!({"bootstrap_kind":"shared_thread"}),
+            "group_chat",
+            Some("all"),
+        )
+        .await
+        .expect("create shared thread target");
+    let shared_conversation_id = shared_conversation.id;
+    let shared_task_id = shared_task.id;
+    let shared_root_message_id = insert_team_conversation_message(
+        &db,
+        &shared_conversation_id,
+        &shared_task_id,
+        "leader",
+        json!({"text":"Shared update"}),
+    )
+    .await;
+
+    let shared_thread = manager
+        .open_thread(&team.id, "all", shared_root_message_id)
+        .await
+        .expect("open shared thread");
+    assert_eq!(shared_thread.channel_id, "all");
+    assert_eq!(shared_thread.conversation_id, shared_conversation_id);
+    assert_eq!(shared_thread.task_id, shared_task_id);
+    assert_eq!(shared_thread.root_message_id, shared_root_message_id);
+    assert_eq!(shared_thread.thread_id, shared_root_message_id.to_string());
+
+    let channel = manager
+        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+    let review_root_message_id = insert_team_conversation_message(
+        &db,
+        &channel.conversation_id,
+        &channel.task_id,
+        "leader",
+        json!({"text":"Please review"}),
+    )
+    .await;
+
+    let review_thread = manager
+        .open_thread(&team.id, "review", review_root_message_id)
+        .await
+        .expect("open review thread");
+    assert_eq!(review_thread.channel_id, "review");
+    assert_eq!(review_thread.conversation_id, channel.conversation_id);
+    assert_eq!(review_thread.task_id, channel.task_id);
+    assert_eq!(review_thread.root_message_id, review_root_message_id);
+    assert_eq!(review_thread.thread_id, review_root_message_id.to_string());
 }
 
 #[tokio::test]

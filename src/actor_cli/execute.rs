@@ -454,6 +454,66 @@ pub(super) async fn run_actor_command(
                 .await?;
             write_actor_output(&message, output_mode, output_preference)?;
         }
+        ActorCommand::TeamChannelCreate {
+            team_id,
+            actor_id,
+            channel_id,
+            description,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                None,
+                &[InternalAction::TeamTaskWrite],
+                "actor team channel control",
+            )
+            .await?;
+            let channel = client
+                .create_team_channel(&team_id, &actor_id, &channel_id, description.as_deref())
+                .await?;
+            write_actor_output(&channel, output_mode, output_preference)?;
+        }
+        ActorCommand::TeamChannelDelete {
+            team_id,
+            actor_id,
+            channel_id,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                None,
+                &[InternalAction::TeamTaskWrite],
+                "actor team channel control",
+            )
+            .await?;
+            let channel = client
+                .delete_team_channel(&team_id, &actor_id, &channel_id)
+                .await?;
+            write_actor_output(&channel, output_mode, output_preference)?;
+        }
+        ActorCommand::TeamThreadOpen {
+            team_id,
+            run_id,
+            actor_id,
+            channel_id,
+            root_message_id,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                run_id.as_deref(),
+                &[InternalAction::TeamRead],
+                "actor team thread control",
+            )
+            .await?;
+            let thread = client
+                .open_team_thread(
+                    &actor_id,
+                    team_id.as_deref(),
+                    run_id.as_deref(),
+                    &channel_id,
+                    root_message_id,
+                )
+                .await?;
+            write_actor_output(&thread, output_mode, output_preference)?;
+        }
         ActorCommand::TeamStepTransition {
             run_id,
             actor_id,

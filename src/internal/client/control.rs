@@ -1,15 +1,18 @@
 use crate::acp::AcpActorSkillContext;
 use crate::agent::{AgentConfig, AgentEvent, AgentRecord, AgentTimeTriggerRecord};
 use crate::team::{
-    TeamContextRecord, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord, TeamTaskStatus,
+    TeamChannelRecord, TeamContextRecord, TeamTaskDetailRecord, TeamTaskListQuery, TeamTaskRecord,
+    TeamTaskStatus,
 };
 
 use super::super::proto::agenthub::internal::v1::{
     AppendTeamTaskNoteRequest as GrpcAppendTeamTaskNoteRequest,
     CancelTimeTriggerRequest as GrpcCancelTimeTriggerRequest,
+    CreateTeamChannelRequest as GrpcCreateTeamChannelRequest,
     CreateTeamTaskRequest as GrpcCreateTeamTaskRequest,
     CreateTimeTriggerRequest as GrpcCreateTimeTriggerRequest,
     DeleteManagedAgentRequest as GrpcDeleteManagedAgentRequest,
+    DeleteTeamChannelRequest as GrpcDeleteTeamChannelRequest,
     DescribeTeamContextRequest as GrpcDescribeTeamContextRequest,
     EnsureAgentRecordRequest as GrpcEnsureAgentRecordRequest,
     GetAgentRecordRequest as GrpcGetAgentRecordRequest,
@@ -17,6 +20,7 @@ use super::super::proto::agenthub::internal::v1::{
     ListAgentEventsRequest as GrpcListAgentEventsRequest,
     ListTeamTasksRequest as GrpcListTeamTasksRequest,
     ListTimeTriggersRequest as GrpcListTimeTriggersRequest,
+    OpenTeamThreadRequest as GrpcOpenTeamThreadRequest,
     ResolveActorRunScopeRequest as GrpcResolveActorRunScopeRequest,
     RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
     RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
@@ -33,6 +37,48 @@ use super::{
 };
 
 impl InternalGrpcMailboxClient {
+    pub async fn create_team_channel(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        channel_id: &str,
+        description: Option<&str>,
+    ) -> anyhow::Result<TeamChannelRecord> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.create_team_channel(
+            self.control_request(GrpcCreateTeamChannelRequest {
+                team_id: team_id.trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                channel_id: channel_id.trim().to_string(),
+                description: description.unwrap_or_default().trim().to_string(),
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        parse_json_response(&response.channel_json, "channel_json")
+    }
+
+    pub async fn delete_team_channel(
+        &self,
+        team_id: &str,
+        actor_id: &str,
+        channel_id: &str,
+    ) -> anyhow::Result<TeamChannelRecord> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.delete_team_channel(
+            self.control_request(GrpcDeleteTeamChannelRequest {
+                team_id: team_id.trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                channel_id: channel_id.trim().to_string(),
+            })?,
+        ))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        parse_json_response(&response.channel_json, "channel_json")
+    }
+
     pub async fn ensure_agent_record(
         &self,
         agent_id: &str,
@@ -398,6 +444,30 @@ impl InternalGrpcMailboxClient {
         .map_err(map_grpc_status_anyhow)?
         .into_inner();
         parse_json_response(&response.detail_json, "detail_json")
+    }
+
+    pub async fn open_team_thread(
+        &self,
+        actor_id: &str,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+        channel_id: &str,
+        root_message_id: i64,
+    ) -> anyhow::Result<crate::team::TeamThreadOpenRecord> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.open_team_thread(self.control_request(
+            GrpcOpenTeamThreadRequest {
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+                run_id: run_id.unwrap_or_default().trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                channel_id: channel_id.trim().to_string(),
+                root_message_id,
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        parse_json_response(&response.thread_json, "thread_json")
     }
 
     pub async fn append_team_task_note(

@@ -190,6 +190,54 @@ pub struct GetTeamTaskResponse {
     pub detail_json: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTeamChannelRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub channel_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub description: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CreateTeamChannelResponse {
+    #[prost(string, tag = "1")]
+    pub channel_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteTeamChannelRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub channel_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteTeamChannelResponse {
+    #[prost(string, tag = "1")]
+    pub channel_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OpenTeamThreadRequest {
+    #[prost(string, tag = "1")]
+    pub team_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub run_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub actor_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub channel_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "5")]
+    pub root_message_id: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OpenTeamThreadResponse {
+    #[prost(string, tag = "1")]
+    pub thread_json: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AppendTeamTaskNoteRequest {
     #[prost(string, tag = "1")]
     pub team_id: ::prost::alloc::string::String,
@@ -832,6 +880,93 @@ pub mod team_internal_control_client {
                 );
             self.inner.unary(req, path, codec).await
         }
+        pub async fn create_team_channel(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CreateTeamChannelRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTeamChannelResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/CreateTeamChannel",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "CreateTeamChannel",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn delete_team_channel(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DeleteTeamChannelRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DeleteTeamChannelResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/DeleteTeamChannel",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "DeleteTeamChannel",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn open_team_thread(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OpenTeamThreadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OpenTeamThreadResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/agenthub.internal.v1.TeamInternalControl/OpenTeamThread",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "OpenTeamThread",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn append_team_task_note(
             &mut self,
             request: impl tonic::IntoRequest<super::AppendTeamTaskNoteRequest>,
@@ -1314,6 +1449,27 @@ pub mod team_internal_control_server {
             request: tonic::Request<super::GetTeamTaskRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetTeamTaskResponse>,
+            tonic::Status,
+        >;
+        async fn create_team_channel(
+            &self,
+            request: tonic::Request<super::CreateTeamChannelRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateTeamChannelResponse>,
+            tonic::Status,
+        >;
+        async fn delete_team_channel(
+            &self,
+            request: tonic::Request<super::DeleteTeamChannelRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DeleteTeamChannelResponse>,
+            tonic::Status,
+        >;
+        async fn open_team_thread(
+            &self,
+            request: tonic::Request<super::OpenTeamThreadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OpenTeamThreadResponse>,
             tonic::Status,
         >;
         async fn append_team_task_note(
@@ -1911,6 +2067,153 @@ pub mod team_internal_control_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetTeamTaskSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/CreateTeamChannel" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateTeamChannelSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::CreateTeamChannelRequest>
+                    for CreateTeamChannelSvc<T> {
+                        type Response = super::CreateTeamChannelResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateTeamChannelRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::create_team_channel(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateTeamChannelSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/DeleteTeamChannel" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeleteTeamChannelSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::DeleteTeamChannelRequest>
+                    for DeleteTeamChannelSvc<T> {
+                        type Response = super::DeleteTeamChannelResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeleteTeamChannelRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::delete_team_channel(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DeleteTeamChannelSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/agenthub.internal.v1.TeamInternalControl/OpenTeamThread" => {
+                    #[allow(non_camel_case_types)]
+                    struct OpenTeamThreadSvc<T: TeamInternalControl>(pub Arc<T>);
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::OpenTeamThreadRequest>
+                    for OpenTeamThreadSvc<T> {
+                        type Response = super::OpenTeamThreadResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::OpenTeamThreadRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as TeamInternalControl>::open_team_thread(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = OpenTeamThreadSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

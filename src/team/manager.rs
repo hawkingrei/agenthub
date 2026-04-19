@@ -86,6 +86,8 @@ const TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY: usize = 256;
 pub(crate) const TEAM_TASK_DETAIL_MESSAGE_LIMIT_MAX: i64 = 500;
 pub(crate) const TEAM_SHARED_THREAD_TITLE: &str = "all";
 pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
+pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
+const TEAM_CHANNEL_BOOTSTRAP_SOURCE: &str = "leader_created";
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS: &str = "team_conversation_messages.conversation_id, team_conversation_messages.from_actor_id, team_conversation_messages.idempotency_key";
 
@@ -763,6 +765,10 @@ impl TeamManager {
             );
             builder.push_bind("shared_thread");
         }
+        builder.push(
+            " AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) != ",
+        );
+        builder.push_bind(TEAM_CHANNEL_BOOTSTRAP_KIND);
         builder.push(" ORDER BY t.updated_at DESC, t.id DESC LIMIT ");
         builder.push_bind(query.limit.max(1));
         let rows = builder.build().fetch_all(&self.db).await?;
@@ -847,6 +853,287 @@ impl TeamManager {
             conversation,
             latest_run,
             recent_messages,
+        })
+    }
+
+    pub async fn open_thread(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        root_message_id: i64,
+    ) -> anyhow::Result<super::TeamThreadOpenRecord> {
+        let normalized_team_id = team_id.trim();
+        if normalized_team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+        let normalized_channel_id = channel_id.trim();
+        if normalized_channel_id.is_empty() {
+            anyhow::bail!("channel_id is required");
+        }
+        if root_message_id <= 0 {
+            anyhow::bail!("root_message_id must be positive");
+        }
+
+        let (task_id, conversation_id, resolved_channel_id) =
+            if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+                let target = fetch_canonical_shared_thread_target(&self.db, normalized_team_id)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("shared thread is missing for team {}", normalized_team_id)
+                    })?;
+                (
+                    target.task_id,
+                    target.conversation_id,
+                    TEAM_SHARED_THREAD_TITLE.to_string(),
+                )
+            } else {
+                let row = sqlx::query(
+                    r#"
+                    SELECT task_id, id AS conversation_id
+                    FROM team_conversations
+                    WHERE team_id = ?1 AND id = ?2 AND mode = 'group_chat'
+                    LIMIT 1
+                    "#,
+                )
+                .bind(normalized_team_id)
+                .bind(normalized_channel_id)
+                .fetch_optional(&self.db)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "channel '{}' not found for team {}",
+                        normalized_channel_id,
+                        normalized_team_id
+                    )
+                })?;
+                (
+                    row.get::<String, _>("task_id"),
+                    row.get::<String, _>("conversation_id"),
+                    normalized_channel_id.to_string(),
+                )
+            };
+
+        let root_exists = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT 1
+            FROM team_conversation_messages
+            WHERE id = ?1 AND conversation_id = ?2 AND task_id = ?3
+            LIMIT 1
+            "#,
+        )
+        .bind(root_message_id)
+        .bind(&conversation_id)
+        .bind(&task_id)
+        .fetch_optional(&self.db)
+        .await?;
+        if root_exists.is_none() {
+            anyhow::bail!(
+                "root_message_id {} was not found in channel '{}'",
+                root_message_id,
+                resolved_channel_id
+            );
+        }
+
+        Ok(super::TeamThreadOpenRecord {
+            team_id: normalized_team_id.to_string(),
+            channel_id: resolved_channel_id,
+            task_id,
+            conversation_id,
+            root_message_id,
+            thread_id: root_message_id.to_string(),
+        })
+    }
+
+    pub async fn create_channel(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        description: Option<&str>,
+        created_by_actor_id: &str,
+    ) -> anyhow::Result<super::TeamChannelRecord> {
+        let normalized_team_id = team_id.trim();
+        if normalized_team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+        let normalized_channel_id = channel_id.trim();
+        if normalized_channel_id.is_empty() {
+            anyhow::bail!("channel_id is required");
+        }
+        if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+            anyhow::bail!("channel_id 'all' is reserved");
+        }
+        let normalized_description = description
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+
+        self.get_team(normalized_team_id).await?;
+        let now = Utc::now().timestamp();
+        let task_id = Uuid::new_v4().to_string();
+        let context_json = serde_json::json!({
+            "bootstrap_kind": TEAM_CHANNEL_BOOTSTRAP_KIND,
+            "bootstrap_source": TEAM_CHANNEL_BOOTSTRAP_SOURCE,
+            "channel_id": normalized_channel_id,
+            "description": normalized_description,
+        })
+        .to_string();
+
+        let mut tx = self.db.begin().await?;
+        let existing = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT id
+            FROM team_conversations
+            WHERE team_id = ?1 AND id = ?2 AND mode = 'group_chat'
+            LIMIT 1
+            "#,
+        )
+        .bind(normalized_team_id)
+        .bind(normalized_channel_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if existing.is_some() {
+            anyhow::bail!(
+                "channel '{}' already exists for team {}",
+                normalized_channel_id,
+                normalized_team_id
+            );
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_tasks (
+                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?7)
+            "#,
+        )
+        .bind(&task_id)
+        .bind(normalized_team_id)
+        .bind(normalized_channel_id)
+        .bind(created_by_actor_id.trim())
+        .bind(context_json)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id, team_id, task_id, mode, topic, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?6)
+            "#,
+        )
+        .bind(normalized_channel_id)
+        .bind(normalized_team_id)
+        .bind(&task_id)
+        .bind(normalized_channel_id)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        Ok(super::TeamChannelRecord {
+            team_id: normalized_team_id.to_string(),
+            channel_id: normalized_channel_id.to_string(),
+            task_id,
+            conversation_id: normalized_channel_id.to_string(),
+            description: normalized_description,
+            created_by_actor_id: created_by_actor_id.trim().to_string(),
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub async fn delete_channel(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+    ) -> anyhow::Result<super::TeamChannelRecord> {
+        let normalized_team_id = team_id.trim();
+        if normalized_team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+        let normalized_channel_id = channel_id.trim();
+        if normalized_channel_id.is_empty() {
+            anyhow::bail!("channel_id is required");
+        }
+        if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
+            anyhow::bail!("channel_id 'all' cannot be deleted");
+        }
+
+        let mut tx = self.db.begin().await?;
+        let row = sqlx::query(
+            r#"
+            SELECT
+                t.id AS task_id,
+                t.created_by_actor_id,
+                t.created_at,
+                t.updated_at,
+                json_extract(t.context_json, '$.description') AS description
+            FROM team_conversations c
+            INNER JOIN team_tasks t ON t.id = c.task_id
+            WHERE c.team_id = ?1
+              AND c.id = ?2
+              AND c.mode = 'group_chat'
+              AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?3
+            LIMIT 1
+            "#,
+        )
+        .bind(normalized_team_id)
+        .bind(normalized_channel_id)
+        .bind(TEAM_CHANNEL_BOOTSTRAP_KIND)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "channel '{}' not found for team {}",
+                normalized_channel_id,
+                normalized_team_id
+            )
+        })?;
+
+        let task_id = row.get::<String, _>("task_id");
+        let description = row
+            .try_get::<Option<String>, _>("description")
+            .ok()
+            .flatten();
+        let created_at = row.get::<i64, _>("created_at");
+        let updated_at = row.get::<i64, _>("updated_at");
+        let created_by_actor_id = row.get::<String, _>("created_by_actor_id");
+
+        sqlx::query(
+            "DELETE FROM team_channel_message_replicas WHERE conversation_id = ?1 OR task_id = ?2",
+        )
+        .bind(normalized_channel_id)
+        .bind(&task_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM team_conversation_messages WHERE conversation_id = ?1")
+            .bind(normalized_channel_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM team_conversations WHERE id = ?1")
+            .bind(normalized_channel_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM team_tasks WHERE id = ?1")
+            .bind(&task_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        Ok(super::TeamChannelRecord {
+            team_id: normalized_team_id.to_string(),
+            channel_id: normalized_channel_id.to_string(),
+            task_id,
+            conversation_id: normalized_channel_id.to_string(),
+            description,
+            created_by_actor_id,
+            created_at,
+            updated_at,
         })
     }
 

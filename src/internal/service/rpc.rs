@@ -549,6 +549,100 @@ impl TeamInternalControl for TeamInternalControlService {
         }))
     }
 
+    async fn create_team_channel(
+        &self,
+        request: Request<CreateTeamChannelRequest>,
+    ) -> Result<Response<CreateTeamChannelResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
+        let channel_id = required_field(&payload.channel_id, "channel_id")?;
+        let channel = self
+            .deps
+            .teams
+            .create_channel(
+                team_id,
+                channel_id,
+                optional_trimmed(&payload.description),
+                actor_id,
+            )
+            .await
+            .map_err(map_manager_error)?;
+
+        Ok(Response::new(CreateTeamChannelResponse {
+            channel_json: serde_json::to_string(&channel).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn delete_team_channel(
+        &self,
+        request: Request<DeleteTeamChannelRequest>,
+    ) -> Result<Response<DeleteTeamChannelResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let team_id = required_field(&payload.team_id, "team_id")?;
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
+        let channel_id = required_field(&payload.channel_id, "channel_id")?;
+        let channel = self
+            .deps
+            .teams
+            .delete_channel(team_id, channel_id)
+            .await
+            .map_err(map_manager_error)?;
+
+        Ok(Response::new(DeleteTeamChannelResponse {
+            channel_json: serde_json::to_string(&channel).map_err(map_serde_status)?,
+        }))
+    }
+
+    async fn open_team_thread(
+        &self,
+        request: Request<OpenTeamThreadRequest>,
+    ) -> Result<Response<OpenTeamThreadResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamRead)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let team_context = load_team_context_for_actor(
+            &self.deps.agents,
+            &self.deps.teams,
+            optional_trimmed(&payload.team_id),
+            optional_trimmed(&payload.run_id),
+            actor_id,
+        )
+        .await?;
+        let channel_id = optional_trimmed(&payload.channel_id).unwrap_or("all");
+        if payload.root_message_id <= 0 {
+            return Err(Status::invalid_argument("root_message_id must be positive"));
+        }
+        let thread = self
+            .deps
+            .teams
+            .open_thread(&team_context.team_id, channel_id, payload.root_message_id)
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(OpenTeamThreadResponse {
+            thread_json: serde_json::to_string(&thread).map_err(map_serde_status)?,
+        }))
+    }
+
     async fn append_team_task_note(
         &self,
         request: Request<AppendTeamTaskNoteRequest>,
