@@ -66,7 +66,7 @@ impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
     pub fn new(config: Config) -> Self {
         let auth_manager = AuthManager::shared(
-            config.codex_home.clone(),
+            config.codex_home.to_path_buf(),
             false,
             config.cli_auth_credentials_store_mode,
         );
@@ -150,6 +150,7 @@ impl CodexAgent {
                             },
                             required: false,
                             enabled: true,
+                            supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
@@ -186,6 +187,7 @@ impl CodexAgent {
                             },
                             required: false,
                             enabled: true,
+                            supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
@@ -549,7 +551,7 @@ impl Agent for CodexAgent {
             CodexAuthMethod::ChatGpt => {
                 // Perform browser/device login via codex-rs, then report success/failure to the client.
                 let opts = codex_login::ServerOptions::new(
-                    self.config.codex_home.clone(),
+                    self.config.codex_home.to_path_buf(),
                     CLIENT_ID.to_string(),
                     None,
                     self.config.cli_auth_credentials_store_mode,

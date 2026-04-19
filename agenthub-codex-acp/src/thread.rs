@@ -2160,8 +2160,8 @@ fn build_exec_permission_options(
 ) -> Vec<ExecPermissionOption> {
     available_decisions
         .iter()
-        .map(|decision| match decision {
-            ReviewDecision::Approved => ExecPermissionOption {
+        .filter_map(|decision| match decision {
+            ReviewDecision::Approved => Some(ExecPermissionOption {
                 option_id: "approved",
                 permission_option: PermissionOption::new(
                     "approved",
@@ -2173,10 +2173,10 @@ fn build_exec_permission_options(
                     PermissionOptionKind::AllowOnce,
                 ),
                 decision: ReviewDecision::Approved,
-            },
+            }),
             ReviewDecision::ApprovedExecpolicyAmendment {
                 proposed_execpolicy_amendment,
-            } => {
+            } => Some({
                 let command_prefix = proposed_execpolicy_amendment.command().join(" ");
                 let label = if command_prefix.contains('\n')
                     || command_prefix.contains('\r')
@@ -2199,8 +2199,8 @@ fn build_exec_permission_options(
                         proposed_execpolicy_amendment: proposed_execpolicy_amendment.clone(),
                     },
                 }
-            }
-            ReviewDecision::ApprovedForSession => ExecPermissionOption {
+            }),
+            ReviewDecision::ApprovedForSession => Some(ExecPermissionOption {
                 option_id: "approved-for-session",
                 permission_option: PermissionOption::new(
                     "approved-for-session",
@@ -2214,10 +2214,10 @@ fn build_exec_permission_options(
                     PermissionOptionKind::AllowAlways,
                 ),
                 decision: ReviewDecision::ApprovedForSession,
-            },
+            }),
             ReviewDecision::NetworkPolicyAmendment {
                 network_policy_amendment,
-            } => {
+            } => Some({
                 let (option_id, label, kind) = match network_policy_amendment.action {
                     NetworkPolicyRuleAction::Allow => (
                         "network-policy-amendment-allow",
@@ -2237,8 +2237,8 @@ fn build_exec_permission_options(
                         network_policy_amendment: network_policy_amendment.clone(),
                     },
                 }
-            }
-            ReviewDecision::Denied => ExecPermissionOption {
+            }),
+            ReviewDecision::Denied => Some(ExecPermissionOption {
                 option_id: "denied",
                 permission_option: PermissionOption::new(
                     "denied",
@@ -2246,8 +2246,9 @@ fn build_exec_permission_options(
                     PermissionOptionKind::RejectOnce,
                 ),
                 decision: ReviewDecision::Denied,
-            },
-            ReviewDecision::Abort => ExecPermissionOption {
+            }),
+            ReviewDecision::TimedOut => None,
+            ReviewDecision::Abort => Some(ExecPermissionOption {
                 option_id: "abort",
                 permission_option: PermissionOption::new(
                     "abort",
@@ -2255,7 +2256,7 @@ fn build_exec_permission_options(
                     PermissionOptionKind::RejectOnce,
                 ),
                 decision: ReviewDecision::Abort,
-            },
+            }),
         })
         .collect()
 }
@@ -2388,28 +2389,28 @@ fn runtime_actor_cli_path_candidates(
     path_ext_env: Option<&OsStr>,
 ) -> Vec<PathBuf> {
     let base = dir.join(command);
-    #[cfg(windows)]
-    {
-        let mut candidates = vec![base.clone()];
-        if base.extension().is_none() {
-            let path_ext_env = path_ext_env
-                .and_then(OsStr::to_str)
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or(".COM;.EXE;.BAT;.CMD");
-            for ext in path_ext_env.split(';') {
-                let normalized = ext.trim().trim_start_matches('.');
-                if normalized.is_empty() {
-                    continue;
+    cfg_select! {
+        windows => {
+            let mut candidates = vec![base.clone()];
+            if base.extension().is_none() {
+                let path_ext_env = path_ext_env
+                    .and_then(OsStr::to_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or(".COM;.EXE;.BAT;.CMD");
+                for ext in path_ext_env.split(';') {
+                    let normalized = ext.trim().trim_start_matches('.');
+                    if normalized.is_empty() {
+                        continue;
+                    }
+                    candidates.push(base.with_extension(normalized));
                 }
-                candidates.push(base.with_extension(normalized));
             }
-        }
-        candidates
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = path_ext_env;
-        vec![base]
+            candidates
+        },
+        _ => {
+            let _ = path_ext_env;
+            vec![base]
+        },
     }
 }
 

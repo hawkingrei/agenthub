@@ -855,7 +855,7 @@ impl AppServerCodexThread {
                         approval_id: params.approval_id,
                         turn_id: params.turn_id,
                         command: command_vec.clone(),
-                        cwd: params.cwd.unwrap_or_else(|| state.config.cwd.to_path_buf()),
+                        cwd: params.cwd.unwrap_or_else(|| state.config.cwd.clone()),
                         reason: params.reason,
                         network_approval_context: params
                             .network_approval_context
@@ -1298,10 +1298,7 @@ impl AppServerCodexThread {
                         codex_app_server_protocol::ThreadItem::ImageView { id: call_id, path },
                     ) => Some(Event {
                         id,
-                        msg: EventMsg::ViewImageToolCall(ViewImageToolCallEvent {
-                            call_id,
-                            path: PathBuf::from(path),
-                        }),
+                        msg: EventMsg::ViewImageToolCall(ViewImageToolCallEvent { call_id, path }),
                     }),
                     _ => None,
                 })
@@ -1657,7 +1654,8 @@ impl AppServerCodexThread {
             | ServerNotification::AccountUpdated(_)
             | ServerNotification::ThreadRealtimeStarted(_)
             | ServerNotification::ThreadRealtimeItemAdded(_)
-            | ServerNotification::ThreadRealtimeTranscriptUpdated(_)
+            | ServerNotification::ThreadRealtimeTranscriptDelta(_)
+            | ServerNotification::ThreadRealtimeTranscriptDone(_)
             | ServerNotification::ThreadRealtimeOutputAudioDelta(_)
             | ServerNotification::ThreadRealtimeError(_)
             | ServerNotification::ThreadRealtimeClosed(_)
@@ -1975,19 +1973,15 @@ fn noop_submission_id() -> String {
 fn shell_command_vec(command: &str) -> Vec<String> {
     // ACP approvals still model shell commands as argv, while the app-server sends
     // a shell script string. This wrapper only preserves that legacy ACP shape.
-    #[cfg(windows)]
-    {
-        vec![
+    cfg_select! {
+        windows => vec![
             "powershell.exe".to_string(),
             "-NoLogo".to_string(),
             "-NoProfile".to_string(),
             "-Command".to_string(),
             command.to_string(),
-        ]
-    }
-    #[cfg(not(windows))]
-    {
-        vec!["bash".to_string(), "-lc".to_string(), command.to_string()]
+        ],
+        _ => vec!["bash".to_string(), "-lc".to_string(), command.to_string()],
     }
 }
 
@@ -2406,6 +2400,7 @@ fn review_decision_to_app_server(decision: ReviewDecision) -> CommandExecutionAp
             network_policy_amendment: network_policy_amendment.into(),
         },
         ReviewDecision::Denied => CommandExecutionApprovalDecision::Decline,
+        ReviewDecision::TimedOut => CommandExecutionApprovalDecision::Decline,
         ReviewDecision::Abort => CommandExecutionApprovalDecision::Cancel,
     }
 }
@@ -2415,6 +2410,7 @@ fn patch_review_decision_to_app_server(decision: ReviewDecision) -> FileChangeAp
         ReviewDecision::Approved => FileChangeApprovalDecision::Accept,
         ReviewDecision::ApprovedForSession => FileChangeApprovalDecision::AcceptForSession,
         ReviewDecision::Denied => FileChangeApprovalDecision::Decline,
+        ReviewDecision::TimedOut => FileChangeApprovalDecision::Decline,
         ReviewDecision::Abort => FileChangeApprovalDecision::Cancel,
         ReviewDecision::ApprovedExecpolicyAmendment { .. }
         | ReviewDecision::NetworkPolicyAmendment { .. } => FileChangeApprovalDecision::Accept,
@@ -2579,6 +2575,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         loader_overrides: LoaderOverrides::default(),
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
+        log_db: None,
         environment_manager: Arc::new(EnvironmentManager::from_env()),
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
