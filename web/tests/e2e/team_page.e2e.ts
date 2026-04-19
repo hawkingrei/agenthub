@@ -14,6 +14,10 @@ function deriveAgentName(identity: string | undefined, workdir: string): string 
   return basename || "team member";
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 type StoredAuthState = {
   token: string;
   userId: string;
@@ -409,8 +413,7 @@ async function isTeamDetailReady(
   }
   if (expectedTeamName) {
     const selectedTeamMenu = page.getByRole("button", {
-      name: "Team",
-      exact: true,
+      name: new RegExp(`^Team menu:\\s*${escapeRegExp(expectedTeamName)}$`),
     });
     if ((await selectedTeamMenu.count()) > 0) {
       const selectedTeamText = await selectedTeamMenu.first().textContent();
@@ -3473,9 +3476,15 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   await expect(runFilter).toHaveValue("failed");
 
   await openTeamFromSelector(page, "Team A");
+  if ((await runFilter.count()) === 0) {
+    await openMainTeamAction(page, "Execution Runs");
+  }
   await expect(runFilter).toHaveValue("working");
 
   await openTeamFromSelector(page, "Team B");
+  if ((await runFilter.count()) === 0) {
+    await openMainTeamAction(page, "Execution Runs");
+  }
   await expect(runFilter).toHaveValue("failed");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
