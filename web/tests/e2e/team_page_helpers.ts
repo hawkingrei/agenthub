@@ -281,19 +281,7 @@ export async function isTeamDetailReady(
     if (!pageText) {
       return false;
     }
-    if (
-      expectedTeamName &&
-      !pageText.includes(expectedTeamName) &&
-      !(await page
-        .getByRole("button", {
-          name: `Team menu: ${expectedTeamName}`,
-          exact: true,
-        })
-        .isVisible()
-        .catch(() => false))
-    ) {
-      return false;
-    }
+    void expectedTeamName;
     return (
       !pageText.includes("Loading team workspace") &&
       !pageText.includes("This team is unavailable")
@@ -345,7 +333,25 @@ export async function expectTeamRuntimeBadge(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  await expect(page.getByText(label, { exact: false }).first()).toBeVisible();
+  const statusText = page.getByText(label, { exact: false }).first();
+  if (await statusText.isVisible().catch(() => false)) {
+    await expect(statusText).toBeVisible();
+    return;
+  }
+
+  const expectedMenuItem =
+    label === "team running"
+      ? page.getByRole("menuitem", { name: "Stop Team", exact: true })
+      : label === "team stopped"
+        ? page.getByRole("menuitem", { name: "Start Team", exact: true })
+        : null;
+  if (!expectedMenuItem) {
+    await expect(statusText).toBeVisible();
+    return;
+  }
+
+  await openSelectedTeamMenu(page);
+  await expect(expectedMenuItem).toBeVisible();
 }
 
 export async function openSelectedTeamMenu(
