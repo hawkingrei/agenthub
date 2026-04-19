@@ -2126,7 +2126,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "user:u-1",
@@ -2191,7 +2190,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -2240,7 +2238,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[]}
         humanActorId="user"
         memberLiveStates={[
@@ -2288,7 +2285,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(41, {
             from_actor_id: "leader-agent",
@@ -2371,7 +2367,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2455,7 +2450,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2553,7 +2547,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2688,7 +2681,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={messages}
           seenByMessageId={{}}
           humanActorId="user"
@@ -2802,7 +2794,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "worker-agent",
@@ -2866,7 +2857,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -2915,7 +2905,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(7, {
             from_actor_id: "leader-agent",
@@ -2991,7 +2980,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: totalMessages - 1 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
@@ -3039,7 +3027,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: totalMessages }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id:
@@ -3117,7 +3104,6 @@ describe("team panels interactions", () => {
             messageDraft=""
             onMessageDraftChange={vi.fn()}
             onSendMessage={vi.fn()}
-            onRefreshMessages={vi.fn()}
             messages={Array.from({ length: 213 }, (_, index) =>
               buildTaskMessage(index + 1, {
                 from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
@@ -3189,7 +3175,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "user:u-1",
@@ -3237,7 +3222,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3297,7 +3281,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3344,7 +3327,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(1, {
               from_actor_id: "leader-agent",
@@ -3379,7 +3361,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(11, {
               from_actor_id: "leader-agent",
@@ -3416,7 +3397,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(12, {
               from_actor_id: "worker-agent",
@@ -3458,7 +3438,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(13, {
               from_actor_id: "worker-agent",
@@ -3497,7 +3476,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(12, {
               from_actor_id: "leader-agent",
@@ -3549,7 +3527,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[buildTaskMessage(1)]}
           messagesLoading={false}
           busy={null}
@@ -3573,7 +3550,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[
             buildTaskMessage(7, {
               from_actor_id: "leader-agent",
@@ -3630,7 +3606,6 @@ describe("team panels interactions", () => {
           messageDraft=""
           onMessageDraftChange={vi.fn()}
           onSendMessage={vi.fn()}
-          onRefreshMessages={vi.fn()}
           messages={[]}
           humanActorId="user"
           memberLiveStates={[]}
@@ -4443,7 +4418,6 @@ describe("team panels interactions", () => {
         messageDraft=""
         onMessageDraftChange={vi.fn()}
         onSendMessage={vi.fn()}
-        onRefreshMessages={vi.fn()}
         messages={[
           buildTaskMessage(21, {
             from_actor_id: "leader-agent",

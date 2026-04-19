@@ -183,7 +183,7 @@ async function createTeamFromModal(
     goal?: string;
   }
 ): Promise<void> {
-  await openMainTeamAction(page, "Create Team");
+  await openMainTeamAction(page, "New Team");
   const dialog = page
     .locator("[role='dialog']")
     .filter({ hasText: "Start with the mission" })
@@ -235,8 +235,7 @@ async function waitForAddAgentEntryLane(
     .first();
   const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
   const menuTrigger = page.getByRole("button", {
-    name: "Team",
-    exact: true,
+    name: /^Team menu:/,
   });
 
   const detectLane = async (): Promise<AddAgentEntryLane | "missing"> => {
@@ -1553,7 +1552,7 @@ test("team create modal only captures mission metadata and points member setup t
   await mockTeamPageApis(page);
   await gotoTeams(page);
 
-  await openMainTeamAction(page, "Create Team");
+  await openMainTeamAction(page, "New Team");
   const dialog = page
     .locator("[role='dialog']")
     .filter({ hasText: "Start with the mission" })
@@ -3466,6 +3465,9 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
     .toBe(true);
 
   await openTeamFromSelector(page, "Team B");
+  if ((await runFilter.count()) === 0) {
+    await openMainTeamAction(page, "Execution Runs");
+  }
   await expect(runFilter).toHaveValue("all");
   await runFilter.selectOption("failed");
   await expect(runFilter).toHaveValue("failed");

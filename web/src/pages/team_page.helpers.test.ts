@@ -4,12 +4,12 @@ import {
   buildTeamDetailPath,
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
-  isCurrentTeamScopedRequest,
   parseTeamAgentInputSessionMismatch,
   resolveTeamChannelId,
   resolveTeamThreadRootMessageId,
   validateRunInputJson,
 } from "./team_page";
+import { isCurrentTeamScopedRequest } from "./team/page_helpers";
 
 describe("team_page helpers", () => {
   it("parses agent session mismatch payloads and rejects malformed messages", () => {

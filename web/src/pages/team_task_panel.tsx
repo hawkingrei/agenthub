@@ -77,7 +77,6 @@ type TeamTaskPanelProps = {
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
-  onRefreshMessages?: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;

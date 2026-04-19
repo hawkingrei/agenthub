@@ -16,7 +16,6 @@ type TeamConversationPanelProps = {
   messageDraft: string;
   onMessageDraftChange: (value: string) => void;
   onSendMessage: (payload: { text: string; mentionActorIds: string[] }) => Promise<void> | void;
-  onRefreshMessages?: () => Promise<void> | void;
   messages: TeamConversationMessageRecord[];
   conversationMailboxMessages: TeamActorMessageRecord[];
   snapshotMailboxMessages?: TeamActorMessageRecord[];
@@ -60,7 +59,6 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         messageDraft={props.messageDraft}
         onMessageDraftChange={props.onMessageDraftChange}
         onSendMessage={props.onSendMessage}
-        onRefreshMessages={props.onRefreshMessages}
         messages={messages}
         seenByMessageId={seenByMessageId}
         humanActorId={humanActorId}

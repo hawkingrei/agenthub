@@ -2364,7 +2364,6 @@ export function TeamPage(props: TeamPageProps) {
       messageDraft={taskMessageDraft}
       onMessageDraftChange={setTaskMessageDraft}
       onSendMessage={onSendTaskMessage}
-      onRefreshMessages={refreshTaskMessages}
       messages={taskMessages}
       conversationMailboxMessages={conversationMailboxMessages}
       snapshotMailboxMessages={snapshot?.mailbox.recent_messages ?? []}

@@ -1,4 +1,5 @@
 import React from "react";
+import type { WorkspaceLens } from "../../app_route_selection";
 import type { TeamDefinitionRecord } from "../../api";
 import { ActionButton } from "../../ui/primitives";
 import { TeamEventsPanel } from "../team_events_panel";
@@ -14,8 +15,6 @@ import {
 } from "../team_workspace_state_panel";
 import { TeamWorkspaceHeader } from "./team_workspace_header";
 import type { TeamTab } from "./state";
-
-type WorkspaceLens = "channels" | "tasks" | "members" | "search";
 
 type TeamWorkbenchContentProps = {
   showTeamBootstrapLoading: boolean;
