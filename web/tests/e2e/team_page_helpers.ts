@@ -26,6 +26,17 @@ export function deriveAgentName(identity: string | undefined, workdir: string): 
 export function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
   return page.getByRole("button", { name: /^Team menu:/ });
 }
+
+const TEAM_SELECTOR_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/?$/;
+const TEAM_DETAIL_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/[^/]+$/;
+
+function isTeamSelectorPath(pathname: string): boolean {
+  return TEAM_SELECTOR_ROUTE_PATTERN.test(pathname);
+}
+
+function isTeamDetailPath(pathname: string): boolean {
+  return TEAM_DETAIL_ROUTE_PATTERN.test(pathname);
+}
 export async function createTeamFromModal(
   page: import("@playwright/test").Page,
   options: {
@@ -45,7 +56,7 @@ export async function createTeamFromModal(
   }
   await dialog.getByRole("button", { name: "Create Team" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(/\/teams\/[^/?#]+(?:[?#].*)?$/);
+  await expect(page).toHaveURL(/\/(?:workspace\/)?teams\/[^/?#]+(?:[?#].*)?$/);
   await expect.poll(() => isTeamDetailReady(page, options.name)).toBe(true);
   await expectAddAgentEntryVisible(page, options.name);
 }
@@ -210,7 +221,7 @@ export async function openTeamFromSelector(
   teamName: string
 ): Promise<void> {
   const pathname = new URL(page.url()).pathname;
-  if (pathname !== "/teams" && pathname !== "/teams/") {
+  if (!isTeamSelectorPath(pathname)) {
     const selectorButton = page.getByRole("button", {
       name: "Show teams panel",
       exact: true,
@@ -218,10 +229,10 @@ export async function openTeamFromSelector(
     if ((await selectorButton.count()) > 0) {
       await selectorButton.first().click();
     } else {
-      await page.goto("/teams", { waitUntil: "domcontentloaded" });
+      await page.goto("/workspace/teams", { waitUntil: "domcontentloaded" });
     }
   }
-  await expect(page).toHaveURL(/\/teams(?:[/?#]|$)/);
+  await expect(page).toHaveURL(/\/(?:workspace\/)?teams(?:[/?#]|$)/);
   const selectorPanel = teamSelectorPanel(page);
   await expect(selectorPanel).toBeVisible();
   const filterInput = selectorPanel.getByLabel(/Filter teams|Search teams/);
@@ -238,14 +249,14 @@ export async function openTeamFromSelector(
     try {
       await selectorTeamButton.click({ timeout: 1_500, force: attempt > 0 });
     } catch {
-      await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`/workspace/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
     }
     await page.waitForTimeout(150);
     if (await isTeamDetailReady(page, teamName)) {
       return;
     }
   }
-  await page.goto(`/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/workspace/teams/${selectorTeamId}`, { waitUntil: "domcontentloaded" });
   await expect.poll(() => isTeamDetailReady(page, teamName)).toBe(true);
 }
 
@@ -253,29 +264,43 @@ export async function isTeamDetailReady(
   page: import("@playwright/test").Page,
   expectedTeamName?: string
 ): Promise<boolean> {
-  const detailPath = new URL(page.url()).pathname;
-  if (!/^\/teams\/[^/]+$/.test(detailPath)) {
+  try {
+    const detailPath = new URL(page.url()).pathname;
+    if (!isTeamDetailPath(detailPath)) {
+      return false;
+    }
+    const teamsMain = page.locator(".teams-main").first();
+    if ((await teamsMain.count()) === 0) {
+      return false;
+    }
+    const teamsMainVisible = await teamsMain.isVisible().catch(() => false);
+    if (!teamsMainVisible) {
+      return false;
+    }
+    const pageText = await page.locator("body").textContent();
+    if (!pageText) {
+      return false;
+    }
+    if (
+      expectedTeamName &&
+      !pageText.includes(expectedTeamName) &&
+      !(await page
+        .getByRole("button", {
+          name: `Team menu: ${expectedTeamName}`,
+          exact: true,
+        })
+        .isVisible()
+        .catch(() => false))
+    ) {
+      return false;
+    }
+    return (
+      !pageText.includes("Loading team workspace") &&
+      !pageText.includes("This team is unavailable")
+    );
+  } catch {
     return false;
   }
-  const teamsMain = page.locator(".teams-main").first();
-  if ((await teamsMain.count()) === 0) {
-    return false;
-  }
-  const teamsMainVisible = await teamsMain.isVisible().catch(() => false);
-  if (!teamsMainVisible) {
-    return false;
-  }
-  const pageText = await page.locator("body").textContent();
-  if (!pageText) {
-    return false;
-  }
-  if (expectedTeamName && !pageText.includes(expectedTeamName)) {
-    return false;
-  }
-  return (
-    !pageText.includes("Loading team workspace") &&
-    !pageText.includes("This team is unavailable")
-  );
 }
 
 export async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
@@ -483,4 +508,3 @@ export async function enableDeveloperMode(
     );
   }, UI_PREFS_STORAGE_KEY);
 }
-

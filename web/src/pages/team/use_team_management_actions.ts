@@ -448,6 +448,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setForgeAgentBusy(true);
     setError(null);
     setForgeAgentWorktreeError(null);
+    let createdAgentId: string | null = null;
     try {
       const preset = getAgentPreset(forgeAgentPresetId);
       const created = await api.createAgent(token, {
@@ -461,6 +462,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         worktree_ref: effectiveWorktreeRef || null,
         code_mode: forgeAgentCodeMode,
       });
+      createdAgentId = created.id;
       const nextSpec = appendTeamMemberToSpec(
         selectedTeam.spec,
         { ...teamMemberDraft, member_id: created.id },
@@ -483,6 +485,17 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setTeamMemberDraft(null);
       void refreshTeamRuntime(updated.id).catch(() => undefined);
     } catch (err) {
+      const status =
+        typeof (err as { status?: unknown })?.status === "number"
+          ? ((err as { status: number }).status as number)
+          : null;
+      if (createdAgentId && status === 409) {
+        try {
+          await api.deleteAgent(token, createdAgentId);
+        } catch {
+          // Best-effort cleanup only. Ambiguous failures should not mask the original conflict.
+        }
+      }
       const hint = formatTeamForgeWorktreeError(err);
       setForgeAgentWorktreeError(hint);
       setError(hint ?? parseErrorMessage(err));

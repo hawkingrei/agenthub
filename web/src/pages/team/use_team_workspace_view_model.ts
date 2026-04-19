@@ -122,6 +122,18 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     );
   }, [agents, focusedAgentMemberId, teamMemberAgentsById]);
 
+  const selectedMemberFallbackName = useMemo(() => {
+    const memberId = selectedMemberId.trim();
+    if (!memberId) {
+      return null;
+    }
+    return (
+      teamMemberAgentsById[memberId]?.name?.trim() ??
+      agents.find((agent) => agent.id === memberId)?.name?.trim() ??
+      null
+    );
+  }, [agents, selectedMemberId, teamMemberAgentsById]);
+
   const selectedAgentLabel = useMemo(
     () =>
       resolveSelectedAgentWorkspaceLabel(
@@ -130,6 +142,15 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
         selectedAgentFallbackName
       ),
     [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
+  );
+  const selectedMailboxLabel = useMemo(
+    () =>
+      resolveSelectedAgentWorkspaceLabel(
+        selectedMemberId,
+        selectedMemberLiveState,
+        selectedMemberFallbackName
+      ),
+    [selectedMemberFallbackName, selectedMemberId, selectedMemberLiveState]
   );
 
   const selectedAgentSpecDraft: TeamMemberProfileDraft | null = useMemo(() => {
@@ -177,7 +198,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
           ? "Kanban"
           : tab === "mailbox"
             ? selectedMemberLiveState
-              ? selectedAgentLabel
+              ? selectedMailboxLabel
               : "Execution Mailbox"
             : selectedMemberLiveState && isAgentWorkspace
               ? selectedAgentLabel
@@ -195,7 +216,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
           ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
           : tab === "mailbox"
             ? selectedMemberLiveState
-              ? "Direct mailbox thread for the selected agent."
+              ? "Direct mailbox thread for the selected member."
               : "Run-scoped mailbox delivery and direct member conversations."
             : tab === "runs"
               ? "Browse runs and choose the active execution context."
@@ -459,6 +480,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     selectedAgentLabel,
     selectedAgentSpecDraft,
     selectedAgentStatusView,
+    selectedMailboxLabel,
     activeConversationTitle,
     selectedConversationIsShared,
     workspaceTitle,

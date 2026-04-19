@@ -755,7 +755,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(findButtonByAriaLabel(container, "Team")).not.toBeNull();
+    expect(findButtonByAriaLabel(container, "Team menu: Team One")).not.toBeNull();
     expect(container.textContent).not.toContain("Team running · 3/3 online");
     expect(container.textContent).not.toContain("Triage TiDB issues and coordinate the fuzzing backlog.");
     expect(container.textContent).toContain("Team One");

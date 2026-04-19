@@ -12,6 +12,9 @@ vi.mock("../../api", async () => {
     ...actual,
     api: {
       ...actual.api,
+      createAgent: vi.fn(),
+      deleteAgent: vi.fn(),
+      updateTeamSpec: vi.fn(),
       getTeamRuntime: vi.fn(),
       startTeam: vi.fn(),
       stopTeam: vi.fn(),
@@ -271,6 +274,58 @@ describe("useTeamManagementActions", () => {
       expect(mockedApi.startTeam).toHaveBeenCalledWith("token-1", "team-1");
       expect(params.setTeamRuntimeByTeamId).toHaveBeenCalled();
       expect(params.setWarning).toHaveBeenCalledWith("Team runtime updated (started=1)");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("best-effort deletes a forged agent when team spec update conflicts", async () => {
+    mockedApi.createAgent.mockResolvedValueOnce({
+      id: "agent-forge-1",
+      name: "agent",
+      workdir: "/tmp/worktrees/agent",
+      command: "agenthub-codex-acp",
+      args: [],
+      worktree_mode: "create_worktree",
+      worktree_repo: "git@example.com/repo.git",
+      worktree_ref: "main",
+      code_mode: true,
+      status: "running",
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+    const conflict = new Error(JSON.stringify({ error: "team spec changed" })) as Error & {
+      status?: number;
+    };
+    conflict.status = 409;
+    mockedApi.updateTeamSpec.mockRejectedValueOnce(conflict);
+    mockedApi.deleteAgent.mockResolvedValueOnce(undefined as never);
+
+    const params = createParams({
+      teamMemberDraft: {
+        member_id: "",
+        role: "worker",
+        description: "Implementation specialist",
+        model: "codex",
+        prompt: "",
+        agent_loop_enabled: false,
+        agent_loop_idle_seconds: "90",
+        agent_loop_prompt: "",
+      },
+      forgeAgentName: "Forge Worker",
+      forgeAgentWorkdir: "/tmp/worktrees/forge-worker",
+      forgeAgentPresetId: "codex",
+      forgeAgentWorktreeMode: "create_worktree",
+      forgeAgentWorktreeRepo: "git@example.com/repo.git",
+      forgeAgentWorktreeRef: "main",
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCreateForgeAgent();
+      });
+      expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-forge-1");
+      expect(params.setError).toHaveBeenCalledWith("team spec changed");
     } finally {
       mounted.cleanup();
     }

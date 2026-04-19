@@ -203,4 +203,36 @@ describe("useTeamWorkspaceViewModel", () => {
       mounted.cleanup();
     }
   });
+
+  it("uses selected member identity for mailbox title when focused workspace is cleared", async () => {
+    const params = createParams({
+      tab: "mailbox",
+      focusedAgentMemberId: "",
+      selectedMemberId: "worker-1",
+      selectedTeamMemberLiveStates: [
+        {
+          member_id: "worker-1",
+          agent_name: "Worker Mailbox",
+          lifecycle_status: "running",
+          lifecycle_tone: "active",
+          run_status: "working",
+          step_status: "working",
+          pending_inbox_count: 1,
+          current_work: "Replying to leader",
+          role: "worker",
+        },
+      ] as HookParams["selectedTeamMemberLiveStates"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.isAgentWorkspace).toBe(false);
+      expect(snapshot?.workspaceTitle).toBe("Worker Mailbox");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Direct mailbox thread for the selected member."
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
 });
