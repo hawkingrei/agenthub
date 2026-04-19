@@ -4452,6 +4452,7 @@ mod tests {
     };
     use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
         task::LocalSet,
@@ -4493,6 +4494,10 @@ mod tests {
 
     fn test_config() -> anyhow::Result<Config> {
         Config::load_default_with_cli_overrides(vec![]).map_err(Into::into)
+    }
+
+    fn current_dir_abs() -> anyhow::Result<AbsolutePathBuf> {
+        AbsolutePathBuf::from_absolute_path(std::env::current_dir()?).map_err(Into::into)
     }
 
     #[tokio::test]
@@ -5435,7 +5440,7 @@ mod tests {
                     if prompt == "parallel-exec" {
                         // Emit interleaved exec events: Begin A, Begin B, End A, End B
                         let turn_id = id.to_string();
-                        let cwd = std::env::current_dir().unwrap();
+                        let cwd = current_dir_abs().unwrap();
                         let send = |msg| {
                             self.op_tx
                                 .send(Event {
@@ -5517,7 +5522,7 @@ mod tests {
                                     approval_id: Some("approval-id".to_string()),
                                     turn_id: id.to_string(),
                                     command: vec!["echo".to_string(), "hi".to_string()],
-                                    cwd: std::env::current_dir().unwrap(),
+                                    cwd: current_dir_abs().unwrap(),
                                     reason: None,
                                     network_approval_context: None,
                                     proposed_execpolicy_amendment: None,
@@ -5937,7 +5942,7 @@ mod tests {
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
                             command: vec!["echo".to_string(), "hi".to_string()],
-                            cwd: std::env::current_dir()?,
+                            cwd: current_dir_abs()?,
                             reason: None,
                             network_approval_context: None,
                             proposed_execpolicy_amendment: None,
@@ -6027,7 +6032,7 @@ mod tests {
                                 "actor".to_string(),
                                 "inbox".to_string(),
                             ],
-                            cwd: std::env::current_dir()?,
+                            cwd: current_dir_abs()?,
                             reason: None,
                             network_approval_context: None,
                             proposed_execpolicy_amendment: None,
@@ -6107,7 +6112,7 @@ mod tests {
                                 "-lc".to_string(),
                                 shell_command.clone(),
                             ],
-                            cwd: std::env::current_dir()?,
+                            cwd: current_dir_abs()?,
                             reason: None,
                             network_approval_context: None,
                             proposed_execpolicy_amendment: None,
@@ -6363,7 +6368,7 @@ mod tests {
                             approval_id: Some("approval-id".to_string()),
                             turn_id: "turn-id".to_string(),
                             command: vec!["echo".to_string(), "hi".to_string()],
-                            cwd: std::env::current_dir()?,
+                            cwd: current_dir_abs()?,
                             reason: None,
                             network_approval_context: None,
                             proposed_execpolicy_amendment: None,
@@ -6687,7 +6692,9 @@ mod tests {
                             process_id: None,
                             turn_id: "turn-1".to_string(),
                             command: vec!["cargo".to_string(), "test".to_string()],
-                            cwd: std::path::PathBuf::from("."),
+                            cwd: AbsolutePathBuf::from_absolute_path(
+                                std::env::current_dir()?.join("."),
+                            )?,
                             parsed_cmd: vec![],
                             source: Default::default(),
                             interaction_input: None,
