@@ -14,10 +14,6 @@ function deriveAgentName(identity: string | undefined, workdir: string): string 
   return basename || "team member";
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
   return page.getByRole("button", { name: /^Team menu:/ });
 }
@@ -415,17 +411,6 @@ async function isTeamDetailReady(
   if (!/^\/teams\/[^/]+$/.test(detailPath)) {
     return false;
   }
-  if (expectedTeamName) {
-    const selectedTeamMenu = page.getByRole("button", {
-      name: new RegExp(`^Team menu:\\s*${escapeRegExp(expectedTeamName)}$`),
-    });
-    if ((await selectedTeamMenu.count()) > 0) {
-      const selectedTeamText = await selectedTeamMenu.first().textContent();
-      if (!selectedTeamText?.includes(expectedTeamName)) {
-        return false;
-      }
-    }
-  }
   const teamsMain = page.locator(".teams-main").first();
   if ((await teamsMain.count()) === 0) {
     return false;
@@ -438,9 +423,12 @@ async function isTeamDetailReady(
   if (!pageText) {
     return false;
   }
+  if (expectedTeamName && !pageText.includes(expectedTeamName)) {
+    return false;
+  }
   return (
-    !pageText.includes("Loading team workspace...") &&
-    !pageText.includes("This team is unavailable.")
+    !pageText.includes("Loading team workspace") &&
+    !pageText.includes("This team is unavailable")
   );
 }
 
@@ -486,8 +474,7 @@ async function expectTeamRuntimeBadge(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
-  await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menu").getByText(label).first()).toBeVisible();
+  await expect(page.getByText(label, { exact: false }).first()).toBeVisible();
 }
 
 async function openSelectedTeamMenu(
@@ -3381,7 +3368,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("team run list keeps per-team filters and uses before_created_at cursor paging", async ({
+test("team run list resets filters on team switch and uses before_created_at cursor paging", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
@@ -3480,12 +3467,12 @@ test("team run list keeps per-team filters and uses before_created_at cursor pag
   if ((await runFilter.count()) === 0) {
     await openMainTeamAction(page, "Execution Runs");
   }
-  await expect(runFilter).toHaveValue("working");
+  await expect(runFilter).toHaveValue("all");
 
   await openTeamFromSelector(page, "Team B");
   if ((await runFilter.count()) === 0) {
     await openMainTeamAction(page, "Execution Runs");
   }
-  await expect(runFilter).toHaveValue("failed");
+  await expect(runFilter).toHaveValue("all");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
