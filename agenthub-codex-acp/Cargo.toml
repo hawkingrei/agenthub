@@ -22,22 +22,23 @@ agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
 anyhow = "1"
 async-trait = "0.1"
 clap = "4"
-codex-apply-patch = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-config = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-arg0 = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-app-server-client = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-app-server-protocol = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-core = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-exec-server = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-features = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-feedback = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-mcp-server = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-protocol = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-login = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-models-manager = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-shell-command = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-utils-approval-presets = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
-codex-utils-cli = { git = "https://github.com/openai/codex", rev = "65319eb1400cbd2890c43d572263dabd25f18ba9" }
+codex-apply-patch = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-config = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-arg0 = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-app-server-client = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-app-server-protocol = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-core = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-exec-server = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-features = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-feedback = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-mcp-server = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-protocol = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-login = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-models-manager = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-shell-command = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-utils-approval-presets = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-utils-absolute-path = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
+codex-utils-cli = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
 heck = "0.5.0"
 itertools = "0.14.0"
 regex-lite = "0.1"

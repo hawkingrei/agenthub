@@ -66,7 +66,7 @@ impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
     pub fn new(config: Config) -> Self {
         let auth_manager = AuthManager::shared(
-            config.codex_home.clone(),
+            config.codex_home.to_path_buf(),
             false,
             config.cli_auth_credentials_store_mode,
         );
@@ -150,6 +150,7 @@ impl CodexAgent {
                             },
                             required: false,
                             enabled: true,
+                            supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
@@ -186,6 +187,7 @@ impl CodexAgent {
                             },
                             required: false,
                             enabled: true,
+                            supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
                             disabled_tools: None,
@@ -269,42 +271,40 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         match item {
-            ResponseItem::FunctionCall { call_id, .. } => {
-                if function_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        ResponseItem::FunctionCallOutput {
-                            call_id: call_id.clone(),
-                            output: aborted_call_output(),
-                        },
-                    ));
-                }
+            ResponseItem::FunctionCall { call_id, .. }
+                if function_output_call_ids.insert(call_id.clone()) =>
+            {
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::FunctionCallOutput {
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                    },
+                ));
             }
-            ResponseItem::CustomToolCall { call_id, .. } => {
-                if custom_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        ResponseItem::CustomToolCallOutput {
-                            call_id: call_id.clone(),
-                            name: None,
-                            output: aborted_call_output(),
-                        },
-                    ));
-                }
+            ResponseItem::CustomToolCall { call_id, .. }
+                if custom_output_call_ids.insert(call_id.clone()) =>
+            {
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::CustomToolCallOutput {
+                        call_id: call_id.clone(),
+                        name: None,
+                        output: aborted_call_output(),
+                    },
+                ));
             }
             ResponseItem::LocalShellCall {
                 call_id: Some(call_id),
                 ..
-            } => {
-                if function_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        ResponseItem::FunctionCallOutput {
-                            call_id: call_id.clone(),
-                            output: aborted_call_output(),
-                        },
-                    ));
-                }
+            } if function_output_call_ids.insert(call_id.clone()) => {
+                synthetic_outputs.push((
+                    idx,
+                    ResponseItem::FunctionCallOutput {
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                    },
+                ));
             }
             _ => {}
         }
@@ -409,42 +409,40 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
     let mut synthetic_outputs = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         match item {
-            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. }) => {
-                if function_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                            call_id: call_id.clone(),
-                            output: aborted_call_output(),
-                        }),
-                    ));
-                }
+            RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. })
+                if function_output_call_ids.insert(call_id.clone()) =>
+            {
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                    }),
+                ));
             }
-            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. }) => {
-                if custom_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
-                            call_id: call_id.clone(),
-                            name: None,
-                            output: aborted_call_output(),
-                        }),
-                    ));
-                }
+            RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. })
+                if custom_output_call_ids.insert(call_id.clone()) =>
+            {
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
+                        call_id: call_id.clone(),
+                        name: None,
+                        output: aborted_call_output(),
+                    }),
+                ));
             }
             RolloutItem::ResponseItem(ResponseItem::LocalShellCall {
                 call_id: Some(call_id),
                 ..
-            }) => {
-                if function_output_call_ids.insert(call_id.clone()) {
-                    synthetic_outputs.push((
-                        idx,
-                        RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
-                            call_id: call_id.clone(),
-                            output: aborted_call_output(),
-                        }),
-                    ));
-                }
+            }) if function_output_call_ids.insert(call_id.clone()) => {
+                synthetic_outputs.push((
+                    idx,
+                    RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                        call_id: call_id.clone(),
+                        output: aborted_call_output(),
+                    }),
+                ));
             }
             _ => {}
         }
@@ -549,7 +547,7 @@ impl Agent for CodexAgent {
             CodexAuthMethod::ChatGpt => {
                 // Perform browser/device login via codex-rs, then report success/failure to the client.
                 let opts = codex_login::ServerOptions::new(
-                    self.config.codex_home.clone(),
+                    self.config.codex_home.to_path_buf(),
                     CLIENT_ID.to_string(),
                     None,
                     self.config.cli_auth_credentials_store_mode,

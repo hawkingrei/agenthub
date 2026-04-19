@@ -54,7 +54,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -76,7 +76,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -100,7 +100,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           profile: minimal
       - name: Setup Bazel
@@ -122,7 +122,7 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev libcap-dev lld
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           profile: minimal
       - name: Setup Bazel

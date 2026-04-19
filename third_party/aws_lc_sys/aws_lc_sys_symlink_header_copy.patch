@@ -1,11 +1,11 @@
 diff --git a/builder/main.rs b/builder/main.rs
 --- a/builder/main.rs
 +++ b/builder/main.rs
-@@ -944,10 +944,14 @@ fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
+@@ -1045,16 +1045,20 @@ fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
      // iterate over all the include paths and copy them into the final output
      for path in include_paths {
          for child in std::fs::read_dir(path).into_iter().flatten().flatten() {
--            if child.file_type().map_or(false, |t| t.is_file()) {
+-            if child.path().is_file() {
 +            let child_path = child.path();
 +            let child_type = child
 +                .file_type()
@@ -19,7 +19,9 @@ diff --git a/builder/main.rs b/builder/main.rs
                  )
                  .expect("Failed to copy include file during build setup");
                  continue;
-@@ -957,7 +961,7 @@ fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
+             }
+ 
+             // prefer the earliest paths
              let options = fs_extra::dir::CopyOptions::new()
                  .skip_exist(true)
                  .copy_inside(true);
