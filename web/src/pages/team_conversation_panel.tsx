@@ -29,6 +29,8 @@ type TeamConversationPanelProps = {
   busy: string | null;
   formatTs: (ts?: number | null) => string;
   toPrettyJson: (value: unknown) => string;
+  onOpenThread?: (messageId: number) => void;
+  activeThreadMessageId?: number | null;
 };
 
 function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
@@ -70,6 +72,8 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         busy={props.busy}
         formatTs={props.formatTs}
         toPrettyJson={props.toPrettyJson}
+        onOpenThread={props.onOpenThread}
+        activeThreadMessageId={props.activeThreadMessageId}
       />
     </div>
   );

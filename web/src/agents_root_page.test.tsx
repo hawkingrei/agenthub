@@ -201,7 +201,8 @@ describe("AgentsRootPage", () => {
       auth: baseAuth,
     });
 
-    expect(html).toContain("Open workbench menu");
+    expect(html).toContain("aria-label=\"Open workbench menu\"");
+    expect(html).toContain("ONLINE · SSE IDLE");
     expect(html).toContain("No agent selected");
     expect(html).toContain("Create Agent");
   });

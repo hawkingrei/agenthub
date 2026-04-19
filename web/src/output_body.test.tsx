@@ -153,7 +153,7 @@ describe("OutputBody", () => {
       acpOverride: { hasAcp: true },
     });
     expect(html).toContain("output-body-acp");
-    expect(html).toContain("Conversation");
+    expect(html).toContain("Activity");
     expect(html).not.toContain("No output yet");
   });
 
@@ -173,7 +173,7 @@ describe("OutputBody", () => {
       ],
       acpOverride: { hasAcp: true },
     });
-    expect(html).toContain("Conversation");
+    expect(html).toContain("Activity");
     expect(html).not.toContain("plain stderr line");
   });
 

@@ -15,7 +15,7 @@ import {
 import { TeamWorkspaceHeader } from "./team_workspace_header";
 import type { TeamTab } from "./state";
 
-type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
+type WorkspaceLens = "channels" | "tasks" | "members" | "search";
 
 type TeamWorkbenchContentProps = {
   showTeamBootstrapLoading: boolean;
@@ -41,6 +41,7 @@ type TeamWorkbenchContentProps = {
   showNoActiveRunNotice: boolean;
   activeWorkspaceLens: WorkspaceLens;
   conversationPanel: React.ReactNode;
+  threadPane?: React.ReactNode;
   tasksPanel: React.ReactNode;
   agentAcpPanel: React.ReactNode;
   overviewPanelProps: React.ComponentProps<typeof TeamOverviewPanel> | null;
@@ -79,6 +80,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   showNoActiveRunNotice,
   activeWorkspaceLens,
   conversationPanel,
+  threadPane = null,
   tasksPanel,
   agentAcpPanel,
   overviewPanelProps,
@@ -153,18 +155,20 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
               {activeWorkspaceLens === "search" && (
                 <div className={teamSectionCardClassName}>
-                  <div className={teamSectionHeadingClassName}>Workspace Search</div>
-                  <h3 className={teamSectionTitleClassName}>
-                    Search is converging into the workspace shell
-                  </h3>
+                  <div className={teamSectionHeadingClassName}>Search</div>
+                  <h3 className={teamSectionTitleClassName}>Search is still workspace-local</h3>
                   <p className={teamSectionHintTextClassName}>
-                    Use Chat, Tasks, or Members while the shared search rollup is being wired into
-                    canonical workspace entities.
+                    Use Channels, Tasks, or Members while shared search rollup is being wired in.
                   </p>
                 </div>
               )}
 
-              {activeWorkspaceLens !== "search" && tab === "conversation" && conversationPanel}
+              {activeWorkspaceLens !== "search" && tab === "conversation" && (
+                <div className="flex min-h-0 min-w-0 flex-1 gap-3">
+                  <div className="min-h-0 min-w-0 flex-1">{conversationPanel}</div>
+                  {threadPane}
+                </div>
+              )}
 
               {activeWorkspaceLens !== "search" && tab === "tasks" && tasksPanel}
 

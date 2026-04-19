@@ -24,7 +24,7 @@ describe("TeamSelectorPanel", () => {
     );
 
     expect(html).toContain("New Team");
-    expect(html).toContain("No teams yet. Create one to open its workspace.");
+    expect(html).toContain("No teams yet. Create one to begin.");
   });
 
   it("renders visible teams with summary and runtime label", () => {

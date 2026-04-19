@@ -69,10 +69,7 @@ function renderHtml(override: Partial<React.ComponentProps<typeof TeamWorkspaceH
         workspaceDetailItems={["team=abc", "run=working"]}
         workspaceNoticeText="team running · 3 online"
         workspaceNoticeDotClassName="dot"
-        workflowTabItems={[
-          { value: "conversation", label: "# all" },
-          { value: "tasks", label: "Kanban" },
-        ]}
+        workflowTabItems={[]}
         tab="conversation"
         busy={null}
         chrome={baseChrome}
@@ -98,12 +95,11 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("# all");
     expect(html).toContain("Shared channel");
     expect(html).toContain("team running");
-    expect(html).toContain("3/3 online");
-    expect(html).toContain("Open more workspace actions");
+    expect(html).toContain("3/3");
+    expect(html).toContain("aria-label=\"More\"");
     expect(html).toContain("team=abc");
     expect(html).toContain("max-w-[64ch]");
-    expect(html).toContain("rounded-[10px]");
-    expect(html).toContain("bg-notion-sidebar/55");
+    expect(html).toContain("rounded-md");
   });
 
   it("renders agent workspace menu actions", () => {
@@ -112,10 +108,10 @@ describe("TeamWorkspaceHeader", () => {
       workspaceTitle: "worker-1",
       workspaceDescription: null,
       showWorkspaceRuntimeBadge: false,
-      showRunActionsInAdvanced: false,
-      workspaceAdvancedTabItems: [],
+        showRunActionsInAdvanced: false,
+        workspaceAdvancedTabItems: [],
     });
-    expect(html).toContain("Open agent workspace menu");
+    expect(html).toContain("aria-label=\"Agent\"");
     expect(html).toContain("worker-1");
     expect(html).toContain("team=abc");
     expect(html).not.toContain("3/3 online");

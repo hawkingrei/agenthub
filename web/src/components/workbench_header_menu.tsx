@@ -31,8 +31,8 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
         <UnstyledButton
           type="button"
           className={buttonClassName}
-          aria-label="Menu"
-          title="Menu"
+          aria-label="Open workbench menu"
+          title="Open workbench menu"
         >
           <i className="bi bi-grid-3x3-gap text-[13px] sm:text-[14px]" aria-hidden="true" />
           <span className="hidden sm:inline">Menu</span>

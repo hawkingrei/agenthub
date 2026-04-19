@@ -235,7 +235,7 @@ async function waitForAddAgentEntryLane(
     .first();
   const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
   const menuTrigger = page.getByRole("button", {
-    name: "Open selected team menu",
+    name: "Team",
     exact: true,
   });
 
@@ -291,7 +291,7 @@ async function createTeamMemberFromModal(
     .first();
   const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
   const menuTrigger = page.getByRole("button", {
-    name: "Open selected team menu",
+    name: "Team",
     exact: true,
   });
   const selectionError = page.getByText("Select a team first", { exact: true });
@@ -365,7 +365,7 @@ async function openTeamFromSelector(
 ): Promise<void> {
   const pathname = new URL(page.url()).pathname;
   if (pathname !== "/teams" && pathname !== "/teams/") {
-    const selectorButton = page.getByRole("button", { name: "Team Selector", exact: true });
+    const selectorButton = page.getByRole("button", { name: "Team", exact: true });
     if ((await selectorButton.count()) > 0) {
       await selectorButton.first().click();
     } else {
@@ -412,7 +412,7 @@ async function isTeamDetailReady(
   }
   if (expectedTeamName) {
     const selectedTeamMenu = page.getByRole("button", {
-      name: "Open selected team menu",
+      name: "Team",
       exact: true,
     });
     if ((await selectedTeamMenu.count()) > 0) {
@@ -442,7 +442,7 @@ async function isTeamDetailReady(
 
 async function gotoTeams(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/teams", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Team Selector" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
 }
 
 async function selectAgentFromSidebar(
@@ -483,7 +483,7 @@ async function expectTeamRuntimeBadge(
 async function openSelectedTeamMenu(
   page: import("@playwright/test").Page
 ): Promise<void> {
-  const trigger = page.getByRole("button", { name: "Open selected team menu", exact: true });
+  const trigger = page.getByRole("button", { name: "Team", exact: true });
   await expect(trigger).toBeVisible();
   if ((await trigger.getAttribute("aria-expanded")) !== "true") {
     await trigger.click();
@@ -509,7 +509,7 @@ async function expectAddAgentEntryVisible(
     return;
   }
   const menuTrigger = page.getByRole("button", {
-    name: "Open selected team menu",
+    name: "Team",
     exact: true,
   });
   await expect(menuTrigger).toBeVisible();
@@ -1472,7 +1472,7 @@ test("team create flow stores mission metadata before member setup", async ({ pa
 
   await gotoTeams(page);
 
-  await expect(page.getByRole("heading", { name: "Team Selector" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
   await createTeamFromModal(page, {
     name: "quest-team",
     goal: "Build a goal-first team and add members afterward.",
@@ -3354,7 +3354,7 @@ test("team list supports deleting selected team", async ({ page }) => {
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Team" }).click();
 
-  await expect(page.getByRole("heading", { name: "Team Selector" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
   await expect(page.locator(".team-item", { hasText: "Team Delete A" })).toHaveCount(0);
   await expect(page.locator(".team-item", { hasText: "Team Delete B" })).toBeVisible();
 });

@@ -6,6 +6,12 @@
 - tightened Team selector rows and Team sidebar rows into a `title + one compact meta line` pattern
 - reduced Agents rail metadata so rows behave more like a DM directory instead of a status console
 - converted the collapsed Agents rail from dual metric cards into a single directory summary block
+- removed shell chrome that does not exist in the Slock reference:
+  - dropped the Team workbench `Teams` jump button from the header
+  - dropped the header connection status badge copy
+  - dropped the `WORKSPACE` eyebrow from the Team sidebar
+  - removed Team sidebar section counts from the `Teams` toggle label
+  - rewrote Team selector rows as plain directory buttons instead of reusing the heavier selectable card shell
 
 ## Validation
 
@@ -25,3 +31,5 @@ make build-web
   - `http://127.0.0.1:4173/workspace/teams`
   - backend was intentionally absent, so the local pages showed the expected bootstrap JSON error; shell/header and selector structure still rendered and were verified
   - collapsed Agents rail now renders `Show agents` + `AGENTS` + count + `Create agent`, without the previous `Running` metric card
+  - selector route now renders only `Teams` + menu in the banner, without the old connection status badge
+  - Team sidebar no longer renders the `WORKSPACE` eyebrow or `Teams · N` label

@@ -129,9 +129,9 @@ describe("AcpPanel layout", () => {
       <AcpPanel {...baseProps} subtitle="/repo/workdir" />
     );
     expect(html).toContain("/repo/workdir");
-    expect(html).toContain("Conversation");
+    expect(html).toContain("Activity");
     expect(html).toContain("Plan");
-    expect(html).toContain("Debug");
+    expect(html).toContain("Inspect");
     expect(html).not.toContain("Interrupt");
   });
 
@@ -139,9 +139,9 @@ describe("AcpPanel layout", () => {
     const html = renderPanel(
       <AcpPanel {...baseProps} developerMode={false} acpTab="debug" />
     );
-    expect(html).toContain("Conversation");
+    expect(html).toContain("Activity");
     expect(html).toContain("Plan");
-    expect(html).not.toContain("Debug");
+    expect(html).not.toContain("Inspect");
     expect(html).not.toContain("Session Controls");
   });
 
@@ -176,7 +176,7 @@ describe("AcpPanel layout", () => {
       />
     );
     expect(html).toContain("agenthub");
-    expect(html).toContain("Conversation");
+    expect(html).toContain("Activity");
     expect(html).toContain("Plan");
     expect(html).toContain("sm:hidden");
     expect(html).not.toContain("acp-actions");
@@ -196,7 +196,7 @@ describe("AcpPanel layout", () => {
       (btn) =>
         typeof btn.props.className === "string" &&
         btn.props.className.includes("acp-tab-button") &&
-        JSON.stringify(btn.props.children).includes("Conversation")
+        JSON.stringify(btn.props.children).includes("Activity")
     );
     const planButton = buttons.find(
       (btn) =>
@@ -208,7 +208,7 @@ describe("AcpPanel layout", () => {
       (btn) =>
         typeof btn.props.className === "string" &&
         btn.props.className.includes("acp-tab-button") &&
-        JSON.stringify(btn.props.children).includes("Debug")
+        JSON.stringify(btn.props.children).includes("Inspect")
     );
     expect(conversationButton).toBeDefined();
     expect(planButton).toBeDefined();

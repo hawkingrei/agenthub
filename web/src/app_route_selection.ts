@@ -36,14 +36,16 @@ export type AppRouteKind =
   | "post-auth-redirect"
   | "workspace";
 
-export type WorkspaceLens = "chat" | "threads" | "tasks" | "members" | "search";
+export type WorkspaceLens = "channels" | "tasks" | "members" | "search";
 
 export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   const params = new URLSearchParams(search);
   const lens = params.get("lens");
   switch (lens) {
+    case "channels":
     case "chat":
     case "threads":
+      return "channels";
     case "tasks":
     case "members":
     case "search":

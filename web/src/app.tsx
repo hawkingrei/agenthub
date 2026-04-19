@@ -291,6 +291,7 @@ export function App() {
   const {
     networkOnline,
     error: sseError,
+    connectionBadge,
   } = useAppSseEvents(
     auth,
     isAgentsRoute,
@@ -1203,6 +1204,7 @@ export function App() {
       agentsCollapsed={agentsCollapsed}
       onCollapseAgents={handleCollapseAgents}
       onExpandAgents={handleExpandAgents}
+      connectionBadge={connectionBadge}
       onLogout={onLogout}
       navigateWorkbenchRoute={navigateWorkbenchRoute}
       workspaceRef={workspaceRef}

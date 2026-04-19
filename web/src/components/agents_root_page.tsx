@@ -1,10 +1,12 @@
 import React, { Suspense } from "react";
+import type { ConnectionBadge } from "../connection_status";
 import { ErrorBanner } from "../error_banner";
 import { AuthState } from "../types";
 import { ActionButton } from "../ui/primitives";
 import {
   APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS,
   APP_WORKBENCH_HEADER_CLASS,
+  APP_WORKBENCH_HEADER_STATUS_CLASS,
   APP_WORKBENCH_SIDEBAR_TOGGLE_BUTTON_CLASS,
   AUTH_ACTIONS_CLASS,
   AUTH_FORM_CARD_CLASS,
@@ -55,6 +57,7 @@ export type AgentsRootPageProps = {
   agentsCollapsed: boolean;
   onCollapseAgents: () => void;
   onExpandAgents: () => void;
+  connectionBadge: ConnectionBadge;
   onLogout: () => void;
   navigateWorkbenchRoute: (pathname: string) => void;
   workspaceRef: React.RefObject<HTMLElement | null>;
@@ -90,6 +93,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   agentsCollapsed,
   onCollapseAgents,
   onExpandAgents,
+  connectionBadge,
   onLogout,
   navigateWorkbenchRoute,
   workspaceRef,
@@ -123,6 +127,8 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
             agentsCollapsed ? "bg-white" : "bg-notion-hover text-notion-text"
           }`}
           menuButtonClassName={APP_WORKBENCH_ACCOUNT_MENU_BUTTON_CLASS}
+          connectionBadge={connectionBadge}
+          headerStatusClassName={APP_WORKBENCH_HEADER_STATUS_CLASS}
           lensItems={lensItems}
           onSelectLens={onSelectLens}
           onNavigate={navigateWorkbenchRoute}

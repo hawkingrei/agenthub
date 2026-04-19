@@ -13,6 +13,7 @@ import { DEFAULT_AGENT_PRESET_ID, getAgentPreset, type AgentPresetId } from "../
 import { normalizeWorkdirInput } from "../../worktree_defaults";
 import {
   appendTeamMemberToSpec,
+  buildTeamMemberDraftFromSpec,
   buildEmptyTeamSpec,
   buildLeaderForgeDefaultWorkdir,
   formatTeamForgeWorktreeError,

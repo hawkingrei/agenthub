@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {
-  formatTeamMemberSummary,
   formatWorkLabel,
   resolveMemberIndicatorClassName,
   resolveMemberPrimaryLabel,
@@ -26,27 +25,9 @@ function buildMember(overrides: Partial<TeamMemberLiveState> = {}): TeamMemberLi
 }
 
 describe("team_sidebar helpers", () => {
-  it("formats work labels and member summaries for sidebar metadata", () => {
+  it("formats work labels for sidebar metadata", () => {
     expect(formatWorkLabel("no_run")).toBe("idle");
     expect(formatWorkLabel("done")).toBe("done");
-
-    expect(
-      formatTeamMemberSummary({
-        total: 4,
-        active: 2,
-        inactive: 1,
-        missing: 1,
-      })
-    ).toBe("4 members · 2 active · 1 idle · 1 missing");
-    expect(
-      formatTeamMemberSummary({
-        total: 2,
-        active: 2,
-        inactive: 0,
-        missing: 0,
-      })
-    ).toBe("2 members · 2 active");
-    expect(formatTeamMemberSummary()).toBeNull();
   });
 
   it("prefers trimmed agent names and falls back to member ids", () => {
