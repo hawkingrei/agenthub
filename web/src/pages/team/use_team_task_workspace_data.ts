@@ -9,20 +9,13 @@ import {
 } from "../../api";
 import { parseErrorMessage } from "./create_helpers";
 import {
+  isCurrentTeamScopedRequest,
   listTeamWorkspaceTasks,
   resolveSelectedConversationTask,
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
   sortTasksByActivity,
 } from "./page_helpers";
-
-function isCurrentTeamScopedRequest(
-  current: { teamId: string; requestSeq: number },
-  teamId: string,
-  requestSeq: number
-): boolean {
-  return Boolean(teamId) && current.teamId === teamId && current.requestSeq === requestSeq;
-}
 
 type UseTeamTaskWorkspaceDataOptions = {
   token: string;

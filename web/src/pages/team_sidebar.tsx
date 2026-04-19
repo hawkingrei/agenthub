@@ -233,8 +233,8 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 <Menu.Target>
                   <UnstyledButton
                     className="inline-flex max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
-                    aria-label="Team"
-                    title="Team"
+                    aria-label={`Team menu: ${selectedTeam.name}`}
+                    title={`Team menu: ${selectedTeam.name}`}
                   >
                     <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                       {selectedTeam.name}

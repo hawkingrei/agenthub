@@ -114,11 +114,11 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
   const runtimeDotClassName =
     selectedTeamRuntimeControlTone.countColor === "teal"
       ? "bg-teal-500"
-      : selectedTeamRuntimeControlTone.countColor === "red"
-        ? "bg-red-500"
-        : selectedTeamRuntimeControlTone.countColor === "yellow"
+      : selectedTeamRuntimeControlTone.countColor === "yellow"
           ? "bg-yellow-500"
-          : "bg-slate-400";
+          : selectedTeamRuntimeControlTone.countColor === "gray"
+            ? "bg-slate-400"
+        : "bg-slate-400";
   const agentWorkspaceSummaryItems = [
     {
       label: "Member",
