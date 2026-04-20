@@ -45,7 +45,7 @@ vi.mock("./api", () => ({
     getAdminSettings: getAdminSettingsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
-  AGENT_EVENT_PAGE_SIZE: 80,
+  AGENT_EVENT_PAGE_SIZE: 20,
 }));
 
 vi.mock("./push", () => ({
@@ -688,6 +688,6 @@ describe("App runtime viewport effects", () => {
   });
 
   it("uses the smaller ACP initial event page size budget", () => {
-    expect(AGENT_EVENT_PAGE_SIZE).toBe(80);
+    expect(AGENT_EVENT_PAGE_SIZE).toBe(20);
   });
 });

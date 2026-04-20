@@ -47,7 +47,7 @@ function createBaseOptions(overrides: Partial<TeamActionsInput> = {}): TeamActio
     activeRunIdForSelectedTeam: null,
     activeRunForSelectedTeam: null,
     inboxActorId: "",
-    inboxLimit: "100",
+    inboxLimit: "20",
     inboxAfterId: "",
     inboxIncludeDelivered: false,
     selectedMemberAgentId: null,
@@ -149,7 +149,7 @@ describe("useTeamActions", () => {
       runsBeforeCreatedAt: 111,
       selectedStepId: "step-1",
       inboxActorId: "leader-1",
-      inboxLimit: "100",
+      inboxLimit: "20",
       inboxAfterId: "10",
       inboxIncludeDelivered: false,
     });
@@ -307,7 +307,7 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "worker-agent",
-        300,
+        20,
         "runtime-session-1",
         undefined
       );
@@ -351,7 +351,7 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "agent-123",
-        300,
+        20,
         "runtime-session-1",
         undefined
       );

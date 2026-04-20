@@ -575,6 +575,50 @@ async fn teams_router_http_contract() {
     assert_eq!(paged.len(), 1);
     assert_eq!(paged[0]["event_type"], "run_submitted");
 
+    for index in 0..25 {
+        sqlx::query(
+            r#"
+            INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+            VALUES (?1, NULL, 'agent_message', ?2, ?3)
+            "#,
+        )
+        .bind(&run_id)
+        .bind(2_000 + i64::from(index))
+        .bind(format!("{{\"text\":\"bulk-{index}\"}}"))
+        .execute(&state.db)
+        .await
+        .expect("insert extra run events");
+    }
+
+    let clamped_events_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/events?limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list clamped events via router");
+    assert_eq!(clamped_events_resp.status(), StatusCode::OK);
+    let clamped_events = decode_json_body(clamped_events_resp).await;
+    let clamped_events = clamped_events.as_array().expect("clamped events array");
+    assert_eq!(clamped_events.len(), 20);
+
+    let snapshot_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{run_id}/snapshot?event_limit=100&message_limit=100"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("snapshot via router");
+    assert_eq!(snapshot_resp.status(), StatusCode::OK);
+    let snapshot = decode_json_body(snapshot_resp).await;
+    assert_eq!(snapshot["latest_events"].as_array().map(Vec::len), Some(20));
+
     let create_step_run_resp = app
         .clone()
         .oneshot(build_json_request(

@@ -126,8 +126,8 @@ export type TeamCreateState = TeamCreateDraftState & {
 
 export type TeamCreateAction = { type: "patch"; patch: Partial<TeamCreateState> };
 
-export const EVENT_PAGE_LIMIT = 100;
-export const MEMBER_EVENT_PAGE_LIMIT = 300;
+export const EVENT_PAGE_LIMIT = 20;
+export const MEMBER_EVENT_PAGE_LIMIT = 20;
 export const TEAM_RUN_PAGE_LIMIT = 50;
 export const DEFAULT_WORKTREE_ROOT = "~/.agenthub/worktrees";
 
@@ -172,7 +172,7 @@ export const DEFAULT_TEAM_MAILBOX_STATE: TeamMailboxState = {
   chatStickToBottom: true,
   chatSeenByConversation: {},
   inboxActorId: "",
-  inboxLimit: "100",
+  inboxLimit: "20",
   inboxAfterId: "",
   inboxIncludeDelivered: false,
   inbox: [],

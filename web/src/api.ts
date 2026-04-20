@@ -5,7 +5,7 @@ import {
 
 export const AGENT_SOURCE_MANUAL = "manual";
 export const AGENT_SOURCE_TEAM_FORGE = "team_forge";
-export const AGENT_EVENT_PAGE_SIZE = 80;
+export const AGENT_EVENT_PAGE_SIZE = 20;
 
 export type AgentConfig = {
   name: string;
