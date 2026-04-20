@@ -338,6 +338,7 @@ dependencies = [
  "hmac 0.13.0",
  "jwt-simple",
  "mime_guess",
+ "openssl",
  "prost",
  "protoc-bin-vendored",
  "rand 0.10.1",
