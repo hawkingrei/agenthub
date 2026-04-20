@@ -41,20 +41,34 @@ The exact controls depend on the active ACP provider and runtime.
 
 ## Team Workbench
 
-`/teams` adds a multi-agent workflow surface with clear role boundaries.
+`/teams` adds a multi-agent workspace surface with clear role boundaries.
 
 Key concepts:
 
-- `Conversation` (`# all`) is the shared human-facing thread
-- `Conversation` is resolved as one stable Team-level thread, not inferred from the visible Kanban
+- `Channels` lead the Team shell, with `# all` as the default shared lane
+- the shared channel is stable Team state, not inferred from the visible Kanban
   slice
 - `Kanban` is the canonical task lane
-- `Runs` and debug surfaces are execution artifacts, not the primary planning
-  surface
+- `Execution Runs` and debug surfaces are execution artifacts, not the primary
+  planning surface
 - `Agent ACP` lets you inspect a specific member deeply when needed
 
 Use this when planning, implementation, and review should be coordinated rather
 than collapsed into one session.
+
+## Recent Product Updates
+
+Recent merges worth knowing before rollout or operator training:
+
+- **Workspace shell convergence**: Team pages now use a more compact
+  workspace shell with clearer `Channels`-first navigation and less duplicated
+  chrome.
+- **Execution wording cleanup**: Team run history is presented as
+  `Execution Runs` to distinguish planning state from raw execution artifacts.
+- **Token-based Agent Node onboarding**: remote node join now uses explicit
+  bootstrap tokens from the `Agents` page instead of QR-style node onboarding.
+- **Rust / Codex baseline refresh**: local builds and bundled ACP integration
+  now track Rust `1.95.0` and the official Codex `0.121.x` line.
 
 ## Installable Web App And Push
 

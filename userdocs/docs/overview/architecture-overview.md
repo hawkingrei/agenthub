@@ -61,9 +61,11 @@ through the UI instead of relying only on raw process output.
 
 The Team model has three layers:
 
-- `Conversation` for human-facing shared discussion
+- `Channels` for human-facing shared coordination, with `# all` as the default
+  shared lane
 - `Kanban` for canonical task state
-- `Runs` plus debug surfaces for execution telemetry and deep inspection
+- `Execution Runs` plus debug surfaces for execution telemetry and deep
+  inspection
 
 This keeps collaboration state separate from lower-level execution artifacts.
 
