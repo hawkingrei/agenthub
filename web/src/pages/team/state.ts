@@ -172,7 +172,7 @@ export const DEFAULT_TEAM_MAILBOX_STATE: TeamMailboxState = {
   chatStickToBottom: true,
   chatSeenByConversation: {},
   inboxActorId: "",
-  inboxLimit: "100",
+  inboxLimit: "20",
   inboxAfterId: "",
   inboxIncludeDelivered: false,
   inbox: [],

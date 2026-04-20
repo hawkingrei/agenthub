@@ -4051,8 +4051,14 @@ mod tests {
         let body = decode_json_body(response).await;
         let events = body.as_array().expect("events array");
         assert_eq!(events.len(), 20);
-        assert_eq!(events.first().and_then(|event| event["message"].as_str()), Some("event-5"));
-        assert_eq!(events.last().and_then(|event| event["message"].as_str()), Some("event-24"));
+        assert_eq!(
+            events.first().and_then(|event| event["message"].as_str()),
+            Some("event-5")
+        );
+        assert_eq!(
+            events.last().and_then(|event| event["message"].as_str()),
+            Some("event-24")
+        );
     }
 
     #[tokio::test]

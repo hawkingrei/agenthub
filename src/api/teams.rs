@@ -213,7 +213,9 @@ pub struct ListTeamRunEventsQuery {
     pub before_id: Option<i64>,
 }
 
-const TEAM_PAGE_EVENT_LIMIT: i64 = 20;
+const TEAM_PAGE_SNAPSHOT_LIMIT: i64 = 20;
+const TEAM_PAGE_EVENT_LIMIT: i64 = TEAM_PAGE_SNAPSHOT_LIMIT;
+const TEAM_PAGE_MESSAGE_LIMIT: i64 = TEAM_PAGE_SNAPSHOT_LIMIT;
 
 #[derive(Debug, Deserialize)]
 pub struct TeamRunSnapshotQuery {
@@ -1108,8 +1110,8 @@ async fn get_team_run_snapshot(
         .clamp(1, TEAM_PAGE_EVENT_LIMIT);
     let message_limit = query
         .message_limit
-        .unwrap_or(TEAM_PAGE_EVENT_LIMIT)
-        .clamp(1, TEAM_PAGE_EVENT_LIMIT);
+        .unwrap_or(TEAM_PAGE_MESSAGE_LIMIT)
+        .clamp(1, TEAM_PAGE_MESSAGE_LIMIT);
     let latest_events = state
         .teams
         .list_run_events(&run_id, event_limit, None)
