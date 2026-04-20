@@ -13,7 +13,7 @@ Align the GitHub release workflow with two concrete requirements:
 - generated the release body from the actual `dist/` contents so partial releases no longer advertise assets that were never built;
 - added `.github/workflows/release-prebuild.yml` so normal `push` and `pull_request` traffic now exercises the same release-target matrix and packaging path before a tag is cut;
 - removed `libssl-dev` installs from Linux `Cross.toml` pre-build hooks and explicitly installed `zlib1g-dev` so the cross sysroot no longer injects OpenSSL 1.0.2 into release builds while still keeping compression headers available;
-- moved vendored OpenSSL behind a release-only Cargo feature (`release-vendored-openssl`) so Linux release builds still converge on vendored OpenSSL without dragging `openssl-src` into the default Bazel / crate_universe dependency graph.
+- moved vendored OpenSSL behind release-only Cargo features (`release-vendored-openssl`) in both `agenthub` and `agenthub-codex-acp` so Linux release builds still converge on vendored OpenSSL without dragging `openssl-src` into the default Bazel / crate_universe dependency graph.
 
 ## Validation
 

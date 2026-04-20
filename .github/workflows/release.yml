@@ -89,12 +89,12 @@ jobs:
       - name: Build agenthub-codex-acp (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
 
       - name: Build agenthub-codex-acp (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
 
       - name: Package
         shell: bash

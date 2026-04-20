@@ -16,6 +16,10 @@ path = "src/main.rs"
 name = "agenthub_codex_acp"
 path = "src/lib.rs"
 
+[features]
+default = []
+release-vendored-openssl = ["dep:openssl"]
+
 [dependencies]
 agent-client-protocol = { version = "=0.10.4", features = ["unstable"] }
 agenthub-managed-skills = { path = "../crates/agenthub-managed-skills" }
@@ -52,6 +56,11 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 unicode-segmentation = "1.13.2"
 uuid = { version = "1", features = ["v4"] }
+# Codex upstream currently reaches OpenSSL through native-tls-backed reqwest /
+# oauth2 paths on Linux. Keep vendored OpenSSL behind a release-only feature so
+# release cross-builds do not depend on the cross image sysroot while default
+# Cargo and Bazel graphs remain unchanged.
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [dev-dependencies]
 piper = "0.2"
