@@ -27,6 +27,10 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
+[features]
+default = []
+release-vendored-openssl = ["dep:openssl"]
+
 [[bin]]
 name = "agenthub"
 path = "cmd/agenthub/src/main.rs"
@@ -64,11 +68,10 @@ hmac = "0.13.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.11"
 zstd = "0.13"
-# Force vendored OpenSSL for transitive Linux release dependencies like
-# webauthn-rs, web-push/isahc, oauth2/reqwest, and codex-adjacent native-tls
-# paths so cross builds do not bind to the stale OpenSSL 1.0.2 sysroot that
-# ships in the default cross images.
-openssl = { version = "0.10", features = ["vendored"] }
+# Force vendored OpenSSL only for release-style Cargo builds so transitive Linux
+# release dependencies like webauthn-rs and web-push/isahc do not bind to the
+# stale OpenSSL 1.0.2 sysroot that ships in the default cross images.
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 agenthub-acp = { path = "crates/agenthub-acp" }
 agenthub-managed-skills = { path = "crates/agenthub-managed-skills" }
 agenthub-internal-p2p = { path = "crates/agenthub-internal-p2p" }
