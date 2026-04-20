@@ -24,6 +24,7 @@ use crate::team::effective_team_member_skills;
 
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
+const AGENT_EVENTS_PAGE_LIMIT: i64 = 20;
 
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateAgentRequest {
@@ -478,7 +479,10 @@ async fn list_events(
     Query(query): Query<ListEventsQuery>,
 ) -> Result<Json<Vec<crate::agent::AgentEvent>>, ApiError> {
     let _user = require_user(&headers, &state).await?;
-    let limit = query.limit.unwrap_or(500).clamp(1, 1000);
+    let limit = query
+        .limit
+        .unwrap_or(AGENT_EVENTS_PAGE_LIMIT)
+        .clamp(1, AGENT_EVENTS_PAGE_LIMIT);
     let before_id = query.before_id;
     let events = if let Some(session_id) = query.session_id.as_deref() {
         state
@@ -3971,6 +3975,84 @@ mod tests {
             body.contains("permission request not found for agent"),
             "unexpected error body: {body}"
         );
+    }
+
+    #[tokio::test]
+    async fn list_events_route_clamps_limit_to_twenty() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref, code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'manual', 'running', ?7, ?8)
+            "#,
+        )
+        .bind("events-agent")
+        .bind("events-agent")
+        .bind("/tmp")
+        .bind("agenthub-codex-acp")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(now)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, 'running', ?3, NULL)
+            "#,
+        )
+        .bind("session-events")
+        .bind("events-agent")
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert session");
+
+        let event_db = state
+            .agents
+            .test_event_pool_for_agent("events-agent")
+            .await
+            .expect("event pool");
+        for index in 0..25 {
+            sqlx::query(
+                r#"
+                INSERT INTO agent_events (session_id, seq, ts, stream, message)
+                VALUES (?1, ?2, ?3, 'stdout', ?4)
+                "#,
+            )
+            .bind("session-events")
+            .bind(format!("seq-{index}"))
+            .bind(now + i64::from(index))
+            .bind(format!("event-{index}"))
+            .execute(&event_db)
+            .await
+            .expect("insert event");
+        }
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::GET,
+                "/events-agent/events?limit=100&session_id=session-events",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("list events");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        let events = body.as_array().expect("events array");
+        assert_eq!(events.len(), 20);
+        assert_eq!(events.first().and_then(|event| event["message"].as_str()), Some("event-5"));
+        assert_eq!(events.last().and_then(|event| event["message"].as_str()), Some("event-24"));
     }
 
     #[tokio::test]

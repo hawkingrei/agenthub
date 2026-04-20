@@ -213,6 +213,8 @@ pub struct ListTeamRunEventsQuery {
     pub before_id: Option<i64>,
 }
 
+const TEAM_PAGE_EVENT_LIMIT: i64 = 20;
+
 #[derive(Debug, Deserialize)]
 pub struct TeamRunSnapshotQuery {
     pub event_limit: Option<i64>,
@@ -1100,8 +1102,14 @@ async fn get_team_run_snapshot(
         .await
         .map_err(map_team_internal_error)?;
 
-    let event_limit = query.event_limit.unwrap_or(120).clamp(1, 500);
-    let message_limit = query.message_limit.unwrap_or(120).clamp(1, 500);
+    let event_limit = query
+        .event_limit
+        .unwrap_or(TEAM_PAGE_EVENT_LIMIT)
+        .clamp(1, TEAM_PAGE_EVENT_LIMIT);
+    let message_limit = query
+        .message_limit
+        .unwrap_or(TEAM_PAGE_EVENT_LIMIT)
+        .clamp(1, TEAM_PAGE_EVENT_LIMIT);
     let latest_events = state
         .teams
         .list_run_events(&run_id, event_limit, None)
@@ -1186,7 +1194,10 @@ async fn list_team_run_events(
 ) -> Result<Json<Vec<TeamRunEventRecord>>, ApiError> {
     let user = require_user(&headers, &state).await?;
     ensure_run_access_for_user(&state, &run_id, &user).await?;
-    let limit = query.limit.unwrap_or(500).clamp(1, 1000);
+    let limit = query
+        .limit
+        .unwrap_or(TEAM_PAGE_EVENT_LIMIT)
+        .clamp(1, TEAM_PAGE_EVENT_LIMIT);
     let events = state
         .teams
         .list_run_events(&run_id, limit, query.before_id)
