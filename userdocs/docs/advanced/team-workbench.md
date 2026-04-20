@@ -100,7 +100,7 @@ In practice:
 Team Workbench is now task-first:
 
 - `Kanban` is the durable coordination surface
-- `Channels` (`# all`) are a separate stable shared lane, not a workspace task you need to
+- `Channels` (`# all`) provide a separate stable shared lane, not a workspace task you need to
   recover manually from Kanban ordering
 - human requests and clarifications live in `Channels`; leader/runtime turns agreed work into
   canonical Kanban tasks

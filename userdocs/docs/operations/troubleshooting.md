@@ -89,7 +89,7 @@ journalctl -u agenthub -n 100 --no-pager
 |-------|------------|----------|
 | Invalid workdir | Check path exists | Create directory or choose different path |
 | Path outside safe_paths | Check `safe_paths` config | Add path to config or use allowed path |
-| Missing ACP binary | `which agenthub-codex-acp` | Install the bundled ACP adapter or set `codex_acp.binary` |
+| Missing ACP binary | Check configured `codex_acp.binary` (or startup logs showing `config codex_acp_binary`) and verify that exact path exists and is executable | Install the bundled ACP adapter or set `codex_acp.binary` to a valid executable |
 | Permission denied | Check directory permissions | `chmod 755 /path/to/workdir` |
 
 ### "Workdir path must be within allowed safe paths"
@@ -115,17 +115,15 @@ handshake / startup errors.
 
 **Diagnostic Steps**:
 
-1. Check which binary AgentHub is launching:
+1. Check which binary AgentHub is launching by inspecting the configured
+   `codex_acp.binary` value first.
+2. Verify that exact adapter binary is the expected one:
    ```bash
-   which agenthub-codex-acp
+   /path/to/your-configured-agenthub-codex-acp --version
    ```
-2. Verify the adapter binary is the expected one:
-   ```bash
-   agenthub-codex-acp --version
-   ```
-3. Compare it to the repository baseline:
-   - Rust `1.95.0`
-   - official Codex `0.121.x`
+3. Compare the binary path and reported adapter version to the deployed
+   AgentHub build, or rebuild/replace the adapter from the same repository
+   revision if you are unsure they match.
 
 **Solutions**:
 
