@@ -369,8 +369,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       setSnapshotLoading(true);
       try {
         const next = await teamApi.getTeamRunSnapshot(runId, {
-          event_limit: 200,
-          message_limit: 200,
+          event_limit: 20,
+          message_limit: 20,
         });
         setSnapshot(next);
         return next;

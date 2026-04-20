@@ -46,7 +46,7 @@ export function useAppOutputCache(
   setAgents: Dispatch<SetStateAction<AgentRecord[]>>
 ) {
   const token = auth?.token ?? null;
-  const eventLimit = 80;
+  const eventLimit = 20;
   const maxCachedEvents = DEFAULT_OUTPUT_CACHE_MAX_EVENTS;
   const maxCachedSessions = DEFAULT_OUTPUT_CACHE_MAX_SESSIONS;
 

@@ -307,7 +307,7 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "worker-agent",
-        300,
+        20,
         "runtime-session-1",
         undefined
       );
@@ -351,7 +351,7 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "agent-123",
-        300,
+        20,
         "runtime-session-1",
         undefined
       );
