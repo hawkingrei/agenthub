@@ -45,6 +45,7 @@ codex-utils-absolute-path = { git = "https://github.com/openai/codex", rev = "d6
 codex-utils-cli = { git = "https://github.com/openai/codex", rev = "d65ed92a5e440972626965d0af9a6345179783bc" }
 heck = "0.5.0"
 itertools = "0.14.0"
+libc = "0.2"
 regex-lite = "0.1"
 serde = { version = "1", features = ["derive"] }
 # Keep json key ordering aligned with codex CLI behavior.

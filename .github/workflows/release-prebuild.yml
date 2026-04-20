@@ -64,7 +64,7 @@ jobs:
       - name: Build agenthub (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub --features release-vendored-openssl
+          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub
 
       - name: Build agenthub (cross)
         if: matrix.cross
@@ -74,7 +74,7 @@ jobs:
       - name: Build agenthub-codex-acp (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
 
       - name: Build agenthub-codex-acp (cross)
         if: matrix.cross

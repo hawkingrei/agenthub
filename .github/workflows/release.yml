@@ -79,7 +79,7 @@ jobs:
       - name: Build agenthub (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub --features release-vendored-openssl
+          cargo build --locked --release --target ${{ matrix.target }} --bin agenthub
 
       - name: Build agenthub (cross)
         if: matrix.cross
@@ -89,7 +89,7 @@ jobs:
       - name: Build agenthub-codex-acp (native)
         if: '!matrix.cross'
         run: |
-          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
+          cargo build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
 
       - name: Build agenthub-codex-acp (cross)
         if: matrix.cross
@@ -148,7 +148,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download all artifacts
-        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -201,9 +200,14 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          release_archives=(dist/*.tar.gz)
+          release_archives=()
+          for archive in dist/*.tar.gz; do
+            if [[ "${archive}" != *-source.tar.gz ]]; then
+              release_archives+=("${archive}")
+            fi
+          done
           if (( ${#release_archives[@]} == 0 )); then
-            echo "::error::No release archives were produced by the build matrix."
+            echo "::error::No binary release archives were produced by the build matrix."
             exit 1
           fi
 

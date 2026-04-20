@@ -14,12 +14,15 @@ Align the GitHub release workflow with two concrete requirements:
 - added `.github/workflows/release-prebuild.yml` so normal `push` and `pull_request` traffic now exercises the same release-target matrix and packaging path before a tag is cut;
 - removed `libssl-dev` installs from Linux `Cross.toml` pre-build hooks and explicitly installed `zlib1g-dev` so the cross sysroot no longer injects OpenSSL 1.0.2 into release builds while still keeping compression headers available;
 - moved vendored OpenSSL behind release-only Cargo features (`release-vendored-openssl`) in both `agenthub` and `agenthub-codex-acp` so Linux release builds still converge on vendored OpenSSL without dragging `openssl-src` into the default Bazel / crate_universe dependency graph.
+- kept vendored OpenSSL scoped to Linux cross release/prebuild legs only, excluded source-only archives from the release artifact guard, and removed `continue-on-error` from artifact download so infrastructure failures still stop the release job;
+- added a Linux `memfd_create` compatibility shim in `agenthub-codex-acp` so V8-backed release/prebuild links no longer depend on the older GNU cross sysroot exporting that libc wrapper.
 
 ## Validation
 
 Planned validation for the next release-tag or preview-tag run:
 
 - confirm `Build x86_64-unknown-linux-gnu` and `Build aarch64-unknown-linux-gnu` no longer panic in `openssl-sys`;
+- confirm Linux `agenthub-codex-acp` release/prebuild links no longer fail on `memfd_create`;
 - confirm a failing matrix leg no longer suppresses successful release assets from the GitHub Release page;
 - confirm `Release Prebuild` catches the same cross-build regressions on both `push` and `pull_request` before a tag is cut;
 - record the release workflow run IDs and the resulting release URLs in this note before closing the follow-up TODO item.
