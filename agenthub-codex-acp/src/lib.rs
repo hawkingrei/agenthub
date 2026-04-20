@@ -25,6 +25,8 @@ use tracing_subscriber::registry::LookupSpan;
 
 mod app_server_thread;
 mod codex_agent;
+#[cfg(target_os = "linux")]
+mod linux_memfd_compat;
 mod prompt_args;
 mod thread;
 
