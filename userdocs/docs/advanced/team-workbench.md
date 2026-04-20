@@ -10,9 +10,9 @@ Team Workbench (`/teams`) is AgentHub's multi-agent collaboration surface.
 
 Think about Team Workbench as three connected layers:
 
-- **Conversation** (`# all`): the human-facing shared thread
+- **Channels** (`# all` by default): the human-facing shared lane
 - **Kanban**: the canonical task lane
-- **Runs and debug surfaces**: execution telemetry and deep inspection
+- **Execution Runs and debug surfaces**: execution telemetry and deep inspection
 
 On smaller screens, Team Workbench switches between two panes instead of stacking
 everything into one page:
@@ -22,14 +22,25 @@ everything into one page:
 
 Use the header toggle to move between them.
 
-The important distinction is that Team `runs` and `steps` are execution and
-debug artifacts. They are not the primary planning surface.
+The important distinction is that Team `Execution Runs` and `steps` are
+execution and debug artifacts. They are not the primary planning surface.
+
+## Recent Updates
+
+Recent Team workbench updates changed the operator-facing shape in a few useful
+ways:
+
+- the shell is now more clearly `Channels`-first
+- run history is consistently labeled `Execution Runs`
+- the left rail carries most Team switching and workspace navigation
+- the shared `# all` lane stays the default place for human goals and team-wide
+  coordination
 
 ## Main UI Areas
 
-- **Channel**:
-  - shared conversation thread, usually `# all`
-  - `# all` is a stable Team-level conversation target resolved by the backend, not whichever task
+- **Channels**:
+  - shared channel lane, usually `# all`
+  - `# all` is a stable Team-level channel target resolved by the backend, not whichever task
     happens to be visible first in the Kanban list
   - optimized for live coordination: the composer stays pinned to the bottom and the workbench
     shows a bounded recent-10 message window by default
@@ -40,7 +51,7 @@ debug artifacts. They are not the primary planning surface.
   - not the place for human operators to manually author canonical Team tasks
 - **Agents**:
   - member list and per-member entry into `Agent ACP`
-- **Runs**:
+- **Execution Runs**:
   - explicit execution history, start, and selection
 - **Advanced / Debug**:
   - lower-level execution and inspection tools
@@ -49,30 +60,30 @@ debug artifacts. They are not the primary planning surface.
 
 Healthy Team usage usually follows a stable split:
 
-- humans talk in `Conversation`
+- humans talk in `Channels`, usually `# all`
 - the leader turns agreed work into canonical tasks
 - workers report progress and facts without taking over planning
 - `Kanban` stays the source of truth for task state
-- `Runs` and `Agent ACP` stay available for debugging, not for day-to-day
+- `Execution Runs` and `Agent ACP` stay available for debugging, not for day-to-day
   planning
 
-If `Runs` becomes the main place people track work, the Team model is usually
-drifting too close to raw execution details.
+If `Execution Runs` becomes the main place people track work, the Team model is
+usually drifting too close to raw execution details.
 
 ## Typical Workflow
 
 1. Create or select a Team.
 2. Start the Team runtime.
-3. Use `Conversation` to state the goal and constraints.
+3. Use `Channels`, usually `# all`, to state the goal and constraints.
 4. Let the leader turn agreed work into canonical Kanban tasks.
 5. Track ownership and progress in `Kanban`.
-6. Drop into `Agent ACP`, `Runs`, or `Advanced` only when you need execution
-   details or debugging.
+6. Drop into `Agent ACP`, `Execution Runs`, or `Advanced` only when you need
+   execution details or debugging.
 
-## Mentions And Shared Conversation
+## Mentions And Shared Channels
 
 - No `@mention`: message is team-wide and the leader should respond first.
-- `@member_id`: message is still visible in the shared thread, but it
+- `@member_id`: message is still visible in the shared channel, but it
   prioritizes the mentioned member or members.
 - Workers can contribute direct implementation progress or scoped answers, but
   planning and final synthesis still converge through the leader.
@@ -89,12 +100,12 @@ In practice:
 Team Workbench is now task-first:
 
 - `Kanban` is the durable coordination surface
-- `Conversation` (`# all`) is a separate stable shared thread, not a workspace task you need to
+- `Channels` (`# all`) are a separate stable shared lane, not a workspace task you need to
   recover manually from Kanban ordering
-- human requests and clarifications live in `Conversation`; leader/runtime turns agreed work into
+- human requests and clarifications live in `Channels`; leader/runtime turns agreed work into
   canonical Kanban tasks
 - the normal Team UI and public HTTP surface do not expose direct canonical task creation; requests
-  go through `Conversation` and leader/runtime materialize tasks onto `Kanban`
+  go through `Channels` and leader/runtime materialize tasks onto `Kanban`
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model
@@ -103,22 +114,20 @@ The workbench also refreshes more aggressively on resume:
 
 - runtime state rechecks on focus / reconnect
 - `Kanban` refreshes on resume instead of only waiting for the next poll
-- shared `Conversation` refreshes immediately on restore/reconnect in addition to SSE
+- shared `Channels` refresh immediately on restore/reconnect in addition to SSE
 
 This keeps context attached to the task instead of fragmenting it across many
 small execution steps.
 
 ## Shared Channel Connection Model
 
-The Team header exposes the shared-thread connection state directly:
-
-- `ONLINE · SSE CONNECTED` means the Team-level shared conversation stream is live
-- a manual channel refresh action is still available when you want to force a fresh pull
+The Team header keeps the shared channel connection state compact instead of
+turning it into a heavyweight status bar.
 
 The shared channel is intentionally tuned for live coordination, not infinite
 log browsing. The default Team surface keeps only a small recent window in
-memory so the workbench stays responsive. If you need deeper execution history
-or raw event detail, drop into `Agent ACP`, `Runs`, or other debug surfaces
+memory so the workbench stays responsive. If you need deeper execution history,
+or raw event detail, drop into `Agent ACP`, `Execution Runs`, or other debug surfaces
 instead of treating `# all` as the primary archive.
 
 ## What To Watch Operationally
@@ -127,7 +136,7 @@ instead of treating `# all` as the primary archive.
 - whether the Team runtime has correctly fallen back to `stopped` / `degraded` after members exit
 - whether a member that already exited no longer shows a stale `running` badge after refresh
 - whether Kanban ownership matches the real executing member
-- whether `Conversation` and `Kanban` stay in sync with the current plan
+- whether `Channels` and `Kanban` stay in sync with the current plan
 - whether permission review requests route to the expected reviewer
 
 ## Agent ACP In Team Mode
@@ -141,7 +150,7 @@ Use `Teams -> Agents -> Agent ACP` when you need to inspect one member deeply:
   and `Force New Session` when the active ACP runtime exposes them
 
 Use this sparingly during normal Team work. The primary human workflow should
-still live in `Conversation` and `Kanban`.
+still live in `Channels` and `Kanban`.
 
 When a provider returns structured selector options, AgentHub uses those
 provider-driven choices instead of forcing you to type raw model or mode IDs by

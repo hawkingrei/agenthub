@@ -15,7 +15,7 @@ AgentHub is built for the operational side of agent work:
 
 - keep agent sessions alive after the browser tab closes
 - inspect structured ACP history instead of relying on raw scrollback
-- manage Team workflows with explicit shared conversation and task surfaces
+- manage Team workflows with explicit shared channels, Kanban, and execution surfaces
 - route execution to remote nodes with actor p2p control and mailbox relay when
   one machine is not enough
 - keep runtime state, history, and operator control in one place
@@ -29,7 +29,7 @@ That changes a few things:
 
 - reconnecting to a session should be normal, not a recovery edge case
 - output should stay structured and reviewable after the original run ends
-- multi-agent collaboration should use explicit coordination surfaces instead of
+- multi-agent collaboration should use explicit shared channels and task surfaces instead of
   ad-hoc shell copy/paste
 - remote execution should preserve the same actor and mailbox model instead of
   introducing a separate control plane
@@ -41,8 +41,8 @@ AgentHub has four primary user-facing surfaces:
 - **Agents**: create, start, stop, reconnect, and inspect single-agent runs
 - **Conversation and ACP timelines**: review plans, tool calls, command output,
   and debug events as structured history
-- **Teams**: coordinate leader/worker collaboration with shared conversation and
-  task tracking
+- **Teams**: coordinate leader/worker collaboration with shared channels,
+  Kanban, and execution tracking
 - **Agent Nodes and actor p2p**: extend execution onto remote machines without
   moving the control plane, while keeping mailbox/control traffic on the same
   operational model
