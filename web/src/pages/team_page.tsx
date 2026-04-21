@@ -92,6 +92,7 @@ import {
   resolveTeamPageNotice,
   resolveTaskConversationMemberIds,
   resolveTeamMemberAgentControlState,
+  shouldClearSelectedTeamMember,
   toPrettyJson,
   upsertRun,
 } from "./team/page_helpers";
@@ -1058,10 +1059,12 @@ export function TeamPage(props: TeamPageProps) {
     if (!memberId) {
       return;
     }
-    const hasSelectedMember = selectedTeamMemberLiveStates.some(
-      (member) => member.member_id === memberId
-    );
-    if (!hasSelectedMember) {
+    if (
+      shouldClearSelectedTeamMember({
+        selectedMemberId: memberId,
+        memberIds: selectedTeamMemberLiveStates.map((member) => member.member_id),
+      })
+    ) {
       setSelectedMemberId("");
     }
   }, [selectedMemberId, selectedTeamMemberLiveStates, setSelectedMemberId]);
@@ -1070,10 +1073,12 @@ export function TeamPage(props: TeamPageProps) {
     if (!memberId) {
       return;
     }
-    const hasFocusedMember = selectedTeamMemberLiveStates.some(
-      (member) => member.member_id === memberId
-    );
-    if (!hasFocusedMember) {
+    if (
+      shouldClearSelectedTeamMember({
+        selectedMemberId: memberId,
+        memberIds: selectedTeamMemberLiveStates.map((member) => member.member_id),
+      })
+    ) {
       setFocusedAgentMemberId("");
     }
   }, [focusedAgentMemberId, selectedTeamMemberLiveStates]);

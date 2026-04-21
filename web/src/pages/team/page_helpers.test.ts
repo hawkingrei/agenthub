@@ -26,6 +26,7 @@ import {
   resolveTeamRuntimeStatus,
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
+  shouldClearSelectedTeamMember,
   resolveTaskConversationMemberIds,
   resolveTaskMessageSeenByActors,
   refreshTeamConversationMailboxAfterSend,
@@ -365,6 +366,24 @@ describe("team page helpers", () => {
         tasksLoading: false,
       })
     ).toBe(false);
+  });
+
+  it("keeps a selected team member while the loaded member list is still empty", () => {
+    expect(
+      shouldClearSelectedTeamMember({
+        selectedMemberId: "worker-1",
+        memberIds: [],
+      })
+    ).toBe(false);
+  });
+
+  it("clears a selected team member after loaded members no longer contain it", () => {
+    expect(
+      shouldClearSelectedTeamMember({
+        selectedMemberId: "worker-1",
+        memberIds: ["leader-1", "worker-2"],
+      })
+    ).toBe(true);
   });
 
   it("upserts run by id and keeps latest-first sort order", () => {

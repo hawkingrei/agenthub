@@ -26,6 +26,7 @@ import {
   parseOptionalJson,
 } from "./create_helpers";
 import {
+  resolveAdaptiveAcpHistoryPageLimit,
   shouldPrefetchInitialAcpHistory,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
@@ -457,9 +458,14 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             if (!oldestLoadedId) {
               break;
             }
+            const nextPageLimit = resolveAdaptiveAcpHistoryPageLimit(
+              list,
+              sessionId,
+              MEMBER_EVENT_PAGE_LIMIT
+            );
             const older = await teamApi.listAgentEvents(
               agentId,
-              MEMBER_EVENT_PAGE_LIMIT,
+              nextPageLimit,
               sessionId,
               oldestLoadedId
             );

@@ -130,6 +130,25 @@ export function shouldClearSelectedConversationTask({
   return !taskList.some((task) => task.id === normalizedSelectedTaskId);
 }
 
+type ShouldClearSelectedTeamMemberArgs = {
+  selectedMemberId: string;
+  memberIds: string[];
+};
+
+export function shouldClearSelectedTeamMember({
+  selectedMemberId,
+  memberIds,
+}: ShouldClearSelectedTeamMemberArgs): boolean {
+  const normalizedSelectedMemberId = selectedMemberId.trim();
+  if (!normalizedSelectedMemberId) {
+    return false;
+  }
+  if (memberIds.length === 0) {
+    return false;
+  }
+  return !memberIds.includes(normalizedSelectedMemberId);
+}
+
 export function resolveAgentWorkspaceStatusView(
   member: TeamMemberLiveState | null
 ): AgentWorkspaceStatusView {

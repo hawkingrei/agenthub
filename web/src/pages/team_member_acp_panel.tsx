@@ -12,7 +12,10 @@ import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
-import { hasIncompleteLeadingAcpMessage } from "./team/acp_history_prefetch";
+import {
+  ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
+  hasIncompleteLeadingAcpMessage,
+} from "./team/acp_history_prefetch";
 import {
   OUTPUT_HEADER_META_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
@@ -49,7 +52,6 @@ type TeamMemberAcpPanelProps = {
 };
 
 type TeamMemberAcpTab = "conversation" | "plan" | "debug";
-const TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS = 12;
 
 const NOOP = () => {};
 
@@ -151,6 +153,8 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     () => hasIncompleteLeadingAcpMessage(memberEvents, selectedSessionId ?? null),
     [memberEvents, selectedSessionId]
   );
+  const hasVisibleConversationItems =
+    acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
 
   React.useEffect(() => {
     setAcpTab("conversation");
@@ -418,14 +422,21 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
-    if (memberEventsLoading) {
+    if (memberEventsLoading && !hasVisibleConversationItems) {
       return "Active thread loading";
     }
     if (!acpView.hasAcp && memberEvents.length === 0) {
       return "Active thread has no events yet";
     }
     return "Active thread";
-  }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
+  }, [
+    acpView.hasAcp,
+    hasVisibleConversationItems,
+    memberEvents.length,
+    memberEventsLoading,
+    selectedMemberId,
+    selectedSessionId,
+  ]);
   const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const hasVisibleInputDock = canSendInput && showInputDock;
   React.useEffect(() => {
@@ -445,9 +456,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       developerMode,
       conversationLoading:
         effectiveAcpTab === "conversation" &&
+        !hasVisibleConversationItems &&
         ((memberEventsLoading &&
           acpConversation.conversationSourceItems <
-            TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS) ||
+            ACP_INITIAL_VISIBLE_MESSAGE_TARGET) ||
           ((memberEventsLoading || memberEventsHasMore) &&
             hasIncompleteLeadingConversationMessage)),
       conversationBottomClearance,
@@ -509,6 +521,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       acpConfigId,
       acpConfigValue,
       acpConversation.jumpToConversationBottom,
+      hasVisibleConversationItems,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
       acpConversation.conversationSourceItems,

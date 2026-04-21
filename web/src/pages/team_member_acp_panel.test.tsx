@@ -302,6 +302,54 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     ).not.toBeNull();
   });
 
+  it("keeps visible ACP content on screen while background history refresh is still loading", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 7,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "7",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "partial markdown",
+              chunk: true,
+              message_id: "msg-1",
+              chunk_index: 12,
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={7}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
+    expect(container.textContent).toContain("Active thread");
+  });
+
   it("submits selected ACP mode and model values for the team member", async () => {
     const onAcpSetMode = vi.fn();
     const onAcpSetModel = vi.fn();
