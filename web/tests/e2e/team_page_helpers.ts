@@ -411,6 +411,25 @@ export async function openKanbanDeveloperTools(
   await expect(compilePreviewButton).toBeEnabled();
 }
 
+async function closeTaskDetailModalIfOpen(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+  if (!(await taskDetailDialog.isVisible().catch(() => false))) {
+    return;
+  }
+
+  const closeButton = taskDetailDialog.locator(".mantine-Modal-close").first();
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click();
+    await expect(taskDetailDialog).toBeHidden();
+    return;
+  }
+
+  await page.keyboard.press("Escape").catch(() => {});
+  await expect(taskDetailDialog).toBeHidden();
+}
+
 export async function selectPrimaryTeamEntryFromSidebar(
   page: import("@playwright/test").Page,
   label: string
@@ -428,17 +447,7 @@ export async function openMainTeamAction(
   label: string,
   allowSidebarReset = true
 ): Promise<void> {
-  const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
-  if (await taskDetailDialog.isVisible().catch(() => false)) {
-    const closeButton = taskDetailDialog.locator(".mantine-Modal-close").first();
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.click();
-      await expect(taskDetailDialog).toBeHidden();
-    } else {
-      await page.keyboard.press("Escape").catch(() => {});
-      await expect(taskDetailDialog).toBeHidden();
-    }
-  }
+  await closeTaskDetailModalIfOpen(page);
 
   const teamsMain = page.locator(".teams-main");
   const scope = (await teamsMain.count()) > 0 ? teamsMain : page.locator("body");
@@ -513,6 +522,7 @@ export async function openAdvancedView(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
+  await closeTaskDetailModalIfOpen(page);
   const trigger = page
     .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
     .first();
