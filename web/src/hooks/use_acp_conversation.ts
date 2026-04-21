@@ -216,6 +216,15 @@ export function shouldAutoLoadConversationHistory(
   return conversationMessageCount < minMessages;
 }
 
+export const DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS = 24;
+
+export function shouldDefaultConversationStickToBottom(
+  total: number,
+  minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
+): boolean {
+  return total >= Math.max(1, minItems);
+}
+
 export { normalizeThreadAvgHeightEstimate as normalizeConversationAvgHeightEstimate };
 
 export { restoreThreadScrollTop as restoreConversationScrollTop };
@@ -395,8 +404,24 @@ export function useAcpConversation({
     height: 0,
   });
   const [conversationViewportWidth, setConversationViewportWidth] = useState(0);
+  const conversationMessages = useMemo<ConversationItem[]>(
+    () =>
+      buildConversationMessages(
+        acpView.messages,
+        acpView.toolCalls,
+        acpView.plan,
+        activeSessionId
+      ),
+    [acpView.messages, acpView.toolCalls, acpView.plan, activeSessionId]
+  );
+  const initialConversationStickToBottom = useMemo(
+    () => shouldDefaultConversationStickToBottom(conversationMessages.length),
+    [conversationMessages.length]
+  );
   const didAutoAlignConversationRef = useRef(false);
-  const [conversationStickToBottom, setConversationStickToBottom] = useState(true);
+  const [conversationStickToBottom, setConversationStickToBottom] = useState(() =>
+    initialConversationStickToBottom
+  );
   const [conversationFrozen, setConversationFrozen] = useState(false);
   const [conversationFreezeCursor, setConversationFreezeCursor] = useState<
     SeqComparable | null
@@ -409,16 +434,6 @@ export function useAcpConversation({
   const [focusedConversationToolCallId, setFocusedConversationToolCallId] = useState<
     string | null
   >(null);
-  const conversationMessages = useMemo<ConversationItem[]>(
-    () =>
-      buildConversationMessages(
-        acpView.messages,
-        acpView.toolCalls,
-        acpView.plan,
-        activeSessionId
-      ),
-    [acpView.messages, acpView.toolCalls, acpView.plan, activeSessionId]
-  );
   const conversationWindow = useMemo(
     () =>
       windowConversation(
@@ -887,10 +902,11 @@ export function useAcpConversation({
 
   useEffect(() => {
     didAutoAlignConversationRef.current = false;
-    acpStickToBottomRef.current = true;
+    const defaultStickToBottom = initialConversationStickToBottom;
+    acpStickToBottomRef.current = defaultStickToBottom;
     pendingScrollAdjustRef.current = null;
     lastConversationScrollTopRef.current = null;
-    setConversationStickToBottom(true);
+    setConversationStickToBottom(defaultStickToBottom);
     setConversationFrozen(false);
     setConversationFreezeCursor(null);
     setConversationFrozenItems([]);
@@ -901,7 +917,7 @@ export function useAcpConversation({
       top: 0,
       height: prev.height,
     }));
-  }, [activeAgent, activeSessionId]);
+  }, [activeAgent, activeSessionId, initialConversationStickToBottom]);
 
   useEffect(() => {
     if (acpTab !== "conversation") {
