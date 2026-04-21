@@ -199,7 +199,13 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
 
   useEffect(() => {
     if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
-    const timer = window.setInterval(() => {
+    const refreshActiveRunContext = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       if (tab === "mailbox") {
         void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
         const actorId = chatInboxActorId.trim();
@@ -211,9 +217,27 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       void refreshRun(activeRunIdForSelectedTeam).catch(() => undefined);
       void refreshEvents(activeRunIdForSelectedTeam).catch(() => undefined);
       void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
-    }, 4000);
+    };
+    const handleFocus = () => {
+      refreshActiveRunContext();
+    };
+    const handleOnline = () => {
+      refreshActiveRunContext();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshActiveRunContext();
+      }
+    };
+    const timer = window.setInterval(refreshActiveRunContext, 4000);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
     activeRunIdForSelectedTeam,

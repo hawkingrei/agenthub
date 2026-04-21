@@ -32,6 +32,10 @@ describe("useTeamTaskEffects", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -75,6 +79,39 @@ describe("useTeamTaskEffects", () => {
     });
 
     expect(params.refreshTasks).not.toHaveBeenCalled();
+  });
+
+  it("pauses task polling while the document is hidden and refreshes on return", async () => {
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_TASK_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+    expect(params.refreshTasks).toHaveBeenLastCalledWith("team-1");
   });
 
   it("forwards polling errors without breaking the interval", async () => {

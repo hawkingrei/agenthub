@@ -765,6 +765,70 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Team One");
   });
 
+  it("TeamSidebar detail menu exposes switch-team and runtime actions", async () => {
+    const teamOne = buildTeam({ id: "team-1", name: "Team One" });
+    const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
+    const onSelectTeam = vi.fn();
+    const onOpenTeamMemberForge = vi.fn();
+    const onStartTeamRuntime = vi.fn();
+    const onStopTeamRuntime = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[teamOne, teamTwo]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            selectedTeamRuntimeStatus={{
+              label: "Team running",
+              online: 1,
+              total: 1,
+              status: "running",
+            }}
+            selectedTeamHasConfiguredMembers={true}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[buildMemberLiveState()]}
+            focusedAgentMemberId=""
+            tab="conversation"
+            onSelectTeam={onSelectTeam}
+            onSelectConversation={() => {}}
+            onSelectKanban={() => {}}
+            onSelectAgentTab={() => {}}
+            onSelectUtilityTab={() => {}}
+            onOpenTeamMemberForge={onOpenTeamMemberForge}
+            onStartTeamRuntime={onStartTeamRuntime}
+            onStopTeamRuntime={onStopTeamRuntime}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Switch team") ?? false);
+    expect(document.body.textContent).toContain("Team ID");
+    clickElement(findInteractiveByText(document.body, "Team Two"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Add Agent") ?? false);
+    clickElement(findInteractiveByText(document.body, "Add Agent"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);
+    clickElement(findInteractiveByText(document.body, "Stop Team"));
+
+    expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(onOpenTeamMemberForge).toHaveBeenCalledTimes(1);
+    expect(onStopTeamRuntime).toHaveBeenCalledTimes(1);
+    expect(onStartTeamRuntime).not.toHaveBeenCalled();
+  });
+
   it("TeamRunPanel supports run filter/list interactions and empty-state messages", () => {
     const onDeleteTeam = vi.fn();
     const onStartRun = vi.fn();

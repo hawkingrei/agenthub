@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 type UseResumeRefreshOptions = {
   enabled: boolean;
   intervalMs?: number | null;
+  pauseWhenHidden?: boolean;
   refresh: () => Promise<unknown>;
   onRefreshError?: (error: unknown) => void;
 };
@@ -10,10 +11,12 @@ type UseResumeRefreshOptions = {
 export function useResumeRefresh({
   enabled,
   intervalMs,
+  pauseWhenHidden = false,
   refresh,
   onRefreshError,
 }: UseResumeRefreshOptions) {
   const enabledRef = useRef(enabled);
+  const pauseWhenHiddenRef = useRef(pauseWhenHidden);
   const refreshRef = useRef(refresh);
   const onRefreshErrorRef = useRef(onRefreshError);
   const refreshInFlightRef = useRef(false);
@@ -22,6 +25,10 @@ export function useResumeRefresh({
   useEffect(() => {
     enabledRef.current = enabled;
   }, [enabled]);
+
+  useEffect(() => {
+    pauseWhenHiddenRef.current = pauseWhenHidden;
+  }, [pauseWhenHidden]);
 
   useEffect(() => {
     refreshRef.current = refresh;
@@ -33,6 +40,13 @@ export function useResumeRefresh({
 
   const requestRefresh = useCallback(() => {
     if (!enabledRef.current) {
+      return;
+    }
+    if (
+      pauseWhenHiddenRef.current &&
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    ) {
       return;
     }
     if (refreshInFlightRef.current) {

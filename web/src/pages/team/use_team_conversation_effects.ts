@@ -161,6 +161,7 @@ export function useTeamConversationEffects({
   useResumeRefresh({
     enabled: conversationRefreshEnabled,
     intervalMs: 4000,
+    pauseWhenHidden: true,
     refresh: refreshSelectedConversation,
   });
 

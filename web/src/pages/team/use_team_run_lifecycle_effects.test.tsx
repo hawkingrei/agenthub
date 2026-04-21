@@ -1,0 +1,147 @@
+// @vitest-environment jsdom
+import React, { act } from "react";
+import { createRoot, Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TeamRunRecord, TeamRunSnapshotRecord } from "../../api";
+import { useTeamRunLifecycleEffects } from "./use_team_run_lifecycle_effects";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+type HookParams = Parameters<typeof useTeamRunLifecycleEffects>[0];
+
+function makeRun(id: string, teamId: string): TeamRunRecord {
+  return {
+    id,
+    team_id: teamId,
+    context_id: `ctx-${id}`,
+    status: "working",
+    input: {},
+    created_at: 1,
+    started_at: null,
+    ended_at: null,
+  };
+}
+
+function makeSnapshot(teamId: string): TeamRunSnapshotRecord {
+  return {
+    team: {
+      id: teamId,
+      name: "Team One",
+    },
+    leader_member_id: "leader",
+    members: [],
+    inbox: [],
+    steps: [],
+    tasks: [],
+    generated_at: 1,
+  };
+}
+
+function createParams(overrides: Partial<HookParams> = {}): HookParams {
+  return {
+    selectedTeamId: "team-1",
+    runStatusFilter: "all",
+    runs: [makeRun("run-1", "team-1")],
+    activeRunIdForSelectedTeam: "run-1",
+    eventsAutoRefresh: true,
+    tab: "events",
+    chatInboxActorId: "",
+    refreshAgents: vi.fn().mockResolvedValue(undefined),
+    refreshTeams: vi.fn().mockResolvedValue(undefined),
+    refreshTeamRuns: vi.fn().mockResolvedValue(undefined),
+    refreshRun: vi.fn().mockResolvedValue(makeRun("run-1", "team-1")),
+    refreshSteps: vi.fn().mockResolvedValue(undefined),
+    refreshEvents: vi.fn().mockResolvedValue(undefined),
+    refreshSnapshot: vi.fn().mockResolvedValue(makeSnapshot("team-1")),
+    loadInbox: vi.fn().mockResolvedValue(undefined),
+    parseError: vi.fn(() => "parsed-error"),
+    setError: vi.fn(),
+    setActiveRunId: vi.fn(),
+    setRuns: vi.fn(),
+    setEvents: vi.fn(),
+    setSteps: vi.fn(),
+    setInbox: vi.fn(),
+    setSnapshot: vi.fn(),
+    setSelectedMemberId: vi.fn(),
+    setMemberEvents: vi.fn(),
+    setChatSeenByConversation: vi.fn(),
+    setChatStickToBottom: vi.fn(),
+    ...overrides,
+  };
+}
+
+function HookHarness({ params }: { params: HookParams }) {
+  useTeamRunLifecycleEffects(params);
+  return null;
+}
+
+describe("useTeamRunLifecycleEffects", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("pauses active-run polling while the document is hidden and refreshes on return", async () => {
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const refreshRunBase = (params.refreshRun as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshEventsBase = (params.refreshEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
+  });
+});
