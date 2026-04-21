@@ -1816,7 +1816,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     const cached = loadTeamMemberAcpRuntimeCache(agentId, sessionId);
     setMemberEvents(cached);
-    setMemberEventsHasMore(false);
+    setMemberEventsHasMore(cached.length > 0);
   }, [selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
 
   useEffect(() => {
