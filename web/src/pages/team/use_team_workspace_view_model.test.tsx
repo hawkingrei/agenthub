@@ -158,12 +158,14 @@ describe("useTeamWorkspaceViewModel", () => {
   });
 
   it("routes agent workspace selections through team detail and compact sidebar collapse", async () => {
+    const prefetchWorkspaceLens = vi.fn();
     const params = createParams({
       tab: "agent_acp",
       focusedAgentMemberId: "worker-1",
       selectedAgentWorkspaceMemberId: "worker-1",
       selectedMemberId: "worker-1",
       isCompactWorkbench: true,
+      prefetchWorkspaceLens,
       selectedTeamMemberLiveStates: [
         {
           member_id: "worker-1",
@@ -199,6 +201,10 @@ describe("useTeamWorkspaceViewModel", () => {
         snapshot?.onSelectWorkspaceLens("search");
       });
       expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "search");
+      act(() => {
+        snapshot?.workspaceLensItems[2]?.onPrefetch?.();
+      });
+      expect(prefetchWorkspaceLens).toHaveBeenCalledWith("members");
     } finally {
       mounted.cleanup();
     }

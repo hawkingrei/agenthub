@@ -44,12 +44,12 @@ import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamThreadPane } from "./team/team_thread_pane";
 import {
   TeamPanelLoadingFallback,
+  prefetchTeamSetupSurface,
+  prefetchTeamWorkbenchTab,
   TeamWorkbenchContent,
 } from "./team/team_workbench_content";
 import {
   parseErrorMessage,
-  teamSpecHasConfiguredMembers,
-  teamSpecHasLeader,
   type TeamMemberProfileDraft,
 } from "./team/create_helpers";
 import {
@@ -72,22 +72,14 @@ import {
 } from "./team/mailbox_helpers";
 import {
   EMPTY_TEAM_PROMPT_DEFAULTS,
-  TeamMemberAgentStatus,
-  TeamMemberAgentStatusSummary,
   backfillEmptyWorkerDraftPrompts,
-  buildTeamMemberLiveStates,
-  parseTeamSpecMembers,
   resolveTeamPromptForRole,
-  resolveTeamMemberAgentStatuses,
-  summarizeTeamMemberAgentStatuses,
 } from "./team/member_helpers";
 import {
   formatTs,
   resolveTeamPageNotice,
   resolveTaskConversationMemberIds,
   resolveTeamMemberAgentControlState,
-  resolveTeamRuntimeControlTone,
-  resolveTeamRuntimeStatus,
   toPrettyJson,
   upsertRun,
 } from "./team/page_helpers";
@@ -103,6 +95,7 @@ import { useTeamConversationActions } from "./team/use_team_conversation_actions
 import { useTeamConversationEffects } from "./team/use_team_conversation_effects";
 import { useTeamMemberAcpEffects } from "./team/use_team_member_acp_effects";
 import { useTeamMemberAgentBackfillEffect } from "./team/use_team_member_agent_backfill_effect";
+import { useTeamCatalogViewModel } from "./team/use_team_catalog_view_model";
 import { useTeamMailboxLifecycleEffects } from "./team/use_team_mailbox_lifecycle_effects";
 import { useTeamWorkspaceViewModel } from "./team/use_team_workspace_view_model";
 import { useTeamTaskEffects } from "./team/use_team_task_effects";
@@ -153,23 +146,28 @@ import {
   TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS,
 } from "../ui/tailwind_classes";
 
+const loadTeamMemberAcpPanel = () => import("./team_member_acp_panel");
+const loadTeamPageModals = () => import("./team/team_page_modals");
+const loadDebugTeamStepsPanel = () => import("./team_steps_panel");
+const loadDebugTeamMailboxPanel = () => import("./team_mailbox_panel");
+
 const LazyTeamMemberAcpPanel = React.lazy(async () => {
-  const module = await import("./team_member_acp_panel");
+  const module = await loadTeamMemberAcpPanel();
   return { default: module.TeamMemberAcpPanel };
 });
 
 const LazyTeamPageModals = React.lazy(async () => {
-  const module = await import("./team/team_page_modals");
+  const module = await loadTeamPageModals();
   return { default: module.TeamPageModals };
 });
 
 const LazyTeamStepsPanel = React.lazy(async () => {
-  const module = await import("./team_steps_panel");
+  const module = await loadDebugTeamStepsPanel();
   return { default: module.TeamStepsPanel };
 });
 
 const LazyTeamMailboxPanel = React.lazy(async () => {
-  const module = await import("./team_mailbox_panel");
+  const module = await loadDebugTeamMailboxPanel();
   return { default: module.TeamMailboxPanel };
 });
 
@@ -932,15 +930,31 @@ export function TeamPage(props: TeamPageProps) {
     setSelectedMemberId("");
     setFocusedAgentMemberId("");
   }, [effectiveSelectedTeamId, setSelectedMemberId]);
-  const teamSpecMemberIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const team of teams) {
-      for (const member of parseTeamSpecMembers(team.spec)) {
-        ids.add(member.member_id);
-      }
-    }
-    return [...ids];
-  }, [teams]);
+  const {
+    teamSpecMemberIds,
+    teamMemberStatusByTeamId,
+    teamMemberSummaryByTeamId,
+    selectorTeamItems,
+    selectedTeamMemberStatuses,
+    selectedTeamSnapshotMembers,
+    selectedTeamMemberLiveStates,
+    selectedTeamMemberSummary,
+    selectedTeamRuntime,
+    selectedTeamRuntimeStatus,
+    selectedTeamRuntimeControlTone,
+    selectedTeamMembers,
+    selectedTeamHasConfiguredMembers,
+    selectedTeamHasLeader,
+    selectedTeamWorkerCount,
+  } = useTeamCatalogViewModel({
+    teams,
+    agents,
+    teamMemberAgentsById,
+    teamRuntimeByTeamId,
+    selectedTeam,
+    snapshot,
+    teamSelectorFilter,
+  });
   useTeamMemberAgentBackfillEffect({
     token: props.token,
     agents,
@@ -948,122 +962,11 @@ export function TeamPage(props: TeamPageProps) {
     teamMemberAgentsById,
     setTeamMemberAgentsById,
   });
-  const teamMemberStatusByTeamId = useMemo(() => {
-    const next = new Map<string, TeamMemberAgentStatus[]>();
-    for (const team of teams) {
-      next.set(
-        team.id,
-        resolveTeamMemberAgentStatuses(
-          team.spec,
-          agents,
-          teamMemberAgentsById,
-          teamRuntimeByTeamId[team.id]?.members
-        )
-      );
-    }
-    return next;
-  }, [agents, teamMemberAgentsById, teamRuntimeByTeamId, teams]);
-  const teamMemberSummaryByTeamId = useMemo(() => {
-    const next = new Map<string, TeamMemberAgentStatusSummary>();
-    for (const team of teams) {
-      const members = teamMemberStatusByTeamId.get(team.id) ?? [];
-      next.set(team.id, summarizeTeamMemberAgentStatuses(members));
-    }
-    return next;
-  }, [teamMemberStatusByTeamId, teams]);
-  const deferredTeamSelectorFilter = React.useDeferredValue(teamSelectorFilter);
-  const normalizedTeamSelectorFilter = deferredTeamSelectorFilter.trim().toLowerCase();
-  const selectorVisibleTeams = useMemo(() => {
-    if (!normalizedTeamSelectorFilter) {
-      return teams;
-    }
-    return teams.filter((team) => {
-      const name = team.name.toLowerCase();
-      const id = team.id.toLowerCase();
-      return name.includes(normalizedTeamSelectorFilter) || id.includes(normalizedTeamSelectorFilter);
-    });
-  }, [normalizedTeamSelectorFilter, teams]);
-  const selectorTeamItems = useMemo(
-    () =>
-      selectorVisibleTeams.map((team) => {
-        const summary = teamMemberSummaryByTeamId.get(team.id);
-        const runtime = teamRuntimeByTeamId[team.id] ?? null;
-        const runtimeStatus = resolveTeamRuntimeStatus(summary, runtime);
-        return {
-          id: team.id,
-          name: team.name,
-          description: team.description?.trim() || "No mission summary yet.",
-          summary: summary
-            ? `${summary.total} members · ${summary.active} active${
-                summary.inactive > 0 ? ` · ${summary.inactive} idle` : ""
-              }${summary.missing > 0 ? ` · ${summary.missing} missing` : ""}`
-            : "No agents configured yet",
-          runtimeLabel: runtimeStatus.label,
-        };
-      }),
-    [selectorVisibleTeams, teamMemberSummaryByTeamId, teamRuntimeByTeamId]
-  );
-  const selectedTeamMemberStatuses = useMemo(() => {
-    if (!selectedTeam) {
-      return [];
-    }
-    return teamMemberStatusByTeamId.get(selectedTeam.id) ?? [];
-  }, [selectedTeam, teamMemberStatusByTeamId]);
-  const selectedTeamSnapshotMembers = useMemo(() => {
-    if (!selectedTeam || !snapshot) {
-      return undefined;
-    }
-    if (snapshot.team.id !== selectedTeam.id) {
-      return undefined;
-    }
-    return snapshot.members;
-  }, [selectedTeam, snapshot]);
-  const selectedTeamMemberLiveStates = useMemo(
-    () =>
-      buildTeamMemberLiveStates(selectedTeamMemberStatuses, selectedTeamSnapshotMembers),
-    [selectedTeamMemberStatuses, selectedTeamSnapshotMembers]
-  );
-  const selectedTeamMemberSummary = useMemo(() => {
-    if (!selectedTeam) {
-      return null;
-    }
-    return teamMemberSummaryByTeamId.get(selectedTeam.id) ?? null;
-  }, [selectedTeam, teamMemberSummaryByTeamId]);
-  const selectedTeamRuntime = useMemo(() => {
-    if (!selectedTeam) {
-      return null;
-    }
-    return teamRuntimeByTeamId[selectedTeam.id] ?? null;
-  }, [selectedTeam, teamRuntimeByTeamId]);
-  const selectedTeamRuntimeStatus = useMemo(
-    () => resolveTeamRuntimeStatus(selectedTeamMemberSummary, selectedTeamRuntime),
-    [selectedTeamMemberSummary, selectedTeamRuntime]
-  );
-  const selectedTeamRuntimeControlTone = useMemo(
-    () => resolveTeamRuntimeControlTone(selectedTeamRuntimeStatus.status),
-    [selectedTeamRuntimeStatus.status]
-  );
-  const selectedTeamMembers = useMemo(
-    () => (selectedTeam ? parseTeamSpecMembers(selectedTeam.spec) : []),
-    [selectedTeam]
-  );
-  const selectedTeamHasConfiguredMembers = useMemo(
-    () => (selectedTeam ? teamSpecHasConfiguredMembers(selectedTeam.spec) : false),
-    [selectedTeam]
-  );
   const shouldWatchSelectedTeamRuntime = useMemo(
     () =>
       selectedTeamHasConfiguredMembers &&
       (busy === "start-team" || selectedTeamRuntimeStatus.status !== "stopped"),
     [busy, selectedTeamHasConfiguredMembers, selectedTeamRuntimeStatus.status]
-  );
-  const selectedTeamHasLeader = useMemo(
-    () => (selectedTeam ? teamSpecHasLeader(selectedTeam.spec) : false),
-    [selectedTeam]
-  );
-  const selectedTeamWorkerCount = useMemo(
-    () => selectedTeamMembers.filter((member) => member.role === "worker").length,
-    [selectedTeamMembers]
   );
   const teamMemberRoleOptions = useMemo(
     () => resolveTeamMemberRoleOptions(selectedTeamHasLeader),
@@ -1934,6 +1837,23 @@ export function TeamPage(props: TeamPageProps) {
     },
     [routeChannelId, routeWorkspaceLens]
   );
+  const prefetchWorkspaceLens = useCallback((lens: WorkspaceLens) => {
+    if (lens === "channels") {
+      prefetchTeamWorkbenchTab("runs");
+      prefetchTeamWorkbenchTab("mailbox");
+      void loadTeamPageModals();
+      return;
+    }
+    if (lens === "members") {
+      prefetchTeamWorkbenchTab("overview");
+      prefetchTeamWorkbenchTab("member_console");
+      void loadTeamMemberAcpPanel();
+      return;
+    }
+    if (lens === "tasks") {
+      prefetchTeamWorkbenchTab("runs");
+    }
+  }, []);
   const selectedAgentWorkspaceLiveState = useMemo(
     () =>
       selectedTeamMemberLiveStates.find(
@@ -1998,7 +1918,49 @@ export function TeamPage(props: TeamPageProps) {
     navigateToTeamLens,
     navigateToTeamDetail,
     navigateToSidebarTeam,
+    prefetchWorkspaceLens,
   });
+  useEffect(() => {
+    if (!selectedTeam) {
+      return;
+    }
+
+    let active = true;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const prefetchCommonSurfaces = () => {
+      if (!active) {
+        return;
+      }
+      prefetchTeamWorkbenchTab("runs");
+      prefetchTeamWorkbenchTab("overview");
+      void loadTeamMemberAcpPanel();
+      void loadTeamPageModals();
+      if (!selectedTeamHasConfiguredMembers) {
+        prefetchTeamSetupSurface();
+      }
+    };
+
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      idleHandle = idleWindow.requestIdleCallback(prefetchCommonSurfaces, { timeout: 1200 });
+    } else {
+      timeoutHandle = window.setTimeout(prefetchCommonSurfaces, 400);
+    }
+
+    return () => {
+      active = false;
+      if (idleHandle != null && typeof idleWindow.cancelIdleCallback === "function") {
+        idleWindow.cancelIdleCallback(idleHandle);
+      }
+      if (timeoutHandle != null) {
+        window.clearTimeout(timeoutHandle);
+      }
+    };
+  }, [selectedTeam, selectedTeamHasConfiguredMembers]);
   const workspaceAdvancedTabItems = (isAgentWorkspace
     ? TEAM_AGENT_ADVANCED_TAB_ITEMS
     : TEAM_UTILITY_ADVANCED_TAB_ITEMS

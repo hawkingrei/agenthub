@@ -144,6 +144,8 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
 
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS = "px-2 py-1.5";
 const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS = TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS;
+const TEAM_SIDEBAR_VIRTUAL_LIST_CLASS =
+  "[content-visibility:auto] [contain-intrinsic-size:1px_320px]";
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -437,7 +439,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 </div>
               )}
 
-              <div className="teams-list flex max-h-72 min-h-0 flex-col gap-0.5 overflow-auto px-1">
+              <div
+                className={`teams-list flex max-h-72 min-h-0 flex-col gap-0.5 overflow-auto px-1 ${TEAM_SIDEBAR_VIRTUAL_LIST_CLASS}`}
+              >
                 {teams.length === 0 && (
                   <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>Create a team to begin.</p>
                 )}
@@ -539,7 +543,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               />
             </button>
             {sectionOpen.agents && (
-              <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} px-1`}>
+              <div className={`${TEAM_SIDEBAR_NAV_LIST_CLASS} ${TEAM_SIDEBAR_VIRTUAL_LIST_CLASS} px-1`}>
                 {memberLiveStates.length === 0 && (
                   <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No agents joined yet.</p>
                 )}

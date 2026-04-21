@@ -9,40 +9,77 @@ import {
 import { TeamWorkspaceHeader } from "./team_workspace_header";
 import type { TeamTab } from "./state";
 
+const loadTeamEventsPanel = () => import("../team_events_panel");
+const loadTeamMailboxPanel = () => import("../team_mailbox_panel");
+const loadTeamMemberConsolePanel = () => import("../team_member_console_panel");
+const loadTeamOverviewPanel = () => import("../team_overview_panel");
+const loadTeamRunPanel = () => import("../team_run_panel");
+const loadTeamSetupPanel = () => import("../team_setup_panel");
+const loadTeamStepsPanel = () => import("../team_steps_panel");
+
 const LazyTeamEventsPanel = React.lazy(async () => {
-  const module = await import("../team_events_panel");
+  const module = await loadTeamEventsPanel();
   return { default: module.TeamEventsPanel };
 });
 
 const LazyTeamMailboxPanel = React.lazy(async () => {
-  const module = await import("../team_mailbox_panel");
+  const module = await loadTeamMailboxPanel();
   return { default: module.TeamMailboxPanel };
 });
 
 const LazyTeamMemberConsolePanel = React.lazy(async () => {
-  const module = await import("../team_member_console_panel");
+  const module = await loadTeamMemberConsolePanel();
   return { default: module.TeamMemberConsolePanel };
 });
 
 const LazyTeamOverviewPanel = React.lazy(async () => {
-  const module = await import("../team_overview_panel");
+  const module = await loadTeamOverviewPanel();
   return { default: module.TeamOverviewPanel };
 });
 
 const LazyTeamRunPanel = React.lazy(async () => {
-  const module = await import("../team_run_panel");
+  const module = await loadTeamRunPanel();
   return { default: module.TeamRunPanel };
 });
 
 const LazyTeamSetupPanel = React.lazy(async () => {
-  const module = await import("../team_setup_panel");
+  const module = await loadTeamSetupPanel();
   return { default: module.TeamSetupPanel };
 });
 
 const LazyTeamStepsPanel = React.lazy(async () => {
-  const module = await import("../team_steps_panel");
+  const module = await loadTeamStepsPanel();
   return { default: module.TeamStepsPanel };
 });
+
+export function prefetchTeamWorkbenchTab(tab: TeamTab): void {
+  switch (tab) {
+    case "runs":
+      void loadTeamRunPanel();
+      return;
+    case "overview":
+      void loadTeamOverviewPanel();
+      return;
+    case "events":
+      void loadTeamEventsPanel();
+      return;
+    case "steps":
+      void loadTeamStepsPanel();
+      return;
+    case "mailbox":
+      void loadTeamMailboxPanel();
+      return;
+    case "member_console":
+      void loadTeamMemberConsolePanel();
+      return;
+    default:
+      return;
+  }
+}
+
+export function prefetchTeamSetupSurface(): void {
+  void loadTeamSetupPanel();
+}
 
 export function TeamPanelLoadingFallback() {
   return (

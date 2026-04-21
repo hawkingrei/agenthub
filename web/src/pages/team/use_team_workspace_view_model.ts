@@ -52,6 +52,7 @@ type UseTeamWorkspaceViewModelOptions = {
   navigateToTeamLens: (teamId: string, lens: WorkspaceLens) => void;
   navigateToTeamDetail: (teamId: string) => void;
   navigateToSidebarTeam: (teamId: string) => void;
+  prefetchWorkspaceLens?: (lens: WorkspaceLens) => void;
 };
 
 export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOptions) {
@@ -85,6 +86,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     navigateToTeamLens,
     navigateToTeamDetail,
     navigateToSidebarTeam,
+    prefetchWorkspaceLens,
   } = options;
 
   const selectedMemberLiveState = useMemo(
@@ -102,12 +104,32 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
   const workspaceLensItems = useMemo(
     () => [
-      { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
-      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
-      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
-      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
+      {
+        value: "channels",
+        label: "Channels",
+        active: activeWorkspaceLens === "channels",
+        onPrefetch: () => prefetchWorkspaceLens?.("channels"),
+      },
+      {
+        value: "tasks",
+        label: "Tasks",
+        active: activeWorkspaceLens === "tasks",
+        onPrefetch: () => prefetchWorkspaceLens?.("tasks"),
+      },
+      {
+        value: "members",
+        label: "Members",
+        active: activeWorkspaceLens === "members",
+        onPrefetch: () => prefetchWorkspaceLens?.("members"),
+      },
+      {
+        value: "search",
+        label: "Search",
+        active: activeWorkspaceLens === "search",
+        onPrefetch: () => prefetchWorkspaceLens?.("search"),
+      },
     ],
-    [activeWorkspaceLens]
+    [activeWorkspaceLens, prefetchWorkspaceLens]
   );
 
   const selectedAgentFallbackName = useMemo(() => {

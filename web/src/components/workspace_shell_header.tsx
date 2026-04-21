@@ -15,6 +15,7 @@ export type WorkspaceShellLensItem = {
   active: boolean;
   disabled?: boolean;
   title?: string;
+  onPrefetch?: () => void;
 };
 
 type WorkspaceShellHeaderProps = {
@@ -111,6 +112,8 @@ export const WorkspaceShellHeader = React.memo(
                       : WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS
                   }
                   onClick={() => onSelectLens(item.value)}
+                  onMouseEnter={item.onPrefetch}
+                  onFocus={item.onPrefetch}
                   disabled={item.disabled}
                   aria-pressed={item.active}
                   title={item.title}
