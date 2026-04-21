@@ -268,7 +268,7 @@ export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-1.5";
 export const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
 
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "group relative flex w-full max-w-full gap-2 px-2 py-0.75 sm:px-2.5";
+  "group relative flex w-full max-w-full gap-2 px-2 py-1 sm:px-2.5";
 
 export const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS = TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS;
 
@@ -404,13 +404,13 @@ export const MAILBOX_PANEL_CLASS =
   "teams-chat-panel flex min-w-0 flex-col gap-2.5 rounded-xl border border-notion-border bg-notion-bg-subtle p-3 shadow-sm";
 
 export const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "inline-flex h-7.5 items-center justify-center gap-1 rounded-md border border-notion-border bg-white px-2.5 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
+  "inline-flex h-8 items-center justify-center gap-1 rounded-md border border-notion-border bg-white px-2.5 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
 
 export const MAILBOX_MESSAGE_LIST_CLASS =
   "teams-chat-messages m-0 flex max-h-[480px] list-none flex-col gap-1.5 overflow-auto p-0";
 
 export const MAILBOX_MESSAGE_ITEM_CLASS =
-  "teams-message-item group relative flex w-full flex-col px-2 py-0.75";
+  "teams-message-item group relative flex w-full flex-col px-2 py-1";
 
 export const MAILBOX_MESSAGE_BUBBLE_CLASS =
   "teams-message-bubble relative max-w-[88%] rounded-[16px] px-3 py-2 text-[14px] leading-6 shadow-notion-soft transition-all";

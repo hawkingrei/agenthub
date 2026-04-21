@@ -56,6 +56,7 @@ import {
   saveTeamMailboxInboxRuntimeCache,
   saveTeamMemberAcpRuntimeCache,
 } from "./team/runtime_cache_storage";
+import { shouldSkipRuntimeCacheSaveAfterHydrate } from "./team/runtime_cache_hydration";
 import {
   parseErrorMessage,
   type TeamMemberProfileDraft,
@@ -1777,13 +1778,18 @@ export function TeamPage(props: TeamPageProps) {
     setMemberEvents,
     setMemberEventsHasMore,
   });
+  const pendingConversationCacheHydrationKeyRef = useRef<string | null>(null);
+  const pendingMemberAcpCacheHydrationKeyRef = useRef<string | null>(null);
+  const pendingMailboxCacheHydrationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const teamId = effectiveSelectedTeamId?.trim() ?? "";
     const conversationId = selectedConversationId?.trim() ?? "";
     if (!teamId || !conversationId) {
+      pendingConversationCacheHydrationKeyRef.current = null;
       return;
     }
+    pendingConversationCacheHydrationKeyRef.current = `${teamId}:${conversationId}`;
     const cached = loadTeamConversationRuntimeCache(teamId, conversationId);
     setTaskMessages(cached.messages);
     setConversationMailboxMessages(cached.mailboxMessages);
@@ -1793,6 +1799,16 @@ export function TeamPage(props: TeamPageProps) {
     const teamId = effectiveSelectedTeamId?.trim() ?? "";
     const conversationId = selectedConversationId?.trim() ?? "";
     if (!teamId || !conversationId) {
+      return;
+    }
+    const cacheKey = `${teamId}:${conversationId}`;
+    if (
+      shouldSkipRuntimeCacheSaveAfterHydrate(
+        pendingConversationCacheHydrationKeyRef.current,
+        cacheKey
+      )
+    ) {
+      pendingConversationCacheHydrationKeyRef.current = null;
       return;
     }
     saveTeamConversationRuntimeCache(
@@ -1812,8 +1828,10 @@ export function TeamPage(props: TeamPageProps) {
     const agentId = selectedAgentWorkspaceAgentId.trim();
     const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
     if (!agentId || !sessionId) {
+      pendingMemberAcpCacheHydrationKeyRef.current = null;
       return;
     }
+    pendingMemberAcpCacheHydrationKeyRef.current = `${agentId}:${sessionId}`;
     const cached = loadTeamMemberAcpRuntimeCache(agentId, sessionId);
     setMemberEvents(cached);
     setMemberEventsHasMore(cached.length > 0);
@@ -1825,6 +1843,16 @@ export function TeamPage(props: TeamPageProps) {
     if (!agentId || !sessionId) {
       return;
     }
+    const cacheKey = `${agentId}:${sessionId}`;
+    if (
+      shouldSkipRuntimeCacheSaveAfterHydrate(
+        pendingMemberAcpCacheHydrationKeyRef.current,
+        cacheKey
+      )
+    ) {
+      pendingMemberAcpCacheHydrationKeyRef.current = null;
+      return;
+    }
     saveTeamMemberAcpRuntimeCache(agentId, sessionId, memberEvents);
   }, [memberEvents, selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
 
@@ -1832,8 +1860,10 @@ export function TeamPage(props: TeamPageProps) {
     const runId = activeRunIdForSelectedTeam?.trim() ?? "";
     const actorId = chatActors.inboxActorId.trim();
     if (!runId || !actorId) {
+      pendingMailboxCacheHydrationKeyRef.current = null;
       return;
     }
+    pendingMailboxCacheHydrationKeyRef.current = `${runId}:${actorId}`;
     const cached = loadTeamMailboxInboxRuntimeCache(runId, actorId);
     setInbox(cached);
   }, [activeRunIdForSelectedTeam, chatActors.inboxActorId, setInbox]);
@@ -1842,6 +1872,16 @@ export function TeamPage(props: TeamPageProps) {
     const runId = activeRunIdForSelectedTeam?.trim() ?? "";
     const actorId = chatActors.inboxActorId.trim();
     if (!runId || !actorId) {
+      return;
+    }
+    const cacheKey = `${runId}:${actorId}`;
+    if (
+      shouldSkipRuntimeCacheSaveAfterHydrate(
+        pendingMailboxCacheHydrationKeyRef.current,
+        cacheKey
+      )
+    ) {
+      pendingMailboxCacheHydrationKeyRef.current = null;
       return;
     }
     saveTeamMailboxInboxRuntimeCache(runId, actorId, inbox);
