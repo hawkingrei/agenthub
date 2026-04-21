@@ -428,6 +428,18 @@ export async function openMainTeamAction(
   label: string,
   allowSidebarReset = true
 ): Promise<void> {
+  const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+  if (await taskDetailDialog.isVisible().catch(() => false)) {
+    const closeButton = taskDetailDialog.locator(".mantine-Modal-close").first();
+    if (await closeButton.isVisible().catch(() => false)) {
+      await closeButton.click();
+      await expect(taskDetailDialog).toBeHidden();
+    } else {
+      await page.keyboard.press("Escape").catch(() => {});
+      await expect(taskDetailDialog).toBeHidden();
+    }
+  }
+
   const teamsMain = page.locator(".teams-main");
   const scope = (await teamsMain.count()) > 0 ? teamsMain : page.locator("body");
   const tab = scope.getByRole("tab", { name: label, exact: true }).first();

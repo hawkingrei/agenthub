@@ -2,8 +2,12 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider as CoreMantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+function MantineProvider({ children }: { children: React.ReactNode }) {
+  return <CoreMantineProvider env="test">{children}</CoreMantineProvider>;
+}
 
 const {
   getRuntimeDefaults,
@@ -1199,7 +1203,18 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
-      const openThreadButton = Array.from(container.querySelectorAll("button")).find(
+      const taskCardButton = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Investigate regression")
+      ) as HTMLButtonElement | undefined;
+      expect(taskCardButton).toBeDefined();
+
+      await act(async () => {
+        taskCardButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const openThreadButton = Array.from(document.body.querySelectorAll("button")).find(
         (button) => button.textContent?.includes("Open thread")
       ) as HTMLButtonElement | undefined;
       expect(openThreadButton).toBeDefined();
