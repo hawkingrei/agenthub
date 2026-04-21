@@ -19,6 +19,7 @@ import {
   type TeamRunSnapshotRecord,
   type TeamStepRecord,
 } from "../../api";
+import { hasPotentialOlderAgentEvents } from "../../agent_event_pagination";
 import {
   parseErrorMessage,
   parseOptionalInteger,
@@ -448,7 +449,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
           upsertAgentEventList(prev, list, mode, sessionId)
         );
         if (!preserveLoadedHistory) {
-          setMemberEventsHasMore(list.length >= MEMBER_EVENT_PAGE_LIMIT);
+          setMemberEventsHasMore(hasPotentialOlderAgentEvents(list.length));
         }
       } finally {
         setMemberEventsLoading(false);

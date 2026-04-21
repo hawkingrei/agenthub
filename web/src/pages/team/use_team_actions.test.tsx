@@ -312,7 +312,7 @@ describe("useTeamActions", () => {
         undefined
       );
       expect(setMemberEventsLoading).toHaveBeenCalledWith(true);
-      expect(setMemberEventsHasMore).toHaveBeenCalledWith(false);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
       expect(setMemberEvents).toHaveBeenCalled();
     } finally {
       listAgentEvents.mockRestore();

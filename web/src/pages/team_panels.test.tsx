@@ -4920,7 +4920,10 @@ describe("team panels interactions", () => {
     );
     changeInputValue(input, "hello from team acp");
     await act(async () => {
-      findButtonByText(container, "Send").dispatchEvent(
+      required(
+        container.querySelector('button[aria-label="Send input"]') as HTMLButtonElement | null,
+        "send input button missing"
+      ).dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true })
       );
       await Promise.resolve();
@@ -4961,7 +4964,10 @@ describe("team panels interactions", () => {
       "ACP input textarea missing"
     );
     changeInputValue(input, "hello from team acp");
-    const sendButton = findButtonByText(container, "Send");
+    const sendButton = required(
+      container.querySelector('button[aria-label="Send input"]') as HTMLButtonElement | null,
+      "send input button missing"
+    );
     await act(async () => {
       sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       sendButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

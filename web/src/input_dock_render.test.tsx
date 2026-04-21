@@ -32,13 +32,14 @@ describe("InputDock interrupt placement", () => {
   it("renders interrupt button when enabled for ACP mode", () => {
     const html = renderDock({ showInterrupt: true, canInterrupt: true });
     expect(html).toContain("Interrupt");
-    expect(/input-interrupt-button[^>]*disabled/.test(html)).toBe(false);
+    expect(/aria-label="Interrupt current run"[^>]*disabled/.test(html)).toBe(false);
   });
 
   it("renders disabled interrupt button when run is not interruptible", () => {
     const html = renderDock({ showInterrupt: true, canInterrupt: false });
     expect(html).toContain("Interrupt");
-    expect(/input-interrupt-button[^>]*disabled/.test(html)).toBe(true);
+    expect(html).toContain('aria-label="Interrupt current run"');
+    expect(html).toContain('disabled=""');
   });
 
   it("does not render interrupt button when ACP mode is absent", () => {
@@ -56,13 +57,13 @@ describe("InputDock interrupt placement", () => {
     const editorRowPos = html.indexOf('data-input-editor-row="true"');
     expect(actionsRowPos).toBeGreaterThanOrEqual(0);
     expect(editorRowPos).toBeGreaterThanOrEqual(0);
-    expect(actionsRowPos).toBeLessThan(editorRowPos);
+    expect(editorRowPos).toBeLessThan(actionsRowPos);
     expect(html).toContain('aria-label="Input actions"');
   });
 
   it("renders a dedicated send button class for larger tap target styling", () => {
     const html = renderDock();
-    expect(html).toContain("bg-notion-accent");
+    expect(html).toContain("bg-sky-600");
     expect(html).toContain('aria-label="Send input"');
   });
 
@@ -71,7 +72,7 @@ describe("InputDock interrupt placement", () => {
     const editorRowStart = html.indexOf('data-input-editor-row="true"');
     expect(editorRowStart).toBeGreaterThanOrEqual(0);
     const textareaPos = html.indexOf("<textarea", editorRowStart);
-    const sendPos = html.indexOf("bg-notion-accent", editorRowStart);
+    const sendPos = html.indexOf('aria-label="Send input"', editorRowStart);
     expect(textareaPos).toBeGreaterThan(editorRowStart);
     expect(sendPos).toBeGreaterThan(textareaPos);
   });

@@ -263,6 +263,45 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the ACP conversation in loading state while the leading chunked message is incomplete", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 7,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "7",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "partial markdown",
+              chunk: true,
+              message_id: "msg-1",
+              chunk_index: 12,
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={7}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).not.toBeNull();
+  });
+
   it("submits selected ACP mode and model values for the team member", async () => {
     const onAcpSetMode = vi.fn();
     const onAcpSetModel = vi.fn();

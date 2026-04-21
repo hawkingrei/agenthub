@@ -52,6 +52,45 @@ const TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS = 12;
 
 const NOOP = () => {};
 
+function hasIncompleteLeadingAcpMessage(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): boolean {
+  const scopedSessionId = sessionId ?? null;
+  const ordered = [...events].sort((left, right) => left.event_id - right.event_id);
+  for (const event of ordered) {
+    if (event.stream !== "acp") {
+      continue;
+    }
+    if ((event.session_id ?? null) !== scopedSessionId) {
+      continue;
+    }
+    const trimmed = event.message.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      const payload = JSON.parse(trimmed) as Record<string, unknown>;
+      if (payload.type !== "agent_message") {
+        continue;
+      }
+      if (payload.chunk !== true) {
+        return false;
+      }
+      const chunkIndex =
+        typeof payload.chunk_index === "number"
+          ? payload.chunk_index
+          : typeof payload.chunk_index === "string"
+            ? Number.parseInt(payload.chunk_index, 10)
+            : Number.NaN;
+      return Number.isFinite(chunkIndex) && chunkIndex > 0;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const {
     selectedMemberId,
@@ -145,6 +184,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const terminalOutputs = React.useMemo(
     () => memberEvents.filter((event) => event.stream !== "acp"),
     [memberEvents]
+  );
+  const hasIncompleteLeadingConversationMessage = React.useMemo(
+    () => hasIncompleteLeadingAcpMessage(memberEvents, selectedSessionId ?? null),
+    [memberEvents, selectedSessionId]
   );
 
   React.useEffect(() => {
@@ -440,8 +483,11 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       developerMode,
       conversationLoading:
         effectiveAcpTab === "conversation" &&
-        memberEventsLoading &&
-        acpConversation.conversationSourceItems < TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS,
+        ((memberEventsLoading &&
+          acpConversation.conversationSourceItems <
+            TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS) ||
+          ((memberEventsLoading || memberEventsHasMore) &&
+            hasIncompleteLeadingConversationMessage)),
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -518,6 +564,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       canSetModel,
       developerMode,
       effectiveAcpTab,
+      hasIncompleteLeadingConversationMessage,
       handleTerminalScroll,
       jumpToTerminalBottom,
       onAcpSetConfig,
@@ -529,6 +576,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       conversationBottomClearance,
       hasVisibleInputDock,
       memberEventsLoading,
+      memberEventsHasMore,
       terminalOutputs,
       terminalShowJump,
     ]
