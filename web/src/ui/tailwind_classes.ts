@@ -228,13 +228,13 @@ export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-1";
 export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "appearance-none border-0 bg-transparent shadow-none mt-3 mb-1 flex w-full items-center justify-between gap-2 px-2 py-0.5 text-left text-[11px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:text-notion-text focus-visible:outline-none";
+  "appearance-none border-0 bg-transparent shadow-none mt-3 mb-1 flex w-full items-center justify-between gap-2 px-2 py-0.5 text-left text-[11px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(55,53,47,0.35)] focus-visible:ring-offset-1 focus-visible:ring-offset-notion-sidebar";
 
 export const TEAM_SIDEBAR_NAV_LIST_CLASS =
   "flex min-w-0 flex-col gap-0.5";
 
 const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-2 py-1 text-left transition focus-visible:outline-none";
+  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-2 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-text-muted/40 focus-visible:ring-offset-1 focus-visible:ring-offset-notion-sidebar";
 
 export const TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS =
   `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} bg-[rgba(55,53,47,0.07)] text-notion-text font-medium`;

@@ -44,7 +44,7 @@ const LazyTeamStepsPanel = React.lazy(async () => {
   return { default: module.TeamStepsPanel };
 });
 
-function TeamPanelLoadingFallback() {
+export function TeamPanelLoadingFallback() {
   return (
     <div className="rounded-2xl border border-notion-border bg-white/88 px-4 py-6 text-sm text-ui-text-muted shadow-sm">
       Loading panel...

@@ -39,8 +39,9 @@ export function TeamUnavailablePanel({
       </p>
       <div className="mt-5">
         <ActionButton
+          size="sm"
           tone="ghost"
-          className="h-8 justify-start rounded-md px-0 text-[12px] font-medium text-notion-text-muted hover:text-notion-text"
+          className="justify-start rounded-md px-0 text-[12px] font-medium text-notion-text-muted hover:text-notion-text"
           onClick={onBackToSelector}
         >
           Back to teams

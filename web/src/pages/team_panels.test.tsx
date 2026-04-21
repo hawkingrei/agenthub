@@ -29,6 +29,10 @@ import { TeamStepsPanel } from "./team_steps_panel";
 import { TeamTabsBar } from "./team_tabs_bar";
 import * as mailboxHelpers from "./team/mailbox_helpers";
 import {
+  TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS,
+  TEAM_SIDEBAR_SECTION_TOGGLE_CLASS,
+} from "../ui/tailwind_classes";
+import {
   installReactDomTestGlobals,
   renderWithMantine,
   required,
@@ -920,6 +924,13 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Task board");
     expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("Agents");
+  });
+
+  it("TeamSidebar keeps visible keyboard focus treatments on section toggles and nav rows", () => {
+    expect(TEAM_SIDEBAR_SECTION_TOGGLE_CLASS).toContain("focus-visible:ring-2");
+    expect(TEAM_SIDEBAR_SECTION_TOGGLE_CLASS).toContain("focus-visible:ring-offset-1");
+    expect(TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS).toContain("focus-visible:ring-2");
+    expect(TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS).toContain("focus-visible:ring-offset-1");
   });
 
   it("TeamRunPanel no longer exposes create-run controls in primary surface", () => {

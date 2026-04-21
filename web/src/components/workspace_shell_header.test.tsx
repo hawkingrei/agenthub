@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import { WorkspaceShellHeader } from "./workspace_shell_header";
+import { TeamPanelLoadingFallback } from "../pages/team/team_workbench_content";
 
 function renderHeader(
   props: Partial<React.ComponentProps<typeof WorkspaceShellHeader>> = {}
@@ -74,5 +75,14 @@ describe("WorkspaceShellHeader", () => {
     expect(html).not.toContain("Online · SSE idle");
     expect(html).not.toContain("Channels");
     expect(html).not.toContain("Hide sidebar");
+  });
+
+  it("renders a visible panel loading fallback for lazy team surfaces", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamPanelLoadingFallback />
+      </MantineProvider>
+    );
+    expect(html).toContain("Loading panel...");
   });
 });

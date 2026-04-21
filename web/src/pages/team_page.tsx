@@ -42,7 +42,10 @@ import { TeamPageHeader } from "./team/team_page_header";
 import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamThreadPane } from "./team/team_thread_pane";
-import { TeamWorkbenchContent } from "./team/team_workbench_content";
+import {
+  TeamPanelLoadingFallback,
+  TeamWorkbenchContent,
+} from "./team/team_workbench_content";
 import {
   parseErrorMessage,
   teamSpecHasConfiguredMembers,
@@ -2716,7 +2719,7 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<TeamPanelLoadingFallback />}>
           <LazyTeamStepsPanel
             developerMode={props.developerMode}
             mode="controls_only"
@@ -2763,7 +2766,7 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<TeamPanelLoadingFallback />}>
           <LazyTeamMailboxPanel
             developerMode={props.developerMode}
             mode="advanced_only"
