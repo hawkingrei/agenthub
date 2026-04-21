@@ -126,6 +126,44 @@ describe("useResumeRefresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("allows hidden refreshes until the initial refresh succeeds when requested", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            enabled: true,
+            intervalMs: 1000,
+            pauseWhenHidden: true,
+            pauseWhenHiddenAfterInitialRefresh: true,
+            initialRefreshKey: "team-1",
+            refresh,
+            onRefreshError: vi.fn(),
+          }}
+        />
+      );
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards refresh errors to the latest error handler", async () => {
     const error = new Error("refresh failed");
     const refresh = vi.fn().mockRejectedValue(error);

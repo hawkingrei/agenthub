@@ -603,8 +603,8 @@ function SeenProgressHoverCard({
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
           <CompactButton
-            aria-label="Pending"
-            title="Pending"
+            aria-label="Receipt pending"
+            title="Receipt pending"
             className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
           >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
@@ -640,7 +640,7 @@ function SeenProgressHoverCard({
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
         {seenActorIds.length === 0 ? (
           <>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Receipt</div>
             <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending</div>
           </>
         ) : (

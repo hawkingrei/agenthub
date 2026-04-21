@@ -261,6 +261,24 @@ export function resolveTeamThreadRootMessageId(search: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+export function resolveTeamSelectedMemberId(search: string): string {
+  const params = new URLSearchParams(search);
+  return (params.get("member") ?? "").trim();
+}
+
+export function resolveTeamWorkspaceTab(search: string): TeamTab | null {
+  const params = new URLSearchParams(search);
+  const raw = (params.get("tab") ?? "").trim();
+  if (
+    raw === "agent_acp" ||
+    raw === "mailbox" ||
+    raw === "member_console"
+  ) {
+    return raw;
+  }
+  return null;
+}
+
 export function parseTeamAgentInputSessionMismatch(
   message: string
 ): { expected: string; running: string } | null {
@@ -298,7 +316,9 @@ export function buildTeamWorkspacePath(
   teamId: string,
   lens?: WorkspaceLens | null,
   channelId?: TeamChannelId | null,
-  threadRootMessageId?: number | null
+  threadRootMessageId?: number | null,
+  memberId?: string | null,
+  tab?: TeamTab | null
 ): string {
   const pathname = `/workspace/teams/${encodeURIComponent(teamId)}`;
   const params = new URLSearchParams();
@@ -310,6 +330,13 @@ export function buildTeamWorkspacePath(
   }
   if (threadRootMessageId && threadRootMessageId > 0) {
     params.set("thread", String(threadRootMessageId));
+  }
+  const normalizedMemberId = memberId?.trim() ?? "";
+  if (normalizedMemberId) {
+    params.set("member", normalizedMemberId);
+  }
+  if (tab === "agent_acp" || tab === "mailbox" || tab === "member_console") {
+    params.set("tab", tab);
   }
   const search = params.toString();
   if (!search) {
@@ -452,12 +479,20 @@ export function TeamPage(props: TeamPageProps) {
     () => resolveWorkspaceLens(props.routeSearch ?? ""),
     [props.routeSearch]
   );
+  const routeWorkspaceTab = useMemo(
+    () => resolveTeamWorkspaceTab(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
   const routeChannelId = useMemo(
     () => resolveTeamChannelId(props.routeSearch ?? ""),
     [props.routeSearch]
   );
   const routeThreadRootMessageId = useMemo(
     () => resolveTeamThreadRootMessageId(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
+  const routeSelectedMemberId = useMemo(
+    () => resolveTeamSelectedMemberId(props.routeSearch ?? ""),
     [props.routeSearch]
   );
   const isSelectorRoute = routeTeamId == null;
@@ -504,6 +539,14 @@ export function TeamPage(props: TeamPageProps) {
   const navigateToTeamDetail = useCallback((teamId: string) => {
     navigateTeamRoute(buildTeamDetailPath(teamId));
   }, []);
+  const navigateToTeamMemberWorkspace = useCallback(
+    (teamId: string, memberId: string, tab: TeamTab) => {
+      navigateTeamRoute(
+        buildTeamWorkspacePath(teamId, "members", null, null, memberId, tab)
+      );
+    },
+    []
+  );
   const navigateToTeamSelector = useCallback(() => {
     navigateTeamRoute(buildTeamSelectorPath());
   }, []);
@@ -526,6 +569,10 @@ export function TeamPage(props: TeamPageProps) {
   }, []);
 
   useEffect(() => {
+    if (routeWorkspaceTab) {
+      setTab(routeWorkspaceTab);
+      return;
+    }
     if (!routeWorkspaceLens) {
       return;
     }
@@ -533,7 +580,7 @@ export function TeamPage(props: TeamPageProps) {
     if (nextTab) {
       setTab(nextTab);
     }
-  }, [routeWorkspaceLens, setTab]);
+  }, [routeWorkspaceLens, routeWorkspaceTab, setTab]);
   const [teamControlState, dispatchTeamControl] = useReducer(
     reduceTeamControlState,
     DEFAULT_TEAM_CONTROL_STATE
@@ -944,6 +991,14 @@ export function TeamPage(props: TeamPageProps) {
     setSelectedMemberId("");
     setFocusedAgentMemberId("");
   }, [effectiveSelectedTeamId, setSelectedMemberId]);
+  useEffect(() => {
+    const memberId = routeSelectedMemberId.trim();
+    if (!memberId) {
+      return;
+    }
+    setSelectedMemberId(memberId);
+    setFocusedAgentMemberId(memberId);
+  }, [routeSelectedMemberId, setSelectedMemberId]);
   const {
     teamSpecMemberIds,
     teamMemberSummaryByTeamId,
@@ -2147,6 +2202,7 @@ export function TeamPage(props: TeamPageProps) {
     setRunLookupId,
     navigateToTeamLens,
     navigateToTeamDetail,
+    navigateToTeamMemberWorkspace,
     navigateToSidebarTeam,
     prefetchWorkspaceLens,
   });

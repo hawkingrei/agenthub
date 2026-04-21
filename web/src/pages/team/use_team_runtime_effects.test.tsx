@@ -81,7 +81,7 @@ describe("useTeamRuntimeEffects", () => {
     expect(params.refreshTeamRuntime).not.toHaveBeenCalled();
   });
 
-  it("pauses runtime polling while the document is hidden and refreshes on return", async () => {
+  it("allows the first hidden runtime refresh, then pauses until the page is visible again", async () => {
     const params = createParams();
 
     act(() => {
@@ -98,7 +98,14 @@ describe("useTeamRuntimeEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTeamRuntime).not.toHaveBeenCalled();
+    expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_RUNTIME_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(1);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -110,7 +117,7 @@ describe("useTeamRuntimeEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(1);
+    expect(params.refreshTeamRuntime).toHaveBeenCalledTimes(2);
     expect(params.refreshTeamRuntime).toHaveBeenLastCalledWith("team-1");
   });
 

@@ -97,6 +97,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     setRunLookupId: vi.fn(),
     navigateToTeamLens: vi.fn(),
     navigateToTeamDetail: vi.fn(),
+    navigateToTeamMemberWorkspace: vi.fn(),
     navigateToSidebarTeam: vi.fn(),
     ...overrides,
   };
@@ -194,7 +195,11 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(params.setSelectedMemberId).toHaveBeenCalledWith("worker-2");
       expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("worker-2");
       expect(params.setTab).toHaveBeenCalledWith("mailbox");
-      expect(params.navigateToTeamDetail).toHaveBeenCalledWith("team-1");
+      expect(params.navigateToTeamMemberWorkspace).toHaveBeenCalledWith(
+        "team-1",
+        "worker-2",
+        "mailbox"
+      );
       expect(params.setTeamsSidebarCollapsed).toHaveBeenCalledWith(true);
 
       act(() => {
@@ -236,6 +241,41 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(snapshot?.workspaceTitle).toBe("Worker Mailbox");
       expect(snapshot?.workspaceDescription).toBe(
         "Direct mailbox thread for the selected member."
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("routes mailbox member selections through member workspace URLs", async () => {
+    const params = createParams({
+      selectedTeamMemberLiveStates: [
+        {
+          member_id: "worker-1",
+          agent_name: "Worker One",
+          lifecycle_status: "running",
+          lifecycle_tone: "active",
+          run_status: "working",
+          step_status: "working",
+          pending_inbox_count: 1,
+          current_work: "Replying",
+          role: "worker",
+        },
+      ] as HookParams["selectedTeamMemberLiveStates"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onOpenMailboxForMember("worker-1");
+      });
+      expect(params.setSelectedMemberId).toHaveBeenCalledWith("worker-1");
+      expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("worker-1");
+      expect(params.setTab).toHaveBeenCalledWith("mailbox");
+      expect(params.navigateToTeamMemberWorkspace).toHaveBeenCalledWith(
+        "team-1",
+        "worker-1",
+        "mailbox"
       );
     } finally {
       mounted.cleanup();

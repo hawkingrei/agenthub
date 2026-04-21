@@ -209,7 +209,7 @@ describe("useTeamConversationEffects", () => {
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterMount);
   });
 
-  it("pauses fallback polling while the document is hidden", async () => {
+  it("allows the first hidden fallback refresh, then pauses until the page is visible again", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", undefined);
     const params = createParams({
@@ -235,7 +235,14 @@ describe("useTeamConversationEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls);
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -247,7 +254,7 @@ describe("useTeamConversationEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 2);
     expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
   });
 

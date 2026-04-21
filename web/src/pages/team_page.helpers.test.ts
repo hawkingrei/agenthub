@@ -6,7 +6,9 @@ import {
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
   resolveTeamChannelId,
+  resolveTeamSelectedMemberId,
   resolveTeamThreadRootMessageId,
+  resolveTeamWorkspaceTab,
   validateRunInputJson,
 } from "./team_page";
 import { isCurrentTeamScopedRequest } from "./team/page_helpers";
@@ -40,6 +42,9 @@ describe("team_page helpers", () => {
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42)).toBe(
       "/workspace/teams/team-1?lens=channels&thread=42"
     );
+    expect(
+      buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
+    ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=agent_acp");
   });
 
   it("parses team channel and thread query state", () => {
@@ -49,6 +54,9 @@ describe("team_page helpers", () => {
     expect(resolveTeamThreadRootMessageId("")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=17")).toBe(17);
     expect(resolveTeamThreadRootMessageId("?thread=abc")).toBeNull();
+    expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
+    expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
+    expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
   });
 
   it("summarizes runtime actions by grouped member operation", () => {

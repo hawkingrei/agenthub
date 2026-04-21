@@ -81,7 +81,7 @@ describe("useTeamTaskEffects", () => {
     expect(params.refreshTasks).not.toHaveBeenCalled();
   });
 
-  it("pauses task polling while the document is hidden and refreshes on return", async () => {
+  it("allows the first hidden task refresh, then pauses until the page is visible again", async () => {
     const params = createParams();
 
     act(() => {
@@ -98,7 +98,14 @@ describe("useTeamTaskEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTasks).not.toHaveBeenCalled();
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_TASK_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -110,7 +117,7 @@ describe("useTeamTaskEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+    expect(params.refreshTasks).toHaveBeenCalledTimes(2);
     expect(params.refreshTasks).toHaveBeenLastCalledWith("team-1");
   });
 

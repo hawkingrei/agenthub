@@ -51,6 +51,7 @@ type UseTeamWorkspaceViewModelOptions = {
   setRunLookupId: (next: string) => void;
   navigateToTeamLens: (teamId: string, lens: WorkspaceLens) => void;
   navigateToTeamDetail: (teamId: string) => void;
+  navigateToTeamMemberWorkspace: (teamId: string, memberId: string, tab: TeamTab) => void;
   navigateToSidebarTeam: (teamId: string) => void;
   prefetchWorkspaceLens?: (lens: WorkspaceLens) => void;
 };
@@ -85,6 +86,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     setRunLookupId,
     navigateToTeamLens,
     navigateToTeamDetail,
+    navigateToTeamMemberWorkspace,
     navigateToSidebarTeam,
     prefetchWorkspaceLens,
   } = options;
@@ -382,13 +384,24 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const onOpenMailboxForMember = useCallback(
     (memberId: string) => {
       setSelectedMemberId(memberId);
-      setFocusedAgentMemberId("");
+      setFocusedAgentMemberId(memberId);
       setTab("mailbox");
+      if (selectedTeamId) {
+        navigateToTeamMemberWorkspace(selectedTeamId, memberId, "mailbox");
+      }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
       }
     },
-    [isCompactWorkbench, setFocusedAgentMemberId, setSelectedMemberId, setTab, setTeamsSidebarCollapsed]
+    [
+      isCompactWorkbench,
+      navigateToTeamMemberWorkspace,
+      selectedTeamId,
+      setFocusedAgentMemberId,
+      setSelectedMemberId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
   );
 
   const onSelectConversationSubject = useCallback(
@@ -423,7 +436,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       setFocusedAgentMemberId(memberId);
       setTab(nextTab);
       if (selectedTeamId) {
-        navigateToTeamDetail(selectedTeamId);
+        navigateToTeamMemberWorkspace(selectedTeamId, memberId, nextTab);
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
@@ -431,7 +444,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     },
     [
       isCompactWorkbench,
-      navigateToTeamDetail,
+      navigateToTeamMemberWorkspace,
       selectedTeamId,
       setFocusedAgentMemberId,
       setSelectedMemberId,

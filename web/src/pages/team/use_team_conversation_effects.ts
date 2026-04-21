@@ -162,6 +162,8 @@ export function useTeamConversationEffects({
     enabled: conversationRefreshEnabled,
     intervalMs: 4000,
     pauseWhenHidden: true,
+    pauseWhenHiddenAfterInitialRefresh: true,
+    initialRefreshKey: `${selectedTeamId ?? ""}:${selectedConversationId ?? ""}`,
     refresh: refreshSelectedConversation,
   });
 

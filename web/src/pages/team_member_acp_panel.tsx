@@ -12,6 +12,7 @@ import { InputDock } from "../components/input_dock";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
+import { hasIncompleteLeadingAcpMessage } from "./team/acp_history_prefetch";
 import {
   OUTPUT_HEADER_META_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
@@ -51,45 +52,6 @@ type TeamMemberAcpTab = "conversation" | "plan" | "debug";
 const TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS = 12;
 
 const NOOP = () => {};
-
-function hasIncompleteLeadingAcpMessage(
-  events: AgentEvent[],
-  sessionId: string | null | undefined
-): boolean {
-  const scopedSessionId = sessionId ?? null;
-  const ordered = [...events].sort((left, right) => left.event_id - right.event_id);
-  for (const event of ordered) {
-    if (event.stream !== "acp") {
-      continue;
-    }
-    if ((event.session_id ?? null) !== scopedSessionId) {
-      continue;
-    }
-    const trimmed = event.message.trim();
-    if (!trimmed.startsWith("{")) {
-      continue;
-    }
-    try {
-      const payload = JSON.parse(trimmed) as Record<string, unknown>;
-      if (payload.type !== "agent_message") {
-        continue;
-      }
-      if (payload.chunk !== true) {
-        return false;
-      }
-      const chunkIndex =
-        typeof payload.chunk_index === "number"
-          ? payload.chunk_index
-          : typeof payload.chunk_index === "string"
-            ? Number.parseInt(payload.chunk_index, 10)
-            : Number.NaN;
-      return Number.isFinite(chunkIndex) && chunkIndex > 0;
-    } catch {
-      continue;
-    }
-  }
-  return false;
-}
 
 function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const {

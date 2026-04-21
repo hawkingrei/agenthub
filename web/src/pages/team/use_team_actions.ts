@@ -25,6 +25,9 @@ import {
   parseOptionalInteger,
   parseOptionalJson,
 } from "./create_helpers";
+import {
+  shouldPrefetchInitialAcpHistory,
+} from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
 import {
   mergeRunPages,
@@ -38,6 +41,8 @@ import {
   TEAM_RUN_PAGE_LIMIT,
   type TeamRunBrowserState,
 } from "./state";
+
+const MAX_INITIAL_ACP_HISTORY_PAGES = 6;
 
 type UseTeamActionsOptions = {
   token: string;
@@ -431,12 +436,41 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       try {
         const beforeId =
           mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
-        const list = await teamApi.listAgentEvents(
+        let list = await teamApi.listAgentEvents(
           agentId,
           MEMBER_EVENT_PAGE_LIMIT,
           sessionId,
           beforeId
         );
+        let lastFetchedCount = list.length;
+        if (mode === "replace") {
+          let pageCount = 1;
+          while (
+            pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
+            shouldPrefetchInitialAcpHistory(
+              list,
+              sessionId,
+              hasPotentialOlderAgentEvents(lastFetchedCount)
+            )
+          ) {
+            const oldestLoadedId = list[0]?.event_id;
+            if (!oldestLoadedId) {
+              break;
+            }
+            const older = await teamApi.listAgentEvents(
+              agentId,
+              MEMBER_EVENT_PAGE_LIMIT,
+              sessionId,
+              oldestLoadedId
+            );
+            lastFetchedCount = older.length;
+            if (older.length === 0) {
+              break;
+            }
+            list = upsertAgentEventList(list, older, "prepend", sessionId);
+            pageCount += 1;
+          }
+        }
         const currentSessionEvents = memberEventsRef.current.filter(
           (event) => (event.session_id ?? null) === sessionId
         );
@@ -449,7 +483,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
           upsertAgentEventList(prev, list, mode, sessionId)
         );
         if (!preserveLoadedHistory) {
-          setMemberEventsHasMore(hasPotentialOlderAgentEvents(list.length));
+          setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
         }
       } finally {
         setMemberEventsLoading(false);

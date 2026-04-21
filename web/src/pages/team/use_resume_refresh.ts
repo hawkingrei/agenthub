@@ -4,6 +4,8 @@ type UseResumeRefreshOptions = {
   enabled: boolean;
   intervalMs?: number | null;
   pauseWhenHidden?: boolean;
+  pauseWhenHiddenAfterInitialRefresh?: boolean;
+  initialRefreshKey?: string | number | null;
   refresh: () => Promise<unknown>;
   onRefreshError?: (error: unknown) => void;
 };
@@ -12,15 +14,21 @@ export function useResumeRefresh({
   enabled,
   intervalMs,
   pauseWhenHidden = false,
+  pauseWhenHiddenAfterInitialRefresh = false,
+  initialRefreshKey = null,
   refresh,
   onRefreshError,
 }: UseResumeRefreshOptions) {
   const enabledRef = useRef(enabled);
   const pauseWhenHiddenRef = useRef(pauseWhenHidden);
+  const pauseWhenHiddenAfterInitialRefreshRef = useRef(
+    pauseWhenHiddenAfterInitialRefresh
+  );
   const refreshRef = useRef(refresh);
   const onRefreshErrorRef = useRef(onRefreshError);
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
+  const hasCompletedInitialRefreshRef = useRef(false);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -29,6 +37,15 @@ export function useResumeRefresh({
   useEffect(() => {
     pauseWhenHiddenRef.current = pauseWhenHidden;
   }, [pauseWhenHidden]);
+
+  useEffect(() => {
+    pauseWhenHiddenAfterInitialRefreshRef.current =
+      pauseWhenHiddenAfterInitialRefresh;
+  }, [pauseWhenHiddenAfterInitialRefresh]);
+
+  useEffect(() => {
+    hasCompletedInitialRefreshRef.current = false;
+  }, [initialRefreshKey]);
 
   useEffect(() => {
     refreshRef.current = refresh;
@@ -44,6 +61,8 @@ export function useResumeRefresh({
     }
     if (
       pauseWhenHiddenRef.current &&
+      (!pauseWhenHiddenAfterInitialRefreshRef.current ||
+        hasCompletedInitialRefreshRef.current) &&
       typeof document !== "undefined" &&
       document.visibilityState !== "visible"
     ) {
@@ -60,6 +79,7 @@ export function useResumeRefresh({
         do {
           refreshQueuedRef.current = false;
           await refreshRef.current();
+          hasCompletedInitialRefreshRef.current = true;
         } while (enabledRef.current && refreshQueuedRef.current);
       } catch (error) {
         onRefreshErrorRef.current?.(error);
