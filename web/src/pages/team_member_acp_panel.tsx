@@ -441,7 +441,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       conversationLoading:
         effectiveAcpTab === "conversation" &&
         memberEventsLoading &&
-        memberEvents.length < TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS,
+        acpConversation.conversationSourceItems < TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS,
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -503,6 +503,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       acpConversation.jumpToConversationBottom,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
+      acpConversation.conversationSourceItems,
       acpConversationProps,
       acpModeId,
       acpModelId,
@@ -527,7 +528,6 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       panelSubtitle,
       conversationBottomClearance,
       hasVisibleInputDock,
-      memberEvents.length,
       memberEventsLoading,
       terminalOutputs,
       terminalShowJump,
