@@ -305,13 +305,13 @@ describe("useTeamConversationActions", () => {
         "token-1",
         "team-1",
         "task-all",
-        { limit: 20 }
+        { limit: 60 }
       );
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenNthCalledWith(
         1,
         "token-1",
         "run-1",
-        { event_limit: 1, message_limit: 20 }
+        { event_limit: 1, message_limit: 40 }
       );
       expect(mockedApi.listTeamTaskMessages).toHaveBeenCalledTimes(1);
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledTimes(1);
@@ -369,7 +369,7 @@ describe("useTeamConversationActions", () => {
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledWith(
         "token-1",
         "run-selected",
-        { event_limit: 1, message_limit: 20 }
+        { event_limit: 1, message_limit: 40 }
       );
     } finally {
       cleanupHarness(root, container);
@@ -1064,7 +1064,7 @@ describe("useTeamConversationActions", () => {
       expect(mockedApi.getTeamTask).toHaveBeenCalledWith("token-1", "team-2", "task-all");
       expect(mockedApi.getTeamRunSnapshot).toHaveBeenCalledWith("token-1", "run-team-2", {
         event_limit: 1,
-        message_limit: 20,
+        message_limit: 40,
       });
     } finally {
       cleanupHarness(root, container);

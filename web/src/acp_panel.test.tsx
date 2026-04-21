@@ -167,6 +167,17 @@ describe("AcpPanel layout", () => {
     expect(html).toContain('data-acp-conversation-scroll="true"');
   });
 
+  it("renders a loading skeleton instead of partial conversation content while ACP history is still warming up", () => {
+    const html = renderPanel(
+      <AcpPanel
+        {...baseProps}
+        conversationLoading={true}
+      />
+    );
+    expect(html).toContain('data-acp-conversation-loading-skeleton="true"');
+    expect(html).not.toContain('data-acp-conversation-scroll="true"');
+  });
+
   it("renders mobile title inline with tabs when provided", () => {
     const html = renderPanel(
       <AcpPanel
@@ -262,8 +273,8 @@ describe("AcpPanel layout", () => {
   });
 
   it("keeps a minimum bottom clearance even before the dock reports its height", () => {
-    expect(resolveAcpInputDockConversationClearance(0)).toBe(104);
-    expect(resolveAcpInputDockConversationClearance(156)).toBe(168);
+    expect(resolveAcpInputDockConversationClearance(0)).toBe(64);
+    expect(resolveAcpInputDockConversationClearance(156)).toBe(164);
   });
 
   it("shows done state on the plan tab when all entries are completed", () => {

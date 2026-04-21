@@ -26,6 +26,42 @@ type TeamSelectorPanelProps = {
   onSelectTeam: (teamId: string) => void;
 };
 
+const TEAM_SELECTOR_LIST_CLASS =
+  "flex flex-col gap-0.5 [content-visibility:auto] [contain-intrinsic-size:1px_320px]";
+
+const TeamSelectorEntry = React.memo(function TeamSelectorEntry({
+  team,
+  onSelectTeam,
+}: {
+  team: TeamSelectorItem;
+  onSelectTeam: (teamId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md bg-transparent px-2 py-1.5 text-left transition hover:bg-[rgba(55,53,47,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      data-team-selector-entry="true"
+      data-team-id={team.id}
+      data-team-name={team.name}
+      onClick={() => onSelectTeam(team.id)}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium text-notion-text">
+          {team.name}
+        </div>
+        <div className="mt-0.5 line-clamp-1 text-[11px] leading-5 text-notion-text-muted">
+          {team.description}
+        </div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] leading-4 text-notion-text-muted">
+          <span className="truncate">{team.summary}</span>
+          <span className="inline-flex h-1 w-1 shrink-0 rounded-full bg-notion-text-muted/35" />
+          <span className="shrink-0 capitalize">{team.runtimeLabel}</span>
+        </div>
+      </div>
+    </button>
+  );
+});
+
 export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
   busy,
   filter,
@@ -85,7 +121,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
         )}
 
         <div className="mt-2 flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-0.5">
+          <div className={TEAM_SELECTOR_LIST_CLASS}>
             {!hasTeams && (
               <p className={`${bodyTextClassName} px-2`}>
                 No teams yet. Create one to begin.
@@ -95,29 +131,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
               <p className={`${bodyTextClassName} px-2`}>No teams match the current filter.</p>
             )}
             {items.map((team) => (
-              <button
-                key={team.id}
-                type="button"
-                className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md bg-transparent px-2 py-1.5 text-left transition hover:bg-[rgba(55,53,47,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                data-team-selector-entry="true"
-                data-team-id={team.id}
-                data-team-name={team.name}
-                onClick={() => onSelectTeam(team.id)}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-notion-text">
-                    {team.name}
-                  </div>
-                  <div className="mt-0.5 line-clamp-1 text-[11px] leading-5 text-notion-text-muted">
-                    {team.description}
-                  </div>
-                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] leading-4 text-notion-text-muted">
-                    <span className="truncate">{team.summary}</span>
-                    <span className="inline-flex h-1 w-1 shrink-0 rounded-full bg-notion-text-muted/35" />
-                    <span className="shrink-0 capitalize">{team.runtimeLabel}</span>
-                  </div>
-                </div>
-              </button>
+              <TeamSelectorEntry key={team.id} team={team} onSelectTeam={onSelectTeam} />
             ))}
           </div>
         </div>

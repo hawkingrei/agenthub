@@ -97,6 +97,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     setRunLookupId: vi.fn(),
     navigateToTeamLens: vi.fn(),
     navigateToTeamDetail: vi.fn(),
+    navigateToTeamMemberWorkspace: vi.fn(),
     navigateToSidebarTeam: vi.fn(),
     ...overrides,
   };
@@ -158,12 +159,14 @@ describe("useTeamWorkspaceViewModel", () => {
   });
 
   it("routes agent workspace selections through team detail and compact sidebar collapse", async () => {
+    const prefetchWorkspaceLens = vi.fn();
     const params = createParams({
       tab: "agent_acp",
       focusedAgentMemberId: "worker-1",
       selectedAgentWorkspaceMemberId: "worker-1",
       selectedMemberId: "worker-1",
       isCompactWorkbench: true,
+      prefetchWorkspaceLens,
       selectedTeamMemberLiveStates: [
         {
           member_id: "worker-1",
@@ -192,13 +195,21 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(params.setSelectedMemberId).toHaveBeenCalledWith("worker-2");
       expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("worker-2");
       expect(params.setTab).toHaveBeenCalledWith("mailbox");
-      expect(params.navigateToTeamDetail).toHaveBeenCalledWith("team-1");
+      expect(params.navigateToTeamMemberWorkspace).toHaveBeenCalledWith(
+        "team-1",
+        "worker-2",
+        "mailbox"
+      );
       expect(params.setTeamsSidebarCollapsed).toHaveBeenCalledWith(true);
 
       act(() => {
         snapshot?.onSelectWorkspaceLens("search");
       });
       expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "search");
+      act(() => {
+        snapshot?.workspaceLensItems[2]?.onPrefetch?.();
+      });
+      expect(prefetchWorkspaceLens).toHaveBeenCalledWith("members");
     } finally {
       mounted.cleanup();
     }
@@ -231,6 +242,85 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(snapshot?.workspaceDescription).toBe(
         "Direct mailbox thread for the selected member."
       );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("routes mailbox member selections through member workspace URLs", async () => {
+    const params = createParams({
+      selectedTeamMemberLiveStates: [
+        {
+          member_id: "worker-1",
+          agent_name: "Worker One",
+          lifecycle_status: "running",
+          lifecycle_tone: "active",
+          run_status: "working",
+          step_status: "working",
+          pending_inbox_count: 1,
+          current_work: "Replying",
+          role: "worker",
+        },
+      ] as HookParams["selectedTeamMemberLiveStates"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onOpenMailboxForMember("worker-1");
+      });
+      expect(params.setSelectedMemberId).toHaveBeenCalledWith("worker-1");
+      expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("worker-1");
+      expect(params.setTab).toHaveBeenCalledWith("mailbox");
+      expect(params.navigateToTeamMemberWorkspace).toHaveBeenCalledWith(
+        "team-1",
+        "worker-1",
+        "mailbox"
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("falls back to agent registry names and default chrome when no team is selected", async () => {
+    const params = createParams({
+      selectedTeam: null,
+      selectedTeamId: null,
+      selectedConversation: null,
+      activeRunForSelectedTeam: null,
+      activeRunIdForSelectedTeam: null,
+      focusedAgentMemberId: "worker-2",
+      routeWorkspaceLens: "search",
+      agents: [
+        {
+          id: "worker-2",
+          name: "Worker Two",
+          workdir: "/repo",
+          command: "codex",
+          args: [],
+          worktree_mode: "create_worktree",
+          worktree_repo: null,
+          worktree_ref: null,
+          code_mode: true,
+          agent_loop_enabled: false,
+          agent_loop_idle_seconds: 0,
+          agent_loop_prompt: "",
+          status: "running",
+          created_at: 1,
+          updated_at: 1,
+        },
+      ] as HookParams["agents"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.activeWorkspaceLens).toBe("search");
+      expect(snapshot?.selectedAgentLabel).toBe("Worker Two");
+      expect(snapshot?.workspaceTitle).toBe("Team Workbench");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Select a team from the left rail to start team conversations and supervise execution."
+      );
+      expect(snapshot?.showDedicatedWorkspaceHeading).toBe(true);
     } finally {
       mounted.cleanup();
     }

@@ -2,19 +2,92 @@ import React from "react";
 import type { WorkspaceLens } from "../../app_route_selection";
 import type { TeamDefinitionRecord } from "../../api";
 import { ActionButton } from "../../ui/primitives";
-import { TeamEventsPanel } from "../team_events_panel";
-import { TeamMailboxPanel } from "../team_mailbox_panel";
-import { TeamMemberConsolePanel } from "../team_member_console_panel";
-import { TeamOverviewPanel } from "../team_overview_panel";
-import { TeamRunPanel } from "../team_run_panel";
-import { TeamSetupPanel } from "../team_setup_panel";
-import { TeamStepsPanel } from "../team_steps_panel";
 import {
   TeamLoadingPanel,
   TeamUnavailablePanel,
 } from "../team_workspace_state_panel";
 import { TeamWorkspaceHeader } from "./team_workspace_header";
 import type { TeamTab } from "./state";
+
+const loadTeamEventsPanel = () => import("../team_events_panel");
+const loadTeamMailboxPanel = () => import("../team_mailbox_panel");
+const loadTeamMemberConsolePanel = () => import("../team_member_console_panel");
+const loadTeamOverviewPanel = () => import("../team_overview_panel");
+const loadTeamRunPanel = () => import("../team_run_panel");
+const loadTeamSetupPanel = () => import("../team_setup_panel");
+const loadTeamStepsPanel = () => import("../team_steps_panel");
+
+const LazyTeamEventsPanel = React.lazy(async () => {
+  const module = await loadTeamEventsPanel();
+  return { default: module.TeamEventsPanel };
+});
+
+const LazyTeamMailboxPanel = React.lazy(async () => {
+  const module = await loadTeamMailboxPanel();
+  return { default: module.TeamMailboxPanel };
+});
+
+const LazyTeamMemberConsolePanel = React.lazy(async () => {
+  const module = await loadTeamMemberConsolePanel();
+  return { default: module.TeamMemberConsolePanel };
+});
+
+const LazyTeamOverviewPanel = React.lazy(async () => {
+  const module = await loadTeamOverviewPanel();
+  return { default: module.TeamOverviewPanel };
+});
+
+const LazyTeamRunPanel = React.lazy(async () => {
+  const module = await loadTeamRunPanel();
+  return { default: module.TeamRunPanel };
+});
+
+const LazyTeamSetupPanel = React.lazy(async () => {
+  const module = await loadTeamSetupPanel();
+  return { default: module.TeamSetupPanel };
+});
+
+const LazyTeamStepsPanel = React.lazy(async () => {
+  const module = await loadTeamStepsPanel();
+  return { default: module.TeamStepsPanel };
+});
+
+export function prefetchTeamWorkbenchTab(tab: TeamTab): void {
+  switch (tab) {
+    case "runs":
+      void loadTeamRunPanel();
+      return;
+    case "overview":
+      void loadTeamOverviewPanel();
+      return;
+    case "events":
+      void loadTeamEventsPanel();
+      return;
+    case "steps":
+      void loadTeamStepsPanel();
+      return;
+    case "mailbox":
+      void loadTeamMailboxPanel();
+      return;
+    case "member_console":
+      void loadTeamMemberConsolePanel();
+      return;
+    default:
+      return;
+  }
+}
+
+export function prefetchTeamSetupSurface(): void {
+  void loadTeamSetupPanel();
+}
+
+export function TeamPanelLoadingFallback() {
+  return (
+    <div className="rounded-2xl border border-notion-border bg-white/88 px-4 py-6 text-sm text-ui-text-muted shadow-sm">
+      Loading panel...
+    </div>
+  );
+}
 
 type TeamWorkbenchContentProps = {
   showTeamBootstrapLoading: boolean;
@@ -35,7 +108,7 @@ type TeamWorkbenchContentProps = {
   teamMemberForgeLabel: string;
   onOpenTeamMemberForge: () => void;
   tab: TeamTab;
-  runsPanelProps: React.ComponentProps<typeof TeamRunPanel>;
+  runsPanelProps: React.ComponentProps<typeof import("../team_run_panel").TeamRunPanel>;
   showRunContextLoading: boolean;
   showNoActiveRunNotice: boolean;
   activeWorkspaceLens: WorkspaceLens;
@@ -43,15 +116,15 @@ type TeamWorkbenchContentProps = {
   threadPane?: React.ReactNode;
   tasksPanel: React.ReactNode;
   agentAcpPanel: React.ReactNode;
-  overviewPanelProps: React.ComponentProps<typeof TeamOverviewPanel> | null;
-  eventsPanelProps: React.ComponentProps<typeof TeamEventsPanel> | null;
-  stepsPanelProps: React.ComponentProps<typeof TeamStepsPanel> | null;
+  overviewPanelProps: React.ComponentProps<typeof import("../team_overview_panel").TeamOverviewPanel> | null;
+  eventsPanelProps: React.ComponentProps<typeof import("../team_events_panel").TeamEventsPanel> | null;
+  stepsPanelProps: React.ComponentProps<typeof import("../team_steps_panel").TeamStepsPanel> | null;
   mailboxHasActiveRun: boolean;
   mailboxEmptyTitle: string;
   mailboxEmptyBody: string;
   onGoToRuns: () => void;
-  mailboxPanelProps: React.ComponentProps<typeof TeamMailboxPanel> | null;
-  memberConsolePanelProps: React.ComponentProps<typeof TeamMemberConsolePanel> | null;
+  mailboxPanelProps: React.ComponentProps<typeof import("../team_mailbox_panel").TeamMailboxPanel> | null;
+  memberConsolePanelProps: React.ComponentProps<typeof import("../team_member_console_panel").TeamMemberConsolePanel> | null;
   debugPanel: React.ReactNode;
 };
 
@@ -113,14 +186,20 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
           </div>
 
           {!selectedTeamHasConfiguredMembers && (
-            <TeamSetupPanel
-              description={selectedTeamDescription}
-              forgeLabel={teamMemberForgeLabel}
-              onForge={onOpenTeamMemberForge}
-            />
+            <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+              <LazyTeamSetupPanel
+                description={selectedTeamDescription}
+                forgeLabel={teamMemberForgeLabel}
+                onForge={onOpenTeamMemberForge}
+              />
+            </React.Suspense>
           )}
 
-          {tab === "runs" && <TeamRunPanel {...runsPanelProps} />}
+          {tab === "runs" && (
+            <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+              <LazyTeamRunPanel {...runsPanelProps} />
+            </React.Suspense>
+          )}
 
           {showRunContextLoading && (
             <div className={teamSectionCardClassName}>
@@ -163,8 +242,8 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {activeWorkspaceLens !== "search" && tab === "conversation" && (
-                <div className="flex min-h-0 min-w-0 flex-1 gap-3">
-                  <div className="min-h-0 min-w-0 flex-1">{conversationPanel}</div>
+                <div className="flex min-h-0 min-w-0 flex-1 gap-3 overflow-hidden">
+                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{conversationPanel}</div>
                   {threadPane}
                 </div>
               )}
@@ -174,12 +253,22 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               {tab === "agent_acp" && agentAcpPanel}
 
               {tab === "overview" && overviewPanelProps && (
-                <TeamOverviewPanel {...overviewPanelProps} />
+                <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+                  <LazyTeamOverviewPanel {...overviewPanelProps} />
+                </React.Suspense>
               )}
 
-              {tab === "events" && eventsPanelProps && <TeamEventsPanel {...eventsPanelProps} />}
+              {tab === "events" && eventsPanelProps && (
+                <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+                  <LazyTeamEventsPanel {...eventsPanelProps} />
+                </React.Suspense>
+              )}
 
-              {tab === "steps" && stepsPanelProps && <TeamStepsPanel {...stepsPanelProps} />}
+              {tab === "steps" && stepsPanelProps && (
+                <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+                  <LazyTeamStepsPanel {...stepsPanelProps} />
+                </React.Suspense>
+              )}
 
               {tab === "mailbox" && !mailboxHasActiveRun && (
                 <div className={teamSectionCardClassName}>
@@ -199,11 +288,15 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {tab === "mailbox" && mailboxHasActiveRun && mailboxPanelProps && (
-                <TeamMailboxPanel {...mailboxPanelProps} />
+                <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+                  <LazyTeamMailboxPanel {...mailboxPanelProps} />
+                </React.Suspense>
               )}
 
               {tab === "member_console" && memberConsolePanelProps && (
-                <TeamMemberConsolePanel {...memberConsolePanelProps} />
+                <React.Suspense fallback={<TeamPanelLoadingFallback />}>
+                  <LazyTeamMemberConsolePanel {...memberConsolePanelProps} />
+                </React.Suspense>
               )}
 
               {tab === "debug" && debugPanel}

@@ -40,7 +40,7 @@ export const PlanBubble = React.memo(
             : "Plan (collapsed)"
           : "Plan (collapsed)";
     return (
-      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+      <div className="acp-row group relative flex w-full flex-col items-start px-3 py-1 sm:px-4">
         <div className={ACP_BUBBLE_PLAN_CLASS}>
           <details className="acp-thought-fold acp-plan-fold">
             <summary className="cursor-pointer text-sm font-bold text-notion-text">

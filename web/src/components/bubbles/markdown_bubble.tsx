@@ -19,7 +19,7 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
   const isAgent = className === "agent_message";
   return (
     <div
-      className={`acp-row group relative flex w-full flex-col px-4 py-1.5 sm:px-8 ${isAgent ? "items-start" : "items-end"}`}
+      className={`acp-row group relative flex w-full flex-col px-2 py-0.5 sm:px-4 ${isAgent ? "items-start" : "items-end"}`}
     >
       <div
         data-acp-message-bubble={isAgent ? "agent" : "user"}

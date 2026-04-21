@@ -394,7 +394,14 @@ export async function openKanbanDeveloperTools(
   const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
   const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
   if (!compilePreviewVisible) {
-    const developerToolsSummary = page.locator("summary").filter({
+    const firstTaskCard = page.locator('[data-team-surface="kanban"] .team-item').first();
+    await expect(firstTaskCard).toBeVisible();
+    await firstTaskCard.click();
+
+    const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+    await expect(taskDetailDialog).toBeVisible();
+
+    const developerToolsSummary = taskDetailDialog.locator("summary").filter({
       has: page.getByText("Developer tools", { exact: true }),
     });
     await expect(developerToolsSummary).toBeVisible();
@@ -402,6 +409,25 @@ export async function openKanbanDeveloperTools(
   }
   await expect(compilePreviewButton).toBeVisible();
   await expect(compilePreviewButton).toBeEnabled();
+}
+
+async function closeTaskDetailModalIfOpen(
+  page: import("@playwright/test").Page
+): Promise<void> {
+  const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+  if (!(await taskDetailDialog.isVisible().catch(() => false))) {
+    return;
+  }
+
+  const closeButton = taskDetailDialog.locator(".mantine-Modal-close").first();
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click();
+    await expect(taskDetailDialog).toBeHidden();
+    return;
+  }
+
+  await page.keyboard.press("Escape").catch(() => {});
+  await expect(taskDetailDialog).toBeHidden();
 }
 
 export async function selectPrimaryTeamEntryFromSidebar(
@@ -421,6 +447,8 @@ export async function openMainTeamAction(
   label: string,
   allowSidebarReset = true
 ): Promise<void> {
+  await closeTaskDetailModalIfOpen(page);
+
   const teamsMain = page.locator(".teams-main");
   const scope = (await teamsMain.count()) > 0 ? teamsMain : page.locator("body");
   const tab = scope.getByRole("tab", { name: label, exact: true }).first();
@@ -494,6 +522,7 @@ export async function openAdvancedView(
   page: import("@playwright/test").Page,
   label: string
 ): Promise<void> {
+  await closeTaskDetailModalIfOpen(page);
   const trigger = page
     .getByRole("button", { name: /^(More|Open more workspace actions)$/ })
     .first();

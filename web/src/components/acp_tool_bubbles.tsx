@@ -45,15 +45,15 @@ import { ThinkingBubble } from "./bubbles/thinking_bubble";
 
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
 const ACP_SUBFOLD_CLASS = "acp-subfold mt-1.5";
-const ACP_TOOL_ROW_CLASS = "flex w-full px-4 py-1.5 sm:px-8";
+const ACP_TOOL_ROW_CLASS = "flex w-full px-3 py-1 sm:px-4";
 const ACP_TOOL_CARD_CLASS =
-  "self-start max-w-[min(88%,78ch)] overflow-hidden rounded-[18px] border border-black/[0.06] bg-white/94 shadow-[0_1px_3px_rgba(15,23,42,0.04)]";
+  "self-start max-w-[min(92%,78ch)] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
 const ACP_TOOL_CARD_NESTED_CLASS =
-  "max-w-full border-black/[0.05] bg-notion-sidebar/32 shadow-none";
+  "max-w-full border-slate-200/80 bg-slate-50/70 shadow-none";
 const ACP_TOOL_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-start gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden";
 const ACP_TOOL_TITLE_CLASS =
-  "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-notion-text";
+  "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-slate-900";
 const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-2 px-3 pb-3";
 const FAILED_TOOL_STATUSES = new Set([
   "failed",

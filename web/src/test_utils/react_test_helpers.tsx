@@ -37,6 +37,6 @@ export function required<T>(value: T | null | undefined, message: string): T {
 
 export function renderWithMantine(root: Root, node: React.ReactNode): void {
   act(() => {
-    root.render(<MantineProvider>{node}</MantineProvider>);
+    root.render(<MantineProvider env="test">{node}</MantineProvider>);
   });
 }

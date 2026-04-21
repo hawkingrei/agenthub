@@ -13,6 +13,11 @@ import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badg
 import { useAcpConversation } from "../hooks/use_acp_conversation";
 import { pushInputHistory } from "../input_history";
 import {
+  ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
+  hasIncompleteLeadingAcpMessage,
+  omitIncompleteLeadingAcpMessageEvents,
+} from "./team/acp_history_prefetch";
+import {
   OUTPUT_HEADER_META_CLASS,
   OUTPUT_HEADER_ROOT_CLASS,
   OUTPUT_HEADER_TITLE_CLASS,
@@ -77,9 +82,13 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
 
   const selectedSessionId =
     selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+  const visibleMemberEvents = React.useMemo(
+    () => omitIncompleteLeadingAcpMessageEvents(memberEvents, selectedSessionId ?? null),
+    [memberEvents, selectedSessionId]
+  );
   const acpEventLines = React.useMemo(
     () =>
-      memberEvents.map((event) => ({
+      visibleMemberEvents.map((event) => ({
         ts: event.ts,
         seq: event.seq,
         event_id: event.event_id,
@@ -87,7 +96,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
         message: event.message,
         session_id: event.session_id,
       })),
-    [memberEvents]
+    [visibleMemberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const thinkingStartTs = acpView.thinkingStartTs;
@@ -145,6 +154,12 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     () => memberEvents.filter((event) => event.stream !== "acp"),
     [memberEvents]
   );
+  const hasIncompleteLeadingConversationMessage = React.useMemo(
+    () => hasIncompleteLeadingAcpMessage(memberEvents, selectedSessionId ?? null),
+    [memberEvents, selectedSessionId]
+  );
+  const hasVisibleConversationItems =
+    acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
 
   React.useEffect(() => {
     setAcpTab("conversation");
@@ -412,14 +427,21 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
-    if (memberEventsLoading) {
+    if (memberEventsLoading && !hasVisibleConversationItems) {
       return "Active thread loading";
     }
-    if (!acpView.hasAcp && memberEvents.length === 0) {
+    if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
       return "Active thread has no events yet";
     }
     return "Active thread";
-  }, [acpView.hasAcp, memberEvents.length, memberEventsLoading, selectedMemberId, selectedSessionId]);
+  }, [
+    acpView.hasAcp,
+    hasVisibleConversationItems,
+    memberEventsLoading,
+    selectedMemberId,
+    selectedSessionId,
+    visibleMemberEvents.length,
+  ]);
   const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const hasVisibleInputDock = canSendInput && showInputDock;
   React.useEffect(() => {
@@ -437,6 +459,14 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
+      conversationLoading:
+        effectiveAcpTab === "conversation" &&
+        !hasVisibleConversationItems &&
+        ((memberEventsLoading &&
+          acpConversation.conversationSourceItems <
+            ACP_INITIAL_VISIBLE_MESSAGE_TARGET) ||
+          ((memberEventsLoading || memberEventsHasMore) &&
+            hasIncompleteLeadingConversationMessage)),
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -496,8 +526,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       acpConfigId,
       acpConfigValue,
       acpConversation.jumpToConversationBottom,
+      hasVisibleConversationItems,
       acpConversation.showConversationBadge,
       acpConversation.showConversationJump,
+      acpConversation.conversationSourceItems,
       acpConversationProps,
       acpModeId,
       acpModelId,
@@ -512,6 +544,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       canSetModel,
       developerMode,
       effectiveAcpTab,
+      hasIncompleteLeadingConversationMessage,
       handleTerminalScroll,
       jumpToTerminalBottom,
       onAcpSetConfig,
@@ -522,6 +555,8 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       panelSubtitle,
       conversationBottomClearance,
       hasVisibleInputDock,
+      memberEventsLoading,
+      memberEventsHasMore,
       terminalOutputs,
       terminalShowJump,
     ]

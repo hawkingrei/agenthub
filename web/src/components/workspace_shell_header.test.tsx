@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import { WorkspaceShellHeader } from "./workspace_shell_header";
+import { TeamPanelLoadingFallback } from "../pages/team/team_workbench_content";
 
 function renderHeader(
   props: Partial<React.ComponentProps<typeof WorkspaceShellHeader>> = {}
@@ -53,6 +54,13 @@ describe("WorkspaceShellHeader", () => {
     expect(html).toContain("aria-label=\"Open workbench menu\"");
   });
 
+  it("gives the lens bar a dedicated mobile row so tabs do not crowd the title lane", () => {
+    const html = renderHeader();
+    expect(html).toContain("max-md:flex-wrap");
+    expect(html).toContain("max-md:order-3");
+    expect(html).toContain("max-md:basis-full");
+  });
+
   it("omits optional chrome branches when props are absent", () => {
     const html = renderHeader({
       subtitle: null,
@@ -67,5 +75,14 @@ describe("WorkspaceShellHeader", () => {
     expect(html).not.toContain("Online · SSE idle");
     expect(html).not.toContain("Channels");
     expect(html).not.toContain("Hide sidebar");
+  });
+
+  it("renders a visible panel loading fallback for lazy team surfaces", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamPanelLoadingFallback />
+      </MantineProvider>
+    );
+    expect(html).toContain("Loading panel...");
   });
 });

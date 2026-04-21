@@ -25,6 +25,9 @@ export function useTeamTaskEffects({
   useResumeRefresh({
     enabled: taskRefreshEnabled,
     intervalMs: TEAM_TASK_REFRESH_INTERVAL_MS,
+    pauseWhenHidden: true,
+    pauseWhenHiddenAfterInitialRefresh: true,
+    initialRefreshKey: teamId,
     refresh,
     onRefreshError,
   });

@@ -28,5 +28,7 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("leader");
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
+    expect(html).toContain("max-w-[340px]");
+    expect(html).toContain("rounded-[16px]");
   });
 });

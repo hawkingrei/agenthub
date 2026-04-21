@@ -25,7 +25,7 @@ export const ThinkingBubble = React.memo(function ThinkingBubble({
   });
   const entryClassName = grouped
     ? ""
-    : " acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8";
+    : " acp-row group relative flex w-full flex-col items-start px-3 py-1 sm:px-4";
 
   return (
     <div className={entryClassName}>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ConversationItem } from "../conversation";
 import {
   AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS,
+  DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
   buildConversationTailKey,
   buildVirtualConversationSlice,
   deriveConversationStickToBottom,
@@ -16,6 +17,7 @@ import {
   hasReachedConversationTop,
   shouldShowConversationTopReachedHint,
   shouldAutoLoadConversationHistory,
+  shouldDefaultConversationStickToBottom,
   shouldLoadOlderFromMeta,
   shouldUseConversationVirtualization,
 } from "./use_acp_conversation";
@@ -187,6 +189,21 @@ describe("buildConversationTailKey", () => {
       },
     ]);
     expect(key).toContain("explore_group:12:count:2:12:2:");
+  });
+});
+
+describe("default ACP conversation pinning", () => {
+  it("only defaults to bottom pinning for sufficiently large conversations", () => {
+    expect(
+      shouldDefaultConversationStickToBottom(
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS - 1
+      )
+    ).toBe(false);
+    expect(
+      shouldDefaultConversationStickToBottom(
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
+      )
+    ).toBe(true);
   });
 });
 
