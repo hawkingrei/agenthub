@@ -182,7 +182,7 @@ describe("ui primitives", () => {
       </MenuOptionButton>
     );
 
-    expect(bubbleHtml).toContain("rounded-[18px] border px-3.5 py-2.5 shadow-notion-soft");
+    expect(bubbleHtml).toContain("rounded-[16px] border px-3 py-2 shadow-notion-soft");
     expect(bubbleHtml).toContain("Bubble");
     expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");
     expect(optionHtml).toContain('data-testid="mention-worker"');

@@ -527,6 +527,8 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       panelSubtitle,
       conversationBottomClearance,
       hasVisibleInputDock,
+      memberEvents.length,
+      memberEventsLoading,
       terminalOutputs,
       terminalShowJump,
     ]

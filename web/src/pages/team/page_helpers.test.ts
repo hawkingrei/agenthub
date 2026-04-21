@@ -316,7 +316,9 @@ describe("team page helpers", () => {
 
     expect(merged).toHaveLength(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT);
     expect(merged[0]?.message_id).toBe(6);
-    expect(merged.at(-1)?.message_id).toBe(25);
+    expect(merged.at(-1)?.message_id).toBe(
+      TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT + 5
+    );
   });
 
   it("keeps a selected thread while tasks are still loading or detail fallback exists", () => {
