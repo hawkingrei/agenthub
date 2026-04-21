@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider as CoreMantineProvider } from "@mantine/core";
 import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +39,10 @@ import {
 } from "../test_utils/react_test_helpers";
 
 installReactDomTestGlobals();
+
+function MantineProvider({ children }: { children: React.ReactNode }) {
+  return <CoreMantineProvider env="test">{children}</CoreMantineProvider>;
+}
 
 function clickElement(element: Element | null): void {
   const node = required(element, "element not found");
@@ -167,6 +171,14 @@ async function waitForCondition(
     });
   }
   throw new Error("condition not met before timeout");
+}
+
+async function openTaskDetailModal(
+  container: HTMLElement,
+  taskTitle: string
+): Promise<void> {
+  clickElement(findButtonByText(container, taskTitle));
+  await waitForCondition(() => document.body.querySelector('[role="dialog"]') !== null);
 }
 
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
@@ -2299,9 +2311,9 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("queued update");
-    const pendingButton = container.querySelector('button[aria-label="Pending"]');
+    const pendingButton = container.querySelector('button[aria-label="Receipt pending"]');
     expect(pendingButton).not.toBeNull();
-    expect(pendingButton?.getAttribute("title")).toBe("Pending");
+    expect(pendingButton?.getAttribute("title")).toBe("Receipt pending");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
@@ -3733,7 +3745,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No messages yet.");
   });
 
-  it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", () => {
+  it("TeamTasksPanel supports task filters, workflow guidance, linked runs, and debug compile actions", async () => {
     const onSelectedTaskIdChange = vi.fn();
     const onOpenConversation = vi.fn();
     const onCompilePreviewContextIdChange = vi.fn();
@@ -3826,7 +3838,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-surface="kanban"]')).not.toBeNull();
     expect(container.textContent).toContain("Wait for PR review");
     clickElement(findButtonByText(container, "Investigate bug"));
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     clickElement(findButtonByText(document.body, "Open thread"));
     clickElement(findButtonByText(container, "Open # all"));
@@ -3865,11 +3877,11 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
-    expect(container.textContent).toContain("Open thread");
+    expect(document.body.textContent).toContain("Open thread");
     expect(container.textContent).toContain("Open # all");
-    expect(container.textContent).toContain("Latest execution run");
-    expect(container.textContent).toContain("Shipped the rollout summary.");
-    expect(container.textContent).toContain("Task context");
+    expect(document.body.textContent).toContain("Latest execution run");
+    expect(document.body.textContent).toContain("Shipped the rollout summary.");
+    expect(document.body.textContent).toContain("Task context");
   });
 
   it("TeamTasksPanel keeps details aligned with the active filter", () => {
@@ -4033,7 +4045,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No tasks yet.");
   });
 
-  it("TeamTasksPanel covers loading, filtered no-results, and previous-runs branches", () => {
+  it("TeamTasksPanel covers loading, filtered no-results, and previous-runs branches", async () => {
     const onOpenRun = vi.fn();
 
     act(() => {
@@ -4136,7 +4148,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("No results.");
 
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Latest execution run failed.");
     expect(document.body.textContent).toContain("Previous execution runs");
@@ -4146,7 +4158,7 @@ describe("team panels interactions", () => {
     expect(onOpenRun).toHaveBeenCalledWith("run-1");
   });
 
-  it("TeamTasksPanel opens task detail in a modal and closes it with the close button", () => {
+  it("TeamTasksPanel opens task detail in a modal and closes it with the close button", async () => {
     function CompactTaskHarness() {
       const [selectedTaskId, setSelectedTaskId] = React.useState("");
       return (
@@ -4193,26 +4205,26 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Board lanes");
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
 
     expect(container.textContent).toContain("Board lanes");
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
     expect(document.body.textContent).toContain("Task detail");
     expect(document.body.textContent).toContain("Latest execution run");
-    expect(document.body.querySelector('[aria-label="Close"]')).not.toBeNull();
+    expect(document.body.querySelector(".mantine-Modal-close")).not.toBeNull();
 
-    clickElement(
+    act(() => {
       required(
-        document.body.querySelector('[aria-label="Close"]') as HTMLButtonElement | null,
+        document.body.querySelector(".mantine-Modal-close") as HTMLButtonElement | null,
         "modal close button missing"
-      )
-    );
+      ).click();
+    });
 
     expect(container.textContent).toContain("Board lanes");
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    await waitForCondition(() => document.body.querySelector('[role="dialog"]') === null);
   });
 
-  it("TeamTasksPanel closes the task detail modal on Escape", () => {
+  it("TeamTasksPanel closes the task detail modal on Escape", async () => {
     renderWithMantine(
       root,
       <TeamTasksPanel
@@ -4246,19 +4258,23 @@ describe("team panels interactions", () => {
       />
     );
 
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
 
+    const modalDialog = required(
+      document.body.querySelector('[role="dialog"]') as HTMLElement | null,
+      "task detail dialog missing"
+    );
     act(() => {
-      window.dispatchEvent(
+      modalDialog.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
       );
     });
 
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    await waitForCondition(() => document.body.querySelector('[role="dialog"]') === null);
   });
 
-  it("TeamTasksPanel uses terminal fallback copy for canceled latest execution runs", () => {
+  it("TeamTasksPanel uses terminal fallback copy for canceled latest execution runs", async () => {
     act(() => {
       root.render(
         <MantineProvider>
@@ -4304,12 +4320,12 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Latest execution run was canceled.");
   });
 
-  it("TeamTasksPanel covers compact reset, run warning tones, and debug disclosure toggles", () => {
+  it("TeamTasksPanel covers compact reset, run warning tones, and debug disclosure toggles", async () => {
     function CompactTaskHarness() {
       const [selectedTaskId, setSelectedTaskId] = React.useState("task-progress");
       const [showSelectedTask, setShowSelectedTask] = React.useState(true);
@@ -4370,7 +4386,7 @@ describe("team panels interactions", () => {
 
     renderWithMantine(root, <CompactTaskHarness />);
 
-    clickElement(findButtonByText(container, "Prepare rollout"));
+    await openTaskDetailModal(container, "Prepare rollout");
     expect(document.body.textContent).toContain("Prepare rollout");
     expect(document.body.textContent).toContain("Need human input.");
     expect(document.body.innerHTML).toContain("title=\"run status: input_required\"");

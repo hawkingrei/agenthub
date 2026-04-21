@@ -394,7 +394,14 @@ export async function openKanbanDeveloperTools(
   const compilePreviewButton = page.getByRole("button", { name: "Compile Preview", exact: true });
   const compilePreviewVisible = await compilePreviewButton.isVisible().catch(() => false);
   if (!compilePreviewVisible) {
-    const developerToolsSummary = page.locator("summary").filter({
+    const firstTaskCard = page.locator('[data-team-surface="kanban"] .team-item').first();
+    await expect(firstTaskCard).toBeVisible();
+    await firstTaskCard.click();
+
+    const taskDetailDialog = page.getByRole("dialog", { name: "Task detail" });
+    await expect(taskDetailDialog).toBeVisible();
+
+    const developerToolsSummary = taskDetailDialog.locator("summary").filter({
       has: page.getByText("Developer tools", { exact: true }),
     });
     await expect(developerToolsSummary).toBeVisible();
