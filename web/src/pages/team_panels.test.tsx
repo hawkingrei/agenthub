@@ -914,7 +914,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Browse this team's channels, members, and operations.");
     expect(container.textContent).not.toContain("Team Selector");
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
-    expect(container.textContent).toContain("Teams");
+    expect(container.textContent).not.toContain("Teams");
     expect(container.textContent).not.toContain("Create Team");
     expect(container.textContent).not.toContain("Shared team thread");
     expect(container.textContent).not.toContain("Task board");
@@ -2955,6 +2955,42 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("triaging worker evidence");
     expect(findButtonByText(container, "Hide")).toBeDefined();
     expect(container.innerHTML).not.toContain("sm:col-span-2");
+  });
+
+  it("TeamTaskPanel lets message meta controls wrap instead of forcing a single cramped row", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={true}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(8, {
+            payload: { type: "chat_message", text: "follow up with the team" },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isSharedConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={null}
+      />
+    );
+
+    const detailsButton = findButtonByText(container, "Details");
+    const threadButton = findButtonByText(container, "Thread");
+    expect(detailsButton.parentElement?.className).toContain("flex-wrap");
+    expect(threadButton.parentElement?.className).toContain("flex-wrap");
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {

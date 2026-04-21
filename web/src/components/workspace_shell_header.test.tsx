@@ -53,6 +53,13 @@ describe("WorkspaceShellHeader", () => {
     expect(html).toContain("aria-label=\"Open workbench menu\"");
   });
 
+  it("gives the lens bar a dedicated mobile row so tabs do not crowd the title lane", () => {
+    const html = renderHeader();
+    expect(html).toContain("max-md:flex-wrap");
+    expect(html).toContain("max-md:order-3");
+    expect(html).toContain("max-md:basis-full");
+  });
+
   it("omits optional chrome branches when props are absent", () => {
     const html = renderHeader({
       subtitle: null,

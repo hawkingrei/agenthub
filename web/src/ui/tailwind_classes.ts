@@ -228,13 +228,13 @@ export const TEAM_SIDEBAR_SECTION_CLASS = "flex min-w-0 flex-col gap-1";
 export const TEAM_SOFT_CHROME_SHADOW_CLASS = "shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 
 export const TEAM_SIDEBAR_SECTION_TOGGLE_CLASS =
-  "appearance-none border-0 bg-transparent shadow-none mt-3 mb-1 flex w-full items-center justify-between gap-2 rounded-md px-2 py-0.5 text-left text-[11px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  "appearance-none border-0 bg-transparent shadow-none mt-3 mb-1 flex w-full items-center justify-between gap-2 px-2 py-0.5 text-left text-[11px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:text-notion-text focus-visible:outline-none";
 
 export const TEAM_SIDEBAR_NAV_LIST_CLASS =
   "flex min-w-0 flex-col gap-0.5";
 
 const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-2 py-1 text-left transition focus-visible:outline-none";
 
 export const TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS =
   `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} bg-[rgba(55,53,47,0.07)] text-notion-text font-medium`;
@@ -243,10 +243,10 @@ export const TEAM_SIDEBAR_NAV_ITEM_IDLE_CLASS =
   `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} text-notion-text-muted hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text`;
 
 export const TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS =
-  "flex w-full items-center gap-2 rounded-md bg-[rgba(55,53,47,0.07)] px-2 py-1.5 text-left text-notion-text font-medium transition";
+  "flex w-full items-center gap-2 rounded-md bg-[rgba(55,53,47,0.07)] px-2 py-1 text-left text-notion-text font-medium transition";
 
 export const TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS =
-  "flex w-full items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text";
+  "flex w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 text-left text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text";
 
 export const TEAM_SIDEBAR_WORK_CLASS =
   "truncate pl-5 text-[10px] leading-relaxed text-notion-text-muted/85";
@@ -305,7 +305,7 @@ export const TEAM_TASK_ACTIVITY_TITLE_CLASS =
   "text-sm font-bold text-notion-text";
 
 export const TEAM_TASK_ACTIVITY_TIME_CLASS =
-  "text-[10px] font-bold uppercase tracking-wider text-notion-text-muted opacity-0 group-hover:opacity-100 transition-opacity";
+  "text-[10px] font-medium tracking-[0.01em] text-notion-text-muted/72";
 
 export const TEAM_TASK_ACTIVITY_BODY_CLASS =
   "min-w-0 max-w-full break-words text-[15px] leading-relaxed text-notion-text [overflow-wrap:anywhere] [&_code]:break-words [&_li]:break-words [&_ol]:max-w-full [&_p]:break-words [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:break-words [&_th]:break-words [&_ul]:max-w-full";

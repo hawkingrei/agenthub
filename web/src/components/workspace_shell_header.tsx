@@ -66,8 +66,8 @@ export const WorkspaceShellHeader = React.memo(
 
     return (
       <header className={className} ref={ref}>
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3 max-md:w-full max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
             {showSidebarToggle ? (
               <IconButton
                 className={headerIconButtonClassName}
@@ -96,7 +96,9 @@ export const WorkspaceShellHeader = React.memo(
           </div>
 
           {lensItems.length > 0 && onSelectLens ? (
-            <div className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} ml-2 min-w-0 overflow-x-auto`}>
+            <div
+              className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} min-w-0 overflow-x-auto max-md:order-3 max-md:basis-full md:ml-2 md:flex-1`}
+            >
               {lensItems.map((item) => (
                 <ActionButton
                   key={item.value}

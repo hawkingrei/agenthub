@@ -32,8 +32,6 @@ import {
 import { TeamConversationPanel } from "./team_conversation_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamSidebar } from "./team_sidebar";
-import { TeamMailboxPanel } from "./team_mailbox_panel";
-import { TeamStepsPanel } from "./team_steps_panel";
 import {
   TeamDebugToolsHeader,
   TeamRunOpsPanel,
@@ -41,7 +39,6 @@ import {
   type TeamDebugTag,
 } from "./team/team_debug_panels";
 import { TeamPageHeader } from "./team/team_page_header";
-import { TeamPageModals } from "./team/team_page_modals";
 import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamThreadPane } from "./team/team_thread_pane";
@@ -156,6 +153,21 @@ import {
 const LazyTeamMemberAcpPanel = React.lazy(async () => {
   const module = await import("./team_member_acp_panel");
   return { default: module.TeamMemberAcpPanel };
+});
+
+const LazyTeamPageModals = React.lazy(async () => {
+  const module = await import("./team/team_page_modals");
+  return { default: module.TeamPageModals };
+});
+
+const LazyTeamStepsPanel = React.lazy(async () => {
+  const module = await import("./team_steps_panel");
+  return { default: module.TeamStepsPanel };
+});
+
+const LazyTeamMailboxPanel = React.lazy(async () => {
+  const module = await import("./team_mailbox_panel");
+  return { default: module.TeamMailboxPanel };
 });
 
 export {
@@ -2704,39 +2716,41 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {teamDebugTag === "step_ops" && activeRunForSelectedTeam && (
-        <TeamStepsPanel
-          developerMode={props.developerMode}
-          mode="controls_only"
-          steps={steps}
-          onRefreshSteps={onRefreshActiveRunSteps}
-          stepKey={stepKey}
-          onStepKeyChange={setStepKey}
-          stepMemberId={stepMemberId}
-          onStepMemberIdChange={setStepMemberId}
-          stepDependsOn={stepDependsOn}
-          onStepDependsOnChange={setStepDependsOn}
-          stepInput={stepInput}
-          onStepInputChange={setStepInput}
-          onSubmitStep={onSubmitStep}
-          busy={busy}
-          selectedStepId={selectedStepId}
-          onSelectedStepIdChange={setSelectedStepId}
-          stepAction={stepAction}
-          onStepActionChange={setStepAction}
-          stepRemoteTaskId={stepRemoteTaskId}
-          onStepRemoteTaskIdChange={setStepRemoteTaskId}
-          stepOutput={stepOutput}
-          onStepOutputChange={setStepOutput}
-          stepFailText={stepFailText}
-          onStepFailTextChange={setStepFailText}
-          stepInputReason={stepInputReason}
-          onStepInputReasonChange={setStepInputReason}
-          stepInputRequiredPayload={stepInputRequiredPayload}
-          onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
-          stepResumePayload={stepResumePayload}
-          onStepResumePayloadChange={setStepResumePayload}
-          onApplyStepAction={onApplyStepAction}
-        />
+        <Suspense fallback={null}>
+          <LazyTeamStepsPanel
+            developerMode={props.developerMode}
+            mode="controls_only"
+            steps={steps}
+            onRefreshSteps={onRefreshActiveRunSteps}
+            stepKey={stepKey}
+            onStepKeyChange={setStepKey}
+            stepMemberId={stepMemberId}
+            onStepMemberIdChange={setStepMemberId}
+            stepDependsOn={stepDependsOn}
+            onStepDependsOnChange={setStepDependsOn}
+            stepInput={stepInput}
+            onStepInputChange={setStepInput}
+            onSubmitStep={onSubmitStep}
+            busy={busy}
+            selectedStepId={selectedStepId}
+            onSelectedStepIdChange={setSelectedStepId}
+            stepAction={stepAction}
+            onStepActionChange={setStepAction}
+            stepRemoteTaskId={stepRemoteTaskId}
+            onStepRemoteTaskIdChange={setStepRemoteTaskId}
+            stepOutput={stepOutput}
+            onStepOutputChange={setStepOutput}
+            stepFailText={stepFailText}
+            onStepFailTextChange={setStepFailText}
+            stepInputReason={stepInputReason}
+            onStepInputReasonChange={setStepInputReason}
+            stepInputRequiredPayload={stepInputRequiredPayload}
+            onStepInputRequiredPayloadChange={setStepInputRequiredPayload}
+            stepResumePayload={stepResumePayload}
+            onStepResumePayloadChange={setStepResumePayload}
+            onApplyStepAction={onApplyStepAction}
+          />
+        </Suspense>
       )}
 
       {teamDebugTag === "mailbox_raw" && !activeRunForSelectedTeam && (
@@ -2749,58 +2763,60 @@ export function TeamPage(props: TeamPageProps) {
       )}
 
       {teamDebugTag === "mailbox_raw" && activeRunForSelectedTeam && (
-        <TeamMailboxPanel
-          developerMode={props.developerMode}
-          mode="advanced_only"
-          snapshot={snapshot}
-          humanActorId={HUMAN_MAILBOX_ACTOR_ID}
-          selectedMemberId={selectedMemberId}
-          unreadByMemberId={unreadByMemberId}
-          onSelectMember={setSelectedMemberId}
-          chatActors={chatActors}
-          chatStickToBottom={chatStickToBottom}
-          chatMessagesRef={chatMessagesRef}
-          onConversationScroll={onConversationScroll}
-          onJumpToBottom={onJumpConversationToBottom}
-          conversationMessages={conversationMessages}
-          displayNameByActorId={mailboxDisplayNameByActorId}
-          toPrettyJson={toPrettyJson}
-          formatTs={formatTs}
-          busy={busy}
-          onAcceptMessage={onAcceptMessage}
-          onAcceptVisibleMessages={onAcceptVisibleMessages}
-          chatDraft={chatDraft}
-          onChatDraftChange={setChatDraft}
-          onSendChatMessage={onSendChatMessage}
-          msgFromActorId={msgFromActorId}
-          onMsgFromActorIdChange={setMsgFromActorId}
-          msgToActorId={msgToActorId}
-          onMsgToActorIdChange={setMsgToActorId}
-          msgChannel={msgChannel}
-          onMsgChannelChange={setMsgChannel}
-          msgTransport={msgTransport}
-          onMsgTransportChange={setMsgTransport}
-          msgRoute={msgRoute}
-          onMsgRouteChange={setMsgRoute}
-          mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
-          msgTemplate={msgTemplate}
-          onMsgTemplateChange={onMailboxTemplateChange}
-          onApplyMessageTemplate={onApplyMessageTemplate}
-          msgPayload={msgPayload}
-          onMsgPayloadChange={setMsgPayload}
-          msgIdempotencyKey={msgIdempotencyKey}
-          onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
-          onSendMessage={onSendMessage}
-          inboxActorId={inboxActorId}
-          onInboxActorIdChange={setInboxActorId}
-          inboxLimit={inboxLimit}
-          onInboxLimitChange={setInboxLimit}
-          inboxAfterId={inboxAfterId}
-          onInboxAfterIdChange={setInboxAfterId}
-          inboxIncludeDelivered={inboxIncludeDelivered}
-          onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
-          onRefreshInbox={onRefreshInbox}
-        />
+        <Suspense fallback={null}>
+          <LazyTeamMailboxPanel
+            developerMode={props.developerMode}
+            mode="advanced_only"
+            snapshot={snapshot}
+            humanActorId={HUMAN_MAILBOX_ACTOR_ID}
+            selectedMemberId={selectedMemberId}
+            unreadByMemberId={unreadByMemberId}
+            onSelectMember={setSelectedMemberId}
+            chatActors={chatActors}
+            chatStickToBottom={chatStickToBottom}
+            chatMessagesRef={chatMessagesRef}
+            onConversationScroll={onConversationScroll}
+            onJumpToBottom={onJumpConversationToBottom}
+            conversationMessages={conversationMessages}
+            displayNameByActorId={mailboxDisplayNameByActorId}
+            toPrettyJson={toPrettyJson}
+            formatTs={formatTs}
+            busy={busy}
+            onAcceptMessage={onAcceptMessage}
+            onAcceptVisibleMessages={onAcceptVisibleMessages}
+            chatDraft={chatDraft}
+            onChatDraftChange={setChatDraft}
+            onSendChatMessage={onSendChatMessage}
+            msgFromActorId={msgFromActorId}
+            onMsgFromActorIdChange={setMsgFromActorId}
+            msgToActorId={msgToActorId}
+            onMsgToActorIdChange={setMsgToActorId}
+            msgChannel={msgChannel}
+            onMsgChannelChange={setMsgChannel}
+            msgTransport={msgTransport}
+            onMsgTransportChange={setMsgTransport}
+            msgRoute={msgRoute}
+            onMsgRouteChange={setMsgRoute}
+            mailboxTemplateOptions={MAILBOX_TEMPLATE_OPTIONS}
+            msgTemplate={msgTemplate}
+            onMsgTemplateChange={onMailboxTemplateChange}
+            onApplyMessageTemplate={onApplyMessageTemplate}
+            msgPayload={msgPayload}
+            onMsgPayloadChange={setMsgPayload}
+            msgIdempotencyKey={msgIdempotencyKey}
+            onMsgIdempotencyKeyChange={setMsgIdempotencyKey}
+            onSendMessage={onSendMessage}
+            inboxActorId={inboxActorId}
+            onInboxActorIdChange={setInboxActorId}
+            inboxLimit={inboxLimit}
+            onInboxLimitChange={setInboxLimit}
+            inboxAfterId={inboxAfterId}
+            onInboxAfterIdChange={setInboxAfterId}
+            inboxIncludeDelivered={inboxIncludeDelivered}
+            onInboxIncludeDeliveredChange={setInboxIncludeDelivered}
+            onRefreshInbox={onRefreshInbox}
+          />
+        </Suspense>
       )}
     </>
   ) : null;
@@ -2895,6 +2911,7 @@ export function TeamPage(props: TeamPageProps) {
       teamMemberDraft?.role,
     ]
   );
+  const hasOpenTeamModal = showCreateTeamModal || showForgeAgentForm || showTeamMemberEditModal;
 
   return (
     <div className={TEAM_PAGE_ROOT_CLASS}>
@@ -3120,34 +3137,38 @@ export function TeamPage(props: TeamPageProps) {
         }
       />
 
-      <TeamPageModals
-        showCreateTeamModal={showCreateTeamModal}
-        showForgeAgentForm={showForgeAgentForm}
-        showTeamMemberEditModal={showTeamMemberEditModal}
-        busy={busy}
-        newTeamName={newTeamName}
-        newTeamDescription={newTeamDescription}
-        onTeamNameChange={setNewTeamName}
-        onTeamDescriptionChange={setNewTeamDescription}
-        onCreateTeam={onCreateTeam}
-        closeCreateTeamModal={closeCreateTeamModal}
-        teamMemberDraft={teamMemberDraft}
-        teamMemberRoleProfile={teamMemberRoleProfile}
-        teamMemberRoleOptions={teamMemberRoleOptions}
-        selectedTeamHasLeader={selectedTeamHasLeader}
-        handleTeamMemberRoleChange={handleTeamMemberRoleChange}
-        patchTeamMemberDraft={patchTeamMemberDraft}
-        forgeModalProps={forgeModalProps}
-        closeTeamMemberForgeModal={closeTeamMemberForgeModal}
-        selectedAgentLabel={selectedAgentLabel}
-        teamMemberEditDraft={teamMemberEditDraft}
-        patchTeamMemberEditDraft={patchTeamMemberEditDraft}
-        closeTeamMemberEditModal={closeTeamMemberEditModal}
-        onSaveTeamMemberProfile={onSaveTeamMemberProfile}
-        createChrome={modalChrome}
-        forgeChrome={modalChrome}
-        editChrome={modalChrome}
-      />
+      {hasOpenTeamModal && (
+        <Suspense fallback={null}>
+          <LazyTeamPageModals
+            showCreateTeamModal={showCreateTeamModal}
+            showForgeAgentForm={showForgeAgentForm}
+            showTeamMemberEditModal={showTeamMemberEditModal}
+            busy={busy}
+            newTeamName={newTeamName}
+            newTeamDescription={newTeamDescription}
+            onTeamNameChange={setNewTeamName}
+            onTeamDescriptionChange={setNewTeamDescription}
+            onCreateTeam={onCreateTeam}
+            closeCreateTeamModal={closeCreateTeamModal}
+            teamMemberDraft={teamMemberDraft}
+            teamMemberRoleProfile={teamMemberRoleProfile}
+            teamMemberRoleOptions={teamMemberRoleOptions}
+            selectedTeamHasLeader={selectedTeamHasLeader}
+            handleTeamMemberRoleChange={handleTeamMemberRoleChange}
+            patchTeamMemberDraft={patchTeamMemberDraft}
+            forgeModalProps={forgeModalProps}
+            closeTeamMemberForgeModal={closeTeamMemberForgeModal}
+            selectedAgentLabel={selectedAgentLabel}
+            teamMemberEditDraft={teamMemberEditDraft}
+            patchTeamMemberEditDraft={patchTeamMemberEditDraft}
+            closeTeamMemberEditModal={closeTeamMemberEditModal}
+            onSaveTeamMemberProfile={onSaveTeamMemberProfile}
+            createChrome={modalChrome}
+            forgeChrome={modalChrome}
+            editChrome={modalChrome}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
