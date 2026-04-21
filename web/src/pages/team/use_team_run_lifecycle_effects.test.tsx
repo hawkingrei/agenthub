@@ -99,7 +99,7 @@ describe("useTeamRunLifecycleEffects", () => {
     vi.restoreAllMocks();
   });
 
-  it("pauses active-run polling while the document is hidden and refreshes on return", async () => {
+  it("allows the first hidden active-run refresh, then pauses until the page is visible again", async () => {
     const params = createParams();
 
     act(() => {
@@ -126,9 +126,18 @@ describe("useTeamRunLifecycleEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
-    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
-    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -140,8 +149,8 @@ describe("useTeamRunLifecycleEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
-    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
-    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 2);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 2);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
   });
 });
