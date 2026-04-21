@@ -66,6 +66,36 @@ function resolveLeadingAcpMessageChunkState(
   };
 }
 
+export function omitIncompleteLeadingAcpMessageEvents(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): AgentEvent[] {
+  const leadingState = resolveLeadingAcpMessageChunkState(events, sessionId);
+  if (!leadingState.incomplete || !leadingState.messageId) {
+    return events;
+  }
+  const scopedSessionId = sessionId ?? null;
+  return events.filter((event) => {
+    if (event.stream !== "acp" || (event.session_id ?? null) !== scopedSessionId) {
+      return true;
+    }
+    const trimmed = event.message.trim();
+    if (!trimmed.startsWith("{")) {
+      return true;
+    }
+    try {
+      const payload = JSON.parse(trimmed) as Record<string, unknown>;
+      return !(
+        payload.type === "agent_message" &&
+        typeof payload.message_id === "string" &&
+        payload.message_id === leadingState.messageId
+      );
+    } catch {
+      return true;
+    }
+  });
+}
+
 export function hasIncompleteLeadingAcpMessage(
   events: AgentEvent[],
   sessionId: string | null | undefined

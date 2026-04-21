@@ -15,6 +15,7 @@ import { pushInputHistory } from "../input_history";
 import {
   ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
   hasIncompleteLeadingAcpMessage,
+  omitIncompleteLeadingAcpMessageEvents,
 } from "./team/acp_history_prefetch";
 import {
   OUTPUT_HEADER_META_CLASS,
@@ -81,9 +82,13 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
 
   const selectedSessionId =
     selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+  const visibleMemberEvents = React.useMemo(
+    () => omitIncompleteLeadingAcpMessageEvents(memberEvents, selectedSessionId ?? null),
+    [memberEvents, selectedSessionId]
+  );
   const acpEventLines = React.useMemo(
     () =>
-      memberEvents.map((event) => ({
+      visibleMemberEvents.map((event) => ({
         ts: event.ts,
         seq: event.seq,
         event_id: event.event_id,
@@ -91,7 +96,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
         message: event.message,
         session_id: event.session_id,
       })),
-    [memberEvents]
+    [visibleMemberEvents]
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const thinkingStartTs = acpView.thinkingStartTs;
@@ -425,17 +430,17 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     if (memberEventsLoading && !hasVisibleConversationItems) {
       return "Active thread loading";
     }
-    if (!acpView.hasAcp && memberEvents.length === 0) {
+    if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
       return "Active thread has no events yet";
     }
     return "Active thread";
   }, [
     acpView.hasAcp,
     hasVisibleConversationItems,
-    memberEvents.length,
     memberEventsLoading,
     selectedMemberId,
     selectedSessionId,
+    visibleMemberEvents.length,
   ]);
   const showInputDock = !(developerMode && effectiveAcpTab === "debug" && acpView.hasAcp);
   const hasVisibleInputDock = canSendInput && showInputDock;
