@@ -155,6 +155,86 @@ describe("useTeamCatalogViewModel", () => {
       expect(snapshot?.selectedTeamHasLeader).toBe(true);
       expect(snapshot?.selectedTeamWorkerCount).toBe(1);
       expect(snapshot?.selectedTeamRuntimeStatus.label).toBe("team running");
+      expect(snapshot?.selectedTeamRuntimeControlTone).toEqual({
+        statusColor: "teal",
+        countColor: "teal",
+      });
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("falls back cleanly when there is no matching selected-team snapshot or configured members", async () => {
+    const params: HookParams = {
+      teams: [
+        {
+          id: "team-empty",
+          name: "Empty Team",
+          description: "   ",
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
+        },
+      ] as HookParams["teams"],
+      agents: [],
+      teamMemberAgentsById: {},
+      teamRuntimeByTeamId: {},
+      selectedTeam: {
+        id: "team-empty",
+        name: "Empty Team",
+        description: "   ",
+        spec: {},
+        created_at: 1,
+        updated_at: 1,
+      } as HookParams["selectedTeam"],
+      snapshot: {
+        team: {
+          id: "team-other",
+          name: "Other Team",
+        },
+        leader_member_id: "leader-1",
+        members: [
+          {
+            member_id: "leader-1",
+            role: "leader",
+            model: null,
+            prompt: null,
+            skills: [],
+            pending_inbox_count: 0,
+            status: "idle",
+            latest_step: null,
+            session_status: "inactive",
+          },
+        ],
+        inbox: [],
+        steps: [],
+        tasks: [],
+        generated_at: 1,
+      } as HookParams["snapshot"],
+      teamSelectorFilter: "team-empty",
+    };
+
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.selectorTeamItems).toEqual([
+        expect.objectContaining({
+          id: "team-empty",
+          description: "No mission summary yet.",
+          summary: "0 members · 0 active",
+          runtimeLabel: "team stopped",
+        }),
+      ]);
+      expect(snapshot?.selectedTeamSnapshotMembers).toBeUndefined();
+      expect(snapshot?.selectedTeamMemberLiveStates).toEqual([]);
+      expect(snapshot?.selectedTeamHasConfiguredMembers).toBe(false);
+      expect(snapshot?.selectedTeamHasLeader).toBe(false);
+      expect(snapshot?.selectedTeamWorkerCount).toBe(0);
+      expect(snapshot?.selectedTeamRuntimeStatus.status).toBe("stopped");
+      expect(snapshot?.selectedTeamRuntimeControlTone).toEqual({
+        statusColor: "gray",
+        countColor: "gray",
+      });
     } finally {
       mounted.cleanup();
     }

@@ -128,7 +128,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
   });
 
-  it("keeps the dock jump and hides the floating ACP jump when input is available", () => {
+  it("keeps the dock jump and hides the floating ACP jump when input is available", async () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -147,8 +147,17 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+    const conversation = required(
+      container.querySelector('[data-acp-conversation-scroll="true"]') as HTMLDivElement | null,
+      "acp conversation missing"
+    );
+    expect(conversation.classList.contains("py-1")).toBe(true);
   });
 
   it("pads the ACP conversation above the measured input dock height", () => {
@@ -211,7 +220,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         "acp conversation scroll container missing"
       );
       expect(conversation.style.paddingBottom).toBe("");
-      expect(conversation.style.scrollPaddingBottom).toBe("168px");
+      expect(conversation.style.scrollPaddingBottom).toBe("164px");
     } finally {
       globalThis.ResizeObserver = originalResizeObserver;
       HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;

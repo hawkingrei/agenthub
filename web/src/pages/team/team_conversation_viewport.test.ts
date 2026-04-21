@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_TEAM_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
   DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
   deriveTeamThreadJumpState,
   deriveTeamThreadStickToBottom,
+  shouldDefaultTeamConversationStickToBottom,
   windowTeamConversation,
 } from "./team_conversation_viewport";
 
@@ -24,6 +26,19 @@ describe("team_conversation_viewport", () => {
         total: 18,
       }
     );
+  });
+
+  it("only defaults to bottom pinning once the conversation is large enough", () => {
+    expect(
+      shouldDefaultTeamConversationStickToBottom(
+        DEFAULT_TEAM_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS - 1
+      )
+    ).toBe(false);
+    expect(
+      shouldDefaultTeamConversationStickToBottom(
+        DEFAULT_TEAM_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
+      )
+    ).toBe(true);
   });
 
   it("shows jump affordance only when the viewport is detached", () => {

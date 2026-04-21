@@ -241,4 +241,48 @@ describe("useTeamWorkspaceViewModel", () => {
       mounted.cleanup();
     }
   });
+
+  it("falls back to agent registry names and default chrome when no team is selected", async () => {
+    const params = createParams({
+      selectedTeam: null,
+      selectedTeamId: null,
+      selectedConversation: null,
+      activeRunForSelectedTeam: null,
+      activeRunIdForSelectedTeam: null,
+      focusedAgentMemberId: "worker-2",
+      routeWorkspaceLens: "search",
+      agents: [
+        {
+          id: "worker-2",
+          name: "Worker Two",
+          workdir: "/repo",
+          command: "codex",
+          args: [],
+          worktree_mode: "create_worktree",
+          worktree_repo: null,
+          worktree_ref: null,
+          code_mode: true,
+          agent_loop_enabled: false,
+          agent_loop_idle_seconds: 0,
+          agent_loop_prompt: "",
+          status: "running",
+          created_at: 1,
+          updated_at: 1,
+        },
+      ] as HookParams["agents"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.activeWorkspaceLens).toBe("search");
+      expect(snapshot?.selectedAgentLabel).toBe("Worker Two");
+      expect(snapshot?.workspaceTitle).toBe("Team Workbench");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Select a team from the left rail to start team conversations and supervise execution."
+      );
+      expect(snapshot?.showDedicatedWorkspaceHeading).toBe(true);
+    } finally {
+      mounted.cleanup();
+    }
+  });
 });

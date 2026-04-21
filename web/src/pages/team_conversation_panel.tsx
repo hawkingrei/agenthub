@@ -9,6 +9,7 @@ import { type TeamMemberLiveState } from "./team/member_helpers";
 import { resolveTaskMessageSeenByActors } from "./team/page_helpers";
 
 type TeamConversationPanelProps = {
+  conversationKey?: string;
   developerMode: boolean;
   token?: string | null;
   tasksLoading?: boolean;
@@ -52,8 +53,9 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <TeamTaskPanel
+        conversationKey={props.conversationKey}
         developerMode={props.developerMode}
         token={props.token}
         messageDraft={props.messageDraft}

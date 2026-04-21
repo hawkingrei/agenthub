@@ -35,7 +35,7 @@ export const ACP_PANEL_ROOT =
 export const ACP_PANEL_ROOT_CLASS = ACP_PANEL_ROOT;
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-notion-border-faint bg-notion-surface-overlay px-4 py-2.5 backdrop-blur-sm sm:px-6 max-[720px]:px-3";
+  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1.5 border-b border-notion-border-faint bg-notion-surface-overlay px-3 py-2 backdrop-blur-sm sm:px-4 max-[720px]:px-2.5";
 
 export const ACP_TABS_CLASS =
   "inline-flex max-w-full flex-wrap items-center gap-0.5";
@@ -85,7 +85,7 @@ export const ACP_CONVERSATION_TOP_HINT_CLASS =
   "acp-conversation-top-hint mx-auto my-6 rounded-full border border-notion-border bg-white px-4 py-1 text-[11px] font-medium text-notion-text-muted shadow-sm";
 
 export const ACP_MESSAGE_BUBBLE_CLASS =
-  "acp-message-bubble relative max-w-[min(86%,78ch)] rounded-[18px] border px-4 py-3 text-[14px] leading-7 shadow-notion-card transition-all";
+  "acp-message-bubble relative max-w-[min(88%,74ch)] rounded-[16px] border px-3 py-2.25 text-[14px] leading-6 shadow-notion-card transition-all";
 
 export const ACP_MESSAGE_BUBBLE_AGENT_CLASS =
   `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-md border-notion-border-subtle bg-white text-notion-text`;
@@ -94,10 +94,10 @@ export const ACP_MESSAGE_BUBBLE_USER_CLASS =
   `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-md border-notion-accent/15 bg-notion-accent-bg/75 text-notion-text`;
 
 export const ACP_BUBBLE_THINKING_CLASS =
-  "acp-bubble agent_thinking self-start max-w-[80%] rounded-[18px] rounded-tl-[4px] border border-notion-border bg-notion-surface-tint/50 px-4 py-3 italic text-notion-text-muted/80 shadow-sm";
+  "acp-bubble agent_thinking self-start max-w-[82%] rounded-[16px] rounded-tl-[4px] border border-notion-border bg-notion-surface-tint/50 px-3 py-2.25 italic text-notion-text-muted/80 shadow-sm";
 
 export const ACP_BUBBLE_PLAN_CLASS =
-  "acp-bubble agent_plan self-start max-w-[90%] rounded-[18px] rounded-tl-[4px] border border-notion-border bg-white px-4 py-3 shadow-sm";
+  "acp-bubble agent_plan self-start max-w-[90%] rounded-[16px] rounded-tl-[4px] border border-notion-border bg-white px-3 py-2.25 shadow-sm";
 
 export const ACP_PLAN_INDEX_BADGE_CLASS =
   "mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md bg-notion-hover text-[10px] font-bold text-notion-text-muted shadow-inner";
@@ -258,31 +258,31 @@ export const TEAM_SIDEBAR_INDICATOR_DOT_CLASS =
   "h-2 w-2 shrink-0 rounded-full mt-0.5";
 
 export const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "relative min-h-0 flex flex-1 flex-col gap-4 overflow-y-auto overscroll-y-contain pr-1 before:absolute before:left-[11px] before:top-2 before:h-[calc(100%-16px)] before:w-0.5 before:bg-notion-hover";
+  "relative min-h-0 flex flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain before:absolute before:left-[9px] before:top-1.5 before:h-[calc(100%-12px)] before:w-0.5 before:bg-notion-hover";
 
 export const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "flex shrink-0 flex-col gap-1 border-t border-notion-border-faint bg-notion-bg-soft/95 px-2.5 py-1.5 shadow-notion-topline backdrop-blur-md sm:px-3 sm:py-2";
+  "flex shrink-0 flex-col gap-1 border-t border-notion-border-faint bg-notion-bg-soft/95 px-2 py-1.25 shadow-notion-topline backdrop-blur-md sm:px-2.5 sm:py-1.5";
 
-export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-3";
+export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-1.5";
 
 export const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
 
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "group relative flex w-full max-w-full gap-2.5 px-3 py-1 sm:px-4";
+  "group relative flex w-full max-w-full gap-2 px-2 py-0.75 sm:px-2.5";
 
 export const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS = TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS;
 
 export const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS = TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS;
 
 export const TEAM_TASK_ACTIVITY_CONTENT_CLASS =
-  "min-w-0 flex max-w-[min(100%,72ch)] flex-col";
+  "min-w-0 flex max-w-[min(100%,68ch)] flex-col";
 
 export const TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS = "items-end";
 
 export const TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS = "items-start";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS =
-  "mt-1 min-w-0 max-w-full overflow-hidden rounded-[18px] border px-3.5 py-2.25 shadow-notion-soft";
+  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[16px] border px-3 py-2 shadow-notion-soft";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} border-notion-accent/15 bg-notion-accent-bg/72`;
@@ -401,19 +401,19 @@ export const MAILBOX_MEMBER_LIST_CLASS =
   "teams-chat-members flex max-h-[220px] min-w-0 flex-col gap-1.5 overflow-auto rounded-xl border border-notion-border bg-notion-sidebar/20 p-3 lg:max-h-[640px]";
 
 export const MAILBOX_PANEL_CLASS =
-  "teams-chat-panel flex min-w-0 flex-col gap-4 rounded-xl border border-notion-border bg-notion-bg-subtle p-4 shadow-sm";
+  "teams-chat-panel flex min-w-0 flex-col gap-2.5 rounded-xl border border-notion-border bg-notion-bg-subtle p-3 shadow-sm";
 
 export const MAILBOX_CHAT_JUMP_BUTTON_CLASS =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-notion-border bg-white px-3 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
+  "inline-flex h-7.5 items-center justify-center gap-1 rounded-md border border-notion-border bg-white px-2.5 text-[12px] font-medium text-notion-text-muted shadow-sm transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";
 
 export const MAILBOX_MESSAGE_LIST_CLASS =
-  "teams-chat-messages m-0 flex max-h-[480px] list-none flex-col gap-2 overflow-auto p-0 pr-1";
+  "teams-chat-messages m-0 flex max-h-[480px] list-none flex-col gap-1.5 overflow-auto p-0";
 
 export const MAILBOX_MESSAGE_ITEM_CLASS =
-  "teams-message-item group relative flex w-full flex-col px-4 py-1";
+  "teams-message-item group relative flex w-full flex-col px-2 py-0.75";
 
 export const MAILBOX_MESSAGE_BUBBLE_CLASS =
-  "teams-message-bubble relative max-w-[85%] rounded-[18px] px-4 py-2.5 text-[14px] leading-relaxed shadow-notion-soft transition-all";
+  "teams-message-bubble relative max-w-[88%] rounded-[16px] px-3 py-2 text-[14px] leading-6 shadow-notion-soft transition-all";
 
 export const MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS =
   `${MAILBOX_MESSAGE_BUBBLE_CLASS} teams-message-bubble-outgoing self-end rounded-tr-[4px] border border-notion-accent/15 bg-notion-bubble-user text-notion-text`;
@@ -425,12 +425,12 @@ export const MAILBOX_CONVERSATION_EMPTY_CLASS =
   "teams-conversation-empty mx-auto my-8 rounded-full border border-notion-border bg-white px-6 py-2 text-sm font-medium text-notion-text-muted italic shadow-sm";
 
 export const MAILBOX_MESSAGE_HEAD_CLASS =
-  "mb-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+  "mb-0.5 flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
 
-export const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-4 lg:grid-cols-2";
+export const MAILBOX_ADVANCED_GRID_CLASS = "teams-message-grid grid min-w-0 gap-3 lg:grid-cols-2";
 
 export const MAILBOX_ADVANCED_PANEL_CLASS =
-  "teams-message-panel flex min-w-0 flex-col gap-3 rounded-lg border border-notion-border bg-notion-sidebar/10 p-4";
+  "teams-message-panel flex min-w-0 flex-col gap-2.5 rounded-lg border border-notion-border bg-notion-sidebar/10 p-3";
 
 export const EVENTS_LIST_CLASS = "teams-event-list flex flex-col gap-3 mt-4";
 

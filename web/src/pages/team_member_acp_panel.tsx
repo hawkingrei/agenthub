@@ -48,6 +48,7 @@ type TeamMemberAcpPanelProps = {
 };
 
 type TeamMemberAcpTab = "conversation" | "plan" | "debug";
+const TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS = 12;
 
 const NOOP = () => {};
 
@@ -437,6 +438,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       mobileTitle: null,
       acpTab: effectiveAcpTab,
       developerMode,
+      conversationLoading:
+        effectiveAcpTab === "conversation" &&
+        memberEventsLoading &&
+        memberEvents.length < TEAM_MEMBER_ACP_INITIAL_RENDER_MIN_EVENTS,
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,

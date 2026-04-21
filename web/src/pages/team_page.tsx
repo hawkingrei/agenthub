@@ -49,6 +49,14 @@ import {
   TeamWorkbenchContent,
 } from "./team/team_workbench_content";
 import {
+  loadTeamConversationRuntimeCache,
+  loadTeamMailboxInboxRuntimeCache,
+  loadTeamMemberAcpRuntimeCache,
+  saveTeamConversationRuntimeCache,
+  saveTeamMailboxInboxRuntimeCache,
+  saveTeamMemberAcpRuntimeCache,
+} from "./team/runtime_cache_storage";
+import {
   parseErrorMessage,
   type TeamMemberProfileDraft,
 } from "./team/create_helpers";
@@ -932,11 +940,9 @@ export function TeamPage(props: TeamPageProps) {
   }, [effectiveSelectedTeamId, setSelectedMemberId]);
   const {
     teamSpecMemberIds,
-    teamMemberStatusByTeamId,
     teamMemberSummaryByTeamId,
     selectorTeamItems,
     selectedTeamMemberStatuses,
-    selectedTeamSnapshotMembers,
     selectedTeamMemberLiveStates,
     selectedTeamMemberSummary,
     selectedTeamRuntime,
@@ -1772,6 +1778,75 @@ export function TeamPage(props: TeamPageProps) {
     setMemberEventsHasMore,
   });
 
+  useEffect(() => {
+    const teamId = effectiveSelectedTeamId?.trim() ?? "";
+    const conversationId = selectedConversationId?.trim() ?? "";
+    if (!teamId || !conversationId) {
+      return;
+    }
+    const cached = loadTeamConversationRuntimeCache(teamId, conversationId);
+    setTaskMessages(cached.messages);
+    setConversationMailboxMessages(cached.mailboxMessages);
+  }, [effectiveSelectedTeamId, selectedConversationId]);
+
+  useEffect(() => {
+    const teamId = effectiveSelectedTeamId?.trim() ?? "";
+    const conversationId = selectedConversationId?.trim() ?? "";
+    if (!teamId || !conversationId) {
+      return;
+    }
+    saveTeamConversationRuntimeCache(
+      teamId,
+      conversationId,
+      taskMessages,
+      conversationMailboxMessages
+    );
+  }, [
+    conversationMailboxMessages,
+    effectiveSelectedTeamId,
+    selectedConversationId,
+    taskMessages,
+  ]);
+
+  useEffect(() => {
+    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
+    if (!agentId || !sessionId) {
+      return;
+    }
+    const cached = loadTeamMemberAcpRuntimeCache(agentId, sessionId);
+    setMemberEvents(cached);
+    setMemberEventsHasMore(false);
+  }, [selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+
+  useEffect(() => {
+    const agentId = selectedAgentWorkspaceAgentId.trim();
+    const sessionId = selectedAgentWorkspaceSessionId?.trim() ?? "";
+    if (!agentId || !sessionId) {
+      return;
+    }
+    saveTeamMemberAcpRuntimeCache(agentId, sessionId, memberEvents);
+  }, [memberEvents, selectedAgentWorkspaceAgentId, selectedAgentWorkspaceSessionId]);
+
+  useEffect(() => {
+    const runId = activeRunIdForSelectedTeam?.trim() ?? "";
+    const actorId = chatActors.inboxActorId.trim();
+    if (!runId || !actorId) {
+      return;
+    }
+    const cached = loadTeamMailboxInboxRuntimeCache(runId, actorId);
+    setInbox(cached);
+  }, [activeRunIdForSelectedTeam, chatActors.inboxActorId, setInbox]);
+
+  useEffect(() => {
+    const runId = activeRunIdForSelectedTeam?.trim() ?? "";
+    const actorId = chatActors.inboxActorId.trim();
+    if (!runId || !actorId) {
+      return;
+    }
+    saveTeamMailboxInboxRuntimeCache(runId, actorId, inbox);
+  }, [activeRunIdForSelectedTeam, chatActors.inboxActorId, inbox]);
+
   const onRefreshOverviewSnapshot = useCallback(async () => {
     if (!activeRunIdForSelectedTeam) return;
     setError(null);
@@ -2334,6 +2409,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
   const conversationPanel = (
     <TeamConversationPanel
+      conversationKey={selectedConversation?.id ?? null}
       developerMode={props.developerMode}
       token={props.token}
       tasksLoading={tasksLoading}

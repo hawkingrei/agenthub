@@ -1992,12 +1992,14 @@ describe("team panels interactions", () => {
     expect(bodyShell.classList.contains("flex-1")).toBe(true);
     expect(bodyShell.classList.contains("flex-col")).toBe(true);
     expect(bodyShell.classList.contains("overflow-hidden")).toBe(true);
+    expect(bodyShell.classList.contains("px-2")).toBe(true);
 
     const composer = required(
       container.querySelector('[data-team-channel-composer="true"]') as HTMLDivElement | null,
       "team channel composer missing"
     );
     expect(composer.classList.contains("shrink-0")).toBe(true);
+    expect(composer.classList.contains("px-2")).toBe(true);
 
     const scrollNode = required(
       container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
@@ -3318,7 +3320,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[18px]");
+    ).toContain("rounded-[16px]");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -4553,6 +4555,11 @@ describe("team panels interactions", () => {
 
     expect(channelBody.classList.contains("flex")).toBe(true);
     expect(composer.classList.contains("shrink-0")).toBe(true);
+    const bubble = required(
+      container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
+      "channel bubble missing"
+    );
+    expect(bubble.className).toContain("rounded-[16px]");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {
@@ -5133,6 +5140,15 @@ describe("team panels interactions", () => {
       required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
     ).toContain("auto_follow=on");
     expect(container.querySelectorAll(".teams-member-unread")).toHaveLength(2);
+    expect(
+      required(container.querySelector(".teams-chat-panel"), "mailbox panel missing").className
+    ).toContain("p-3");
+    expect(
+      required(
+        container.querySelector(".teams-message-bubble-incoming"),
+        "mailbox incoming bubble missing"
+      ).className
+    ).toContain("rounded-[16px]");
 
     act(() => {
       root.render(
