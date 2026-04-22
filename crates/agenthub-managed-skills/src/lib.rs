@@ -458,7 +458,10 @@ mod tests {
 
     #[test]
     fn worker_managed_skills_allow_shared_channel_discussion_for_important_matters() {
-        let home = std::env::temp_dir().join("agenthub-managed-skills-worker-route-home");
+        let home = std::env::temp_dir().join(format!(
+            "agenthub-managed-skills-worker-route-{}",
+            uuid::Uuid::new_v4()
+        ));
 
         let worker_index = managed_skill_doc(
             ManagedSkillKind::TeamWorkerAgentsIndex,

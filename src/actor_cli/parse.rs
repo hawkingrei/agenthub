@@ -226,7 +226,7 @@ fn normalize_actor_send_mentions(raw_mentions: Vec<String>) -> anyhow::Result<Ve
         let mention = raw.trim();
         anyhow::ensure!(
             !mention.is_empty(),
-            "mention_actor_id must be a non-empty string"
+            "--mention/--mention-actor-id requires a non-empty actor_id"
         );
         if seen.insert(mention.to_string()) {
             mentions.push(mention.to_string());
@@ -242,21 +242,37 @@ fn merge_actor_send_mentions(
     if mention_actor_ids.is_empty() {
         return Ok(payload);
     }
-    let mention_values = mention_actor_ids
-        .iter()
-        .cloned()
-        .map(Value::String)
-        .collect::<Vec<_>>();
     match payload {
         Value::String(text) => Ok(serde_json::json!({
             "type": "chat_message",
             "text": text,
-            "mention_actor_ids": mention_values,
+            "mention_actor_ids": mention_actor_ids,
         })),
         Value::Object(mut obj) => {
+            let mut merged_mentions = obj
+                .remove("mention_actor_ids")
+                .map_or_else(|| Ok(Vec::new()), |value| match value {
+                    Value::Array(values) => normalize_actor_send_mentions(
+                        values
+                            .into_iter()
+                            .map(|value| {
+                                value.as_str().map(str::to_string).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "payload mention_actor_ids entries must be strings"
+                                    )
+                                })
+                            })
+                            .collect::<anyhow::Result<Vec<_>>>()?,
+                    ),
+                    _ => Err(anyhow::anyhow!(
+                        "payload mention_actor_ids must be an array of strings"
+                    )),
+                })?;
+            merged_mentions.extend_from_slice(mention_actor_ids);
+            let merged_mentions = normalize_actor_send_mentions(merged_mentions)?;
             obj.insert(
                 "mention_actor_ids".to_string(),
-                Value::Array(mention_values),
+                Value::Array(merged_mentions.into_iter().map(Value::String).collect()),
             );
             Ok(Value::Object(obj))
         }
@@ -1950,6 +1966,37 @@ mod tests {
                     json!({
                         "type": "chat_message",
                         "text": "please check",
+                        "mention_actor_ids": ["reviewer", "worker"],
+                    })
+                );
+            }
+            other => panic!("expected send command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_send_merges_payload_mentions_with_flags() {
+        let parsed = parse_actor_args(&[
+            "send".to_string(),
+            "--run-id".to_string(),
+            "run-1".to_string(),
+            "--from-actor-id".to_string(),
+            "planner".to_string(),
+            "--shared".to_string(),
+            "--mention".to_string(),
+            "worker".to_string(),
+            "--payload-json".to_string(),
+            "{\"type\":\"chat_message\",\"text\":\"@reviewer please check\",\"mention_actor_ids\":[\"reviewer\"]}".to_string(),
+        ])
+        .expect("parse actor send with merged mentions");
+
+        match parsed.command {
+            ActorCommand::Send { payload, .. } => {
+                assert_eq!(
+                    *payload,
+                    json!({
+                        "type": "chat_message",
+                        "text": "@reviewer please check",
                         "mention_actor_ids": ["reviewer", "worker"],
                     })
                 );
