@@ -2691,10 +2691,12 @@ fn extract_task_message_mention_actor_ids(
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    if let Some(explicit_mentions) = payload.get("mention_actor_ids").and_then(Value::as_array) {
-        for value in explicit_mentions {
-            if let Some(candidate) = value.as_str() {
-                push_member_mention(candidate, member_ids, &mut seen, &mut out);
+    for key in ["mention_actor_ids", "mentioned_actor_ids"] {
+        if let Some(explicit_mentions) = payload.get(key).and_then(Value::as_array) {
+            for value in explicit_mentions {
+                if let Some(candidate) = value.as_str() {
+                    push_member_mention(candidate, member_ids, &mut seen, &mut out);
+                }
             }
         }
     }
