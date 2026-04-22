@@ -5,7 +5,8 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-agent-client-protocol = { version = "0.10.4", features = ["unstable"] }
+agent-client-protocol = { version = "0.11.1", features = ["unstable"] }
+agent-client-protocol-legacy = { package = "agent-client-protocol", version = "=0.10.4", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

@@ -286,7 +286,7 @@ version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10eeef5e80864f9c3c148a3f395c3e35a66d37ec7561c7845b2bffae8e841759"
 dependencies = [
- "agent-client-protocol-schema",
+ "agent-client-protocol-schema 0.11.4",
  "anyhow",
  "async-broadcast",
  "async-trait",
@@ -295,6 +295,41 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "agent-client-protocol"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2af62fb84df2af0f933d8f5fd78b843fa5eb0ec5a48fa1b528c41951d0bbe36c"
+dependencies = [
+ "agent-client-protocol-derive",
+ "agent-client-protocol-schema 0.12.0",
+ "anyhow",
+ "futures",
+ "futures-concurrency",
+ "jsonrpcmsg",
+ "rmcp 1.5.0",
+ "rustc-hash 2.1.2",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "agent-client-protocol-derive"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce42c2d3c048c12897eef2e577dfff1e3355c632c9f1625cc953b9df48b44631"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -312,10 +347,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-client-protocol-schema"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49bae57dad1c28a362fbdcf7bab0583316a02b45a70792109fced55780a3b63c"
+dependencies = [
+ "anyhow",
+ "derive_more 2.1.1",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "strum 0.28.0",
+ "tracing",
+]
+
+[[package]]
 name = "agenthub"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-acp",
  "agenthub-config",
  "agenthub-db",
@@ -374,7 +426,8 @@ dependencies = [
 name = "agenthub-acp"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-acp-core",
  "agenthub-config",
  "agenthub-managed-skills",
@@ -396,7 +449,8 @@ dependencies = [
 name = "agenthub-acp-core"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "serde",
  "serde_json",
  "tracing",
@@ -406,7 +460,8 @@ dependencies = [
 name = "agenthub-codex-acp"
 version = "0.10.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-managed-skills",
  "anyhow",
  "async-trait",
@@ -1783,7 +1838,7 @@ dependencies = [
  "codex-shell-command",
  "codex-utils-absolute-path",
  "inventory",
- "rmcp",
+ "rmcp 0.15.0",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -2072,7 +2127,7 @@ dependencies = [
  "rand 0.9.4",
  "regex-lite",
  "reqwest 0.12.28",
- "rmcp",
+ "rmcp 0.15.0",
  "serde",
  "serde_json",
  "sha1",
@@ -2339,7 +2394,7 @@ dependencies = [
  "codex-utils-plugins",
  "futures",
  "regex-lite",
- "rmcp",
+ "rmcp 0.15.0",
  "serde",
  "serde_json",
  "sha1",
@@ -2366,7 +2421,7 @@ dependencies = [
  "codex-protocol",
  "codex-utils-cli",
  "codex-utils-json-to-toml",
- "rmcp",
+ "rmcp 0.15.0",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -2551,7 +2606,7 @@ dependencies = [
  "keyring",
  "oauth2",
  "reqwest 0.12.28",
- "rmcp",
+ "rmcp 0.15.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2729,7 +2784,7 @@ dependencies = [
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-pty",
- "rmcp",
+ "rmcp 0.15.0",
  "serde",
  "serde_json",
  "tracing",
@@ -4404,6 +4459,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures-concurrency"
+version = "7.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175cd8cca9e1d45b87f18ffa75088f2099e3c4fe5e2f83e42de112560bea8ea6"
+dependencies = [
+ "fixedbitset 0.5.7",
+ "futures-core",
+ "futures-lite",
+ "pin-project",
+ "smallvec",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5710,6 +5778,16 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jsonrpcmsg"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d833a15225c779251e13929203518c2ff26e2fe0f322d584b213f4f4dad37bd"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -8484,7 +8562,7 @@ dependencies = [
  "process-wrap",
  "rand 0.9.4",
  "reqwest 0.12.28",
- "rmcp-macros",
+ "rmcp-macros 0.15.0",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -8500,10 +8578,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmcp"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67d69668de0b0ccd9cc435f700f3b39a7861863cf37a15e1f304ea78688a4826"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "futures",
+ "pastey 0.2.1",
+ "pin-project-lite",
+ "rmcp-macros 1.5.0",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "rmcp-macros"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e88ad84b8b6237a934534a62b379a5be6388915663c0cc598ceb9b3292bbbfe"
+dependencies = [
+ "darling 0.23.0",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "rmcp-macros"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48fdc01c81097b0aed18633e676e269fefa3a78ec1df56b4fe597c1241b92025"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
