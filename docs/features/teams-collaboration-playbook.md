@@ -181,6 +181,9 @@ Shared-channel discussion rules:
   - scoped facts, progress, and evidence that benefit shared visibility
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
   teammates when opening or continuing that shared-channel discussion.
+- In human-authored shared-channel markdown, keep those mentions as raw stable `@member_id`
+  tokens in the text body; frontend rendering should resolve the ids into agent display names
+  instead of rewriting the source markdown contract.
 - Leader still owns planning decisions, assignment changes, and final integrated human-facing
   synthesis.
 - Worker shared-channel discussion should invite collaboration and decision input, not override

@@ -16,6 +16,9 @@ fragile for scripted sends and generated payloads because a sender had to embed 
 - rejected explicit mention flags on direct mailbox sends to keep the contract channel-scoped;
 - taught backend mention extraction to also honor `mentioned_actor_ids` as an input alias when
   normalizing channel payloads and API task messages.
+- clarified actor CLI help and team collaboration docs so human-authored channel messages should
+  mention teammates inline as raw `@member_id` tokens, with frontend rendering responsible for
+  resolving those stable ids into display names.
 
 ## Validation
 
