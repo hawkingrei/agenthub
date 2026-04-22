@@ -24,7 +24,7 @@ export function deriveAgentName(identity: string | undefined, workdir: string): 
 }
 
 export function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
-  return page.getByRole("button", { name: /^Team menu:/ });
+  return page.getByRole("button", { name: /^Open controls for / });
 }
 
 const TEAM_SELECTOR_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/?$/;
@@ -95,9 +95,7 @@ export async function waitForAddAgentEntryLane(
     .getByRole("button", { name: "Add Agent", exact: true })
     .first();
   const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
-  const menuTrigger = page.getByRole("button", {
-    name: /^Team menu:/,
-  });
+  const menuTrigger = selectedTeamMenuLocator(page);
 
   const detectLane = async (): Promise<AddAgentEntryLane | "missing"> => {
     if (await visibleMenuItem.isVisible().catch(() => false)) {
