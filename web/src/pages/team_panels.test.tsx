@@ -502,6 +502,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Agents");
     expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("# all");
+    expect(container.textContent).toContain(
+      "Shared coordination lane for requests, updates, and cross-cutting discussion."
+    );
     expect(findButtonByText(container, "Team Two").className).toContain("rounded-md");
     expect(findButtonByText(container, "Team Two").className).toContain("px-2");
     const kanbanButton = findButtonByText(container, "Kanban");

@@ -245,6 +245,23 @@ type TeamPageProps = {
 };
 
 export type TeamChannelId = "all";
+type TeamChannelItem = {
+  id: TeamChannelId;
+  label: string;
+  description: string;
+};
+
+const DEFAULT_TEAM_CHANNEL_ITEMS: ReadonlyArray<{
+  id: TeamChannelId;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "all",
+    label: "# all",
+    description: "Shared coordination lane for requests, updates, and cross-cutting discussion.",
+  },
+];
 
 export function resolveTeamChannelId(search: string): TeamChannelId {
   const params = new URLSearchParams(search);
@@ -487,6 +504,14 @@ export function TeamPage(props: TeamPageProps) {
   const routeChannelId = useMemo(
     () => resolveTeamChannelId(props.routeSearch ?? ""),
     [props.routeSearch]
+  );
+  const channelItems = useMemo<ReadonlyArray<TeamChannelItem>>(
+    () => DEFAULT_TEAM_CHANNEL_ITEMS,
+    []
+  );
+  const selectedChannelItem = useMemo(
+    () => channelItems.find((item) => item.id === routeChannelId) ?? channelItems[0] ?? null,
+    [channelItems, routeChannelId]
   );
   const routeThreadRootMessageId = useMemo(
     () => resolveTeamThreadRootMessageId(props.routeSearch ?? ""),
@@ -2193,6 +2218,10 @@ export function TeamPage(props: TeamPageProps) {
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
     selectedConversation,
+    selectedChannelLabel: selectedChannelItem?.label ?? "# all",
+    selectedChannelDescription:
+      selectedChannelItem?.description ??
+      "Shared coordination lane for requests, updates, and cross-cutting discussion.",
     runsLoading,
     isCompactWorkbench,
     teamPromptDefaults,
@@ -2668,7 +2697,7 @@ export function TeamPage(props: TeamPageProps) {
       : null;
   const threadPane = selectedConversationIsShared && routeThreadRootMessageId ? (
     <TeamThreadPane
-      channelLabel={routeChannelId === "all" ? "# all" : `# ${routeChannelId}`}
+      channelLabel={selectedChannelItem?.label ?? "# all"}
       rootMessageId={activeThreadRootMessage?.message_id ?? routeThreadRootMessageId}
       rootAuthorLabel={activeThreadRootMessage?.from_actor_id ?? null}
       rootCreatedAt={activeThreadRootMessage?.created_at ?? null}
@@ -3260,6 +3289,8 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             memberLiveStates={selectedTeamMemberLiveStates}
+            channelItems={channelItems}
+            selectedChannelId={routeChannelId}
             focusedAgentMemberId={focusedAgentMemberId}
             tab={tab}
             onSelectTeam={onSelectSidebarTeam}

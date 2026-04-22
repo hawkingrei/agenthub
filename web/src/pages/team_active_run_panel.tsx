@@ -1,7 +1,13 @@
 import React from "react";
 import type { TeamRunRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
-import { ActionButton, ToolbarRow } from "../ui/primitives";
+import {
+  ActionButton,
+  KeyValueItem,
+  KeyValueList,
+  PanelHeader,
+  SurfaceCard,
+} from "../ui/primitives";
 
 type TeamActiveRunPanelProps = {
   run: TeamRunRecord;
@@ -31,14 +37,16 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
     formatTs,
     cardClassName,
     titleClassName,
-    metaItemClassName,
   } = props;
 
   return (
-    <div className={cardClassName}>
-      <ToolbarRow className="mb-3">
-        <h3 className={titleClassName}>Active Execution Run</h3>
-        <div className="flex flex-wrap items-center gap-2">
+    <SurfaceCard className={cardClassName}>
+      <PanelHeader
+        className="mb-3"
+        title="Active Execution Run"
+        titleClassName={titleClassName}
+        actions={
+          <>
           <ActionButton
             tone="secondary"
             size="sm"
@@ -83,35 +91,28 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
           >
             Restart Execution Run
           </ActionButton>
-        </div>
-      </ToolbarRow>
-      <div className="mt-3 grid min-w-0 gap-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
-        <span className={metaItemClassName}>
-          <strong>Execution run:</strong> <code>{run.id}</code>
-        </span>
-        <span className={metaItemClassName}>
-          <strong>Execution status:</strong>{" "}
-          <StatusBadge
-            label={run.status}
-            tone={resolveTeamRunStatusTone(run.status)}
-            className="team-status"
-            title={`run status: ${run.status}`}
-          />
-        </span>
-        <span className={metaItemClassName}>
-          <strong>Context:</strong> {run.context_id}
-        </span>
-        <span className={metaItemClassName}>
-          <strong>Created:</strong> {formatTs(run.created_at)}
-        </span>
-        <span className={metaItemClassName}>
-          <strong>Started:</strong> {formatTs(run.started_at)}
-        </span>
-        <span className={metaItemClassName}>
-          <strong>Ended:</strong> {formatTs(run.ended_at)}
-        </span>
-      </div>
-    </div>
+          </>
+        }
+      />
+      <KeyValueList className="mt-3 gap-y-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">
+        <KeyValueItem label="Execution run:" value={<code>{run.id}</code>} />
+        <KeyValueItem
+          label="Execution status:"
+          value={
+            <StatusBadge
+              label={run.status}
+              tone={resolveTeamRunStatusTone(run.status)}
+              className="team-status"
+              title={`run status: ${run.status}`}
+            />
+          }
+        />
+        <KeyValueItem label="Context:" value={run.context_id} />
+        <KeyValueItem label="Created:" value={formatTs(run.created_at)} />
+        <KeyValueItem label="Started:" value={formatTs(run.started_at)} />
+        <KeyValueItem label="Ended:" value={formatTs(run.ended_at)} />
+      </KeyValueList>
+    </SurfaceCard>
   );
 }
 

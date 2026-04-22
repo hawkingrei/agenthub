@@ -3,7 +3,10 @@ import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   ActionButton,
+  EmptyState,
+  InlineNotice,
   InsetSurface,
+  PanelHeader,
   SelectableListItem,
   SurfaceCard,
   ToolbarRow,
@@ -351,9 +354,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
 
   return (
     <SurfaceCard className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
-      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
-      </ToolbarRow>
+      <PanelHeader title="Mailbox" titleClassName={TEAM_PANEL_TITLE_CLASS} />
 
       {showConversation && snapshot && (
         <div className={MAILBOX_META_CLASS}>
@@ -421,7 +422,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               );
             })}
             {mailboxActors.length === 0 && (
-              <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No members available.</p>
+              <EmptyState className={`${TEAM_MUTED_TEXT_CLASS} px-2`} body="No members available." />
             )}
           </div>
 
@@ -583,15 +584,15 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       )}
 
       {showConversation && developerMode && (
-        <div className={MAILBOX_ADVANCED_HINT_CLASS}>
+        <InlineNotice tone="info" className={MAILBOX_ADVANCED_HINT_CLASS}>
           Advanced mailbox tools were moved to <strong>Debug -&gt; Mailbox Raw</strong>.
-        </div>
+        </InlineNotice>
       )}
 
       {showAdvancedControls && !developerMode && (
-        <div className={`${MAILBOX_ADVANCED_HINT_CLASS} mt-3`}>
+        <InlineNotice tone="info" className={`${MAILBOX_ADVANCED_HINT_CLASS} mt-3`}>
           Enable Developer Mode in Admin to access raw mailbox tools.
-        </div>
+        </InlineNotice>
       )}
 
       {showDeveloperMailboxTools && (

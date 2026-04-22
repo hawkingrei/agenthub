@@ -30,6 +30,12 @@ type TeamMemberSummary = {
   total: number;
 };
 
+type TeamChannelItem = {
+  id: string;
+  label: string;
+  description?: string | null;
+};
+
 type TeamSidebarProps = {
   showTeamSelector?: boolean;
   developerMode: boolean;
@@ -51,6 +57,8 @@ type TeamSidebarProps = {
   selectedTeamHasConfiguredMembers?: boolean;
   teamMemberSummaryByTeamId: Map<string, TeamMemberSummary>;
   memberLiveStates: TeamMemberLiveState[];
+  channelItems?: TeamChannelItem[];
+  selectedChannelId?: string;
   focusedAgentMemberId: string;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
@@ -182,6 +190,15 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamRuntimeStatus,
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
+    channelItems = [
+      {
+        id: "all",
+        label: "# all",
+        description:
+          "Shared coordination lane for requests, updates, and cross-cutting discussion.",
+      },
+    ],
+    selectedChannelId = "all",
     focusedAgentMemberId,
     tab,
     onSelectTeam,
@@ -495,24 +512,45 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Channels
             </div>
-            <button
-              type="button"
-              className={
-                tab === "conversation"
-                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
-              }
-              onClick={onSelectConversation}
-              title="Shared channel"
-            >
-              <span
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[12px] font-semibold leading-none text-notion-text-muted/80"
-                aria-hidden="true"
-              >
-                #
-              </span>
-              <span className="truncate text-[12px] font-medium"># all</span>
-            </button>
+            {channelItems.map((channel) => {
+              const isSelected = tab === "conversation" && selectedChannelId === channel.id;
+              return (
+                <button
+                  key={channel.id}
+                  type="button"
+                  className={
+                    isSelected
+                      ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                      : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
+                  }
+                  onClick={onSelectConversation}
+                  title={channel.label}
+                >
+                  <span
+                    className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[12px] font-semibold leading-none text-notion-text-muted/80"
+                    aria-hidden="true"
+                  >
+                    #
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[12px] font-medium">
+                      {channel.label}
+                    </span>
+                    {channel.description ? (
+                      <span className="block truncate text-[10px] text-notion-text-muted">
+                        {channel.description}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-0.5">
+            <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
+              Tasks
+            </div>
             <button
               type="button"
               className={
@@ -522,9 +560,14 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               }
               onClick={onSelectKanban}
               title="Team kanban"
-              >
-                <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
-                <span className="truncate text-[12px] font-medium">Kanban</span>
+            >
+              <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[12px] font-medium">Kanban</span>
+                <span className="block truncate text-[10px] text-notion-text-muted">
+                  Canonical task board for leader-planned Team work.
+                </span>
+              </span>
             </button>
           </div>
 

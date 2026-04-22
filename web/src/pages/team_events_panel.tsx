@@ -1,6 +1,6 @@
 import React from "react";
 import { TeamRunEventRecord } from "../api";
-import { ActionButton, SurfaceCard, ToolbarRow } from "../ui/primitives";
+import { ActionButton, EmptyState, InlineNotice, PanelHeader, SurfaceCard } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
@@ -46,9 +46,11 @@ function TeamEventsPanelImpl(props: TeamEventsPanelProps) {
 
   return (
     <SurfaceCard className="p-4">
-      <ToolbarRow>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Run Events</h3>
-        <div className="flex flex-wrap items-center gap-2">
+      <PanelHeader
+        title="Run Events"
+        titleClassName={TEAM_PANEL_TITLE_CLASS}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
           <label className={EVENTS_CHECKBOX_LABEL_CLASS}>
             <input
               type="checkbox"
@@ -80,14 +82,17 @@ function TeamEventsPanelImpl(props: TeamEventsPanelProps) {
           >
             Load Older
           </ActionButton>
-        </div>
-      </ToolbarRow>
+          </div>
+        }
+      />
       {previewMode && (
-        <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
+        <InlineNotice tone="info" className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
           Showing latest {previewLimit} records.
-        </p>
+        </InlineNotice>
       )}
-      {displayedRunEvents.length === 0 && <p className={TEAM_MUTED_TEXT_CLASS}>No events.</p>}
+      {displayedRunEvents.length === 0 && (
+        <EmptyState className="mt-3" body="No events." />
+      )}
       <ul className={EVENTS_LIST_CLASS}>
         {displayedRunEvents.map((event) => (
           <li key={event.event_id} className={EVENTS_ITEM_CLASS}>
