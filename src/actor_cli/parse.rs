@@ -242,6 +242,25 @@ fn merge_actor_send_mentions(
     if mention_actor_ids.is_empty() {
         return Ok(payload);
     }
+    let parse_payload_mentions = |field_name: &str, value: Value| -> anyhow::Result<Vec<String>> {
+        match value {
+            Value::Array(values) => normalize_actor_send_mentions(
+                values
+                    .into_iter()
+                    .map(|value| {
+                        value.as_str().map(str::to_string).ok_or_else(|| {
+                            anyhow::anyhow!("payload {} entries must be strings", field_name)
+                        })
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?,
+            ),
+            _ => Err(anyhow::anyhow!(
+                "payload {} must be an array of strings",
+                field_name
+            )),
+        }
+    };
+
     match payload {
         Value::String(text) => Ok(serde_json::json!({
             "type": "chat_message",
@@ -249,26 +268,13 @@ fn merge_actor_send_mentions(
             "mention_actor_ids": mention_actor_ids,
         })),
         Value::Object(mut obj) => {
-            let mut merged_mentions = obj.remove("mention_actor_ids").map_or_else(
-                || Ok(Vec::new()),
-                |value| match value {
-                    Value::Array(values) => normalize_actor_send_mentions(
-                        values
-                            .into_iter()
-                            .map(|value| {
-                                value.as_str().map(str::to_string).ok_or_else(|| {
-                                    anyhow::anyhow!(
-                                        "payload mention_actor_ids entries must be strings"
-                                    )
-                                })
-                            })
-                            .collect::<anyhow::Result<Vec<_>>>()?,
-                    ),
-                    _ => Err(anyhow::anyhow!(
-                        "payload mention_actor_ids must be an array of strings"
-                    )),
-                },
-            )?;
+            let mut merged_mentions = Vec::new();
+            if let Some(value) = obj.remove("mention_actor_ids") {
+                merged_mentions.extend(parse_payload_mentions("mention_actor_ids", value)?);
+            }
+            if let Some(value) = obj.remove("mentioned_actor_ids") {
+                merged_mentions.extend(parse_payload_mentions("mentioned_actor_ids", value)?);
+            }
             merged_mentions.extend_from_slice(mention_actor_ids);
             let merged_mentions = normalize_actor_send_mentions(merged_mentions)?;
             obj.insert(
@@ -1984,6 +1990,37 @@ mod tests {
             "{\"type\":\"chat_message\",\"text\":\"@reviewer please check\",\"mention_actor_ids\":[\"reviewer\"]}".to_string(),
         ])
         .expect("parse actor send with merged mentions");
+
+        match parsed.command {
+            ActorCommand::Send { payload, .. } => {
+                assert_eq!(
+                    *payload,
+                    json!({
+                        "type": "chat_message",
+                        "text": "@reviewer please check",
+                        "mention_actor_ids": ["reviewer", "worker"],
+                    })
+                );
+            }
+            other => panic!("expected send command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_send_canonicalizes_mentioned_actor_ids_alias() {
+        let parsed = parse_actor_args(&[
+            "send".to_string(),
+            "--run-id".to_string(),
+            "run-1".to_string(),
+            "--from-actor-id".to_string(),
+            "planner".to_string(),
+            "--shared".to_string(),
+            "--mention".to_string(),
+            "worker".to_string(),
+            "--payload-json".to_string(),
+            "{\"type\":\"chat_message\",\"text\":\"@reviewer please check\",\"mentioned_actor_ids\":[\"reviewer\"]}".to_string(),
+        ])
+        .expect("parse actor send with alias mentions");
 
         match parsed.command {
             ActorCommand::Send { payload, .. } => {

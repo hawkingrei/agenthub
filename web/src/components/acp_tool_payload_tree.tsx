@@ -43,7 +43,7 @@ const TOOL_PAYLOAD_ITEM_CHUNK = 16;
 
 export const ACP_PAYLOAD_GRID_CLASS = "acp-payload-grid m-0 grid gap-1.5";
 export const ACP_PAYLOAD_ROW_CLASS =
-  "acp-payload-row grid grid-cols-[minmax(84px,128px)_minmax(0,1fr)] items-start gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 [&>dt]:break-words [&>dt]:font-mono [&>dt]:text-[11px] [&>dt]:leading-[1.4] [&>dt]:text-slate-500 [&>dd]:m-0 [&>dd]:min-w-0 max-[720px]:grid-cols-[minmax(64px,96px)_minmax(0,1fr)] max-[720px]:gap-[5px] max-[600px]:grid-cols-1 max-[600px]:gap-1";
+  "acp-payload-row grid grid-cols-[minmax(84px,128px)_minmax(0,1fr)] items-start gap-1.5 rounded-md border border-slate-200/80 bg-white/88 px-2 py-1.5 [&>dt]:break-words [&>dt]:font-mono [&>dt]:text-[11px] [&>dt]:leading-[1.4] [&>dt]:text-slate-500 [&>dd]:m-0 [&>dd]:min-w-0 max-[720px]:grid-cols-[minmax(64px,96px)_minmax(0,1fr)] max-[720px]:gap-[5px] max-[600px]:grid-cols-1 max-[600px]:gap-1";
 const ACP_PAYLOAD_SCALAR_CLASS =
   "acp-payload-scalar inline-block max-w-full break-words font-mono text-[11px] leading-[1.45] text-slate-800";
 const ACP_PAYLOAD_SCALAR_MUTED_CLASS =

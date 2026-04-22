@@ -19,6 +19,11 @@ import {
   TEAM_SIDEBAR_WORK_CLASS,
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
 } from "../ui/tailwind_classes";
+import {
+  DEFAULT_TEAM_CHANNEL_ITEMS,
+  describeTeamKanban,
+  type TeamChannelItem,
+} from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import type { TeamTab } from "./team/state";
@@ -51,13 +56,15 @@ type TeamSidebarProps = {
   selectedTeamHasConfiguredMembers?: boolean;
   teamMemberSummaryByTeamId: Map<string, TeamMemberSummary>;
   memberLiveStates: TeamMemberLiveState[];
+  channelItems?: ReadonlyArray<TeamChannelItem>;
+  selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
-  onSelectConversation: () => void;
+  onBackToSelector?: () => void;
+  onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
-  onSelectUtilityTab: (tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
@@ -182,10 +189,13 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamRuntimeStatus,
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
+    channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
+    selectedChannelId = "all",
     focusedAgentMemberId,
     tab,
     onSelectTeam,
-    onSelectConversation,
+    onBackToSelector,
+    onSelectChannel,
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
@@ -215,6 +225,13 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     () => teams.filter((team) => team.id !== selectedTeamId),
     [selectedTeamId, teams]
   );
+  const selectedChannelLabel = React.useMemo(
+    () =>
+      channelItems.find((channel) => channel.id === selectedChannelId)?.label ??
+      DEFAULT_TEAM_CHANNEL_ITEMS[0]?.label ??
+      "# all",
+    [channelItems, selectedChannelId]
+  );
 
   const toggleSection = React.useCallback((section: TeamSidebarSection) => {
     setSectionOpen((current) => ({
@@ -236,92 +253,130 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
-              <Menu
-                position="bottom-start"
-                {...NOTION_FLOATING_MENU_PROPS}
-              >
-                <Menu.Target>
-                  <UnstyledButton
-                    className="inline-flex max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
-                    aria-label={`Team menu: ${selectedTeam.name}`}
-                    title={`Team menu: ${selectedTeam.name}`}
-                  >
-                    <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
-                      {selectedTeam.name}
-                    </span>
-                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[11px] text-notion-text-muted">
-                      <i className="bi bi-chevron-down" aria-hidden="true" />
-                    </span>
-                  </UnstyledButton>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Label>{selectedTeam.name}</Menu.Label>
-                  {switchableTeams.length > 0 && (
-                    <>
-                      <Menu.Label>Switch team</Menu.Label>
-                      {switchableTeams.map((team) => (
+              <div className="flex min-w-0 items-center gap-1">
+                <Menu
+                  position="bottom-start"
+                  {...NOTION_FLOATING_MENU_PROPS}
+                >
+                  <Menu.Target>
+                    <UnstyledButton
+                      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
+                      aria-label={`Switch teams from ${selectedTeam.name}`}
+                      title="Switch teams"
+                    >
+                      <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
+                        {selectedTeam.name}
+                      </span>
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[11px] text-notion-text-muted">
+                        <i className="bi bi-chevron-expand" aria-hidden="true" />
+                      </span>
+                    </UnstyledButton>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>Teams</Menu.Label>
+                    {onBackToSelector ? (
+                      <>
                         <Menu.Item
-                          key={team.id}
-                          onClick={() => onSelectTeam(team.id)}
+                          leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
+                          onClick={onBackToSelector}
                         >
-                          {team.name}
+                          All Teams
                         </Menu.Item>
-                      ))}
-                      <Menu.Divider />
-                    </>
-                  )}
-                  {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
-                    <>
-                      {onOpenTeamMemberForge && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
-                          onClick={onOpenTeamMemberForge}
-                        >
-                          Add Agent
-                        </Menu.Item>
-                      )}
-                      {onStartTeamRuntime && selectedTeamRuntimeStatus && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
-                          onClick={onStartTeamRuntime}
-                          disabled={
-                            busy === "stop-team" ||
-                            selectedTeamRuntimeStatus.status === "running" ||
-                            !selectedTeamHasConfiguredMembers
-                          }
-                        >
-                          Start Team
-                        </Menu.Item>
-                      )}
-                      {onStopTeamRuntime && selectedTeamRuntimeStatus && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
-                          onClick={onStopTeamRuntime}
-                          disabled={
-                            busy === "start-team" ||
-                            selectedTeamRuntimeStatus.status === "stopped"
-                          }
-                        >
-                          Stop Team
-                        </Menu.Item>
-                      )}
-                    </>
-                  )}
-                  {developerMode && (
-                    <>
-                      {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
                         <Menu.Divider />
-                      )}
-                      <Menu.Item disabled>
-                        <div className="min-w-[220px] text-[12px] leading-5 text-notion-text-muted">
-                          <span className="font-semibold text-notion-text">Team ID</span>
-                          <span className="ml-2 break-all">{selectedTeam.id}</span>
-                        </div>
+                      </>
+                    ) : null}
+                    {teams.map((team) => (
+                      <Menu.Item
+                        key={team.id}
+                        onClick={() => onSelectTeam(team.id)}
+                      >
+                        {team.name}
                       </Menu.Item>
-                    </>
-                  )}
-                </Menu.Dropdown>
-              </Menu>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
+                <Menu
+                  position="bottom-start"
+                  {...NOTION_FLOATING_MENU_PROPS}
+                >
+                  <Menu.Target>
+                    <UnstyledButton
+                      className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-7 w-7 shrink-0`}
+                      aria-label={`Open controls for ${selectedTeam.name}`}
+                      title={`Open controls for ${selectedTeam.name}`}
+                    >
+                      <i className="bi bi-chevron-down" aria-hidden="true" />
+                    </UnstyledButton>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>{selectedTeam.name}</Menu.Label>
+                    {switchableTeams.length > 0 && (
+                      <>
+                        <Menu.Label>Switch team</Menu.Label>
+                        {switchableTeams.map((team) => (
+                          <Menu.Item
+                            key={team.id}
+                            onClick={() => onSelectTeam(team.id)}
+                          >
+                            {team.name}
+                          </Menu.Item>
+                        ))}
+                        <Menu.Divider />
+                      </>
+                    )}
+                    {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                      <>
+                        {onOpenTeamMemberForge && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                            onClick={onOpenTeamMemberForge}
+                          >
+                            Add Agent
+                          </Menu.Item>
+                        )}
+                        {onStartTeamRuntime && selectedTeamRuntimeStatus && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                            onClick={onStartTeamRuntime}
+                            disabled={
+                              busy === "stop-team" ||
+                              selectedTeamRuntimeStatus.status === "running" ||
+                              !selectedTeamHasConfiguredMembers
+                            }
+                          >
+                            Start Team
+                          </Menu.Item>
+                        )}
+                        {onStopTeamRuntime && selectedTeamRuntimeStatus && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                            onClick={onStopTeamRuntime}
+                            disabled={
+                              busy === "start-team" ||
+                              selectedTeamRuntimeStatus.status === "stopped"
+                            }
+                          >
+                            Stop Team
+                          </Menu.Item>
+                        )}
+                      </>
+                    )}
+                    {developerMode && (
+                      <>
+                        {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                          <Menu.Divider />
+                        )}
+                        <Menu.Item disabled>
+                          <div className="min-w-[220px] text-[12px] leading-5 text-notion-text-muted">
+                            <span className="font-semibold text-notion-text">Team ID</span>
+                            <span className="ml-2 break-all">{selectedTeam.id}</span>
+                          </div>
+                        </Menu.Item>
+                      </>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              </div>
             ) : (
               <div className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                 Teams
@@ -495,26 +550,39 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Channels
             </div>
-            <button
-              type="button"
-              className={
-                tab === "conversation"
-                  ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
-                  : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
-              }
-              onClick={onSelectConversation}
-              title="Shared channel"
-            >
-              <span
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[12px] font-semibold leading-none text-notion-text-muted/80"
-                aria-hidden="true"
-              >
-                #
-              </span>
-              <span className="truncate text-[12px] font-medium"># all</span>
-            </button>
-            <button
-              type="button"
+            {channelItems.map((channel) => {
+              const isSelected = tab === "conversation" && selectedChannelId === channel.id;
+              return (
+                <UnstyledButton
+                  key={channel.id}
+                  className={
+                    isSelected
+                      ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
+                      : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
+                  }
+                  onClick={() => onSelectChannel(channel.id)}
+                  title={channel.label}
+                >
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-[12px] font-medium">
+                      {channel.label}
+                    </span>
+                    {channel.description ? (
+                      <span className="block truncate text-[10px] text-notion-text-muted">
+                        {channel.description}
+                      </span>
+                    ) : null}
+                  </span>
+                </UnstyledButton>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-0.5">
+            <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
+              Tasks
+            </div>
+            <UnstyledButton
               className={
                 tab === "tasks"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -522,10 +590,15 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               }
               onClick={onSelectKanban}
               title="Team kanban"
-              >
-                <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
-                <span className="truncate text-[12px] font-medium">Kanban</span>
-            </button>
+            >
+              <i className="bi bi-kanban text-[14px]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[12px] font-medium">Kanban</span>
+                <span className="block truncate text-[10px] text-notion-text-muted">
+                  {describeTeamKanban(selectedChannelLabel)}
+                </span>
+              </span>
+            </UnstyledButton>
           </div>
 
           <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>

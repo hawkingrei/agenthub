@@ -63,7 +63,7 @@ describe("InputDock interrupt placement", () => {
 
   it("renders a dedicated send button class for larger tap target styling", () => {
     const html = renderDock();
-    expect(html).toContain("bg-sky-600");
+    expect(html).toContain("bg-slate-900");
     expect(html).toContain('aria-label="Send input"');
   });
 

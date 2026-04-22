@@ -57,6 +57,11 @@ import {
   saveTeamMemberAcpRuntimeCache,
 } from "./team/runtime_cache_storage";
 import {
+  DEFAULT_TEAM_CHANNEL_ITEMS,
+  type TeamChannelId,
+  type TeamChannelItem,
+} from "./team/channel_metadata";
+import {
   shouldPersistRuntimeCacheFingerprint,
   shouldSkipRuntimeCacheSaveAfterHydrate,
 } from "./team/runtime_cache_hydration";
@@ -243,8 +248,6 @@ type TeamPageProps = {
   routeSearch?: string;
   defaultWorktreeRoot?: string | null;
 };
-
-export type TeamChannelId = "all";
 
 export function resolveTeamChannelId(search: string): TeamChannelId {
   const params = new URLSearchParams(search);
@@ -487,6 +490,14 @@ export function TeamPage(props: TeamPageProps) {
   const routeChannelId = useMemo(
     () => resolveTeamChannelId(props.routeSearch ?? ""),
     [props.routeSearch]
+  );
+  const channelItems = useMemo<ReadonlyArray<TeamChannelItem>>(
+    () => DEFAULT_TEAM_CHANNEL_ITEMS,
+    []
+  );
+  const selectedChannelItem = useMemo(
+    () => channelItems.find((item) => item.id === routeChannelId) ?? channelItems[0],
+    [channelItems, routeChannelId]
   );
   const routeThreadRootMessageId = useMemo(
     () => resolveTeamThreadRootMessageId(props.routeSearch ?? ""),
@@ -2173,7 +2184,6 @@ export function TeamPage(props: TeamPageProps) {
     onSelectConversationSubject,
     onSelectKanbanSubject,
     onSelectAgentWorkspace,
-    onSelectUtilityWorkspace,
     onSelectSidebarTeam,
     onSelectWorkspaceLens,
     showRunContextLoading,
@@ -2193,6 +2203,8 @@ export function TeamPage(props: TeamPageProps) {
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
     selectedConversation,
+    selectedChannelLabel: selectedChannelItem.label,
+    selectedChannelDescription: selectedChannelItem.description,
     runsLoading,
     isCompactWorkbench,
     teamPromptDefaults,
@@ -2211,6 +2223,27 @@ export function TeamPage(props: TeamPageProps) {
     navigateToSidebarTeam,
     prefetchWorkspaceLens,
   });
+  const onSelectSidebarChannel = useCallback(
+    (channelId: TeamChannelId) => {
+      setFocusedAgentMemberId("");
+      setSelectedConversationTaskId("");
+      setTab("conversation");
+      if (effectiveSelectedTeamId) {
+        navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", channelId));
+      }
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
+    },
+    [
+      effectiveSelectedTeamId,
+      isCompactWorkbench,
+      setFocusedAgentMemberId,
+      setSelectedConversationTaskId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
+  );
   useEffect(() => {
     if (!selectedTeam) {
       return;
@@ -2668,7 +2701,7 @@ export function TeamPage(props: TeamPageProps) {
       : null;
   const threadPane = selectedConversationIsShared && routeThreadRootMessageId ? (
     <TeamThreadPane
-      channelLabel={routeChannelId === "all" ? "# all" : `# ${routeChannelId}`}
+      channelLabel={selectedChannelItem.label}
       rootMessageId={activeThreadRootMessage?.message_id ?? routeThreadRootMessageId}
       rootAuthorLabel={activeThreadRootMessage?.from_actor_id ?? null}
       rootCreatedAt={activeThreadRootMessage?.created_at ?? null}
@@ -2696,6 +2729,7 @@ export function TeamPage(props: TeamPageProps) {
   const tasksPanel = (
     <TeamTasksPanel
       compactMode={isCompactWorkbench}
+      channelLabel={selectedChannelItem.label}
       developerMode={props.developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
@@ -3260,13 +3294,15 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             memberLiveStates={selectedTeamMemberLiveStates}
+            channelItems={channelItems}
+            selectedChannelId={routeChannelId}
             focusedAgentMemberId={focusedAgentMemberId}
             tab={tab}
             onSelectTeam={onSelectSidebarTeam}
-            onSelectConversation={onSelectConversationSubject}
+            onBackToSelector={navigateToTeamSelector}
+            onSelectChannel={onSelectSidebarChannel}
             onSelectKanban={onSelectKanbanSubject}
             onSelectAgentTab={onSelectAgentWorkspace}
-            onSelectUtilityTab={onSelectUtilityWorkspace}
             onOpenTeamMemberForge={openTeamMemberForgeModal}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}

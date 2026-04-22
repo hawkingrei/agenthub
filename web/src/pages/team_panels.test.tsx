@@ -396,10 +396,9 @@ describe("team panels interactions", () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
-    const onSelectConversation = vi.fn();
+    const onSelectChannel = vi.fn();
     const onSelectKanban = vi.fn();
     const onSelectAgentTab = vi.fn();
-    const onSelectUtilityTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
 
@@ -450,10 +449,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
@@ -494,7 +492,7 @@ describe("team panels interactions", () => {
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
-    expect(onSelectConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
@@ -502,6 +500,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Agents");
     expect(container.textContent).toContain("Channels");
     expect(container.textContent).toContain("# all");
+    expect(container.textContent).toContain(
+      "Shared coordination lane for requests, updates, and cross-cutting discussion."
+    );
     expect(findButtonByText(container, "Team Two").className).toContain("rounded-md");
     expect(findButtonByText(container, "Team Two").className).toContain("px-2");
     const kanbanButton = findButtonByText(container, "Kanban");
@@ -567,10 +568,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
@@ -632,17 +632,16 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="runs"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
     });
 
     clickElement(findButtonByText(container, "# all"));
-    expect(onSelectConversation).toHaveBeenCalledTimes(2);
+    expect(onSelectChannel).toHaveBeenCalledTimes(2);
 
     act(() => {
       root.render(
@@ -663,10 +662,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
@@ -699,10 +697,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
@@ -714,10 +711,13 @@ describe("team panels interactions", () => {
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("TeamSidebar keeps selected team metadata behind the sidebar title trigger", () => {
+  it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
     const teamOne = buildTeam({
       description: "Triage TiDB issues and coordinate the fuzzing backlog.",
     });
+    const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
+    const onBackToSelector = vi.fn();
+    const onSelectTeam = vi.fn();
 
     act(() => {
       root.render(
@@ -731,7 +731,7 @@ describe("team panels interactions", () => {
             draftTeamName=""
             leaderMemberId="leader-agent"
             configuredWorkerCount={2}
-            teams={[teamOne]}
+            teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
             selectedTeamId={teamOne.id}
             selectedTeamRuntimeStatus={{
@@ -758,11 +758,11 @@ describe("team panels interactions", () => {
             ]}
             focusedAgentMemberId=""
             tab="conversation"
-            onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectTeam={onSelectTeam}
+            onBackToSelector={onBackToSelector}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
             onOpenTeamMemberForge={() => {}}
             onStartTeamRuntime={() => {}}
             onStopTeamRuntime={() => {}}
@@ -771,7 +771,15 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(findButtonByAriaLabel(container, "Team menu: Team One")).not.toBeNull();
+    clickMenuTrigger(findButtonByAriaLabel(container, "Switch teams from Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("All Teams") ?? false);
+    clickElement(findInteractiveByText(document.body, "All Teams"));
+    expect(onBackToSelector).toHaveBeenCalledTimes(1);
+    clickMenuTrigger(findButtonByAriaLabel(container, "Switch teams from Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Team Two") ?? false);
+    clickElement(findInteractiveByText(document.body, "Team Two"));
+    expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(findButtonByAriaLabel(container, "Open controls for Team One")).not.toBeNull();
     expect(container.textContent).not.toContain("Team running · 3/3 online");
     expect(container.textContent).not.toContain("Triage TiDB issues and coordinate the fuzzing backlog.");
     expect(container.textContent).toContain("Team One");
@@ -812,10 +820,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
@@ -824,14 +831,14 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Switch team") ?? false);
     expect(document.body.textContent).toContain("Team ID");
     clickElement(findInteractiveByText(document.body, "Team Two"));
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Add Agent") ?? false);
     clickElement(findInteractiveByText(document.body, "Add Agent"));
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Stop Team"));
 
@@ -981,10 +988,9 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
@@ -1094,7 +1100,6 @@ describe("team panels interactions", () => {
             formatTs={(value) => (value == null ? "-" : String(value))}
             cardClassName="card"
             titleClassName="title"
-            metaItemClassName="meta"
           />
         </MantineProvider>
       );
@@ -3332,7 +3337,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[16px]");
+    ).toContain("rounded-[12px]");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -3759,6 +3764,7 @@ describe("team panels interactions", () => {
         <MantineProvider>
           <TeamTasksPanel
             compactMode={false}
+            channelLabel="# review"
             developerMode={true}
             tasks={[
               buildPanelTask("task-1", {
@@ -3841,7 +3847,7 @@ describe("team panels interactions", () => {
     await openTaskDetailModal(container, "Prepare rollout");
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     clickElement(findButtonByText(document.body, "Open thread"));
-    clickElement(findButtonByText(container, "Open # all"));
+    clickElement(findButtonByText(container, "Open # review"));
     clickElement(findInteractiveByText(document.body, "Developer tools", "summary"));
     changeInputValue(
       required(
@@ -3877,8 +3883,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
+    expect(container.textContent).toContain("# review");
     expect(document.body.textContent).toContain("Open thread");
-    expect(container.textContent).toContain("Open # all");
+    expect(container.textContent).toContain("Open # review");
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Shipped the rollout summary.");
     expect(document.body.textContent).toContain("Task context");
@@ -4621,7 +4628,7 @@ describe("team panels interactions", () => {
       container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
       "channel bubble missing"
     );
-    expect(bubble.className).toContain("rounded-[16px]");
+    expect(bubble.className).toContain("rounded-[12px]");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {

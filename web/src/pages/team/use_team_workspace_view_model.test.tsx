@@ -80,6 +80,9 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       created_at: 1,
       updated_at: 1,
     } as HookParams["selectedConversation"],
+    selectedChannelLabel: "# all",
+    selectedChannelDescription:
+      "Shared coordination lane for requests, updates, and cross-cutting discussion.",
     runsLoading: false,
     isCompactWorkbench: false,
     teamPromptDefaults: {
@@ -149,7 +152,7 @@ describe("useTeamWorkspaceViewModel", () => {
       ]);
       expect(snapshot?.workspaceTitle).toBe("# all");
       expect(snapshot?.workspaceDescription).toBe(
-        "Shared channel for team requests and updates."
+        "Shared coordination lane for requests, updates, and cross-cutting discussion."
       );
       expect(snapshot?.showWorkspaceRuntimeBadge).toBe(false);
       expect(snapshot?.workspaceNoticeText).toBeNull();
@@ -244,6 +247,38 @@ describe("useTeamWorkspaceViewModel", () => {
       );
     } finally {
       mounted.cleanup();
+    }
+  });
+
+  it("uses canonical selected channel metadata for shared conversation and task chrome", async () => {
+    const sharedConversationParams = createParams({
+      selectedChannelLabel: "# review",
+      selectedChannelDescription: "Focused design and implementation review lane.",
+    });
+    const sharedConversationMounted = await mountHook(sharedConversationParams);
+    try {
+      const snapshot = sharedConversationMounted.getSnapshot();
+      expect(snapshot?.workspaceTitle).toBe("# review");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Focused design and implementation review lane."
+      );
+    } finally {
+      sharedConversationMounted.cleanup();
+    }
+
+    const tasksParams = createParams({
+      tab: "tasks",
+      selectedChannelLabel: "# review",
+    });
+    const tasksMounted = await mountHook(tasksParams);
+    try {
+      const snapshot = tasksMounted.getSnapshot();
+      expect(snapshot?.workspaceTitle).toBe("Kanban");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # review."
+      );
+    } finally {
+      tasksMounted.cleanup();
     }
   });
 

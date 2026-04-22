@@ -375,7 +375,7 @@ describe("TeamPage smoke render", () => {
         );
       });
 
-      expect(container.textContent).toContain("No agents have joined this team yet.");
+      expect(container.textContent).toContain("No agents joined yet.");
       expect(container.textContent).not.toContain("This team is unavailable.");
       expect(container.textContent).not.toContain("Loading team workspace...");
     } finally {
@@ -791,7 +791,9 @@ describe("TeamPage smoke render", () => {
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
       expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
-      expect(container.textContent).toContain("Shared channel for team requests");
+      expect(container.textContent).toContain(
+        "Shared coordination lane for requests, updates, and cross-cutting discussion."
+      );
       expect(container.textContent).not.toContain("Toggle agents section");
       const buttonLabels = Array.from(container.querySelectorAll("button")).map((button) =>
         button.textContent?.replace(/\s+/g, " ").trim() ?? ""

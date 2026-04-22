@@ -8,6 +8,7 @@ import type {
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
 import { createDisplayNameLookup } from "./mailbox_helpers";
+import { describeTeamKanban } from "./channel_metadata";
 import type { TeamMemberLiveState, TeamMemberAgentStatusSummary } from "./member_helpers";
 import { normalizeTeamMemberLifecycle } from "../team_member_status_strip";
 import {
@@ -37,6 +38,8 @@ type UseTeamWorkspaceViewModelOptions = {
   activeRunForSelectedTeam: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   selectedConversation: TeamTaskRecord | null;
+  selectedChannelLabel: string;
+  selectedChannelDescription: string;
   runsLoading: boolean;
   isCompactWorkbench: boolean;
   teamPromptDefaults: TeamPromptDefaultsRecord;
@@ -72,6 +75,8 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
     selectedConversation,
+    selectedChannelLabel,
+    selectedChannelDescription,
     runsLoading,
     isCompactWorkbench,
     teamPromptDefaults,
@@ -216,7 +221,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       ? selectedAgentLabel
       : tab === "conversation"
         ? selectedConversationIsShared
-          ? `# ${activeConversationTitle}`
+          ? selectedChannelLabel
           : activeConversationTitle
         : tab === "tasks"
           ? "Kanban"
@@ -234,10 +239,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       ? null
       : tab === "conversation"
         ? selectedConversationIsShared
-          ? "Shared channel for team requests and updates."
+          ? selectedChannelDescription
           : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
         : tab === "tasks"
-          ? "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # all."
+          ? describeTeamKanban(selectedChannelLabel)
           : tab === "mailbox"
             ? selectedMemberLiveState
               ? "Direct mailbox thread for the selected member."

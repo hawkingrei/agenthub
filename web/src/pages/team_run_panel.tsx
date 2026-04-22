@@ -4,6 +4,7 @@ import { TeamDefinitionRecord, TeamRunRecord, TeamRunStatus } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   ActionButton,
+  EmptyState,
   InsetSurface,
   PanelHeader,
   SelectableListItem,
@@ -130,9 +131,12 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
           </ActionButton>
         </ToolbarRow>
 
-        <ToolbarRow className="teams-run-list-head mt-2">
-          <h3 className="text-[13px] font-bold text-notion-text uppercase tracking-tight">Execution Runs</h3>
-          <div className="actions flex flex-wrap items-center gap-2">
+        <PanelHeader
+          className="mt-2"
+          title="Execution Runs"
+          titleClassName="text-[13px] font-bold uppercase tracking-tight text-notion-text"
+          actions={
+            <div className="actions flex flex-wrap items-center gap-2">
             <NativeSelect
               className="w-full sm:w-[164px]"
               aria-label="Run status filter"
@@ -154,16 +158,20 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </ActionButton>
-          </div>
-        </ToolbarRow>
+            </div>
+          }
+        />
 
         <div className={RUN_PANEL_LIST_ITEMS_CLASS}>
           {visibleRuns.length === 0 && (
-            <p className={TEAM_MUTED_TEXT_CLASS}>
-              {developerMode
-                ? "No execution runs loaded yet. Use Debug → Run Ops to create or load runs."
-                : "No execution runs loaded yet. Enable Developer Mode for manual run debugging tools."}
-            </p>
+            <EmptyState
+              className={TEAM_MUTED_TEXT_CLASS}
+              body={
+                developerMode
+                  ? "No execution runs loaded yet. Use Debug → Run Ops to create or load runs."
+                  : "No execution runs loaded yet. Enable Developer Mode for manual run debugging tools."
+              }
+            />
           )}
           {isActiveRunHiddenByFilter && activeRun && (
             <p className="text-[12px] text-state-warning-text italic">

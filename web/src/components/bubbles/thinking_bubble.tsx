@@ -25,16 +25,16 @@ export const ThinkingBubble = React.memo(function ThinkingBubble({
   });
   const entryClassName = grouped
     ? ""
-    : " acp-row group relative flex w-full flex-col items-start px-3 py-1 sm:px-4";
+    : "acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white";
 
   return (
     <div className={entryClassName}>
       <div className={ACP_BUBBLE_THINKING_CLASS}>
         <details className="acp-thought-fold acp-thinking-fold">
-          <summary className="cursor-pointer text-sm font-bold text-notion-text opacity-80">
+          <summary className="cursor-pointer text-sm font-semibold text-notion-text opacity-80">
             {summary}
           </summary>
-          <div className="acp-text mt-3 text-[14px] leading-relaxed text-notion-text opacity-90">
+          <div className="acp-text mt-2 text-[14px] leading-6 text-notion-text opacity-90">
             <ThreadRichText text={text} />
           </div>
         </details>

@@ -45,16 +45,17 @@ import { ThinkingBubble } from "./bubbles/thinking_bubble";
 
 const TOOL_VISIBILITY_COLLAPSE_THRESHOLD = 0;
 const ACP_SUBFOLD_CLASS = "acp-subfold mt-1.5";
-const ACP_TOOL_ROW_CLASS = "flex w-full px-3 py-1 sm:px-4";
+const ACP_TOOL_ROW_CLASS =
+  "group relative mb-1 flex w-full rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white";
 const ACP_TOOL_CARD_CLASS =
-  "self-start max-w-[min(92%,78ch)] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
+  "self-start max-w-[min(96%,78ch)] overflow-hidden rounded-[12px] border border-transparent bg-white/88 shadow-none";
 const ACP_TOOL_CARD_NESTED_CLASS =
-  "max-w-full border-slate-200/80 bg-slate-50/70 shadow-none";
+  "max-w-full bg-slate-50/64 shadow-none";
 const ACP_TOOL_SUMMARY_CLASS =
-  "flex cursor-pointer list-none items-start gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden";
+  "flex cursor-pointer list-none items-start gap-2.5 px-2.5 py-2 [&::-webkit-details-marker]:hidden";
 const ACP_TOOL_TITLE_CLASS =
   "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-slate-900";
-const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-2 px-3 pb-3";
+const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-2 px-2.5 pb-2.5";
 const FAILED_TOOL_STATUSES = new Set([
   "failed",
   "cancelled",
@@ -220,7 +221,7 @@ export const ToolCallBubble = React.memo(
               </span>
             )}
           </summary>
-          <div className="px-3 pb-3">
+          <div className="px-2.5 pb-2.5">
             {showPendingRequestUserInputCard && requestUserInputQuestions ? (
               <RequestUserInputCard
                 toolCallId={msg.id}
@@ -389,7 +390,7 @@ export const ToolCallGroupBubble = React.memo(
     });
 
     return (
-      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+      <div className="acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white">
         <div className={`acp-bubble tool_call tool_call_group tool-call-enter ${ACP_TOOL_CARD_CLASS}`}>
           <details
             className="acp-tool-group-fold"
@@ -506,7 +507,7 @@ export const ExploreGroupBubble = React.memo(
     let thinkingIndex = 0;
     let toolIndex = 0;
     return (
-      <div className="acp-row group relative flex w-full flex-col items-start px-4 py-1.5 sm:px-8">
+      <div className="acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white">
         <div className={`acp-bubble tool_call tool_call_group explore_group tool-call-enter ${ACP_TOOL_CARD_CLASS}`}>
           <details
             className="acp-tool-group-fold acp-explore-group-fold"
@@ -738,20 +739,20 @@ function FoldSection({
           setOpen(event.currentTarget.open);
         }}
       >
-        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md bg-notion-sidebar/55 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-notion-text-muted">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md bg-slate-50/80 px-2.5 py-1.5 text-[11px] font-semibold tracking-[0.02em] text-notion-text-muted">
           <i
             className={`bi ${open ? "bi-chevron-down" : "bi-chevron-right"}`}
             aria-hidden="true"
           />
           <span>{label}</span>
           {preview && !open ? (
-            <span className="ml-1 max-w-[240px] truncate font-normal normal-case opacity-60">
+            <span className="ml-1 max-w-[240px] truncate font-normal normal-case opacity-65">
               · {preview}
             </span>
           ) : null}
         </summary>
         {shouldRenderBody ? (
-          <div className="mt-2 border-l border-black/[0.06] pl-3">{children}</div>
+          <div className="mt-2 border-l border-black/[0.06] pl-2.5">{children}</div>
         ) : null}
       </details>
     </div>

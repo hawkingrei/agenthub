@@ -39,6 +39,7 @@ type TaskStatusFilter = "all" | TeamTaskStatus;
 
 type TeamTasksPanelProps = {
   compactMode?: boolean;
+  channelLabel?: string;
   developerMode: boolean;
   tasks: TeamTaskRecord[];
   tasksLoading: boolean;
@@ -197,6 +198,7 @@ function resolveTaskAssigneeLabel(
 function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const {
     compactMode = false,
+    channelLabel = "# all",
     developerMode,
     tasks,
     tasksLoading,
@@ -664,11 +666,11 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[220px] flex-1 rounded-md border border-notion-border bg-notion-sidebar/30 px-4 py-3 text-[14px] text-notion-text-muted italic">
           Kanban is the canonical Team task surface. Human requests and clarifications should go
-          through <strong className="text-notion-text"># all</strong>; leader planning and Team
-          runtime create and advance tasks here.
+          through <strong className="text-notion-text">{channelLabel}</strong>; leader planning
+          and Team runtime create and advance tasks here.
         </div>
         <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation()}>
-          Open # all
+          {`Open ${channelLabel}`}
         </ActionButton>
       </div>
 

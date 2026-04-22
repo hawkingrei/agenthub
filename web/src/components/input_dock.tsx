@@ -359,7 +359,7 @@ export function InputDock({
 
   return (
     <div
-      className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      className="input-dock-shell relative flex self-stretch flex-col gap-1"
       data-acp-input-dock="true"
       ref={inputDockRef}
     >
@@ -376,7 +376,7 @@ export function InputDock({
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
         <div
-          className="input-editor-row flex items-end gap-2 rounded-[16px] border border-slate-200 bg-slate-50/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
+          className="input-editor-row flex items-end gap-2 rounded-[14px] border border-slate-200 bg-slate-50/72 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
           data-input-editor-row="true"
         >
           <textarea
@@ -458,12 +458,12 @@ export function InputDock({
           </UnstyledButton>
         </div>
         <div
-          className="input-row flex flex-wrap items-center justify-between gap-2 px-1"
+          className="input-row flex flex-wrap items-center justify-between gap-1.5 px-0.5"
           role="group"
           aria-label="Input actions"
           data-input-actions-row="true"
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {historyCommands.length > 0 && (
               <div className="input-history relative" ref={historyContainerRef}>
                 <UnstyledButton
