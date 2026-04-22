@@ -553,9 +553,8 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             {channelItems.map((channel) => {
               const isSelected = tab === "conversation" && selectedChannelId === channel.id;
               return (
-                <button
+                <UnstyledButton
                   key={channel.id}
-                  type="button"
                   className={
                     isSelected
                       ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -574,7 +573,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       </span>
                     ) : null}
                   </span>
-                </button>
+                </UnstyledButton>
               );
             })}
           </div>
@@ -583,8 +582,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Tasks
             </div>
-            <button
-              type="button"
+            <UnstyledButton
               className={
                 tab === "tasks"
                   ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
@@ -600,7 +598,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   {describeTeamKanban(selectedChannelLabel)}
                 </span>
               </span>
-            </button>
+            </UnstyledButton>
           </div>
 
           <section className={`${TEAM_SIDEBAR_SECTION_CLASS} mt-4`}>

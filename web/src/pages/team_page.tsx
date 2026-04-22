@@ -2223,6 +2223,27 @@ export function TeamPage(props: TeamPageProps) {
     navigateToSidebarTeam,
     prefetchWorkspaceLens,
   });
+  const onSelectSidebarChannel = useCallback(
+    (channelId: TeamChannelId) => {
+      setFocusedAgentMemberId("");
+      setSelectedConversationTaskId("");
+      setTab("conversation");
+      if (effectiveSelectedTeamId) {
+        navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", channelId));
+      }
+      if (isCompactWorkbench) {
+        setTeamsSidebarCollapsed(true);
+      }
+    },
+    [
+      effectiveSelectedTeamId,
+      isCompactWorkbench,
+      setFocusedAgentMemberId,
+      setSelectedConversationTaskId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
+  );
   useEffect(() => {
     if (!selectedTeam) {
       return;
@@ -3279,19 +3300,7 @@ export function TeamPage(props: TeamPageProps) {
             tab={tab}
             onSelectTeam={onSelectSidebarTeam}
             onBackToSelector={navigateToTeamSelector}
-            onSelectChannel={(channelId) => {
-              setFocusedAgentMemberId("");
-              setSelectedConversationTaskId("");
-              setTab("conversation");
-              if (effectiveSelectedTeamId) {
-                navigateTeamRoute(
-                  buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", channelId)
-                );
-              }
-              if (isCompactWorkbench) {
-                setTeamsSidebarCollapsed(true);
-              }
-            }}
+            onSelectChannel={onSelectSidebarChannel}
             onSelectKanban={onSelectKanbanSubject}
             onSelectAgentTab={onSelectAgentWorkspace}
             onOpenTeamMemberForge={openTeamMemberForgeModal}
