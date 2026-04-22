@@ -242,7 +242,6 @@ fn merge_actor_send_mentions(
     if mention_actor_ids.is_empty() {
         return Ok(payload);
     }
-
     let parse_payload_mentions =
         |field_name: &str, value: Value| -> anyhow::Result<Vec<String>> {
             match value {
