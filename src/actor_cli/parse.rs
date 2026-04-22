@@ -242,25 +242,24 @@ fn merge_actor_send_mentions(
     if mention_actor_ids.is_empty() {
         return Ok(payload);
     }
-    let parse_payload_mentions =
-        |field_name: &str, value: Value| -> anyhow::Result<Vec<String>> {
-            match value {
-                Value::Array(values) => normalize_actor_send_mentions(
-                    values
-                        .into_iter()
-                        .map(|value| {
-                            value.as_str().map(str::to_string).ok_or_else(|| {
-                                anyhow::anyhow!("payload {} entries must be strings", field_name)
-                            })
+    let parse_payload_mentions = |field_name: &str, value: Value| -> anyhow::Result<Vec<String>> {
+        match value {
+            Value::Array(values) => normalize_actor_send_mentions(
+                values
+                    .into_iter()
+                    .map(|value| {
+                        value.as_str().map(str::to_string).ok_or_else(|| {
+                            anyhow::anyhow!("payload {} entries must be strings", field_name)
                         })
-                        .collect::<anyhow::Result<Vec<_>>>()?,
-                ),
-                _ => Err(anyhow::anyhow!(
-                    "payload {} must be an array of strings",
-                    field_name
-                )),
-            }
-        };
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?,
+            ),
+            _ => Err(anyhow::anyhow!(
+                "payload {} must be an array of strings",
+                field_name
+            )),
+        }
+    };
 
     match payload {
         Value::String(text) => Ok(serde_json::json!({
