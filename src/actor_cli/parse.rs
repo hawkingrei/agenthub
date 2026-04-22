@@ -15,6 +15,7 @@ use crate::team::{
 };
 use agenthub_team_actor::parse_actor_transport;
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 pub(super) struct ParsedActorCommand {
     pub(super) output_mode: ActorOutputMode,
@@ -214,6 +215,60 @@ fn resolve_actor_send_payload(
         )),
         (None, None) => Err(anyhow::anyhow!(
             "--text, --text-file, --payload-json, or --payload-file is required"
+        )),
+    }
+}
+
+fn normalize_actor_send_mentions(raw_mentions: Vec<String>) -> anyhow::Result<Vec<String>> {
+    let mut mentions = Vec::new();
+    let mut seen = BTreeSet::new();
+    for raw in raw_mentions {
+        let mention = raw.trim();
+        anyhow::ensure!(
+            !mention.is_empty(),
+            "mention_actor_id must be a non-empty string"
+        );
+        if seen.insert(mention.to_string()) {
+            mentions.push(mention.to_string());
+        }
+    }
+    Ok(mentions)
+}
+
+fn merge_actor_send_mentions(
+    payload: Value,
+    mention_actor_ids: &[String],
+) -> anyhow::Result<Value> {
+    if mention_actor_ids.is_empty() {
+        return Ok(payload);
+    }
+    let mention_values = mention_actor_ids
+        .iter()
+        .cloned()
+        .map(Value::String)
+        .collect::<Vec<_>>();
+    match payload {
+        Value::String(text) => Ok(serde_json::json!({
+            "type": "chat_message",
+            "text": text,
+            "mention_actor_ids": mention_values,
+        })),
+        Value::Object(mut obj) => {
+            obj.insert(
+                "mention_actor_ids".to_string(),
+                Value::Array(mention_values),
+            );
+            Ok(Value::Object(obj))
+        }
+        other => Err(anyhow::anyhow!(
+            "explicit channel mentions require a string or object payload, got {}",
+            match other {
+                Value::Null => "null",
+                Value::Bool(_) => "bool",
+                Value::Number(_) => "number",
+                Value::Array(_) => "array",
+                _ => unreachable!("string/object already handled"),
+            }
         )),
     }
 }
@@ -1406,6 +1461,7 @@ pub(super) fn parse_actor_command(
             let mut from_actor_id = None;
             let mut to_actor_id = None;
             let mut channel_id = None;
+            let mut mention_actor_ids = Vec::new();
             let mut channel = None;
             let mut transport = None;
             let mut route = None;
@@ -1481,6 +1537,12 @@ pub(super) fn parse_actor_command(
                     }
                     "--shared" => {
                         channel_id = Some("all".to_string());
+                    }
+                    "--mention" | "--mention-actor-id" => {
+                        idx += 1;
+                        mention_actor_ids.push(args.get(idx).cloned().ok_or_else(|| {
+                            anyhow::anyhow!("{} requires a value", args[idx - 1])
+                        })?);
                     }
                     "--transport" => {
                         idx += 1;
@@ -1563,9 +1625,15 @@ pub(super) fn parse_actor_command(
                 "from_actor_id",
             )?;
             let (to_actor_id, channel_id) = resolve_actor_send_target(to_actor_id, channel_id)?;
+            let mention_actor_ids = normalize_actor_send_mentions(mention_actor_ids)?;
+            anyhow::ensure!(
+                mention_actor_ids.is_empty() || channel_id.is_some(),
+                "--mention and --mention-actor-id are supported only for channel send"
+            );
             let channel = take_optional(channel).unwrap_or(fallback_channel);
             let (payload, payload_source) =
                 resolve_actor_send_payload(text, text_file, payload, payload_file)?;
+            let payload = merge_actor_send_mentions(payload, &mention_actor_ids)?;
             let explicit_idempotency_key = match idempotency_key {
                 Some(raw) => {
                     let trimmed = raw.trim();
@@ -1615,6 +1683,7 @@ pub(super) fn parse_actor_command(
                 from_actor_id,
                 to_actor_id,
                 channel_id,
+                mention_actor_ids,
                 channel,
                 transport,
                 route,
@@ -1835,5 +1904,83 @@ pub(super) fn parse_actor_command(
             other,
             actor_usage()
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_actor_args;
+    use crate::actor_cli::ActorCommand;
+    use serde_json::json;
+
+    #[test]
+    fn parse_send_channel_mentions_into_payload_and_dedupes() {
+        let parsed = parse_actor_args(&[
+            "send".to_string(),
+            "--run-id".to_string(),
+            "run-1".to_string(),
+            "--from-actor-id".to_string(),
+            "planner".to_string(),
+            "--shared".to_string(),
+            "--mention".to_string(),
+            " reviewer ".to_string(),
+            "--mention-actor-id".to_string(),
+            "reviewer".to_string(),
+            "--mention".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "please check".to_string(),
+        ])
+        .expect("parse actor send with mentions");
+
+        match parsed.command {
+            ActorCommand::Send {
+                channel_id,
+                mention_actor_ids,
+                payload,
+                ..
+            } => {
+                assert_eq!(channel_id.as_deref(), Some("all"));
+                assert_eq!(
+                    mention_actor_ids,
+                    vec!["reviewer".to_string(), "worker".to_string()]
+                );
+                assert_eq!(
+                    *payload,
+                    json!({
+                        "type": "chat_message",
+                        "text": "please check",
+                        "mention_actor_ids": ["reviewer", "worker"],
+                    })
+                );
+            }
+            other => panic!("expected send command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_send_rejects_direct_mentions() {
+        let result = parse_actor_args(&[
+            "send".to_string(),
+            "--run-id".to_string(),
+            "run-1".to_string(),
+            "--from-actor-id".to_string(),
+            "planner".to_string(),
+            "--to".to_string(),
+            "reviewer".to_string(),
+            "--mention".to_string(),
+            "worker".to_string(),
+            "--text".to_string(),
+            "please check".to_string(),
+        ]);
+        let err = match result {
+            Ok(_) => panic!("direct send mentions should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string()
+                .contains("--mention and --mention-actor-id are supported only for channel send")
+        );
     }
 }

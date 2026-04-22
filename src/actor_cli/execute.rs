@@ -611,6 +611,7 @@ pub(super) async fn run_actor_command(
             from_actor_id,
             to_actor_id,
             channel_id,
+            mention_actor_ids: _mention_actor_ids,
             channel,
             transport,
             route,

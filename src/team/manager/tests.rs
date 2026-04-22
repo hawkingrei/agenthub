@@ -4439,6 +4439,79 @@ async fn actor_mailbox_service_channel_send_broadcasts_and_preserves_mentions() 
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_channel_send_honors_explicit_mentions_without_raw_text() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-explicit-mention-team".to_string(),
+            description: Some("team for explicit channel mention payloads".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"},
+                    {"member_id":"worker"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-channel-explicit-mention"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: None,
+            to_actor_id: None,
+            channel_id: Some("all".to_string()),
+            to_peer_id: None,
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Local),
+            route: None,
+            payload: json!({
+                "type":"chat_message",
+                "text":"please review the api contract",
+                "mentioned_actor_ids":["reviewer"]
+            }),
+            idempotency_key: Some("msg-channel-explicit-mention-1".to_string()),
+        })
+        .await
+        .expect("send explicit mention channel message");
+
+    let rows = sqlx::query(
+        r#"
+        SELECT to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_all(&db)
+    .await
+    .expect("load channel mailbox rows");
+    assert_eq!(rows.len(), 2);
+
+    for row in &rows {
+        let payload: Value = serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+            .expect("decode forwarded payload");
+        assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
+        assert_eq!(payload["mentioned_actor_ids"], json!(["reviewer"]));
+    }
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_reuses_canonical_message_on_idempotent_retry() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

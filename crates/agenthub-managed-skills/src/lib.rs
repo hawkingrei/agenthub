@@ -283,7 +283,7 @@ fn team_role_agents_index_skill_doc(is_leader: bool) -> String {
             [
                 "Maintain worker workspace `AGENTS.md` as the execution index.",
                 "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
-                "Keep worker updates routed to leader unless explicit escalation policy applies.",
+                "Keep leader as the default single-owner update route, but use shared channel directly when important issues need team-wide discussion or visibility.",
                 "Keep `team-task-lifecycle` active whenever worker execution must advance a leader-owned Team task toward review.",
             ],
         )
@@ -454,6 +454,35 @@ mod tests {
                 assert!(doc.contents.contains("persisted artifacts or replay state"));
             }
         }
+    }
+
+    #[test]
+    fn worker_managed_skills_allow_shared_channel_discussion_for_important_matters() {
+        let home = std::env::temp_dir().join("agenthub-managed-skills-worker-route-home");
+
+        let worker_index = managed_skill_doc(
+            ManagedSkillKind::TeamWorkerAgentsIndex,
+            Some(home.as_path()),
+        )
+        .expect("build worker index doc");
+        assert!(worker_index.contents.contains("shared channel directly"));
+        assert!(worker_index.contents.contains("important issues"));
+
+        let worker_executor =
+            managed_skill_doc(ManagedSkillKind::TeamWorkerExecutor, Some(home.as_path()))
+                .expect("build worker executor doc");
+        assert!(
+            worker_executor
+                .contents
+                .contains("shared-channel discussion")
+        );
+        assert!(worker_executor.contents.contains("team-wide review"));
+        assert!(worker_executor.contents.contains("explicitly `@member_id`"));
+        assert!(
+            worker_executor
+                .contents
+                .contains("important findings, risks, tradeoffs, or decisions")
+        );
     }
 
     fn assert_frontmatter_has_name_and_description(doc: &ManagedSkillDoc) {

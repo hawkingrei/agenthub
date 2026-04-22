@@ -1522,12 +1522,14 @@ fn collect_channel_mention_actor_ids(
     member_ids: &BTreeSet<String>,
 ) -> Vec<String> {
     let mut mentioned = BTreeSet::new();
-    if let Some(explicit_mentions) = payload.get("mention_actor_ids").and_then(Value::as_array) {
-        for mention in explicit_mentions {
-            if let Some(actor_id) = mention.as_str().map(str::trim)
-                && member_ids.contains(actor_id)
-            {
-                mentioned.insert(actor_id.to_string());
+    for key in ["mention_actor_ids", "mentioned_actor_ids"] {
+        if let Some(explicit_mentions) = payload.get(key).and_then(Value::as_array) {
+            for mention in explicit_mentions {
+                if let Some(actor_id) = mention.as_str().map(str::trim)
+                    && member_ids.contains(actor_id)
+                {
+                    mentioned.insert(actor_id.to_string());
+                }
             }
         }
     }

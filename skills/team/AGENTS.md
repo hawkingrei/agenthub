@@ -90,6 +90,10 @@ restating the same rules.
   - `peer-mailbox` when exactly one non-leader teammate needs the update
 - Use `peer-mailbox` for routine single-peer clarification, dependency handoff, or review nudges
   that do not need team-wide visibility.
+- Workers may use `shared-channel` directly when important findings, risks, tradeoffs, or
+  discussion-worthy decisions need team-wide review instead of only leader-local visibility.
+- When workers open or continue that shared-channel discussion, they should explicitly `@member_id`
+  the relevant other agents whose review, decision, or dependency context is needed.
 - Use `shared-channel` when the update changes shared plans, dependencies, review status, or
   human-visible progress.
 - Use `human-notification` only for urgent operator-facing escalation that cannot wait for normal

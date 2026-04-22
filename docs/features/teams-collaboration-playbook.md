@@ -155,6 +155,8 @@ Context-size rule:
 
 - Leader is default human-facing speaker.
 - Worker-to-human direct output is exception path and must include rationale.
+- Workers may initiate or join shared-channel discussion directly when important matters need
+  multi-party visibility, review, or coordination.
 - Human requests are collected as planning input, not direct task records.
 - Team backend no longer depends on a background step-orchestrator worker to advance routine task
   ownership.
@@ -169,6 +171,20 @@ Mailbox operational priority (suggested):
 - high: blocking failures, urgent coordination, escalation
 - medium: member card/discovery broadcasts
 - low: routine assignment updates
+
+Shared-channel discussion rules:
+
+- Workers may post directly in `shared-channel` for:
+  - important findings that affect multiple teammates
+  - design or implementation tradeoffs that need discussion
+  - dependency or risk updates that require shared awareness
+  - scoped facts, progress, and evidence that benefit shared visibility
+- Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
+  teammates when opening or continuing that shared-channel discussion.
+- Leader still owns planning decisions, assignment changes, and final integrated human-facing
+  synthesis.
+- Worker shared-channel discussion should invite collaboration and decision input, not override
+  leader-owned decisions.
 
 ### 5.1) Worker Action-First Rule
 
