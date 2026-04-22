@@ -21,6 +21,7 @@ import {
 } from "../ui/tailwind_classes";
 import {
   DEFAULT_TEAM_CHANNEL_ITEMS,
+  describeTeamKanban,
   type TeamChannelItem,
 } from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
@@ -589,7 +590,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               <span className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-[12px] font-medium">Kanban</span>
                 <span className="block truncate text-[10px] text-notion-text-muted">
-                  Canonical task board for leader-planned Team work.
+                  {describeTeamKanban(channelItems[0]?.label ?? "# all")}
                 </span>
               </span>
             </button>

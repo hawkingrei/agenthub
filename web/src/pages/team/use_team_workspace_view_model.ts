@@ -8,6 +8,7 @@ import type {
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
 import { createDisplayNameLookup } from "./mailbox_helpers";
+import { describeTeamKanban } from "./channel_metadata";
 import type { TeamMemberLiveState, TeamMemberAgentStatusSummary } from "./member_helpers";
 import { normalizeTeamMemberLifecycle } from "../team_member_status_strip";
 import {
@@ -241,7 +242,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
           ? selectedChannelDescription
           : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
         : tab === "tasks"
-          ? `Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in ${selectedChannelLabel}.`
+          ? describeTeamKanban(selectedChannelLabel)
           : tab === "mailbox"
             ? selectedMemberLiveState
               ? "Direct mailbox thread for the selected member."
