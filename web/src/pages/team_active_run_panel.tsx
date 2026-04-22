@@ -21,7 +21,6 @@ type TeamActiveRunPanelProps = {
   formatTs: (value: number | null) => string;
   cardClassName: string;
   titleClassName: string;
-  metaItemClassName: string;
 };
 
 function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {

@@ -19,6 +19,10 @@ import {
   TEAM_SIDEBAR_WORK_CLASS,
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
 } from "../ui/tailwind_classes";
+import {
+  DEFAULT_TEAM_CHANNEL_ITEMS,
+  type TeamChannelItem,
+} from "./team/channel_metadata";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import { normalizeTeamMemberLifecycle, normalizeTeamMemberWorkStatus } from "./team_member_status_strip";
 import type { TeamTab } from "./team/state";
@@ -28,12 +32,6 @@ type TeamMemberSummary = {
   inactive: number;
   missing: number;
   total: number;
-};
-
-type TeamChannelItem = {
-  id: string;
-  label: string;
-  description?: string | null;
 };
 
 type TeamSidebarProps = {
@@ -57,12 +55,12 @@ type TeamSidebarProps = {
   selectedTeamHasConfiguredMembers?: boolean;
   teamMemberSummaryByTeamId: Map<string, TeamMemberSummary>;
   memberLiveStates: TeamMemberLiveState[];
-  channelItems?: TeamChannelItem[];
-  selectedChannelId?: string;
+  channelItems?: ReadonlyArray<TeamChannelItem>;
+  selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
-  onSelectConversation: () => void;
+  onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onSelectUtilityTab: (tab: TeamTab) => void;
@@ -190,19 +188,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamRuntimeStatus,
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
-    channelItems = [
-      {
-        id: "all",
-        label: "# all",
-        description:
-          "Shared coordination lane for requests, updates, and cross-cutting discussion.",
-      },
-    ],
+    channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
     selectedChannelId = "all",
     focusedAgentMemberId,
     tab,
     onSelectTeam,
-    onSelectConversation,
+    onSelectChannel,
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
@@ -523,7 +514,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
                       : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
                   }
-                  onClick={onSelectConversation}
+                  onClick={() => onSelectChannel(channel.id)}
                   title={channel.label}
                 >
                   <span

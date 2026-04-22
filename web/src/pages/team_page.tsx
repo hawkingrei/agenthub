@@ -57,6 +57,11 @@ import {
   saveTeamMemberAcpRuntimeCache,
 } from "./team/runtime_cache_storage";
 import {
+  DEFAULT_TEAM_CHANNEL_ITEMS,
+  type TeamChannelId,
+  type TeamChannelItem,
+} from "./team/channel_metadata";
+import {
   shouldPersistRuntimeCacheFingerprint,
   shouldSkipRuntimeCacheSaveAfterHydrate,
 } from "./team/runtime_cache_hydration";
@@ -243,25 +248,6 @@ type TeamPageProps = {
   routeSearch?: string;
   defaultWorktreeRoot?: string | null;
 };
-
-export type TeamChannelId = "all";
-type TeamChannelItem = {
-  id: TeamChannelId;
-  label: string;
-  description: string;
-};
-
-const DEFAULT_TEAM_CHANNEL_ITEMS: ReadonlyArray<{
-  id: TeamChannelId;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "all",
-    label: "# all",
-    description: "Shared coordination lane for requests, updates, and cross-cutting discussion.",
-  },
-];
 
 export function resolveTeamChannelId(search: string): TeamChannelId {
   const params = new URLSearchParams(search);
@@ -510,7 +496,7 @@ export function TeamPage(props: TeamPageProps) {
     []
   );
   const selectedChannelItem = useMemo(
-    () => channelItems.find((item) => item.id === routeChannelId) ?? channelItems[0] ?? null,
+    () => channelItems.find((item) => item.id === routeChannelId) ?? channelItems[0],
     [channelItems, routeChannelId]
   );
   const routeThreadRootMessageId = useMemo(
@@ -2218,10 +2204,8 @@ export function TeamPage(props: TeamPageProps) {
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
     selectedConversation,
-    selectedChannelLabel: selectedChannelItem?.label ?? "# all",
-    selectedChannelDescription:
-      selectedChannelItem?.description ??
-      "Shared coordination lane for requests, updates, and cross-cutting discussion.",
+    selectedChannelLabel: selectedChannelItem.label,
+    selectedChannelDescription: selectedChannelItem.description,
     runsLoading,
     isCompactWorkbench,
     teamPromptDefaults,
@@ -2697,7 +2681,7 @@ export function TeamPage(props: TeamPageProps) {
       : null;
   const threadPane = selectedConversationIsShared && routeThreadRootMessageId ? (
     <TeamThreadPane
-      channelLabel={selectedChannelItem?.label ?? "# all"}
+      channelLabel={selectedChannelItem.label}
       rootMessageId={activeThreadRootMessage?.message_id ?? routeThreadRootMessageId}
       rootAuthorLabel={activeThreadRootMessage?.from_actor_id ?? null}
       rootCreatedAt={activeThreadRootMessage?.created_at ?? null}
@@ -2725,7 +2709,7 @@ export function TeamPage(props: TeamPageProps) {
   const tasksPanel = (
     <TeamTasksPanel
       compactMode={isCompactWorkbench}
-      channelLabel={selectedChannelItem?.label ?? "# all"}
+      channelLabel={selectedChannelItem.label}
       developerMode={props.developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}
@@ -3295,7 +3279,19 @@ export function TeamPage(props: TeamPageProps) {
             focusedAgentMemberId={focusedAgentMemberId}
             tab={tab}
             onSelectTeam={onSelectSidebarTeam}
-            onSelectConversation={onSelectConversationSubject}
+            onSelectChannel={(channelId) => {
+              setFocusedAgentMemberId("");
+              setSelectedConversationTaskId("");
+              setTab("conversation");
+              if (effectiveSelectedTeamId) {
+                navigateTeamRoute(
+                  buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", channelId)
+                );
+              }
+              if (isCompactWorkbench) {
+                setTeamsSidebarCollapsed(true);
+              }
+            }}
             onSelectKanban={onSelectKanbanSubject}
             onSelectAgentTab={onSelectAgentWorkspace}
             onSelectUtilityTab={onSelectUtilityWorkspace}

@@ -396,7 +396,7 @@ describe("team panels interactions", () => {
     const onRefreshTeams = vi.fn();
     const onOpenCreateTeam = vi.fn();
     const onSelectTeam = vi.fn();
-    const onSelectConversation = vi.fn();
+    const onSelectChannel = vi.fn();
     const onSelectKanban = vi.fn();
     const onSelectAgentTab = vi.fn();
     const onSelectUtilityTab = vi.fn();
@@ -450,7 +450,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
@@ -494,7 +494,7 @@ describe("team panels interactions", () => {
     expect(onRefreshTeams).toHaveBeenCalledTimes(1);
     expect(onOpenCreateTeam).toHaveBeenCalledTimes(1);
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
-    expect(onSelectConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectChannel).toHaveBeenCalledWith("all");
     expect(onSelectKanban).toHaveBeenCalledTimes(1);
     expect(onSelectAgentTab).toHaveBeenCalledWith("worker-agent", "agent_acp");
     expect(container.textContent).toContain("Teams");
@@ -570,7 +570,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
@@ -635,7 +635,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="runs"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={onSelectConversation}
+            onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
             onSelectUtilityTab={onSelectUtilityTab}
@@ -645,7 +645,7 @@ describe("team panels interactions", () => {
     });
 
     clickElement(findButtonByText(container, "# all"));
-    expect(onSelectConversation).toHaveBeenCalledTimes(2);
+    expect(onSelectChannel).toHaveBeenCalledTimes(2);
 
     act(() => {
       root.render(
@@ -666,7 +666,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
@@ -702,7 +702,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
@@ -762,7 +762,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
@@ -815,7 +815,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={onSelectTeam}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
@@ -984,7 +984,7 @@ describe("team panels interactions", () => {
             focusedAgentMemberId=""
             tab="conversation"
             onSelectTeam={() => {}}
-            onSelectConversation={() => {}}
+            onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onSelectUtilityTab={() => {}}
@@ -1097,7 +1097,6 @@ describe("team panels interactions", () => {
             formatTs={(value) => (value == null ? "-" : String(value))}
             cardClassName="card"
             titleClassName="title"
-            metaItemClassName="meta"
           />
         </MantineProvider>
       );

@@ -38,7 +38,7 @@ type UseTeamWorkspaceViewModelOptions = {
   activeRunIdForSelectedTeam: string | null;
   selectedConversation: TeamTaskRecord | null;
   selectedChannelLabel: string;
-  selectedChannelDescription: string | null;
+  selectedChannelDescription: string;
   runsLoading: boolean;
   isCompactWorkbench: boolean;
   teamPromptDefaults: TeamPromptDefaultsRecord;
@@ -238,7 +238,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       ? null
       : tab === "conversation"
         ? selectedConversationIsShared
-          ? selectedChannelDescription ?? "Shared channel for team requests and updates."
+          ? selectedChannelDescription
           : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
         : tab === "tasks"
           ? `Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in ${selectedChannelLabel}.`
