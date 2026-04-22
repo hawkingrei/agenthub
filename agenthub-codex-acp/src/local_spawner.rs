@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use agent_client_protocol::{
+use agent_client_protocol_legacy::{
     AgentSideConnection, Client, ClientCapabilities, ReadTextFileRequest, SessionId,
     WriteTextFileRequest,
 };
@@ -311,14 +311,14 @@ impl LocalSpawner {
 mod tests {
     use super::{AcpFs, LocalSpawner, ensure_path_within_root};
     use crate::{ACP_CLIENT, spawn_acp_io_task};
-    use agent_client_protocol::{
-        Agent, AgentSideConnection, AuthenticateRequest, AuthenticateResponse, Client,
-        ClientCapabilities, FileSystemCapabilities, Implementation, InitializeRequest,
-        InitializeResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-        NewSessionResponse, PromptRequest, PromptResponse, ReadTextFileRequest,
-        ReadTextFileResponse, SessionId, SetSessionConfigOptionRequest,
-        SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse, StopReason,
-        WriteTextFileRequest,
+    use agent_client_protocol_legacy::{Agent, AgentSideConnection, Client};
+    use agent_client_protocol_legacy::{
+        AuthenticateRequest, AuthenticateResponse, ClientCapabilities, FileSystemCapabilities,
+        Implementation, InitializeRequest, InitializeResponse, LoadSessionRequest,
+        LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
+        PromptResponse, ReadTextFileRequest, ReadTextFileResponse, SessionId,
+        SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+        SetSessionModeResponse, StopReason, WriteTextFileRequest,
     };
     use std::{
         collections::HashMap,
@@ -500,7 +500,7 @@ mod tests {
                 let local_set = tokio::task::LocalSet::new();
 
                 runtime.block_on(local_set.run_until(async move {
-                    let (_client_side, client_io_task) = agent_client_protocol::ClientSideConnection::new(
+                    let (_client_side, client_io_task) = agent_client_protocol_legacy::ClientSideConnection::new(
                         client,
                         client_to_agent_tx,
                         agent_to_client_rx,
@@ -579,8 +579,8 @@ mod tests {
     impl Client for TestClient {
         async fn request_permission(
             &self,
-            _arguments: agent_client_protocol::RequestPermissionRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::RequestPermissionResponse>
+            _arguments: agent_client_protocol_legacy::RequestPermissionRequest,
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::RequestPermissionResponse>
         {
             unimplemented!()
         }
@@ -588,14 +588,14 @@ mod tests {
         async fn write_text_file(
             &self,
             _arguments: WriteTextFileRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::WriteTextFileResponse> {
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::WriteTextFileResponse> {
             unimplemented!()
         }
 
         async fn read_text_file(
             &self,
             arguments: ReadTextFileRequest,
-        ) -> agent_client_protocol::Result<ReadTextFileResponse> {
+        ) -> agent_client_protocol_legacy::Result<ReadTextFileResponse> {
             let contents = self.file_contents.lock().unwrap();
             let content = contents
                 .get(&arguments.path)
@@ -606,43 +606,45 @@ mod tests {
 
         async fn session_notification(
             &self,
-            _args: agent_client_protocol::SessionNotification,
-        ) -> agent_client_protocol::Result<()> {
+            _args: agent_client_protocol_legacy::SessionNotification,
+        ) -> agent_client_protocol_legacy::Result<()> {
             Ok(())
         }
 
         async fn create_terminal(
             &self,
-            _args: agent_client_protocol::CreateTerminalRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::CreateTerminalResponse> {
+            _args: agent_client_protocol_legacy::CreateTerminalRequest,
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::CreateTerminalResponse> {
             unimplemented!()
         }
 
         async fn terminal_output(
             &self,
-            _args: agent_client_protocol::TerminalOutputRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::TerminalOutputResponse> {
+            _args: agent_client_protocol_legacy::TerminalOutputRequest,
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::TerminalOutputResponse> {
             unimplemented!()
         }
 
         async fn kill_terminal(
             &self,
-            _args: agent_client_protocol::KillTerminalRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::KillTerminalResponse> {
+            _args: agent_client_protocol_legacy::KillTerminalRequest,
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::KillTerminalResponse> {
             unimplemented!()
         }
 
         async fn release_terminal(
             &self,
-            _args: agent_client_protocol::ReleaseTerminalRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::ReleaseTerminalResponse> {
+            _args: agent_client_protocol_legacy::ReleaseTerminalRequest,
+        ) -> agent_client_protocol_legacy::Result<agent_client_protocol_legacy::ReleaseTerminalResponse> {
             unimplemented!()
         }
 
         async fn wait_for_terminal_exit(
             &self,
-            _args: agent_client_protocol::WaitForTerminalExitRequest,
-        ) -> agent_client_protocol::Result<agent_client_protocol::WaitForTerminalExitResponse>
+            _args: agent_client_protocol_legacy::WaitForTerminalExitRequest,
+        ) -> agent_client_protocol_legacy::Result<
+            agent_client_protocol_legacy::WaitForTerminalExitResponse,
+        >
         {
             unimplemented!()
         }
@@ -656,7 +658,7 @@ mod tests {
         async fn initialize(
             &self,
             arguments: InitializeRequest,
-        ) -> agent_client_protocol::Result<InitializeResponse> {
+        ) -> agent_client_protocol_legacy::Result<InitializeResponse> {
             Ok(InitializeResponse::new(arguments.protocol_version)
                 .agent_info(Implementation::new("test-agent", "0.0.0").title("Test Agent")))
         }
@@ -664,49 +666,49 @@ mod tests {
         async fn authenticate(
             &self,
             _arguments: AuthenticateRequest,
-        ) -> agent_client_protocol::Result<AuthenticateResponse> {
+        ) -> agent_client_protocol_legacy::Result<AuthenticateResponse> {
             Ok(AuthenticateResponse::default())
         }
 
         async fn new_session(
             &self,
             _arguments: NewSessionRequest,
-        ) -> agent_client_protocol::Result<NewSessionResponse> {
+        ) -> agent_client_protocol_legacy::Result<NewSessionResponse> {
             Ok(NewSessionResponse::new(SessionId::new("unused")))
         }
 
         async fn load_session(
             &self,
             _arguments: LoadSessionRequest,
-        ) -> agent_client_protocol::Result<LoadSessionResponse> {
+        ) -> agent_client_protocol_legacy::Result<LoadSessionResponse> {
             Ok(LoadSessionResponse::new())
         }
 
         async fn set_session_mode(
             &self,
             _arguments: SetSessionModeRequest,
-        ) -> agent_client_protocol::Result<SetSessionModeResponse> {
+        ) -> agent_client_protocol_legacy::Result<SetSessionModeResponse> {
             Ok(SetSessionModeResponse::new())
         }
 
         async fn prompt(
             &self,
             _arguments: PromptRequest,
-        ) -> agent_client_protocol::Result<PromptResponse> {
+        ) -> agent_client_protocol_legacy::Result<PromptResponse> {
             Ok(PromptResponse::new(StopReason::EndTurn))
         }
 
         async fn cancel(
             &self,
-            _arguments: agent_client_protocol::CancelNotification,
-        ) -> agent_client_protocol::Result<()> {
+            _arguments: agent_client_protocol_legacy::CancelNotification,
+        ) -> agent_client_protocol_legacy::Result<()> {
             Ok(())
         }
 
         async fn set_session_config_option(
             &self,
             _args: SetSessionConfigOptionRequest,
-        ) -> agent_client_protocol::Result<SetSessionConfigOptionResponse> {
+        ) -> agent_client_protocol_legacy::Result<SetSessionConfigOptionResponse> {
             Ok(SetSessionConfigOptionResponse::new(vec![]))
         }
     }

@@ -282,12 +282,29 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10eeef5e80864f9c3c148a3f395c3e35a66d37ec7561c7845b2bffae8e841759"
+dependencies = [
+ "agent-client-protocol-schema 0.11.4",
+ "anyhow",
+ "async-broadcast",
+ "async-trait",
+ "derive_more 2.1.1",
+ "futures",
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "agent-client-protocol"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af62fb84df2af0f933d8f5fd78b843fa5eb0ec5a48fa1b528c41951d0bbe36c"
 dependencies = [
  "agent-client-protocol-derive",
- "agent-client-protocol-schema",
+ "agent-client-protocol-schema 0.12.0",
  "anyhow",
  "futures",
  "futures-concurrency",
@@ -317,6 +334,20 @@ dependencies = [
 
 [[package]]
 name = "agent-client-protocol-schema"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca68e7e55681ce56546c0cecc6bc8f20493d24b44c6d93ec46174f310730bba2"
+dependencies = [
+ "anyhow",
+ "derive_more 2.1.1",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "strum 0.28.0",
+]
+
+[[package]]
+name = "agent-client-protocol-schema"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49bae57dad1c28a362fbdcf7bab0583316a02b45a70792109fced55780a3b63c"
@@ -335,7 +366,8 @@ dependencies = [
 name = "agenthub"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-acp",
  "agenthub-config",
  "agenthub-db",
@@ -394,7 +426,8 @@ dependencies = [
 name = "agenthub-acp"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-acp-core",
  "agenthub-config",
  "agenthub-managed-skills",
@@ -416,7 +449,8 @@ dependencies = [
 name = "agenthub-acp-core"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "serde",
  "serde_json",
  "tracing",
@@ -426,7 +460,8 @@ dependencies = [
 name = "agenthub-codex-acp"
 version = "0.10.0"
 dependencies = [
- "agent-client-protocol",
+ "agent-client-protocol 0.10.4",
+ "agent-client-protocol 0.11.1",
  "agenthub-managed-skills",
  "anyhow",
  "async-trait",

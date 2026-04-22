@@ -1,7 +1,7 @@
 //! Codex ACP - An Agent Client Protocol implementation for Codex.
 #![deny(clippy::print_stdout, clippy::print_stderr)]
 
-use agent_client_protocol::AgentSideConnection;
+use agent_client_protocol_legacy::AgentSideConnection;
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
 use codex_features::{Feature, Features};
@@ -38,7 +38,7 @@ pub(crate) fn spawn_acp_io_task<F>(
     io_task: F,
 ) -> IoResult<tokio::sync::oneshot::Receiver<IoResult<()>>>
 where
-    F: Future<Output = agent_client_protocol::Result<()>> + Send + 'static,
+    F: Future<Output = agent_client_protocol_legacy::Result<()>> + Send + 'static,
 {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let thread_name = thread_name.to_string();

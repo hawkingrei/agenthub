@@ -5,13 +5,14 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use agent_client_protocol::{
-    AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, Client, ClientCapabilities,
+use agent_client_protocol_legacy::{Client, Error};
+use agent_client_protocol_legacy::{
+    AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ClientCapabilities,
     ConfigOptionUpdate, Content, ContentBlock, ContentChunk, Diff, EmbeddedResource,
-    EmbeddedResourceResource, Error, LoadSessionResponse, Meta, ModelId, ModelInfo,
-    PermissionOption, PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
-    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    ResourceLink, SelectedPermissionOutcome, SessionConfigId, SessionConfigOption,
+    EmbeddedResourceResource, LoadSessionResponse, Meta, ModelId, ModelInfo, PermissionOption,
+    PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, ResourceLink,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigOption,
     SessionConfigOptionCategory, SessionConfigOptionValue, SessionConfigSelectOption,
     SessionConfigValueId, SessionId, SessionInfoUpdate, SessionMode, SessionModeId,
     SessionModeState, SessionModelState, SessionNotification, SessionUpdate, StopReason, Terminal,
@@ -4446,7 +4447,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol::{RequestPermissionResponse, TextContent};
+    use agent_client_protocol_legacy::{RequestPermissionResponse, TextContent};
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
     };
