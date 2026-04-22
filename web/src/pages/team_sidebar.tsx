@@ -225,6 +225,13 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     () => teams.filter((team) => team.id !== selectedTeamId),
     [selectedTeamId, teams]
   );
+  const selectedChannelLabel = React.useMemo(
+    () =>
+      channelItems.find((channel) => channel.id === selectedChannelId)?.label ??
+      DEFAULT_TEAM_CHANNEL_ITEMS[0]?.label ??
+      "# all",
+    [channelItems, selectedChannelId]
+  );
 
   const toggleSection = React.useCallback((section: TeamSidebarSection) => {
     setSectionOpen((current) => ({
@@ -590,7 +597,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
               <span className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-[12px] font-medium">Kanban</span>
                 <span className="block truncate text-[10px] text-notion-text-muted">
-                  {describeTeamKanban(channelItems[0]?.label ?? "# all")}
+                  {describeTeamKanban(selectedChannelLabel)}
                 </span>
               </span>
             </button>
