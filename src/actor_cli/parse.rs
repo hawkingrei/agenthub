@@ -1700,7 +1700,6 @@ pub(super) fn parse_actor_command(
                 from_actor_id,
                 to_actor_id,
                 channel_id,
-                mention_actor_ids,
                 channel,
                 transport,
                 route,
@@ -1953,15 +1952,10 @@ mod tests {
         match parsed.command {
             ActorCommand::Send {
                 channel_id,
-                mention_actor_ids,
                 payload,
                 ..
             } => {
                 assert_eq!(channel_id.as_deref(), Some("all"));
-                assert_eq!(
-                    mention_actor_ids,
-                    vec!["reviewer".to_string(), "worker".to_string()]
-                );
                 assert_eq!(
                     *payload,
                     json!({
