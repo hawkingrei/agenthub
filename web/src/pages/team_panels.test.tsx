@@ -717,10 +717,13 @@ describe("team panels interactions", () => {
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("TeamSidebar keeps selected team metadata behind the sidebar title trigger", () => {
+  it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
     const teamOne = buildTeam({
       description: "Triage TiDB issues and coordinate the fuzzing backlog.",
     });
+    const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
+    const onBackToSelector = vi.fn();
+    const onSelectTeam = vi.fn();
 
     act(() => {
       root.render(
@@ -734,7 +737,7 @@ describe("team panels interactions", () => {
             draftTeamName=""
             leaderMemberId="leader-agent"
             configuredWorkerCount={2}
-            teams={[teamOne]}
+            teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
             selectedTeamId={teamOne.id}
             selectedTeamRuntimeStatus={{
@@ -761,7 +764,8 @@ describe("team panels interactions", () => {
             ]}
             focusedAgentMemberId=""
             tab="conversation"
-            onSelectTeam={() => {}}
+            onSelectTeam={onSelectTeam}
+            onBackToSelector={onBackToSelector}
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
@@ -774,7 +778,15 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(findButtonByAriaLabel(container, "Team menu: Team One")).not.toBeNull();
+    clickMenuTrigger(findButtonByAriaLabel(container, "Switch teams from Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("All Teams") ?? false);
+    clickElement(findInteractiveByText(document.body, "All Teams"));
+    expect(onBackToSelector).toHaveBeenCalledTimes(1);
+    clickMenuTrigger(findButtonByAriaLabel(container, "Switch teams from Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Team Two") ?? false);
+    clickElement(findInteractiveByText(document.body, "Team Two"));
+    expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(findButtonByAriaLabel(container, "Open controls for Team One")).not.toBeNull();
     expect(container.textContent).not.toContain("Team running · 3/3 online");
     expect(container.textContent).not.toContain("Triage TiDB issues and coordinate the fuzzing backlog.");
     expect(container.textContent).toContain("Team One");
@@ -827,14 +839,14 @@ describe("team panels interactions", () => {
       );
     });
 
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Switch team") ?? false);
     expect(document.body.textContent).toContain("Team ID");
     clickElement(findInteractiveByText(document.body, "Team Two"));
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Add Agent") ?? false);
     clickElement(findInteractiveByText(document.body, "Add Agent"));
-    clickMenuTrigger(findButtonByAriaLabel(container, "Team menu: Team One"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Stop Team"));
 
@@ -3334,7 +3346,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[16px]");
+    ).toContain("rounded-[12px]");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -4625,7 +4637,7 @@ describe("team panels interactions", () => {
       container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
       "channel bubble missing"
     );
-    expect(bubble.className).toContain("rounded-[16px]");
+    expect(bubble.className).toContain("rounded-[12px]");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {

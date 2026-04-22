@@ -11,7 +11,7 @@ import {
 } from "../../ui/tailwind_classes";
 
 const ACP_PLAN_CARD_CLASS =
-  "acp-plan-card grid gap-2.5 rounded-[10px] border border-notion-plan-border bg-notion-plan-bg p-2.5";
+  "acp-plan-card grid gap-2 rounded-[10px] border border-notion-plan-border/70 bg-notion-plan-bg/72 p-2";
 const ACP_PLAN_PROGRESS_CLASS = "acp-plan-progress grid gap-1.5";
 const ACP_PLAN_PROGRESS_META_CLASS =
   "acp-plan-progress-meta flex flex-wrap gap-1.5 text-[11px] text-slate-500";
@@ -19,7 +19,7 @@ const ACP_PLAN_PROGRESS_BAR_CLASS =
   "acp-plan-progress-bar mt-2 h-1.5 overflow-hidden rounded-full bg-notion-plan-progress";
 const ACP_PLAN_PROGRESS_BAR_FILL_CLASS =
   "block h-full rounded-full bg-gradient-to-r from-notion-plan-progress-from to-notion-plan-progress-to";
-const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-3 grid list-none gap-1.5 p-0";
+const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-2.5 grid list-none gap-1.5 p-0";
 const ACP_PLAN_CONTENT_CLASS = "acp-plan-content min-w-0 text-sm text-slate-800";
 
 export type PlanBubbleProps = {
@@ -40,13 +40,13 @@ export const PlanBubble = React.memo(
             : "Plan (collapsed)"
           : "Plan (collapsed)";
     return (
-      <div className="acp-row group relative flex w-full flex-col items-start px-3 py-1 sm:px-4">
+      <div className="acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white">
         <div className={ACP_BUBBLE_PLAN_CLASS}>
           <details className="acp-thought-fold acp-plan-fold">
-            <summary className="cursor-pointer text-sm font-bold text-notion-text">
+            <summary className="cursor-pointer text-sm font-semibold text-notion-text">
               {summary}
             </summary>
-            <div className="acp-text mt-3 text-sm text-notion-text">
+            <div className="acp-text mt-2 text-sm text-notion-text">
               {planSummary.total > 0 ? (
                 <div className={ACP_PLAN_CARD_CLASS}>
                   <div className={ACP_PLAN_PROGRESS_CLASS}>
@@ -88,7 +88,7 @@ export const PlanBubble = React.memo(
                   </ol>
                 </div>
               ) : (
-                <pre className="overflow-auto rounded-lg border border-notion-border bg-white p-3 text-[12px] text-notion-text">
+                <pre className="overflow-auto rounded-lg border border-notion-border bg-white/85 p-2.5 text-[12px] text-notion-text">
                   {msg.text}
                 </pre>
               )}

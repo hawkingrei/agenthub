@@ -60,6 +60,7 @@ type TeamSidebarProps = {
   focusedAgentMemberId: string;
   tab: TeamTab;
   onSelectTeam: (teamId: string) => void;
+  onBackToSelector?: () => void;
   onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
@@ -193,6 +194,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     focusedAgentMemberId,
     tab,
     onSelectTeam,
+    onBackToSelector,
     onSelectChannel,
     onSelectKanban,
     onSelectAgentTab,
@@ -244,92 +246,128 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
-              <Menu
-                position="bottom-start"
-                {...NOTION_FLOATING_MENU_PROPS}
-              >
-                <Menu.Target>
-                  <UnstyledButton
-                    className="inline-flex max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
-                    aria-label={`Team menu: ${selectedTeam.name}`}
-                    title={`Team menu: ${selectedTeam.name}`}
-                  >
-                    <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
-                      {selectedTeam.name}
-                    </span>
-                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[11px] text-notion-text-muted">
-                      <i className="bi bi-chevron-down" aria-hidden="true" />
-                    </span>
-                  </UnstyledButton>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Label>{selectedTeam.name}</Menu.Label>
-                  {switchableTeams.length > 0 && (
-                    <>
-                      <Menu.Label>Switch team</Menu.Label>
-                      {switchableTeams.map((team) => (
-                        <Menu.Item
-                          key={team.id}
-                          onClick={() => onSelectTeam(team.id)}
-                        >
-                          {team.name}
-                        </Menu.Item>
-                      ))}
-                      <Menu.Divider />
-                    </>
-                  )}
-                  {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
-                    <>
-                      {onOpenTeamMemberForge && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
-                          onClick={onOpenTeamMemberForge}
-                        >
-                          Add Agent
-                        </Menu.Item>
-                      )}
-                      {onStartTeamRuntime && selectedTeamRuntimeStatus && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
-                          onClick={onStartTeamRuntime}
-                          disabled={
-                            busy === "stop-team" ||
-                            selectedTeamRuntimeStatus.status === "running" ||
-                            !selectedTeamHasConfiguredMembers
-                          }
-                        >
-                          Start Team
-                        </Menu.Item>
-                      )}
-                      {onStopTeamRuntime && selectedTeamRuntimeStatus && (
-                        <Menu.Item
-                          leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
-                          onClick={onStopTeamRuntime}
-                          disabled={
-                            busy === "start-team" ||
-                            selectedTeamRuntimeStatus.status === "stopped"
-                          }
-                        >
-                          Stop Team
-                        </Menu.Item>
-                      )}
-                    </>
-                  )}
-                  {developerMode && (
-                    <>
-                      {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
-                        <Menu.Divider />
-                      )}
-                      <Menu.Item disabled>
-                        <div className="min-w-[220px] text-[12px] leading-5 text-notion-text-muted">
-                          <span className="font-semibold text-notion-text">Team ID</span>
-                          <span className="ml-2 break-all">{selectedTeam.id}</span>
-                        </div>
+              <div className="flex min-w-0 items-center gap-1">
+                <Menu
+                  position="bottom-start"
+                  {...NOTION_FLOATING_MENU_PROPS}
+                >
+                  <Menu.Target>
+                    <UnstyledButton
+                      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
+                      aria-label={`Switch teams from ${selectedTeam.name}`}
+                      title="Switch teams"
+                    >
+                      <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
+                        {selectedTeam.name}
+                      </span>
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[11px] text-notion-text-muted">
+                        <i className="bi bi-chevron-expand" aria-hidden="true" />
+                      </span>
+                    </UnstyledButton>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>Teams</Menu.Label>
+                    <Menu.Item
+                      leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
+                      onClick={() => {
+                        onBackToSelector?.();
+                      }}
+                    >
+                      All Teams
+                    </Menu.Item>
+                    <Menu.Divider />
+                    {teams.map((team) => (
+                      <Menu.Item
+                        key={team.id}
+                        onClick={() => onSelectTeam(team.id)}
+                      >
+                        {team.name}
                       </Menu.Item>
-                    </>
-                  )}
-                </Menu.Dropdown>
-              </Menu>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
+                <Menu
+                  position="bottom-start"
+                  {...NOTION_FLOATING_MENU_PROPS}
+                >
+                  <Menu.Target>
+                    <UnstyledButton
+                      className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-7 w-7 shrink-0`}
+                      aria-label={`Open controls for ${selectedTeam.name}`}
+                      title={`Open controls for ${selectedTeam.name}`}
+                    >
+                      <i className="bi bi-chevron-down" aria-hidden="true" />
+                    </UnstyledButton>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label>{selectedTeam.name}</Menu.Label>
+                    {switchableTeams.length > 0 && (
+                      <>
+                        <Menu.Label>Switch team</Menu.Label>
+                        {switchableTeams.map((team) => (
+                          <Menu.Item
+                            key={team.id}
+                            onClick={() => onSelectTeam(team.id)}
+                          >
+                            {team.name}
+                          </Menu.Item>
+                        ))}
+                        <Menu.Divider />
+                      </>
+                    )}
+                    {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                      <>
+                        {onOpenTeamMemberForge && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
+                            onClick={onOpenTeamMemberForge}
+                          >
+                            Add Agent
+                          </Menu.Item>
+                        )}
+                        {onStartTeamRuntime && selectedTeamRuntimeStatus && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                            onClick={onStartTeamRuntime}
+                            disabled={
+                              busy === "stop-team" ||
+                              selectedTeamRuntimeStatus.status === "running" ||
+                              !selectedTeamHasConfiguredMembers
+                            }
+                          >
+                            Start Team
+                          </Menu.Item>
+                        )}
+                        {onStopTeamRuntime && selectedTeamRuntimeStatus && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                            onClick={onStopTeamRuntime}
+                            disabled={
+                              busy === "start-team" ||
+                              selectedTeamRuntimeStatus.status === "stopped"
+                            }
+                          >
+                            Stop Team
+                          </Menu.Item>
+                        )}
+                      </>
+                    )}
+                    {developerMode && (
+                      <>
+                        {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                          <Menu.Divider />
+                        )}
+                        <Menu.Item disabled>
+                          <div className="min-w-[220px] text-[12px] leading-5 text-notion-text-muted">
+                            <span className="font-semibold text-notion-text">Team ID</span>
+                            <span className="ml-2 break-all">{selectedTeam.id}</span>
+                          </div>
+                        </Menu.Item>
+                      </>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              </div>
             ) : (
               <div className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                 Teams

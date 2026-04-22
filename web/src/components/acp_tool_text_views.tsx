@@ -18,7 +18,7 @@ export const ACP_SEGMENTED_BLOCK_CLASS = "acp-segmented-block grid gap-1.5";
 const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
 const ACP_PAYLOAD_TEXT_BASE_CLASS =
-  "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.45] text-slate-800";
+  "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.5] text-slate-800";
 const ACP_PAYLOAD_TEXT_ASCII_CLASS =
   `${ACP_PAYLOAD_TEXT_BASE_CLASS} acp-payload-ascii overflow-x-auto whitespace-pre`;
 const ACP_CONTENT_TEXT_BASE_CLASS =
@@ -26,7 +26,7 @@ const ACP_CONTENT_TEXT_BASE_CLASS =
 const ACP_CONTENT_TEXT_ASCII_CLASS =
   `${ACP_CONTENT_TEXT_BASE_CLASS} acp-payload-ascii whitespace-pre`;
 const ACP_CONTENT_MARKDOWN_CLASS =
-  "acp-content-markdown rounded-lg border border-notion-border bg-notion-code-bg px-4 py-3 text-[13px] leading-relaxed text-slate-200 shadow-inner [&_.hljs]:bg-transparent [&_a]:text-sky-300 [&_blockquote]:border-l-2 [&_blockquote]:border-white/15 [&_blockquote]:pl-3 [&_blockquote]:text-slate-300 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:text-slate-100 [&_li]:marker:text-slate-500 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:my-3 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-inherit [&_strong]:text-white";
+  "acp-content-markdown rounded-lg border border-slate-200 bg-white/92 px-3 py-2.5 text-[13px] leading-6 text-slate-900 shadow-none [&_.hljs]:bg-transparent [&_a]:text-sky-700 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-200 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:text-slate-900 [&_li]:marker:text-slate-400 [&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_pre]:my-2.5 [&_pre]:border-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-inherit [&_strong]:text-slate-900";
 
 type DiffLineKind = "meta" | "hunk" | "add" | "remove" | "context";
 

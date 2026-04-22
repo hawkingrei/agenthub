@@ -155,15 +155,15 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "mb-0.5 flex flex-wrap items-start justify-between gap-x-2 gap-y-1";
+  "mb-0.5 flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
-  "flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5";
+  "flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS =
-  "flex min-w-0 flex-wrap items-center justify-end gap-x-1 gap-y-0.5 sm:shrink-0";
+  "flex min-w-0 flex-wrap items-center justify-end gap-x-0.5 gap-y-0.5 sm:shrink-0";
 const TEAM_TASK_ACTIVITY_META_BUTTON_CLASS =
-  "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/50 hover:bg-transparent hover:text-notion-text-muted/72";
+  "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_META_STATUS_CLASS =
-  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/50 hover:bg-transparent hover:text-notion-text-muted/72";
+  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
@@ -187,9 +187,9 @@ const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
 const TEAM_TASK_INITIAL_RENDER_MIN_ITEMS = 12;
 const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
-  "border-notion-accent/15 bg-notion-accent-bg/72";
+  "bg-notion-accent-bg/72";
 const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
-  "border-notion-border-subtle bg-white";
+  "bg-white";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -306,8 +306,11 @@ function TeamTaskPanelLoadingSkeleton() {
     <div
       className="flex flex-col gap-2.5 px-1 py-1"
       data-team-channel-loading-skeleton="true"
-      aria-hidden="true"
+      aria-label="Restoring session"
     >
+      <div className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70">
+        Restoring session...
+      </div>
       {Array.from({ length: 6 }, (_, index) => {
         const alignRight = index % 3 === 2;
         return (

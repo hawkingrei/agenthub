@@ -3279,6 +3279,7 @@ export function TeamPage(props: TeamPageProps) {
             focusedAgentMemberId={focusedAgentMemberId}
             tab={tab}
             onSelectTeam={onSelectSidebarTeam}
+            onBackToSelector={navigateToTeamSelector}
             onSelectChannel={(channelId) => {
               setFocusedAgentMemberId("");
               setSelectedConversationTaskId("");

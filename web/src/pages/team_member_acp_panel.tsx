@@ -428,7 +428,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       return "No active thread session yet";
     }
     if (memberEventsLoading && !hasVisibleConversationItems) {
-      return "Active thread loading";
+      return "Restoring session...";
     }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
       return "Active thread has no events yet";

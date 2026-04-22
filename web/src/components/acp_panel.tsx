@@ -89,8 +89,11 @@ function AcpConversationLoadingSkeleton() {
     <div
       className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2"
       data-acp-conversation-loading-skeleton="true"
-      aria-hidden="true"
+      aria-label="Restoring session"
     >
+      <div className="mb-2 px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70">
+        Restoring session...
+      </div>
       <div className="flex flex-col gap-2.5">
         {Array.from({ length: 6 }, (_, index) => (
           <div
