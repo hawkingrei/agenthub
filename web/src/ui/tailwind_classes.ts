@@ -261,7 +261,7 @@ export const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "relative min-h-0 flex flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain before:absolute before:left-[9px] before:top-1.5 before:h-[calc(100%-12px)] before:w-0.5 before:bg-notion-hover";
 
 export const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "flex shrink-0 flex-col gap-1 border-t border-notion-border-faint bg-notion-bg-soft/95 px-2 py-1.25 shadow-notion-topline backdrop-blur-md sm:px-2.5 sm:py-1.5";
+  "flex shrink-0 flex-col gap-1 border-t border-notion-border-faint bg-notion-bg-soft/95 px-2 py-[5px] shadow-notion-topline backdrop-blur-md sm:px-2.5 sm:py-1.5";
 
 export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-1.5";
 
@@ -282,7 +282,7 @@ export const TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS = "items-end";
 export const TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS = "items-start";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS =
-  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-1.25 shadow-none";
+  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-[5px] shadow-none";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} bg-notion-accent-bg/64`;

@@ -2184,7 +2184,6 @@ export function TeamPage(props: TeamPageProps) {
     onSelectConversationSubject,
     onSelectKanbanSubject,
     onSelectAgentWorkspace,
-    onSelectUtilityWorkspace,
     onSelectSidebarTeam,
     onSelectWorkspaceLens,
     showRunContextLoading,
@@ -3295,7 +3294,6 @@ export function TeamPage(props: TeamPageProps) {
             }}
             onSelectKanban={onSelectKanbanSubject}
             onSelectAgentTab={onSelectAgentWorkspace}
-            onSelectUtilityTab={onSelectUtilityWorkspace}
             onOpenTeamMemberForge={openTeamMemberForgeModal}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}

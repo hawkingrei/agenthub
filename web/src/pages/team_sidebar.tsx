@@ -64,7 +64,6 @@ type TeamSidebarProps = {
   onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
-  onSelectUtilityTab: (tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
@@ -267,15 +266,17 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   </Menu.Target>
                   <Menu.Dropdown>
                     <Menu.Label>Teams</Menu.Label>
-                    <Menu.Item
-                      leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
-                      onClick={() => {
-                        onBackToSelector?.();
-                      }}
-                    >
-                      All Teams
-                    </Menu.Item>
-                    <Menu.Divider />
+                    {onBackToSelector ? (
+                      <>
+                        <Menu.Item
+                          leftSection={<i className="bi bi-grid-3x3-gap" aria-hidden="true" />}
+                          onClick={onBackToSelector}
+                        >
+                          All Teams
+                        </Menu.Item>
+                        <Menu.Divider />
+                      </>
+                    ) : null}
                     {teams.map((team) => (
                       <Menu.Item
                         key={team.id}
@@ -555,12 +556,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   onClick={() => onSelectChannel(channel.id)}
                   title={channel.label}
                 >
-                  <span
-                    className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[12px] font-semibold leading-none text-notion-text-muted/80"
-                    aria-hidden="true"
-                  >
-                    #
-                  </span>
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block truncate text-[12px] font-medium">
                       {channel.label}

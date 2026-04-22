@@ -399,7 +399,6 @@ describe("team panels interactions", () => {
     const onSelectChannel = vi.fn();
     const onSelectKanban = vi.fn();
     const onSelectAgentTab = vi.fn();
-    const onSelectUtilityTab = vi.fn();
     const teamOne = buildTeam();
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
 
@@ -453,7 +452,6 @@ describe("team panels interactions", () => {
             onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
@@ -573,7 +571,6 @@ describe("team panels interactions", () => {
             onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
@@ -638,7 +635,6 @@ describe("team panels interactions", () => {
             onSelectChannel={onSelectChannel}
             onSelectKanban={onSelectKanban}
             onSelectAgentTab={onSelectAgentTab}
-            onSelectUtilityTab={onSelectUtilityTab}
           />
         </MantineProvider>
       );
@@ -669,7 +665,6 @@ describe("team panels interactions", () => {
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
@@ -705,7 +700,6 @@ describe("team panels interactions", () => {
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );
@@ -769,7 +763,6 @@ describe("team panels interactions", () => {
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
             onOpenTeamMemberForge={() => {}}
             onStartTeamRuntime={() => {}}
             onStopTeamRuntime={() => {}}
@@ -830,7 +823,6 @@ describe("team panels interactions", () => {
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
@@ -999,7 +991,6 @@ describe("team panels interactions", () => {
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
-            onSelectUtilityTab={() => {}}
           />
         </MantineProvider>
       );

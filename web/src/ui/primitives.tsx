@@ -69,7 +69,7 @@ const BADGE_SHAPE_CLASS = {
   pill: "rounded-full px-2 py-0.5",
 } as const;
 const CONVERSATION_BUBBLE_BASE_CLASS =
-  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-1.25 shadow-none";
+  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-[5px] shadow-none";
 const MENU_OPTION_BUTTON_BASE_CLASS =
   "flex w-full items-center justify-between px-3 py-1 text-left text-sm transition";
 const MENU_OPTION_BUTTON_ACTIVE_CLASS = "bg-brand-primary/10 text-brand-primary";

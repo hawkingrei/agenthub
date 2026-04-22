@@ -306,44 +306,50 @@ function TeamTaskPanelLoadingSkeleton() {
     <div
       className="flex flex-col gap-2.5 px-1 py-1"
       data-team-channel-loading-skeleton="true"
-      aria-label="Restoring session"
+      aria-busy="true"
     >
-      <div className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70">
+      <div
+        role="status"
+        aria-live="polite"
+        className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
+      >
         Restoring session...
       </div>
-      {Array.from({ length: 6 }, (_, index) => {
-        const alignRight = index % 3 === 2;
-        return (
-          <div
-            key={`team-task-loading-${index}`}
-            className={`flex items-start gap-2.5 ${alignRight ? "justify-end" : ""}`}
-          >
-            {!alignRight && (
-              <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
-            )}
-            <div className="max-w-[min(100%,42rem)] min-w-0 flex-1">
-              <div className="mb-1.5 flex items-center gap-2">
-                <div className="h-3 w-16 animate-pulse rounded bg-notion-hover" />
-                <div className="h-2.5 w-20 animate-pulse rounded bg-notion-hover/80" />
-              </div>
-              <div className="rounded-[16px] border border-notion-border/60 bg-white px-3 py-2 shadow-notion-soft">
-                <div className="space-y-1.5">
-                  <div className="h-3 animate-pulse rounded bg-notion-hover" />
-                  <div className="h-3 w-11/12 animate-pulse rounded bg-notion-hover/90" />
-                  <div
-                    className={`h-3 animate-pulse rounded bg-notion-hover/80 ${
-                      index % 2 === 0 ? "w-8/12" : "w-6/12"
-                    }`}
-                  />
+      <div className="flex flex-col gap-2.5" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, index) => {
+          const alignRight = index % 3 === 2;
+          return (
+            <div
+              key={`team-task-loading-${index}`}
+              className={`flex items-start gap-2.5 ${alignRight ? "justify-end" : ""}`}
+            >
+              {!alignRight && (
+                <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
+              )}
+              <div className="max-w-[min(100%,42rem)] min-w-0 flex-1">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <div className="h-3 w-16 animate-pulse rounded bg-notion-hover" />
+                  <div className="h-2.5 w-20 animate-pulse rounded bg-notion-hover/80" />
+                </div>
+                <div className="rounded-[16px] border border-notion-border/60 bg-white px-3 py-2 shadow-notion-soft">
+                  <div className="space-y-1.5">
+                    <div className="h-3 animate-pulse rounded bg-notion-hover" />
+                    <div className="h-3 w-11/12 animate-pulse rounded bg-notion-hover/90" />
+                    <div
+                      className={`h-3 animate-pulse rounded bg-notion-hover/80 ${
+                        index % 2 === 0 ? "w-8/12" : "w-6/12"
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
+              {alignRight && (
+                <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
+              )}
             </div>
-            {alignRight && (
-              <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

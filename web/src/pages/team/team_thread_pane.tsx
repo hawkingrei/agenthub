@@ -70,7 +70,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               <span>{formatTs(rootCreatedAt)}</span>
               <span>{`#${rootMessageId}`}</span>
             </div>
-            <div className="rounded-[12px] border border-transparent bg-white/88 px-2 py-1.25">
+            <div className="rounded-[12px] border border-transparent bg-white/88 px-2 py-[5px]">
               <TeamThreadRichText className="text-[13px] leading-6 text-notion-text" text={rootText} />
             </div>
             <div className="pt-1 text-[10px] leading-5 text-notion-text-muted">
