@@ -2725,6 +2725,7 @@ export function TeamPage(props: TeamPageProps) {
   const tasksPanel = (
     <TeamTasksPanel
       compactMode={isCompactWorkbench}
+      channelLabel={selectedChannelItem?.label ?? "# all"}
       developerMode={props.developerMode}
       tasks={workspaceTasks}
       tasksLoading={tasksLoading}

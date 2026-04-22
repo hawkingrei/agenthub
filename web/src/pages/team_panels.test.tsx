@@ -3762,6 +3762,7 @@ describe("team panels interactions", () => {
         <MantineProvider>
           <TeamTasksPanel
             compactMode={false}
+            channelLabel="# review"
             developerMode={true}
             tasks={[
               buildPanelTask("task-1", {
@@ -3844,7 +3845,7 @@ describe("team panels interactions", () => {
     await openTaskDetailModal(container, "Prepare rollout");
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
     clickElement(findButtonByText(document.body, "Open thread"));
-    clickElement(findButtonByText(container, "Open # all"));
+    clickElement(findButtonByText(container, "Open # review"));
     clickElement(findInteractiveByText(document.body, "Developer tools", "summary"));
     changeInputValue(
       required(
@@ -3880,8 +3881,9 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain(
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
+    expect(container.textContent).toContain("# review");
     expect(document.body.textContent).toContain("Open thread");
-    expect(container.textContent).toContain("Open # all");
+    expect(container.textContent).toContain("Open # review");
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Shipped the rollout summary.");
     expect(document.body.textContent).toContain("Task context");
