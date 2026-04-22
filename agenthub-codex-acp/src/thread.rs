@@ -5,20 +5,20 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use agent_client_protocol_legacy::{Client, Error};
 use agent_client_protocol_legacy::{
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ClientCapabilities,
     ConfigOptionUpdate, Content, ContentBlock, ContentChunk, Diff, EmbeddedResource,
     EmbeddedResourceResource, LoadSessionResponse, Meta, ModelId, ModelInfo, PermissionOption,
     PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus, PromptRequest,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, ResourceLink,
-    SelectedPermissionOutcome, SessionConfigId, SessionConfigOption,
-    SessionConfigOptionCategory, SessionConfigOptionValue, SessionConfigSelectOption,
-    SessionConfigValueId, SessionId, SessionInfoUpdate, SessionMode, SessionModeId,
-    SessionModeState, SessionModelState, SessionNotification, SessionUpdate, StopReason, Terminal,
-    TextResourceContents, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigOption, SessionConfigOptionCategory,
+    SessionConfigOptionValue, SessionConfigSelectOption, SessionConfigValueId, SessionId,
+    SessionInfoUpdate, SessionMode, SessionModeId, SessionModeState, SessionModelState,
+    SessionNotification, SessionUpdate, StopReason, Terminal, TextResourceContents, ToolCall,
+    ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields, ToolKind, UnstructuredCommandInput, UsageUpdate,
 };
+use agent_client_protocol_legacy::{Client, Error};
 use agenthub_managed_skills::managed_skills_root;
 use codex_apply_patch::parse_patch;
 use codex_core::{

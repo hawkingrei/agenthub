@@ -1,16 +1,15 @@
 use agent_client_protocol_legacy::Error;
 use agent_client_protocol_legacy::{
-    Agent,
-    AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar, AuthMethodId,
-    AuthenticateRequest, AuthenticateResponse, CancelNotification, ClientCapabilities,
-    CloseSessionRequest, CloseSessionResponse, Implementation, InitializeRequest,
-    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
-    LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp, McpServerStdio,
-    NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId, SessionInfo,
-    SessionListCapabilities, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest,
-    SetSessionModelResponse,
+    Agent, AgentCapabilities, AuthEnvVar, AuthMethod, AuthMethodAgent, AuthMethodEnvVar,
+    AuthMethodId, AuthenticateRequest, AuthenticateResponse, CancelNotification,
+    ClientCapabilities, CloseSessionRequest, CloseSessionResponse, Implementation,
+    InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
+    LoadSessionRequest, LoadSessionResponse, McpCapabilities, McpServer, McpServerHttp,
+    McpServerStdio, NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest,
+    PromptResponse, ProtocolVersion, SessionCapabilities, SessionCloseCapabilities, SessionId,
+    SessionInfo, SessionListCapabilities, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
+    SetSessionModelRequest, SetSessionModelResponse,
 };
 use codex_config::types::{McpServerConfig, McpServerTransportConfig};
 use codex_core::{
