@@ -249,9 +249,9 @@ fn merge_actor_send_mentions(
             "mention_actor_ids": mention_actor_ids,
         })),
         Value::Object(mut obj) => {
-            let mut merged_mentions = obj
-                .remove("mention_actor_ids")
-                .map_or_else(|| Ok(Vec::new()), |value| match value {
+            let mut merged_mentions = obj.remove("mention_actor_ids").map_or_else(
+                || Ok(Vec::new()),
+                |value| match value {
                     Value::Array(values) => normalize_actor_send_mentions(
                         values
                             .into_iter()
@@ -267,7 +267,8 @@ fn merge_actor_send_mentions(
                     _ => Err(anyhow::anyhow!(
                         "payload mention_actor_ids must be an array of strings"
                     )),
-                })?;
+                },
+            )?;
             merged_mentions.extend_from_slice(mention_actor_ids);
             let merged_mentions = normalize_actor_send_mentions(merged_mentions)?;
             obj.insert(
