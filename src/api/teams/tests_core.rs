@@ -4920,6 +4920,59 @@ async fn team_thread_reply_api_appends_reply_metadata_for_root_message() {
 }
 
 #[tokio::test]
+async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "thread-reply-not-found-team".to_string(),
+            description: Some("thread reply not found coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let missing_channel_err = reply_team_thread(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), "review".to_string(), 17)),
+        Json(ReplyTeamThreadRequest {
+            text: "Missing channel".to_string(),
+        }),
+    )
+    .await
+    .expect_err("missing channel should fail");
+    assert_eq!(missing_channel_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let Json(shared_thread) =
+        ensure_team_shared_thread(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("ensure shared thread");
+    let missing_root_err = reply_team_thread(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), "all".to_string(), 99999)),
+        Json(ReplyTeamThreadRequest {
+            text: "Missing root".to_string(),
+        }),
+    )
+    .await
+    .expect_err("missing root should fail");
+    assert_eq!(missing_root_err.into_response().status(), StatusCode::NOT_FOUND);
+
+    let shared_task = state
+        .teams
+        .get_task(&shared_thread.task.id)
+        .await
+        .expect("shared thread task still exists");
+    assert_eq!(shared_task.team_id, team.id);
+}
+
+#[tokio::test]
 async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active_run() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

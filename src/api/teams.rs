@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 mod errors;
 
 use self::errors::{
-    map_actor_service_api_error, map_create_team_error, map_not_found_error, map_resume_run_error,
-    map_runtime_start_error, map_submit_step_error, map_task_message_error,
-    map_team_internal_error,
+    map_actor_service_api_error, map_create_team_error, map_not_found_error,
+    map_reply_thread_error, map_resume_run_error, map_runtime_start_error, map_submit_step_error,
+    map_task_message_error, map_team_internal_error,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
@@ -973,7 +973,7 @@ async fn reply_team_thread(
             text,
         )
         .await
-        .map_err(map_team_internal_error)?;
+        .map_err(map_reply_thread_error)?;
     Ok(Json(reply))
 }
 

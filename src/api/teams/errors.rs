@@ -25,6 +25,27 @@ pub(super) fn map_task_message_error(err: anyhow::Error) -> ApiError {
     map_team_internal_error(err)
 }
 
+pub(super) fn map_reply_thread_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    let normalized = message.to_ascii_lowercase();
+    if normalized.contains("channel '") && normalized.contains("not found for team") {
+        return ApiError::not_found("channel not found");
+    }
+    if normalized.contains("shared thread is missing for team") {
+        return ApiError::not_found("shared thread not found");
+    }
+    if normalized.contains("root_message_id") && normalized.contains("was not found in channel") {
+        return ApiError::not_found("root message not found");
+    }
+    if normalized.contains("must be positive")
+        || normalized.contains("is required")
+        || normalized.contains("reserved")
+    {
+        return ApiError::bad_request(&message);
+    }
+    map_team_internal_error(err)
+}
+
 pub(super) fn map_actor_service_api_error(err: ActorServiceError) -> ApiError {
     match err.code {
         ActorServiceErrorCode::BadRequest | ActorServiceErrorCode::UnprocessableEntity => {
@@ -113,7 +134,7 @@ fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
 mod tests {
     use axum::response::IntoResponse;
 
-    use super::{map_runtime_start_error, map_task_message_error};
+    use super::{map_reply_thread_error, map_runtime_start_error, map_task_message_error};
     use crate::team::{TeamManager, TeamRuntimeStartError};
 
     #[test]
@@ -163,6 +184,36 @@ mod tests {
         assert_eq!(
             api_err.into_response().status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn map_reply_thread_error_maps_missing_channel_to_not_found() {
+        let api_err =
+            map_reply_thread_error(anyhow::anyhow!("channel 'review' not found for team t-1"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn map_reply_thread_error_maps_missing_root_to_not_found() {
+        let api_err = map_reply_thread_error(anyhow::anyhow!(
+            "root_message_id 17 was not found in channel 'all'"
+        ));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn map_reply_thread_error_maps_validation_messages_to_bad_request() {
+        let api_err = map_reply_thread_error(anyhow::anyhow!("from_actor_id is required"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
         );
     }
 }

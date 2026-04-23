@@ -763,18 +763,7 @@ impl TeamManager {
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
-        .await
-        .map_err(|err| {
-            if is_team_channel_bootstrap_unique_violation(&err) {
-                anyhow::anyhow!(
-                    "channel '{}' already exists for team {}",
-                    title.trim(),
-                    team_id.trim()
-                )
-            } else {
-                err.into()
-            }
-        })?;
+        .await?;
 
         sqlx::query(
             r#"
