@@ -35,7 +35,7 @@ use crate::team::{
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
-    TeamTaskStepExecutionSpec, build_actor_mailbox_immediate_hint_prompt,
+    TeamTaskStepExecutionSpec, TeamThreadReplyRecord, build_actor_mailbox_immediate_hint_prompt,
     effective_team_member_skills, ensure_team_runtime_started, force_team_member_new_session,
     normalize_optional_idempotency_key_input, parse_task_execution_plan,
     plan_actor_mailbox_immediate_hint, stop_team_runtime,
@@ -193,6 +193,11 @@ pub struct SendTeamTaskMessageRequest {
 pub struct ListTeamTaskMessagesQuery {
     pub limit: Option<i64>,
     pub before_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReplyTeamThreadRequest {
+    pub text: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -427,6 +432,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/{id}/tasks/{task_id}/messages",
             post(send_team_task_message).get(list_team_task_messages),
+        )
+        .route(
+            "/{id}/channels/{channel_id}/threads/{root_message_id}/replies",
+            post(reply_team_thread),
         )
         .route(
             "/{id}/tasks/{task_id}/compile_run_preview",
@@ -937,6 +946,35 @@ async fn list_team_task_messages(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(messages))
+}
+
+async fn reply_team_thread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, channel_id, root_message_id)): Path<(String, String, i64)>,
+    Json(payload): Json<ReplyTeamThreadRequest>,
+) -> Result<Json<TeamThreadReplyRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    let team = load_team_for_user(&state, &team_id, &user).await?;
+    if root_message_id <= 0 {
+        return Err(ApiError::bad_request("root_message_id must be positive"));
+    }
+    let text = payload.text.trim();
+    if text.is_empty() {
+        return Err(ApiError::bad_request("text is required"));
+    }
+    let reply = state
+        .teams
+        .reply_thread(
+            &team.id,
+            &channel_id,
+            root_message_id,
+            &canonical_user_actor_id(&user),
+            text,
+        )
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(reply))
 }
 
 async fn compile_team_task_run_preview(

@@ -349,6 +349,17 @@ export function buildTeamWorkspacePath(
   return `${pathname}?${search}`;
 }
 
+function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const raw = (payload as { thread_root_message_id?: unknown }).thread_root_message_id;
+  if (typeof raw !== "number") {
+    return null;
+  }
+  return Number.isInteger(raw) && raw > 0 ? raw : null;
+}
+
 function resolveTeamTabForWorkspaceLens(lens: WorkspaceLens): TeamTab | null {
   switch (lens) {
     case "channels":
@@ -844,6 +855,7 @@ export function TeamPage(props: TeamPageProps) {
   >([]);
   const [taskMessagesLoading, setTaskMessagesLoading] = useState(false);
   const [taskMessageDraft, setTaskMessageDraft] = useState("");
+  const [threadReplyDraft, setThreadReplyDraft] = useState("");
   const [compilePreviewContextId, setCompilePreviewContextId] = useState("");
   const [compiledRunPreview, setCompiledRunPreview] =
     useState<TeamTaskRunCompilePreviewRecord | null>(null);
@@ -2656,6 +2668,47 @@ export function TeamPage(props: TeamPageProps) {
     setError,
     teamExecutionBlockedReason,
   ]);
+  const onSendThreadReply = useCallback(async () => {
+    if (!effectiveSelectedTeamId || !routeThreadRootMessageId) {
+      setError("Open a thread first");
+      return;
+    }
+    const text = threadReplyDraft.trim();
+    if (!text) {
+      setError("Thread reply is required");
+      return;
+    }
+    setBusy("send-thread-reply");
+    setError(null);
+    try {
+      await api.replyTeamThread(
+        props.token,
+        effectiveSelectedTeamId,
+        selectedChannelItem.id,
+        routeThreadRootMessageId,
+        { text }
+      );
+      setThreadReplyDraft("");
+      await refreshTaskMessages(selectedConversation?.id ?? undefined);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    effectiveSelectedTeamId,
+    props.token,
+    refreshTaskMessages,
+    routeThreadRootMessageId,
+    selectedChannelItem.id,
+    selectedConversation?.id,
+    setBusy,
+    setError,
+    threadReplyDraft,
+  ]);
+  useEffect(() => {
+    setThreadReplyDraft("");
+  }, [routeThreadRootMessageId]);
   const conversationPanel = (
     <TeamConversationPanel
       conversationKey={selectedConversation?.id}
@@ -2699,6 +2752,24 @@ export function TeamPage(props: TeamPageProps) {
     selectedConversationIsShared && routeThreadRootMessageId
       ? taskMessages.find((message) => message.message_id === routeThreadRootMessageId) ?? null
       : null;
+  const activeThreadReplies = useMemo(
+    () =>
+      selectedConversationIsShared && routeThreadRootMessageId
+        ? taskMessages
+            .filter(
+              (message) =>
+                message.route === "team_thread_reply" &&
+                resolveThreadRootMessageIdFromPayload(message.payload) === routeThreadRootMessageId
+            )
+            .map((message) => ({
+              messageId: message.message_id,
+              authorLabel: message.from_actor_id,
+              createdAt: message.created_at,
+              text: resolveChatMessageText(message.payload) ?? "",
+            }))
+        : [],
+    [routeThreadRootMessageId, selectedConversationIsShared, taskMessages]
+  );
   const threadPane = selectedConversationIsShared && routeThreadRootMessageId ? (
     <TeamThreadPane
       channelLabel={selectedChannelItem.label}
@@ -2706,6 +2777,11 @@ export function TeamPage(props: TeamPageProps) {
       rootAuthorLabel={activeThreadRootMessage?.from_actor_id ?? null}
       rootCreatedAt={activeThreadRootMessage?.created_at ?? null}
       rootText={activeThreadRootMessage ? resolveChatMessageText(activeThreadRootMessage.payload) : null}
+      replies={activeThreadReplies}
+      replyDraft={threadReplyDraft}
+      onReplyDraftChange={setThreadReplyDraft}
+      onSendReply={onSendThreadReply}
+      replyBusy={busy === "send-thread-reply"}
       formatTs={formatTs}
       onViewInChannel={() => {
         if (!effectiveSelectedTeamId) {

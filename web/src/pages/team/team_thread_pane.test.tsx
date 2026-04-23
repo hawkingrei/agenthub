@@ -14,6 +14,18 @@ describe("TeamThreadPane", () => {
           rootAuthorLabel="leader"
           rootCreatedAt={1713480000000}
           rootText="Investigate the regression in a focused thread."
+          replies={[
+            {
+              messageId: 43,
+              authorLabel: "worker-agent",
+              createdAt: 1713480060000,
+              text: "I can take the follow-up from here.",
+            },
+          ]}
+          replyDraft="Draft follow-up"
+          onReplyDraftChange={vi.fn()}
+          onSendReply={vi.fn()}
+          replyBusy={false}
           formatTs={() => "2026/4/19 00:00:00"}
           onViewInChannel={vi.fn()}
           onClose={vi.fn()}
@@ -30,6 +42,11 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
     expect(html).toContain("Replies stay scoped to this thread.");
+    expect(html).toContain("worker-agent");
+    expect(html).toContain("#43");
+    expect(html).toContain("I can take the follow-up from here.");
+    expect(html).toContain("Draft follow-up");
+    expect(html).toContain("Reply");
     expect(html).toContain("max-w-[340px]");
     expect(html).toContain("rounded-[12px]");
     expect(html).toContain("hover:border-black");

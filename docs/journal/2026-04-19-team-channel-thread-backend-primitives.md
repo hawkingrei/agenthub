@@ -8,11 +8,15 @@ This change adds the first backend-only Team channel/thread primitives needed by
 - internal gRPC RPCs for `CreateTeamChannel`, `DeleteTeamChannel`, and `OpenTeamThread`
 - internal gRPC RPC `ReplyTeamThread`
 - actor CLI surface for `team-thread-open` and `team-thread-reply`
+- public Team HTTP thread-reply path for the web shell:
+  - `POST /api/teams/:team_id/channels/:channel_id/threads/:root_message_id/replies`
 - Team manager support for:
   - creating non-default Team channels as bootstrap `team_tasks` + `team_conversations`
   - deleting non-default channels while preserving the reserved `# all` lane
   - opening a thread rooted in an existing channel message
   - replying to that thread without inventing a detached thread table first
+  - letting the Team thread pane render replies while keeping thread replies out of the main
+    channel timeline
 
 ## Contracts
 
@@ -29,6 +33,10 @@ This change adds the first backend-only Team channel/thread primitives needed by
   - it validates the root message through the same channel resolver as `OpenTeamThread`
   - it appends a `team_thread_reply` conversation message carrying
     `payload.thread_root_message_id = root_message_id`
+- Team web shell projection:
+  - the center channel timeline hides `team_thread_reply` rows
+  - the right-side thread pane filters replies by `thread_root_message_id`
+  - thread replies submit through the public HTTP path instead of depending on internal gRPC
 - Thread identity is currently `root_message_id`-backed (`thread_id = root_message_id.to_string()`).
 
 ## Validation
@@ -40,8 +48,12 @@ This change adds the first backend-only Team channel/thread primitives needed by
 - `cargo test parse_team_thread_open_defaults_to_shared_channel -- --nocapture`
 - `cargo test parse_team_thread_open_rejects_non_positive_root_message_id -- --nocapture`
 - `cargo test parse_team_thread_reply_defaults_to_shared_channel -- --nocapture`
+- `cd web && pnpm exec vitest run src/pages/team/team_thread_pane.test.tsx src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm run build`
 
 ## Follow-Up
 
 - Wire the Team shell to these internal RPCs so `Channels` can create/delete real lanes.
-- Wire the Team shell to `team_thread_reply` so thread panes can render and submit real replies.
+- Expand the current thread-pane reply wiring into a fuller `channel + thread` rollout:
+  reply counts on root messages, stronger browser-level regression coverage, and stable deep-link
+  recovery still remain.
