@@ -40,12 +40,24 @@ describe("team_page helpers", () => {
     expect(buildTeamWorkspacePath("team-1", "channels")).toBe(
       "/workspace/teams/team-1?lens=channels"
     );
+    expect(buildTeamWorkspacePath("team-1", "channels", "review")).toBe(
+      "/workspace/teams/team-1?lens=channels&channel=review"
+    );
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42)).toBe(
       "/workspace/teams/team-1?lens=channels&thread=42"
+    );
+    expect(buildTeamWorkspacePath("team-1", "channels", "review", -1)).toBe(
+      "/workspace/teams/team-1?lens=channels&channel=review"
     );
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=agent_acp");
+    expect(buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", null)).toBe(
+      "/workspace/teams/team-1?lens=members&member=worker-2"
+    );
+    expect(
+      buildTeamWorkspacePath("team-1", "members", null, null, "worker-3", "conversation" as never)
+    ).toBe("/workspace/teams/team-1?lens=members&member=worker-3");
   });
 
   it("parses team channel and thread query state", () => {
@@ -55,8 +67,13 @@ describe("team_page helpers", () => {
     expect(resolveTeamThreadRootMessageId("")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=17")).toBe(17);
     expect(resolveTeamThreadRootMessageId("?thread=abc")).toBeNull();
+    expect(resolveTeamThreadRootMessageId("?thread=0")).toBeNull();
+    expect(resolveTeamThreadRootMessageId("?thread=-8")).toBeNull();
+    expect(resolveTeamThreadRootMessageId("?thread=7.5")).toBeNull();
     expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
     expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
+    expect(resolveTeamWorkspaceTab("?tab=mailbox")).toBe("mailbox");
+    expect(resolveTeamWorkspaceTab("?tab=member_console")).toBe("member_console");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
   });
 
