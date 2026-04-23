@@ -766,8 +766,8 @@ impl TeamManager {
             if is_team_channel_bootstrap_unique_violation(&err) {
                 anyhow::anyhow!(
                     "channel '{}' already exists for team {}",
-                    normalized_channel_id,
-                    normalized_team_id
+                    title.trim(),
+                    team_id.trim()
                 )
             } else {
                 err.into()
@@ -965,7 +965,7 @@ impl TeamManager {
                 )
             } else {
                 let row =
-                    fetch_team_channel_target(&self.db, normalized_team_id, normalized_channel_id)
+                    fetch_team_channel_target(&self.db, normalized_team_id, &normalized_channel_id)
                         .await?
                         .ok_or_else(|| {
                             anyhow::anyhow!(
@@ -1042,7 +1042,7 @@ impl TeamManager {
 
         let mut tx = self.db.begin().await?;
         let existing =
-            fetch_team_channel_target(&mut *tx, normalized_team_id, normalized_channel_id).await?;
+            fetch_team_channel_target(&mut *tx, normalized_team_id, &normalized_channel_id).await?;
         if existing.is_some() {
             anyhow::bail!(
                 "channel '{}' already exists for team {}",
@@ -1114,7 +1114,7 @@ impl TeamManager {
         }
 
         let mut tx = self.db.begin().await?;
-        let row = fetch_team_channel_target(&mut *tx, normalized_team_id, normalized_channel_id)
+        let row = fetch_team_channel_target(&mut *tx, normalized_team_id, &normalized_channel_id)
             .await?
             .ok_or_else(|| {
                 anyhow::anyhow!(
