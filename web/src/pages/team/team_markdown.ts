@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
+import { SHARED_THREAD_RICH_TEXT_BASE_CLASS } from "../../rich_text_classes";
 import { escapeTeamHtml } from "./team_text_helpers";
 
 const TEAM_MARKDOWN_CACHE_LIMIT = 256;
@@ -11,8 +12,7 @@ const GITHUB_PULL_URL_PATTERN =
 const URL_CANDIDATE_PATTERN = /https:\/\/[^\s<>()]+(?:\([^\s<>]*\)[^\s<>()]*)*/g;
 const SKILL_BLOCK_PATTERN = /<skill>\s*([\s\S]*?)\s*<\/skill>/gi;
 
-export const TEAM_THREAD_RICH_TEXT_BASE_CLASS =
-  "acp-text min-w-0 max-w-full text-sm leading-6 [overflow-wrap:anywhere] [&_code]:break-words [&_li]:break-words [&_ol]:max-w-full [&_p]:break-words [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:break-words [&_th]:break-words [&_ul]:max-w-full";
+export const TEAM_THREAD_RICH_TEXT_BASE_CLASS = SHARED_THREAD_RICH_TEXT_BASE_CLASS;
 
 const markdownHtmlCache = new Map<string, string>();
 const markdownHtmlCacheSize = new Map<string, number>();

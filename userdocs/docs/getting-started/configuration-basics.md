@@ -101,6 +101,14 @@ ACP (Agent Control Protocol) provider settings.
 | `default_mode` | string | `"auto"` | Default ACP mode (`auto`, `full`, `suggest`) |
 | `multi_agent_enabled` | boolean | `true` | Force Codex ACP `Feature::Collab` on AgentHub-managed sessions |
 
+The built-in adapter path assumes the repository's current ACP baseline:
+
+- `agenthub-codex-acp`
+- official Codex `0.121.x`
+
+If you point `codex_acp.binary` at a custom binary, keep it compatible with the
+same ACP protocol surface before mixing it into a shared deployment.
+
 ### `[history]` Section
 
 Event history retention settings.

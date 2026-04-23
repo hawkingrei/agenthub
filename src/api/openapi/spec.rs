@@ -523,8 +523,8 @@ pub(super) fn openapi_spec() -> Value {
             "summary": "Get run snapshot",
             "parameters": [
               { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } },
-              { "name": "event_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } },
-              { "name": "message_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+              { "name": "event_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 20 } },
+              { "name": "message_limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 20 } }
             ],
             "responses": {
               "200": {
@@ -544,7 +544,7 @@ pub(super) fn openapi_spec() -> Value {
             "summary": "List run events",
             "parameters": [
               { "name": "run_id", "in": "path", "required": true, "schema": { "type": "string" } },
-              { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } },
+              { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 20 } },
               { "name": "before_id", "in": "query", "schema": { "type": "integer", "format": "int64" } }
             ],
             "responses": {

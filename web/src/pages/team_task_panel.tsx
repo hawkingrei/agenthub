@@ -7,6 +7,7 @@ import {
   api,
 } from "../api";
 import {
+  shouldDefaultTeamConversationStickToBottom,
   DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE,
   deriveTeamThreadJumpState,
   deriveTeamThreadStickToBottom,
@@ -70,6 +71,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type TeamTaskPanelProps = {
+  conversationKey?: string;
   developerMode: boolean;
   token?: string | null;
   tasksLoading?: boolean;
@@ -153,14 +155,15 @@ const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "mb-0.5 flex items-start justify-between gap-2";
+  "mb-0.5 flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
-  "flex min-w-0 items-center gap-2";
-const TEAM_TASK_ACTIVITY_HEADER_META_CLASS = "flex shrink-0 items-center gap-1";
+  "flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5";
+const TEAM_TASK_ACTIVITY_HEADER_META_CLASS =
+  "flex min-w-0 flex-wrap items-center justify-end gap-x-0.5 gap-y-0.5 sm:shrink-0";
 const TEAM_TASK_ACTIVITY_META_BUTTON_CLASS =
-  "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/58 hover:bg-transparent hover:text-notion-text-muted/82";
+  "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_META_STATUS_CLASS =
-  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/58 hover:bg-transparent hover:text-notion-text-muted/82";
+  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
@@ -182,10 +185,11 @@ const TEAM_TASK_ACTIVITY_SEEN_SECTION_TITLE_CLASS =
   "text-[9px] font-bold uppercase tracking-widest text-notion-text-muted";
 const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
+const TEAM_TASK_INITIAL_RENDER_MIN_ITEMS = 12;
 const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
-  "border-notion-accent/15 bg-notion-accent-bg/72";
+  "bg-notion-accent-bg/72";
 const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
-  "border-notion-border-subtle bg-white";
+  "bg-white";
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -295,6 +299,59 @@ function resolveActivityBubbleToneClassName(
   return isHumanMailboxActor(actorId, humanActorId)
     ? TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS
     : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS;
+}
+
+function TeamTaskPanelLoadingSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-2.5 px-1 py-1"
+      data-team-channel-loading-skeleton="true"
+      aria-busy="true"
+    >
+      <div
+        role="status"
+        aria-live="polite"
+        className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
+      >
+        Restoring session...
+      </div>
+      <div className="flex flex-col gap-2.5" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, index) => {
+          const alignRight = index % 3 === 2;
+          return (
+            <div
+              key={`team-task-loading-${index}`}
+              className={`flex items-start gap-2.5 ${alignRight ? "justify-end" : ""}`}
+            >
+              {!alignRight && (
+                <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
+              )}
+              <div className="max-w-[min(100%,42rem)] min-w-0 flex-1">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <div className="h-3 w-16 animate-pulse rounded bg-notion-hover" />
+                  <div className="h-2.5 w-20 animate-pulse rounded bg-notion-hover/80" />
+                </div>
+                <div className="rounded-[16px] border border-notion-border/60 bg-white px-3 py-2 shadow-notion-soft">
+                  <div className="space-y-1.5">
+                    <div className="h-3 animate-pulse rounded bg-notion-hover" />
+                    <div className="h-3 w-11/12 animate-pulse rounded bg-notion-hover/90" />
+                    <div
+                      className={`h-3 animate-pulse rounded bg-notion-hover/80 ${
+                        index % 2 === 0 ? "w-8/12" : "w-6/12"
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+              {alignRight && (
+                <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function normalizeTrimmedString(value: unknown): string | null {
@@ -555,8 +612,8 @@ function SeenProgressHoverCard({
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
           <CompactButton
-            aria-label="Pending"
-            title="Pending"
+            aria-label="Receipt pending"
+            title="Receipt pending"
             className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
           >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
@@ -592,7 +649,7 @@ function SeenProgressHoverCard({
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
         {seenActorIds.length === 0 ? (
           <>
-            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Delivery</div>
+            <div className={TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS}>Receipt</div>
             <div className={TEAM_TASK_ACTIVITY_SEEN_COUNT_CLASS}>Pending</div>
           </>
         ) : (
@@ -792,6 +849,7 @@ function resolveSeenProgressState(
 
 function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const {
+    conversationKey,
     developerMode,
     token = null,
     messageDraft,
@@ -823,7 +881,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const [permissionErrorById, setPermissionErrorById] = React.useState<Record<string, string>>({});
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
-  const [stickToBottom, setStickToBottom] = React.useState(true);
+  const conversationViewportKeyRef = React.useRef("");
+  const initialStickResolvedRef = React.useRef(false);
+  const [stickToBottom, setStickToBottom] = React.useState(() =>
+    shouldDefaultTeamConversationStickToBottom(messages.length)
+  );
   const liveStateByMemberId = React.useMemo(
     () => new Map(memberLiveStates.map((member) => [member.member_id, member])),
     [memberLiveStates]
@@ -933,6 +995,35 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       }),
     [messages]
   );
+  const normalizedConversationViewportKey = React.useMemo(() => {
+    const explicitKey = conversationKey?.trim();
+    if (explicitKey) {
+      return explicitKey;
+    }
+    const normalizedTitle = conversationTitle.trim().toLowerCase();
+    return `${isSharedConversation ? "shared" : "thread"}:${normalizedTitle || "conversation"}`;
+  }, [conversationKey, conversationTitle, isSharedConversation]);
+
+  React.useEffect(() => {
+    if (conversationViewportKeyRef.current === normalizedConversationViewportKey) {
+      return;
+    }
+    conversationViewportKeyRef.current = normalizedConversationViewportKey;
+    initialStickResolvedRef.current = false;
+    lastActivityScrollTopRef.current = null;
+    setStickToBottom(shouldDefaultTeamConversationStickToBottom(orderedMessages.length));
+  }, [normalizedConversationViewportKey, orderedMessages.length]);
+
+  React.useEffect(() => {
+    if (initialStickResolvedRef.current) {
+      return;
+    }
+    if (messagesLoading && orderedMessages.length === 0) {
+      return;
+    }
+    initialStickResolvedRef.current = true;
+    setStickToBottom(shouldDefaultTeamConversationStickToBottom(orderedMessages.length));
+  }, [messagesLoading, orderedMessages.length]);
   const permissionCardTargets = React.useMemo(
     () =>
       orderedMessages.flatMap((message) => {
@@ -1095,6 +1186,12 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     [activityWindow.items]
   );
   const hiddenWaterfallCount = activityWindow.offset;
+  const shouldDelayInitialConversationRender =
+    isSharedConversation &&
+    messagesLoading &&
+    orderedMessages.length > 0 &&
+    visibleWaterfallItems.length === 0 &&
+    orderedMessages.length < TEAM_TASK_INITIAL_RENDER_MIN_ITEMS;
   const hiddenWaterfallSpacerHeight = React.useMemo(() => {
     if (!stickToBottom || hiddenWaterfallCount <= 0) {
       return 0;
@@ -1102,10 +1199,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     return hiddenWaterfallCount * TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT;
   }, [hiddenWaterfallCount, stickToBottom]);
   const activityListClassName =
-    messagesLoading || visibleWaterfallItems.length > 0
+    shouldDelayInitialConversationRender || messagesLoading || visibleWaterfallItems.length > 0
       ? TEAM_TASK_ACTIVITY_LIST_CLASS
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
-  const showInitialThreadLoading = messagesLoading && visibleWaterfallItems.length === 0;
+  const showInitialThreadLoading =
+    !shouldDelayInitialConversationRender && messagesLoading && visibleWaterfallItems.length === 0;
   const latestWaterfallKey =
     visibleWaterfallItems.length > 0
       ? visibleWaterfallItems[visibleWaterfallItems.length - 1]?.key ?? "empty"
@@ -1239,11 +1337,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
 
   return (
     <SurfaceCard
-      className={`${TEAM_PANEL_CARD_CLASS} flex min-h-0 flex-1 flex-col overflow-hidden`}
+      className={`${TEAM_PANEL_CARD_CLASS} flex h-full min-h-0 flex-1 flex-col overflow-hidden`}
       data-team-surface="conversation"
     >
       <div
-        className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5"
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-1.5 sm:px-2.5 sm:pb-2.5 sm:pt-2"
         data-team-channel-body="true"
       >
         <div
@@ -1254,127 +1352,134 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         >
           <div className={TEAM_TASK_ACTIVITY_SHELL_CLASS}>
             <div className={TEAM_TASK_ACTIVITY_STACK_CLASS}>
-          {hiddenWaterfallSpacerHeight > 0 && (
-            <div
-              aria-hidden="true"
-              data-team-channel-top-spacer="true"
-              style={{ height: hiddenWaterfallSpacerHeight }}
-            />
-          )}
-          {visibleWaterfallItems.map((item) => {
-            const state = liveStateByMemberId.get(item.fromActorId);
-            const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
-            const authorLabel = resolveThreadAuthorLabel(
-              item.fromActorId,
-              humanActorId,
-              liveStateByMemberId
-            );
-            const permissionCardPayload = item.permissionCardPayload;
-            const seenActorIds = seenByMessageId[item.sequence] ?? [];
-            const seenProgress = resolveSeenProgressState(
-              seenActorIds,
-              memberIds,
-              item.fromActorId
-            );
-            const shouldShowSeenMeta =
-              isHumanMailboxActor(item.fromActorId, humanActorId) || seenProgress.totalCount > 0;
-            return (
-              <div
-                key={item.key}
-                className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
-                data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
-                data-team-channel-item="true"
-              >
-                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm mt-0.5 ${!isHumanAuthor ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
-                  {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
-                </div>
-                <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
-                  <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
-                    <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
-                      <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
-                      <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
-                    </div>
-                    {(shouldShowSeenMeta || developerMode) && (
-                      <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
-                        {shouldShowSeenMeta && (
-                          <SeenProgressHoverCard
-                            itemKey={item.key}
-                            seenActorIds={seenActorIds}
-                            seenProgress={seenProgress}
-                            memberDisplayNamesById={memberDisplayNamesById}
-                          />
-                        )}
-                        {developerMode && (
-                          <CompactButton
-                            className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
-                            onClick={() =>
-                              setExpandedItemKeys((current) => ({
-                                ...current,
-                                [item.key]: !current[item.key],
-                              }))
-                            }
-                            aria-expanded={Boolean(expandedItemKeys[item.key])}
-                          >
-                            {expandedItemKeys[item.key] ? "Hide" : "Details"}
-                          </CompactButton>
-                        )}
-                        {isSharedConversation && onOpenThread && (
-                          <CompactButton
-                            className={
-                              activeThreadMessageId === item.sequence
-                                ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
-                                : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
-                            }
-                            onClick={() => onOpenThread(item.sequence)}
-                          >
-                            Thread
-                          </CompactButton>
-                        )}
+              {shouldDelayInitialConversationRender ? (
+                <TeamTaskPanelLoadingSkeleton />
+              ) : (
+                <>
+                  {hiddenWaterfallSpacerHeight > 0 && (
+                    <div
+                      aria-hidden="true"
+                      data-team-channel-top-spacer="true"
+                      style={{ height: hiddenWaterfallSpacerHeight }}
+                    />
+                  )}
+                  {visibleWaterfallItems.map((item) => {
+                    const state = liveStateByMemberId.get(item.fromActorId);
+                    const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
+                    const authorLabel = resolveThreadAuthorLabel(
+                      item.fromActorId,
+                      humanActorId,
+                      liveStateByMemberId
+                    );
+                    const permissionCardPayload = item.permissionCardPayload;
+                    const seenActorIds = seenByMessageId[item.sequence] ?? [];
+                    const seenProgress = resolveSeenProgressState(
+                      seenActorIds,
+                      memberIds,
+                      item.fromActorId
+                    );
+                    const shouldShowSeenMeta =
+                      isHumanMailboxActor(item.fromActorId, humanActorId) ||
+                      seenProgress.totalCount > 0;
+                    return (
+                      <div
+                        key={item.key}
+                        className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
+                        data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
+                        data-team-channel-item="true"
+                      >
+                        <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm ${!isHumanAuthor ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
+                          {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
+                          <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
+                            <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
+                              <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
+                              <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
+                            </div>
+                            {(shouldShowSeenMeta || developerMode) && (
+                              <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
+                                {shouldShowSeenMeta && (
+                                  <SeenProgressHoverCard
+                                    itemKey={item.key}
+                                    seenActorIds={seenActorIds}
+                                    seenProgress={seenProgress}
+                                    memberDisplayNamesById={memberDisplayNamesById}
+                                  />
+                                )}
+                                {developerMode && (
+                                  <CompactButton
+                                    className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
+                                    onClick={() =>
+                                      setExpandedItemKeys((current) => ({
+                                        ...current,
+                                        [item.key]: !current[item.key],
+                                      }))
+                                    }
+                                    aria-expanded={Boolean(expandedItemKeys[item.key])}
+                                  >
+                                    {expandedItemKeys[item.key] ? "Hide" : "Details"}
+                                  </CompactButton>
+                                )}
+                                {isSharedConversation && onOpenThread && (
+                                  <CompactButton
+                                    className={
+                                      activeThreadMessageId === item.sequence
+                                        ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
+                                        : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
+                                    }
+                                    onClick={() => onOpenThread(item.sequence)}
+                                  >
+                                    Thread
+                                  </CompactButton>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {permissionCardPayload ? (
+                            <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
+                              <PermissionReviewCard
+                                payload={permissionCardPayload}
+                                permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
+                                busy={permissionBusyId === permissionCardPayload.permission_id}
+                                errorText={permissionErrorById[permissionCardPayload.permission_id]}
+                                onRespond={onRespondPermission}
+                              />
+                            </div>
+                          ) : isCompactCommandLikeText(item.text) ? (
+                            <ConversationBubble
+                              data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                              className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
+                            >
+                              <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
+                            </ConversationBubble>
+                          ) : (
+                            <ConversationBubble
+                              data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                              className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
+                            >
+                              <TeamThreadRichText
+                                className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+                                text={item.text}
+                                renderSanitizedHtml={renderTeamMessageHtml}
+                              />
+                            </ConversationBubble>
+                          )}
+                          {developerMode && expandedItemKeys[item.key] && (
+                            <ActivityDetailsPanel item={item} state={state} />
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  {permissionCardPayload ? (
-                    <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
-                      <PermissionReviewCard
-                        payload={permissionCardPayload}
-                        permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
-                        busy={permissionBusyId === permissionCardPayload.permission_id}
-                        errorText={permissionErrorById[permissionCardPayload.permission_id]}
-                        onRespond={onRespondPermission}
-                      />
-                    </div>
-                  ) : isCompactCommandLikeText(item.text) ? (
-                    <ConversationBubble
-                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
-                    >
-                      <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                    </ConversationBubble>
-                  ) : (
-                    <ConversationBubble
-                      data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                      className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
-                    >
-                      <TeamThreadRichText
-                        className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                        text={item.text}
-                        renderSanitizedHtml={renderTeamMessageHtml}
-                      />
-                    </ConversationBubble>
+                    );
+                  })}
+                  {showInitialThreadLoading && (
+                    <EmptyState title="Loading thread..." className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
                   )}
-                  {developerMode && expandedItemKeys[item.key] && (
-                    <ActivityDetailsPanel item={item} state={state} />
+                  {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
+                    <EmptyState title={emptyStateText} className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
                   )}
-                </div>
-              </div>
-            );
-          })}
-          {showInitialThreadLoading && (
-            <EmptyState title="Loading thread..." className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
-          )}
-          {!showInitialThreadLoading && visibleWaterfallItems.length === 0 && (
-            <EmptyState title={emptyStateText} className={TEAM_TASK_MESSAGE_EMPTY_CLASS} />
-          )}
+                </>
+              )}
             </div>
           </div>
         </div>

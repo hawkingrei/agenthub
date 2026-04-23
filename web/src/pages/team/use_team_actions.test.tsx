@@ -47,7 +47,7 @@ function createBaseOptions(overrides: Partial<TeamActionsInput> = {}): TeamActio
     activeRunIdForSelectedTeam: null,
     activeRunForSelectedTeam: null,
     inboxActorId: "",
-    inboxLimit: "100",
+    inboxLimit: "50",
     inboxAfterId: "",
     inboxIncludeDelivered: false,
     selectedMemberAgentId: null,
@@ -149,7 +149,7 @@ describe("useTeamActions", () => {
       runsBeforeCreatedAt: 111,
       selectedStepId: "step-1",
       inboxActorId: "leader-1",
-      inboxLimit: "100",
+      inboxLimit: "50",
       inboxAfterId: "10",
       inboxIncludeDelivered: false,
     });
@@ -279,7 +279,22 @@ describe("useTeamActions", () => {
         seq: "7",
         ts: 123,
         stream: "acp",
-        message: "event",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "Can you summarize the failure?",
+        }),
+      },
+      {
+        event_id: 8,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "8",
+        ts: 124,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "I found the failing step and the root cause.",
+        }),
       },
     ]);
     const setMemberEvents = vi.fn();
@@ -307,13 +322,190 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "worker-agent",
-        300,
+        60,
         "runtime-session-1",
         undefined
       );
       expect(setMemberEventsLoading).toHaveBeenCalledWith(true);
-      expect(setMemberEventsHasMore).toHaveBeenCalledWith(false);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
       expect(setMemberEvents).toHaveBeenCalled();
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("prefetches additional ACP history pages until visible messages are complete", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            chunk_index: 2,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 9,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "9",
+          ts: 121,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "user_message",
+            text: "What happened?",
+          }),
+        },
+        {
+          event_id: 10,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "10",
+          ts: 122,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "head chunk",
+            chunk: true,
+            chunk_index: 0,
+          }),
+        },
+      ]);
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      setMemberEvents,
+      setMemberEventsHasMore,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        11
+      );
+      const update = setMemberEvents.mock.calls[0]?.[0];
+      expect(typeof update).toBe("function");
+      expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([9, 10, 11]);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("raises ACP history page limits for very long chunked messages", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 100,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "100",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            message_id: "message-1",
+            chunk_index: 320,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 80,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "80",
+          ts: 121,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "older chunk",
+            chunk: true,
+            message_id: "message-1",
+            chunk_index: 300,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        240,
+        "runtime-session-1",
+        100
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        3,
+        "token-1",
+        "worker-agent",
+        240,
+        "runtime-session-1",
+        80
+      );
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
@@ -329,7 +521,22 @@ describe("useTeamActions", () => {
         seq: "9",
         ts: 123,
         stream: "acp",
-        message: "event",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "Show me the latest progress.",
+        }),
+      },
+      {
+        event_id: 10,
+        agent_id: "agent-123",
+        session_id: "runtime-session-1",
+        seq: "10",
+        ts: 124,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Latest progress is now available.",
+        }),
       },
     ]);
     const captures: TeamActions[] = [];
@@ -351,7 +558,7 @@ describe("useTeamActions", () => {
       expect(listAgentEvents).toHaveBeenCalledWith(
         "token-1",
         "agent-123",
-        300,
+        60,
         "runtime-session-1",
         undefined
       );
@@ -401,7 +608,10 @@ describe("useTeamActions", () => {
         seq: "7",
         ts: 123,
         stream: "acp",
-        message: "new-7",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "What changed since the previous attempt?",
+        }),
       },
       {
         event_id: 8,
@@ -410,7 +620,10 @@ describe("useTeamActions", () => {
         seq: "8",
         ts: 124,
         stream: "acp",
-        message: "new-8",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "I refreshed the latest runtime output.",
+        }),
       },
     ]);
     const setMemberEvents = vi.fn();

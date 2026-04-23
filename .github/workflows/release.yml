@@ -55,7 +55,7 @@ jobs:
           submodules: recursive
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           profile: minimal
           targets: ${{ matrix.target }}
@@ -84,7 +84,7 @@ jobs:
       - name: Build agenthub (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} --bin agenthub
+          cross build --locked --release --target ${{ matrix.target }} --bin agenthub --features release-vendored-openssl
 
       - name: Build agenthub-codex-acp (native)
         if: '!matrix.cross'
@@ -94,7 +94,7 @@ jobs:
       - name: Build agenthub-codex-acp (cross)
         if: matrix.cross
         run: |
-          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp
+          cross build --locked --release --target ${{ matrix.target }} -p agenthub-codex-acp --features release-vendored-openssl
 
       - name: Package
         shell: bash
@@ -141,6 +141,7 @@ jobs:
   release:
     name: Create Release
     needs: build
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -149,6 +150,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
+          pattern: release-*
           path: dist
           merge-multiple: true
 
@@ -194,11 +196,59 @@ jobs:
             --output="dist/${SOURCE_NAME}.tar.gz" \
             HEAD
 
+      - name: Ensure release artifacts exist
+        shell: bash
+        run: |
+          shopt -s nullglob
+          release_archives=()
+          for archive in dist/*.tar.gz; do
+            if [[ "${archive}" != *-source.tar.gz ]]; then
+              release_archives+=("${archive}")
+            fi
+          done
+          if (( ${#release_archives[@]} == 0 )); then
+            echo "::error::No binary release archives were produced by the build matrix."
+            exit 1
+          fi
+
       - name: Generate checksums
         shell: bash
         run: |
           cd dist
           sha256sum ./*.tar.gz | sed 's# \./# #g' > SHA256SUMS.txt
+
+      - name: Prepare release body
+        id: release_body
+        shell: bash
+        run: |
+          {
+            echo "## Installation"
+            echo
+            if [[ "${{ needs.build.result }}" != "success" ]]; then
+              echo "> [!WARNING]"
+              echo "> One or more release targets failed in the build matrix."
+              echo "> Successful artifacts are still attached below."
+              echo
+            fi
+            echo "### Available assets"
+            find dist -maxdepth 1 -type f \( -name '*.tar.gz' -o -name 'SHA256SUMS.txt' \) -printf '%f\n' | sort | while read -r asset; do
+              echo "- \`${asset}\`"
+            done
+            echo
+            echo "Each binary archive contains one release binary plus the bundled \`README.md\`"
+            echo "and \`LICENSE\` file when present."
+            echo
+            echo "### Verify checksums"
+            echo "\`\`\`bash"
+            echo "curl -L -O \"https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/SHA256SUMS.txt\""
+            echo "# Download the archive(s) you want to verify into the same directory first."
+            echo "sha256sum -c SHA256SUMS.txt"
+            echo "\`\`\`"
+            echo
+            echo "## Documentation"
+            echo
+            echo "See [User Documentation](https://github.com/${{ github.repository }}/tree/main/userdocs) for detailed usage instructions."
+          } > release-body.md
 
       - name: Display final release assets
         run: ls -R dist
@@ -214,49 +264,4 @@ jobs:
           prerelease: ${{ steps.release_meta.outputs.prerelease == 'true' }}
           files: dist/**/*
           generate_release_notes: true
-          body: |
-            ## Installation
-
-            Release assets are split by binary and platform:
-
-            - `agenthub-<version>-linux-amd64.tar.gz`
-            - `agenthub-<version>-linux-arm64.tar.gz`
-            - `agenthub-<version>-darwin-arm64.tar.gz`
-            - `agenthub-codex-acp-<version>-linux-amd64.tar.gz`
-            - `agenthub-codex-acp-<version>-linux-arm64.tar.gz`
-            - `agenthub-codex-acp-<version>-darwin-arm64.tar.gz`
-            - `agenthub-<version>-source.tar.gz`
-            - `SHA256SUMS.txt`
-
-            Each binary archive contains one release binary plus the bundled `README.md`
-            and `LICENSE` file when present.
-
-            ### Download `agenthub` (Linux x86_64)
-            ```bash
-            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
-            tar -xzf "agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
-            sudo mv "agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64/agenthub" /usr/local/bin/
-            ```
-
-            ### Download `agenthub-codex-acp` (Linux x86_64)
-            ```bash
-            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
-            tar -xzf "agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz"
-            sudo mv "agenthub-codex-acp-${{ steps.release_meta.outputs.asset_version }}-linux-amd64/agenthub-codex-acp" /usr/local/bin/
-            ```
-
-            ### Verify checksums
-            ```bash
-            curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag_version }}/SHA256SUMS.txt"
-            grep " agenthub-${{ steps.release_meta.outputs.asset_version }}-linux-amd64.tar.gz$" SHA256SUMS.txt | sha256sum -c -
-            ```
-
-            Supported binary targets:
-
-            - `linux-amd64`
-            - `linux-arm64`
-            - `darwin-arm64`
-
-            ## Documentation
-
-            See [User Documentation](https://github.com/${{ github.repository }}/tree/main/userdocs) for detailed usage instructions.
+          body_path: release-body.md

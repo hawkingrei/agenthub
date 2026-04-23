@@ -15,7 +15,7 @@ import {
 export const TOOL_PAYLOAD_PREVIEW_LIMIT = 64;
 
 const ACP_PAYLOAD_CARD_CLASS =
-  "acp-payload-card overflow-hidden rounded-[10px] border border-notion-payload-border bg-notion-payload-bg px-[7px] py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
+  "acp-payload-card overflow-hidden rounded-[10px] border border-slate-200 bg-slate-50/72 px-2 py-1.5 shadow-none max-[720px]:rounded-lg max-[720px]:px-1.5 max-[720px]:py-[5px]";
 
 export type NormalizedToolPayload =
   | { kind: "empty" }

@@ -2,8 +2,12 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider as CoreMantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+function MantineProvider({ children }: { children: React.ReactNode }) {
+  return <CoreMantineProvider env="test">{children}</CoreMantineProvider>;
+}
 
 const {
   getRuntimeDefaults,
@@ -371,7 +375,7 @@ describe("TeamPage smoke render", () => {
         );
       });
 
-      expect(container.textContent).toContain("No agents have joined this team yet.");
+      expect(container.textContent).toContain("No agents joined yet.");
       expect(container.textContent).not.toContain("This team is unavailable.");
       expect(container.textContent).not.toContain("Loading team workspace...");
     } finally {
@@ -787,7 +791,9 @@ describe("TeamPage smoke render", () => {
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
       expect(container.textContent).toContain("Workspace");
       expect(container.textContent).toContain("# all");
-      expect(container.textContent).toContain("Shared channel for team requests");
+      expect(container.textContent).toContain(
+        "Shared coordination lane for requests, updates, and cross-cutting discussion."
+      );
       expect(container.textContent).not.toContain("Toggle agents section");
       const buttonLabels = Array.from(container.querySelectorAll("button")).map((button) =>
         button.textContent?.replace(/\s+/g, " ").trim() ?? ""
@@ -1199,7 +1205,18 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
-      const openThreadButton = Array.from(container.querySelectorAll("button")).find(
+      const taskCardButton = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Investigate regression")
+      ) as HTMLButtonElement | undefined;
+      expect(taskCardButton).toBeDefined();
+
+      await act(async () => {
+        taskCardButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const openThreadButton = Array.from(document.body.querySelectorAll("button")).find(
         (button) => button.textContent?.includes("Open thread")
       ) as HTMLButtonElement | undefined;
       expect(openThreadButton).toBeDefined();

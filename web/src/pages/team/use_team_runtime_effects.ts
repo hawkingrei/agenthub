@@ -25,6 +25,9 @@ export function useTeamRuntimeEffects({
   useResumeRefresh({
     enabled: runtimeRefreshEnabled,
     intervalMs: TEAM_RUNTIME_REFRESH_INTERVAL_MS,
+    pauseWhenHidden: true,
+    pauseWhenHiddenAfterInitialRefresh: true,
+    initialRefreshKey: teamId,
     refresh,
     onRefreshError,
   });

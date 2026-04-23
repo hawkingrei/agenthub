@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import {
   AgentEvent,
   TeamActorMessageRecord,
@@ -77,6 +77,11 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     setChatSeenByConversation,
     setChatStickToBottom,
   } = options;
+  const hasCompletedInitialActiveRunRefreshRef = useRef(false);
+
+  useEffect(() => {
+    hasCompletedInitialActiveRunRefreshRef.current = false;
+  }, [activeRunIdForSelectedTeam, tab, chatInboxActorId]);
 
   useEffect(() => {
     void refreshTeams();
@@ -199,21 +204,52 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
 
   useEffect(() => {
     if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
-    const timer = window.setInterval(() => {
-      if (tab === "mailbox") {
-        void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
-        const actorId = chatInboxActorId.trim();
-        if (actorId) {
-          void loadInbox(actorId).catch(() => undefined);
-        }
+    const refreshActiveRunContext = async () => {
+      if (
+        typeof document !== "undefined" &&
+        hasCompletedInitialActiveRunRefreshRef.current &&
+        document.visibilityState !== "visible"
+      ) {
         return;
       }
-      void refreshRun(activeRunIdForSelectedTeam).catch(() => undefined);
-      void refreshEvents(activeRunIdForSelectedTeam).catch(() => undefined);
-      void refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
+      if (tab === "mailbox") {
+        await refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined);
+        const actorId = chatInboxActorId.trim();
+        if (actorId) {
+          await loadInbox(actorId).catch(() => undefined);
+        }
+        hasCompletedInitialActiveRunRefreshRef.current = true;
+        return;
+      }
+      await Promise.all([
+        refreshRun(activeRunIdForSelectedTeam).catch(() => undefined),
+        refreshEvents(activeRunIdForSelectedTeam).catch(() => undefined),
+        refreshSnapshot(activeRunIdForSelectedTeam).catch(() => undefined),
+      ]);
+      hasCompletedInitialActiveRunRefreshRef.current = true;
+    };
+    const handleFocus = () => {
+      void refreshActiveRunContext();
+    };
+    const handleOnline = () => {
+      void refreshActiveRunContext();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshActiveRunContext();
+      }
+    };
+    const timer = window.setInterval(() => {
+      void refreshActiveRunContext();
     }, 4000);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [
     activeRunIdForSelectedTeam,

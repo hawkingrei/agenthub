@@ -30,6 +30,7 @@ type AcpPanelProps = {
   mobileTitle?: string | null;
   acpTab: AcpPanelTab;
   developerMode: boolean;
+  conversationLoading?: boolean;
   conversationBottomClearance?: number;
   onSelectTab: (tab: AcpPanelTab) => void;
   showConversationBadge: boolean;
@@ -83,6 +84,44 @@ function AcpDebugSlot(props: AcpDebugProps) {
   return <DebugView {...props} />;
 }
 
+function AcpConversationLoadingSkeleton() {
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2"
+      data-acp-conversation-loading-skeleton="true"
+      aria-busy="true"
+    >
+      <div
+        role="status"
+        aria-live="polite"
+        className="mb-2 px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
+      >
+        Restoring session...
+      </div>
+      <div className="flex flex-col gap-2.5" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div
+            key={`acp-loading-${index}`}
+            className={`flex ${index % 3 === 2 ? "justify-end" : "justify-start"}`}
+          >
+            <div className="max-w-[min(100%,42rem)] min-w-[12rem] rounded-[16px] border border-notion-border/60 bg-white px-3 py-2 shadow-notion-soft">
+              <div className="space-y-1.5">
+                <div className="h-3 animate-pulse rounded bg-notion-hover" />
+                <div className="h-3 w-11/12 animate-pulse rounded bg-notion-hover/90" />
+                <div
+                  className={`h-3 animate-pulse rounded bg-notion-hover/80 ${
+                    index % 2 === 0 ? "w-8/12" : "w-6/12"
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export {
   ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
   ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
@@ -94,6 +133,7 @@ function AcpPanelView({
   mobileTitle,
   acpTab,
   developerMode,
+  conversationLoading = false,
   conversationBottomClearance = 0,
   onSelectTab,
   showConversationBadge,
@@ -196,7 +236,10 @@ function AcpPanelView({
           {tabsNode}
         </div>
       </div>
-      {effectiveTab === "conversation" && (
+      {effectiveTab === "conversation" && conversationLoading ? (
+        <AcpConversationLoadingSkeleton />
+      ) : null}
+      {effectiveTab === "conversation" && !conversationLoading && (
         <AcpConversation
           {...conversation}
           bottomClearancePx={conversationBottomClearance}

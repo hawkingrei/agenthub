@@ -128,7 +128,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
   });
 
-  it("keeps the dock jump and hides the floating ACP jump when input is available", () => {
+  it("keeps the dock jump and hides the floating ACP jump when input is available", async () => {
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -147,8 +147,17 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       />
     );
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     expect(container.querySelector(".acp-jump-bottom")).not.toBeNull();
     expect(required(container.querySelector("textarea"), "input dock textarea missing")).toBeTruthy();
+    const conversation = required(
+      container.querySelector('[data-acp-conversation-scroll="true"]') as HTMLDivElement | null,
+      "acp conversation missing"
+    );
+    expect(conversation.classList.contains("py-1")).toBe(true);
   });
 
   it("pads the ACP conversation above the measured input dock height", () => {
@@ -211,7 +220,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
         "acp conversation scroll container missing"
       );
       expect(conversation.style.paddingBottom).toBe("");
-      expect(conversation.style.scrollPaddingBottom).toBe("168px");
+      expect(conversation.style.scrollPaddingBottom).toBe("164px");
     } finally {
       globalThis.ResizeObserver = originalResizeObserver;
       HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
@@ -252,6 +261,164 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     });
 
     expect(onInterrupt).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the ACP conversation in loading state while the leading chunked message is incomplete", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 7,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "7",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "partial markdown",
+              chunk: true,
+              message_id: "msg-1",
+              chunk_index: 12,
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={7}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).not.toBeNull();
+  });
+
+  it("keeps visible ACP content on screen while background history refresh is still loading", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationRenderItems: [
+          {
+            kind: "agent_message",
+            text: "fully loaded content",
+            event_id: 20,
+            ts: 130,
+          },
+        ],
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 7,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "7",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "partial markdown",
+              chunk: true,
+              message_id: "msg-1",
+              chunk_index: 12,
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={7}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
+    expect(container.textContent).toContain("Active thread");
+  });
+
+  it("does not render the leading incomplete ACP message while older history is still loading", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 7,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "7",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "partial markdown",
+              chunk: true,
+              message_id: "msg-1",
+              chunk_index: 12,
+            }),
+          },
+          {
+            event_id: 20,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "20",
+            ts: 130,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "fully loaded content",
+              chunk: false,
+              message_id: "msg-2",
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={7}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).not.toContain("partial markdown");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
+    expect(container.textContent).toContain("Active thread");
   });
 
   it("submits selected ACP mode and model values for the team member", async () => {

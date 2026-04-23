@@ -7,14 +7,13 @@ import {
   InsetSurface,
   KeyValueItem,
   KeyValueList,
+  PanelHeader,
   SurfaceCard,
-  ToolbarRow,
 } from "../ui/primitives";
 import {
   TEAM_PANEL_INPUT_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
 } from "../ui/tailwind_classes";
 
 type StepAction = "start" | "complete" | "fail" | "input_required" | "resume";
@@ -104,21 +103,24 @@ function TeamStepsPanelImpl(props: TeamStepsPanelProps) {
 
   return (
     <SurfaceCard className="p-4">
-      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Steps</h3>
-        <ActionButton
-          onClick={() => {
-            void onRefreshSteps();
-          }}
-          tone="secondary"
-          size="md"
-          title="Refresh steps"
-          aria-label="Refresh steps"
-        >
-          <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-          <span>Refresh</span>
-        </ActionButton>
-      </ToolbarRow>
+      <PanelHeader
+        title="Steps"
+        titleClassName={TEAM_PANEL_TITLE_CLASS}
+        actions={
+          <ActionButton
+            onClick={() => {
+              void onRefreshSteps();
+            }}
+            tone="secondary"
+            size="md"
+            title="Refresh steps"
+            aria-label="Refresh steps"
+          >
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Refresh</span>
+          </ActionButton>
+        }
+      />
 
       {showControls && (
         <div className={STEPS_GRID_CLASS}>

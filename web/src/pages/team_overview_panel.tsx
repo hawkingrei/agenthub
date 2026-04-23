@@ -3,6 +3,7 @@ import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   ActionButton,
+  EmptyState,
   InsetSurface,
   PanelHeader,
   SelectableListItem,
@@ -89,7 +90,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
         </div>
       </InsetSurface>
 
-      {!snapshot && <p className={TEAM_MUTED_TEXT_CLASS}>No snapshot yet.</p>}
+      {!snapshot && <EmptyState className={TEAM_MUTED_TEXT_CLASS} body="No snapshot yet." />}
 
       {snapshot && (
         <>

@@ -310,7 +310,7 @@ describe("App route shell wiring", () => {
     expect(listAgentEventsMock).toHaveBeenCalledWith(
       "token-root",
       "agent-running",
-      80,
+      20,
       undefined
     );
   });

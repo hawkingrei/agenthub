@@ -3,7 +3,10 @@ import { TeamActorMessageRecord, TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
   ActionButton,
+  EmptyState,
+  InlineNotice,
   InsetSurface,
+  PanelHeader,
   SelectableListItem,
   SurfaceCard,
   ToolbarRow,
@@ -22,7 +25,6 @@ import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
   TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
   MAILBOX_META_CLASS,
   MAILBOX_SHELL_CLASS,
   MAILBOX_MEMBER_LIST_CLASS,
@@ -106,7 +108,7 @@ const MAILBOX_SECTION_TITLE_CLASS = "text-[10px] font-bold uppercase tracking-wi
 const MAILBOX_CHECKBOX_LABEL_CLASS = "checkbox inline-flex items-center gap-2 text-[13px] text-notion-text font-medium cursor-pointer";
 const MAILBOX_ADVANCED_HINT_CLASS =
   "mt-4 rounded-md border border-state-warning-border bg-state-warning-bg px-4 py-3 text-[13px] text-state-warning-text italic";
-const MAILBOX_ADVANCED_ROOT_CLASS = "teams-message-advanced mt-6";
+  const MAILBOX_ADVANCED_ROOT_CLASS = "teams-message-advanced mt-4";
 
 function resolveMailboxActorLabel(
   actorId: string,
@@ -350,10 +352,8 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   );
 
   return (
-    <SurfaceCard className={`${TEAM_PANEL_CARD_CLASS} p-4`}>
-      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Mailbox</h3>
-      </ToolbarRow>
+    <SurfaceCard className={`${TEAM_PANEL_CARD_CLASS} p-3`}>
+      <PanelHeader title="Mailbox" titleClassName={TEAM_PANEL_TITLE_CLASS} />
 
       {showConversation && snapshot && (
         <div className={MAILBOX_META_CLASS}>
@@ -421,7 +421,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               );
             })}
             {mailboxActors.length === 0 && (
-              <p className={`${TEAM_MUTED_TEXT_CLASS} px-2`}>No members available.</p>
+              <EmptyState className={`${TEAM_MUTED_TEXT_CLASS} px-2`} body="No members available." />
             )}
           </div>
 
@@ -513,7 +513,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                         <span className="opacity-40">{" · "}</span>
                         <span className="opacity-60">{formatTs(message.created_at)}</span>
                       </div>
-                      <div className="text-[14px] leading-relaxed mt-1">
+                      <div className="mt-0.5 text-[14px] leading-6">
                         {chatText !== null ? (
                           <div
                             dangerouslySetInnerHTML={{
@@ -521,7 +521,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                             }}
                           />
                         ) : (
-                          <pre className="mono whitespace-pre-wrap text-[12px] bg-white/40 p-2 rounded border border-black/5">{payload}</pre>
+                          <pre className="mono whitespace-pre-wrap rounded border border-black/5 bg-white/40 p-1.5 text-[12px]">{payload}</pre>
                         )}
                       </div>
                       {isMessageAcceptableForInbox(
@@ -529,7 +529,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                         chatActors.inboxActorId,
                         normalizedHumanActorId
                       ) && (
-                        <div className={`mt-3 flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
+                        <div className={`mt-2 flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
                           <ActionButton
                             tone="secondary"
                             size="md"
@@ -553,9 +553,9 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               )}
             </ul>
 
-            <div className="mt-2 flex flex-col gap-2">
+            <div className="mt-1.5 flex flex-col gap-1.5">
               <textarea
-                className={TEAM_PANEL_TEXTAREA_CLASS}
+                className={`${TEAM_PANEL_TEXTAREA_CLASS} px-2.5 py-1.5 text-[13px] leading-5`}
                 rows={3}
                 placeholder="Type a message to selected agent"
                 value={chatDraft}
@@ -583,15 +583,15 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
       )}
 
       {showConversation && developerMode && (
-        <div className={MAILBOX_ADVANCED_HINT_CLASS}>
+        <InlineNotice tone="info" className={MAILBOX_ADVANCED_HINT_CLASS}>
           Advanced mailbox tools were moved to <strong>Debug -&gt; Mailbox Raw</strong>.
-        </div>
+        </InlineNotice>
       )}
 
       {showAdvancedControls && !developerMode && (
-        <div className={`${MAILBOX_ADVANCED_HINT_CLASS} mt-3`}>
+        <InlineNotice tone="info" className={`${MAILBOX_ADVANCED_HINT_CLASS} mt-3`}>
           Enable Developer Mode in Admin to access raw mailbox tools.
-        </div>
+        </InlineNotice>
       )}
 
       {showDeveloperMailboxTools && (

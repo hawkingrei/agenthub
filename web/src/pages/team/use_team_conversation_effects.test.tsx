@@ -75,6 +75,10 @@ describe("useTeamConversationEffects", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     MockEventSource.instances = [];
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
     vi.stubGlobal("EventSource", MockEventSource);
   });
 
@@ -203,6 +207,55 @@ describe("useTeamConversationEffects", () => {
     });
 
     expect(params.refreshTaskMessages).toHaveBeenCalledTimes(callsAfterMount);
+  });
+
+  it("allows the first hidden fallback refresh, then pauses until the page is visible again", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const baseCalls = (params.refreshTaskMessages as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTaskMessages).toHaveBeenCalledTimes(baseCalls + 2);
+    expect(params.refreshTaskMessages).toHaveBeenLastCalledWith("task-all");
   });
 
   it("refreshes the shared thread when a matching sse message arrives", async () => {

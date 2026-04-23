@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { AuthState } from "./types";
 import { api, type AgentRecord } from "./api";
+import { hasPotentialOlderAgentEvents } from "./agent_event_pagination";
 import { compareEventOrder } from "./seq_order";
 import { 
   loadOutputCaches, 
@@ -46,7 +47,7 @@ export function useAppOutputCache(
   setAgents: Dispatch<SetStateAction<AgentRecord[]>>
 ) {
   const token = auth?.token ?? null;
-  const eventLimit = 80;
+  const eventLimit = 20;
   const maxCachedEvents = DEFAULT_OUTPUT_CACHE_MAX_EVENTS;
   const maxCachedSessions = DEFAULT_OUTPUT_CACHE_MAX_SESSIONS;
 
@@ -205,7 +206,12 @@ export function useAppOutputCache(
       }
 
       setEventMeta((prev) => {
-        const nextMeta = { oldestId, hasMore: ordered.length >= eventLimit, loading: false, loaded: true };
+        const nextMeta = {
+          oldestId,
+          hasMore: hasPotentialOlderAgentEvents(ordered.length),
+          loading: false,
+          loaded: true,
+        };
         const apply = (metaKey: string, currentState: typeof prev) => ({ ...currentState, [metaKey]: nextMeta });
         let nextState = apply(key, prev);
         if (resolvedKey !== key) nextState = apply(resolvedKey, nextState);
@@ -231,7 +237,7 @@ export function useAppOutputCache(
       const acpOrdered = ordered.filter((evt) => evt.stream === "acp");
       const nextOldestEvent = ordered.length ? ordered[0] : null;
       const nextOldestId = typeof nextOldestEvent?.event_id === "number" ? nextOldestEvent.event_id : meta.oldestId;
-      const hasMore = ordered.length >= eventLimit;
+      const hasMore = hasPotentialOlderAgentEvents(ordered.length);
 
       setOutputs((prev) => mergeOutputsPreserveOlderWithLimit(prev, ordered, LIVE_OUTPUT_RETENTION_LIMIT));
       setAcpOutputs((prev) => mergeOutputsPreserveOlderWithLimit(prev, acpOrdered, LIVE_ACP_OUTPUT_RETENTION_LIMIT));

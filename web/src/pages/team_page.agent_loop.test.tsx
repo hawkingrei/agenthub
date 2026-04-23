@@ -170,6 +170,66 @@ vi.mock("./team_member_acp_panel", () => ({
   TeamMemberAcpPanel: () => <div>Mock agent ACP panel</div>,
 }));
 
+vi.mock("./team/team_page_modals", () => ({
+  TeamPageModals: ({
+    showTeamMemberEditModal,
+    teamMemberEditDraft,
+    patchTeamMemberEditDraft,
+    onSaveTeamMemberProfile,
+  }: {
+    showTeamMemberEditModal: boolean;
+    teamMemberEditDraft: {
+      description: string;
+      agent_loop_enabled: boolean;
+      agent_loop_idle_seconds: string;
+      agent_loop_prompt: string;
+    } | null;
+    patchTeamMemberEditDraft: (patch: Record<string, unknown>) => void;
+    onSaveTeamMemberProfile: () => void;
+  }) => {
+    if (!showTeamMemberEditModal || !teamMemberEditDraft) {
+      return null;
+    }
+    return (
+      <div>
+        <input
+          placeholder="Short role description exposed on the agent card"
+          value={teamMemberEditDraft.description}
+          onChange={(event) =>
+            patchTeamMemberEditDraft({ description: event.currentTarget.value })
+          }
+        />
+        <input
+          type="checkbox"
+          checked={teamMemberEditDraft.agent_loop_enabled}
+          onChange={(event) =>
+            patchTeamMemberEditDraft({ agent_loop_enabled: event.currentTarget.checked })
+          }
+        />
+        <input
+          placeholder="900"
+          value={teamMemberEditDraft.agent_loop_idle_seconds}
+          onChange={(event) =>
+            patchTeamMemberEditDraft({
+              agent_loop_idle_seconds: event.currentTarget.value,
+            })
+          }
+        />
+        <textarea
+          placeholder="You have been idle."
+          value={teamMemberEditDraft.agent_loop_prompt}
+          onChange={(event) =>
+            patchTeamMemberEditDraft({ agent_loop_prompt: event.currentTarget.value })
+          }
+        />
+        <button type="button" onClick={onSaveTeamMemberProfile}>
+          Save Profile
+        </button>
+      </div>
+    );
+  },
+}));
+
 import { TeamPage } from "./team_page";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -220,6 +280,7 @@ describe("TeamPage agent loop profile flow", () => {
   const flushEffects = async () => {
     await Promise.resolve();
     await Promise.resolve();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
   };
 
   const clickElement = async (element: HTMLElement | null) => {
@@ -247,6 +308,22 @@ describe("TeamPage agent loop profile flow", () => {
       await flushEffects();
     });
   };
+
+  async function waitForElement<T>(
+    lookup: () => T | null,
+    message: string
+  ): Promise<T> {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const element = lookup();
+      if (element !== null) {
+        return element;
+      }
+      await act(async () => {
+        await flushEffects();
+      });
+    }
+    throw new Error(message);
+  }
 
   beforeEach(() => {
     getRuntimeDefaults.mockClear();
@@ -397,27 +474,34 @@ describe("TeamPage agent loop profile flow", () => {
         ) as HTMLButtonElement | null
       );
 
-      const identityInput = Array.from(document.body.querySelectorAll("input")).find(
-        (input) => input.value === "Investigate regressions"
-      ) as HTMLInputElement | undefined ?? null;
-      const idleTimeoutInput = document.body.querySelector(
-        'input[placeholder="900"]'
-      ) as HTMLInputElement | null;
-      const loopPromptInput = Array.from(document.body.querySelectorAll("textarea")).find(
-        (textarea) =>
-          textarea.value === "Resume by checking inbox." ||
-          textarea.getAttribute("placeholder")?.includes("You have been idle.")
-      ) as HTMLTextAreaElement | undefined ?? null;
+      const identityInput = await waitForElement(
+        () =>
+          document.body.querySelector(
+            'input[placeholder="Short role description exposed on the agent card"]'
+          ) as HTMLInputElement | null,
+        "identity input missing"
+      );
+      const idleTimeoutInput = await waitForElement(
+        () => document.body.querySelector('input[placeholder="900"]') as HTMLInputElement | null,
+        "idle timeout input missing"
+      );
+      const loopPromptInput = await waitForElement(
+        () =>
+          document.body.querySelector(
+            'textarea[placeholder*="You have been idle."]'
+          ) as HTMLTextAreaElement | null,
+        "loop prompt input missing"
+      );
 
-      expect(identityInput).not.toBeNull();
-      expect(idleTimeoutInput).not.toBeNull();
-      expect(loopPromptInput).not.toBeNull();
+      expect(identityInput.value).toBe("Investigate regressions");
+      expect(idleTimeoutInput.value).toBe("900");
+      expect(loopPromptInput.value).toBe("Resume by checking inbox.");
 
-      const loopEnabledInput = document.body.querySelector(
-        'input[type="checkbox"]'
-      ) as HTMLInputElement | null;
-      expect(loopEnabledInput).not.toBeNull();
-      if (!loopEnabledInput?.checked) {
+      const loopEnabledInput = await waitForElement(
+        () => document.body.querySelector('input[type="checkbox"]') as HTMLInputElement | null,
+        "agent loop switch missing"
+      );
+      if (!loopEnabledInput.checked) {
         await clickElement(loopEnabledInput);
       }
 

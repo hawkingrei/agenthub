@@ -7,7 +7,13 @@ import {
   TeamRunSnapshotRecord,
   getTeamStepRuntimeHandleId,
 } from "../api";
-import { ActionButton, InsetSurface, SurfaceCard, ToolbarRow } from "../ui/primitives";
+import {
+  ActionButton,
+  EmptyState,
+  InsetSurface,
+  PanelHeader,
+  SurfaceCard,
+} from "../ui/primitives";
 import {
   resolveDisplayName,
 } from "./team/mailbox_helpers";
@@ -96,9 +102,11 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
 
   return (
     <SurfaceCard className="p-4" data-team-panel="member-console">
-      <ToolbarRow>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Member Console</h3>
-        <div className="flex flex-wrap items-center gap-2">
+      <PanelHeader
+        title="Member Console"
+        titleClassName={TEAM_PANEL_TITLE_CLASS}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
           <ActionButton
             tone="secondary"
             size="sm"
@@ -127,8 +135,9 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
           >
             Load Older
           </ActionButton>
-        </div>
-      </ToolbarRow>
+          </div>
+        }
+      />
 
       <div className="form-row">
         <select
@@ -269,25 +278,27 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
       )}
 
       {!selectedMemberSnapshot && (
-        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>
-          Showing latest {previewLimit} run records. Select a member for full member history.
-        </p>
+        <EmptyState
+          className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}
+          body={`Showing latest ${previewLimit} run records. Select a member for full member history.`}
+        />
       )}
 
       {selectedMemberSnapshot && !getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) && (
-        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>
-          Selected member has no associated session yet.
-        </p>
+        <EmptyState
+          className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}
+          body="Selected member has no associated session yet."
+        />
       )}
 
       {selectedMemberSnapshot &&
         getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) &&
         memberEvents.length === 0 && (
-          <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>No member events yet.</p>
+          <EmptyState className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS} body="No member events yet." />
         )}
 
       {!selectedMemberSnapshot && displayedRunEvents.length === 0 && (
-        <p className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS}>No run records yet.</p>
+        <EmptyState className={MEMBER_CONSOLE_EMPTY_TEXT_CLASS} body="No run records yet." />
       )}
 
       {selectedMemberSnapshot && (

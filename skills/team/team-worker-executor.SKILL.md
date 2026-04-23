@@ -183,13 +183,19 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - If the update should persist beyond chat, record it in the relevant TODO, journal, note, or
   local evidence artifact first; then send the channel/leader status message and let leader update
   the canonical Team task if needed.
-- By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`;
-  additionally notify impacted peers or the shared channel when the discovery affects shared plans,
+- By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`.
+- Do not treat shared-channel discussion as leader-only territory:
+  use it directly when important findings, risks, tradeoffs, or decisions need team-wide review or
+  collaborative discussion.
+- When doing so, explicitly `@member_id` the relevant other agents whose review, ownership, or
+  dependency context matters to the discussion.
+- Additionally notify impacted peers or the shared channel when the discovery affects shared plans,
   dependencies, or future debugging work.
 - Treat those routes as:
   - `leader-mailbox` by default when the leader is the single next owner
   - `peer-mailbox` for one-peer coordination that does not need shared visibility
-  - `shared-channel` when multiple teammates or the human need the update
+  - `shared-channel` when multiple teammates or the human need the update, especially for
+    discussion-worthy important matters
 - When posting to a shared channel, use `channel_id` (for example `all`) as the transport target;
   keep `@member_id` in the message body as mention metadata for ownership context rather than as a
   recipient filter.

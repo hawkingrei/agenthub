@@ -6,7 +6,7 @@ sidebar_position: 1
 
 ## Prerequisites
 
-- Rust (stable toolchain)
+- Rust `1.95.0` (stable toolchain baseline)
 - Node.js 20+
 - Git
 
@@ -56,6 +56,14 @@ cargo run -- -c /path/to/config.toml
 ```
 
 By default, AgentHub serves the UI at `http://localhost:8080`.
+
+## ACP Provider Baseline
+
+The default ACP adapter binary is `agenthub-codex-acp`.
+
+- Current repository baseline: official Codex `0.121.x`
+- If you override `codex_acp.binary`, keep the replacement ACP binary protocol-
+  compatible with the same Codex generation
 
 ## Optional App Install
 

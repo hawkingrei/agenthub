@@ -1,5 +1,5 @@
 import React from "react";
-import { CloseButton, SegmentedControl, TextInput } from "@mantine/core";
+import { Modal, SegmentedControl, TextInput } from "@mantine/core";
 import type {
   TeamTaskRecord,
   TeamTaskRunCompilePreviewRecord,
@@ -17,14 +17,15 @@ import {
 import { selectRunsForTask } from "./team/run_helpers";
 import type { TeamMemberLiveState } from "./team/member_helpers";
 import {
+  NOTION_MODAL_CLASSNAMES,
+  NOTION_MODAL_OVERLAY_PROPS,
+} from "../ui/floating_surfaces";
+import {
   TEAM_LIST_ITEM_META_CLASS,
   TEAM_LIST_ITEM_TITLE_CLASS,
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_PRE_CLASS,
-  TEAM_PANEL_TITLE_CLASS,
-  TEAM_PANEL_TOOLBAR_ACTIONS_CLASS,
-  TEAM_PANEL_TOOLBAR_CLASS,
   TASKS_BOARD_LANES_CLASS,
   TASKS_BOARD_COLUMN_CLASS,
   TASKS_BOARD_COLUMN_HEADER_CLASS,
@@ -38,6 +39,7 @@ type TaskStatusFilter = "all" | TeamTaskStatus;
 
 type TeamTasksPanelProps = {
   compactMode?: boolean;
+  channelLabel?: string;
   developerMode: boolean;
   tasks: TeamTaskRecord[];
   tasksLoading: boolean;
@@ -196,12 +198,12 @@ function resolveTaskAssigneeLabel(
 function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const {
     compactMode = false,
+    channelLabel = "# all",
     developerMode,
     tasks,
     tasksLoading,
     selectedTaskId,
     onSelectedTaskIdChange,
-    onRefreshTasks,
     onOpenConversation,
     busy,
     runs,
@@ -219,7 +221,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   } = props;
   const [statusFilter, setStatusFilter] = React.useState<TaskStatusFilter>("all");
   const [debugToolsOpen, setDebugToolsOpen] = React.useState(false);
-  const [compactDetailOpen, setCompactDetailOpen] = React.useState(false);
+  const [taskDetailOpen, setTaskDetailOpen] = React.useState(false);
 
   const visibleTasks = React.useMemo(() => {
     if (statusFilter === "all") {
@@ -269,32 +271,21 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
 
   React.useEffect(() => {
-    if (!compactMode) {
-      setCompactDetailOpen(false);
-    }
-  }, [compactMode]);
-
-  React.useEffect(() => {
-    if (!compactMode) {
-      return;
-    }
     if (!selectedTaskId.trim()) {
-      setCompactDetailOpen(false);
+      setTaskDetailOpen(false);
       return;
     }
     if (!visibleTasks.some((task) => task.id === selectedTaskId)) {
-      setCompactDetailOpen(false);
+      setTaskDetailOpen(false);
     }
-  }, [compactMode, selectedTaskId, visibleTasks]);
+  }, [selectedTaskId, visibleTasks]);
 
   const onSelectTask = React.useCallback(
     (taskId: string) => {
       onSelectedTaskIdChange(taskId);
-      if (compactMode) {
-        setCompactDetailOpen(true);
-      }
+      setTaskDetailOpen(true);
     },
-    [compactMode, onSelectedTaskIdChange]
+    [onSelectedTaskIdChange]
   );
 
   const boardPanel = (
@@ -425,13 +416,6 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 className="team-status"
                 title={`task status: ${selectedTask.status}`}
               />
-              {compactMode && (
-                <CloseButton
-                  aria-label="Back to Kanban"
-                  title="Back to Kanban"
-                  onClick={() => setCompactDetailOpen(false)}
-                />
-              )}
             </div>
           </div>
 
@@ -679,33 +663,14 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       className={`${TEAM_PANEL_CARD_CLASS} overflow-y-auto overscroll-y-contain p-4`}
       data-team-surface="kanban"
     >
-      <ToolbarRow className={TEAM_PANEL_TOOLBAR_CLASS}>
-        <h3 className={TEAM_PANEL_TITLE_CLASS}>Kanban</h3>
-        <div className={TEAM_PANEL_TOOLBAR_ACTIONS_CLASS}>
-          <ActionButton
-            tone="secondary"
-            size="md"
-            onClick={() => {
-              void onRefreshTasks();
-            }}
-            disabled={tasksLoading}
-            title="Refresh tasks"
-            aria-label="Refresh tasks"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </ActionButton>
-        </div>
-      </ToolbarRow>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[220px] flex-1 rounded-md border border-notion-border bg-notion-sidebar/30 px-4 py-3 text-[14px] text-notion-text-muted italic">
           Kanban is the canonical Team task surface. Human requests and clarifications should go
-          through <strong className="text-notion-text"># all</strong>; leader planning and Team
-          runtime create and advance tasks here.
+          through <strong className="text-notion-text">{channelLabel}</strong>; leader planning
+          and Team runtime create and advance tasks here.
         </div>
         <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation()}>
-          Open # all
+          {`Open ${channelLabel}`}
         </ActionButton>
       </div>
 
@@ -723,19 +688,33 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       </div>
 
       <div className={TASKS_WORKSPACE_STACK_CLASS}>
-        {compactMode ? (
-          compactDetailOpen ? (
-            detailPanel
-          ) : (
-            boardPanel
-          )
-        ) : (
-          <>
-            {boardPanel}
-            {detailPanel}
-          </>
-        )}
+        {boardPanel}
       </div>
+
+      <Modal
+        opened={taskDetailOpen && Boolean(selectedTask)}
+        onClose={() => setTaskDetailOpen(false)}
+        title="Task detail"
+        size="xl"
+        radius="md"
+        centered
+        classNames={NOTION_MODAL_CLASSNAMES}
+        overlayProps={NOTION_MODAL_OVERLAY_PROPS}
+        closeOnEscape
+        closeOnClickOutside
+        styles={{
+          content: {
+            maxHeight: "min(calc(100dvh - 3rem), 900px)",
+            display: "flex",
+            flexDirection: "column",
+          },
+          body: {
+            overflowY: "auto",
+          },
+        }}
+      >
+        {detailPanel}
+      </Modal>
     </div>
   );
 }

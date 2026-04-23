@@ -26,6 +26,14 @@ const DEFAULT_TEAM_THREAD_THRESHOLD_PX = 120;
 const DEFAULT_TEAM_THREAD_USER_SCROLL_UP_EPSILON_PX = 24;
 
 export const DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE = 10;
+export const DEFAULT_TEAM_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS = 24;
+
+export function shouldDefaultTeamConversationStickToBottom(
+  total: number,
+  minItems = DEFAULT_TEAM_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
+): boolean {
+  return total >= Math.max(1, minItems);
+}
 
 export function windowTeamConversation<T>(
   items: T[],

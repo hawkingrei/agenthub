@@ -179,13 +179,13 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   expect(layoutColumns.trim().split(/\s+/).length).toBe(1);
 
   const { runFilterWidth, runFilterParentWidth } = await page
-    .locator(".teams-run-list-head .actions")
+    .getByLabel("Run status filter")
     .first()
-    .evaluate((element) => {
-      const select = element.querySelector("select");
+    .evaluate((select) => {
+      const parent = select.parentElement;
       return {
-        runFilterWidth: select?.getBoundingClientRect().width ?? 0,
-        runFilterParentWidth: element.getBoundingClientRect().width,
+        runFilterWidth: select.getBoundingClientRect().width,
+        runFilterParentWidth: parent?.getBoundingClientRect().width ?? 0,
       };
     });
   expect(runFilterWidth).toBeGreaterThan(runFilterParentWidth * 0.7);
@@ -799,4 +799,3 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     page.locator(".team-member-row", { hasText: "crypto-worker" })
   ).toBeVisible();
 });
-

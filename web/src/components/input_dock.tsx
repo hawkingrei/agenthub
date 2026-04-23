@@ -359,7 +359,7 @@ export function InputDock({
 
   return (
     <div
-      className="input-dock-shell relative flex self-stretch flex-col gap-1.5"
+      className="input-dock-shell relative flex self-stretch flex-col gap-1"
       data-acp-input-dock="true"
       ref={inputDockRef}
     >
@@ -376,71 +376,9 @@ export function InputDock({
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
         <div
-          className="input-row flex flex-wrap items-center justify-between gap-2"
-          role="group"
-          aria-label="Input actions"
-          data-input-actions-row="true"
+          className="input-editor-row flex items-end gap-2 rounded-[14px] border border-slate-200 bg-slate-50/72 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          data-input-editor-row="true"
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {showInterrupt && (
-            <UnstyledButton
-              type="button"
-              className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
-              onClick={onInterrupt}
-              disabled={!canInterrupt}
-              title="Interrupt current run"
-              aria-label="Interrupt current run"
-            >
-              Interrupt
-            </UnstyledButton>
-          )}
-          {historyCommands.length > 0 && (
-            <div className="input-history relative" ref={historyContainerRef}>
-              <UnstyledButton
-                type="button"
-                className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
-                onClick={() => setShowHistory((prev) => !prev)}
-                title="Show sent command history"
-                aria-label="Show sent command history"
-                aria-expanded={showHistory}
-                aria-haspopup="menu"
-              >
-                <span className="text-notion-text-muted/80">History</span>
-                <span className="inline-flex min-w-[1.4rem] items-center justify-center rounded-full bg-black/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted">
-                  {visibleHistory.length}
-                </span>
-                <span
-                  aria-hidden="true"
-                  className={`text-[10px] text-notion-text-muted transition-transform ${
-                    showHistory ? "rotate-180" : ""
-                  }`}
-                >
-                  ▾
-                </span>
-              </UnstyledButton>
-              {showHistory && (
-                <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
-                  {visibleHistory.map((item, idx) => (
-                    <UnstyledButton
-                      key={`${idx}-${item}`}
-                      type="button"
-                      className={INPUT_DOCK_HISTORY_ITEM_CLASS}
-                      title={item}
-                      onClick={() => {
-                        onSelectHistoryCommand(item);
-                        setShowHistory(false);
-                      }}
-                    >
-                      {item}
-                    </UnstyledButton>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          </div>
-        </div>
-        <div className="input-editor-row flex items-end gap-2" data-input-editor-row="true">
           <textarea
             id={textareaId}
             name="acp_input"
@@ -514,9 +452,77 @@ export function InputDock({
             onClick={onSendInput}
             disabled={sendDisabled}
             aria-label="Send input"
+            title="Send input"
           >
-            Send
+            <i className="bi bi-arrow-up" aria-hidden="true" />
           </UnstyledButton>
+        </div>
+        <div
+          className="input-row flex flex-wrap items-center justify-between gap-1.5 px-0.5"
+          role="group"
+          aria-label="Input actions"
+          data-input-actions-row="true"
+        >
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {historyCommands.length > 0 && (
+              <div className="input-history relative" ref={historyContainerRef}>
+                <UnstyledButton
+                  type="button"
+                  className={INPUT_DOCK_HISTORY_BUTTON_CLASS}
+                  onClick={() => setShowHistory((prev) => !prev)}
+                  title="Show sent command history"
+                  aria-label="Show sent command history"
+                  aria-expanded={showHistory}
+                  aria-haspopup="menu"
+                >
+                  <i className="bi bi-clock-history text-[12px]" aria-hidden="true" />
+                  <span>History</span>
+                  <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
+                    {visibleHistory.length}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`text-[10px] text-slate-400 transition-transform ${
+                      showHistory ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▾
+                  </span>
+                </UnstyledButton>
+                {showHistory && (
+                  <div className={INPUT_DOCK_HISTORY_MENU_CLASS} role="menu" aria-label="Sent command history">
+                    {visibleHistory.map((item, idx) => (
+                      <UnstyledButton
+                        key={`${idx}-${item}`}
+                        type="button"
+                        className={INPUT_DOCK_HISTORY_ITEM_CLASS}
+                        title={item}
+                        onClick={() => {
+                          onSelectHistoryCommand(item);
+                          setShowHistory(false);
+                        }}
+                      >
+                        {item}
+                      </UnstyledButton>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {showInterrupt && (
+            <UnstyledButton
+              type="button"
+              className={INPUT_DOCK_INTERRUPT_BUTTON_CLASS}
+              onClick={onInterrupt}
+              disabled={!canInterrupt}
+              title="Interrupt current run"
+              aria-label="Interrupt current run"
+            >
+              <i className="bi bi-stop-circle text-[12px]" aria-hidden="true" />
+              <span>Interrupt</span>
+            </UnstyledButton>
+          )}
         </div>
       </div>
     </div>

@@ -32,6 +32,10 @@ describe("useTeamTaskEffects", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -75,6 +79,46 @@ describe("useTeamTaskEffects", () => {
     });
 
     expect(params.refreshTasks).not.toHaveBeenCalled();
+  });
+
+  it("allows the first hidden task refresh, then pauses until the page is visible again", async () => {
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_TASK_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(TEAM_TASK_REFRESH_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    expect(params.refreshTasks).toHaveBeenCalledTimes(2);
+    expect(params.refreshTasks).toHaveBeenLastCalledWith("team-1");
   });
 
   it("forwards polling errors without breaking the interval", async () => {

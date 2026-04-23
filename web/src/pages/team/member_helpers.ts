@@ -239,6 +239,20 @@ export function resolveTeamMemberAgentStatuses(
   fallbackAgentsById?: Record<string, AgentRecord | null>,
   runtimeMembers?: TeamRuntimeMemberRecord[] | null
 ): TeamMemberAgentStatus[] {
+  return resolveTeamMemberAgentStatusesFromMembers(
+    parseTeamSpecMembers(spec),
+    agents,
+    fallbackAgentsById,
+    runtimeMembers
+  );
+}
+
+export function resolveTeamMemberAgentStatusesFromMembers(
+  members: TeamSpecMember[],
+  agents: AgentRecord[],
+  fallbackAgentsById?: Record<string, AgentRecord | null>,
+  runtimeMembers?: TeamRuntimeMemberRecord[] | null
+): TeamMemberAgentStatus[] {
   const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const runtimeById = new Map(
     (runtimeMembers ?? []).map((member) => [member.member_id, member])
@@ -250,7 +264,7 @@ export function resolveTeamMemberAgentStatuses(
       }
     }
   }
-  return parseTeamSpecMembers(spec).map((member) => {
+  return members.map((member) => {
     const agent = byId.get(member.member_id);
     const runtimeMember = runtimeById.get(member.member_id);
     const runtimeStatus =

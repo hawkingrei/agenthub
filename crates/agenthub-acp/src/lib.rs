@@ -11,14 +11,16 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_client_protocol::{
-    Agent, CancelNotification, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ContentChunk, Error as AcpError, ErrorCode as AcpErrorCode, Implementation, InitializeRequest,
-    LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption, PermissionOptionKind,
-    PromptRequest, ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, TextContent,
-    ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+use agent_client_protocol_legacy::{
+    Agent, Client, ClientSideConnection, Error as AcpError, ErrorCode as AcpErrorCode,
+};
+use agent_client_protocol_legacy::{
+    CancelNotification, ClientCapabilities, ContentBlock, ContentChunk, Implementation,
+    InitializeRequest, LoadSessionRequest, McpServer, NewSessionRequest, PermissionOption,
+    PermissionOptionKind, PromptRequest, ProtocolVersion, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    SetSessionModelRequest, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -554,7 +556,7 @@ impl Client for AcpClient {
     async fn request_permission(
         &self,
         args: RequestPermissionRequest,
-    ) -> Result<RequestPermissionResponse, agent_client_protocol::Error> {
+    ) -> Result<RequestPermissionResponse, agent_client_protocol_legacy::Error> {
         let options = args
             .options
             .iter()
@@ -575,7 +577,9 @@ impl Client for AcpClient {
                     }),
             )
             .await
-            .map_err(|err| agent_client_protocol::Error::internal_error().data(err.to_string()))?;
+            .map_err(|err| {
+                agent_client_protocol_legacy::Error::internal_error().data(err.to_string())
+            })?;
         if let Some(dispatcher) = self.permission_review_dispatcher.as_ref() {
             let tool_call = serde_json::to_value(&args.tool_call).ok();
             let dispatch_request = AcpPermissionReviewRequest {
@@ -661,7 +665,7 @@ impl Client for AcpClient {
     async fn session_notification(
         &self,
         args: SessionNotification,
-    ) -> Result<(), agent_client_protocol::Error> {
+    ) -> Result<(), agent_client_protocol_legacy::Error> {
         self.emit_update(args.update).await;
         Ok(())
     }
@@ -674,8 +678,8 @@ fn pick_allow_option(args: &RequestPermissionRequest) -> RequestPermissionOutcom
         .find(|opt| {
             matches!(
                 opt.kind,
-                agent_client_protocol::PermissionOptionKind::AllowAlways
-                    | agent_client_protocol::PermissionOptionKind::AllowOnce
+                agent_client_protocol_legacy::PermissionOptionKind::AllowAlways
+                    | agent_client_protocol_legacy::PermissionOptionKind::AllowOnce
             )
         })
         .or_else(|| args.options.first())
@@ -1836,7 +1840,7 @@ mod tests {
         load_skills_from_config, load_workdir_skills, remove_skills_conflicting_with_reserved,
         should_queue_while_prompts_active,
     };
-    use agent_client_protocol::{
+    use agent_client_protocol_legacy::{
         ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
         RequestPermissionOutcome, SelectedPermissionOutcome,
     };

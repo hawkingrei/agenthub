@@ -110,13 +110,13 @@ export function AcpConversation({
       : undefined;
   return (
     <div
-      className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-1.5"
+      className="acp-conversation min-h-0 flex-1 overflow-auto px-0 py-1"
       data-acp-conversation-scroll="true"
       ref={containerRef}
       onScroll={onScroll}
       style={conversationScrollStyle}
     >
-      <div className="acp-conversation-inner flex w-full flex-col gap-2">
+      <div className="acp-conversation-inner flex w-full flex-col gap-1.5">
         {topHint ? (
           <div className={ACP_CONVERSATION_TOP_HINT_CLASS}>
             {topHint}

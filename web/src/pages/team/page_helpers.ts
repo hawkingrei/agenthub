@@ -25,7 +25,7 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
 export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
-export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 20;
+export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 60;
 export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
 export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
 
@@ -128,6 +128,25 @@ export function shouldClearSelectedConversationTask({
     return false;
   }
   return !taskList.some((task) => task.id === normalizedSelectedTaskId);
+}
+
+type ShouldClearSelectedTeamMemberArgs = {
+  selectedMemberId: string;
+  memberIds: string[];
+};
+
+export function shouldClearSelectedTeamMember({
+  selectedMemberId,
+  memberIds,
+}: ShouldClearSelectedTeamMemberArgs): boolean {
+  const normalizedSelectedMemberId = selectedMemberId.trim();
+  if (!normalizedSelectedMemberId) {
+    return false;
+  }
+  if (memberIds.length === 0) {
+    return false;
+  }
+  return !memberIds.includes(normalizedSelectedMemberId);
 }
 
 export function resolveAgentWorkspaceStatusView(

@@ -89,7 +89,7 @@ journalctl -u agenthub -n 100 --no-pager
 |-------|------------|----------|
 | Invalid workdir | Check path exists | Create directory or choose different path |
 | Path outside safe_paths | Check `safe_paths` config | Add path to config or use allowed path |
-| Missing ACP binary | `which agenthub-codex-acp` | Install ACP provider or set `codex_acp.binary` |
+| Missing ACP binary | Check configured `codex_acp.binary` (or startup logs showing `config codex_acp_binary`) and verify that exact path exists and is executable | Install the bundled ACP adapter or set `codex_acp.binary` to a valid executable |
 | Permission denied | Check directory permissions | `chmod 755 /path/to/workdir` |
 
 ### "Workdir path must be within allowed safe paths"
@@ -107,6 +107,30 @@ journalctl -u agenthub -n 100 --no-pager
 2. Use `create_worktree` mode (uses configured `default_root`)
 
 3. Restart AgentHub after config changes
+
+### ACP Binary Starts But Fails Immediately
+
+**Symptoms**: Agent starts and exits quickly, or the server logs show ACP
+handshake / startup errors.
+
+**Diagnostic Steps**:
+
+1. Check which binary AgentHub is launching by inspecting the configured
+   `codex_acp.binary` value first.
+2. Verify that exact adapter binary is the expected one:
+   ```bash
+   /path/to/your-configured-agenthub-codex-acp --version
+   ```
+3. Compare the binary path and reported adapter version to the deployed
+   AgentHub build, or rebuild/replace the adapter from the same repository
+   revision if you are unsure they match.
+
+**Solutions**:
+
+- Rebuild from the current repository state if the binary is stale
+- Avoid mixing an older fork-pinned ACP binary into a newer AgentHub deployment
+- If you intentionally use a custom ACP binary, set `codex_acp.binary` to that
+  exact path and verify protocol compatibility first
 
 ### "Agent is already running"
 
