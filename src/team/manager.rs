@@ -953,7 +953,7 @@ impl TeamManager {
               AND c.team_id = ?1
               AND c.mode = 'group_chat'
               AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?2
-            ORDER BY c.created_at ASC, t.created_at ASC, t.id ASC
+            ORDER BY c.created_at ASC, c.rowid ASC, t.created_at ASC, t.rowid ASC
             "#,
         )
         .bind(normalized_team_id)
