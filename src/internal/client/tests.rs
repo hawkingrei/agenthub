@@ -966,6 +966,100 @@ async fn grpc_team_task_client_handles_orphan_lists_and_detail_limit() {
 }
 
 #[tokio::test]
+async fn grpc_team_channel_client_controls_are_wire_compatible() {
+    install_rustls_crypto_provider();
+    let state = build_test_state().await;
+    let team_id = format!("team-{}", Uuid::new_v4());
+    let team_name = format!("grpc-team-channel-team-{}", Uuid::new_v4());
+    let run_id = format!("run-{}", Uuid::new_v4());
+    seed_team_run(&state, &team_id, &team_name, &run_id).await;
+
+    let cert_dir = test_cert_dir("grpc-team-channel-control");
+    ensure_tls_material(&cert_dir, InternalGrpcSecurityMode::Mtls)
+        .expect("generate tls material")
+        .expect("tls material");
+    let authz = build_authz();
+    let token = issue_token(
+        &authz,
+        Some(&run_id),
+        vec![
+            InternalAction::TeamRead.as_str().to_string(),
+            InternalAction::TeamTaskWrite.as_str().to_string(),
+        ],
+    );
+    let server =
+        spawn_mtls_internal_grpc_server(state.clone(), authz.clone(), cert_dir.clone()).await;
+    let client =
+        InternalGrpcMailboxClient::connect(mtls_client_config(server.addr, token, &cert_dir))
+            .await
+            .expect("connect grpc mailbox client");
+
+    let channel = client
+        .create_team_channel(&team_id, "planner", " Review ", Some("Review lane"))
+        .await
+        .expect("create grpc team channel");
+    assert_eq!(channel.team_id, team_id);
+    assert_eq!(channel.channel_id, "review");
+    assert_eq!(channel.description.as_deref(), Some("Review lane"));
+
+    let listed = client
+        .list_team_tasks(
+            "planner",
+            &TeamTaskListQuery {
+                team_id: Some(team_id.clone()),
+                run_id: None,
+                limit: 20,
+                status: None,
+                task_id: None,
+                assigned_member_id: None,
+                topic: None,
+                include_shared_thread: false,
+            },
+        )
+        .await
+        .expect("list tasks after channel create");
+    assert!(
+        listed.iter().all(|task| task.id != channel.task_id),
+        "channel bootstrap task should stay hidden from grpc task listing"
+    );
+
+    let root_message = state
+        .teams
+        .append_task_conversation_message(
+            &channel.task_id,
+            "planner",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"please review this patch"
+            }),
+        )
+        .await
+        .expect("append grpc channel root message");
+
+    let thread = client
+        .open_team_thread("planner", None, Some(&run_id), "REVIEW", root_message.id)
+        .await
+        .expect("open grpc team thread");
+    assert_eq!(thread.team_id, team_id);
+    assert_eq!(thread.channel_id, "review");
+    assert_eq!(thread.task_id, channel.task_id);
+    assert_eq!(thread.conversation_id, channel.conversation_id);
+    assert_eq!(thread.root_message_id, root_message.id);
+
+    let deleted = client
+        .delete_team_channel(&team_id, "planner", " Review ")
+        .await
+        .expect("delete grpc team channel");
+    assert_eq!(deleted.channel_id, "review");
+    assert_eq!(deleted.task_id, channel.task_id);
+    assert_eq!(deleted.conversation_id, channel.conversation_id);
+
+    server.handle.abort();
+}
+
+#[tokio::test]
 async fn grpc_client_resolves_unique_actor_run_scope_from_team_context() {
     install_rustls_crypto_provider();
     let state = build_test_state().await;
