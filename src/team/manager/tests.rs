@@ -1745,22 +1745,10 @@ async fn list_team_channels_returns_non_default_channels_in_creation_order() {
         .await
         .expect("list team channels");
     assert_eq!(listed.len(), 2);
-    let listed_by_id = listed
-        .into_iter()
-        .map(|channel| (channel.channel_id, channel.description))
-        .collect::<std::collections::HashMap<_, _>>();
-    assert_eq!(
-        listed_by_id
-            .get("review")
-            .and_then(|value| value.as_deref()),
-        Some("Review lane")
-    );
-    assert_eq!(
-        listed_by_id
-            .get("research")
-            .and_then(|value| value.as_deref()),
-        Some("Research lane")
-    );
+    assert_eq!(listed[0].channel_id, "review");
+    assert_eq!(listed[0].description.as_deref(), Some("Review lane"));
+    assert_eq!(listed[1].channel_id, "research");
+    assert_eq!(listed[1].description.as_deref(), Some("Research lane"));
 }
 
 #[tokio::test]

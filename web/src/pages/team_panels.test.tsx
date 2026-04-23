@@ -783,6 +783,67 @@ describe("team panels interactions", () => {
     expect(onDeleteChannel).toHaveBeenCalledWith("review");
   });
 
+  it("TeamSidebar keeps the inline create form open when channel creation fails", async () => {
+    const onCreateChannel = vi.fn().mockRejectedValue(new Error("duplicate channel"));
+    const teamOne = buildTeam();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[teamOne]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            selectedTeamHasConfiguredMembers={true}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[buildMemberLiveState()]}
+            focusedAgentMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectChannel={() => {}}
+            onCreateChannel={onCreateChannel}
+            onSelectKanban={() => {}}
+            onSelectAgentTab={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Create channel"));
+    const channelIdInput = required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing"
+    ) as HTMLInputElement;
+    const descriptionInput = required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing"
+    ) as HTMLInputElement;
+    changeInputValue(channelIdInput, "review");
+    changeInputValue(descriptionInput, "Review lane");
+    clickElement(findButtonByText(container, "Create channel"));
+
+    await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
+    await Promise.resolve();
+
+    expect(
+      required(container.querySelector("input[aria-label='Channel ID']"), "channel id still visible")
+    ).not.toBeNull();
+    expect((container.querySelector("input[aria-label='Channel ID']") as HTMLInputElement).value).toBe(
+      "review"
+    );
+    expect(
+      (container.querySelector("input[aria-label='Channel Description']") as HTMLInputElement).value
+    ).toBe("Review lane");
+  });
+
   it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
     const teamOne = buildTeam({
       description: "Triage TiDB issues and coordinate the fuzzing backlog.",

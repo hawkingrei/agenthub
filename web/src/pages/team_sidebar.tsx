@@ -261,7 +261,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     setNewChannelDescription("");
   }, []);
   const handleCreateChannelSubmit = React.useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
+    async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!onCreateChannel || !canSubmitChannelCreate) {
         return;
@@ -270,9 +270,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
         channelId: newChannelId.trim(),
         description: newChannelDescription.trim(),
       };
-      void Promise.resolve(onCreateChannel(payload)).then(() => {
+      try {
+        await Promise.resolve(onCreateChannel(payload));
         resetCreateChannelForm();
-      });
+      } catch {
+        // Keep the inline form open so the user can correct the input after a failed create.
+      }
     },
     [
       canSubmitChannelCreate,
@@ -683,7 +686,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       disabled={isDeleting || creatingChannel}
                       tone="subtle"
                       size="sm"
-                      className="h-7 w-7 shrink-0 text-notion-text-muted opacity-0 transition group-hover:opacity-100 hover:bg-notion-hover hover:text-rose-600 disabled:opacity-50"
+                      className="h-7 w-7 shrink-0 text-notion-text-muted opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 hover:bg-notion-hover hover:text-rose-600 disabled:opacity-50"
                       title={`Delete ${channel.label}`}
                       aria-label={`Delete channel ${channel.id}`}
                     >

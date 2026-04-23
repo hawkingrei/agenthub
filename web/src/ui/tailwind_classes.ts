@@ -276,7 +276,7 @@ export const TEAM_MESSAGE_COMPOSER_SHELL_CLASS =
   "rounded-2xl border border-black/6 bg-white/95 p-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 
 export const TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS =
-  "flex items-end gap-2 rounded-[14px] border border-slate-200/80 bg-slate-50/56 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]";
+  "flex items-end gap-2 rounded-[14px] border border-slate-200/80 bg-slate-50/56 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] transition-all focus-within:border-sky-500/60 focus-within:shadow-[0_0_0_1px_rgba(14,165,233,0.3),inset_0_1px_0_rgba(255,255,255,0.65)]";
 
 export const TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS =
   "h-8 rounded-full px-3 text-[12px]";

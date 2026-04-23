@@ -2355,8 +2355,9 @@ export function TeamPage(props: TeamPageProps) {
   const onCreateSidebarChannel = useCallback(
     async (payload: { channelId: string; description: string }) => {
       if (!effectiveSelectedTeamId) {
-        setError("Select a team first");
-        return;
+        const error = new Error("Select a team first");
+        setError(error.message);
+        throw error;
       }
       setError(null);
       setBusy("create-team-channel");
@@ -2377,6 +2378,7 @@ export function TeamPage(props: TeamPageProps) {
         }
       } catch (err) {
         setError(parseErrorMessage(err));
+        throw err;
       } finally {
         setBusy(null);
       }
