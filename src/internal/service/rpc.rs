@@ -643,6 +643,48 @@ impl TeamInternalControl for TeamInternalControlService {
         }))
     }
 
+    async fn reply_team_thread(
+        &self,
+        request: Request<ReplyTeamThreadRequest>,
+    ) -> Result<Response<ReplyTeamThreadResponse>, Status> {
+        let principal = self.authz.authenticate(request.metadata())?;
+        self.authz
+            .ensure_permission(&principal, InternalAction::TeamTaskWrite)?;
+        let payload = request.into_inner();
+
+        let actor_id = required_field(&payload.actor_id, "actor_id")?;
+        self.authz
+            .ensure_worker_actor(&principal, actor_id, "actor_id")?;
+        let team_context = load_team_context_for_actor(
+            &self.deps.agents,
+            &self.deps.teams,
+            optional_trimmed(&payload.team_id),
+            optional_trimmed(&payload.run_id),
+            actor_id,
+        )
+        .await?;
+        let channel_id = optional_trimmed(&payload.channel_id).unwrap_or("all");
+        if payload.root_message_id <= 0 {
+            return Err(Status::invalid_argument("root_message_id must be positive"));
+        }
+        let text = required_field(&payload.text, "text")?;
+        let reply = self
+            .deps
+            .teams
+            .reply_thread(
+                &team_context.team_id,
+                channel_id,
+                payload.root_message_id,
+                actor_id,
+                text,
+            )
+            .await
+            .map_err(map_manager_error)?;
+        Ok(Response::new(ReplyTeamThreadResponse {
+            message_json: serde_json::to_string(&reply).map_err(map_serde_status)?,
+        }))
+    }
+
     async fn append_team_task_note(
         &self,
         request: Request<AppendTeamTaskNoteRequest>,

@@ -10,9 +10,9 @@ use super::super::proto::agenthub::internal::v1::{
     CreateTeamChannelRequest, CreateTeamTaskRequest, CreateTimeTriggerRequest,
     DeleteTeamChannelRequest, DescribeTeamContextRequest, GetTeamTaskRequest,
     IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
-    ListTimeTriggersRequest, OpenTeamThreadRequest, ResolveActorRunScopeRequest,
-    RespondPermissionReviewRequest, SendActorMessageRequest, TransitionStepRequest,
-    UpdateTeamTaskRequest,
+    ListTimeTriggersRequest, OpenTeamThreadRequest, ReplyTeamThreadRequest,
+    ResolveActorRunScopeRequest, RespondPermissionReviewRequest, SendActorMessageRequest,
+    TransitionStepRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
 pub(super) use super::resolve_team_leader_member_id;
@@ -24,7 +24,7 @@ use crate::api::team_tests::{
 pub(super) use crate::internal::team_internal_control_deps as control_deps;
 use crate::team::{
     TeamChannelRecord, TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord,
-    TeamThreadOpenRecord,
+    TeamThreadOpenRecord, TeamThreadReplyRecord,
 };
 use agenthub_team_actor::ActorMessageStatus;
 

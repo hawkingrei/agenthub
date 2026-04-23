@@ -2067,6 +2067,37 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
     assert_eq!(review_thread.task_id, channel.task_id);
     assert_eq!(review_thread.root_message_id, review_root_message_id);
     assert_eq!(review_thread.thread_id, review_root_message_id.to_string());
+
+    let review_reply = manager
+        .reply_thread(
+            &team.id,
+            " review ",
+            review_root_message_id,
+            "worker",
+            "This should stay in the review thread.",
+        )
+        .await
+        .expect("reply to review thread");
+    assert_eq!(
+        review_reply.thread.thread_id,
+        review_root_message_id.to_string()
+    );
+    assert_eq!(review_reply.message.task_id, channel.task_id);
+    assert_eq!(
+        review_reply.message.conversation_id,
+        channel.conversation_id
+    );
+    assert_eq!(review_reply.message.from_actor_id, "worker");
+    assert_eq!(review_reply.message.route, "team_thread_reply");
+    assert_eq!(review_reply.message.payload["type"], json!("chat_message"));
+    assert_eq!(
+        review_reply.message.payload["thread_root_message_id"],
+        json!(review_root_message_id)
+    );
+    assert_eq!(
+        review_reply.message.payload["text"],
+        json!("This should stay in the review thread.")
+    );
 }
 
 #[tokio::test]

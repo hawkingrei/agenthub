@@ -19,6 +19,7 @@ service TeamInternalControl {
   rpc CreateTeamChannel(CreateTeamChannelRequest) returns (CreateTeamChannelResponse);
   rpc DeleteTeamChannel(DeleteTeamChannelRequest) returns (DeleteTeamChannelResponse);
   rpc OpenTeamThread(OpenTeamThreadRequest) returns (OpenTeamThreadResponse);
+  rpc ReplyTeamThread(ReplyTeamThreadRequest) returns (ReplyTeamThreadResponse);
   rpc AppendTeamTaskNote(AppendTeamTaskNoteRequest) returns (AppendTeamTaskNoteResponse);
   rpc CreateTimeTrigger(CreateTimeTriggerRequest) returns (CreateTimeTriggerResponse);
   rpc ListTimeTriggers(ListTimeTriggersRequest) returns (ListTimeTriggersResponse);
@@ -188,6 +189,19 @@ message OpenTeamThreadRequest {
 
 message OpenTeamThreadResponse {
   string thread_json = 1;
+}
+
+message ReplyTeamThreadRequest {
+  string team_id = 1;
+  string run_id = 2;
+  string actor_id = 3;
+  string channel_id = 4;
+  int64 root_message_id = 5;
+  string text = 6;
+}
+
+message ReplyTeamThreadResponse {
+  string message_json = 1;
 }
 
 message AppendTeamTaskNoteRequest {

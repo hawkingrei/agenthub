@@ -19,7 +19,7 @@ pub use agenthub_team_domain::{
     TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunResumeError,
     TeamRunStatus, TeamStepRecord, TeamStepStatus, TeamTaskDetailRecord, TeamTaskExecutionPlan,
     TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec,
-    TeamThreadOpenRecord,
+    TeamThreadOpenRecord, TeamThreadReplyRecord,
 };
 pub(crate) use mailbox_hint::{
     ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,

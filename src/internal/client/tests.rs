@@ -1039,14 +1039,41 @@ async fn grpc_team_channel_client_controls_are_wire_compatible() {
         .expect("append grpc channel root message");
 
     let thread = client
-        .open_team_thread("planner", None, Some(&run_id), "REVIEW", root_message.id)
+        .open_team_thread(
+            "planner",
+            None,
+            Some(&run_id),
+            "REVIEW",
+            root_message.message_id,
+        )
         .await
         .expect("open grpc team thread");
     assert_eq!(thread.team_id, team_id);
     assert_eq!(thread.channel_id, "review");
     assert_eq!(thread.task_id, channel.task_id);
     assert_eq!(thread.conversation_id, channel.conversation_id);
-    assert_eq!(thread.root_message_id, root_message.id);
+    assert_eq!(thread.root_message_id, root_message.message_id);
+
+    let reply = client
+        .reply_team_thread(
+            "reviewer",
+            None,
+            Some(&run_id),
+            " review ",
+            root_message.message_id,
+            "Threaded review note",
+        )
+        .await
+        .expect("reply grpc team thread");
+    assert_eq!(reply.thread.thread_id, root_message.message_id.to_string());
+    assert_eq!(reply.thread.channel_id, "review");
+    assert_eq!(reply.message.route, "team_thread_reply");
+    assert_eq!(reply.message.from_actor_id, "reviewer");
+    assert_eq!(
+        reply.message.payload["thread_root_message_id"],
+        json!(root_message.message_id)
+    );
+    assert_eq!(reply.message.payload["text"], json!("Threaded review note"));
 
     let deleted = client
         .delete_team_channel(&team_id, "planner", " Review ")

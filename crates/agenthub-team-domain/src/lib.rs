@@ -346,6 +346,12 @@ pub struct TeamThreadOpenRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamThreadReplyRecord {
+    pub thread: TeamThreadOpenRecord,
+    pub message: TeamConversationMessageRecord,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamRunEventRecord {
     pub event_id: i64,
     pub run_id: String,

@@ -514,6 +514,33 @@ pub(super) async fn run_actor_command(
                 .await?;
             write_actor_output(&thread, output_mode, output_preference)?;
         }
+        ActorCommand::TeamThreadReply {
+            team_id,
+            run_id,
+            actor_id,
+            channel_id,
+            root_message_id,
+            text,
+        } => {
+            let client = init_actor_control_client(
+                &actor_id,
+                run_id.as_deref(),
+                &[InternalAction::TeamTaskWrite],
+                "actor team thread control",
+            )
+            .await?;
+            let reply = client
+                .reply_team_thread(
+                    &actor_id,
+                    team_id.as_deref(),
+                    run_id.as_deref(),
+                    &channel_id,
+                    root_message_id,
+                    &text,
+                )
+                .await?;
+            write_actor_output(&reply, output_mode, output_preference)?;
+        }
         ActorCommand::TeamStepTransition {
             run_id,
             actor_id,

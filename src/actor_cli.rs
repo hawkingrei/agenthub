@@ -27,6 +27,7 @@ const ACTOR_HELP_TOPIC_PERMISSION_REVIEW_RESPOND: &str = "permission-review-resp
 const ACTOR_HELP_TOPIC_TEAM_TASK_SHOW: &str = "team-task-show";
 const ACTOR_HELP_TOPIC_TEAM_TASK_NOTE: &str = "team-task-note";
 const ACTOR_HELP_TOPIC_TEAM_THREAD_OPEN: &str = "team-thread-open";
+const ACTOR_HELP_TOPIC_TEAM_THREAD_REPLY: &str = "team-thread-reply";
 const ACTOR_HELP_TOPIC_TEAM_STEP_DECISION: &str = "team-step-decision";
 const ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION: &str = "team-step-transition";
 const ACTOR_HELP_TOPICS: &[&str] = &[
@@ -37,6 +38,7 @@ const ACTOR_HELP_TOPICS: &[&str] = &[
     ACTOR_HELP_TOPIC_TEAM_TASK_SHOW,
     ACTOR_HELP_TOPIC_TEAM_TASK_NOTE,
     ACTOR_HELP_TOPIC_TEAM_THREAD_OPEN,
+    ACTOR_HELP_TOPIC_TEAM_THREAD_REPLY,
     ACTOR_HELP_TOPIC_TEAM_STEP_DECISION,
     ACTOR_HELP_TOPIC_TEAM_STEP_TRANSITION,
     ACTOR_HELP_TOPIC_INBOX,
@@ -224,6 +226,14 @@ enum ActorCommand {
         actor_id: String,
         channel_id: String,
         root_message_id: i64,
+    },
+    TeamThreadReply {
+        team_id: Option<String>,
+        run_id: Option<String>,
+        actor_id: String,
+        channel_id: String,
+        root_message_id: i64,
+        text: String,
     },
     TeamStepTransition {
         run_id: Option<String>,
@@ -2319,6 +2329,46 @@ mod tests {
                 assert_eq!(root_message_id, 42);
             }
             other => panic!("expected team-thread-open command, got {other:?}"),
+        }
+        restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
+        restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);
+    }
+
+    #[test]
+    fn parse_team_thread_reply_defaults_to_shared_channel() {
+        let _guard = env_lock().blocking_lock();
+        let prev_team = std::env::var(ACTOR_RUNTIME_TEAM_ID_ENV).ok();
+        let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
+        unsafe {
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-thread");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-thread");
+        }
+        let args = vec![
+            "team-thread-reply".to_string(),
+            "--root-message-id".to_string(),
+            "42".to_string(),
+            "--text".to_string(),
+            "I agree".to_string(),
+        ];
+        let parsed = parse_actor_command(&args, &mut ActorOutputMode::Default)
+            .expect("parse team-thread-reply");
+        match parsed {
+            ActorCommand::TeamThreadReply {
+                team_id,
+                run_id,
+                actor_id,
+                channel_id,
+                root_message_id,
+                text,
+            } => {
+                assert_eq!(team_id.as_deref(), Some("team-thread"));
+                assert!(run_id.is_none());
+                assert_eq!(actor_id, "leader-thread");
+                assert_eq!(channel_id, "all");
+                assert_eq!(root_message_id, 42);
+                assert_eq!(text, "I agree");
+            }
+            other => panic!("expected team-thread-reply command, got {other:?}"),
         }
         restore_env(ACTOR_RUNTIME_TEAM_ID_ENV, prev_team);
         restore_env(ACTOR_RUNTIME_ACTOR_ID_ENV, prev_actor);

@@ -1008,6 +1008,43 @@ impl TeamManager {
         })
     }
 
+    pub async fn reply_thread(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        root_message_id: i64,
+        from_actor_id: &str,
+        text: &str,
+    ) -> anyhow::Result<super::TeamThreadReplyRecord> {
+        let normalized_actor_id = from_actor_id.trim();
+        if normalized_actor_id.is_empty() {
+            anyhow::bail!("from_actor_id is required");
+        }
+        let normalized_text = text.trim();
+        if normalized_text.is_empty() {
+            anyhow::bail!("text is required");
+        }
+
+        let thread = self
+            .open_thread(team_id, channel_id, root_message_id)
+            .await?;
+        let message = self
+            .append_task_conversation_message(
+                &thread.task_id,
+                normalized_actor_id,
+                None,
+                "team_thread_reply",
+                serde_json::json!({
+                    "type": "chat_message",
+                    "text": normalized_text,
+                    "thread_root_message_id": root_message_id,
+                }),
+            )
+            .await?;
+
+        Ok(super::TeamThreadReplyRecord { thread, message })
+    }
+
     pub async fn create_channel(
         &self,
         team_id: &str,

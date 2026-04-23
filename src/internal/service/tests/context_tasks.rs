@@ -312,7 +312,7 @@ async fn internal_grpc_team_channel_controls_are_wire_compatible() {
                 run_id: run.id.clone(),
                 actor_id: "planner".to_string(),
                 channel_id: "REVIEW".to_string(),
-                root_message_id: root_message.id,
+                root_message_id: root_message.message_id,
             },
             &token,
         ),
@@ -326,8 +326,43 @@ async fn internal_grpc_team_channel_controls_are_wire_compatible() {
     assert_eq!(thread.channel_id, "review");
     assert_eq!(thread.task_id, channel.task_id);
     assert_eq!(thread.conversation_id, channel.conversation_id);
-    assert_eq!(thread.root_message_id, root_message.id);
-    assert_eq!(thread.thread_id, root_message.id.to_string());
+    assert_eq!(thread.root_message_id, root_message.message_id);
+    assert_eq!(thread.thread_id, root_message.message_id.to_string());
+
+    let replied = TeamInternalControl::reply_team_thread(
+        &service,
+        authenticated_request(
+            ReplyTeamThreadRequest {
+                team_id: String::new(),
+                run_id: run.id.clone(),
+                actor_id: "planner".to_string(),
+                channel_id: " review ".to_string(),
+                root_message_id: root_message.message_id,
+                text: "Threaded review note".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("reply team thread")
+    .into_inner();
+    let thread_reply: TeamThreadReplyRecord =
+        serde_json::from_str(&replied.message_json).expect("decode thread reply");
+    assert_eq!(
+        thread_reply.thread.thread_id,
+        root_message.message_id.to_string()
+    );
+    assert_eq!(thread_reply.thread.channel_id, "review");
+    assert_eq!(thread_reply.message.route, "team_thread_reply");
+    assert_eq!(thread_reply.message.from_actor_id, "planner");
+    assert_eq!(
+        thread_reply.message.payload["thread_root_message_id"],
+        json!(root_message.message_id)
+    );
+    assert_eq!(
+        thread_reply.message.payload["text"],
+        json!("Threaded review note")
+    );
 
     let deleted = TeamInternalControl::delete_team_channel(
         &service,

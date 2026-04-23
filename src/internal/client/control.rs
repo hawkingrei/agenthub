@@ -21,6 +21,7 @@ use super::super::proto::agenthub::internal::v1::{
     ListTeamTasksRequest as GrpcListTeamTasksRequest,
     ListTimeTriggersRequest as GrpcListTimeTriggersRequest,
     OpenTeamThreadRequest as GrpcOpenTeamThreadRequest,
+    ReplyTeamThreadRequest as GrpcReplyTeamThreadRequest,
     ResolveActorRunScopeRequest as GrpcResolveActorRunScopeRequest,
     RespondPermissionReviewRequest as GrpcRespondPermissionReviewRequest,
     RespondPermissionReviewResponse as GrpcRespondPermissionReviewResponse,
@@ -468,6 +469,32 @@ impl InternalGrpcMailboxClient {
         .map_err(map_grpc_status_anyhow)?
         .into_inner();
         parse_json_response(&response.thread_json, "thread_json")
+    }
+
+    pub async fn reply_team_thread(
+        &self,
+        actor_id: &str,
+        team_id: Option<&str>,
+        run_id: Option<&str>,
+        channel_id: &str,
+        root_message_id: i64,
+        text: &str,
+    ) -> anyhow::Result<crate::team::TeamThreadReplyRecord> {
+        let mut client = self.client();
+        let response = timeout_internal_grpc_call(client.reply_team_thread(self.control_request(
+            GrpcReplyTeamThreadRequest {
+                team_id: team_id.unwrap_or_default().trim().to_string(),
+                run_id: run_id.unwrap_or_default().trim().to_string(),
+                actor_id: actor_id.trim().to_string(),
+                channel_id: channel_id.trim().to_string(),
+                root_message_id,
+                text: text.to_string(),
+            },
+        )?))
+        .await
+        .map_err(map_grpc_status_anyhow)?
+        .into_inner();
+        parse_json_response(&response.message_json, "message_json")
     }
 
     pub async fn append_team_task_note(

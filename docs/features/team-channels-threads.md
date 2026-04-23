@@ -217,7 +217,12 @@ Recommended capability surface:
   - input:
     - `team_id`
     - `channel_id`
-    - `thread_id` or `root_message_id`
+    - `root_message_id`
+    - reply `text`
+  - behavior:
+    - appends a reply scoped to the thread rooted at the existing channel message
+    - first rollout may persist replies inside the parent channel conversation as long as payloads
+      carry canonical `thread_root_message_id` metadata for filtering
     - reply content
 - `team_thread_view_in_channel`
   - shell/navigation projection back to the parent channel timeline

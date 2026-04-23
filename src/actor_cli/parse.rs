@@ -1211,6 +1211,101 @@ pub(super) fn parse_actor_command(
                 root_message_id,
             })
         }
+        "team-thread-reply" => {
+            let mut team_id = None;
+            let mut run_id = None;
+            let mut actor_id = None;
+            let mut channel_id = None;
+            let mut root_message_id = None;
+            let mut text = None;
+            let mut idx = 1;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--team-id" => {
+                        idx += 1;
+                        team_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--team-id requires a value"))?,
+                        );
+                    }
+                    "--run-id" => {
+                        idx += 1;
+                        run_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--run-id requires a value"))?,
+                        );
+                    }
+                    flag @ ("--actor-id" | "--agent-id") => {
+                        idx += 1;
+                        actor_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("{flag} requires a value"))?,
+                        );
+                    }
+                    "--channel-id" => {
+                        idx += 1;
+                        channel_id = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--channel-id requires a value"))?,
+                        );
+                    }
+                    "--shared" => channel_id = Some("all".to_string()),
+                    "--root-message-id" => {
+                        idx += 1;
+                        let raw = args
+                            .get(idx)
+                            .ok_or_else(|| anyhow::anyhow!("--root-message-id requires a value"))?;
+                        root_message_id = Some(parse_i64(raw, "root_message_id")?);
+                    }
+                    "--text" => {
+                        idx += 1;
+                        text = Some(
+                            args.get(idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow::anyhow!("--text requires a value"))?,
+                        );
+                    }
+                    "--text-file" => {
+                        idx += 1;
+                        text = Some(read_actor_send_file(
+                            args.get(idx)
+                                .ok_or_else(|| anyhow::anyhow!("--text-file requires a value"))?,
+                            "--text-file",
+                        )?);
+                    }
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "unknown flag for team-thread-reply: {}",
+                            other
+                        ));
+                    }
+                }
+                idx += 1;
+            }
+            let (team_id, run_id) = resolve_team_run_scope(team_id, run_id);
+            if team_id.is_none() && run_id.is_none() {
+                return Err(anyhow::anyhow!(
+                    "team-thread-reply requires --team-id, --run-id, or actor runtime env fallback"
+                ));
+            }
+            let root_message_id =
+                root_message_id.ok_or_else(|| anyhow::anyhow!("root_message_id is required"))?;
+            anyhow::ensure!(root_message_id > 0, "root_message_id must be positive");
+            let text = text.ok_or_else(|| anyhow::anyhow!("text is required"))?;
+            anyhow::ensure!(!text.trim().is_empty(), "text is required");
+            Ok(ActorCommand::TeamThreadReply {
+                team_id,
+                run_id,
+                actor_id: take_actor_id(actor_id)?,
+                channel_id: take_optional(channel_id).unwrap_or_else(|| "all".to_string()),
+                root_message_id,
+                text,
+            })
+        }
         "team-step-transition" => {
             let mut run_id = None;
             let mut actor_id = None;
