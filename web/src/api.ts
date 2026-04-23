@@ -281,7 +281,7 @@ export type TeamConversationMessageRecord = {
   task_id: string;
   from_actor_id: string;
   to_actor_id?: string | null;
-  route: "to_leader" | "to_member" | "group_chat";
+  route: "to_leader" | "to_member" | "group_chat" | "team_thread_reply";
   payload: unknown;
   created_at: number;
 };
@@ -290,6 +290,20 @@ export type TeamTaskDetailResponse = {
   task: TeamTaskRecord;
   conversation: TeamConversationRecord;
   latest_run?: TeamRunRecord | null;
+};
+
+export type TeamThreadOpenRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  root_message_id: number;
+  thread_id: string;
+};
+
+export type TeamThreadReplyRecord = {
+  thread: TeamThreadOpenRecord;
+  message: TeamConversationMessageRecord;
 };
 
 export type TeamRunRecord = {
@@ -848,6 +862,21 @@ export const api = {
       token
     );
   },
+  replyTeamThread: (
+    token: string,
+    teamId: string,
+    channelId: string,
+    rootMessageId: number,
+    payload: { text: string }
+  ) =>
+    apiFetch<TeamThreadReplyRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/channels/${encodePathSegment(channelId)}/threads/${rootMessageId}/replies`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
   compileTeamTaskRunPreview: (
     token: string,
     teamId: string,

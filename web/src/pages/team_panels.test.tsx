@@ -1966,6 +1966,47 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("running");
   });
 
+  it("TeamTaskPanel keeps thread replies out of the main channel timeline", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(1, {
+            from_actor_id: "leader-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: { type: "chat_message", text: "Channel root message stays visible." },
+          }),
+          buildTaskMessage(2, {
+            from_actor_id: "worker-agent",
+            to_actor_id: null,
+            route: "team_thread_reply",
+            payload: {
+              type: "chat_message",
+              text: "Threaded follow-up should stay in the thread pane only.",
+              thread_root_message_id: 1,
+            },
+          }),
+        ]}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    expect(container.textContent).toContain("Channel root message stays visible.");
+    expect(container.textContent).not.toContain(
+      "Threaded follow-up should stay in the thread pane only."
+    );
+  });
+
   it("TeamTaskPanel keeps the channel body in a dedicated flex shell above the composer", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 

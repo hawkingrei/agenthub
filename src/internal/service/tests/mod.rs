@@ -7,10 +7,12 @@ use super::super::auth::{InternalAction, InternalAuthz, InternalAuthzConfig, Int
 use super::super::proto::agenthub::internal::v1::team_internal_control_server::TeamInternalControl;
 use super::super::proto::agenthub::internal::v1::{
     AckActorMessageRequest, AppendTeamTaskNoteRequest, CancelTimeTriggerRequest,
-    CreateTeamTaskRequest, CreateTimeTriggerRequest, DescribeTeamContextRequest,
-    GetTeamTaskRequest, IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
-    ListTimeTriggersRequest, ResolveActorRunScopeRequest, RespondPermissionReviewRequest,
-    SendActorMessageRequest, TransitionStepRequest, UpdateTeamTaskRequest,
+    CreateTeamChannelRequest, CreateTeamTaskRequest, CreateTimeTriggerRequest,
+    DeleteTeamChannelRequest, DescribeTeamContextRequest, GetTeamTaskRequest,
+    IssueNodeCredentialRequest, ListActorInboxRequest, ListTeamTasksRequest,
+    ListTimeTriggersRequest, OpenTeamThreadRequest, ReplyTeamThreadRequest,
+    ResolveActorRunScopeRequest, RespondPermissionReviewRequest, SendActorMessageRequest,
+    TransitionStepRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
 pub(super) use super::resolve_team_leader_member_id;
@@ -20,7 +22,10 @@ use crate::api::team_tests::{
     build_test_state, build_test_state_without_seeded_team_member_agents,
 };
 pub(super) use crate::internal::team_internal_control_deps as control_deps;
-use crate::team::{TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord};
+use crate::team::{
+    TeamChannelRecord, TeamDefinitionConfig, TeamTaskDetailRecord, TeamTaskRecord,
+    TeamThreadOpenRecord, TeamThreadReplyRecord,
+};
 use agenthub_team_actor::ActorMessageStatus;
 
 const TEST_INTERNAL_SHARED_SECRET: &str = "agenthub-internal-service-test-secret";

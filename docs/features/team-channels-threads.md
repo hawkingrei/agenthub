@@ -147,6 +147,8 @@ Required behavior:
 
 - selecting a reply target opens a right-side `ThreadPane`
 - the center channel timeline remains visible
+- thread replies should render only in the right-side thread pane; they should not duplicate as
+  inline rows in the parent channel timeline
 - the right pane header should show:
   - `Thread`
   - parent channel reference (for example `#papers`)
@@ -217,8 +219,15 @@ Recommended capability surface:
   - input:
     - `team_id`
     - `channel_id`
-    - `thread_id` or `root_message_id`
-    - reply content
+    - `root_message_id`
+    - reply `text`
+  - behavior:
+    - appends a reply scoped to the thread rooted at the existing channel message
+    - first rollout may persist replies inside the parent channel conversation as long as payloads
+      carry canonical `thread_root_message_id` metadata for filtering
+    - shell and public HTTP clients should use a stable Team API path instead of depending on
+      internal gRPC directly:
+      - `POST /api/teams/:team_id/channels/:channel_id/threads/:root_message_id/replies`
 - `team_thread_view_in_channel`
   - shell/navigation projection back to the parent channel timeline
 

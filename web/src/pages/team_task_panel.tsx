@@ -94,6 +94,10 @@ type TeamTaskPanelProps = {
   activeThreadMessageId?: number | null;
 };
 
+function isThreadReplyMessage(message: TeamConversationMessageRecord): boolean {
+  return message.route === "team_thread_reply";
+}
+
 type PermissionReviewCardPayload = {
   type: "permission_review_card";
   permission_id: string;
@@ -1135,6 +1139,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     () =>
       windowTeamConversation(
         orderedMessages.flatMap((message) => {
+          if (isThreadReplyMessage(message)) {
+            return [];
+          }
           const permissionCardPayload = parsePermissionReviewCardPayload(message.payload);
           if (permissionCardPayload) {
             const permissionRecord = permissionRecordsById[permissionCardPayload.permission_id];

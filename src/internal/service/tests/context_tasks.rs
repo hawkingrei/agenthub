@@ -228,6 +228,164 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
 }
 
 #[tokio::test]
+async fn internal_grpc_team_channel_controls_are_wire_compatible() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let authz = build_authz();
+    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let created = TeamInternalControl::create_team_channel(
+        &service,
+        authenticated_request(
+            CreateTeamChannelRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                channel_id: " Review ".to_string(),
+                description: "Review lane".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("create team channel")
+    .into_inner();
+    let channel: TeamChannelRecord =
+        serde_json::from_str(&created.channel_json).expect("decode channel");
+    assert_eq!(channel.team_id, run.team_id);
+    assert_eq!(channel.channel_id, "review");
+    assert_eq!(channel.description.as_deref(), Some("Review lane"));
+
+    let listed = TeamInternalControl::list_team_tasks(
+        &service,
+        authenticated_request(
+            ListTeamTasksRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                limit: 20,
+                status: String::new(),
+                include_shared_thread: false,
+                run_id: String::new(),
+                task_id: String::new(),
+                assigned_member_id: String::new(),
+                topic: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("list team tasks after channel create")
+    .into_inner();
+    let listed_tasks: Vec<TeamTaskRecord> =
+        serde_json::from_str(&listed.tasks_json).expect("decode task list");
+    assert!(
+        listed_tasks.iter().all(|task| task.id != channel.task_id),
+        "channel bootstrap task should stay hidden from task listing"
+    );
+
+    let root_message = state
+        .teams
+        .append_task_conversation_message(
+            &channel.task_id,
+            "planner",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"Please review the change"
+            }),
+        )
+        .await
+        .expect("append channel root message");
+
+    let opened = TeamInternalControl::open_team_thread(
+        &service,
+        authenticated_request(
+            OpenTeamThreadRequest {
+                team_id: String::new(),
+                run_id: run.id.clone(),
+                actor_id: "planner".to_string(),
+                channel_id: "REVIEW".to_string(),
+                root_message_id: root_message.message_id,
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("open team thread")
+    .into_inner();
+    let thread: TeamThreadOpenRecord =
+        serde_json::from_str(&opened.thread_json).expect("decode thread");
+    assert_eq!(thread.team_id, run.team_id);
+    assert_eq!(thread.channel_id, "review");
+    assert_eq!(thread.task_id, channel.task_id);
+    assert_eq!(thread.conversation_id, channel.conversation_id);
+    assert_eq!(thread.root_message_id, root_message.message_id);
+    assert_eq!(thread.thread_id, root_message.message_id.to_string());
+
+    let replied = TeamInternalControl::reply_team_thread(
+        &service,
+        authenticated_request(
+            ReplyTeamThreadRequest {
+                team_id: String::new(),
+                run_id: run.id.clone(),
+                actor_id: "planner".to_string(),
+                channel_id: " review ".to_string(),
+                root_message_id: root_message.message_id,
+                text: "Threaded review note".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("reply team thread")
+    .into_inner();
+    let thread_reply: TeamThreadReplyRecord =
+        serde_json::from_str(&replied.message_json).expect("decode thread reply");
+    assert_eq!(
+        thread_reply.thread.thread_id,
+        root_message.message_id.to_string()
+    );
+    assert_eq!(thread_reply.thread.channel_id, "review");
+    assert_eq!(thread_reply.message.route, "team_thread_reply");
+    assert_eq!(thread_reply.message.from_actor_id, "planner");
+    assert_eq!(
+        thread_reply.message.payload["thread_root_message_id"],
+        json!(root_message.message_id)
+    );
+    assert_eq!(
+        thread_reply.message.payload["text"],
+        json!("Threaded review note")
+    );
+
+    let deleted = TeamInternalControl::delete_team_channel(
+        &service,
+        authenticated_request(
+            DeleteTeamChannelRequest {
+                team_id: run.team_id.clone(),
+                actor_id: "planner".to_string(),
+                channel_id: " Review ".to_string(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect("delete team channel")
+    .into_inner();
+    let deleted_channel: TeamChannelRecord =
+        serde_json::from_str(&deleted.channel_json).expect("decode deleted channel");
+    assert_eq!(deleted_channel.channel_id, "review");
+    assert_eq!(deleted_channel.task_id, channel.task_id);
+    assert_eq!(deleted_channel.conversation_id, channel.conversation_id);
+}
+
+#[tokio::test]
 async fn internal_grpc_describe_team_context_reconciles_stale_running_member_sessions() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;

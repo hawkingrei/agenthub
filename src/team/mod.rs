@@ -14,11 +14,12 @@ pub use agenthub_team_actor::{
 };
 pub use agenthub_team_domain::{
     TEAM_RUN_CONTINUITY_MODE_VALUES, TEAM_RUN_STATUS_VALUES, TEAM_STEP_STATUS_VALUES,
-    TEAM_TASK_STATUS_VALUES, TeamConversationMessageRecord, TeamConversationRecord,
-    TeamDefinitionConfig, TeamDefinitionRecord, TeamMemberContinuityStateRecord,
-    TeamRunEventRecord, TeamRunRecord, TeamRunResumeError, TeamRunStatus, TeamStepRecord,
-    TeamStepStatus, TeamTaskDetailRecord, TeamTaskExecutionPlan, TeamTaskRecord, TeamTaskStatus,
-    TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec,
+    TEAM_TASK_STATUS_VALUES, TeamChannelRecord, TeamConversationMessageRecord,
+    TeamConversationRecord, TeamDefinitionConfig, TeamDefinitionRecord,
+    TeamMemberContinuityStateRecord, TeamRunEventRecord, TeamRunRecord, TeamRunResumeError,
+    TeamRunStatus, TeamStepRecord, TeamStepStatus, TeamTaskDetailRecord, TeamTaskExecutionPlan,
+    TeamTaskRecord, TeamTaskStatus, TeamTaskStepExecutionMode, TeamTaskStepExecutionSpec,
+    TeamThreadOpenRecord, TeamThreadReplyRecord,
 };
 pub(crate) use mailbox_hint::{
     ActorMailboxImmediateHintReason, TeamMailboxUnreadHintWorker,
