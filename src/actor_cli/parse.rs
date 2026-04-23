@@ -1221,6 +1221,7 @@ pub(super) fn parse_actor_command(
             let mut idx = 1;
             while idx < args.len() {
                 match args[idx].as_str() {
+                    "--json" => *output_mode = ActorOutputMode::Json,
                     "--team-id" => {
                         idx += 1;
                         team_id = Some(

@@ -2375,6 +2375,43 @@ mod tests {
     }
 
     #[test]
+    fn parse_team_thread_reply_accepts_json_output_flag() {
+        let args = vec![
+            "team-thread-reply".to_string(),
+            "--json".to_string(),
+            "--team-id".to_string(),
+            "team-1".to_string(),
+            "--actor-id".to_string(),
+            "leader".to_string(),
+            "--shared".to_string(),
+            "--root-message-id".to_string(),
+            "42".to_string(),
+            "--text".to_string(),
+            "I agree".to_string(),
+        ];
+        let mut output_mode = ActorOutputMode::Default;
+        let parsed = parse_actor_command(&args, &mut output_mode).expect("parse team-thread-reply");
+        assert!(matches!(output_mode, ActorOutputMode::Json));
+        match parsed {
+            ActorCommand::TeamThreadReply {
+                team_id,
+                actor_id,
+                channel_id,
+                root_message_id,
+                text,
+                ..
+            } => {
+                assert_eq!(team_id.as_deref(), Some("team-1"));
+                assert_eq!(actor_id, "leader");
+                assert_eq!(channel_id, "all");
+                assert_eq!(root_message_id, 42);
+                assert_eq!(text, "I agree");
+            }
+            other => panic!("expected team-thread-reply command, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_team_channel_create_requires_team_and_channel() {
         let args = vec![
             "team-channel-create".to_string(),

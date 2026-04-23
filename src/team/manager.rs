@@ -1058,6 +1058,10 @@ impl TeamManager {
         if normalized_team_id.is_empty() {
             anyhow::bail!("team_id is required");
         }
+        let normalized_created_by_actor_id = created_by_actor_id.trim();
+        if normalized_created_by_actor_id.is_empty() {
+            anyhow::bail!("created_by_actor_id is required");
+        }
         let normalized_channel_id = normalize_team_channel_id(channel_id)?;
         if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
             anyhow::bail!("channel_id 'all' is reserved");
@@ -1101,7 +1105,7 @@ impl TeamManager {
         .bind(&task_id)
         .bind(normalized_team_id)
         .bind(&normalized_channel_id)
-        .bind(created_by_actor_id.trim())
+        .bind(normalized_created_by_actor_id)
         .bind(context_json)
         .bind(now)
         .bind(now)
@@ -1143,7 +1147,7 @@ impl TeamManager {
             task_id,
             conversation_id,
             description: normalized_description,
-            created_by_actor_id: created_by_actor_id.trim().to_string(),
+            created_by_actor_id: normalized_created_by_actor_id.to_string(),
             created_at: now,
             updated_at: now,
         })

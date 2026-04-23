@@ -1802,6 +1802,29 @@ async fn create_team_channel_canonicalizes_case_and_rejects_same_team_duplicates
 }
 
 #[tokio::test]
+async fn create_team_channel_rejects_empty_creator_actor_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-empty-creator".to_string(),
+            description: Some("verify creator validation".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let err = manager
+        .create_channel(&team.id, "review", Some("Review lane"), "   ")
+        .await
+        .expect_err("empty creator should fail");
+    assert!(err.to_string().contains("created_by_actor_id is required"));
+}
+
+#[tokio::test]
 async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
