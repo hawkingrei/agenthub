@@ -5,6 +5,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveThreadRootMessageIdFromPayload,
   resolveTeamChannelId,
   resolveTeamSelectedMemberId,
   resolveTeamThreadRootMessageId,
@@ -57,6 +58,17 @@ describe("team_page helpers", () => {
     expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
     expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
+  });
+
+  it("extracts positive thread root message ids from conversation payloads", () => {
+    expect(resolveThreadRootMessageIdFromPayload(null)).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload("text")).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({})).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({ thread_root_message_id: "7" })).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({ thread_root_message_id: 0 })).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({ thread_root_message_id: -4 })).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({ thread_root_message_id: 7.5 })).toBeNull();
+    expect(resolveThreadRootMessageIdFromPayload({ thread_root_message_id: 17 })).toBe(17);
   });
 
   it("summarizes runtime actions by grouped member operation", () => {

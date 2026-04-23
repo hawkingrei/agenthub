@@ -349,7 +349,7 @@ export function buildTeamWorkspacePath(
   return `${pathname}?${search}`;
 }
 
-function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
+export function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
   if (typeof payload !== "object" || payload === null) {
     return null;
   }
