@@ -145,7 +145,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
           <div className="mt-2 flex items-center justify-end">
             <ActionButton
               type="button"
-              onClick={onSendReply}
+              onClick={() => void onSendReply()}
               disabled={replyBusy || replyDraft.trim().length === 0}
             >
               {replyBusy ? "Replying..." : "Reply"}
