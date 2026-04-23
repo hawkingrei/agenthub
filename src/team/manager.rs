@@ -90,6 +90,8 @@ pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
 const TEAM_CHANNEL_BOOTSTRAP_SOURCE: &str = "leader_created";
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX: &str = "idx_team_channel_bootstrap_unique";
+const TEAM_CHANNEL_BOOTSTRAP_UNIQUE_CHANNEL_EXPR: &str =
+    "lower(trim(COALESCE(json_extract(context_json, '$.channel_id'), '')))";
 const TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS: &str = "team_conversation_messages.conversation_id, team_conversation_messages.from_actor_id, team_conversation_messages.idempotency_key";
 
 fn is_row_not_found(err: &anyhow::Error) -> bool {
@@ -1104,7 +1106,18 @@ impl TeamManager {
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
-        .await?;
+        .await
+        .map_err(|err| {
+            if is_team_channel_bootstrap_unique_violation(&err) {
+                anyhow::anyhow!(
+                    "channel '{}' already exists for team {}",
+                    normalized_channel_id,
+                    normalized_team_id
+                )
+            } else {
+                err.into()
+            }
+        })?;
 
         sqlx::query(
             r#"
@@ -6244,10 +6257,11 @@ fn is_task_conversation_message_idempotency_unique_violation(err: &SqlxError) ->
 fn is_team_channel_bootstrap_unique_violation(err: &SqlxError) -> bool {
     match err {
         SqlxError::Database(db_err) => {
+            let message = db_err.message();
             db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE_CODE)
-                && db_err
-                    .message()
-                    .contains(TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX)
+                && (message.contains(TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX)
+                    || (message.contains("team_tasks.team_id")
+                        && message.contains(TEAM_CHANNEL_BOOTSTRAP_UNIQUE_CHANNEL_EXPR)))
         }
         _ => false,
     }
