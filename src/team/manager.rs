@@ -243,6 +243,66 @@ where
     }))
 }
 
+#[derive(Debug, Clone)]
+struct TeamChannelTargetRecord {
+    task_id: String,
+    conversation_id: String,
+    channel_id: String,
+    description: Option<String>,
+    created_by_actor_id: String,
+    created_at: i64,
+    updated_at: i64,
+}
+
+async fn fetch_team_channel_target<'e, E>(
+    executor: E,
+    team_id: &str,
+    channel_id: &str,
+) -> Result<Option<TeamChannelTargetRecord>, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let row = sqlx::query(
+        r#"
+        SELECT
+            t.id AS task_id,
+            c.id AS conversation_id,
+            lower(trim(COALESCE(json_extract(t.context_json, '$.channel_id'), ''))) AS channel_id,
+            json_extract(t.context_json, '$.description') AS description,
+            t.created_by_actor_id,
+            t.created_at,
+            t.updated_at
+        FROM team_tasks t
+        INNER JOIN team_conversations c ON c.task_id = t.id
+        WHERE t.team_id = ?1
+          AND c.team_id = ?1
+          AND c.mode = 'group_chat'
+          AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?2
+          AND lower(trim(COALESCE(json_extract(t.context_json, '$.channel_id'), ''))) = ?3
+        ORDER BY c.created_at ASC, t.created_at ASC, t.id ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(team_id)
+    .bind(TEAM_CHANNEL_BOOTSTRAP_KIND)
+    .bind(channel_id.trim().to_ascii_lowercase())
+    .fetch_optional(executor)
+    .await?;
+
+    Ok(row.map(|row| TeamChannelTargetRecord {
+        task_id: row.get("task_id"),
+        conversation_id: row.get("conversation_id"),
+        channel_id: row.get("channel_id"),
+        description: row
+            .try_get::<Option<String>, _>("description")
+            .ok()
+            .flatten(),
+        created_by_actor_id: row.get("created_by_actor_id"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }))
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TeamRunMembersRecord {
     pub team_id: String,
@@ -887,30 +947,17 @@ impl TeamManager {
                     TEAM_SHARED_THREAD_TITLE.to_string(),
                 )
             } else {
-                let row = sqlx::query(
-                    r#"
-                    SELECT task_id, id AS conversation_id
-                    FROM team_conversations
-                    WHERE team_id = ?1 AND id = ?2 AND mode = 'group_chat'
-                    LIMIT 1
-                    "#,
-                )
-                .bind(normalized_team_id)
-                .bind(normalized_channel_id)
-                .fetch_optional(&self.db)
-                .await?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "channel '{}' not found for team {}",
-                        normalized_channel_id,
-                        normalized_team_id
-                    )
-                })?;
-                (
-                    row.get::<String, _>("task_id"),
-                    row.get::<String, _>("conversation_id"),
-                    normalized_channel_id.to_string(),
-                )
+                let row =
+                    fetch_team_channel_target(&self.db, normalized_team_id, normalized_channel_id)
+                        .await?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "channel '{}' not found for team {}",
+                                normalized_channel_id,
+                                normalized_team_id
+                            )
+                        })?;
+                (row.task_id, row.conversation_id, row.channel_id)
             };
 
         let root_exists = sqlx::query_scalar::<_, i64>(
@@ -970,6 +1017,7 @@ impl TeamManager {
         self.get_team(normalized_team_id).await?;
         let now = Utc::now().timestamp();
         let task_id = Uuid::new_v4().to_string();
+        let conversation_id = Uuid::new_v4().to_string();
         let context_json = serde_json::json!({
             "bootstrap_kind": TEAM_CHANNEL_BOOTSTRAP_KIND,
             "bootstrap_source": TEAM_CHANNEL_BOOTSTRAP_SOURCE,
@@ -979,18 +1027,8 @@ impl TeamManager {
         .to_string();
 
         let mut tx = self.db.begin().await?;
-        let existing = sqlx::query_scalar::<_, String>(
-            r#"
-            SELECT id
-            FROM team_conversations
-            WHERE team_id = ?1 AND id = ?2 AND mode = 'group_chat'
-            LIMIT 1
-            "#,
-        )
-        .bind(normalized_team_id)
-        .bind(normalized_channel_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing =
+            fetch_team_channel_target(&mut *tx, normalized_team_id, normalized_channel_id).await?;
         if existing.is_some() {
             anyhow::bail!(
                 "channel '{}' already exists for team {}",
@@ -1025,7 +1063,7 @@ impl TeamManager {
             VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?6)
             "#,
         )
-        .bind(normalized_channel_id)
+        .bind(&conversation_id)
         .bind(normalized_team_id)
         .bind(&task_id)
         .bind(normalized_channel_id)
@@ -1039,7 +1077,7 @@ impl TeamManager {
             team_id: normalized_team_id.to_string(),
             channel_id: normalized_channel_id.to_string(),
             task_id,
-            conversation_id: normalized_channel_id.to_string(),
+            conversation_id,
             description: normalized_description,
             created_by_actor_id: created_by_actor_id.trim().to_string(),
             created_at: now,
@@ -1065,58 +1103,36 @@ impl TeamManager {
         }
 
         let mut tx = self.db.begin().await?;
-        let row = sqlx::query(
-            r#"
-            SELECT
-                t.id AS task_id,
-                t.created_by_actor_id,
-                t.created_at,
-                t.updated_at,
-                json_extract(t.context_json, '$.description') AS description
-            FROM team_conversations c
-            INNER JOIN team_tasks t ON t.id = c.task_id
-            WHERE c.team_id = ?1
-              AND c.id = ?2
-              AND c.mode = 'group_chat'
-              AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?3
-            LIMIT 1
-            "#,
-        )
-        .bind(normalized_team_id)
-        .bind(normalized_channel_id)
-        .bind(TEAM_CHANNEL_BOOTSTRAP_KIND)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "channel '{}' not found for team {}",
-                normalized_channel_id,
-                normalized_team_id
-            )
-        })?;
+        let row = fetch_team_channel_target(&mut *tx, normalized_team_id, normalized_channel_id)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "channel '{}' not found for team {}",
+                    normalized_channel_id,
+                    normalized_team_id
+                )
+            })?;
 
-        let task_id = row.get::<String, _>("task_id");
-        let description = row
-            .try_get::<Option<String>, _>("description")
-            .ok()
-            .flatten();
-        let created_at = row.get::<i64, _>("created_at");
-        let updated_at = row.get::<i64, _>("updated_at");
-        let created_by_actor_id = row.get::<String, _>("created_by_actor_id");
+        let task_id = row.task_id;
+        let conversation_id = row.conversation_id;
+        let description = row.description;
+        let created_at = row.created_at;
+        let updated_at = row.updated_at;
+        let created_by_actor_id = row.created_by_actor_id;
 
         sqlx::query(
             "DELETE FROM team_channel_message_replicas WHERE conversation_id = ?1 OR task_id = ?2",
         )
-        .bind(normalized_channel_id)
+        .bind(&conversation_id)
         .bind(&task_id)
         .execute(&mut *tx)
         .await?;
         sqlx::query("DELETE FROM team_conversation_messages WHERE conversation_id = ?1")
-            .bind(normalized_channel_id)
+            .bind(&conversation_id)
             .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM team_conversations WHERE id = ?1")
-            .bind(normalized_channel_id)
+            .bind(&conversation_id)
             .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM team_tasks WHERE id = ?1")
@@ -1129,7 +1145,7 @@ impl TeamManager {
             team_id: normalized_team_id.to_string(),
             channel_id: normalized_channel_id.to_string(),
             task_id,
-            conversation_id: normalized_channel_id.to_string(),
+            conversation_id,
             description,
             created_by_actor_id,
             created_at,

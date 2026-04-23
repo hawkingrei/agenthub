@@ -1659,7 +1659,7 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
         .expect("create review channel");
     assert_eq!(channel.team_id, team.id);
     assert_eq!(channel.channel_id, "review");
-    assert_eq!(channel.conversation_id, "review");
+    assert_ne!(channel.conversation_id, "review");
     assert_eq!(channel.description.as_deref(), Some("Review queue"));
     assert_eq!(channel.created_by_actor_id, "leader");
 
@@ -1668,15 +1668,16 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
         SELECT c.id, c.task_id, t.context_json
         FROM team_conversations c
         INNER JOIN team_tasks t ON t.id = c.task_id
-        WHERE c.team_id = ?1 AND c.id = 'review'
+        WHERE c.team_id = ?1 AND c.id = ?2
         LIMIT 1
         "#,
     )
     .bind(&team.id)
+    .bind(&channel.conversation_id)
     .fetch_one(&db)
     .await
     .expect("fetch review conversation");
-    assert_eq!(conversation.get::<String, _>("id"), "review");
+    assert_eq!(conversation.get::<String, _>("id"), channel.conversation_id);
     assert_eq!(conversation.get::<String, _>("task_id"), channel.task_id);
     let context_json: Value = serde_json::from_str(&conversation.get::<String, _>("context_json"))
         .expect("parse context");
@@ -1698,6 +1699,59 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
         listed.is_empty(),
         "channel bootstrap tasks should stay hidden"
     );
+}
+
+#[tokio::test]
+async fn create_team_channel_allows_same_channel_id_in_different_teams() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team_a = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-a".to_string(),
+            description: Some("team a".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team a");
+    let team_b = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-b".to_string(),
+            description: Some("team b".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team b");
+
+    let review_a = manager
+        .create_channel(&team_a.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel for team a");
+    let review_b = manager
+        .create_channel(&team_b.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel for team b");
+
+    assert_ne!(review_a.conversation_id, review_b.conversation_id);
+
+    let conversation_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM team_tasks t
+        INNER JOIN team_conversations c ON c.task_id = t.id
+        WHERE lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = 'team_channel'
+          AND lower(trim(COALESCE(json_extract(t.context_json, '$.channel_id'), ''))) = 'review'
+        "#,
+    )
+    .fetch_one(&db)
+    .await
+    .expect("count review channel bootstraps");
+    assert_eq!(conversation_count, 2);
 }
 
 #[tokio::test]
@@ -1767,12 +1821,12 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     assert_eq!(deleted.channel_id, "research");
     assert_eq!(deleted.task_id, channel.task_id);
 
-    let remaining_conversations = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM team_conversations WHERE id = 'research'",
-    )
-    .fetch_one(&db)
-    .await
-    .expect("count conversations");
+    let remaining_conversations =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_conversations WHERE id = ?1")
+            .bind(&channel.conversation_id)
+            .fetch_one(&db)
+            .await
+            .expect("count conversations");
     let remaining_tasks =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_tasks WHERE id = ?1")
             .bind(&channel.task_id)
@@ -1780,14 +1834,16 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
             .await
             .expect("count tasks");
     let remaining_messages = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM team_conversation_messages WHERE conversation_id = 'research'",
+        "SELECT COUNT(*) FROM team_conversation_messages WHERE conversation_id = ?1",
     )
+    .bind(&channel.conversation_id)
     .fetch_one(&db)
     .await
     .expect("count messages");
     let remaining_replicas = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM team_channel_message_replicas WHERE conversation_id = 'research'",
+        "SELECT COUNT(*) FROM team_channel_message_replicas WHERE conversation_id = ?1",
     )
+    .bind(&channel.conversation_id)
     .fetch_one(&db)
     .await
     .expect("count replicas");
@@ -1796,6 +1852,71 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     assert_eq!(remaining_tasks, 0);
     assert_eq!(remaining_messages, 0);
     assert_eq!(remaining_replicas, 0);
+}
+
+#[tokio::test]
+async fn delete_team_channel_does_not_touch_other_team_same_channel_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team_a = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-delete-a".to_string(),
+            description: Some("team a".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team a");
+    let team_b = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-delete-b".to_string(),
+            description: Some("team b".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team b");
+
+    let review_a = manager
+        .create_channel(&team_a.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel for team a");
+    let review_b = manager
+        .create_channel(&team_b.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel for team b");
+
+    manager
+        .delete_channel(&team_a.id, "review")
+        .await
+        .expect("delete review channel for team a");
+
+    let surviving_conversation =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_conversations WHERE id = ?1")
+            .bind(&review_b.conversation_id)
+            .fetch_one(&db)
+            .await
+            .expect("count surviving conversation");
+    let surviving_task =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_tasks WHERE id = ?1")
+            .bind(&review_b.task_id)
+            .fetch_one(&db)
+            .await
+            .expect("count surviving task");
+    let deleted_conversation =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM team_conversations WHERE id = ?1")
+            .bind(&review_a.conversation_id)
+            .fetch_one(&db)
+            .await
+            .expect("count deleted conversation");
+
+    assert_eq!(surviving_conversation, 1);
+    assert_eq!(surviving_task, 1);
+    assert_eq!(deleted_conversation, 0);
 }
 
 #[tokio::test]
