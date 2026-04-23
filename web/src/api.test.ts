@@ -135,4 +135,49 @@ describe("api request headers", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit & { networkRetry?: string }];
     expect("networkRetry" in init).toBe(false);
   });
+
+  it("posts thread replies to the channel-thread reply endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          thread: {
+            team_id: "team-1",
+            channel_id: "review",
+            task_id: "task-1",
+            conversation_id: "conversation-1",
+            thread_id: "42",
+            root_message_id: 42,
+          },
+          message: {
+            message_id: 77,
+            conversation_id: "conversation-1",
+            task_id: "task-1",
+            from_actor_id: "leader",
+            to_actor_id: null,
+            route: "team_thread_reply",
+            payload: { type: "chat_message", text: "Thread reply" },
+            created_at: 1713480000,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.replyTeamThread("token-1", "team-1", "review", 42, {
+      text: "Thread reply",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/teams/team-1/channels/review/threads/42/replies");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ text: "Thread reply" }));
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer token-1");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
 });

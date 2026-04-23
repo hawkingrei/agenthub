@@ -77,4 +77,30 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Reply in # review");
     expect(html).toContain("Reply");
   });
+
+  it("shows the empty state when no thread root is selected", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamThreadPane
+          channelLabel="# review"
+          rootMessageId={null}
+          rootAuthorLabel={null}
+          rootCreatedAt={null}
+          rootText={null}
+          replies={[]}
+          replyDraft=""
+          onReplyDraftChange={vi.fn()}
+          onSendReply={vi.fn()}
+          replyBusy={false}
+          formatTs={() => "2026/4/19 00:00:00"}
+          onViewInChannel={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Select a channel message");
+    expect(html).toContain("Thread roots open from existing channel messages.");
+    expect(html).not.toContain("Reply in # review");
+  });
 });
