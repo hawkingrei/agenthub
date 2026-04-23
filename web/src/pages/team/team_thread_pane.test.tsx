@@ -35,9 +35,11 @@ describe("TeamThreadPane", () => {
 
     expect(html).toContain("Thread");
     expect(html).toContain("# all");
+    expect(html).toContain("1 reply");
+    expect(html).toContain("Focused replies stay anchored to the source message.");
     expect(html).toContain("View in channel");
     expect(html).toContain("Close thread");
-    expect(html).toContain("Original message");
+    expect(html).toContain("Original");
     expect(html).toContain("leader");
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
@@ -47,8 +49,8 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("I can take the follow-up from here.");
     expect(html).toContain("Draft follow-up");
     expect(html).toContain("Reply");
-    expect(html).toContain("max-w-[340px]");
-    expect(html).toContain("rounded-[12px]");
+    expect(html).toContain("max-w-[360px]");
+    expect(html).toContain("rounded-full");
     expect(html).toContain("hover:border-black");
   });
 
@@ -74,6 +76,7 @@ describe("TeamThreadPane", () => {
     );
 
     expect(html).toContain("Original content is not available in chat text form.");
+    expect(html).toContain("0 replies");
     expect(html).toContain("Reply in # review");
     expect(html).toContain("Reply");
   });

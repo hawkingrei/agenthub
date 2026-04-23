@@ -183,7 +183,7 @@ describe("ui primitives", () => {
     );
 
     expect(bubbleHtml).toContain(
-      "rounded-[12px] border border-transparent px-2 py-[5px] shadow-none"
+      "rounded-[16px] border border-black/5 px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     );
     expect(bubbleHtml).toContain("Bubble");
     expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");

@@ -13,4 +13,16 @@ describe("team markdown rendering", () => {
     expect(rendered).toContain("&lt;img src=x onerror=alert(1)&gt;");
     expect(rendered).not.toContain('<a href="javascript:alert(1)"');
   });
+
+  it("uses shared markdown-it renderer rules for rich chat blocks", () => {
+    const rendered = renderTeamMarkdownCached(
+      "### Plan\n\n> keep context\n\n1. one\n\n`tool`\n\n| col |\n| --- |\n| val |"
+    );
+
+    expect(rendered).toContain('class="md-heading md-h3"');
+    expect(rendered).toContain('class="md-blockquote"');
+    expect(rendered).toContain('class="md-list md-list-ordered"');
+    expect(rendered).toContain('class="md-inline-code"');
+    expect(rendered).toContain('<div class="md-table-wrap"><table class="md-table">');
+  });
 });

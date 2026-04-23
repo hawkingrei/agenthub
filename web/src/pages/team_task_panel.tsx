@@ -46,6 +46,11 @@ import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
+  TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS,
+  TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
+  TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
+  TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS,
+  TEAM_MESSAGE_COMPOSER_SHELL_CLASS,
   TEAM_TASK_ACTIVITY_AUTHOR_CLASS,
   TEAM_TASK_ACTIVITY_BODY_CLASS,
   TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS,
@@ -85,7 +90,7 @@ type TeamTaskPanelProps = {
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
   conversationTitle?: string;
-  isSharedConversation?: boolean;
+  isChannelConversation?: boolean;
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -154,20 +159,24 @@ type TeamTaskPanelAudioWindow = Window &
     webkitAudioContext?: PermissionToneAudioContextConstructor;
   };
 
-const TEAM_TASK_SHORTCUT_CLASS = "text-[11px] font-normal tracking-[0.01em] text-notion-text-muted/65";
+const TEAM_TASK_SHORTCUT_CLASS = TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS;
 const TEAM_TASK_MESSAGE_EMPTY_CLASS =
   "px-8 py-4 text-sm text-notion-text-muted italic";
 const TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS = TEAM_TASK_ACTIVITY_LIST_CLASS;
 const TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS =
-  "mb-0.5 flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5";
+  "mb-0 flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5";
 const TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS =
-  "flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5";
+  "flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5";
 const TEAM_TASK_ACTIVITY_HEADER_META_CLASS =
   "flex min-w-0 flex-wrap items-center justify-end gap-x-0.5 gap-y-0.5 sm:shrink-0";
 const TEAM_TASK_ACTIVITY_META_BUTTON_CLASS =
   "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_META_STATUS_CLASS =
-  "inline-flex items-center gap-1 rounded-md px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
+  "inline-flex items-center gap-1 rounded-full border border-notion-border/70 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium leading-none tracking-[0.01em] text-notion-text-muted/72 shadow-sm hover:bg-white hover:text-notion-text-muted";
+const TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS =
+  "relative mt-1 flex w-full max-w-full";
+const TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS =
+  "pointer-events-auto absolute bottom-1 right-1 z-[1]";
 const TEAM_TASK_ACTIVITY_DETAILS_CLASS =
   "mt-3 rounded-xl border border-notion-border bg-notion-sidebar/10 p-3";
 const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
@@ -175,9 +184,9 @@ const TEAM_TASK_PERMISSION_CARD_ERROR_CLASS =
 const TEAM_TASK_ACTIVITY_SEEN_LIST_CLASS =
   "mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-notion-text-muted";
 const TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS =
-  "inline-flex h-1.5 w-1.5 rounded-full bg-notion-text-muted/45";
+  "inline-flex h-2 w-2 rounded-full border border-notion-text-muted/28 bg-notion-text-muted/18";
 const TEAM_TASK_ACTIVITY_SEEN_DIAL_CLASS =
-  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle opacity-85";
+  "relative inline-flex items-center justify-center overflow-hidden rounded-full align-middle border border-emerald-600/16 opacity-90";
 const TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS =
   `min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
 const TEAM_TASK_ACTIVITY_SEEN_SUMMARY_CLASS =
@@ -191,9 +200,15 @@ const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
 const TEAM_TASK_INITIAL_RENDER_MIN_ITEMS = 12;
 const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
-  "bg-notion-accent-bg/72";
+  "border-black/6 bg-white/94 [&_.md-blockquote]:border-slate-200/90 [&_.md-blockquote]:bg-slate-50/78 [&_.md-table-wrap]:border-black/6 [&_.md-table-wrap]:bg-white/88 [&_.md-table_th]:bg-slate-50/85 [&_.md-code-block]:border-slate-900/80";
 const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
-  "bg-white";
+  "border-black/6 bg-white/96 [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
+const TEAM_TASK_ACTIVITY_AVATAR_BASE_CLASS =
+  "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold uppercase tracking-tight shadow-sm";
+const TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS =
+  `${TEAM_TASK_ACTIVITY_AVATAR_BASE_CLASS} border-black/8 bg-white text-notion-text`;
+const TEAM_TASK_ACTIVITY_AVATAR_AGENT_CLASS =
+  `${TEAM_TASK_ACTIVITY_AVATAR_BASE_CLASS} border-black/8 bg-white text-notion-text-muted`;
 function getPermissionToneAudioContextConstructor(): PermissionToneAudioContextConstructor | null {
   if (typeof window === "undefined") {
     return null;
@@ -305,6 +320,10 @@ function resolveActivityBubbleToneClassName(
     : TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS;
 }
 
+function resolveActivityBubbleLayoutClassName(showSeenMeta: boolean): string {
+  return showSeenMeta ? "w-full pb-3 pr-6" : "w-full";
+}
+
 function TeamTaskPanelLoadingSkeleton() {
   return (
     <div
@@ -330,7 +349,7 @@ function TeamTaskPanelLoadingSkeleton() {
               {!alignRight && (
                 <div className="mt-0.5 h-6 w-6 shrink-0 animate-pulse rounded-sm bg-notion-hover" />
               )}
-              <div className="max-w-[min(100%,42rem)] min-w-0 flex-1">
+              <div className="min-w-0 flex-1">
                 <div className="mb-1.5 flex items-center gap-2">
                   <div className="h-3 w-16 animate-pulse rounded bg-notion-hover" />
                   <div className="h-2.5 w-20 animate-pulse rounded bg-notion-hover/80" />
@@ -621,7 +640,7 @@ function SeenProgressHoverCard({
             className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
           >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
-            <span>Pending</span>
+            <span className="sr-only">Pending</span>
           </CompactButton>
         ) : (
           <CompactButton
@@ -646,7 +665,7 @@ function SeenProgressHoverCard({
                 } satisfies SeenDialStyle
               }
             />
-            <span>{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>
+            <span className="sr-only">{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>
           </CompactButton>
         )}
       </HoverCard.Target>
@@ -865,7 +884,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     memberLiveStates = [],
     memberIds = [],
     conversationTitle = "all",
-    isSharedConversation = true,
+    isChannelConversation = true,
     messagesLoading,
     busy,
     formatTs,
@@ -936,10 +955,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [activeMention, mentionCandidates]);
   const normalizedConversationTitle =
     conversationTitle.trim().length > 0 ? conversationTitle.trim() : "all";
-  const emptyStateText = isSharedConversation
+  const emptyStateText = isChannelConversation
     ? "No messages yet."
     : "No replies yet.";
-  const messagePlaceholder = isSharedConversation
+  const messagePlaceholder = isChannelConversation
     ? `Message #${normalizedConversationTitle}`
     : "Reply in thread";
 
@@ -1005,8 +1024,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       return explicitKey;
     }
     const normalizedTitle = conversationTitle.trim().toLowerCase();
-    return `${isSharedConversation ? "shared" : "thread"}:${normalizedTitle || "conversation"}`;
-  }, [conversationKey, conversationTitle, isSharedConversation]);
+    return `${isChannelConversation ? "shared" : "thread"}:${normalizedTitle || "conversation"}`;
+  }, [conversationKey, conversationTitle, isChannelConversation]);
 
   React.useEffect(() => {
     if (conversationViewportKeyRef.current === normalizedConversationViewportKey) {
@@ -1194,7 +1213,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   );
   const hiddenWaterfallCount = activityWindow.offset;
   const shouldDelayInitialConversationRender =
-    isSharedConversation &&
+    isChannelConversation &&
     messagesLoading &&
     orderedMessages.length > 0 &&
     visibleWaterfallItems.length === 0 &&
@@ -1395,7 +1414,13 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
                         data-team-channel-item="true"
                       >
-                        <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold uppercase tracking-tight shadow-sm ${!isHumanAuthor ? "bg-notion-accent text-white" : "bg-notion-hover text-notion-text-muted"}`}>
+                        <div
+                          className={
+                            isHumanAuthor
+                              ? TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS
+                              : TEAM_TASK_ACTIVITY_AVATAR_AGENT_CLASS
+                          }
+                        >
                           {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
                         </div>
                         <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
@@ -1404,31 +1429,21 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                               <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
                               <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
                             </div>
-                            {(shouldShowSeenMeta || developerMode) && (
+                            {developerMode && (
                               <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
-                                {shouldShowSeenMeta && (
-                                  <SeenProgressHoverCard
-                                    itemKey={item.key}
-                                    seenActorIds={seenActorIds}
-                                    seenProgress={seenProgress}
-                                    memberDisplayNamesById={memberDisplayNamesById}
-                                  />
-                                )}
-                                {developerMode && (
-                                  <CompactButton
-                                    className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
-                                    onClick={() =>
-                                      setExpandedItemKeys((current) => ({
-                                        ...current,
-                                        [item.key]: !current[item.key],
-                                      }))
-                                    }
-                                    aria-expanded={Boolean(expandedItemKeys[item.key])}
-                                  >
-                                    {expandedItemKeys[item.key] ? "Hide" : "Details"}
-                                  </CompactButton>
-                                )}
-                                {isSharedConversation && onOpenThread && (
+                                <CompactButton
+                                  className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
+                                  onClick={() =>
+                                    setExpandedItemKeys((current) => ({
+                                      ...current,
+                                      [item.key]: !current[item.key],
+                                    }))
+                                  }
+                                  aria-expanded={Boolean(expandedItemKeys[item.key])}
+                                >
+                                  {expandedItemKeys[item.key] ? "Hide" : "Details"}
+                                </CompactButton>
+                                {isChannelConversation && onOpenThread && (
                                   <CompactButton
                                     className={
                                       activeThreadMessageId === item.sequence
@@ -1454,23 +1469,53 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                               />
                             </div>
                           ) : isCompactCommandLikeText(item.text) ? (
-                            <ConversationBubble
-                              data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                              className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
-                            >
-                              <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                            </ConversationBubble>
+                            <div className={TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS}>
+                              <ConversationBubble
+                                data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                                className={`${resolveActivityBubbleToneClassName(
+                                  item.fromActorId,
+                                  humanActorId
+                                )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
+                              >
+                                <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
+                              </ConversationBubble>
+                              {shouldShowSeenMeta && (
+                                <div className={TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS}>
+                                  <SeenProgressHoverCard
+                                    itemKey={item.key}
+                                    seenActorIds={seenActorIds}
+                                    seenProgress={seenProgress}
+                                    memberDisplayNamesById={memberDisplayNamesById}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <ConversationBubble
-                              data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                              className={resolveActivityBubbleToneClassName(item.fromActorId, humanActorId)}
-                            >
-                              <TeamThreadRichText
-                                className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                                text={item.text}
-                                renderSanitizedHtml={renderTeamMessageHtml}
-                              />
-                            </ConversationBubble>
+                            <div className={TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS}>
+                              <ConversationBubble
+                                data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
+                                className={`${resolveActivityBubbleToneClassName(
+                                  item.fromActorId,
+                                  humanActorId
+                                )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
+                              >
+                                <TeamThreadRichText
+                                  className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+                                  text={item.text}
+                                  renderSanitizedHtml={renderTeamMessageHtml}
+                                />
+                              </ConversationBubble>
+                              {shouldShowSeenMeta && (
+                                <div className={TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS}>
+                                  <SeenProgressHoverCard
+                                    itemKey={item.key}
+                                    seenActorIds={seenActorIds}
+                                    seenProgress={seenProgress}
+                                    memberDisplayNamesById={memberDisplayNamesById}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           )}
                           {developerMode && expandedItemKeys[item.key] && (
                             <ActivityDetailsPanel item={item} state={state} />
@@ -1511,128 +1556,132 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
         className={TEAM_TASK_COMPOSER_PANEL_CLASS}
         data-team-channel-composer="true"
       >
-        <textarea
-          id="team-task-panel-message"
-          name="team_task_message"
-          ref={messageTextareaRef}
-          className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}
-          rows={1}
-          placeholder={messagePlaceholder}
-          value={messageDraft}
-          onChange={(event) => {
-            const nextDraft = event.target.value;
-            onMessageDraftChange(nextDraft);
-            updateMentionQuery(nextDraft, event.target.selectionStart);
-          }}
-          onClick={(event) =>
-            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
-          }
-          onKeyUp={(event) =>
-            updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
-          }
-          onBlur={() => {
-            setTimeout(() => {
-              setActiveMention(null);
-              setActiveMentionIndex(0);
-            }, 0);
-          }}
-          onCompositionStart={() => {
-            messageDraftComposingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            messageDraftComposingRef.current = false;
-          }}
-          onKeyDown={(event) => {
-            const composing = isTeamImeComposing(
-              messageDraftComposingRef.current,
-              event.nativeEvent.isComposing,
-              "keyCode" in event.nativeEvent
-                ? Number((event.nativeEvent as KeyboardEvent).keyCode)
-                : undefined
-            );
-            if (activeMention && filteredMentionCandidates.length > 0) {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
-                return;
+        <div className={TEAM_MESSAGE_COMPOSER_SHELL_CLASS}>
+          <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
+            <textarea
+              id="team-task-panel-message"
+              name="team_task_message"
+              ref={messageTextareaRef}
+              className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0`}
+              rows={1}
+              placeholder={messagePlaceholder}
+              value={messageDraft}
+              onChange={(event) => {
+                const nextDraft = event.target.value;
+                onMessageDraftChange(nextDraft);
+                updateMentionQuery(nextDraft, event.target.selectionStart);
+              }}
+              onClick={(event) =>
+                updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
               }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setActiveMentionIndex((prev) =>
-                  prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
+              onKeyUp={(event) =>
+                updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+              }
+              onBlur={() => {
+                setTimeout(() => {
+                  setActiveMention(null);
+                  setActiveMentionIndex(0);
+                }, 0);
+              }}
+              onCompositionStart={() => {
+                messageDraftComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                messageDraftComposingRef.current = false;
+              }}
+              onKeyDown={(event) => {
+                const composing = isTeamImeComposing(
+                  messageDraftComposingRef.current,
+                  event.nativeEvent.isComposing,
+                  "keyCode" in event.nativeEvent
+                    ? Number((event.nativeEvent as KeyboardEvent).keyCode)
+                    : undefined
                 );
-                return;
-              }
-              if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
-                event.preventDefault();
-                const selected =
-                  filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
-                if (selected) {
-                  applyMentionSelection(selected);
-                }
-                return;
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setActiveMention(null);
-                setActiveMentionIndex(0);
-                return;
-              }
-            }
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.altKey &&
-              !event.metaKey &&
-              !event.ctrlKey &&
-              !composing &&
-              canSendMessage
-            ) {
-              event.preventDefault();
-              sendCurrentMessage();
-              return;
-            }
-          }}
-        />
-        {activeMention && filteredMentionCandidates.length > 0 && (
-          <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
-            <div className="px-3 py-1 text-xs text-ui-text-muted">
-              Select teammate mention (`@` without selection stays plain text)
-            </div>
-            <div className="max-h-44 overflow-auto py-1">
-              {filteredMentionCandidates.map((candidate, index) => (
-                <MenuOptionButton
-                  key={candidate.actorId}
-                  active={index === activeMentionIndex}
-                  data-team-mention-option={candidate.actorId}
-                  onMouseDown={(event) => {
+                if (activeMention && filteredMentionCandidates.length > 0) {
+                  if (event.key === "ArrowDown") {
                     event.preventDefault();
-                    applyMentionSelection(candidate);
-                  }}
-                >
-                  <span>{candidate.label}</span>
-                  <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
-                </MenuOptionButton>
-              ))}
-            </div>
+                    setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveMentionIndex((prev) =>
+                      prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
+                    );
+                    return;
+                  }
+                  if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
+                    event.preventDefault();
+                    const selected =
+                      filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
+                    if (selected) {
+                      applyMentionSelection(selected);
+                    }
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setActiveMention(null);
+                    setActiveMentionIndex(0);
+                    return;
+                  }
+                }
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.altKey &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !composing &&
+                  canSendMessage
+                ) {
+                  event.preventDefault();
+                  sendCurrentMessage();
+                  return;
+                }
+              }}
+            />
+            <ActionButton
+              tone="primary"
+              size="sm"
+              className={TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS}
+              onClick={() => {
+                sendCurrentMessage();
+              }}
+              disabled={!canSendMessage}
+            >
+              Send
+            </ActionButton>
           </div>
-        )}
-        <ToolbarRow className="mt-0.5 gap-2">
-          <span className={TEAM_TASK_SHORTCUT_CLASS}>
-            {`@name to reply · Enter to send`}
-          </span>
-          <ActionButton
-            tone="primary"
-            size="sm"
-            className="px-3.5"
-            onClick={() => {
-              sendCurrentMessage();
-            }}
-            disabled={!canSendMessage}
-          >
-            Send
-          </ActionButton>
-        </ToolbarRow>
+          {activeMention && filteredMentionCandidates.length > 0 && (
+            <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
+              <div className="px-3 py-1 text-xs text-ui-text-muted">
+                Select teammate mention (`@` without selection stays plain text)
+              </div>
+              <div className="max-h-44 overflow-auto py-1">
+                {filteredMentionCandidates.map((candidate, index) => (
+                  <MenuOptionButton
+                    key={candidate.actorId}
+                    active={index === activeMentionIndex}
+                    data-team-mention-option={candidate.actorId}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applyMentionSelection(candidate);
+                    }}
+                  >
+                    <span>{candidate.label}</span>
+                    <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
+                  </MenuOptionButton>
+                ))}
+              </div>
+            </div>
+          )}
+          <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
+            <span className={TEAM_TASK_SHORTCUT_CLASS}>
+              {`@name to reply · Enter to send`}
+            </span>
+          </ToolbarRow>
+        </div>
       </div>
     </SurfaceCard>
   );

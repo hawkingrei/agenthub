@@ -8,6 +8,7 @@ const {
   getRuntimeDefaults,
   getTeamPromptDefaults,
   getTeamRuntime,
+  listTeamChannels,
   getTeamSharedThread,
   getTeamTask,
   listTeamTasks,
@@ -27,6 +28,7 @@ const {
     status: "stopped",
     members: [],
   }),
+  listTeamChannels: vi.fn().mockResolvedValue([]),
   getTeamSharedThread: vi.fn(),
   getTeamTask: vi.fn(),
   listTeamTasks: vi.fn().mockResolvedValue([]),
@@ -52,6 +54,7 @@ vi.mock("../api", async () => {
       getRuntimeDefaults,
       getTeamPromptDefaults,
       getTeamRuntime,
+      listTeamChannels,
       getTeamSharedThread,
       getTeamTask,
       listTeamTasks,
@@ -329,6 +332,7 @@ describe("TeamPage agent loop profile flow", () => {
     getRuntimeDefaults.mockClear();
     getTeamPromptDefaults.mockClear();
     getTeamRuntime.mockClear();
+    listTeamChannels.mockClear();
     getTeamSharedThread.mockClear();
     getTeamTask.mockClear();
     listTeamTasks.mockClear();

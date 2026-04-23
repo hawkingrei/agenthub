@@ -20,6 +20,7 @@ import {
   TEAM_SIDEBAR_INDICATOR_DOT_CLASS,
 } from "../ui/tailwind_classes";
 import {
+  DEFAULT_TEAM_CHANNEL_ID,
   DEFAULT_TEAM_CHANNEL_ITEMS,
   describeTeamKanban,
   type TeamChannelItem,
@@ -63,6 +64,13 @@ type TeamSidebarProps = {
   onSelectTeam: (teamId: string) => void;
   onBackToSelector?: () => void;
   onSelectChannel: (channelId: TeamChannelItem["id"]) => void;
+  onCreateChannel?: (payload: {
+    channelId: string;
+    description: string;
+  }) => Promise<void> | void;
+  onDeleteChannel?: (channelId: TeamChannelItem["id"]) => Promise<void> | void;
+  creatingChannel?: boolean;
+  deletingChannelId?: string | null;
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
@@ -196,6 +204,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onSelectTeam,
     onBackToSelector,
     onSelectChannel,
+    onCreateChannel,
+    onDeleteChannel,
+    creatingChannel = false,
+    deletingChannelId = null,
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
@@ -204,6 +216,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
   } = props;
   const [teamFilter, setTeamFilter] = React.useState("");
   const [teamDetailsOpen, setTeamDetailsOpen] = React.useState(false);
+  const [showCreateChannelForm, setShowCreateChannelForm] = React.useState(false);
+  const [newChannelId, setNewChannelId] = React.useState("");
+  const [newChannelDescription, setNewChannelDescription] = React.useState("");
   const [sectionOpen, setSectionOpen] = React.useState<Record<TeamSidebarSection, boolean>>({
     teams: true,
     agents: true,
@@ -239,6 +254,34 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
       [section]: !current[section],
     }));
   }, []);
+  const canSubmitChannelCreate = newChannelId.trim().length > 0 && !creatingChannel;
+  const resetCreateChannelForm = React.useCallback(() => {
+    setShowCreateChannelForm(false);
+    setNewChannelId("");
+    setNewChannelDescription("");
+  }, []);
+  const handleCreateChannelSubmit = React.useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!onCreateChannel || !canSubmitChannelCreate) {
+        return;
+      }
+      const payload = {
+        channelId: newChannelId.trim(),
+        description: newChannelDescription.trim(),
+      };
+      void Promise.resolve(onCreateChannel(payload)).then(() => {
+        resetCreateChannelForm();
+      });
+    },
+    [
+      canSubmitChannelCreate,
+      newChannelDescription,
+      newChannelId,
+      onCreateChannel,
+      resetCreateChannelForm,
+    ]
+  );
 
   return (
     <aside
@@ -549,31 +592,105 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
           <div className="mt-4 flex flex-col gap-0.5">
             <div className="mb-1 mt-3 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.01em] text-notion-text-muted">
               Channels
+              {onCreateChannel ? (
+                <IconButton
+                  onClick={() => {
+                    setShowCreateChannelForm((current) => !current);
+                  }}
+                  disabled={creatingChannel}
+                  tone="subtle"
+                  size="sm"
+                  className="h-7 w-7 text-notion-text-muted hover:bg-notion-hover hover:text-notion-text"
+                  title="Create channel"
+                  aria-label="Create channel"
+                >
+                  <i className="bi bi-plus-lg" aria-hidden="true" />
+                </IconButton>
+              ) : null}
             </div>
+            {showCreateChannelForm && onCreateChannel ? (
+              <form
+                className="mb-2 flex flex-col gap-2 px-2"
+                onSubmit={handleCreateChannelSubmit}
+              >
+                <TextInput
+                  aria-label="Channel ID"
+                  placeholder="review"
+                  value={newChannelId}
+                  onChange={(event) => setNewChannelId(event.currentTarget.value)}
+                  size="xs"
+                />
+                <TextInput
+                  aria-label="Channel Description"
+                  placeholder="Review lane"
+                  value={newChannelDescription}
+                  onChange={(event) => setNewChannelDescription(event.currentTarget.value)}
+                  size="xs"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text"
+                    onClick={resetCreateChannelForm}
+                    disabled={creatingChannel}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="inline-flex h-7 items-center rounded-md bg-notion-text px-2.5 text-[11px] font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!canSubmitChannelCreate}
+                  >
+                    Create channel
+                  </button>
+                </div>
+              </form>
+            ) : null}
             {channelItems.map((channel) => {
               const isSelected = tab === "conversation" && selectedChannelId === channel.id;
+              const isDefaultChannel = channel.id === DEFAULT_TEAM_CHANNEL_ID;
+              const isDeleting = deletingChannelId === channel.id;
               return (
-                <UnstyledButton
+                <div
                   key={channel.id}
-                  className={
-                    isSelected
-                      ? TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS
-                      : TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS
-                  }
-                  onClick={() => onSelectChannel(channel.id)}
-                  title={channel.label}
+                  className="group flex items-center gap-1"
                 >
-                  <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-[12px] font-medium">
-                      {channel.label}
-                    </span>
-                    {channel.description ? (
-                      <span className="block truncate text-[10px] text-notion-text-muted">
-                        {channel.description}
+                  <UnstyledButton
+                    className={
+                      isSelected
+                        ? `${TEAM_SIDEBAR_WORKFLOW_ACTIVE_CLASS} flex-1`
+                        : `${TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS} flex-1`
+                    }
+                    onClick={() => onSelectChannel(channel.id)}
+                    title={channel.label}
+                  >
+                    <span className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-[12px] font-medium">
+                        {channel.label}
                       </span>
-                    ) : null}
-                  </span>
-                </UnstyledButton>
+                      {channel.description ? (
+                        <span className="block truncate text-[10px] text-notion-text-muted">
+                          {channel.description}
+                        </span>
+                      ) : null}
+                    </span>
+                  </UnstyledButton>
+                  {!isDefaultChannel && onDeleteChannel ? (
+                    <IconButton
+                      onClick={() => {
+                        void onDeleteChannel(channel.id);
+                      }}
+                      disabled={isDeleting || creatingChannel}
+                      tone="subtle"
+                      size="sm"
+                      className="h-7 w-7 shrink-0 text-notion-text-muted opacity-0 transition group-hover:opacity-100 hover:bg-notion-hover hover:text-rose-600 disabled:opacity-50"
+                      title={`Delete ${channel.label}`}
+                      aria-label={`Delete channel ${channel.id}`}
+                    >
+                      <i className="bi bi-trash3" aria-hidden="true" />
+                    </IconButton>
+                  ) : null}
+                </div>
               );
             })}
           </div>

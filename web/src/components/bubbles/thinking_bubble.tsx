@@ -3,7 +3,10 @@ import {
   formatConversationPreview,
   unescapeLineBreaks,
 } from "../../conversation";
-import { ACP_BUBBLE_THINKING_CLASS } from "../../ui/tailwind_classes";
+import {
+  ACP_BUBBLE_THINKING_CLASS,
+  CONVERSATION_MESSAGE_STACK_ROW_CLASS,
+} from "../../ui/tailwind_classes";
 import { ThreadRichText } from "../thread_rich_text";
 
 export type ThinkingBubbleProps = {
@@ -25,7 +28,7 @@ export const ThinkingBubble = React.memo(function ThinkingBubble({
   });
   const entryClassName = grouped
     ? ""
-    : "acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white";
+    : `acp-row ${CONVERSATION_MESSAGE_STACK_ROW_CLASS} items-start`;
 
   return (
     <div className={entryClassName}>

@@ -8,6 +8,7 @@ import {
   ACP_PLAN_INDEX_BADGE_CLASS,
   ACP_PLAN_PRIORITY_BADGE_CLASS,
   ACP_PLAN_STATUS_BADGE_CLASS,
+  CONVERSATION_MESSAGE_STACK_ROW_CLASS,
 } from "../../ui/tailwind_classes";
 
 const ACP_PLAN_CARD_CLASS =
@@ -40,7 +41,7 @@ export const PlanBubble = React.memo(
             : "Plan (collapsed)"
           : "Plan (collapsed)";
     return (
-      <div className="acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white">
+      <div className={`acp-row ${CONVERSATION_MESSAGE_STACK_ROW_CLASS} items-start`}>
         <div className={ACP_BUBBLE_PLAN_CLASS}>
           <details className="acp-thought-fold acp-plan-fold">
             <summary className="cursor-pointer text-sm font-semibold text-notion-text">

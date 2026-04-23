@@ -253,6 +253,17 @@ export type TeamDefinitionRecord = {
   updated_at: number;
 };
 
+export type TeamChannelRecord = {
+  team_id: string;
+  channel_id: string;
+  task_id: string;
+  conversation_id: string;
+  description?: string | null;
+  created_by_actor_id: string;
+  created_at: number;
+  updated_at: number;
+};
+
 export type TeamTaskRecord = {
   id: string;
   team_id: string;
@@ -788,6 +799,32 @@ export const api = {
       `/api/teams/${encodePathSegment(teamId)}/shared_thread`,
       token,
       { method: "POST" }
+    ),
+  listTeamChannels: (token: string, teamId: string) =>
+    apiFetch<TeamChannelRecord[]>(
+      `/api/teams/${encodePathSegment(teamId)}/channels`,
+      token
+    ),
+  createTeamChannel: (
+    token: string,
+    teamId: string,
+    payload: { channel_id: string; description?: string | null }
+  ) =>
+    apiFetch<TeamChannelRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/channels`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  deleteTeamChannel: (token: string, teamId: string, channelId: string) =>
+    apiFetch<TeamChannelRecord>(
+      `/api/teams/${encodePathSegment(teamId)}/channels/${encodePathSegment(channelId)}`,
+      token,
+      {
+        method: "DELETE",
+      }
     ),
   listTeamTasks: (
     token: string,

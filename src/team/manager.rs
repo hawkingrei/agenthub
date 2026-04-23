@@ -927,6 +927,58 @@ impl TeamManager {
         })
     }
 
+    pub async fn list_channels(
+        &self,
+        team_id: &str,
+    ) -> anyhow::Result<Vec<super::TeamChannelRecord>> {
+        let normalized_team_id = team_id.trim();
+        if normalized_team_id.is_empty() {
+            anyhow::bail!("team_id is required");
+        }
+
+        self.get_team(normalized_team_id).await?;
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                t.id AS task_id,
+                c.id AS conversation_id,
+                lower(trim(COALESCE(json_extract(t.context_json, '$.channel_id'), ''))) AS channel_id,
+                json_extract(t.context_json, '$.description') AS description,
+                t.created_by_actor_id,
+                t.created_at,
+                t.updated_at
+            FROM team_tasks t
+            INNER JOIN team_conversations c ON c.task_id = t.id
+            WHERE t.team_id = ?1
+              AND c.team_id = ?1
+              AND c.mode = 'group_chat'
+              AND lower(trim(COALESCE(json_extract(t.context_json, '$.bootstrap_kind'), ''))) = ?2
+            ORDER BY c.created_at ASC, t.created_at ASC, t.id ASC
+            "#,
+        )
+        .bind(normalized_team_id)
+        .bind(TEAM_CHANNEL_BOOTSTRAP_KIND)
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| super::TeamChannelRecord {
+                team_id: normalized_team_id.to_string(),
+                task_id: row.get("task_id"),
+                conversation_id: row.get("conversation_id"),
+                channel_id: row.get("channel_id"),
+                description: row
+                    .try_get::<Option<String>, _>("description")
+                    .ok()
+                    .flatten(),
+                created_by_actor_id: row.get("created_by_actor_id"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+            .collect())
+    }
+
     pub async fn open_thread(
         &self,
         team_id: &str,

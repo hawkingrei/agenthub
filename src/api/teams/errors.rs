@@ -25,6 +25,30 @@ pub(super) fn map_task_message_error(err: anyhow::Error) -> ApiError {
     map_team_internal_error(err)
 }
 
+pub(super) fn map_channel_create_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    let normalized = message.to_ascii_lowercase();
+    if normalized.contains("already exists for team") {
+        return ApiError::conflict("channel already exists");
+    }
+    if normalized.contains("is required") || normalized.contains("reserved") {
+        return ApiError::bad_request(&message);
+    }
+    map_team_internal_error(err)
+}
+
+pub(super) fn map_channel_delete_error(err: anyhow::Error) -> ApiError {
+    let message = err.to_string();
+    let normalized = message.to_ascii_lowercase();
+    if normalized.contains("not found for team") {
+        return ApiError::not_found("channel not found");
+    }
+    if normalized.contains("is required") || normalized.contains("cannot be deleted") {
+        return ApiError::bad_request(&message);
+    }
+    map_team_internal_error(err)
+}
+
 pub(super) fn map_reply_thread_error(err: anyhow::Error) -> ApiError {
     let message = err.to_string();
     let normalized = message.to_ascii_lowercase();
@@ -134,7 +158,10 @@ fn is_unique_violation_for(err: &anyhow::Error, constraint: &str) -> bool {
 mod tests {
     use axum::response::IntoResponse;
 
-    use super::{map_reply_thread_error, map_runtime_start_error, map_task_message_error};
+    use super::{
+        map_channel_create_error, map_channel_delete_error, map_reply_thread_error,
+        map_runtime_start_error, map_task_message_error,
+    };
     use crate::team::{TeamManager, TeamRuntimeStartError};
 
     #[test]
@@ -184,6 +211,27 @@ mod tests {
         assert_eq!(
             api_err.into_response().status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn map_channel_create_error_maps_duplicates_to_conflict() {
+        let api_err = map_channel_create_error(anyhow::anyhow!(
+            "channel 'review' already exists for team t-1"
+        ));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn map_channel_delete_error_maps_missing_channel_to_not_found() {
+        let api_err =
+            map_channel_delete_error(anyhow::anyhow!("channel 'review' not found for team t-1"));
+        assert_eq!(
+            api_err.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
         );
     }
 

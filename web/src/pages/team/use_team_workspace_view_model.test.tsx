@@ -80,6 +80,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       created_at: 1,
       updated_at: 1,
     } as HookParams["selectedConversation"],
+    selectedChannelId: "all",
     selectedChannelLabel: "# all",
     selectedChannelDescription:
       "Shared coordination lane for requests, updates, and cross-cutting discussion.",
@@ -356,6 +357,29 @@ describe("useTeamWorkspaceViewModel", () => {
         "Select a team from the left rail to start team conversations and supervise execution."
       );
       expect(snapshot?.showDedicatedWorkspaceHeading).toBe(true);
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("preserves the selected channel id when routing back into the channels lens", async () => {
+    const params = createParams({
+      selectedChannelId: "review",
+      selectedChannelLabel: "# review",
+      selectedChannelDescription: "Focused design and implementation review lane.",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectConversationSubject();
+      });
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "channels", "review");
+
+      act(() => {
+        snapshot?.onSelectWorkspaceLens("channels");
+      });
+      expect(params.navigateToTeamLens).toHaveBeenLastCalledWith("team-1", "channels", "review");
     } finally {
       mounted.cleanup();
     }

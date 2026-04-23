@@ -34,6 +34,17 @@ const baseAgentControlState: TeamMemberAgentControlState = {
   canDelete: true,
 };
 
+const baseAgentSpecDraft = {
+  name: "worker-1",
+  description: "Own planning and keep the team aligned.",
+  prompt: "",
+  skills: "",
+  model: "",
+  role: "worker" as const,
+  agent_loop_enabled: false,
+  agent_loop_idle_seconds: "",
+};
+
 const baseRuntimeTone: TeamRuntimeControlTone = {
   statusColor: "teal",
   countColor: "teal",
@@ -51,7 +62,7 @@ function renderHtml(override: Partial<React.ComponentProps<typeof TeamWorkspaceH
         selectedAgentLabel="worker-1"
         selectedAgentWorkspaceMemberId="member-1"
         selectedAgentStatusView={baseAgentStatusView}
-        selectedAgentSpecDraft={null}
+        selectedAgentSpecDraft={baseAgentSpecDraft}
         selectedAgentControlState={baseAgentControlState}
         showWorkspaceRuntimeBadge
         selectedTeamRuntimeStatusLabel="team running"
@@ -113,6 +124,7 @@ describe("TeamWorkspaceHeader", () => {
     });
     expect(html).toContain("aria-label=\"Agent\"");
     expect(html).toContain("worker-1");
+    expect(html).toContain("Own planning and keep the team aligned.");
     expect(html).toContain("team=abc");
     expect(html).not.toContain("3/3 online");
   });

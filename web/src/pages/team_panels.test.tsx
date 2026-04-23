@@ -711,6 +711,78 @@ describe("team panels interactions", () => {
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("TeamSidebar exposes create and delete channel controls for non-default lanes", async () => {
+    const onCreateChannel = vi.fn().mockResolvedValue(undefined);
+    const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
+    const teamOne = buildTeam();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[teamOne]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            selectedTeamHasConfiguredMembers={true}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[buildMemberLiveState()]}
+            channelItems={[
+              {
+                id: "all",
+                label: "# all",
+                description: "Shared coordination lane",
+              },
+              {
+                id: "review",
+                label: "# review",
+                description: "Review lane",
+              },
+            ]}
+            selectedChannelId="review"
+            focusedAgentMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectChannel={() => {}}
+            onCreateChannel={onCreateChannel}
+            onDeleteChannel={onDeleteChannel}
+            onSelectKanban={() => {}}
+            onSelectAgentTab={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Create channel"));
+    const channelIdInput = required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing"
+    ) as HTMLInputElement;
+    const descriptionInput = required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing"
+    ) as HTMLInputElement;
+    changeInputValue(channelIdInput, " research ");
+    changeInputValue(descriptionInput, " Investigation lane ");
+    clickElement(findButtonByText(container, "Create channel"));
+    await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
+    expect(onCreateChannel).toHaveBeenCalledWith({
+      channelId: "research",
+      description: "Investigation lane",
+    });
+
+    expect(queryButtonByAriaLabel(container, "Delete channel all")).toBeNull();
+    clickElement(findButtonByAriaLabel(container, "Delete channel review"));
+    expect(onDeleteChannel).toHaveBeenCalledWith("review");
+  });
+
   it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
     const teamOne = buildTeam({
       description: "Triage TiDB issues and coordinate the fuzzing backlog.",
@@ -2397,7 +2469,7 @@ describe("team panels interactions", () => {
         ]}
         memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
         conversationTitle="worker-thread"
-        isSharedConversation={false}
+        isChannelConversation={false}
         messagesLoading={true}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -3112,7 +3184,7 @@ describe("team panels interactions", () => {
         memberLiveStates={[buildMemberLiveState()]}
         memberIds={["leader-agent", "worker-agent"]}
         conversationTitle="Shared thread"
-        isSharedConversation={true}
+        isChannelConversation={true}
         messagesLoading={false}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -3378,7 +3450,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[12px]");
+    ).toContain("rounded-[16px]");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -3681,11 +3753,13 @@ describe("team panels interactions", () => {
         />
     );
 
-    await waitForCondition(() => container.innerHTML.includes("<table>"));
-    expect(container.innerHTML).toContain("<ul>");
-    expect(container.innerHTML).toContain("<table>");
+    await waitForCondition(() => container.innerHTML.includes("<table"));
+    expect(container.innerHTML).toContain('class="md-list md-list-unordered"');
+    expect(container.innerHTML).toContain('class="md-table-wrap"');
+    expect(container.innerHTML).toContain("<table");
     expect(container.innerHTML).toContain("<pre");
-    expect(container.innerHTML).toContain("<code>code</code>");
+    expect(container.innerHTML).toContain('class="md-inline-code"');
+    expect(container.innerHTML).toContain(">code</code>");
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {
@@ -4669,7 +4743,7 @@ describe("team panels interactions", () => {
       container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
       "channel bubble missing"
     );
-    expect(bubble.className).toContain("rounded-[12px]");
+    expect(bubble.className).toContain("rounded-[16px]");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {

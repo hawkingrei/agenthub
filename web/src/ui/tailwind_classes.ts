@@ -84,20 +84,29 @@ export const ACP_DEBUG_RAW_PRE_CLASS =
 export const ACP_CONVERSATION_TOP_HINT_CLASS =
   "acp-conversation-top-hint mx-auto my-4 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm";
 
+export const CONVERSATION_MESSAGE_ROW_BASE_CLASS =
+  "group relative rounded-lg border-2 border-transparent transition hover:border-black hover:bg-white active:border-black active:bg-white";
+
+export const CONVERSATION_MESSAGE_STACK_ROW_CLASS =
+  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} mb-0.5 flex w-full flex-col px-2 py-1.5`;
+
+export const CONVERSATION_MESSAGE_INLINE_ROW_CLASS =
+  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} flex items-start gap-2.5 px-2 py-1.5`;
+
 export const ACP_MESSAGE_BUBBLE_CLASS =
-  "acp-message-bubble relative max-w-[min(96%,78ch)] rounded-[14px] border border-transparent px-2.5 py-1.5 text-[14px] leading-6 shadow-none transition-all";
+  "acp-message-bubble relative w-full max-w-full rounded-[12px] border border-black/6 px-2 py-[5px] text-[14px] leading-6 shadow-none transition-all";
 
 export const ACP_MESSAGE_BUBBLE_AGENT_CLASS =
-  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-[6px] bg-white/88 text-slate-900`;
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-[6px] bg-white/96 text-slate-900`;
 
 export const ACP_MESSAGE_BUBBLE_USER_CLASS =
-  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-[6px] bg-slate-50/78 text-slate-900`;
+  `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-[6px] bg-white/94 text-slate-900`;
 
 export const ACP_BUBBLE_THINKING_CLASS =
-  "acp-bubble agent_thinking self-start max-w-[94%] rounded-[14px] rounded-tl-[6px] border border-transparent bg-slate-50/72 px-2.5 py-1.5 italic text-slate-600 shadow-none";
+  "acp-bubble agent_thinking self-start w-full max-w-full rounded-[12px] rounded-tl-[6px] border border-black/6 bg-slate-50/78 px-2 py-[5px] italic text-slate-600 shadow-none";
 
 export const ACP_BUBBLE_PLAN_CLASS =
-  "acp-bubble agent_plan self-start max-w-[96%] rounded-[14px] rounded-tl-[6px] border border-transparent bg-white/92 px-2.5 py-1.5 shadow-none";
+  "acp-bubble agent_plan self-start w-full max-w-full rounded-[12px] rounded-tl-[6px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none";
 
 export const ACP_PLAN_INDEX_BADGE_CLASS =
   "mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md bg-notion-hover text-[10px] font-bold text-notion-text-muted shadow-inner";
@@ -258,31 +267,46 @@ export const TEAM_SIDEBAR_INDICATOR_DOT_CLASS =
   "h-2 w-2 shrink-0 rounded-full mt-0.5";
 
 export const TEAM_TASK_ACTIVITY_LIST_CLASS =
-  "relative min-h-0 flex flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain before:absolute before:left-[9px] before:top-1.5 before:h-[calc(100%-12px)] before:w-0.5 before:bg-notion-hover";
+  "relative min-h-0 flex flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain before:absolute before:left-[9px] before:top-1.5 before:h-[calc(100%-12px)] before:w-0.5 before:bg-notion-hover";
 
 export const TEAM_TASK_COMPOSER_PANEL_CLASS =
-  "flex shrink-0 flex-col gap-1 border-t border-notion-border-faint bg-notion-bg-soft/95 px-2 py-[5px] shadow-notion-topline backdrop-blur-md sm:px-2.5 sm:py-1.5";
+  "flex shrink-0 flex-col gap-0.5 border-t border-notion-border/55 bg-white/92 px-2 py-1 shadow-[inset_0_1px_0_rgba(15,23,42,0.02)] backdrop-blur-sm sm:px-2.5 sm:py-1.5";
+
+export const TEAM_MESSAGE_COMPOSER_SHELL_CLASS =
+  "rounded-2xl border border-black/6 bg-white/95 p-2 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
+
+export const TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS =
+  "flex items-end gap-2 rounded-[14px] border border-slate-200/80 bg-slate-50/56 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]";
+
+export const TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS =
+  "h-8 rounded-full px-3 text-[12px]";
+
+export const TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS =
+  "mt-1 flex flex-wrap items-center justify-between gap-1.5 px-0.5";
+
+export const TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS =
+  "text-[11px] font-normal tracking-[0.01em] text-notion-text-muted/65";
 
 export const TEAM_TASK_ACTIVITY_SHELL_CLASS = "min-h-full bg-white py-1.5";
 
 export const TEAM_TASK_ACTIVITY_STACK_CLASS = "flex w-full flex-col";
 
 const TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS =
-  "group relative mb-1 flex w-full max-w-full gap-3 rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white";
+  "group relative mb-0.5 flex w-full max-w-full gap-3 rounded-lg border-2 border-transparent px-2 py-1.5 transition hover:border-black hover:bg-white active:border-black active:bg-white";
 
 export const TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS = TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS;
 
 export const TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS = TEAM_TASK_ACTIVITY_ITEM_BASE_CLASS;
 
 export const TEAM_TASK_ACTIVITY_CONTENT_CLASS =
-  "min-w-0 flex max-w-[min(100%,72ch)] flex-col";
+  "min-w-0 flex flex-1 max-w-full flex-col";
 
 export const TEAM_TASK_ACTIVITY_CONTENT_HUMAN_CLASS = "items-end";
 
 export const TEAM_TASK_ACTIVITY_CONTENT_AGENT_CLASS = "items-start";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS =
-  "mt-0.5 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-[5px] shadow-none";
+  "mt-0 min-w-0 max-w-full overflow-hidden rounded-[12px] border border-transparent px-2 py-[5px] shadow-none";
 
 export const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_CLASS =
   `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} bg-notion-accent-bg/64`;
@@ -291,7 +315,7 @@ export const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_CLASS =
   `${TEAM_TASK_ACTIVITY_BUBBLE_BASE_CLASS} bg-white/88`;
 
 export const TEAM_TASK_ACTIVITY_AUTHOR_CLASS =
-  "text-[13px] font-bold text-notion-text";
+  "text-[13px] font-semibold text-notion-text";
 
 export const TEAM_TASK_ACTIVITY_ITEM_CLASS = "relative flex gap-4 pl-8 group";
 
@@ -305,10 +329,10 @@ export const TEAM_TASK_ACTIVITY_TITLE_CLASS =
   "text-sm font-bold text-notion-text";
 
 export const TEAM_TASK_ACTIVITY_TIME_CLASS =
-  "text-[11px] font-medium tracking-[0.01em] text-notion-text-muted/78";
+  "text-[10px] font-medium tracking-[0.01em] text-notion-text-muted/72";
 
 export const TEAM_TASK_ACTIVITY_BODY_CLASS =
-  "min-w-0 max-w-full break-words text-[14px] leading-6 text-notion-text [overflow-wrap:anywhere] [&_blockquote]:my-1.5 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-200 [&_blockquote]:pl-2.5 [&_code]:break-words [&_li]:my-0.5 [&_li]:break-words [&_ol]:my-1.5 [&_ol]:max-w-full [&_p]:mb-2 [&_p]:break-words [&_p:last-child]:mb-0 [&_pre]:my-2 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:break-words [&_th]:break-words [&_ul]:my-1.5 [&_ul]:max-w-full";
+  "min-w-0 max-w-full break-words text-[14px] leading-6 text-notion-text [overflow-wrap:anywhere] [&_.md-blockquote]:my-2 [&_.md-blockquote]:border-sky-200 [&_.md-blockquote]:bg-sky-50/55 [&_.md-blockquote]:pl-2.5 [&_.md-list]:my-1.5 [&_.md-code-block]:my-2.5 [&_.md-code-block]:rounded-xl [&_.md-code-block]:px-3 [&_.md-code-block]:py-2.5 [&_.md-code-block]:whitespace-pre-wrap [&_.md-code-block]:break-words [&_.md-code-block_code]:whitespace-pre-wrap [&_.md-code-block_code]:break-words [&_.md-table-wrap]:max-w-full [&_.md-table-wrap]:overflow-x-auto [&_.md-table-wrap]:rounded-lg [&_.md-table_td]:break-words [&_.md-table_th]:break-words [&_.md-paragraph]:mb-2 [&_.md-paragraph:last-child]:mb-0";
 
 export const TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS =
   "mono m-0 max-w-full whitespace-pre-wrap break-words text-[12px] leading-relaxed text-notion-text [overflow-wrap:anywhere]";
@@ -646,7 +670,7 @@ export const OUTPUT_BODY_EMPTY_CLASS =
   "output-empty flex h-full min-h-40 flex-col items-center justify-center gap-2 px-6 text-center";
 
 export const INPUT_DOCK_ROOT_CLASS =
-  "input docked sticky bottom-0 z-50 flex w-full flex-col gap-1.5 rounded-[18px] border border-slate-300/75 bg-white/97 p-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.09)] backdrop-blur-md transition-all has-[:focus-visible]:border-sky-500/60 has-[:focus-visible]:shadow-[0_14px_28px_rgba(14,165,233,0.14)] sm:bottom-6 sm:p-2";
+  "input docked sticky bottom-0 z-50 flex w-full flex-col gap-1 rounded-[16px] border border-slate-200/85 bg-white/95 p-1.5 shadow-[0_4px_14px_rgba(15,23,42,0.06)] backdrop-blur-sm transition-all has-[:focus-visible]:border-sky-500/60 has-[:focus-visible]:shadow-[0_10px_20px_rgba(14,165,233,0.12)] sm:bottom-4 sm:p-2";
 
 export const INPUT_DOCK_INTERRUPT_BUTTON_CLASS =
   "acp-interrupt-button input-interrupt-button inline-flex h-7 items-center justify-center rounded-full border border-amber-300/90 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60 active:translate-y-px";

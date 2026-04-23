@@ -1,5 +1,5 @@
 import React from "react";
-import { Menu, Tooltip } from "@mantine/core";
+import { HoverCard, Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
 import { ActionButton } from "../../ui/primitives";
 import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
@@ -137,6 +137,8 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
         : "disabled",
     },
   ];
+  const selectedAgentIdentityDescription =
+    selectedAgentSpecDraft?.description?.trim() || "No agent identity description yet.";
 
   return (
     <div className={`flex flex-col ${isAgentWorkspace ? "gap-2" : "gap-3"}`}>
@@ -170,22 +172,46 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {isAgentWorkspace ? (
-            <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
-              <Menu.Target>
-                <ActionButton
-                  type="button"
-                  tone="ghost"
-                  size="sm"
-                  className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium`}
-                  aria-label="Agent"
-                  title="Agent"
-                >
-                  <i className="bi bi-person" aria-hidden="true" />
-                  <span className="max-w-[12rem] truncate">{selectedAgentLabel}</span>
-                  <i className="bi bi-chevron-down text-[10px]" aria-hidden="true" />
-                </ActionButton>
-              </Menu.Target>
-              <Menu.Dropdown>
+            <HoverCard
+              width={320}
+              position="bottom-start"
+              openDelay={120}
+              closeDelay={80}
+              shadow="md"
+              withArrow
+            >
+              <HoverCard.Target>
+                <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
+                  <Menu.Target>
+                    <ActionButton
+                      type="button"
+                      tone="ghost"
+                      size="sm"
+                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-2 rounded-2xl border border-black/6 bg-white/85 px-2.5 py-1.5 text-left text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
+                      aria-label="Agent"
+                      title={selectedAgentIdentityDescription}
+                    >
+                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
+                        <i className="bi bi-person text-[12px]" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2 text-[12px] leading-5 text-notion-text">
+                          <span className="max-w-[12rem] truncate font-semibold">
+                            {selectedAgentLabel}
+                          </span>
+                          <span className="shrink-0 text-black/20">|</span>
+                          <span className="truncate text-[12px] font-medium text-black/50">
+                            {selectedAgentIdentityDescription}
+                          </span>
+                        </span>
+                      </span>
+                      <i
+                        className="bi bi-chevron-down shrink-0 text-[10px] text-black/45"
+                        aria-hidden="true"
+                      />
+                    </ActionButton>
+                  </Menu.Target>
+                  <Menu.Dropdown>
                 <Menu.Label>{selectedAgentLabel}</Menu.Label>
                 {agentWorkspaceSummaryItems.map((item) => (
                   <Menu.Item key={item.label} disabled>
@@ -199,8 +225,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                   <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
                     <span className="font-semibold text-ui-text-primary">Identity</span>
                     <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                      {selectedAgentSpecDraft?.description?.trim() ||
-                        "No agent identity description yet."}
+                      {selectedAgentIdentityDescription}
                     </p>
                   </div>
                 </Menu.Item>
@@ -241,8 +266,33 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                 >
                   Delete Agent
                 </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
+                  </Menu.Dropdown>
+                </Menu>
+              </HoverCard.Target>
+              <HoverCard.Dropdown className="rounded-2xl border border-black/6 bg-white/95 p-3 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-md">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
+                    <i className="bi bi-person text-[13px]" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[13px] font-semibold text-notion-text">
+                        {selectedAgentLabel}
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-black/35">
+                        {selectedAgentStatusView.role}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] leading-5 text-black/60">
+                      {selectedAgentIdentityDescription}
+                    </p>
+                    <p className="mt-2 text-[11px] leading-5 text-black/45">
+                      {selectedAgentStatusView.currentWork}
+                    </p>
+                  </div>
+                </div>
+              </HoverCard.Dropdown>
+            </HoverCard>
           ) : showWorkspaceRuntimeBadge ? (
             <Tooltip
               label={`${selectedTeamRuntimeOnline}/${selectedTeamRuntimeTotal} members online`}

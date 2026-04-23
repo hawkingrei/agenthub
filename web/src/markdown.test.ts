@@ -101,9 +101,22 @@ describe("renderMarkdown", () => {
 
   it("wraps fenced code blocks for highlighting", () => {
     const html = renderMarkdown("```ts\nconst value = 1\n```\n");
-    expect(html).toContain('class="hljs"');
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('data-language="ts"');
     expect(html).toContain("<pre");
     expect(html).toContain("<code");
+  });
+
+  it("adds rich markdown classes to headings, lists, blockquotes, tables, and inline code", () => {
+    const html = renderMarkdown(
+      "## Heading\n\n> quote\n\n- item\n\n`code`\n\n| a |\n| - |\n| b |"
+    );
+    expect(html).toContain('class="md-heading md-h2"');
+    expect(html).toContain('class="md-blockquote"');
+    expect(html).toContain('class="md-list md-list-unordered"');
+    expect(html).toContain('class="md-list-item"');
+    expect(html).toContain('class="md-inline-code"');
+    expect(html).toContain('<div class="md-table-wrap"><table class="md-table">');
   });
 
   it("escapes raw html blocks", () => {

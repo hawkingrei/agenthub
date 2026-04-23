@@ -63,7 +63,7 @@ describe("team_page helpers", () => {
   it("parses team channel and thread query state", () => {
     expect(resolveTeamChannelId("")).toBe("all");
     expect(resolveTeamChannelId("?channel=all")).toBe("all");
-    expect(resolveTeamChannelId("?channel=research")).toBe("all");
+    expect(resolveTeamChannelId("?channel=research")).toBe("research");
     expect(resolveTeamThreadRootMessageId("")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=17")).toBe(17);
     expect(resolveTeamThreadRootMessageId("?thread=abc")).toBeNull();

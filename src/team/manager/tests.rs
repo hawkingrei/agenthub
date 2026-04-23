@@ -1716,6 +1716,54 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
 }
 
 #[tokio::test]
+async fn list_team_channels_returns_non_default_channels_in_creation_order() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-list".to_string(),
+            description: Some("verify channel listing".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    manager
+        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+    manager
+        .create_channel(&team.id, "research", Some("Research lane"), "leader")
+        .await
+        .expect("create research channel");
+
+    let listed = manager
+        .list_channels(&team.id)
+        .await
+        .expect("list team channels");
+    assert_eq!(listed.len(), 2);
+    let listed_by_id = listed
+        .into_iter()
+        .map(|channel| (channel.channel_id, channel.description))
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(
+        listed_by_id
+            .get("review")
+            .and_then(|value| value.as_deref()),
+        Some("Review lane")
+    );
+    assert_eq!(
+        listed_by_id
+            .get("research")
+            .and_then(|value| value.as_deref()),
+        Some("Research lane")
+    );
+}
+
+#[tokio::test]
 async fn create_team_channel_allows_same_channel_id_in_different_teams() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
