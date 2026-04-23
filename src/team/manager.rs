@@ -89,6 +89,7 @@ pub(crate) const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 pub(crate) const TEAM_CHANNEL_BOOTSTRAP_KIND: &str = "team_channel";
 const TEAM_CHANNEL_BOOTSTRAP_SOURCE: &str = "leader_created";
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
+const TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX: &str = "idx_team_channel_bootstrap_unique";
 const TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS: &str = "team_conversation_messages.conversation_id, team_conversation_messages.from_actor_id, team_conversation_messages.idempotency_key";
 
 fn is_row_not_found(err: &anyhow::Error) -> bool {
@@ -96,6 +97,14 @@ fn is_row_not_found(err: &anyhow::Error) -> bool {
         err.downcast_ref::<SqlxError>(),
         Some(SqlxError::RowNotFound)
     )
+}
+
+fn normalize_team_channel_id(channel_id: &str) -> anyhow::Result<String> {
+    let normalized = channel_id.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        anyhow::bail!("channel_id is required");
+    }
+    Ok(normalized)
 }
 
 fn build_step_runtime_handle_event_payload(step: &TeamStepRecord, status: &'static str) -> Value {
@@ -752,7 +761,18 @@ impl TeamManager {
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
-        .await?;
+        .await
+        .map_err(|err| {
+            if is_team_channel_bootstrap_unique_violation(&err) {
+                anyhow::anyhow!(
+                    "channel '{}' already exists for team {}",
+                    normalized_channel_id,
+                    normalized_team_id
+                )
+            } else {
+                err.into()
+            }
+        })?;
 
         sqlx::query(
             r#"
@@ -926,10 +946,7 @@ impl TeamManager {
         if normalized_team_id.is_empty() {
             anyhow::bail!("team_id is required");
         }
-        let normalized_channel_id = channel_id.trim();
-        if normalized_channel_id.is_empty() {
-            anyhow::bail!("channel_id is required");
-        }
+        let normalized_channel_id = normalize_team_channel_id(channel_id)?;
         if root_message_id <= 0 {
             anyhow::bail!("root_message_id must be positive");
         }
@@ -1002,10 +1019,7 @@ impl TeamManager {
         if normalized_team_id.is_empty() {
             anyhow::bail!("team_id is required");
         }
-        let normalized_channel_id = channel_id.trim();
-        if normalized_channel_id.is_empty() {
-            anyhow::bail!("channel_id is required");
-        }
+        let normalized_channel_id = normalize_team_channel_id(channel_id)?;
         if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
             anyhow::bail!("channel_id 'all' is reserved");
         }
@@ -1047,7 +1061,7 @@ impl TeamManager {
         )
         .bind(&task_id)
         .bind(normalized_team_id)
-        .bind(normalized_channel_id)
+        .bind(&normalized_channel_id)
         .bind(created_by_actor_id.trim())
         .bind(context_json)
         .bind(now)
@@ -1066,7 +1080,7 @@ impl TeamManager {
         .bind(&conversation_id)
         .bind(normalized_team_id)
         .bind(&task_id)
-        .bind(normalized_channel_id)
+        .bind(&normalized_channel_id)
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
@@ -1075,7 +1089,7 @@ impl TeamManager {
 
         Ok(super::TeamChannelRecord {
             team_id: normalized_team_id.to_string(),
-            channel_id: normalized_channel_id.to_string(),
+            channel_id: normalized_channel_id,
             task_id,
             conversation_id,
             description: normalized_description,
@@ -1094,10 +1108,7 @@ impl TeamManager {
         if normalized_team_id.is_empty() {
             anyhow::bail!("team_id is required");
         }
-        let normalized_channel_id = channel_id.trim();
-        if normalized_channel_id.is_empty() {
-            anyhow::bail!("channel_id is required");
-        }
+        let normalized_channel_id = normalize_team_channel_id(channel_id)?;
         if normalized_channel_id.eq_ignore_ascii_case(TEAM_SHARED_THREAD_TITLE) {
             anyhow::bail!("channel_id 'all' cannot be deleted");
         }
@@ -1143,7 +1154,7 @@ impl TeamManager {
 
         Ok(super::TeamChannelRecord {
             team_id: normalized_team_id.to_string(),
-            channel_id: normalized_channel_id.to_string(),
+            channel_id: row.channel_id,
             task_id,
             conversation_id,
             description,
@@ -6188,6 +6199,18 @@ fn is_task_conversation_message_idempotency_unique_violation(err: &SqlxError) ->
                 && db_err
                     .message()
                     .contains(TASK_CONVERSATION_MESSAGE_IDEMPOTENCY_UNIQUE_COLUMNS)
+        }
+        _ => false,
+    }
+}
+
+fn is_team_channel_bootstrap_unique_violation(err: &SqlxError) -> bool {
+    match err {
+        SqlxError::Database(db_err) => {
+            db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE_CODE)
+                && db_err
+                    .message()
+                    .contains(TEAM_CHANNEL_BOOTSTRAP_UNIQUE_INDEX)
         }
         _ => false,
     }

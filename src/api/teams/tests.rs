@@ -532,6 +532,20 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE UNIQUE INDEX idx_team_channel_bootstrap_unique
+        ON team_tasks(
+            team_id,
+            lower(trim(COALESCE(json_extract(context_json, '$.channel_id'), '')))
+        )
+        WHERE lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'team_channel';
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create team channel bootstrap unique index");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,

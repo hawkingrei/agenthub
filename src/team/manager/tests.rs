@@ -141,6 +141,20 @@ async fn setup_test_db() -> SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE UNIQUE INDEX idx_team_channel_bootstrap_unique
+        ON team_tasks(
+            team_id,
+            lower(trim(COALESCE(json_extract(context_json, '$.channel_id'), '')))
+        )
+        WHERE lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'team_channel';
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create team channel bootstrap unique index");
+
+    sqlx::query(
+        r#"
         CREATE TABLE team_conversations (
             id TEXT PRIMARY KEY,
             team_id TEXT NOT NULL,
@@ -1755,6 +1769,39 @@ async fn create_team_channel_allows_same_channel_id_in_different_teams() {
 }
 
 #[tokio::test]
+async fn create_team_channel_canonicalizes_case_and_rejects_same_team_duplicates() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-case".to_string(),
+            description: Some("verify channel canonicalization".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    let channel = manager
+        .create_channel(&team.id, " Review ", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+    assert_eq!(channel.channel_id, "review");
+
+    let duplicate = manager
+        .create_channel(&team.id, "REVIEW", Some("Duplicate review lane"), "leader")
+        .await
+        .expect_err("duplicate review channel should fail");
+    assert!(
+        duplicate
+            .to_string()
+            .contains("channel 'review' already exists")
+    );
+}
+
+#[tokio::test]
 async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
@@ -1852,6 +1899,34 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     assert_eq!(remaining_tasks, 0);
     assert_eq!(remaining_messages, 0);
     assert_eq!(remaining_replicas, 0);
+}
+
+#[tokio::test]
+async fn delete_team_channel_returns_canonical_channel_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-delete-case".to_string(),
+            description: Some("verify delete canonicalization".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    manager
+        .create_channel(&team.id, "Review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+    let deleted = manager
+        .delete_channel(&team.id, " REVIEW ")
+        .await
+        .expect("delete review channel");
+
+    assert_eq!(deleted.channel_id, "review");
 }
 
 #[tokio::test]
@@ -1984,7 +2059,7 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
     .await;
 
     let review_thread = manager
-        .open_thread(&team.id, "review", review_root_message_id)
+        .open_thread(&team.id, "ReViEw", review_root_message_id)
         .await
         .expect("open review thread");
     assert_eq!(review_thread.channel_id, "review");

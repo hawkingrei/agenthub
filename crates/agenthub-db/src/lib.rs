@@ -732,6 +732,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     migrate_legacy_team_task_schema(&pool).await?;
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
+    migrate_team_channel_bootstrap_uniqueness(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
@@ -1784,6 +1785,22 @@ async fn migrate_team_tasks_add_assigned_member_id(pool: &SqlitePool) -> anyhow:
     sqlx::query("ALTER TABLE team_tasks ADD COLUMN assigned_member_id TEXT")
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+async fn migrate_team_channel_bootstrap_uniqueness(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_team_channel_bootstrap_unique
+        ON team_tasks(
+            team_id,
+            lower(trim(COALESCE(json_extract(context_json, '$.channel_id'), '')))
+        )
+        WHERE lower(trim(COALESCE(json_extract(context_json, '$.bootstrap_kind'), ''))) = 'team_channel';
+        "#,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
