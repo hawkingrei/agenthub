@@ -997,14 +997,23 @@ pub mod team_internal_control_client {
             self.inner
                 .ready()
                 .await
-                .map_err(|e| tonic::Status::unknown(format!("Service was not ready: {}", e.into())))?;
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/agenthub.internal.v1.TeamInternalControl/ReplyTeamThread",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("agenthub.internal.v1.TeamInternalControl", "ReplyTeamThread"));
+                .insert(
+                    GrpcMethod::new(
+                        "agenthub.internal.v1.TeamInternalControl",
+                        "ReplyTeamThread",
+                    ),
+                );
             self.inner.unary(req, path, codec).await
         }
         pub async fn append_team_task_note(
@@ -2279,18 +2288,26 @@ pub mod team_internal_control_server {
                 "/agenthub.internal.v1.TeamInternalControl/ReplyTeamThread" => {
                     #[allow(non_camel_case_types)]
                     struct ReplyTeamThreadSvc<T: TeamInternalControl>(pub Arc<T>);
-                    impl<T: TeamInternalControl> tonic::server::UnaryService<super::ReplyTeamThreadRequest>
-                        for ReplyTeamThreadSvc<T>
-                    {
+                    impl<
+                        T: TeamInternalControl,
+                    > tonic::server::UnaryService<super::ReplyTeamThreadRequest>
+                    for ReplyTeamThreadSvc<T> {
                         type Response = super::ReplyTeamThreadResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ReplyTeamThreadRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as TeamInternalControl>::reply_team_thread(&inner, request).await
+                                <T as TeamInternalControl>::reply_team_thread(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
                             };
                             Box::pin(fut)
                         }
