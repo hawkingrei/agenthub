@@ -46,8 +46,8 @@ describe("thread_rich_text", () => {
     const second = renderThreadMarkdownCached("## Heading\n\n- item");
     const afterSecond = getThreadMarkdownCacheStats();
 
-    expect(first).toContain("<h2>Heading</h2>");
-    expect(second).toContain("<h2>Heading</h2>");
+    expect(first).toContain('<h2 class="md-heading md-h2">Heading</h2>');
+    expect(second).toContain('<h2 class="md-heading md-h2">Heading</h2>');
     expect(afterFirst.markdownMisses).toBe(1);
     expect(afterFirst.markdownHits).toBe(0);
     expect(afterSecond.markdownMisses).toBe(1);
@@ -108,9 +108,15 @@ describe("thread_rich_text", () => {
         );
       });
 
-      expect(container.innerHTML).toContain("<p>Markdown ready:</p>");
-      expect(container.innerHTML).toContain("<ul>");
-      expect(container.innerHTML).toContain("<code>inline-code</code>");
+      expect(container.innerHTML).toContain(
+        '<p class="md-paragraph">Markdown ready:</p>'
+      );
+      expect(container.innerHTML).toContain(
+        '<ul class="md-list md-list-unordered">'
+      );
+      expect(container.innerHTML).toContain(
+        '<code class="md-inline-code">inline-code</code>'
+      );
       const rootNode = container.querySelector(".acp-text") as HTMLDivElement | null;
       expect(rootNode).not.toBeNull();
       expect(rootNode?.className).toContain("max-w-full");
