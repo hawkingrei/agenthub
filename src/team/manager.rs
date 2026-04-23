@@ -1180,6 +1180,7 @@ impl TeamManager {
 
         let task_id = row.task_id;
         let conversation_id = row.conversation_id;
+        let channel_id = row.channel_id;
         let description = row.description;
         let created_at = row.created_at;
         let updated_at = row.updated_at;
@@ -1208,7 +1209,7 @@ impl TeamManager {
 
         Ok(super::TeamChannelRecord {
             team_id: normalized_team_id.to_string(),
-            channel_id: row.channel_id,
+            channel_id,
             task_id,
             conversation_id,
             description,

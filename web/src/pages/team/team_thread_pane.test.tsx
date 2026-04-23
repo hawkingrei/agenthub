@@ -51,4 +51,30 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("rounded-[12px]");
     expect(html).toContain("hover:border-black");
   });
+
+  it("keeps the reply composer available when the root has no chat text body", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamThreadPane
+          channelLabel="# review"
+          rootMessageId={51}
+          rootAuthorLabel="planner"
+          rootCreatedAt={1713480000000}
+          rootText={null}
+          replies={[]}
+          replyDraft=""
+          onReplyDraftChange={vi.fn()}
+          onSendReply={vi.fn()}
+          replyBusy={false}
+          formatTs={() => "2026/4/19 00:00:00"}
+          onViewInChannel={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Original content is not available in chat text form.");
+    expect(html).toContain("Reply in # review");
+    expect(html).toContain("Reply");
+  });
 });

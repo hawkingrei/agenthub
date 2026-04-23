@@ -41,6 +41,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   onViewInChannel,
   onClose,
 }: TeamThreadPaneProps) {
+  const hasSelectedRoot = rootMessageId != null;
   return (
     <SurfaceCard
       className="flex min-h-0 w-full max-w-[340px] shrink-0 flex-col overflow-hidden border-notion-border/80"
@@ -71,7 +72,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-2">
-        {rootMessageId == null || !rootText ? (
+        {!hasSelectedRoot ? (
           <EmptyState
             title="Select a channel message"
             className="border-0 bg-transparent px-0 py-0"
@@ -89,7 +90,16 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               <span>{`#${rootMessageId}`}</span>
             </div>
             <div className="rounded-[12px] border border-transparent bg-white/88 px-2 py-[5px]">
-              <TeamThreadRichText className="text-[13px] leading-6 text-notion-text" text={rootText} />
+              {rootText ? (
+                <TeamThreadRichText
+                  className="text-[13px] leading-6 text-notion-text"
+                  text={rootText}
+                />
+              ) : (
+                <div className="text-[12px] italic leading-5 text-notion-text-muted">
+                  Original content is not available in chat text form.
+                </div>
+              )}
             </div>
             <div className="pt-1 text-[10px] leading-5 text-notion-text-muted">Replies stay scoped to this thread.</div>
             <div className="mt-3 flex flex-col gap-2 border-t border-notion-border/70 pt-3">
@@ -123,7 +133,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
           </div>
         )}
       </div>
-      {rootMessageId != null && rootText ? (
+      {hasSelectedRoot ? (
         <div className="border-t border-notion-border/70 px-2.5 py-2">
           <textarea
             className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] px-2.5 py-1.5 text-[13px] leading-5`}

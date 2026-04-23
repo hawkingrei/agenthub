@@ -44,7 +44,6 @@ This change adds the first backend-only Team channel/thread primitives needed by
 - `cargo test create_team_channel_creates_bootstrap_conversation_and_hides_it_from_task_list -- --nocapture`
 - `cargo test delete_team_channel_cleans_bootstrap_rows_and_rejects_all -- --nocapture`
 - `cargo test open_team_thread_supports_shared_and_custom_channels -- --nocapture`
-- `cargo test open_team_thread_supports_shared_and_custom_channels -- --nocapture`
 - `cargo test parse_team_thread_open_defaults_to_shared_channel -- --nocapture`
 - `cargo test parse_team_thread_open_rejects_non_positive_root_message_id -- --nocapture`
 - `cargo test parse_team_thread_reply_defaults_to_shared_channel -- --nocapture`
