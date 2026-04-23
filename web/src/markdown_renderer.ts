@@ -101,7 +101,7 @@ export function createConfiguredMarkdownRenderer({
       ? defaultFence(tokens, idx, options, env, self)
       : self.renderToken(tokens, idx, options);
     const language = tokens[idx]?.info?.trim().split(/\s+/)[0] ?? "";
-    return decoratePreTag(raw, language);
+    return decorateFencedCodeBlock(raw, language);
   };
 
   const defaultTableOpen =
@@ -117,6 +117,22 @@ export function createConfiguredMarkdownRenderer({
   renderer.renderer.rules.table_close = (tokens, idx, options, env, self) =>
     defaultTableClose(tokens, idx, options, env, self) + "</div>";
 
+  const defaultTableHeaderOpen =
+    renderer.renderer.rules.th_open ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  renderer.renderer.rules.th_open = (tokens, idx, options, env, self) => {
+    tokens[idx].attrJoin("class", "md-table_th");
+    return defaultTableHeaderOpen(tokens, idx, options, env, self);
+  };
+
+  const defaultTableCellOpen =
+    renderer.renderer.rules.td_open ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  renderer.renderer.rules.td_open = (tokens, idx, options, env, self) => {
+    tokens[idx].attrJoin("class", "md-table_td");
+    return defaultTableCellOpen(tokens, idx, options, env, self);
+  };
+
   return renderer;
 }
 
@@ -124,8 +140,8 @@ function escapeAttribute(value: string): string {
   return value.replace(/"/g, "&quot;");
 }
 
-function decoratePreTag(html: string, language: string): string {
-  return html.replace(/<pre\b([^>]*)>/, (_match, attrs: string) => {
+function decorateFencedCodeBlock(html: string, language: string): string {
+  const withPre = html.replace(/<pre\b([^>]*)>/, (_match, attrs: string) => {
     const existingClassMatch = attrs.match(/\bclass="([^"]*)"/);
     const existingClassNames = existingClassMatch?.[1]?.trim() ?? "";
     const nextClassNames = existingClassNames
@@ -136,6 +152,15 @@ function decoratePreTag(html: string, language: string): string {
       ? ` data-language="${escapeAttribute(language)}"`
       : "";
     return `<pre class="${nextClassNames}"${languageAttr}${attrsWithoutClass}>`;
+  });
+  return withPre.replace(/<code\b([^>]*)>/, (_match, attrs: string) => {
+    const existingClassMatch = attrs.match(/\bclass="([^"]*)"/);
+    const existingClassNames = existingClassMatch?.[1]?.trim() ?? "";
+    const nextClassNames = existingClassNames
+      ? mergeClassNames("md-code-block_code", existingClassNames)
+      : "md-code-block_code";
+    const attrsWithoutClass = attrs.replace(/\s*\bclass="[^"]*"/, "");
+    return `<code class="${nextClassNames}"${attrsWithoutClass}>`;
   });
 }
 

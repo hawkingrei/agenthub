@@ -117,6 +117,8 @@ describe("renderMarkdown", () => {
     expect(html).toContain('class="md-list-item"');
     expect(html).toContain('class="md-inline-code"');
     expect(html).toContain('<div class="md-table-wrap"><table class="md-table">');
+    expect(html).toContain('<th class="md-table_th">a</th>');
+    expect(html).toContain('<td class="md-table_td">b</td>');
   });
 
   it("escapes raw html blocks", () => {
@@ -124,5 +126,11 @@ describe("renderMarkdown", () => {
     expect(html).toContain("&lt;img");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("<b>safe</b>");
+  });
+
+  it("adds markdown code-block classes to both pre and nested code tags", () => {
+    const html = renderMarkdown("```ts\nconst value = 1\n```\n");
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('class="md-code-block_code');
   });
 });

@@ -180,9 +180,9 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               shadow="md"
               withArrow
             >
-              <HoverCard.Target>
-                <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
-                  <Menu.Target>
+              <Menu position="bottom-end" {...NOTION_FLOATING_MENU_PROPS}>
+                <Menu.Target>
+                  <HoverCard.Target>
                     <ActionButton
                       type="button"
                       tone="ghost"
@@ -210,65 +210,65 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                         aria-hidden="true"
                       />
                     </ActionButton>
-                  </Menu.Target>
+                  </HoverCard.Target>
+                </Menu.Target>
                   <Menu.Dropdown>
-                <Menu.Label>{selectedAgentLabel}</Menu.Label>
-                {agentWorkspaceSummaryItems.map((item) => (
-                  <Menu.Item key={item.label} disabled>
-                    <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                      <span className="font-semibold text-ui-text-primary">{item.label}</span>
-                      <span className="ml-2">{item.value}</span>
-                    </div>
-                  </Menu.Item>
-                ))}
-                <Menu.Item disabled>
-                  <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                    <span className="font-semibold text-ui-text-primary">Identity</span>
-                    <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                      {selectedAgentIdentityDescription}
-                    </p>
-                  </div>
-                </Menu.Item>
-                <Menu.Item disabled>
-                  <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
-                    <span className="font-semibold text-ui-text-primary">Current work</span>
-                    <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
-                      {selectedAgentStatusView.currentWork}
-                    </p>
-                  </div>
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  leftSection={<i className="bi bi-pencil-square" aria-hidden="true" />}
-                  onClick={onOpenTeamMemberEditModal}
-                >
-                  Edit profile
-                </Menu.Item>
-                <Menu.Item
-                  leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
-                  onClick={onStartSelectedTeamAgent}
-                  disabled={!selectedAgentControlState.canStart}
-                >
-                  Start Agent
-                </Menu.Item>
-                <Menu.Item
-                  leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
-                  onClick={onStopSelectedTeamAgent}
-                  disabled={!selectedAgentControlState.canStop}
-                >
-                  Stop Agent
-                </Menu.Item>
-                <Menu.Item
-                  color="red"
-                  leftSection={<i className="bi bi-trash" aria-hidden="true" />}
-                  onClick={onDeleteSelectedTeamAgent}
-                  disabled={!selectedAgentControlState.canDelete}
-                >
-                  Delete Agent
-                </Menu.Item>
+                    <Menu.Label>{selectedAgentLabel}</Menu.Label>
+                    {agentWorkspaceSummaryItems.map((item) => (
+                      <Menu.Item key={item.label} disabled>
+                        <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                          <span className="font-semibold text-ui-text-primary">{item.label}</span>
+                          <span className="ml-2">{item.value}</span>
+                        </div>
+                      </Menu.Item>
+                    ))}
+                    <Menu.Item disabled>
+                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                        <span className="font-semibold text-ui-text-primary">Identity</span>
+                        <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
+                          {selectedAgentIdentityDescription}
+                        </p>
+                      </div>
+                    </Menu.Item>
+                    <Menu.Item disabled>
+                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                        <span className="font-semibold text-ui-text-primary">Current work</span>
+                        <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
+                          {selectedAgentStatusView.currentWork}
+                        </p>
+                      </div>
+                    </Menu.Item>
+                    <Menu.Divider />
+                    <Menu.Item
+                      leftSection={<i className="bi bi-pencil-square" aria-hidden="true" />}
+                      onClick={onOpenTeamMemberEditModal}
+                    >
+                      Edit profile
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<i className="bi bi-play-circle" aria-hidden="true" />}
+                      onClick={onStartSelectedTeamAgent}
+                      disabled={!selectedAgentControlState.canStart}
+                    >
+                      Start Agent
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<i className="bi bi-stop-circle" aria-hidden="true" />}
+                      onClick={onStopSelectedTeamAgent}
+                      disabled={!selectedAgentControlState.canStop}
+                    >
+                      Stop Agent
+                    </Menu.Item>
+                    <Menu.Item
+                      color="red"
+                      leftSection={<i className="bi bi-trash" aria-hidden="true" />}
+                      onClick={onDeleteSelectedTeamAgent}
+                      disabled={!selectedAgentControlState.canDelete}
+                    >
+                      Delete Agent
+                    </Menu.Item>
                   </Menu.Dropdown>
-                </Menu>
-              </HoverCard.Target>
+              </Menu>
               <HoverCard.Dropdown className="rounded-2xl border border-black/6 bg-white/95 p-3 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-md">
                 <div className="flex min-w-0 items-start gap-3">
                   <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">

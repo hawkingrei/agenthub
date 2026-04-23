@@ -1199,10 +1199,12 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain('<ul class="md-list md-list-unordered">');
     expect(html).toContain('<li class="md-list-item">item a</li>');
     expect(html).toContain('<div class="md-table-wrap"><table class="md-table">');
-    expect(html).toContain("<th>col</th>");
-    expect(html).toContain("<td>v1</td>");
+    expect(html).toContain('<th class="md-table_th">col</th>');
+    expect(html).toContain('<td class="md-table_td">v1</td>');
     expect(html).toContain('<code class="md-inline-code">code</code>');
-    expect(html).toContain('<pre class="md-code-block hljs" data-language="ts"><code>');
+    expect(html).toContain(
+      '<pre class="md-code-block hljs" data-language="ts"><code class="md-code-block_code">'
+    );
     expect(html).toContain("hljs-keyword\">const</span>");
     expect(html).toContain("hljs-number\">1</span>");
   });
