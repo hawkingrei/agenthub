@@ -107,6 +107,7 @@ describe("AcpDebug", () => {
     expect(html).toContain("All");
     expect(html).toContain("Stderr");
     expect(html).toContain("System");
+    expect(html).toContain("<pre");
   });
 
   it("renders runtime metrics tab when initial tab is runtime", () => {
