@@ -10,6 +10,7 @@ import type {
   TeamStepRecord,
 } from "../../api";
 import { api } from "../../api";
+import { saveTeamMemberAcpRenderCache, clearTeamMemberAcpRenderCache } from "./team_member_acp_render_cache";
 import { useTeamActions } from "./use_team_actions";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -105,6 +106,7 @@ function cleanupHarness(root: Root, container: HTMLDivElement): void {
 describe("useTeamActions", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    clearTeamMemberAcpRenderCache();
   });
 
   it("keeps API action callbacks stable when inputs are unchanged", async () => {
@@ -618,6 +620,70 @@ describe("useTeamActions", () => {
         120,
         "runtime-session-1",
         200
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("does not prefetch older ACP history on replace when warm render cache already has visible content", async () => {
+    saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", [
+      {
+        event_id: 1,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "1",
+        ts: 100,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Cached visible message.",
+        }),
+      },
+    ]);
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            message_id: "message-0",
+            chunk_index: 2,
+          }),
+        },
+      ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
       );
     } finally {
       listAgentEvents.mockRestore();
