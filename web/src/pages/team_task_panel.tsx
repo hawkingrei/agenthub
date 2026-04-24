@@ -326,19 +326,75 @@ function resolveActivityBubbleLayoutClassName(showSeenMeta: boolean): string {
   return showSeenMeta ? "w-full pb-3 pr-6" : "w-full";
 }
 
-function TeamTaskPanelLoadingSkeleton() {
+function TeamActivityBubbleBody({
+  text,
+  renderSanitizedHtml,
+}: {
+  text: string;
+  renderSanitizedHtml: (text: string) => string;
+}) {
+  if (isCompactCommandLikeText(text)) {
+    return <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{text}</pre>;
+  }
+  return (
+    <TeamThreadRichText
+      className={TEAM_TASK_ACTIVITY_BODY_CLASS}
+      text={text}
+      renderSanitizedHtml={renderSanitizedHtml}
+    />
+  );
+}
+
+function TeamActivityBubble({
+  bubbleKind,
+  bubbleClassName,
+  showSeenMeta,
+  itemKey,
+  seenActorIds,
+  seenProgress,
+  memberDisplayNamesById,
+  children,
+}: {
+  bubbleKind: "human" | "agent";
+  bubbleClassName: string;
+  showSeenMeta: boolean;
+  itemKey: string;
+  seenActorIds: string[];
+  seenProgress: ReturnType<typeof resolveSeenProgressState>;
+  memberDisplayNamesById: Map<string, string>;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS}>
+      <ConversationBubble
+        data-team-channel-bubble={bubbleKind}
+        className={bubbleClassName}
+      >
+        {children}
+      </ConversationBubble>
+      {showSeenMeta ? (
+        <div className={TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS}>
+          <SeenProgressHoverCard
+            itemKey={itemKey}
+            seenActorIds={seenActorIds}
+            seenProgress={seenProgress}
+            memberDisplayNamesById={memberDisplayNamesById}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function TeamTaskPanelLoadingSkeleton() {
   return (
     <div
       className="flex flex-col gap-2.5 px-1 py-1"
       data-team-channel-loading-skeleton="true"
       aria-busy="true"
     >
-      <div
-        role="status"
-        aria-live="polite"
-        className="px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
-      >
-        Restoring session...
+      <div className="sr-only" role="status" aria-live="polite">
+        Loading messages...
       </div>
       <div className="flex flex-col gap-2.5" aria-hidden="true">
         {Array.from({ length: 6 }, (_, index) => {
@@ -1488,54 +1544,24 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                                 onRespond={onRespondPermission}
                               />
                             </div>
-                          ) : isCompactCommandLikeText(item.text) ? (
-                            <div className={TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS}>
-                              <ConversationBubble
-                                data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                                className={`${resolveActivityBubbleToneClassName(
-                                  item.fromActorId,
-                                  humanActorId
-                                )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
-                              >
-                                <pre className={TEAM_TASK_ACTIVITY_COMMAND_BODY_CLASS}>{item.text}</pre>
-                              </ConversationBubble>
-                              {shouldShowSeenMeta && (
-                                <div className={TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS}>
-                                  <SeenProgressHoverCard
-                                    itemKey={item.key}
-                                    seenActorIds={seenActorIds}
-                                    seenProgress={seenProgress}
-                                    memberDisplayNamesById={memberDisplayNamesById}
-                                  />
-                                </div>
-                              )}
-                            </div>
                           ) : (
-                            <div className={TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS}>
-                              <ConversationBubble
-                                data-team-channel-bubble={isHumanAuthor ? "human" : "agent"}
-                                className={`${resolveActivityBubbleToneClassName(
-                                  item.fromActorId,
-                                  humanActorId
-                                )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
-                              >
-                                <TeamThreadRichText
-                                  className={TEAM_TASK_ACTIVITY_BODY_CLASS}
-                                  text={item.text}
-                                  renderSanitizedHtml={renderTeamMessageHtml}
-                                />
-                              </ConversationBubble>
-                              {shouldShowSeenMeta && (
-                                <div className={TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS}>
-                                  <SeenProgressHoverCard
-                                    itemKey={item.key}
-                                    seenActorIds={seenActorIds}
-                                    seenProgress={seenProgress}
-                                    memberDisplayNamesById={memberDisplayNamesById}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                            <TeamActivityBubble
+                              bubbleKind={isHumanAuthor ? "human" : "agent"}
+                              bubbleClassName={`${resolveActivityBubbleToneClassName(
+                                item.fromActorId,
+                                humanActorId
+                              )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
+                              showSeenMeta={shouldShowSeenMeta}
+                              itemKey={item.key}
+                              seenActorIds={seenActorIds}
+                              seenProgress={seenProgress}
+                              memberDisplayNamesById={memberDisplayNamesById}
+                            >
+                              <TeamActivityBubbleBody
+                                text={item.text}
+                                renderSanitizedHtml={renderTeamMessageHtml}
+                              />
+                            </TeamActivityBubble>
                           )}
                           {developerMode && expandedItemKeys[item.key] && (
                             <ActivityDetailsPanel item={item} state={state} />

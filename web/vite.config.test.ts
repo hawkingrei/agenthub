@@ -44,6 +44,15 @@ describe("vite chunk grouping", () => {
     expect(
       resolveChunkGroup("/repo/web/src/components/acp_conversation.tsx")
     ).toBe("route-acp-shared");
+    expect(resolveChunkGroup("/repo/web/src/components/acp_tool_bubbles.tsx")).toBe(
+      "route-acp-tools"
+    );
+    expect(resolveChunkGroup("/repo/web/src/components/acp_tool_call_bubble.tsx")).toBe(
+      "route-acp-tools"
+    );
+    expect(resolveChunkGroup("/repo/web/src/components/acp_plan.tsx")).toBe(
+      "route-acp-plan"
+    );
   });
 
   it("routes terminal and rich-text helpers into their dedicated chunks", () => {
@@ -216,7 +225,9 @@ describe("vite chunk grouping", () => {
         "assets/route-agents-debug-loader-abc.js",
         "assets/route-agents-workbench-abc.js",
         "assets/route-agents-debug-abc.js",
+        "assets/route-acp-plan-abc.js",
         "assets/route-acp-shared-abc.js",
+        "assets/route-acp-tools-abc.js",
         "assets/route-teams-agent-acp-abc.js",
         "assets/vendor-mantine-abc.js",
       ])

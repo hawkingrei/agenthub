@@ -346,13 +346,14 @@ describe("useTeamActions", () => {
           seq: "11",
           ts: 123,
           stream: "acp",
-          message: JSON.stringify({
-            type: "agent_message",
-            text: "tail chunk",
-            chunk: true,
-            chunk_index: 2,
-          }),
-        },
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "tail chunk",
+          chunk: true,
+          message_id: "message-0",
+          chunk_index: 2,
+        }),
+      },
       ])
       .mockResolvedValueOnce([
         {
@@ -378,6 +379,7 @@ describe("useTeamActions", () => {
             type: "agent_message",
             text: "head chunk",
             chunk: true,
+            message_id: "message-0",
             chunk_index: 0,
           }),
         },
@@ -422,6 +424,59 @@ describe("useTeamActions", () => {
       expect(typeof update).toBe("function");
       expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([9, 10, 11]);
       expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("does not keep prefetching when complete visible messages already exist after omitting an incomplete leading chunk", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
+      {
+        event_id: 20,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "20",
+        ts: 124,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "user_message",
+          text: "continue",
+        }),
+      },
+      {
+        event_id: 21,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "21",
+        ts: 125,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "tail chunk",
+          chunk: true,
+          message_id: "message-1",
+          chunk_index: 4,
+        }),
+      },
+    ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
@@ -505,6 +560,64 @@ describe("useTeamActions", () => {
         240,
         "runtime-session-1",
         80
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("raises ACP history page limits earlier when the first page is dominated by one chunked message", async () => {
+    const firstPage = Array.from({ length: 12 }, (_, index) => ({
+      event_id: 200 + index,
+      agent_id: "worker-agent",
+      session_id: "runtime-session-1",
+      seq: String(200 + index),
+      ts: 200 + index,
+      stream: "acp" as const,
+      message: JSON.stringify({
+        type: "agent_message",
+        text: `chunk-${index}`,
+        chunk: true,
+        message_id: "message-2",
+        chunk_index: 40 + index,
+      }),
+    }));
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        120,
+        "runtime-session-1",
+        200
       );
     } finally {
       listAgentEvents.mockRestore();

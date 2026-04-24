@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
+import { PassThrough } from "node:stream";
 import { MantineProvider } from "@mantine/core";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { renderToPipeableStream } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AcpPanel,
   AcpPanelProps,
@@ -9,6 +12,10 @@ import {
   resolveAcpInputDockConversationClearance,
 } from "./components/acp_panel";
 import { AcpView } from "./acp";
+import * as acpDebugLoader from "./components/acp_debug_loader";
+import { installReactDomTestGlobals, renderWithMantine, required } from "./test_utils/react_test_helpers";
+
+installReactDomTestGlobals();
 
 const baseView: AcpView = {
   hasAcp: true,
@@ -98,8 +105,27 @@ const baseProps: AcpPanelProps = {
   },
 };
 
-function renderPanel(node: React.ReactNode): string {
-  return renderToStaticMarkup(<MantineProvider>{node}</MantineProvider>);
+function renderPanel(node: React.ReactNode): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stream = new PassThrough();
+    let html = "";
+    stream.on("data", (chunk) => {
+      html += chunk.toString();
+    });
+    stream.on("end", () => {
+      resolve(html.replaceAll("<!-- -->", ""));
+    });
+    stream.on("error", reject);
+
+    const { pipe } = renderToPipeableStream(<MantineProvider>{node}</MantineProvider>, {
+      onAllReady() {
+        pipe(stream);
+      },
+      onError(error) {
+        reject(error);
+      },
+    });
+  });
 }
 
 function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): React.ReactElement[] {
@@ -124,8 +150,8 @@ function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): 
 }
 
 describe("AcpPanel layout", () => {
-  it("renders subtitle and tabs in header", () => {
-    const html = renderPanel(
+  it("renders subtitle and tabs in header", async () => {
+    const html = await renderPanel(
       <AcpPanel {...baseProps} subtitle="/repo/workdir" />
     );
     expect(html).toContain("/repo/workdir");
@@ -135,8 +161,8 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain("Interrupt");
   });
 
-  it("hides debug tab and falls back to conversation when developer mode is off", () => {
-    const html = renderPanel(
+  it("hides debug tab and falls back to conversation when developer mode is off", async () => {
+    const html = await renderPanel(
       <AcpPanel {...baseProps} developerMode={false} acpTab="debug" />
     );
     expect(html).toContain("Activity");
@@ -145,8 +171,8 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain("Session Controls");
   });
 
-  it("shows pending badge when conversation badge is enabled", () => {
-    const html = renderPanel(
+  it("shows pending badge when conversation badge is enabled", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         showConversationBadge={true}
@@ -156,8 +182,8 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("+3");
   });
 
-  it("pads the conversation scroll region above a visible input dock", () => {
-    const html = renderPanel(
+  it("pads the conversation scroll region above a visible input dock", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         conversationBottomClearance={168}
@@ -167,8 +193,8 @@ describe("AcpPanel layout", () => {
     expect(html).toContain('data-acp-conversation-scroll="true"');
   });
 
-  it("renders a loading skeleton instead of partial conversation content while ACP history is still warming up", () => {
-    const html = renderPanel(
+  it("renders a loading skeleton instead of partial conversation content while ACP history is still warming up", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         conversationLoading={true}
@@ -178,8 +204,8 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain('data-acp-conversation-scroll="true"');
   });
 
-  it("renders mobile title inline with tabs when provided", () => {
-    const html = renderPanel(
+  it("renders mobile title inline with tabs when provided", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         subtitle="/repo/workdir"
@@ -193,47 +219,61 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain("acp-actions");
   });
 
-  it("invokes tab selection callbacks for both tabs", () => {
+  it("invokes tab selection callbacks for both tabs", async () => {
     const onSelectTab = vi.fn();
-    const tree = AcpPanelView({
-      ...baseProps,
-      onSelectTab,
-      showConversationBadge: true,
-      conversation: { ...baseProps.conversation, pendingCount: 1 },
-    });
-    const buttons = collectButtons(tree);
-    expect(buttons.length).toBeGreaterThanOrEqual(3);
-    const conversationButton = buttons.find(
-      (btn) =>
-        typeof btn.props.className === "string" &&
-        btn.props.className.includes("acp-tab-button") &&
-        JSON.stringify(btn.props.children).includes("Activity")
-    );
-    const planButton = buttons.find(
-      (btn) =>
-        typeof btn.props.className === "string" &&
-        btn.props.className.includes("acp-tab-button") &&
-        JSON.stringify(btn.props.children).includes("Plan")
-    );
-    const debugButton = buttons.find(
-      (btn) =>
-        typeof btn.props.className === "string" &&
-        btn.props.className.includes("acp-tab-button") &&
-        JSON.stringify(btn.props.children).includes("Inspect")
-    );
-    expect(conversationButton).toBeDefined();
-    expect(planButton).toBeDefined();
-    expect(debugButton).toBeDefined();
-    conversationButton?.props.onClick?.();
-    planButton?.props.onClick?.();
-    debugButton?.props.onClick?.();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      renderWithMantine(
+        root,
+        <AcpPanel
+          {...baseProps}
+          onSelectTab={onSelectTab}
+          showConversationBadge={true}
+          conversation={{ ...baseProps.conversation, pendingCount: 1 }}
+        />
+      );
+
+      const conversationButton = required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Activity")
+        ) as HTMLButtonElement | undefined,
+        "activity tab button missing"
+      );
+      const planButton = required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Plan")
+        ) as HTMLButtonElement | undefined,
+        "plan tab button missing"
+      );
+      const debugButton = required(
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Inspect")
+        ) as HTMLButtonElement | undefined,
+        "inspect tab button missing"
+      );
+
+      act(() => {
+        conversationButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        planButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        debugButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
     expect(onSelectTab).toHaveBeenNthCalledWith(1, "conversation");
     expect(onSelectTab).toHaveBeenNthCalledWith(2, "plan");
     expect(onSelectTab).toHaveBeenNthCalledWith(3, "debug");
   });
 
-  it("renders plan view when acpTab is plan", () => {
-    const html = renderPanel(
+  it("renders plan view when acpTab is plan", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         acpTab="plan"
@@ -252,8 +292,8 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("Apply patch");
   });
 
-  it("shows plan status on the tab when a plan exists", () => {
-    const html = renderPanel(
+  it("shows plan status on the tab when a plan exists", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         plan={{
@@ -272,13 +312,13 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("1 active");
   });
 
-  it("keeps a minimum bottom clearance even before the dock reports its height", () => {
+  it("keeps a minimum bottom clearance even before the dock reports its height", async () => {
     expect(resolveAcpInputDockConversationClearance(0)).toBe(64);
     expect(resolveAcpInputDockConversationClearance(156)).toBe(164);
   });
 
-  it("shows done state on the plan tab when all entries are completed", () => {
-    const html = renderPanel(
+  it("shows done state on the plan tab when all entries are completed", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         plan={{
@@ -296,15 +336,15 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("done");
   });
 
-  it("renders debug controls when acpTab is debug", () => {
-    const html = renderPanel(
+  it("renders debug controls when acpTab is debug", async () => {
+    const html = await renderPanel(
       <AcpPanel {...baseProps} acpTab="debug" />
     );
     expect(html).toContain("Loading debug...");
   });
 
-  it("renders conversation jump button on ACP panel container layer", () => {
-    const html = renderPanel(
+  it("renders conversation jump button on ACP panel container layer", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         showConversationJump={true}
@@ -320,8 +360,8 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain("acp-conversation-jump-bottom");
   });
 
-  it("passes bottom clearance into the conversation scroll area when input dock is present", () => {
-    const html = renderPanel(
+  it("passes bottom clearance into the conversation scroll area when input dock is present", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         conversationBottomClearance={104}
@@ -331,8 +371,8 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain('class="acp-conversation-spacer dock-clearance"');
   });
 
-  it("hides conversation jump button when debug tab is active", () => {
-    const html = renderPanel(
+  it("hides conversation jump button when debug tab is active", async () => {
+    const html = await renderPanel(
       <AcpPanel
         {...baseProps}
         acpTab="debug"
@@ -342,7 +382,7 @@ describe("AcpPanel layout", () => {
     expect(html).not.toContain("acp-jump-bottom");
   });
 
-  it("invokes jump callback when ACP jump button is clicked", () => {
+  it("invokes jump callback when ACP jump button is clicked", async () => {
     const onJumpToConversationBottom = vi.fn();
     const tree = AcpPanelView({
       ...baseProps,
@@ -358,5 +398,66 @@ describe("AcpPanel layout", () => {
     expect(jumpButton).toBeDefined();
     jumpButton?.props.onClick?.();
     expect(onJumpToConversationBottom).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AcpPanel debug loading fallback", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    if (root) {
+      act(() => {
+        root.unmount();
+      });
+    }
+    container?.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("shows retry affordance and retries lazy debug loading after a failure", async () => {
+    const loaderSpy = vi.spyOn(acpDebugLoader, "loadAcpDebugModule");
+    loaderSpy
+      .mockRejectedValueOnce(new Error("chunk missing"))
+      .mockResolvedValueOnce({
+        AcpDebug: () => <div>Debug ready</div>,
+      } as never);
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    renderWithMantine(root, <AcpPanel {...baseProps} acpTab="debug" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain(
+      "Inspect panel failed to load. Try reloading this view."
+    );
+    const retryButton = required(
+      Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Retry")
+      ) as HTMLButtonElement | undefined,
+      "retry button missing"
+    );
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    act(() => {
+      retryButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Debug ready");
+    expect(loaderSpy).toHaveBeenCalledTimes(2);
   });
 });

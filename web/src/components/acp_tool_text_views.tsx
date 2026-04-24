@@ -17,6 +17,7 @@ export const ACP_SEGMENTED_BLOCK_CLASS = "acp-segmented-block grid gap-1.5";
 
 const TOOL_TEXT_MARKDOWN_FALLBACK_LINES = 260;
 const TOOL_TEXT_MARKDOWN_FALLBACK_LENGTH = 16000;
+const TOOL_TEXT_CLASS_ATTRIBUTE_DISPLAY_LIMIT = 72;
 const ACP_PAYLOAD_TEXT_BASE_CLASS =
   "acp-content acp-payload-text m-0 whitespace-pre-wrap font-mono text-[11px] leading-[1.5] text-slate-800";
 const ACP_PAYLOAD_TEXT_ASCII_CLASS =
@@ -119,6 +120,10 @@ function ToolPlainTextView({
     () => lines.slice(startIndex, endIndex).join("\n"),
     [lines, startIndex, endIndex]
   );
+  const displayText = React.useMemo(
+    () => compressLongHtmlClassAttributesForDisplay(visibleText),
+    [visibleText]
+  );
   const className = asciiLike
     ? tone === "terminal"
       ? ACP_CONTENT_TEXT_ASCII_CLASS
@@ -128,12 +133,27 @@ function ToolPlainTextView({
       : ACP_PAYLOAD_TEXT_BASE_CLASS;
   return (
     <div className={ACP_SEGMENTED_BLOCK_CLASS}>
-      <pre className={className}>{visibleText}</pre>
+      <pre className={className} title={displayText !== visibleText ? visibleText : undefined}>
+        {displayText}
+      </pre>
       {hasMore && (
         <SegmentedMoreFooter remaining={remaining} unitLabel="lines" onShowMore={showMore} />
       )}
     </div>
   );
+}
+
+export function compressLongHtmlClassAttributesForDisplay(text: string): string {
+  if (!text.includes("<") || !text.includes('class="')) {
+    return text;
+  }
+  return text.replace(/(<[A-Za-z][^>\n]*?)class="([^"]+)"/g, (_match, prefix: string, classValue: string) => {
+    if (classValue.length <= TOOL_TEXT_CLASS_ATTRIBUTE_DISPLAY_LIMIT) {
+      return `${prefix}class="${classValue}"`;
+    }
+    const truncated = `${classValue.slice(0, TOOL_TEXT_CLASS_ATTRIBUTE_DISPLAY_LIMIT - 1)}…`;
+    return `${prefix}class="${truncated}"`;
+  });
 }
 
 function countLines(text: string): number {

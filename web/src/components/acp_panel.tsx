@@ -2,27 +2,26 @@ import { UnstyledButton } from "@mantine/core";
 import React from "react";
 import type { AcpView } from "../acp";
 import type { AcpDebugProps } from "./acp_debug";
-import { loadAcpDebugModule } from "./acp_debug_loader";
 import {
   ACP_INPUT_DOCK_CONVERSATION_CLEARANCE_PX,
   ACP_INPUT_DOCK_CONVERSATION_MARGIN_PX,
   resolveAcpInputDockConversationClearance,
 } from "./acp_input_dock_clearance";
 import { AcpConversation, AcpConversationProps } from "./acp_conversation";
-import { AcpPlan, AcpPlanProps, summarizePlanEntries } from "./acp_plan";
-import { cx } from "../ui/primitives";
+import type { AcpPlanProps } from "./acp_plan";
+import { AcpDebugSlot } from "./acp_panel_debug_slot";
+import { AcpPanelTabs } from "./acp_panel_tabs";
+import type { AcpPanelTab } from "./acp_panel_types";
 import {
   ACP_JUMP_BOTTOM_BUTTON_CLASS,
   ACP_PANEL_HEAD_CLASS,
   ACP_PANEL_ROOT_CLASS,
-  ACP_PANEL_TABS_CLASS,
-  ACP_TAB_BADGE_CLASS,
-  ACP_TAB_BUTTON_BASE_CLASS,
-  ACP_TAB_BUTTON_ACTIVE_CLASS,
-  ACP_TAB_BUTTON_IDLE_CLASS,
 } from "../ui/tailwind_classes";
 
-type AcpPanelTab = "conversation" | "plan" | "debug";
+const LazyAcpPlan = React.lazy(async () => {
+  const mod = await import("./acp_plan");
+  return { default: mod.AcpPlan };
+});
 
 type AcpPanelProps = {
   acpView: AcpView;
@@ -42,70 +41,28 @@ type AcpPanelProps = {
   debug: AcpDebugProps;
 };
 
-function AcpDebugSlot(props: AcpDebugProps) {
-  const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(null);
-  const [loadFailed, setLoadFailed] = React.useState(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoadFailed(false);
-    void loadAcpDebugModule()
-      .then((module) => {
-        if (!cancelled) {
-          setDebugView(() => module.AcpDebug);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoadFailed(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loadFailed) {
-    return (
-      <div className="px-3 py-2 text-sm text-notion-text-muted">
-        Unable to load debug view.
-      </div>
-    );
-  }
-
-  if (DebugView == null) {
-    return (
-      <div className="px-3 py-2 text-sm text-notion-text-muted">
-        Loading debug...
-      </div>
-    );
-  }
-
-  return <DebugView {...props} />;
-}
-
 function AcpConversationLoadingSkeleton() {
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 py-1.5"
       data-acp-conversation-loading-skeleton="true"
       aria-busy="true"
     >
       <div
         role="status"
         aria-live="polite"
-        className="mb-2 px-1 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
+        className="mb-1.5 px-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/70"
       >
-        Restoring session...
+        Loading activity...
       </div>
-      <div className="flex flex-col gap-2.5" aria-hidden="true">
+      <div className="flex flex-col gap-2" aria-hidden="true">
         {Array.from({ length: 6 }, (_, index) => (
           <div
             key={`acp-loading-${index}`}
             className={`flex ${index % 3 === 2 ? "justify-end" : "justify-start"}`}
           >
-            <div className="max-w-[min(100%,42rem)] min-w-[12rem] rounded-[16px] border border-notion-border/60 bg-white px-3 py-2 shadow-notion-soft">
-              <div className="space-y-1.5">
+            <div className="max-w-[min(100%,42rem)] min-w-[12rem] rounded-[12px] border border-notion-border/60 bg-white px-2 py-1.5 shadow-none">
+              <div className="space-y-1">
                 <div className="h-3 animate-pulse rounded bg-notion-hover" />
                 <div className="h-3 w-11/12 animate-pulse rounded bg-notion-hover/90" />
                 <div
@@ -119,6 +76,30 @@ function AcpConversationLoadingSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+function AcpPlanLoadingSkeleton() {
+  return (
+    <section className="acp-plan-view flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+      <div className="rounded-xl border border-ui-border bg-ui-surface p-3 shadow-sm sm:p-4">
+        <div className="space-y-3" aria-hidden="true">
+          <div className="h-4 w-28 animate-pulse rounded bg-notion-hover" />
+          <div className="space-y-2">
+            <div className="h-3 w-32 animate-pulse rounded bg-notion-hover/90" />
+            <div className="h-2 animate-pulse rounded-full bg-notion-hover/80" />
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div
+                key={`acp-plan-loading-${index}`}
+                className="h-9 animate-pulse rounded-md border border-ui-border bg-ui-surface-soft"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -145,70 +126,15 @@ function AcpPanelView({
   debug,
 }: AcpPanelProps) {
   const effectiveTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
-  const planSummary = summarizePlanEntries(plan.plan?.entries ?? []);
-  const planStatus =
-    planSummary.active > 0
-      ? {
-          label: `${planSummary.active} active`,
-          className:
-            "bg-notion-accent/10 text-notion-accent",
-        }
-      : planSummary.pending > 0
-        ? {
-            label: `${planSummary.pending} pending`,
-            className:
-              "bg-amber-100 text-amber-800",
-          }
-        : planSummary.total > 0
-          ? {
-              label: "done",
-              className:
-                "bg-emerald-100 text-emerald-800",
-            }
-          : null;
-  const tabButtonClassName = (selected: boolean, withGap = false) =>
-    cx(
-      "acp-tab-button",
-      ACP_TAB_BUTTON_BASE_CLASS,
-      withGap && "gap-2",
-      selected ? ACP_TAB_BUTTON_ACTIVE_CLASS : ACP_TAB_BUTTON_IDLE_CLASS
-    );
   const tabsNode = (
-    <div className={ACP_PANEL_TABS_CLASS}>
-      <UnstyledButton
-        type="button"
-        className={tabButtonClassName(effectiveTab === "conversation", true)}
-        onClick={() => onSelectTab("conversation")}
-      >
-        Activity
-        {showConversationBadge && (
-          <span className={ACP_TAB_BADGE_CLASS}>
-            +{conversation.pendingCount}
-          </span>
-        )}
-      </UnstyledButton>
-      <UnstyledButton
-        type="button"
-        className={tabButtonClassName(effectiveTab === "plan")}
-        onClick={() => onSelectTab("plan")}
-      >
-        Plan
-        {planStatus ? (
-          <span className={`${ACP_TAB_BADGE_CLASS} ${planStatus.className}`}>
-            {planStatus.label}
-          </span>
-        ) : null}
-      </UnstyledButton>
-      {developerMode && (
-        <UnstyledButton
-          type="button"
-          className={tabButtonClassName(effectiveTab === "debug")}
-          onClick={() => onSelectTab("debug")}
-        >
-          Inspect
-        </UnstyledButton>
-      )}
-    </div>
+    <AcpPanelTabs
+      acpTab={acpTab}
+      developerMode={developerMode}
+      showConversationBadge={showConversationBadge}
+      pendingCount={conversation.pendingCount}
+      planEntries={plan.plan?.entries ?? []}
+      onSelectTab={onSelectTab}
+    />
   );
   return (
     <div className={ACP_PANEL_ROOT_CLASS}>
@@ -245,7 +171,11 @@ function AcpPanelView({
           bottomClearancePx={conversationBottomClearance}
         />
       )}
-      {effectiveTab === "plan" && <AcpPlan {...plan} />}
+      {effectiveTab === "plan" && (
+        <React.Suspense fallback={<AcpPlanLoadingSkeleton />}>
+          <LazyAcpPlan {...plan} />
+        </React.Suspense>
+      )}
       {developerMode && effectiveTab === "debug" && <AcpDebugSlot {...debug} />}
       {effectiveTab === "conversation" &&
       showConversationJump &&

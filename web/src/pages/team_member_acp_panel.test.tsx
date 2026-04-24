@@ -7,6 +7,7 @@ import type { AgentEvent } from "../api";
 import * as acpModule from "../acp";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
+import { clearTeamMemberAcpRenderCache } from "./team/team_member_acp_render_cache";
 import {
   installReactDomTestGlobals,
   renderWithMantine,
@@ -103,6 +104,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       root.unmount();
     });
     container.remove();
+    clearTeamMemberAcpRenderCache();
     vi.clearAllMocks();
   });
 
@@ -157,7 +159,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-scroll="true"]') as HTMLDivElement | null,
       "acp conversation missing"
     );
-    expect(conversation.classList.contains("py-1")).toBe(true);
+    expect(conversation.classList.contains("py-0.5")).toBe(true);
   });
 
   it("pads the ACP conversation above the measured input dock height", () => {
@@ -419,6 +421,94 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
+  });
+
+  it("uses activity-focused loading copy while the ACP thread is still initializing", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 0,
+        conversationRenderedItems: 0,
+        conversationTotalItems: 0,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Loading activity...");
+    expect(container.textContent).not.toContain("Restoring session...");
+  });
+
+  it("reuses cached ACP events while the selected member session is refreshing", () => {
+    vi.mocked(useAcpConversation).mockImplementation(
+      ((args: { acpView: { messages: Array<{ text?: string | null }> } }) =>
+        buildConversationHookState({
+          conversationRenderItems: args.acpView.messages.map((message, index) => ({
+            kind: "agent_message",
+            text: message.text ?? "",
+            event_id: index + 1,
+            ts: 100 + index,
+          })),
+          conversationSourceItems: args.acpView.messages.length,
+          conversationRenderedItems: args.acpView.messages.length,
+          conversationTotalItems: args.acpView.messages.length,
+        })) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Runtime conversation is active.");
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Runtime conversation is active.");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
   });
 
   it("submits selected ACP mode and model values for the team member", async () => {

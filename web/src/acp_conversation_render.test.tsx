@@ -1,6 +1,7 @@
+import { PassThrough } from "node:stream";
 import { MantineProvider } from "@mantine/core";
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToPipeableStream } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
@@ -9,28 +10,48 @@ import { ConversationItem } from "./conversation";
 function renderConversation(
   items: ConversationItem[],
   override?: Partial<React.ComponentProps<typeof AcpConversation>>
-): string {
-  return renderToStaticMarkup(
-    <MantineProvider>
-      <AcpConversation
-        items={items}
-        windowOffset={0}
-        isFrozenView={false}
-        shouldAutoCollapse={false}
-        collapseCutoff={0}
-        runStatus={null}
-        virtualTopSpacer={0}
-        virtualBottomSpacer={0}
-        stickToBottom={true}
-        pendingCount={0}
-        avgHeight={40}
-        onScroll={() => {}}
-        containerRef={React.createRef<HTMLDivElement>()}
-        ansi={(input) => `<span class="ansi-out">${input}</span>`}
-        {...override}
-      />
-    </MantineProvider>
-  );
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stream = new PassThrough();
+    let html = "";
+    stream.on("data", (chunk) => {
+      html += chunk.toString();
+    });
+    stream.on("end", () => {
+      resolve(html.replaceAll("<!-- -->", ""));
+    });
+    stream.on("error", reject);
+
+    const { pipe } = renderToPipeableStream(
+      <MantineProvider>
+        <AcpConversation
+          items={items}
+          windowOffset={0}
+          isFrozenView={false}
+          shouldAutoCollapse={false}
+          collapseCutoff={0}
+          runStatus={null}
+          virtualTopSpacer={0}
+          virtualBottomSpacer={0}
+          stickToBottom={true}
+          pendingCount={0}
+          avgHeight={40}
+          onScroll={() => {}}
+          containerRef={React.createRef<HTMLDivElement>()}
+          ansi={(input) => `<span class="ansi-out">${input}</span>`}
+          {...override}
+        />
+      </MantineProvider>,
+      {
+        onAllReady() {
+          pipe(stream);
+        },
+        onError(error) {
+          reject(error);
+        },
+      }
+    );
+  });
 }
 
 describe("AcpConversation rendering", () => {
@@ -38,8 +59,8 @@ describe("AcpConversation rendering", () => {
     await preloadThreadMarkdownAssets();
   });
 
-  it("renders live tool calls expanded and terminal output through ansi renderer", () => {
-    const html = renderConversation([
+  it("renders live tool calls expanded and terminal output through ansi renderer", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-1",
@@ -64,8 +85,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout");
   });
 
-  it("renders terminal background activity as a dedicated ACP section", () => {
-    const html = renderConversation([
+  it("renders terminal background activity as a dedicated ACP section", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-terminal-activity",
@@ -91,8 +112,8 @@ describe("AcpConversation rendering", () => {
     );
   });
 
-  it("renders grouped tool calls with a shared fold and nested tool entries", () => {
-    const html = renderConversation([
+  it("renders grouped tool calls with a shared fold and nested tool entries", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call_group",
         event_id: 12,
@@ -124,8 +145,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("1 running");
   });
 
-  it("renders explore groups as a single fold with thinking and nested tool calls", () => {
-    const html = renderConversation([
+  it("renders explore groups as a single fold with thinking and nested tool calls", async () => {
+    const html = await renderConversation([
       {
         kind: "explore_group",
         event_id: 20,
@@ -169,8 +190,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("1 running");
   });
 
-  it("renders JSON-like payload strings as structured sections", () => {
-    const html = renderConversation([
+  it("renders JSON-like payload strings as structured sections", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-json-string",
@@ -188,8 +209,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("src/main.rs");
   });
 
-  it("renders agent and user messages with explicit bubble markers", () => {
-    const html = renderConversation([
+  it("renders agent and user messages with explicit bubble markers", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_message",
         text: "Agent reply",
@@ -206,8 +227,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain('data-acp-message-bubble="user"');
   });
 
-  it("renders a native request_user_input card for pending questions", () => {
-    const html = renderConversation(
+  it("renders a native request_user_input card for pending questions", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "tool_call",
@@ -246,8 +267,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">Input<");
   });
 
-  it("renders a native request_user_input result card for completed answers", () => {
-    const html = renderConversation([
+  it("renders a native request_user_input result card for completed answers", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "request-user-input:call-2",
@@ -295,8 +316,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">Input<");
   });
 
-  it("renders secret request_user_input results as private placeholders", () => {
-    const html = renderConversation([
+  it("renders secret request_user_input results as private placeholders", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "request-user-input:call-3",
@@ -319,8 +340,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("suppressed the structured answer payload");
   });
 
-  it("renders markdown code fences in tool text sections", () => {
-    const html = renderConversation([
+  it("renders markdown code fences in tool text sections", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-markdown-code",
@@ -334,8 +355,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("hljs-built_in\">echo</span>");
   });
 
-  it("renders markdown lists in tool text sections without falling back to plain pre blocks", () => {
-    const html = renderConversation([
+  it("renders markdown lists in tool text sections without falling back to plain pre blocks", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-markdown-list",
@@ -351,8 +372,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("acp-payload-text");
   });
 
-  it("renders markdown in tool content sections", () => {
-    const html = renderConversation([
+  it("renders markdown in tool content sections", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-markdown-content",
@@ -368,8 +389,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("## Findings");
   });
 
-  it("renders unified diff payloads with visual diff classes", () => {
-    const html = renderConversation([
+  it("renders unified diff payloads with visual diff classes", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-diff-view",
@@ -395,8 +416,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("const newValue = 2;");
   });
 
-  it("preserves ascii-like text blocks without wrapping classes", () => {
-    const html = renderConversation([
+  it("preserves ascii-like text blocks without wrapping classes", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-ascii",
@@ -414,8 +435,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("( o.o )");
   });
 
-  it("sanitizes terminal html while keeping allowed ansi span tags", () => {
-    const html = renderConversation(
+  it("sanitizes terminal html while keeping allowed ansi span tags", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "tool_call",
@@ -436,8 +457,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<img");
   });
 
-  it("keeps nested ansi style spans and combines inherited styles", () => {
-    const html = renderConversation(
+  it("keeps nested ansi style spans and combines inherited styles", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "tool_call",
@@ -460,8 +481,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("style=\"color:#123456;font-weight:700\"");
   });
 
-  it("drops unsupported ansi styles and strips non-style span attributes while keeping text", () => {
-    const html = renderConversation(
+  it("drops unsupported ansi styles and strips non-style span attributes while keeping text", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "tool_call",
@@ -483,8 +504,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("&lt;span class=&quot;ansi-out&quot;&gt;");
   });
 
-  it("renders finished tool calls collapsed by default", () => {
-    const html = renderConversation([
+  it("renders finished tool calls collapsed by default", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-2",
@@ -497,8 +518,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
-  it("collapses older live tool calls once the conversation passes the cutoff window", () => {
-    const html = renderConversation(
+  it("collapses older live tool calls once the conversation passes the cutoff window", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "tool_call",
@@ -518,8 +539,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-tool-fold" open/);
   });
 
-  it("collapses older live grouped cards once the conversation passes the cutoff window", () => {
-    const html = renderConversation(
+  it("collapses older live grouped cards once the conversation passes the cutoff window", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "explore_group",
@@ -549,8 +570,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/acp-explore-group-fold" open/);
   });
 
-  it("shows success status dot for completed tool calls", () => {
-    const html = renderConversation([
+  it("shows success status dot for completed tool calls", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-success-mark",
@@ -564,8 +585,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("aria-label=\"Completed\"");
   });
 
-  it("shows error status dot for failed tool calls", () => {
-    const html = renderConversation([
+  it("shows error status dot for failed tool calls", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-error-mark",
@@ -579,8 +600,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("aria-label=\"Failed\"");
   });
 
-  it("shows duration next to tool status when raw_output provides duration", () => {
-    const html = renderConversation([
+  it("shows duration next to tool status when raw_output provides duration", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-duration-status",
@@ -600,9 +621,9 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<dt>duration</dt>");
   });
 
-  it("shows segmented footer for long tool text payloads", () => {
+  it("shows segmented footer for long tool text payloads", async () => {
     const lines = Array.from({ length: 400 }, (_, idx) => `line-${idx}`).join("\n");
-    const html = renderConversation([
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-long-text",
@@ -621,9 +642,9 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">line-363");
   });
 
-  it("renders aggregated_output in tail-first mode and keeps older lines behind Show more", () => {
+  it("renders aggregated_output in tail-first mode and keeps older lines behind Show more", async () => {
     const lines = Array.from({ length: 400 }, (_, idx) => `agg-${idx}`).join("\n");
-    const html = renderConversation([
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-aggregated-tail",
@@ -643,8 +664,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">agg-363");
   });
 
-  it("renders aggregated_output as plain terminal block even when text looks like markdown", () => {
-    const html = renderConversation([
+  it("renders aggregated_output as plain terminal block even when text looks like markdown", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-aggregated-markdown-like",
@@ -663,8 +684,74 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("acp-payload-markdown");
   });
 
-  it("shows segmented footer for large structured payloads", () => {
-    const html = renderConversation([
+  it("truncates overlong html class attributes inside plain text payloads", async () => {
+    const longClassValue = [
+      "inline-flex",
+      "items-center",
+      "justify-center",
+      "rounded-lg",
+      "font-semibold",
+      "transition",
+      "active:translate-y-px",
+      "disabled:cursor-not-allowed",
+      "disabled:opacity-50",
+      "shadow-sm",
+      "hover:bg-notion-hover",
+      "hover:text-notion-text",
+      "backdrop-blur-[2px]",
+      "hover:border-black/10",
+      "hover:bg-white",
+    ].join(" ");
+    const html = await renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-long-class-attribute",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: `<div class="${longClassValue}">content</div>`,
+        },
+      },
+    ]);
+
+    expect(html).toContain('class=&quot;inline-flex items-center justify-center rounded-lg font-semibold transi…&quot;');
+    expect(html).toContain(`title="&lt;div class=&quot;${longClassValue}&quot;&gt;content&lt;/div&gt;"`);
+    expect(html).toContain("&lt;div");
+    expect(html).toContain("content");
+  });
+
+  it("does not truncate plain text that only mentions class attributes outside html tags", async () => {
+    const longClassValue = [
+      "inline-flex",
+      "items-center",
+      "justify-center",
+      "rounded-lg",
+      "font-semibold",
+      "transition",
+      "active:translate-y-px",
+      "disabled:cursor-not-allowed",
+      "disabled:opacity-50",
+      "shadow-sm",
+    ].join(" ");
+    const plainText = `Debug note: use class="${longClassValue}" on the wrapper`;
+    const html = await renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-class-mention",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: plainText,
+        },
+      },
+    ]);
+
+    expect(html).toContain(`Debug note: use class=&quot;${longClassValue}&quot; on the wrapper`);
+    expect(html).not.toContain("transi…");
+  });
+
+  it("shows segmented footer for large structured payloads", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-large-payload",
@@ -684,8 +771,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("results");
   });
 
-  it("hides debug-only payload fields such as turn_id/process_id/source", () => {
-    const html = renderConversation([
+  it("hides debug-only payload fields such as turn_id/process_id/source", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-hidden-debug-fields",
@@ -715,8 +802,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">p-1<");
   });
 
-  it("hides call_id/cwd/success from regular payload fields and shows them in Detailed section", () => {
-    const html = renderConversation([
+  it("hides call_id/cwd/success from regular payload fields and shows them in Detailed section", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-hidden-in-payload",
@@ -744,8 +831,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<dt>duration_ms</dt>");
   });
 
-  it("shows only unified_diff in edit output and moves other fields to Detailed", () => {
-    const html = renderConversation([
+  it("shows only unified_diff in edit output and moves other fields to Detailed", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-edit-only-diff",
@@ -777,8 +864,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<dt>duration_ms</dt>");
   });
 
-  it("keeps edit old/new content in Detailed and hides edit output when unified_diff is missing", () => {
-    const html = renderConversation([
+  it("keeps edit old/new content in Detailed and hides edit output when unified_diff is missing", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-edit-old-new-detailed",
@@ -800,8 +887,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain(">Output</span>");
   });
 
-  it("hides empty stderr/stdout fields while keeping non-empty stream output", () => {
-    const html = renderConversation([
+  it("hides empty stderr/stdout fields while keeping non-empty stream output", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-hide-empty-stream-fields",
@@ -822,8 +909,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<dt>stderr</dt>");
   });
 
-  it("renders small nested arrays inline instead of collapsed Array(N) details", () => {
-    const html = renderConversation([
+  it("renders small nested arrays inline instead of collapsed Array(N) details", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-inline-small-array",
@@ -846,8 +933,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("Array(3)");
   });
 
-  it("renders structured array payload without numeric list markers", () => {
-    const html = renderConversation([
+  it("renders structured array payload without numeric list markers", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-structured-array-no-numbering",
@@ -868,8 +955,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("list-decimal");
   });
 
-  it("normalizes numeric-key objects into array-style payload rendering", () => {
-    const html = renderConversation([
+  it("normalizes numeric-key objects into array-style payload rendering", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-numeric-key-object",
@@ -891,8 +978,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<dt>2</dt>");
   });
 
-  it("renders payload context/content strings as plain text without markdown list numbering", () => {
-    const html = renderConversation([
+  it("renders payload context/content strings as plain text without markdown list numbering", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-payload-context-plain-text",
@@ -912,8 +999,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("<ol>");
   });
 
-  it("hides empty stderr/stdout fields for JSON-like string payloads", () => {
-    const html = renderConversation([
+  it("hides empty stderr/stdout fields for JSON-like string payloads", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-hide-empty-stream-fields-json-text",
@@ -930,8 +1017,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("done");
   });
 
-  it("shows only highest-priority output field among aggregated/formatted/stdout", () => {
-    const html = renderConversation([
+  it("shows only highest-priority output field among aggregated/formatted/stdout", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-output-priority-object",
@@ -953,8 +1040,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("stdout-value");
   });
 
-  it("falls back from aggregated_output to formatted_output when aggregated_output is empty", () => {
-    const html = renderConversation([
+  it("falls back from aggregated_output to formatted_output when aggregated_output is empty", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-output-priority-json",
@@ -972,8 +1059,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("stdout-value");
   });
 
-  it("falls back to stdout when aggregated_output and formatted_output are empty", () => {
-    const html = renderConversation([
+  it("falls back to stdout when aggregated_output and formatted_output are empty", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-output-priority-stdout-fallback",
@@ -993,8 +1080,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("stdout-value");
   });
 
-  it("hides debug-only fields for JSON-like string payloads as well", () => {
-    const html = renderConversation([
+  it("hides debug-only fields for JSON-like string payloads as well", async () => {
+    const html = await renderConversation([
       {
         kind: "tool_call",
         id: "call-hidden-debug-fields-json-text",
@@ -1016,8 +1103,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toMatch(/>p-2</);
   });
 
-  it("renders thinking inside collapsed folds while preserving the first-line title", () => {
-    const html = renderConversation(
+  it("renders thinking inside collapsed folds while preserving the first-line title", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "agent_thinking",
@@ -1044,8 +1131,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("Plan:");
   });
 
-  it("renders thinking bubble content with markdown formatting", () => {
-    const html = renderConversation([
+  it("renders thinking bubble content with markdown formatting", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_thinking",
         text: "**inspect** `query`",
@@ -1060,8 +1147,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain('<code class="md-inline-code">query</code>');
   });
 
-  it("renders skill xml fragments as structured markdown fields", () => {
-    const html = renderConversation([
+  it("renders skill xml fragments as structured markdown fields", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_thinking",
         text: [
@@ -1086,8 +1173,8 @@ describe("AcpConversation rendering", () => {
     );
   });
 
-  it("keeps skill xml inline-code rendering safe when fields contain backticks or html", () => {
-    const html = renderConversation([
+  it("keeps skill xml inline-code rendering safe when fields contain backticks or html", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_thinking",
         text: [
@@ -1108,8 +1195,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("owner`name");
   });
 
-  it("renders plan entries as a structured plan card", () => {
-    const html = renderConversation([
+  it("renders plan entries as a structured plan card", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_plan",
         text: "1. analyze\n2. implement",
@@ -1128,8 +1215,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("in_progress");
   });
 
-  it("uses a non-empty collapsed plan summary when preview text is blank", () => {
-    const html = renderConversation(
+  it("uses a non-empty collapsed plan summary when preview text is blank", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "agent_plan",
@@ -1147,8 +1234,8 @@ describe("AcpConversation rendering", () => {
     expect(html).not.toContain("Plan: </summary>");
   });
 
-  it("renders markdown bubbles and pending spacer", () => {
-    const html = renderConversation(
+  it("renders markdown bubbles and pending spacer", async () => {
+    const html = await renderConversation(
       [
         {
           kind: "agent_message",
@@ -1174,8 +1261,8 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("height:120px");
   });
 
-  it("renders markdown list, table, and code blocks in conversation bubbles", () => {
-    const html = renderConversation([
+  it("renders markdown list, table, and code blocks in conversation bubbles", async () => {
+    const html = await renderConversation([
       {
         kind: "agent_message",
         text: [

@@ -21,7 +21,7 @@ import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
-import { TeamTaskPanel } from "./team_task_panel";
+import { TeamTaskPanel, TeamTaskPanelLoadingSkeleton } from "./team_task_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -2632,6 +2632,18 @@ describe("team panels interactions", () => {
     );
     expect(progressbar.getAttribute("aria-valuenow")).toBe("1");
     expect(progressbar.getAttribute("aria-valuemax")).toBe("2");
+  });
+
+  it("TeamTaskPanel keeps the channel loading skeleton free of session-restore copy", () => {
+    renderWithMantine(root, <TeamTaskPanelLoadingSkeleton />);
+
+    const loadingStatus = required(
+      container.querySelector('[role="status"]'),
+      "loading status missing"
+    );
+    expect(container.textContent).not.toContain("Restoring session...");
+    expect(loadingStatus.textContent).toContain("Loading messages...");
+    expect(loadingStatus.getAttribute("aria-live")).toBe("polite");
   });
 
   it("TeamTaskPanel removes approved permission review cards from the channel after response", async () => {

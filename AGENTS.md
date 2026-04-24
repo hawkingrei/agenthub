@@ -87,6 +87,7 @@ agenthub/
 ## 7. Testing and Validation (initial suggestions)
 
 - Test-first expectation: non-trivial behavior changes should start from a focused failing or regression test when practical, and the test should remain part of the merged change
+- Bugfix policy: every bugfix must include a corresponding test that reproduces the fixed behavior or locks the regression boundary
 - Username/password login and join/bootstrap flows
 - ACP rendering and history replay
 - WS reconnect and message integrity (optional)

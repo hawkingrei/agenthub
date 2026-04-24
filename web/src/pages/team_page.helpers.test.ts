@@ -5,6 +5,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveSelectedAgentWorkspaceSessionId,
   resolveThreadRootMessageIdFromPayload,
   resolveTeamChannelId,
   resolveTeamSelectedMemberId,
@@ -76,6 +77,28 @@ describe("team_page helpers", () => {
     expect(resolveTeamWorkspaceTab("?tab=mailbox")).toBe("mailbox");
     expect(resolveTeamWorkspaceTab("?tab=member_console")).toBe("member_console");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
+  });
+
+  it("prefers runtime session ids over snapshot handles for member ACP routing", () => {
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "runtime-session"
+      )
+    ).toBe("runtime-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "   "
+      )
+    ).toBe("snapshot-session");
+    expect(resolveSelectedAgentWorkspaceSessionId(null, null)).toBeNull();
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {
