@@ -19,6 +19,7 @@ import {
   ActionButton,
   Badge,
   CompactButton,
+  CompactIconButton,
   ConversationBubble,
   EmptyState,
   IconButton,
@@ -172,7 +173,7 @@ const TEAM_TASK_ACTIVITY_HEADER_META_CLASS =
 const TEAM_TASK_ACTIVITY_META_BUTTON_CLASS =
   "px-0.5 py-0 text-[10px] font-normal tracking-[0.01em] text-notion-text-muted/46 hover:bg-transparent hover:text-notion-text-muted/70";
 const TEAM_TASK_ACTIVITY_META_STATUS_CLASS =
-  "inline-flex items-center gap-1 rounded-full border border-notion-border/70 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium leading-none tracking-[0.01em] text-notion-text-muted/72 shadow-sm hover:bg-white hover:text-notion-text-muted";
+  "h-4 w-4 rounded-full p-0 text-notion-text-muted/80 hover:bg-transparent hover:text-notion-text-muted active:translate-y-0";
 const TEAM_TASK_ACTIVITY_BUBBLE_SHELL_CLASS =
   "relative mt-1 flex w-full max-w-full";
 const TEAM_TASK_ACTIVITY_BUBBLE_STATUS_OVERLAY_CLASS =
@@ -634,16 +635,16 @@ function SeenProgressHoverCard({
     <HoverCard openDelay={120} closeDelay={80} position="top-end" shadow="md" radius="md">
       <HoverCard.Target>
         {seenActorIds.length === 0 ? (
-          <CompactButton
+          <CompactIconButton
             aria-label="Receipt pending"
             title="Receipt pending"
             className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
           >
             <span className={TEAM_TASK_ACTIVITY_DELIVERY_PENDING_CLASS} />
             <span className="sr-only">Pending</span>
-          </CompactButton>
+          </CompactIconButton>
         ) : (
-          <CompactButton
+          <CompactIconButton
             aria-label={`Seen ${seenProgress.readCount}/${seenProgress.totalCount}`}
             title={`Seen ${seenProgress.readCount}/${seenProgress.totalCount}`}
             className={TEAM_TASK_ACTIVITY_META_STATUS_CLASS}
@@ -666,7 +667,7 @@ function SeenProgressHoverCard({
               }
             />
             <span className="sr-only">{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>
-          </CompactButton>
+          </CompactIconButton>
         )}
       </HoverCard.Target>
       <HoverCard.Dropdown className={TEAM_TASK_ACTIVITY_SEEN_CARD_CLASS}>
