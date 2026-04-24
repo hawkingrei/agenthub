@@ -13,8 +13,8 @@ use agent_client_protocol_legacy::{
 };
 use codex_config::types::{McpServerConfig, McpServerTransportConfig};
 use codex_core::{
-    RolloutRecorder, ThreadManager, ThreadSortKey, config::Config, find_thread_path_by_id_str,
-    parse_cursor,
+    RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
+    find_thread_path_by_id_str, parse_cursor,
 };
 use codex_exec_server::EnvironmentManager;
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
@@ -149,11 +149,13 @@ impl CodexAgent {
                                 },
                                 env_http_headers: None,
                             },
+                            experimental_environment: None,
                             required: false,
                             enabled: true,
                             supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
+                            default_tools_approval_mode: None,
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
@@ -186,11 +188,13 @@ impl CodexAgent {
                                 env_vars: vec![],
                                 cwd: Some(cwd.to_path_buf()),
                             },
+                            experimental_environment: None,
                             required: false,
                             enabled: true,
                             supports_parallel_tool_calls: false,
                             startup_timeout_sec: None,
                             tool_timeout_sec: None,
+                            default_tools_approval_mode: None,
                             disabled_tools: None,
                             enabled_tools: None,
                             disabled_reason: None,
@@ -711,6 +715,7 @@ impl Agent for CodexAgent {
             SESSION_LIST_PAGE_SIZE,
             cursor_obj.as_ref(),
             ThreadSortKey::UpdatedAt,
+            SortDirection::Desc,
             &[
                 SessionSource::Cli,
                 SessionSource::VSCode,
