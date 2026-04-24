@@ -181,6 +181,69 @@ async function openTaskDetailModal(
   await waitForCondition(() => document.body.querySelector('[role="dialog"]') !== null);
 }
 
+function renderTeamSidebar(
+  root: Root,
+  props: Partial<React.ComponentProps<typeof TeamSidebar>> = {}
+): void {
+  const teamOne = buildTeam();
+  act(() => {
+    root.render(
+      <MantineProvider>
+        <TeamSidebar
+          showTeamSelector={false}
+          developerMode={true}
+          busy={null}
+          onRefreshTeams={() => {}}
+          onOpenCreateTeam={() => {}}
+          draftTeamName=""
+          leaderMemberId="leader-agent"
+          configuredWorkerCount={1}
+          teams={[teamOne]}
+          selectedTeam={teamOne}
+          selectedTeamId={teamOne.id}
+          selectedTeamHasConfiguredMembers={true}
+          teamMemberSummaryByTeamId={new Map()}
+          memberLiveStates={[buildMemberLiveState()]}
+          focusedAgentMemberId=""
+          tab="conversation"
+          onSelectTeam={() => {}}
+          onSelectChannel={() => {}}
+          onSelectKanban={() => {}}
+          onSelectAgentTab={() => {}}
+          {...props}
+        />
+      </MantineProvider>
+    );
+  });
+}
+
+function openCreateChannelForm(container: HTMLElement): {
+  channelIdInput: HTMLInputElement;
+  descriptionInput: HTMLInputElement;
+} {
+  clickElement(findButtonByAriaLabel(container, "Create channel"));
+  return {
+    channelIdInput: required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing"
+    ) as HTMLInputElement,
+    descriptionInput: required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing"
+    ) as HTMLInputElement,
+  };
+}
+
+function fillCreateChannelForm(
+  channelIdInput: HTMLInputElement,
+  descriptionInput: HTMLInputElement,
+  channelId: string,
+  description: string
+): void {
+  changeInputValue(channelIdInput, channelId);
+  changeInputValue(descriptionInput, description);
+}
+
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
   return {
     id: "team-1",
@@ -714,63 +777,31 @@ describe("team panels interactions", () => {
   it("TeamSidebar exposes create and delete channel controls for non-default lanes", async () => {
     const onCreateChannel = vi.fn().mockResolvedValue(undefined);
     const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
-    const teamOne = buildTeam();
-
-    act(() => {
-      root.render(
-        <MantineProvider>
-          <TeamSidebar
-            showTeamSelector={false}
-            developerMode={true}
-            busy={null}
-            onRefreshTeams={() => {}}
-            onOpenCreateTeam={() => {}}
-            draftTeamName=""
-            leaderMemberId="leader-agent"
-            configuredWorkerCount={1}
-            teams={[teamOne]}
-            selectedTeam={teamOne}
-            selectedTeamId={teamOne.id}
-            selectedTeamHasConfiguredMembers={true}
-            teamMemberSummaryByTeamId={new Map()}
-            memberLiveStates={[buildMemberLiveState()]}
-            channelItems={[
-              {
-                id: "all",
-                label: "# all",
-                description: "Shared coordination lane",
-              },
-              {
-                id: "review",
-                label: "# review",
-                description: "Review lane",
-              },
-            ]}
-            selectedChannelId="review"
-            focusedAgentMemberId=""
-            tab="conversation"
-            onSelectTeam={() => {}}
-            onSelectChannel={() => {}}
-            onCreateChannel={onCreateChannel}
-            onDeleteChannel={onDeleteChannel}
-            onSelectKanban={() => {}}
-            onSelectAgentTab={() => {}}
-          />
-        </MantineProvider>
-      );
+    renderTeamSidebar(root, {
+      onCreateChannel,
+      onDeleteChannel,
+      channelItems: [
+        {
+          id: "all",
+          label: "# all",
+          description: "Shared coordination lane",
+        },
+        {
+          id: "review",
+          label: "# review",
+          description: "Review lane",
+        },
+      ],
+      selectedChannelId: "review",
     });
 
-    clickElement(findButtonByAriaLabel(container, "Create channel"));
-    const channelIdInput = required(
-      container.querySelector("input[aria-label='Channel ID']"),
-      "channel id input missing"
-    ) as HTMLInputElement;
-    const descriptionInput = required(
-      container.querySelector("input[aria-label='Channel Description']"),
-      "channel description input missing"
-    ) as HTMLInputElement;
-    changeInputValue(channelIdInput, " research ");
-    changeInputValue(descriptionInput, " Investigation lane ");
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(
+      channelIdInput,
+      descriptionInput,
+      " research ",
+      " Investigation lane "
+    );
     clickElement(findButtonByText(container, "Create channel"));
     await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
     expect(onCreateChannel).toHaveBeenCalledWith({
@@ -785,49 +816,10 @@ describe("team panels interactions", () => {
 
   it("TeamSidebar keeps the inline create form open when channel creation fails", async () => {
     const onCreateChannel = vi.fn().mockRejectedValue(new Error("duplicate channel"));
-    const teamOne = buildTeam();
+    renderTeamSidebar(root, { onCreateChannel });
 
-    act(() => {
-      root.render(
-        <MantineProvider>
-          <TeamSidebar
-            showTeamSelector={false}
-            developerMode={true}
-            busy={null}
-            onRefreshTeams={() => {}}
-            onOpenCreateTeam={() => {}}
-            draftTeamName=""
-            leaderMemberId="leader-agent"
-            configuredWorkerCount={1}
-            teams={[teamOne]}
-            selectedTeam={teamOne}
-            selectedTeamId={teamOne.id}
-            selectedTeamHasConfiguredMembers={true}
-            teamMemberSummaryByTeamId={new Map()}
-            memberLiveStates={[buildMemberLiveState()]}
-            focusedAgentMemberId=""
-            tab="conversation"
-            onSelectTeam={() => {}}
-            onSelectChannel={() => {}}
-            onCreateChannel={onCreateChannel}
-            onSelectKanban={() => {}}
-            onSelectAgentTab={() => {}}
-          />
-        </MantineProvider>
-      );
-    });
-
-    clickElement(findButtonByAriaLabel(container, "Create channel"));
-    const channelIdInput = required(
-      container.querySelector("input[aria-label='Channel ID']"),
-      "channel id input missing"
-    ) as HTMLInputElement;
-    const descriptionInput = required(
-      container.querySelector("input[aria-label='Channel Description']"),
-      "channel description input missing"
-    ) as HTMLInputElement;
-    changeInputValue(channelIdInput, "review");
-    changeInputValue(descriptionInput, "Review lane");
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(channelIdInput, descriptionInput, "review", "Review lane");
     clickElement(findButtonByText(container, "Create channel"));
 
     await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
@@ -846,63 +838,18 @@ describe("team panels interactions", () => {
 
   it("TeamSidebar lets the user cancel channel creation and resets the inline form", async () => {
     const onCreateChannel = vi.fn().mockResolvedValue(undefined);
-    const teamOne = buildTeam();
+    renderTeamSidebar(root, { onCreateChannel });
 
-    act(() => {
-      root.render(
-        <MantineProvider>
-          <TeamSidebar
-            showTeamSelector={false}
-            developerMode={true}
-            busy={null}
-            onRefreshTeams={() => {}}
-            onOpenCreateTeam={() => {}}
-            draftTeamName=""
-            leaderMemberId="leader-agent"
-            configuredWorkerCount={1}
-            teams={[teamOne]}
-            selectedTeam={teamOne}
-            selectedTeamId={teamOne.id}
-            selectedTeamHasConfiguredMembers={true}
-            teamMemberSummaryByTeamId={new Map()}
-            memberLiveStates={[buildMemberLiveState()]}
-            focusedAgentMemberId=""
-            tab="conversation"
-            onSelectTeam={() => {}}
-            onSelectChannel={() => {}}
-            onCreateChannel={onCreateChannel}
-            onSelectKanban={() => {}}
-            onSelectAgentTab={() => {}}
-          />
-        </MantineProvider>
-      );
-    });
-
-    clickElement(findButtonByAriaLabel(container, "Create channel"));
-    const channelIdInput = required(
-      container.querySelector("input[aria-label='Channel ID']"),
-      "channel id input missing"
-    ) as HTMLInputElement;
-    const descriptionInput = required(
-      container.querySelector("input[aria-label='Channel Description']"),
-      "channel description input missing"
-    ) as HTMLInputElement;
-    changeInputValue(channelIdInput, "review");
-    changeInputValue(descriptionInput, "Review lane");
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(channelIdInput, descriptionInput, "review", "Review lane");
 
     clickElement(findButtonByText(container, "Cancel"));
 
     expect(container.querySelector("input[aria-label='Channel ID']")).toBeNull();
 
-    clickElement(findButtonByAriaLabel(container, "Create channel"));
-    expect((required(
-      container.querySelector("input[aria-label='Channel ID']"),
-      "channel id input missing after reopening"
-    ) as HTMLInputElement).value).toBe("");
-    expect((required(
-      container.querySelector("input[aria-label='Channel Description']"),
-      "channel description input missing after reopening"
-    ) as HTMLInputElement).value).toBe("");
+    const reopenedForm = openCreateChannelForm(container);
+    expect(reopenedForm.channelIdInput.value).toBe("");
+    expect(reopenedForm.descriptionInput.value).toBe("");
     expect(onCreateChannel).not.toHaveBeenCalled();
   });
 
