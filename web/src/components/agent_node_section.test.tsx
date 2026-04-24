@@ -145,11 +145,11 @@ describe("AgentNodeSection", () => {
       nodeNameInput: "Node East",
       grpcTargetInput: "https://node-east.internal:50051",
     });
-    expect(html).toContain("Join node with token");
+    expect(html).toContain("Connect machine");
     expect(html).toContain("bootstrap-token");
     expect(html).toContain("Control-plane gRPC listen");
     expect(html).toContain("0.0.0.0:50051");
-    expect(html).toContain("AgentHub to node and node to node traffic uses encrypted gRPC.");
+    expect(html).toContain("Use the bootstrap token on the remote machine");
     expect(html).toContain("Add Node");
     expect(html).not.toContain("Node ID is required.");
   });
@@ -194,8 +194,14 @@ describe("AgentNodeSection", () => {
       ],
       targetNodeId: "node-east",
     });
-    expect(html).toContain("Blank create-worktree workdirs default to:");
+    expect(html).toContain("Machines");
+    expect(html).toContain("Route &amp; Worktree");
     expect(html).toContain("~/.agenthub/worktrees/node-east");
+    expect(html).toContain("Agents on this machine (0)");
+    expect(html).toContain("Machine ID");
+    expect(html).toContain("Route target");
+    expect(html).toContain("Worktree root");
+    expect(html).toContain("No agents on this machine");
     expect(html).toContain("Save");
   });
 
@@ -274,14 +280,17 @@ describe("AgentNodeSection", () => {
       targetNodeId: "node-east",
     });
 
-    expect(html).toContain("Machines &amp; Agents");
+    expect(html).toContain("Machines");
     expect(html).toContain("Main Node");
     expect(html).toContain("Node East");
     expect(html).toContain("Planner");
     expect(html).toContain("Worker A");
     expect(html).toContain("Worker B");
     expect(html).toContain("Selected");
-    expect(html).toContain("Bind the agent to Node East via encrypted gRPC (node-east.internal).");
+    expect(html).toContain("New agents bind to Node East via encrypted gRPC (node-east.internal).");
+    expect(html).toContain("2 attached agents");
+    expect(html).toContain("Agents on this machine (2)");
+    expect(html).toContain("running");
   });
 
   it("falls back to the main node chooser and truncates long agent lists", () => {
@@ -346,8 +355,10 @@ describe("AgentNodeSection", () => {
       ] as typeof baseProps.agents,
     });
 
-    expect(html).toContain("Run on this AgentHub instance.");
-    expect(html).toContain("+1 more");
-    expect(html).not.toContain("No agents assigned yet.");
+    expect(html).toContain("New agents run on this AgentHub instance");
+    expect(html).toContain("local");
+    expect(html).toContain("Agents on this machine (5)");
+    expect(html).toContain("Five");
+    expect(html).not.toContain("No agents on this machine");
   });
 });

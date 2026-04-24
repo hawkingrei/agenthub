@@ -80,7 +80,7 @@ type AcpDebugProps = {
 const COPIED_STATE_RESET_DELAY_MS = 1600;
 const DEBUG_TERMINAL_CONTAINER_CLASS =
   "terminal flex-1 min-h-0 overflow-auto rounded-lg border border-notion-border bg-brand-primary p-3 font-mono text-[12px] leading-relaxed text-white shadow-inner";
-const DEBUG_TERMINAL_LINE_BASE_CLASS = "line break-words whitespace-pre-wrap";
+const DEBUG_TERMINAL_LINE_BASE_CLASS = "line m-0 min-w-max whitespace-pre [tab-size:2]";
 const DEBUG_TERMINAL_STDOUT_CLASS = "text-white";
 const DEBUG_TERMINAL_STDERR_CLASS = "text-red-300";
 const DEBUG_TERMINAL_SYSTEM_CLASS = "text-cyan-300";
@@ -654,7 +654,7 @@ function DebugTerminalOutput({
               ? DEBUG_TERMINAL_SYSTEM_CLASS
               : DEBUG_TERMINAL_STDOUT_CLASS;
         return (
-          <div
+          <pre
             key={`id-${line.event_id}`}
             className={`${DEBUG_TERMINAL_LINE_BASE_CLASS} ${line.stream} ${toneClass}`}
             dangerouslySetInnerHTML={{ __html: ansi(line.message) }}

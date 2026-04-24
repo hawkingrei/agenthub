@@ -172,6 +172,32 @@ describe("AcpDebug interactions", () => {
     expect(container.textContent).not.toContain("stdout line");
   });
 
+  it("renders terminal lines with pre semantics so long stderr stays intact", () => {
+    renderDebug(
+      root,
+      buildProps({
+        initialTab: "terminal",
+        terminalOutputs: [
+          {
+            event_id: 1,
+            ts: 1,
+            seq: "1",
+            stream: "stderr",
+            message:
+              "Error: boom\\n    at /very/long/path/to/file.ts:120:17\\n    at main (cmd.ts:88:3)",
+            agent_id: "agent-a",
+            session_id: "session-a",
+          },
+        ],
+      })
+    );
+
+    const line = container.querySelector("pre.stderr");
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain("/very/long/path/to/file.ts:120:17");
+    expect(line?.className).toContain("whitespace-pre");
+  });
+
   it("invokes jump callback on permission row click", () => {
     const onJump = vi.fn();
     renderDebug(root, buildProps({ onJumpToPermissionHistory: onJump }));
