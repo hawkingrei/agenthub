@@ -18,6 +18,7 @@ import {
 } from "./acp_conversation_items";
 import { useAcpMarkdownRenderVersion } from "./use_acp_markdown_assets";
 export { parseAnsiSegmentsCached } from "./acp_tool_content";
+export { shouldAutoCollapseConversationItem } from "./acp_conversation_bubble";
 export {
   deriveToolCallOpenState,
   isToolCallEffectivelyLive,
@@ -109,11 +110,13 @@ export function AcpConversation({
         )}
         {items.map((msg, idx) => {
           const globalIndex = windowOffset + idx;
+          const latestVisibleGlobalIndex = windowOffset + items.length - 1;
           return (
             <AcpConversationItemRow
               key={getConversationItemKey(msg, globalIndex)}
               msg={msg}
               globalIndex={globalIndex}
+              latestVisibleGlobalIndex={latestVisibleGlobalIndex}
               focusedToolCallId={focusedToolCallId}
               shouldAutoCollapse={shouldAutoCollapse}
               collapseCutoff={collapseCutoff}

@@ -22,6 +22,7 @@ const LazyExploreGroupBubble = React.lazy(async () => {
 export type AcpConversationBubbleProps = {
   msg: ConversationItem;
   globalIndex: number;
+  latestVisibleGlobalIndex: number;
   shouldAutoCollapse: boolean;
   collapseCutoff: number;
   isFrozenView: boolean;
@@ -31,10 +32,43 @@ export type AcpConversationBubbleProps = {
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
 };
 
+export function shouldAutoCollapseConversationItem(
+  msg: ConversationItem,
+  {
+    globalIndex,
+    latestVisibleGlobalIndex,
+    shouldAutoCollapse,
+    collapseCutoff,
+    isFrozenView,
+  }: {
+    globalIndex: number;
+    latestVisibleGlobalIndex: number;
+    shouldAutoCollapse: boolean;
+    collapseCutoff: number;
+    isFrozenView: boolean;
+  }
+): boolean {
+  if (isFrozenView) return false;
+  const tailWindowAutoCollapse =
+    shouldAutoCollapse && globalIndex < collapseCutoff;
+  if (
+    msg.kind === "tool_call" ||
+    msg.kind === "tool_call_group" ||
+    msg.kind === "explore_group"
+  ) {
+    return globalIndex < latestVisibleGlobalIndex || tailWindowAutoCollapse;
+  }
+  if (msg.kind === "agent_plan") {
+    return tailWindowAutoCollapse;
+  }
+  return false;
+}
+
 export const AcpConversationBubble = React.memo(
   function AcpConversationBubble({
     msg,
     globalIndex,
+    latestVisibleGlobalIndex,
     shouldAutoCollapse,
     collapseCutoff,
     isFrozenView,
@@ -43,8 +77,13 @@ export const AcpConversationBubble = React.memo(
     markdownRenderVersion,
     onSubmitRequestUserInput,
   }: AcpConversationBubbleProps) {
-    const autoCollapse =
-      shouldAutoCollapse && !isFrozenView && globalIndex < collapseCutoff;
+    const autoCollapse = shouldAutoCollapseConversationItem(msg, {
+      globalIndex,
+      latestVisibleGlobalIndex,
+      shouldAutoCollapse,
+      collapseCutoff,
+      isFrozenView,
+    });
 
     if (msg.kind === "agent_thinking") {
       return <ThinkingBubble text={msg.text} live={msg.live} />;
@@ -123,6 +162,7 @@ function areConversationBubblePropsEqual(
 ): boolean {
   if (prev.msg !== next.msg) return false;
   if (prev.globalIndex !== next.globalIndex) return false;
+  if (prev.latestVisibleGlobalIndex !== next.latestVisibleGlobalIndex) return false;
   if (prev.shouldAutoCollapse !== next.shouldAutoCollapse) return false;
   if (prev.collapseCutoff !== next.collapseCutoff) return false;
   if (prev.isFrozenView !== next.isFrozenView) return false;
