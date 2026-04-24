@@ -93,8 +93,15 @@ const ROUTE_ACP_SHARED_IDS = [
   "/src/components/acp_request_user_input_cards.tsx",
   "/src/components/acp_conversation_cache_stats.ts",
   "/src/components/input_dock.tsx",
-  "/src/components/acp_tool_",
   "/src/hooks/use_acp_conversation.ts",
+];
+
+const ROUTE_ACP_TOOL_IDS = [
+  "/src/components/acp_tool_",
+];
+
+const ROUTE_ACP_PLAN_IDS = [
+  "/src/components/acp_plan.tsx",
 ];
 
 const ROUTE_AGENTS_WORKBENCH_IDS = [
@@ -139,6 +146,12 @@ export function resolveChunkGroupName(id: string): string | undefined {
   }
   if (includesAny(normalized, ROUTE_UI_SHARED_IDS)) {
     return "route-ui-shared";
+  }
+  if (includesAny(normalized, ROUTE_ACP_PLAN_IDS)) {
+    return "route-acp-plan";
+  }
+  if (includesAny(normalized, ROUTE_ACP_TOOL_IDS)) {
+    return "route-acp-tools";
   }
   if (includesAny(normalized, ROUTE_ACP_SHARED_IDS)) {
     return "route-acp-shared";
@@ -189,7 +202,9 @@ export default defineConfig({
             !dep.includes("route-agents-debug-loader-") &&
             !dep.includes("route-agents-workbench-") &&
             !dep.includes("route-agents-debug-") &&
+            !dep.includes("route-acp-plan-") &&
             !dep.includes("route-acp-shared-") &&
+            !dep.includes("route-acp-tools-") &&
             !dep.includes("route-teams-agent-acp-") &&
             !dep.includes("route-teams-") &&
             !dep.includes("vendor-markdown-")

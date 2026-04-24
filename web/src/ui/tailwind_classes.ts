@@ -35,7 +35,7 @@ export const ACP_PANEL_ROOT =
 export const ACP_PANEL_ROOT_CLASS = ACP_PANEL_ROOT;
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1.5 border-b border-notion-border-faint bg-notion-surface-overlay px-3 py-2 backdrop-blur-sm sm:px-4 max-[720px]:px-2.5";
+  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
 
 export const ACP_TABS_CLASS =
   "inline-flex max-w-full flex-wrap items-center gap-0.5";
@@ -82,19 +82,19 @@ export const ACP_DEBUG_RAW_PRE_CLASS =
   "acp-content mt-2 overflow-auto rounded-lg border border-notion-border bg-white p-3 text-[12px] leading-relaxed text-notion-text";
 
 export const ACP_CONVERSATION_TOP_HINT_CLASS =
-  "acp-conversation-top-hint mx-auto my-4 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm";
+  "acp-conversation-top-hint mx-auto my-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm";
 
 export const CONVERSATION_MESSAGE_ROW_BASE_CLASS =
   "group relative rounded-lg border-2 border-transparent transition hover:border-black hover:bg-white active:border-black active:bg-white";
 
 export const CONVERSATION_MESSAGE_STACK_ROW_CLASS =
-  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} mb-0.5 flex w-full flex-col px-2 py-1.5`;
+  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} mb-0.5 flex w-full flex-col px-1.5 py-1`;
 
 export const CONVERSATION_MESSAGE_INLINE_ROW_CLASS =
-  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} flex items-start gap-2.5 px-2 py-1.5`;
+  `${CONVERSATION_MESSAGE_ROW_BASE_CLASS} flex items-start gap-2 px-1.5 py-1`;
 
 export const ACP_MESSAGE_BUBBLE_CLASS =
-  "acp-message-bubble relative w-full max-w-full rounded-[12px] border border-black/6 px-2 py-[5px] text-[14px] leading-6 shadow-none transition-all";
+  "acp-message-bubble relative w-full max-w-full rounded-[10px] border border-black/6 px-1.5 py-1 text-[14px] leading-6 shadow-none transition-all";
 
 export const ACP_MESSAGE_BUBBLE_AGENT_CLASS =
   `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-agent self-start rounded-tl-[6px] bg-white/96 text-slate-900`;
@@ -103,10 +103,10 @@ export const ACP_MESSAGE_BUBBLE_USER_CLASS =
   `${ACP_MESSAGE_BUBBLE_CLASS} acp-message-bubble-user self-end rounded-tr-[6px] bg-white/94 text-slate-900`;
 
 export const ACP_BUBBLE_THINKING_CLASS =
-  "acp-bubble agent_thinking self-start w-full max-w-full rounded-[12px] rounded-tl-[6px] border border-black/6 bg-slate-50/78 px-2 py-[5px] italic text-slate-600 shadow-none";
+  "acp-bubble agent_thinking self-start w-full max-w-full rounded-[10px] rounded-tl-[6px] border border-black/6 bg-slate-50/78 px-1.5 py-1 italic text-slate-600 shadow-none";
 
 export const ACP_BUBBLE_PLAN_CLASS =
-  "acp-bubble agent_plan self-start w-full max-w-full rounded-[12px] rounded-tl-[6px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none";
+  "acp-bubble agent_plan self-start w-full max-w-full rounded-[10px] rounded-tl-[6px] border border-black/6 bg-white/96 px-1.5 py-1 shadow-none";
 
 export const ACP_PLAN_INDEX_BADGE_CLASS =
   "mr-2 inline-flex h-5 w-5 items-center justify-center rounded-md bg-notion-hover text-[10px] font-bold text-notion-text-muted shadow-inner";
@@ -608,13 +608,13 @@ export const AGENTS_ROW_ACTIVE_CLASS =
   "agents-workbench-row active group relative flex min-w-0 cursor-pointer select-none flex-col gap-1 rounded-md border border-transparent bg-[rgba(55,53,47,0.07)] px-2 py-1.5 text-notion-text";
 
 export const OUTPUT_HEADER_ROOT_CLASS =
-  "output-header sticky top-0 z-30 flex flex-col gap-1.5 bg-notion-surface-overlay px-4 py-2.5 backdrop-blur-md transition-all sm:px-6 sm:py-3";
+  "output-header sticky top-0 z-30 flex flex-col gap-1 bg-notion-surface-overlay px-4 py-1.5 backdrop-blur-md transition-all sm:px-6 sm:py-2";
 
 export const OUTPUT_HEADER_TITLE_CLASS =
-  "output-title flex min-w-0 flex-1 items-start gap-3";
+  "output-title flex min-w-0 flex-1 items-start gap-2.5";
 
 export const OUTPUT_HEADER_TITLE_TEXT_CLASS =
-  "output-title-text flex min-w-0 flex-1 flex-col gap-0.5";
+  "output-title-text flex min-w-0 flex-1 flex-col gap-0";
 
 export const OUTPUT_HEADER_TITLE_MAIN_CLASS =
   "output-title-main flex min-w-0 items-center gap-2";
@@ -623,7 +623,7 @@ export const OUTPUT_HEADER_TITLE_HEADING_CLASS =
   "truncate text-sm font-semibold leading-tight text-notion-text sm:text-base";
 
 export const OUTPUT_HEADER_META_CLASS =
-  "output-meta flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px] text-notion-text-muted [&>*]:min-w-0";
+  "output-meta flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[11px] text-notion-text-muted [&>*]:min-w-0";
 
 export const OUTPUT_HEADER_DETAILS_ROOT_CLASS = "output-header-details relative z-[70]";
 
@@ -655,7 +655,7 @@ export const OUTPUT_HEADER_SUBTITLE_ROW_CLASS =
   "output-subtitle-row flex min-w-0 items-center max-w-full";
 
 export const OUTPUT_HEADER_SUBTITLE_CLASS =
-  "output-subtitle truncate text-[12px] text-notion-text-muted leading-relaxed";
+  "output-subtitle truncate text-[12px] text-notion-text-muted leading-snug";
 
 export const OUTPUT_BODY_ROOT_CLASS =
   "output-body flex flex-col min-h-0 flex-1 overflow-hidden bg-notion-bg-subtle";
@@ -694,7 +694,7 @@ export const TEAM_PAGE_ROOT_CLASS =
   "mx-auto flex min-h-0 flex-1 w-full max-w-[1680px] flex-col gap-3 bg-white px-3 py-2 sm:px-4 lg:px-6";
 
 export const TEAM_SECTION_CARD_CLASS =
-  "min-h-0 min-w-0 rounded-lg border border-notion-border bg-white px-3 py-2 shadow-sm transition-all";
+  "min-h-0 min-w-0 rounded-lg border border-notion-border bg-white px-2.5 py-1.5 shadow-sm transition-all";
 
 export const TEAM_SECTION_CARD_LARGE_CLASS =
   "min-h-0 rounded-xl border border-notion-border bg-white p-4 shadow-md transition-all sm:p-6";
@@ -721,7 +721,7 @@ export const TEAM_WORKBENCH_PANEL_CLASS =
   "shrink-0 rounded-xl border border-notion-border bg-white p-2 shadow-lg backdrop-blur-md";
 
 export const TEAM_WORKBENCH_HEADER_SHELL_CLASS =
-  "flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-2.5 sm:px-6 sm:py-3 border-b border-notion-border transition-all";
+  "flex flex-wrap items-center justify-between gap-2.5 bg-white px-3 py-1.5 sm:px-4 sm:py-2 border-b border-notion-border transition-all";
 
 export const TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
@@ -730,7 +730,7 @@ export const TEAM_WORKBENCH_HEADER_STATUS_CLASS =
   "inline-flex items-center gap-1.5 rounded-md border border-notion-border/70 bg-notion-sidebar/72 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-notion-text-muted transition hover:bg-notion-hover";
 
 export const TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS =
-  "shrink-0 flex min-h-0 flex-col rounded-xl border border-notion-border bg-white px-4 py-3 shadow-sm transition-all";
+  "shrink-0 flex min-h-0 flex-col rounded-xl border border-notion-border bg-white px-3 py-2 shadow-sm transition-all";
 
 export const TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS =
   "min-w-0 bg-white px-4 py-3 border-r border-notion-border last:border-r-0";

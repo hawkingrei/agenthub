@@ -2634,6 +2634,45 @@ describe("team panels interactions", () => {
     expect(progressbar.getAttribute("aria-valuemax")).toBe("2");
   });
 
+  it("TeamTaskPanel keeps the channel loading skeleton free of session-restore copy", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(1, {
+            from_actor_id: "leader-agent",
+            to_actor_id: null,
+            route: "group_chat",
+            payload: { type: "chat_message", text: "queued update" },
+          }),
+        ]}
+        humanActorId="user"
+        memberLiveStates={[
+          buildMemberLiveState({
+            member_id: "leader-agent",
+            role: "leader",
+            agent_name: "Leader Agent",
+          }),
+        ]}
+        memberIds={["leader-agent"]}
+        conversationTitle="# all"
+        isChannelConversation={true}
+        messagesLoading={true}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    expect(container.textContent).not.toContain("Restoring session...");
+  });
+
   it("TeamTaskPanel removes approved permission review cards from the channel after response", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const listPermissionsSpy = vi

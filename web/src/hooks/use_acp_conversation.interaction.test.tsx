@@ -50,11 +50,15 @@ function HookHarness({
   acpView = baseAcpView,
   acpTab = "conversation",
   renderToolCallNode = true,
+  onLoadOlder = () => {},
+  eventMeta = {},
   onSnapshot,
 }: {
   acpView?: AcpView;
   acpTab?: "conversation" | "plan" | "debug";
   renderToolCallNode?: boolean;
+  onLoadOlder?: () => void;
+  eventMeta?: Record<string, { oldestId: number | null; hasMore: boolean; loading: boolean; loaded: boolean }>;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }) {
   const snapshot = useAcpConversation({
@@ -62,9 +66,9 @@ function HookHarness({
     activeAgent: "agent-1",
     activeSessionId: "session-1",
     acpTab,
-    eventMeta: {},
+    eventMeta,
     isAgentActive: true,
-    onLoadOlder: () => {},
+    onLoadOlder,
   });
   onSnapshot(snapshot);
   if (acpTab !== "conversation") {
@@ -494,6 +498,143 @@ describe("useAcpConversation viewport width initialization", () => {
       snapshot?.conversationSourceItems ?? 0
     );
     expect(snapshot?.conversationVirtualBottomSpacer ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe("useAcpConversation scroll rerender suppression", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let snapshot: HookSnapshot | null = null;
+  let scrollTop = 0;
+  let renderCount = 0;
+  let originalClientWidth: PropertyDescriptor | undefined;
+  let originalClientHeight: PropertyDescriptor | undefined;
+  let originalScrollHeight: PropertyDescriptor | undefined;
+  let originalScrollTop: PropertyDescriptor | undefined;
+  let originalRequestAnimationFrame: typeof window.requestAnimationFrame | undefined;
+
+  const onSnapshot = (next: HookSnapshot) => {
+    snapshot = next;
+    renderCount += 1;
+  };
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    snapshot = null;
+    scrollTop = 0;
+    renderCount = 0;
+    originalRequestAnimationFrame = window.requestAnimationFrame;
+    Reflect.deleteProperty(window, "requestAnimationFrame");
+    originalClientWidth = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientWidth"
+    );
+    originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight"
+    );
+    originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    originalScrollTop = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollTop"
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 640,
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 420,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 2_400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    snapshot = null;
+    if (originalRequestAnimationFrame) {
+      Object.defineProperty(window, "requestAnimationFrame", {
+        configurable: true,
+        value: originalRequestAnimationFrame,
+      });
+    }
+    restoreDescriptor(HTMLElement.prototype, "clientWidth", originalClientWidth);
+    restoreDescriptor(HTMLElement.prototype, "clientHeight", originalClientHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
+    restoreDescriptor(HTMLElement.prototype, "scrollTop", originalScrollTop);
+  });
+
+  it("does not rerender on upward scroll when conversation virtualization is inactive", () => {
+    const acpView = buildManyMessageView(12);
+    act(() => {
+      root.render(<HookHarness onSnapshot={onSnapshot} acpView={acpView} />);
+    });
+
+    const initialRenderCount = renderCount;
+    scrollTop = 320;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+
+    expect(snapshot?.conversationVirtualized).toBe(false);
+    expect(renderCount).toBe(initialRenderCount);
+  });
+
+  it("does not auto-load older history until the user has scrolled away from the top zone", () => {
+    const onLoadOlder = vi.fn();
+    const acpView = buildManyMessageView(12);
+    act(() => {
+      root.render(
+        <HookHarness
+          onSnapshot={onSnapshot}
+          acpView={acpView}
+          onLoadOlder={onLoadOlder}
+          eventMeta={{
+            "agent-1:session-1": {
+              oldestId: 1,
+              hasMore: true,
+              loading: false,
+              loaded: true,
+            },
+          }}
+        />
+      );
+    });
+
+    scrollTop = 0;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+    expect(onLoadOlder).not.toHaveBeenCalled();
+
+    scrollTop = 240;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+
+    scrollTop = 0;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
   });
 });
 

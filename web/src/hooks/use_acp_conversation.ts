@@ -395,6 +395,7 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
+  const conversationEnteredTopZoneRef = useRef(false);
   const autoLoadHistoryTimerRef = useRef<number | null>(null);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
@@ -729,7 +730,9 @@ export function useAcpConversation({
   const handleConversationScrollNow = useCallback(() => {
     const el = acpConversationElementRef.current;
     if (!el) return;
-    syncConversationViewport();
+    if (shouldVirtualizeConversation) {
+      syncConversationViewport();
+    }
     const previousTop = lastConversationScrollTopRef.current;
     const stick = deriveConversationStickToBottom(
       el.scrollHeight,
@@ -765,7 +768,16 @@ export function useAcpConversation({
     setShowConversationTopReachedHint((prev) =>
       prev === nextTopReachedHint ? prev : nextTopReachedHint
     );
-    if (el.scrollTop < LOAD_OLDER_TRIGGER_TOP_PX && canLoadOlder) {
+    const isInTopZone = el.scrollTop < LOAD_OLDER_TRIGGER_TOP_PX;
+    if (!isInTopZone) {
+      conversationEnteredTopZoneRef.current = true;
+    }
+    if (
+      isInTopZone &&
+      canLoadOlder &&
+      conversationEnteredTopZoneRef.current
+    ) {
+      conversationEnteredTopZoneRef.current = false;
       prepareForLoadOlder();
       onLoadOlder();
     }
@@ -773,6 +785,7 @@ export function useAcpConversation({
     conversationStickToBottom,
     conversationMessages,
     onLoadOlder,
+    shouldVirtualizeConversation,
     syncConversationViewport,
     shouldLoadOlder,
     conversationMeta,
@@ -906,6 +919,7 @@ export function useAcpConversation({
     acpStickToBottomRef.current = defaultStickToBottom;
     pendingScrollAdjustRef.current = null;
     lastConversationScrollTopRef.current = null;
+    conversationEnteredTopZoneRef.current = false;
     setConversationStickToBottom(defaultStickToBottom);
     setConversationFrozen(false);
     setConversationFreezeCursor(null);

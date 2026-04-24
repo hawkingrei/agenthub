@@ -124,6 +124,16 @@ export function countVisibleAcpConversationItems(
   ).length;
 }
 
+function countRenderableAcpConversationItems(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): number {
+  return countVisibleAcpConversationItems(
+    omitIncompleteLeadingAcpMessageEvents(events, sessionId),
+    sessionId
+  );
+}
+
 export function shouldPrefetchInitialAcpHistory(
   events: AgentEvent[],
   sessionId: string | null | undefined,
@@ -133,10 +143,50 @@ export function shouldPrefetchInitialAcpHistory(
   if (!hasMore) {
     return false;
   }
+  if (countRenderableAcpConversationItems(events, sessionId) >= minVisibleItems) {
+    return false;
+  }
   if (hasIncompleteLeadingAcpMessage(events, sessionId)) {
     return true;
   }
   return countVisibleAcpConversationItems(events, sessionId) < minVisibleItems;
+}
+
+function countLeadingMessageChunkEvents(
+  events: AgentEvent[],
+  sessionId: string | null | undefined,
+  messageId: string | null
+): { sameMessageChunkCount: number; scopedAcpEventCount: number } {
+  if (!messageId) {
+    return { sameMessageChunkCount: 0, scopedAcpEventCount: 0 };
+  }
+  const scopedSessionId = sessionId ?? null;
+  let sameMessageChunkCount = 0;
+  let scopedAcpEventCount = 0;
+  for (const event of events) {
+    if (event.stream !== "acp" || (event.session_id ?? null) !== scopedSessionId) {
+      continue;
+    }
+    scopedAcpEventCount += 1;
+    const trimmed = event.message.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+    try {
+      const payload = JSON.parse(trimmed) as Record<string, unknown>;
+      if (
+        payload.type === "agent_message" &&
+        payload.chunk === true &&
+        typeof payload.message_id === "string" &&
+        payload.message_id === messageId
+      ) {
+        sameMessageChunkCount += 1;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return { sameMessageChunkCount, scopedAcpEventCount };
 }
 
 export function resolveAdaptiveAcpHistoryPageLimit(
@@ -148,13 +198,22 @@ export function resolveAdaptiveAcpHistoryPageLimit(
   if (!leadingState.incomplete || leadingState.chunkIndex == null) {
     return baseLimit;
   }
-  if (leadingState.chunkIndex >= 256) {
+  const { sameMessageChunkCount, scopedAcpEventCount } = countLeadingMessageChunkEvents(
+    events,
+    sessionId,
+    leadingState.messageId
+  );
+  const leadingMessageDominatesPage =
+    sameMessageChunkCount >= 8 &&
+    scopedAcpEventCount > 0 &&
+    sameMessageChunkCount / scopedAcpEventCount >= 0.6;
+  if (leadingState.chunkIndex >= 192) {
     return Math.max(baseLimit, ACP_HISTORY_PAGE_LIMIT_MAX);
   }
-  if (leadingState.chunkIndex >= 128) {
+  if (leadingState.chunkIndex >= 96) {
     return Math.max(baseLimit, 180);
   }
-  if (leadingState.chunkIndex >= 64) {
+  if (leadingState.chunkIndex >= 32 || leadingMessageDominatesPage) {
     return Math.max(baseLimit, 120);
   }
   return baseLimit;

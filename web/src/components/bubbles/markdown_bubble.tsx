@@ -24,9 +24,10 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
     >
       <div
         data-acp-message-bubble={isAgent ? "agent" : "user"}
+        data-markdown-render-version={markdownRenderVersion}
         className={isAgent ? ACP_MESSAGE_BUBBLE_AGENT_CLASS : ACP_MESSAGE_BUBBLE_USER_CLASS}
       >
-        <ThreadRichText key={markdownRenderVersion} text={text} />
+        <ThreadRichText text={text} />
       </div>
     </div>
   );
