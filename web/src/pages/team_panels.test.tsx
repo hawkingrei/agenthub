@@ -3520,7 +3520,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[16px]");
+    ).toContain("bg-transparent");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -4813,7 +4813,7 @@ describe("team panels interactions", () => {
       container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
       "channel bubble missing"
     );
-    expect(bubble.className).toContain("rounded-[16px]");
+    expect(bubble.className).toContain("bg-transparent");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {

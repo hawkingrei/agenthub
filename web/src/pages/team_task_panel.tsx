@@ -200,9 +200,9 @@ const TEAM_TASK_TAIL_WINDOW_SIZE = DEFAULT_TEAM_CONVERSATION_TAIL_WINDOW_SIZE;
 const TEAM_TASK_TAIL_WINDOW_ESTIMATED_ITEM_HEIGHT = 80;
 const TEAM_TASK_INITIAL_RENDER_MIN_ITEMS = 12;
 const TEAM_TASK_ACTIVITY_BUBBLE_HUMAN_TONE_CLASS =
-  "border-black/6 bg-white/94 [&_.md-blockquote]:border-slate-200/90 [&_.md-blockquote]:bg-slate-50/78 [&_.md-table-wrap]:border-black/6 [&_.md-table-wrap]:bg-white/88 [&_.md-table_th]:bg-slate-50/85 [&_.md-code-block]:border-slate-900/80";
+  "rounded-[10px] border border-transparent bg-transparent px-0 py-0 shadow-none [&_.md-blockquote]:border-slate-200/90 [&_.md-blockquote]:bg-slate-50/78 [&_.md-table-wrap]:border-black/6 [&_.md-table-wrap]:bg-white/88 [&_.md-table_th]:bg-slate-50/85 [&_.md-code-block]:border-slate-900/80";
 const TEAM_TASK_ACTIVITY_BUBBLE_AGENT_TONE_CLASS =
-  "border-black/6 bg-white/96 [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
+  "rounded-[10px] border border-transparent bg-transparent px-0 py-0 shadow-none [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
 const TEAM_TASK_ACTIVITY_AVATAR_BASE_CLASS =
   "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold uppercase tracking-tight shadow-sm";
 const TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS =

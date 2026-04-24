@@ -49,7 +49,7 @@ const TEAM_THREAD_MESSAGE_META_ROW_CLASS =
   "flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-notion-text-muted";
 const TEAM_THREAD_MESSAGE_CONTENT_CLASS = "min-w-0 flex flex-1 flex-col gap-1";
 const TEAM_THREAD_MESSAGE_BUBBLE_CLASS =
-  "w-full border-black/6 bg-white/96 [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
+  "w-full rounded-[12px] border border-black/6 bg-white/96 px-2 py-[5px] shadow-none [&_.md-blockquote]:bg-slate-50/92 [&_.md-table-wrap]:bg-white/88 [&_.md-table-wrap]:border-black/6 [&_.md-code-block]:border-slate-900/80";
 function formatThreadReplyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
