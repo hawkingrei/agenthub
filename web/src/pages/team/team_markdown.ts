@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
 import { SHARED_THREAD_RICH_TEXT_BASE_CLASS } from "../../rich_text_classes";
+import { createConfiguredMarkdownRenderer } from "../../markdown_renderer";
 import { escapeTeamHtml } from "./team_text_helpers";
 
 const TEAM_MARKDOWN_CACHE_LIMIT = 256;
@@ -49,10 +50,7 @@ function renderTeamMarkdown(input: string): string {
 
 function getMarkdownRenderer(): MarkdownIt {
   if (markdownRenderer) return markdownRenderer;
-  const renderer = new MarkdownIt({
-    html: false,
-    linkify: false,
-    typographer: true,
+  const renderer = createConfiguredMarkdownRenderer({
     highlight: (code: string, lang: string) => {
       const language = lang ? lang.trim().split(/\s+/)[0] : "";
       if (language && hljs.getLanguage(language)) {
@@ -64,17 +62,8 @@ function getMarkdownRenderer(): MarkdownIt {
       }
       return `<pre class="hljs"><code>${escapeTeamHtml(code)}</code></pre>`;
     },
+    sanitizeHref,
   });
-  renderer.validateLink = (href: string) => sanitizeHref(href) != null;
-  renderer.normalizeLink = (href: string) => sanitizeHref(href) ?? "";
-  const defaultLinkOpen =
-    renderer.renderer.rules.link_open ??
-    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
-  renderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-    tokens[idx].attrSet("target", "_blank");
-    tokens[idx].attrSet("rel", "noopener noreferrer");
-    return defaultLinkOpen(tokens, idx, options, env, self);
-  };
   markdownRenderer = renderer;
   return renderer;
 }

@@ -9,6 +9,9 @@ import {
   INPUT_DOCK_ROOT_CLASS,
   INPUT_DOCK_SEND_BUTTON_CLASS,
   INPUT_DOCK_TEXTAREA_CLASS,
+  TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
+  TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS,
+  TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS,
 } from "../ui/tailwind_classes";
 import { isImeComposing } from "../input_ime";
 
@@ -138,6 +141,13 @@ export function deriveInputPlaceholder(isMobileViewport: boolean): string {
   return "Send input (Enter to send, Shift+Enter for newline)";
 }
 
+export function deriveInputHelperText(isMobileViewport: boolean): string {
+  if (isMobileViewport) {
+    return "Tap Send to submit · Enter adds a new line";
+  }
+  return "Enter to send · Shift+Enter for newline";
+}
+
 export function isInputRectOutsideViewport(
   rect: VerticalRect,
   viewportTop: number,
@@ -249,6 +259,7 @@ export function InputDock({
   const visibleHistory = historyCommands.slice(0, 12);
   const mobileInputViewport = useMobileInputViewport();
   const inputPlaceholder = deriveInputPlaceholder(mobileInputViewport);
+  const inputHelperText = deriveInputHelperText(mobileInputViewport);
 
   const reportDockHeight = React.useCallback(() => {
     if (!onHeightChange) return;
@@ -359,7 +370,7 @@ export function InputDock({
 
   return (
     <div
-      className="input-dock-shell relative flex self-stretch flex-col gap-1"
+      className="input-dock-shell relative flex self-stretch flex-col gap-0.5"
       data-acp-input-dock="true"
       ref={inputDockRef}
     >
@@ -376,7 +387,7 @@ export function InputDock({
       )}
       <div className={INPUT_DOCK_ROOT_CLASS}>
         <div
-          className="input-editor-row flex items-end gap-2 rounded-[14px] border border-slate-200 bg-slate-50/72 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+          className={`input-editor-row ${TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}`}
           data-input-editor-row="true"
         >
           <textarea
@@ -458,12 +469,13 @@ export function InputDock({
           </UnstyledButton>
         </div>
         <div
-          className="input-row flex flex-wrap items-center justify-between gap-1.5 px-0.5"
+          className={`input-row ${TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}`}
           role="group"
           aria-label="Input actions"
           data-input-actions-row="true"
         >
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>{inputHelperText}</span>
             {historyCommands.length > 0 && (
               <div className="input-history relative" ref={historyContainerRef}>
                 <UnstyledButton

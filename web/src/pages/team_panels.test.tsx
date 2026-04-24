@@ -181,6 +181,69 @@ async function openTaskDetailModal(
   await waitForCondition(() => document.body.querySelector('[role="dialog"]') !== null);
 }
 
+function renderTeamSidebar(
+  root: Root,
+  props: Partial<React.ComponentProps<typeof TeamSidebar>> = {}
+): void {
+  const teamOne = buildTeam();
+  act(() => {
+    root.render(
+      <MantineProvider>
+        <TeamSidebar
+          showTeamSelector={false}
+          developerMode={true}
+          busy={null}
+          onRefreshTeams={() => {}}
+          onOpenCreateTeam={() => {}}
+          draftTeamName=""
+          leaderMemberId="leader-agent"
+          configuredWorkerCount={1}
+          teams={[teamOne]}
+          selectedTeam={teamOne}
+          selectedTeamId={teamOne.id}
+          selectedTeamHasConfiguredMembers={true}
+          teamMemberSummaryByTeamId={new Map()}
+          memberLiveStates={[buildMemberLiveState()]}
+          focusedAgentMemberId=""
+          tab="conversation"
+          onSelectTeam={() => {}}
+          onSelectChannel={() => {}}
+          onSelectKanban={() => {}}
+          onSelectAgentTab={() => {}}
+          {...props}
+        />
+      </MantineProvider>
+    );
+  });
+}
+
+function openCreateChannelForm(container: HTMLElement): {
+  channelIdInput: HTMLInputElement;
+  descriptionInput: HTMLInputElement;
+} {
+  clickElement(findButtonByAriaLabel(container, "Create channel"));
+  return {
+    channelIdInput: required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing"
+    ) as HTMLInputElement,
+    descriptionInput: required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing"
+    ) as HTMLInputElement,
+  };
+}
+
+function fillCreateChannelForm(
+  channelIdInput: HTMLInputElement,
+  descriptionInput: HTMLInputElement,
+  channelId: string,
+  description: string
+): void {
+  changeInputValue(channelIdInput, channelId);
+  changeInputValue(descriptionInput, description);
+}
+
 function buildTeam(overrides: Partial<TeamDefinitionRecord> = {}): TeamDefinitionRecord {
   return {
     id: "team-1",
@@ -709,6 +772,112 @@ describe("team panels interactions", () => {
     expect(container.querySelector("input[aria-label='Filter teams']")).toBeNull();
     clickElement(findButtonByText(container, "Create Team"));
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("TeamSidebar exposes create and delete channel controls for non-default lanes", async () => {
+    const onCreateChannel = vi.fn().mockResolvedValue(undefined);
+    const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderTeamSidebar(root, {
+      onCreateChannel,
+      onDeleteChannel,
+      channelItems: [
+        {
+          id: "all",
+          label: "# all",
+          description: "Shared coordination lane",
+        },
+        {
+          id: "review",
+          label: "# review",
+          description: "Review lane",
+        },
+      ],
+      selectedChannelId: "review",
+    });
+
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(
+      channelIdInput,
+      descriptionInput,
+      " research ",
+      " Investigation lane "
+    );
+    clickElement(findButtonByText(container, "Create channel"));
+    await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
+    expect(onCreateChannel).toHaveBeenCalledWith({
+      channelId: "research",
+      description: "Investigation lane",
+    });
+
+    expect(queryButtonByAriaLabel(container, "Delete channel all")).toBeNull();
+    clickElement(findButtonByAriaLabel(container, "Delete channel review"));
+    expect(onDeleteChannel).toHaveBeenCalledWith("review");
+    confirmSpy.mockRestore();
+  });
+
+  it("TeamSidebar cancels channel deletion when confirmation is rejected", () => {
+    const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderTeamSidebar(root, {
+      onDeleteChannel,
+      channelItems: [
+        {
+          id: "all",
+          label: "# all",
+          description: "Shared coordination lane",
+        },
+        {
+          id: "review",
+          label: "# review",
+          description: "Review lane",
+        },
+      ],
+      selectedChannelId: "review",
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Delete channel review"));
+    expect(onDeleteChannel).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("TeamSidebar keeps the inline create form open when channel creation fails", async () => {
+    const onCreateChannel = vi.fn().mockRejectedValue(new Error("duplicate channel"));
+    renderTeamSidebar(root, { onCreateChannel });
+
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(channelIdInput, descriptionInput, "review", "Review lane");
+    clickElement(findButtonByText(container, "Create channel"));
+
+    await waitForCondition(() => onCreateChannel.mock.calls.length === 1);
+    await Promise.resolve();
+
+    expect(
+      required(container.querySelector("input[aria-label='Channel ID']"), "channel id still visible")
+    ).not.toBeNull();
+    expect((container.querySelector("input[aria-label='Channel ID']") as HTMLInputElement).value).toBe(
+      "review"
+    );
+    expect(
+      (container.querySelector("input[aria-label='Channel Description']") as HTMLInputElement).value
+    ).toBe("Review lane");
+  });
+
+  it("TeamSidebar lets the user cancel channel creation and resets the inline form", async () => {
+    const onCreateChannel = vi.fn().mockResolvedValue(undefined);
+    renderTeamSidebar(root, { onCreateChannel });
+
+    const { channelIdInput, descriptionInput } = openCreateChannelForm(container);
+    fillCreateChannelForm(channelIdInput, descriptionInput, "review", "Review lane");
+
+    clickElement(findButtonByText(container, "Cancel"));
+
+    expect(container.querySelector("input[aria-label='Channel ID']")).toBeNull();
+
+    const reopenedForm = openCreateChannelForm(container);
+    expect(reopenedForm.channelIdInput.value).toBe("");
+    expect(reopenedForm.descriptionInput.value).toBe("");
+    expect(onCreateChannel).not.toHaveBeenCalled();
   });
 
   it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
@@ -2397,7 +2566,7 @@ describe("team panels interactions", () => {
         ]}
         memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
         conversationTitle="worker-thread"
-        isSharedConversation={false}
+        isChannelConversation={false}
         messagesLoading={true}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -3112,7 +3281,7 @@ describe("team panels interactions", () => {
         memberLiveStates={[buildMemberLiveState()]}
         memberIds={["leader-agent", "worker-agent"]}
         conversationTitle="Shared thread"
-        isSharedConversation={true}
+        isChannelConversation={true}
         messagesLoading={false}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -3126,6 +3295,104 @@ describe("team panels interactions", () => {
     const threadButton = findButtonByText(container, "Thread");
     expect(detailsButton.parentElement?.className).toContain("flex-wrap");
     expect(threadButton.parentElement?.className).toContain("flex-wrap");
+  });
+
+  it("TeamTaskPanel keeps thread access available when developer mode is off", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(9, {
+            payload: { type: "chat_message", text: "open a focused thread for follow-up" },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={null}
+      />
+    );
+
+    expect(findButtonByText(container, "Thread")).toBeDefined();
+    expect(queryButtonByText(container, "Details")).toBeNull();
+  });
+
+  it("TeamTaskPanel disables enter-to-send on mobile-sized viewports", () => {
+    const originalWidth = window.innerWidth;
+    const sendMessage = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 640,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft="mobile draft"
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={sendMessage}
+        messages={[]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    const textarea = required(container.querySelector("textarea"), "message composer textarea") as HTMLTextAreaElement;
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("@name to reply · Enter adds a new line");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: originalWidth,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: originalScrollIntoView,
+    });
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
@@ -3378,7 +3645,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-channel-bubble="agent"]')).not.toBeNull();
     expect(
       container.querySelector('[data-team-channel-bubble="agent"]')?.className
-    ).toContain("rounded-[12px]");
+    ).toContain("bg-transparent");
   });
 
   it("TeamTaskPanel constrains rich chat bubbles for mobile-width markdown content", async () => {
@@ -3681,11 +3948,13 @@ describe("team panels interactions", () => {
         />
     );
 
-    await waitForCondition(() => container.innerHTML.includes("<table>"));
-    expect(container.innerHTML).toContain("<ul>");
-    expect(container.innerHTML).toContain("<table>");
+    await waitForCondition(() => container.innerHTML.includes("<table"));
+    expect(container.innerHTML).toContain('class="md-list md-list-unordered"');
+    expect(container.innerHTML).toContain('class="md-table-wrap"');
+    expect(container.innerHTML).toContain("<table");
     expect(container.innerHTML).toContain("<pre");
-    expect(container.innerHTML).toContain("<code>code</code>");
+    expect(container.innerHTML).toContain('class="md-inline-code"');
+    expect(container.innerHTML).toContain(">code</code>");
   });
 
   it("TeamTaskPanel hides message details when developer mode is off", () => {
@@ -4669,7 +4938,7 @@ describe("team panels interactions", () => {
       container.querySelector('[data-team-channel-bubble="agent"]') as HTMLDivElement | null,
       "channel bubble missing"
     );
-    expect(bubble.className).toContain("rounded-[12px]");
+    expect(bubble.className).toContain("bg-transparent");
   });
 
   it("TeamMemberAcpPanel exposes a force-new-session action in debug mode", async () => {

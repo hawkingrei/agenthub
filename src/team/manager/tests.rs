@@ -1716,6 +1716,127 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
 }
 
 #[tokio::test]
+async fn list_team_channels_returns_non_default_channels_in_creation_order() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-list".to_string(),
+            description: Some("verify channel listing".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    manager
+        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+    manager
+        .create_channel(&team.id, "research", Some("Research lane"), "leader")
+        .await
+        .expect("create research channel");
+
+    let listed = manager
+        .list_channels(&team.id)
+        .await
+        .expect("list team channels");
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].channel_id, "review");
+    assert_eq!(listed[0].description.as_deref(), Some("Review lane"));
+    assert_eq!(listed[1].channel_id, "research");
+    assert_eq!(listed[1].description.as_deref(), Some("Research lane"));
+}
+
+#[tokio::test]
+async fn list_team_channels_ignores_bootstrap_rows_with_blank_channel_id() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "team-channel-invalid".to_string(),
+            description: Some("ignore invalid bootstrap rows".to_string()),
+            spec: json!({
+                "entrypoint":"leader",
+                "members":[{"member_id":"leader","role":"leader"}]
+            }),
+        })
+        .await
+        .expect("create team");
+
+    manager
+        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .await
+        .expect("create review channel");
+
+    let task_id = Uuid::new_v4().to_string();
+    let conversation_id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp_millis();
+    sqlx::query(
+        r#"
+        INSERT INTO team_tasks (
+            id,
+            team_id,
+            title,
+            status,
+            created_by_actor_id,
+            assigned_member_id,
+            context_json,
+            created_at,
+            updated_at
+        ) VALUES (?1, ?2, ?3, 'open', ?4, NULL, ?5, ?6, ?6)
+        "#,
+    )
+    .bind(&task_id)
+    .bind(&team.id)
+    .bind("invalid-bootstrap")
+    .bind("leader")
+    .bind(
+        json!({
+            "bootstrap_kind": "team_channel",
+            "channel_id": "   ",
+            "description": "broken bootstrap row"
+        })
+        .to_string(),
+    )
+    .bind(now)
+    .execute(&db)
+    .await
+    .expect("insert invalid bootstrap task");
+    sqlx::query(
+        r#"
+        INSERT INTO team_conversations (
+            id,
+            team_id,
+            task_id,
+            mode,
+            topic,
+            created_at,
+            updated_at
+        ) VALUES (?1, ?2, ?3, 'group_chat', ?4, ?5, ?5)
+        "#,
+    )
+    .bind(&conversation_id)
+    .bind(&team.id)
+    .bind(&task_id)
+    .bind("invalid-bootstrap")
+    .bind(now)
+    .execute(&db)
+    .await
+    .expect("insert invalid bootstrap conversation");
+
+    let listed = manager
+        .list_channels(&team.id)
+        .await
+        .expect("list channels");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].channel_id, "review");
+}
+
+#[tokio::test]
 async fn create_team_channel_allows_same_channel_id_in_different_teams() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());

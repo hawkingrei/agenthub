@@ -38,6 +38,7 @@ type UseTeamWorkspaceViewModelOptions = {
   activeRunForSelectedTeam: TeamRunRecord | null;
   activeRunIdForSelectedTeam: string | null;
   selectedConversation: TeamTaskRecord | null;
+  selectedChannelId: string;
   selectedChannelLabel: string;
   selectedChannelDescription: string;
   runsLoading: boolean;
@@ -52,7 +53,7 @@ type UseTeamWorkspaceViewModelOptions = {
   setTeamsSidebarCollapsed: Dispatch<SetStateAction<boolean>>;
   setActiveRunId: Dispatch<SetStateAction<string | null>>;
   setRunLookupId: (next: string) => void;
-  navigateToTeamLens: (teamId: string, lens: WorkspaceLens) => void;
+  navigateToTeamLens: (teamId: string, lens: WorkspaceLens, channelId?: string | null) => void;
   navigateToTeamDetail: (teamId: string) => void;
   navigateToTeamMemberWorkspace: (teamId: string, memberId: string, tab: TeamTab) => void;
   navigateToSidebarTeam: (teamId: string) => void;
@@ -75,6 +76,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     activeRunForSelectedTeam,
     activeRunIdForSelectedTeam,
     selectedConversation,
+    selectedChannelId,
     selectedChannelLabel,
     selectedChannelDescription,
     runsLoading,
@@ -415,13 +417,22 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
       setTab("conversation");
       if (selectedTeamId) {
-        navigateToTeamLens(selectedTeamId, "channels");
+        navigateToTeamLens(selectedTeamId, "channels", selectedChannelId);
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
       }
     },
-    [isCompactWorkbench, navigateToTeamLens, selectedTeamId, setFocusedAgentMemberId, setSelectedConversationTaskId, setTab, setTeamsSidebarCollapsed]
+    [
+      isCompactWorkbench,
+      navigateToTeamLens,
+      selectedChannelId,
+      selectedTeamId,
+      setFocusedAgentMemberId,
+      setSelectedConversationTaskId,
+      setTab,
+      setTeamsSidebarCollapsed,
+    ]
   );
 
   const onSelectKanbanSubject = useCallback(() => {
@@ -497,12 +508,23 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       if (lens === "search") {
         setFocusedAgentMemberId("");
       }
-      navigateToTeamLens(selectedTeamId, lens);
+      if (lens === "channels") {
+        navigateToTeamLens(selectedTeamId, lens, selectedChannelId);
+      } else {
+        navigateToTeamLens(selectedTeamId, lens);
+      }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
       }
     },
-    [isCompactWorkbench, navigateToTeamLens, selectedTeamId, setFocusedAgentMemberId, setTeamsSidebarCollapsed]
+    [
+      isCompactWorkbench,
+      navigateToTeamLens,
+      selectedChannelId,
+      selectedTeamId,
+      setFocusedAgentMemberId,
+      setTeamsSidebarCollapsed,
+    ]
   );
 
   const tabNeedsActiveRun = tabRequiresActiveRun(tab);

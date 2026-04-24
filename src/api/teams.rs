@@ -3,9 +3,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 mod errors;
 
 use self::errors::{
-    map_actor_service_api_error, map_create_team_error, map_not_found_error,
-    map_reply_thread_error, map_resume_run_error, map_runtime_start_error, map_submit_step_error,
-    map_task_message_error, map_team_internal_error,
+    map_actor_service_api_error, map_channel_create_error, map_channel_delete_error,
+    map_create_team_error, map_not_found_error, map_reply_thread_error, map_resume_run_error,
+    map_runtime_start_error, map_submit_step_error, map_task_message_error,
+    map_team_internal_error,
 };
 use agenthub_team_actor::{
     ACTOR_MAIN_PEER_ID, ACTOR_NODE_PEER_ID, ActorAckRequest, ActorInboxRequest,
@@ -19,7 +20,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -31,7 +32,7 @@ use crate::api::error::ApiError;
 use crate::auth::UserRecord;
 use crate::state::AppState;
 use crate::team::{
-    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport,
+    TEAM_RUN_STATUS_VALUES, TeamActorMessageRecord, TeamActorMessageTransport, TeamChannelRecord,
     TeamConversationMessageRecord, TeamConversationRecord, TeamDefinitionConfig,
     TeamDefinitionRecord, TeamMemoryFlushRequest, TeamRunEventRecord, TeamRunRecord, TeamRunStatus,
     TeamRuntimeRecord, TeamStepRecord, TeamStepStatus, TeamTaskExecutionPlan, TeamTaskRecord,
@@ -198,6 +199,12 @@ pub struct ListTeamTaskMessagesQuery {
 #[derive(Debug, Deserialize)]
 pub struct ReplyTeamThreadRequest {
     pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTeamChannelRequest {
+    pub channel_id: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -437,6 +444,11 @@ pub fn router(state: AppState) -> Router {
             "/{id}/channels/{channel_id}/threads/{root_message_id}/replies",
             post(reply_team_thread),
         )
+        .route(
+            "/{id}/channels",
+            get(list_team_channels).post(create_team_channel),
+        )
+        .route("/{id}/channels/{channel_id}", delete(delete_team_channel))
         .route(
             "/{id}/tasks/{task_id}/compile_run_preview",
             post(compile_team_task_run_preview),
@@ -776,6 +788,57 @@ async fn list_team_tasks(
         .await
         .map_err(map_team_internal_error)?;
     Ok(Json(tasks))
+}
+
+async fn list_team_channels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+) -> Result<Json<Vec<TeamChannelRecord>>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let channels = state
+        .teams
+        .list_channels(&team_id)
+        .await
+        .map_err(map_team_internal_error)?;
+    Ok(Json(channels))
+}
+
+async fn create_team_channel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(team_id): Path<String>,
+    Json(payload): Json<CreateTeamChannelRequest>,
+) -> Result<Json<TeamChannelRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let channel = state
+        .teams
+        .create_channel(
+            &team_id,
+            &payload.channel_id,
+            payload.description.as_deref(),
+            &canonical_user_actor_id(&user),
+        )
+        .await
+        .map_err(map_channel_create_error)?;
+    Ok(Json(channel))
+}
+
+async fn delete_team_channel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((team_id, channel_id)): Path<(String, String)>,
+) -> Result<Json<TeamChannelRecord>, ApiError> {
+    let user = require_user(&headers, &state).await?;
+    load_team_for_user(&state, &team_id, &user).await?;
+    let deleted = state
+        .teams
+        .delete_channel(&team_id, &channel_id)
+        .await
+        .map_err(map_channel_delete_error)?;
+    Ok(Json(deleted))
 }
 
 async fn get_team_task(

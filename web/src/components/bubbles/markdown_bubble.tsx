@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  CONVERSATION_MESSAGE_STACK_ROW_CLASS,
   ACP_MESSAGE_BUBBLE_AGENT_CLASS,
   ACP_MESSAGE_BUBBLE_USER_CLASS,
 } from "../../ui/tailwind_classes";
@@ -19,7 +20,7 @@ export const MarkdownBubble = React.memo(function MarkdownBubble({
   const isAgent = className === "agent_message";
   return (
     <div
-      className={`acp-row group relative mb-1 flex w-full flex-col rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white ${isAgent ? "items-start" : "items-end"}`}
+      className={`acp-row ${CONVERSATION_MESSAGE_STACK_ROW_CLASS} ${isAgent ? "items-start" : "items-end"}`}
     >
       <div
         data-acp-message-bubble={isAgent ? "agent" : "user"}

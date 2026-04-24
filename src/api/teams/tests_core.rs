@@ -4920,6 +4920,118 @@ async fn team_thread_reply_api_appends_reply_metadata_for_root_message() {
 }
 
 #[tokio::test]
+async fn team_channel_api_lists_creates_and_deletes_non_default_channels() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "team-channel-api-team".to_string(),
+            description: Some("channel api coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(initial_channels) =
+        list_team_channels(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("list initial channels");
+    assert!(initial_channels.is_empty());
+
+    let Json(created) = create_team_channel(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamChannelRequest {
+            channel_id: "Review".to_string(),
+            description: Some("Review lane".to_string()),
+        }),
+    )
+    .await
+    .expect("create review channel");
+    assert_eq!(created.channel_id, "review");
+    assert_eq!(created.description.as_deref(), Some("Review lane"));
+
+    let Json(listed) =
+        list_team_channels(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("list created channels");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].channel_id, "review");
+
+    let Json(deleted) = delete_team_channel(
+        State(state.clone()),
+        headers.clone(),
+        Path((team.id.clone(), " review ".to_string())),
+    )
+    .await
+    .expect("delete review channel");
+    assert_eq!(deleted.channel_id, "review");
+
+    let Json(final_channels) =
+        list_team_channels(State(state.clone()), headers, Path(team.id.clone()))
+            .await
+            .expect("list final channels");
+    assert!(final_channels.is_empty());
+}
+
+#[tokio::test]
+async fn team_channel_api_maps_duplicates_and_missing_channel_errors() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "team-channel-api-errors".to_string(),
+            description: Some("channel api error coverage".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let _ = create_team_channel(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamChannelRequest {
+            channel_id: "review".to_string(),
+            description: Some("Review lane".to_string()),
+        }),
+    )
+    .await
+    .expect("create review channel");
+
+    let duplicate_err = create_team_channel(
+        State(state.clone()),
+        headers.clone(),
+        Path(team.id.clone()),
+        Json(CreateTeamChannelRequest {
+            channel_id: " REVIEW ".to_string(),
+            description: Some("Duplicate".to_string()),
+        }),
+    )
+    .await
+    .expect_err("duplicate channel should fail");
+    assert_eq!(duplicate_err.into_response().status(), StatusCode::CONFLICT);
+
+    let missing_err = delete_team_channel(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), "research".to_string())),
+    )
+    .await
+    .expect_err("missing channel should fail");
+    assert_eq!(missing_err.into_response().status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;

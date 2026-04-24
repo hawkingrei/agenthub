@@ -180,4 +180,89 @@ describe("api request headers", () => {
     expect(headers.get("Authorization")).toBe("Bearer token-1");
     expect(headers.get("Content-Type")).toBe("application/json");
   });
+
+  it("lists and mutates team channels through the public channel endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              team_id: "team-1",
+              channel_id: "review",
+              task_id: "task-1",
+              conversation_id: "conversation-1",
+              description: "Review lane",
+              created_by_actor_id: "user:user-1",
+              created_at: 1713480000,
+              updated_at: 1713480000,
+            },
+          ]),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            team_id: "team-1",
+            channel_id: "review",
+            task_id: "task-1",
+            conversation_id: "conversation-1",
+            description: "Review lane",
+            created_by_actor_id: "user:user-1",
+            created_at: 1713480000,
+            updated_at: 1713480000,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            team_id: "team-1",
+            channel_id: "review",
+            task_id: "task-1",
+            conversation_id: "conversation-1",
+            description: "Review lane",
+            created_by_actor_id: "user:user-1",
+            created_at: 1713480000,
+            updated_at: 1713480000,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listTeamChannels("token-1", "team-1");
+    await api.createTeamChannel("token-1", "team-1", {
+      channel_id: "review",
+      description: "Review lane",
+    });
+    await api.deleteTeamChannel("token-1", "team-1", "review");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [listUrl, listInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(listUrl).toBe("/api/teams/team-1/channels");
+    expect(listInit.method).toBeUndefined();
+
+    const [createUrl, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(createUrl).toBe("/api/teams/team-1/channels");
+    expect(createInit.method).toBe("POST");
+    expect(createInit.body).toBe(
+      JSON.stringify({ channel_id: "review", description: "Review lane" })
+    );
+
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(deleteUrl).toBe("/api/teams/team-1/channels/review");
+    expect(deleteInit.method).toBe("DELETE");
+  });
 });

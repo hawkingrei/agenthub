@@ -24,7 +24,7 @@ type TeamConversationPanelProps = {
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
   conversationTitle?: string;
-  isSharedConversation?: boolean;
+  isChannelConversation?: boolean;
   messagesLoading: boolean;
   busy: string | null;
   formatTs: (ts?: number | null) => string;
@@ -67,7 +67,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         memberLiveStates={props.memberLiveStates}
         memberIds={memberIds}
         conversationTitle={props.conversationTitle}
-        isSharedConversation={props.isSharedConversation}
+        isChannelConversation={props.isChannelConversation}
         messagesLoading={props.messagesLoading}
         busy={props.busy}
         formatTs={props.formatTs}

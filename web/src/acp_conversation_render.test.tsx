@@ -346,8 +346,8 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("Tool Call: Summarize");
-    expect(html).toContain("<ul>");
-    expect(html).toContain("<li>first item</li>");
+    expect(html).toContain('<ul class="md-list md-list-unordered">');
+    expect(html).toContain('<li class="md-list-item">first item</li>');
     expect(html).not.toContain("acp-payload-text");
   });
 
@@ -363,8 +363,8 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("Tool Call: Analyze");
-    expect(html).toContain("<h2>Findings</h2>");
-    expect(html).toContain("<li>one</li>");
+    expect(html).toContain('<h2 class="md-heading md-h2">Findings</h2>');
+    expect(html).toContain('<li class="md-list-item">one</li>');
     expect(html).not.toContain("## Findings");
   });
 
@@ -1057,7 +1057,7 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("THINKING · inspect query (live)");
     expect(html).toContain("acp-thinking-fold");
     expect(html).toContain("<strong>inspect</strong>");
-    expect(html).toContain("<code>query</code>");
+    expect(html).toContain('<code class="md-inline-code">query</code>');
   });
 
   it("renders skill xml fragments as structured markdown fields", () => {
@@ -1077,9 +1077,13 @@ describe("AcpConversation rendering", () => {
 
     expect(html).toContain("<strong>Skill</strong>");
     expect(html).toContain("Name:");
-    expect(html).toContain("<code>team-leader-orchestrator</code>");
+    expect(html).toContain(
+      '<code class="md-inline-code">team-leader-orchestrator</code>'
+    );
     expect(html).toContain("Path:");
-    expect(html).toContain("<code>/tmp/team-leader-orchestrator.SKILL.md</code>");
+    expect(html).toContain(
+      '<code class="md-inline-code">/tmp/team-leader-orchestrator.SKILL.md</code>'
+    );
   });
 
   it("keeps skill xml inline-code rendering safe when fields contain backticks or html", () => {
@@ -1098,7 +1102,7 @@ describe("AcpConversation rendering", () => {
     ]);
 
     expect(html).toContain("<strong>Skill</strong>");
-    expect((html.match(/<code>/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((html.match(/<code\b/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
     expect(html).toContain("owner`name");
@@ -1192,13 +1196,15 @@ describe("AcpConversation rendering", () => {
       },
     ]);
 
-    expect(html).toContain("<ul>");
-    expect(html).toContain("<li>item a</li>");
-    expect(html).toContain("<table>");
-    expect(html).toContain("<th>col</th>");
-    expect(html).toContain("<td>v1</td>");
-    expect(html).toContain("<code>code</code>");
-    expect(html).toContain("<pre class=\"hljs\"><code>");
+    expect(html).toContain('<ul class="md-list md-list-unordered">');
+    expect(html).toContain('<li class="md-list-item">item a</li>');
+    expect(html).toContain('<div class="md-table-wrap"><table class="md-table">');
+    expect(html).toContain('<th class="md-table_th">col</th>');
+    expect(html).toContain('<td class="md-table_td">v1</td>');
+    expect(html).toContain('<code class="md-inline-code">code</code>');
+    expect(html).toContain(
+      '<pre class="md-code-block hljs" data-language="ts"><code class="md-code-block_code">'
+    );
     expect(html).toContain("hljs-keyword\">const</span>");
     expect(html).toContain("hljs-number\">1</span>");
   });

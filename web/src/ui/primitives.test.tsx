@@ -182,9 +182,7 @@ describe("ui primitives", () => {
       </MenuOptionButton>
     );
 
-    expect(bubbleHtml).toContain(
-      "rounded-[12px] border border-transparent px-2 py-[5px] shadow-none"
-    );
+    expect(bubbleHtml).toContain("mt-0 min-w-0 max-w-full overflow-hidden");
     expect(bubbleHtml).toContain("Bubble");
     expect(optionHtml).toContain("bg-brand-primary/10 text-brand-primary");
     expect(optionHtml).toContain('data-testid="mention-worker"');

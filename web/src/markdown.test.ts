@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "./markdown";
+import { createConfiguredMarkdownRenderer } from "./markdown_renderer";
 
 describe("renderMarkdown", () => {
   it("removes unsafe javascript links", () => {
@@ -101,9 +102,24 @@ describe("renderMarkdown", () => {
 
   it("wraps fenced code blocks for highlighting", () => {
     const html = renderMarkdown("```ts\nconst value = 1\n```\n");
-    expect(html).toContain('class="hljs"');
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('data-language="ts"');
     expect(html).toContain("<pre");
     expect(html).toContain("<code");
+  });
+
+  it("adds rich markdown classes to headings, lists, blockquotes, tables, and inline code", () => {
+    const html = renderMarkdown(
+      "## Heading\n\n> quote\n\n- item\n\n`code`\n\n| a |\n| - |\n| b |"
+    );
+    expect(html).toContain('class="md-heading md-h2"');
+    expect(html).toContain('class="md-blockquote"');
+    expect(html).toContain('class="md-list md-list-unordered"');
+    expect(html).toContain('class="md-list-item"');
+    expect(html).toContain('class="md-inline-code"');
+    expect(html).toContain('<div class="md-table-wrap"><table class="md-table">');
+    expect(html).toContain('<th class="md-table_th">a</th>');
+    expect(html).toContain('<td class="md-table_td">b</td>');
   });
 
   it("escapes raw html blocks", () => {
@@ -111,5 +127,37 @@ describe("renderMarkdown", () => {
     expect(html).toContain("&lt;img");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("<b>safe</b>");
+  });
+
+  it("adds markdown code-block classes to both pre and nested code tags", () => {
+    const html = renderMarkdown("```ts\nconst value = 1\n```\n");
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('class="md-code-block_code');
+  });
+
+  it("escapes fenced code language attributes before injecting them into html", () => {
+    const renderer = createConfiguredMarkdownRenderer({
+      highlight: (_code, language) => `<pre><code>${language}</code></pre>`,
+      sanitizeHref: (href) => href,
+    });
+
+    const html = renderer.render("```ts&<>\nconst value = 1\n```");
+
+    expect(html).toContain('data-language="ts&amp;&lt;&gt;"');
+  });
+
+  it("merges markdown code-block classes with existing highlighted classes without duplication", () => {
+    const renderer = createConfiguredMarkdownRenderer({
+      highlight: () =>
+        '<pre class="hljs md-code-block"><code class="language-ts md-code-block_code">const value = 1</code></pre>',
+      sanitizeHref: (href) => href,
+    });
+
+    const html = renderer.render("```ts\nconst value = 1\n```");
+
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('class="md-code-block_code language-ts"');
+    expect(html).not.toContain("md-code-block md-code-block");
+    expect(html).not.toContain("md-code-block_code md-code-block_code");
   });
 });
