@@ -49,7 +49,7 @@ use codex_protocol::{
         ItemCompletedEvent, ItemStartedEvent, McpInvocation, McpStartupCompleteEvent,
         McpStartupUpdateEvent, McpToolCallBeginEvent, McpToolCallEndEvent, ModelRerouteEvent,
         NetworkApprovalContext, NetworkPolicyRuleAction, Op, PatchApplyBeginEvent,
-        PatchApplyEndEvent, PatchApplyStatus, ReasoningContentDeltaEvent,
+        PatchApplyEndEvent, PatchApplyStatus, PatchApplyUpdatedEvent, ReasoningContentDeltaEvent,
         ReasoningRawContentDeltaEvent, ReviewDecision, ReviewOutputEvent, ReviewRequest,
         ReviewTarget, RolloutItem, SandboxPolicy, StreamErrorEvent, TerminalInteractionEvent,
         TokenCountEvent, TurnAbortedEvent, TurnCompleteEvent, TurnStartedEvent, UserMessageEvent,
@@ -757,6 +757,7 @@ impl PromptState {
             | EventMsg::McpToolCallEnd(..)
             | EventMsg::ApplyPatchApprovalRequest(..)
             | EventMsg::PatchApplyBegin(..)
+            | EventMsg::PatchApplyUpdated(..)
             | EventMsg::PatchApplyEnd(..)
             | EventMsg::TurnStarted(..)
             | EventMsg::TurnComplete(..)
@@ -948,24 +949,30 @@ impl PromptState {
             EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
                 call_id,
                 invocation,
+                mcp_app_resource_uri,
+                ..
             }) => {
                 info!(
                     "MCP tool call begin: call_id={call_id}, invocation={} {}",
                     invocation.server, invocation.tool
                 );
-                self.start_mcp_tool_call(client, call_id, invocation).await;
+                self.start_mcp_tool_call(client, call_id, invocation, mcp_app_resource_uri)
+                    .await;
             }
             EventMsg::McpToolCallEnd(McpToolCallEndEvent {
                 call_id,
                 invocation,
+                mcp_app_resource_uri,
                 duration,
                 result,
+                ..
             }) => {
                 info!(
                     "MCP tool call ended: call_id={call_id}, invocation={} {}, duration={duration:?}",
                     invocation.server, invocation.tool
                 );
-                self.end_mcp_tool_call(client, call_id, result).await;
+                self.end_mcp_tool_call(client, call_id, result, mcp_app_resource_uri)
+                    .await;
             }
             EventMsg::ApplyPatchApprovalRequest(event) => {
                 info!(
@@ -982,6 +989,14 @@ impl PromptState {
                     event.call_id, event.auto_approved
                 );
                 self.start_patch_apply(client, event).await;
+            }
+            EventMsg::PatchApplyUpdated(event) => {
+                info!(
+                    "Patch apply updated: call_id={}, changed_files={}",
+                    event.call_id,
+                    event.changes.len()
+                );
+                self.update_patch_apply(client, event).await;
             }
             EventMsg::PatchApplyEnd(event) => {
                 info!(
@@ -1363,6 +1378,25 @@ impl PromptState {
             .await;
     }
 
+    async fn update_patch_apply(&self, client: &SessionClient, event: PatchApplyUpdatedEvent) {
+        let raw_output = serde_json::json!(&event);
+        let PatchApplyUpdatedEvent {
+            call_id, changes, ..
+        } = event;
+
+        let mut fields = ToolCallUpdateFields::new()
+            .status(ToolCallStatus::InProgress)
+            .raw_output(raw_output);
+
+        if let Some((title, locations, content)) = collect_tool_call_content_from_changes(changes) {
+            fields = fields.title(title).locations(locations).content(content);
+        }
+
+        client
+            .send_tool_call_update(ToolCallUpdate::new(call_id, fields))
+            .await;
+    }
+
     async fn start_dynamic_tool_call(
         &self,
         client: &SessionClient,
@@ -1384,15 +1418,16 @@ impl PromptState {
         client: &SessionClient,
         call_id: String,
         invocation: McpInvocation,
+        mcp_app_resource_uri: Option<String>,
     ) {
         let title = format!("Tool: {}/{}", invocation.server, invocation.tool);
-        client
-            .send_tool_call(
-                ToolCall::new(call_id, title)
-                    .status(ToolCallStatus::InProgress)
-                    .raw_input(serde_json::json!(&invocation)),
-            )
-            .await;
+        let mut tool_call = ToolCall::new(call_id, title)
+            .status(ToolCallStatus::InProgress)
+            .raw_input(serde_json::json!(&invocation));
+        if let Some(content) = mcp_tool_call_content(Vec::new(), mcp_app_resource_uri.as_deref()) {
+            tool_call = tool_call.content(content);
+        }
+        client.send_tool_call(tool_call).await;
     }
 
     async fn end_dynamic_tool_call(
@@ -1450,38 +1485,41 @@ impl PromptState {
         client: &SessionClient,
         call_id: String,
         result: Result<CallToolResult, String>,
+        mcp_app_resource_uri: Option<String>,
     ) {
-        let is_error = match result.as_ref() {
-            Ok(result) => result.is_error.unwrap_or_default(),
-            Err(_) => true,
-        };
-        let raw_output = match result.as_ref() {
-            Ok(result) => serde_json::json!(result),
-            Err(err) => serde_json::json!(err),
+        let (status, raw_output, content) = match result {
+            Ok(result) => {
+                let raw_output = serde_json::json!(&result);
+                let content = result
+                    .content
+                    .into_iter()
+                    .filter_map(|content| serde_json::from_value::<ContentBlock>(content).ok())
+                    .map(|content| ToolCallContent::Content(Content::new(content)))
+                    .collect();
+                (
+                    if result.is_error.unwrap_or_default() {
+                        ToolCallStatus::Failed
+                    } else {
+                        ToolCallStatus::Completed
+                    },
+                    raw_output,
+                    mcp_tool_call_content(content, mcp_app_resource_uri.as_deref()),
+                )
+            }
+            Err(err) => (
+                ToolCallStatus::Failed,
+                serde_json::json!(&err),
+                mcp_tool_call_content(Vec::new(), mcp_app_resource_uri.as_deref()),
+            ),
         };
 
         client
             .send_tool_call_update(ToolCallUpdate::new(
                 call_id,
                 ToolCallUpdateFields::new()
-                    .status(if is_error {
-                        ToolCallStatus::Failed
-                    } else {
-                        ToolCallStatus::Completed
-                    })
+                    .status(status)
                     .raw_output(raw_output)
-                    .content(result.ok().filter(|result| !result.content.is_empty()).map(
-                        |result| {
-                            result
-                                .content
-                                .into_iter()
-                                .filter_map(|content| {
-                                    serde_json::from_value::<ContentBlock>(content).ok()
-                                })
-                                .map(|content| ToolCallContent::Content(Content::new(content)))
-                                .collect()
-                        },
-                    )),
+                    .content(content),
             ))
             .await;
     }
@@ -3892,6 +3930,7 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::McpToolCallEnd(..)
             | EventMsg::ApplyPatchApprovalRequest(..)
             | EventMsg::PatchApplyBegin(..)
+            | EventMsg::PatchApplyUpdated(..)
             | EventMsg::PatchApplyEnd(..)
             | EventMsg::TurnDiff(..)
             | EventMsg::WebSearchBegin(..)
@@ -4386,6 +4425,47 @@ fn extract_tool_call_content_from_changes(
     )
 }
 
+fn collect_tool_call_content_from_changes(
+    changes: HashMap<PathBuf, FileChange>,
+) -> Option<(String, Vec<ToolCallLocation>, Vec<ToolCallContent>)> {
+    if changes.is_empty() {
+        return None;
+    }
+
+    let (title, locations, content) = extract_tool_call_content_from_changes(changes);
+    Some((title, locations, content.collect()))
+}
+
+fn mcp_tool_call_content(
+    mut content: Vec<ToolCallContent>,
+    mcp_app_resource_uri: Option<&str>,
+) -> Option<Vec<ToolCallContent>> {
+    let Some(uri) = mcp_app_resource_uri.filter(|uri| !uri.is_empty()) else {
+        return (!content.is_empty()).then_some(content);
+    };
+
+    let already_present = content.iter().any(|item| {
+        matches!(
+            item,
+            ToolCallContent::Content(Content {
+                content: ContentBlock::ResourceLink(ResourceLink { uri: existing_uri, .. }),
+                ..
+            }) if existing_uri == uri
+        )
+    });
+    if !already_present {
+        content.insert(
+            0,
+            ToolCallContent::Content(Content::new(ContentBlock::ResourceLink(ResourceLink::new(
+                uri.to_string(),
+                uri.to_string(),
+            )))),
+        );
+    }
+
+    Some(content)
+}
+
 /// Extract title and call_id from a WebSearchAction (used for replay)
 fn web_search_action_to_title_and_id(
     id: &Option<String>,
@@ -4493,8 +4573,10 @@ mod tests {
         }
     }
 
-    fn test_config() -> anyhow::Result<Config> {
-        Config::load_default_with_cli_overrides(vec![]).map_err(Into::into)
+    async fn test_config() -> anyhow::Result<Config> {
+        Config::load_default_with_cli_overrides(vec![])
+            .await
+            .map_err(Into::into)
     }
 
     fn current_dir_abs() -> anyhow::Result<AbsolutePathBuf> {
@@ -4961,7 +5043,7 @@ mod tests {
                     SessionClient::with_client(session_id.clone(), client, Arc::default());
                 let thread = Arc::new(SharedSubmissionThread::new("shared-submission"));
                 let models_manager = Arc::new(StubModelsManager);
-                let config = test_config()?;
+                let config = test_config().await?;
                 let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
                 let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -5022,7 +5104,7 @@ mod tests {
                     SessionClient::with_client(session_id, client.clone(), Arc::default());
                 let thread = Arc::new(StubCodexThread::new());
                 let models_manager = Arc::new(StubModelsManager);
-                let config = test_config()?;
+                let config = test_config().await?;
                 let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
                 let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
                 let mut actor = ThreadActor::new(
@@ -5097,7 +5179,7 @@ mod tests {
         let session_client = SessionClient::with_client(session_id, client.clone(), Arc::default());
         let thread = Arc::new(StubCodexThread::new());
         let models_manager = Arc::new(StubModelsManager);
-        let config = test_config()?;
+        let config = test_config().await?;
         let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut actor = ThreadActor::new(
@@ -5199,7 +5281,7 @@ mod tests {
                     SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
                 let thread = Arc::new(SharedSubmissionThread::new("shared-submission"));
                 let models_manager = Arc::new(StubModelsManager);
-                let config = test_config()?;
+                let config = test_config().await?;
                 let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
                 let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -5350,7 +5432,7 @@ mod tests {
             SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
         let conversation = Arc::new(StubCodexThread::new());
         let models_manager = Arc::new(StubModelsManager);
-        let config = test_config()?;
+        let config = test_config().await?;
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -6569,6 +6651,207 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_mcp_tool_call_update_preserves_mcp_app_resource_uri() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new("submission-id".to_string(), thread, message_tx, response_tx);
+                let resource_uri = "https://example.com/widget".to_string();
+                let invocation = McpInvocation {
+                    server: "sample".to_string(),
+                    tool: "render".to_string(),
+                    arguments: None,
+                };
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::McpToolCallBegin(McpToolCallBeginEvent {
+                            call_id: "call-1".to_string(),
+                            invocation: invocation.clone(),
+                            mcp_app_resource_uri: Some(resource_uri.clone()),
+                        }),
+                    )
+                    .await;
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::McpToolCallEnd(McpToolCallEndEvent {
+                            call_id: "call-1".to_string(),
+                            invocation,
+                            mcp_app_resource_uri: Some(resource_uri.clone()),
+                            duration: Duration::from_millis(5),
+                            result: Ok(CallToolResult {
+                                content: vec![serde_json::to_value(ContentBlock::Text(
+                                    TextContent::new("rendered widget"),
+                                ))?],
+                                structured_content: None,
+                                is_error: Some(false),
+                                meta: None,
+                            }),
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                assert_eq!(
+                    notifications.len(),
+                    2,
+                    "notifications don't match {notifications:?}"
+                );
+
+                let begin_tool_call = match &notifications[0].update {
+                    SessionUpdate::ToolCall(tool_call) => tool_call,
+                    other => panic!("expected MCP begin tool call, got {other:?}"),
+                };
+                assert!(begin_tool_call.content.iter().any(|content| {
+                    matches!(
+                        content,
+                        ToolCallContent::Content(Content {
+                            content: ContentBlock::ResourceLink(ResourceLink { uri, .. }),
+                            ..
+                        }) if uri == &resource_uri
+                    )
+                }));
+
+                let end_update = match &notifications[1].update {
+                    SessionUpdate::ToolCallUpdate(update) => update,
+                    other => panic!("expected MCP end update, got {other:?}"),
+                };
+                let end_content = end_update
+                    .fields
+                    .content
+                    .as_ref()
+                    .expect("MCP end content missing");
+                assert!(end_content.iter().any(|content| {
+                    matches!(
+                        content,
+                        ToolCallContent::Content(Content {
+                            content: ContentBlock::ResourceLink(ResourceLink { uri, .. }),
+                            ..
+                        }) if uri == &resource_uri
+                    )
+                }));
+                assert!(end_content.iter().any(|content| {
+                    matches!(
+                        content,
+                        ToolCallContent::Content(Content {
+                            content: ContentBlock::Text(TextContent { text, .. }),
+                            ..
+                        }) if text == "rendered widget"
+                    )
+                }));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_patch_apply_updated_emits_in_progress_tool_call_update() -> anyhow::Result<()> {
+        LocalSet::new()
+            .run_until(async {
+                let session_id = SessionId::new("test");
+                let client = Arc::new(StubClient::new());
+                let session_client =
+                    SessionClient::with_client(session_id, client.clone(), Arc::default());
+                let thread = Arc::new(StubCodexThread::new());
+                let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
+                let (message_tx, _message_rx) = tokio::sync::mpsc::unbounded_channel();
+                let mut prompt_state =
+                    PromptState::new("submission-id".to_string(), thread, message_tx, response_tx);
+                let path = PathBuf::from("src/lib.rs");
+                let begin_diff = "@@ -1 +1 @@\n-old\n+new\n".to_string();
+                let updated_diff = "@@ -1 +1,2 @@\n-old\n+new\n+more\n".to_string();
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::PatchApplyBegin(PatchApplyBeginEvent {
+                            call_id: "patch-1".to_string(),
+                            turn_id: "turn-1".to_string(),
+                            auto_approved: false,
+                            changes: std::collections::HashMap::from([(
+                                path.clone(),
+                                FileChange::Update {
+                                    unified_diff: begin_diff,
+                                    move_path: None,
+                                },
+                            )]),
+                        }),
+                    )
+                    .await;
+
+                prompt_state
+                    .handle_event(
+                        &session_client,
+                        EventMsg::PatchApplyUpdated(PatchApplyUpdatedEvent {
+                            call_id: "patch-1".to_string(),
+                            changes: std::collections::HashMap::from([(
+                                path.clone(),
+                                FileChange::Update {
+                                    unified_diff: updated_diff.clone(),
+                                    move_path: None,
+                                },
+                            )]),
+                        }),
+                    )
+                    .await;
+
+                let notifications = client.notifications.lock().unwrap();
+                assert_eq!(
+                    notifications.len(),
+                    2,
+                    "notifications don't match {notifications:?}"
+                );
+
+                let update = match &notifications[1].update {
+                    SessionUpdate::ToolCallUpdate(update) => update,
+                    other => panic!("expected patch update, got {other:?}"),
+                };
+                assert_eq!(update.fields.status, Some(ToolCallStatus::InProgress));
+                assert_eq!(update.fields.title.as_deref(), Some("Edit src/lib.rs"));
+                assert_eq!(
+                    update
+                        .fields
+                        .locations
+                        .as_ref()
+                        .expect("patch locations missing"),
+                    &vec![ToolCallLocation::new(path.clone())]
+                );
+                assert_eq!(
+                    update
+                        .fields
+                        .raw_output
+                        .as_ref()
+                        .and_then(|value| value.get("call_id"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("patch-1")
+                );
+                assert!(matches!(
+                    update.fields.content.as_ref().and_then(|content| content.first()),
+                    Some(ToolCallContent::Diff(Diff { path: diff_path, new_text, .. }))
+                        if diff_path == &path && new_text == &updated_diff
+                ));
+
+                anyhow::Ok(())
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_background_terminal_wait_activity_emits_terminal_activity_updates()
     -> anyhow::Result<()> {
         LocalSet::new()
@@ -6760,7 +7043,7 @@ mod tests {
             SessionClient::with_client(session_id.clone(), client.clone(), Arc::default());
         let conversation = Arc::new(StubCodexThread::new());
         let models_manager = Arc::new(StubModelsManager);
-        let config = test_config()?;
+        let config = test_config().await?;
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
         let actor = ThreadActor::new(

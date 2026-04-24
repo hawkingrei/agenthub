@@ -1233,6 +1233,7 @@ impl AppServerCodexThread {
                             server,
                             tool,
                             arguments,
+                            mcp_app_resource_uri,
                             ..
                         },
                     ) => Some(Event {
@@ -1244,6 +1245,7 @@ impl AppServerCodexThread {
                                 tool,
                                 arguments: Some(arguments),
                             },
+                            mcp_app_resource_uri,
                         }),
                     }),
                     (
@@ -1440,6 +1442,7 @@ impl AppServerCodexThread {
                             server,
                             tool,
                             arguments,
+                            mcp_app_resource_uri,
                             result,
                             error,
                             duration_ms,
@@ -1470,6 +1473,7 @@ impl AppServerCodexThread {
                                     tool,
                                     arguments: Some(arguments),
                                 },
+                                mcp_app_resource_uri,
                                 duration: duration_ms
                                     .and_then(|ms| u64::try_from(ms).ok())
                                     .map(Duration::from_millis)
@@ -1622,6 +1626,18 @@ impl AppServerCodexThread {
                     message: format_config_warning_message(payload),
                 }),
             })),
+            ServerNotification::Warning(payload) => {
+                let submission_id = {
+                    let state = self.state.lock().await;
+                    active_submission_id(&state).unwrap_or_else(noop_submission_id)
+                };
+                Ok(Some(Event {
+                    id: submission_id,
+                    msg: EventMsg::Warning(WarningEvent {
+                        message: payload.message,
+                    }),
+                }))
+            }
             ServerNotification::ThreadClosed(_) => {
                 let mut state = self.state.lock().await;
                 let Some(active_turn) = state.active_turn.clone() else {
@@ -1663,6 +1679,7 @@ impl AppServerCodexThread {
             | ServerNotification::McpServerOauthLoginCompleted(_)
             | ServerNotification::AccountRateLimitsUpdated(_)
             | ServerNotification::AppListUpdated(_)
+            | ServerNotification::ExternalAgentConfigImportCompleted(_)
             | ServerNotification::FsChanged(_)
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
