@@ -306,6 +306,18 @@ export function parseTeamAgentInputSessionMismatch(
   return { expected, running };
 }
 
+export function resolveSelectedAgentWorkspaceSessionId(
+  latestStep: TeamStepRecord | null | undefined,
+  runtimeSessionId: string | null | undefined
+): string | null {
+  const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
+  if (normalizedRuntimeSessionId) {
+    return normalizedRuntimeSessionId;
+  }
+  const snapshotSessionId = getTeamStepRuntimeHandleId(latestStep);
+  return snapshotSessionId?.trim() || null;
+}
+
 export function buildTeamDetailPath(teamId: string): string {
   return `/workspace/teams/${encodeURIComponent(teamId)}`;
 }
@@ -1303,14 +1315,10 @@ export function TeamPage(props: TeamPageProps) {
     );
   }, [selectedAgentWorkspaceMemberId, selectedTeamRuntime]);
   const selectedAgentWorkspaceSessionId = useMemo(() => {
-    const snapshotSessionId = getTeamStepRuntimeHandleId(
-      selectedAgentWorkspaceSnapshot?.latest_step
+    return resolveSelectedAgentWorkspaceSessionId(
+      selectedAgentWorkspaceSnapshot?.latest_step,
+      selectedAgentWorkspaceRuntimeMember?.session_id ?? null
     );
-    if (snapshotSessionId) {
-      return snapshotSessionId;
-    }
-    const runtimeSessionId = selectedAgentWorkspaceRuntimeMember?.session_id?.trim();
-    return runtimeSessionId && runtimeSessionId.length > 0 ? runtimeSessionId : null;
   }, [selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
   const selectedAgentWorkspaceAgent = useMemo(() => {
     const memberId = selectedAgentWorkspaceMemberId.trim();
