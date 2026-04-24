@@ -36,8 +36,33 @@ function setNativeValue(
 function renderConversation(
   root: Root,
   props: React.ComponentProps<typeof AcpConversation>
-): void {
+): Promise<void> {
   renderWithMantine(root, <AcpConversation {...props} />);
+  return flushDeferredConversationRender();
+}
+
+async function flushDeferredConversationRender(iterations = 4): Promise<void> {
+  for (let idx = 0; idx < iterations; idx += 1) {
+    await act(async () => {
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+  }
+}
+
+async function waitForElement<T extends Element>(
+  resolve: () => T | null,
+  message: string,
+  attempts = 10
+): Promise<T> {
+  for (let idx = 0; idx < attempts; idx += 1) {
+    const candidate = resolve();
+    if (candidate) {
+      return candidate;
+    }
+    await flushDeferredConversationRender();
+  }
+  throw new Error(message);
 }
 
 describe("AcpConversation fold interactions", () => {
@@ -57,7 +82,7 @@ describe("AcpConversation fold interactions", () => {
     container.remove();
   });
 
-  it("collapses input/output subfolds when parent tool call fold is collapsed", () => {
+  it("collapses input/output subfolds when parent tool call fold is collapsed", async () => {
     const items: ConversationItem[] = [
       {
         kind: "tool_call",
@@ -69,7 +94,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       windowOffset: 0,
       isFrozenView: false,
@@ -86,9 +111,10 @@ describe("AcpConversation fold interactions", () => {
       ansi: (input) => input,
     });
 
-    const toolFold = container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null;
-    expect(toolFold).not.toBeNull();
-    if (!toolFold) return;
+    const toolFold = await waitForElement(
+      () => container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null,
+      "tool fold not found"
+    );
 
     const findSubfold = (label: string): HTMLDetailsElement => {
       const wrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
@@ -118,7 +144,7 @@ describe("AcpConversation fold interactions", () => {
     expect(findSubfold("Output").open).toBe(false);
   });
 
-  it("shows newest lines first for long payloads and reveals older lines after Show more", () => {
+  it("shows newest lines first for long payloads and reveals older lines after Show more", async () => {
     const lines = Array.from({ length: 260 }, (_, idx) => `line-${idx}`).join("\n");
     const items: ConversationItem[] = [
       {
@@ -130,7 +156,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       windowOffset: 0,
       isFrozenView: false,
@@ -151,9 +177,10 @@ describe("AcpConversation fold interactions", () => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Content";
     }) as HTMLDivElement | undefined;
-    const contentFold = contentFoldWrapper?.querySelector("details");
-    expect(contentFold).toBeInstanceOf(HTMLDetailsElement);
-    if (!(contentFold instanceof HTMLDetailsElement)) return;
+    const contentFold = await waitForElement(
+      () => contentFoldWrapper?.querySelector("details") as HTMLDetailsElement | null,
+      "content fold not found"
+    );
     setDetailsOpen(contentFold, true);
 
     const beforePre = container.querySelector("pre.acp-content.acp-payload-text");
@@ -163,11 +190,13 @@ describe("AcpConversation fold interactions", () => {
     expect(preTextBeforeExpand).toContain("line-259");
     expect(preTextBeforeExpand).not.toContain("line-0");
 
-    const showMoreButton = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Show more")
+    const showMoreButton = await waitForElement(
+      () =>
+        Array.from(container.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("Show more")
+        ) ?? null,
+      "show more button not found"
     );
-    expect(showMoreButton).not.toBeUndefined();
-    if (!showMoreButton) return;
 
     act(() => {
       showMoreButton.click();
@@ -181,7 +210,7 @@ describe("AcpConversation fold interactions", () => {
     expect(preTextAfterExpand).not.toContain("line-0");
   });
 
-  it("renders markdown content folds with terminal tone", () => {
+  it("renders markdown content folds with terminal tone", async () => {
     const items: ConversationItem[] = [
       {
         kind: "tool_call",
@@ -192,7 +221,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       windowOffset: 0,
       isFrozenView: false,
@@ -209,13 +238,15 @@ describe("AcpConversation fold interactions", () => {
       ansi: (input) => input,
     });
 
-    const contentNode = container.querySelector(".acp-content-markdown") as HTMLDivElement | null;
-    expect(contentNode).not.toBeNull();
+    const contentNode = await waitForElement(
+      () => container.querySelector(".acp-content-markdown") as HTMLDivElement | null,
+      "markdown content fold not found"
+    );
     expect(contentNode?.textContent).toContain("Heading");
     expect(contentNode?.textContent).toContain("tidb-server");
   });
 
-  it("keeps Detailed collapsed by default after output fold disappears on rerender", () => {
+  it("keeps Detailed collapsed by default after output fold disappears on rerender", async () => {
     const baseProps = {
       windowOffset: 0,
       isFrozenView: false,
@@ -241,7 +272,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, { items: firstItems, ...baseProps });
+    await renderConversation(root, { items: firstItems, ...baseProps });
 
     const secondItems: ConversationItem[] = [
       {
@@ -257,19 +288,20 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, { items: secondItems, ...baseProps });
+    await renderConversation(root, { items: secondItems, ...baseProps });
 
     const detailedFoldWrapper = Array.from(container.querySelectorAll(".acp-subfold")).find((node) => {
       const firstSpan = node.querySelector("summary span");
       return firstSpan?.textContent?.trim() === "Detailed";
     }) as HTMLDivElement | undefined;
-    const detailedFold = detailedFoldWrapper?.querySelector("details");
-
-    expect(detailedFold).toBeInstanceOf(HTMLDetailsElement);
-    expect((detailedFold as HTMLDetailsElement | null)?.open).toBe(false);
+    const detailedFold = await waitForElement(
+      () => detailedFoldWrapper?.querySelector("details") as HTMLDetailsElement | null,
+      "detailed fold not found"
+    );
+    expect(detailedFold.open).toBe(false);
   });
 
-  it("auto-collapses an older live tool call when it crosses the conversation cutoff", () => {
+  it("auto-collapses an older live tool call when it crosses the conversation cutoff", async () => {
     const items: ConversationItem[] = [
       {
         kind: "tool_call",
@@ -292,29 +324,31 @@ describe("AcpConversation fold interactions", () => {
       ansi: (input: string) => input,
     };
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       shouldAutoCollapse: false,
       collapseCutoff: 0,
       ...baseProps,
     });
 
-    const toolFold = container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null;
-    expect(toolFold).not.toBeNull();
-    expect(toolFold?.open).toBe(true);
+    const toolFold = await waitForElement(
+      () => container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null,
+      "tool fold not found on initial render"
+    );
+    expect(toolFold.open).toBe(true);
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       shouldAutoCollapse: true,
       collapseCutoff: 10,
       ...baseProps,
     });
 
-    const collapsedToolFold = container.querySelector(
-      ".acp-tool-fold"
-    ) as HTMLDetailsElement | null;
-    expect(collapsedToolFold).not.toBeNull();
-    expect(collapsedToolFold?.open).toBe(false);
+    const collapsedToolFold = await waitForElement(
+      () => container.querySelector(".acp-tool-fold") as HTMLDetailsElement | null,
+      "tool fold not found after rerender"
+    );
+    expect(collapsedToolFold.open).toBe(false);
   });
 
   it("submits multi-question request_user_input answers through the shared ACP input callback", async () => {
@@ -356,7 +390,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       windowOffset: 0,
       isFrozenView: false,
@@ -374,20 +408,27 @@ describe("AcpConversation fold interactions", () => {
       onSubmitRequestUserInput,
     });
 
-    const firstOption = container.querySelector(
-      'input[data-request-user-input-option="Plan only"]'
-    ) as HTMLInputElement | null;
-    const otherOption = container.querySelector(
-      'input[data-request-user-input-option="None of the above"]'
-    ) as HTMLInputElement | null;
-    const submitButton = container.querySelector(
-      'button[data-request-user-input-submit="request-user-input:call-1"]'
-    ) as HTMLButtonElement | null;
-
-    expect(firstOption).not.toBeNull();
-    expect(otherOption).not.toBeNull();
-    expect(submitButton).not.toBeNull();
-    if (!firstOption || !otherOption || !submitButton) return;
+    const firstOption = await waitForElement(
+      () =>
+        container.querySelector(
+          'input[data-request-user-input-option="Plan only"]'
+        ) as HTMLInputElement | null,
+      "first request_user_input option not found"
+    );
+    const otherOption = await waitForElement(
+      () =>
+        container.querySelector(
+          'input[data-request-user-input-option="None of the above"]'
+        ) as HTMLInputElement | null,
+      "other request_user_input option not found"
+    );
+    const submitButton = await waitForElement(
+      () =>
+        container.querySelector(
+          'button[data-request-user-input-submit="request-user-input:call-1"]'
+        ) as HTMLButtonElement | null,
+      "request_user_input submit button not found"
+    );
 
     act(() => {
       firstOption.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -411,7 +452,7 @@ describe("AcpConversation fold interactions", () => {
     );
   });
 
-  it("keeps in-progress request_user_input drafts across rerenders with equivalent questions", () => {
+  it("keeps in-progress request_user_input drafts across rerenders with equivalent questions", async () => {
     const onSubmitRequestUserInput = () => {};
     const buildItems = (): ConversationItem[] => [
       {
@@ -431,7 +472,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items: buildItems(),
       windowOffset: 0,
       isFrozenView: false,
@@ -449,11 +490,13 @@ describe("AcpConversation fold interactions", () => {
       onSubmitRequestUserInput,
     });
 
-    const textarea = container.querySelector(
-      'textarea[data-request-user-input-note="notes"]'
-    ) as HTMLTextAreaElement | null;
-    expect(textarea).not.toBeNull();
-    if (!textarea) return;
+    const textarea = await waitForElement(
+      () =>
+        container.querySelector(
+          'textarea[data-request-user-input-note="notes"]'
+        ) as HTMLTextAreaElement | null,
+      "request_user_input notes textarea not found"
+    );
 
     act(() => {
       setNativeValue(textarea, "Keep this draft");
@@ -463,7 +506,7 @@ describe("AcpConversation fold interactions", () => {
 
     expect(textarea.value).toBe("Keep this draft");
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items: buildItems(),
       windowOffset: 0,
       isFrozenView: false,
@@ -481,11 +524,14 @@ describe("AcpConversation fold interactions", () => {
       onSubmitRequestUserInput,
     });
 
-    const rerenderedTextarea = container.querySelector(
-      'textarea[data-request-user-input-note="notes"]'
-    ) as HTMLTextAreaElement | null;
-    expect(rerenderedTextarea).not.toBeNull();
-    expect(rerenderedTextarea?.value).toBe("Keep this draft");
+    const rerenderedTextarea = await waitForElement(
+      () =>
+        container.querySelector(
+          'textarea[data-request-user-input-note="notes"]'
+        ) as HTMLTextAreaElement | null,
+      "rerendered request_user_input notes textarea not found"
+    );
+    expect(rerenderedTextarea.value).toBe("Keep this draft");
   });
 
   it("re-enables request_user_input submission controls after a successful submit callback", async () => {
@@ -514,7 +560,7 @@ describe("AcpConversation fold interactions", () => {
       },
     ];
 
-    renderConversation(root, {
+    await renderConversation(root, {
       items,
       windowOffset: 0,
       isFrozenView: false,
@@ -532,16 +578,20 @@ describe("AcpConversation fold interactions", () => {
       onSubmitRequestUserInput,
     });
 
-    const textarea = container.querySelector(
-      'textarea[data-request-user-input-note="notes"]'
-    ) as HTMLTextAreaElement | null;
-    const submitButton = container.querySelector(
-      'button[data-request-user-input-submit="request-user-input:call-submit-reset"]'
-    ) as HTMLButtonElement | null;
-
-    expect(textarea).not.toBeNull();
-    expect(submitButton).not.toBeNull();
-    if (!textarea || !submitButton) return;
+    const textarea = await waitForElement(
+      () =>
+        container.querySelector(
+          'textarea[data-request-user-input-note="notes"]'
+        ) as HTMLTextAreaElement | null,
+      "request_user_input notes textarea not found"
+    );
+    const submitButton = await waitForElement(
+      () =>
+        container.querySelector(
+          'button[data-request-user-input-submit="request-user-input:call-submit-reset"]'
+        ) as HTMLButtonElement | null,
+      "request_user_input submit button not found"
+    );
 
     act(() => {
       setNativeValue(textarea, "Keep trying");
