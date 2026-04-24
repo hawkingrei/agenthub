@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "./markdown";
+import { createConfiguredMarkdownRenderer } from "./markdown_renderer";
 
 describe("renderMarkdown", () => {
   it("removes unsafe javascript links", () => {
@@ -132,5 +133,20 @@ describe("renderMarkdown", () => {
     const html = renderMarkdown("```ts\nconst value = 1\n```\n");
     expect(html).toContain('class="md-code-block hljs"');
     expect(html).toContain('class="md-code-block_code');
+  });
+
+  it("merges markdown code-block classes with existing highlighted classes without duplication", () => {
+    const renderer = createConfiguredMarkdownRenderer({
+      highlight: () =>
+        '<pre class="hljs md-code-block"><code class="language-ts md-code-block_code">const value = 1</code></pre>',
+      sanitizeHref: (href) => href,
+    });
+
+    const html = renderer.render("```ts\nconst value = 1\n```");
+
+    expect(html).toContain('class="md-code-block hljs"');
+    expect(html).toContain('class="md-code-block_code language-ts"');
+    expect(html).not.toContain("md-code-block md-code-block");
+    expect(html).not.toContain("md-code-block_code md-code-block_code");
   });
 });

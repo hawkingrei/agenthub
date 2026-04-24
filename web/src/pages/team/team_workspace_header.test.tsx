@@ -128,4 +128,53 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("team=abc");
     expect(html).not.toContain("3/3 online");
   });
+
+  it("renders agent identity fallback text and enabled loop summary when the profile is sparse", () => {
+    const html = renderHtml({
+      isAgentWorkspace: true,
+      workspaceTitle: "worker-1",
+      workspaceDescription: null,
+      showWorkspaceRuntimeBadge: false,
+      showRunActionsInAdvanced: false,
+      workspaceAdvancedTabItems: [],
+      workspaceNoticeText: null,
+      selectedAgentSpecDraft: {
+        ...baseAgentSpecDraft,
+        description: "   ",
+        role: "leader",
+        agent_loop_enabled: true,
+        agent_loop_idle_seconds: "15",
+      },
+      selectedAgentStatusView: {
+        ...baseAgentStatusView,
+        role: "leader",
+        currentWork: "Reviewing the latest rollout before handoff.",
+      },
+    });
+
+    expect(html).toContain("No agent identity description yet.");
+    expect(html).toContain('aria-label="Agent"');
+    expect(html).toContain('title="No agent identity description yet."');
+    expect(html).not.toContain("team running · 3 online");
+  });
+
+  it("hides runtime chrome and workspace details when they are disabled", () => {
+    const html = renderHtml({
+      showDedicatedWorkspaceHeading: false,
+      workspaceEyebrow: "Shared lane",
+      workspaceDescription: null,
+      showWorkspaceRuntimeBadge: false,
+      workspaceAdvancedTabItems: [],
+      showRunActionsInAdvanced: false,
+      workspaceNoticeText: null,
+      developerMode: false,
+      workspaceDetailsOpen: false,
+      workspaceDetailItems: [],
+    });
+
+    expect(html).toContain("Shared lane");
+    expect(html).not.toContain('aria-label="More"');
+    expect(html).not.toContain("team running");
+    expect(html).not.toContain("team=abc");
+  });
 });

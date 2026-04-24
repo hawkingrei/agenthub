@@ -844,6 +844,68 @@ describe("team panels interactions", () => {
     ).toBe("Review lane");
   });
 
+  it("TeamSidebar lets the user cancel channel creation and resets the inline form", async () => {
+    const onCreateChannel = vi.fn().mockResolvedValue(undefined);
+    const teamOne = buildTeam();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            showTeamSelector={false}
+            developerMode={true}
+            busy={null}
+            onRefreshTeams={() => {}}
+            onOpenCreateTeam={() => {}}
+            draftTeamName=""
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[teamOne]}
+            selectedTeam={teamOne}
+            selectedTeamId={teamOne.id}
+            selectedTeamHasConfiguredMembers={true}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[buildMemberLiveState()]}
+            focusedAgentMemberId=""
+            tab="conversation"
+            onSelectTeam={() => {}}
+            onSelectChannel={() => {}}
+            onCreateChannel={onCreateChannel}
+            onSelectKanban={() => {}}
+            onSelectAgentTab={() => {}}
+          />
+        </MantineProvider>
+      );
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Create channel"));
+    const channelIdInput = required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing"
+    ) as HTMLInputElement;
+    const descriptionInput = required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing"
+    ) as HTMLInputElement;
+    changeInputValue(channelIdInput, "review");
+    changeInputValue(descriptionInput, "Review lane");
+
+    clickElement(findButtonByText(container, "Cancel"));
+
+    expect(container.querySelector("input[aria-label='Channel ID']")).toBeNull();
+
+    clickElement(findButtonByAriaLabel(container, "Create channel"));
+    expect((required(
+      container.querySelector("input[aria-label='Channel ID']"),
+      "channel id input missing after reopening"
+    ) as HTMLInputElement).value).toBe("");
+    expect((required(
+      container.querySelector("input[aria-label='Channel Description']"),
+      "channel description input missing after reopening"
+    ) as HTMLInputElement).value).toBe("");
+    expect(onCreateChannel).not.toHaveBeenCalled();
+  });
+
   it("TeamSidebar uses the team name as a team switcher and keeps controls in a separate menu", async () => {
     const teamOne = buildTeam({
       description: "Triage TiDB issues and coordinate the fuzzing backlog.",
