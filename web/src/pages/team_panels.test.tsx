@@ -777,6 +777,7 @@ describe("team panels interactions", () => {
   it("TeamSidebar exposes create and delete channel controls for non-default lanes", async () => {
     const onCreateChannel = vi.fn().mockResolvedValue(undefined);
     const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderTeamSidebar(root, {
       onCreateChannel,
       onDeleteChannel,
@@ -812,6 +813,32 @@ describe("team panels interactions", () => {
     expect(queryButtonByAriaLabel(container, "Delete channel all")).toBeNull();
     clickElement(findButtonByAriaLabel(container, "Delete channel review"));
     expect(onDeleteChannel).toHaveBeenCalledWith("review");
+    confirmSpy.mockRestore();
+  });
+
+  it("TeamSidebar cancels channel deletion when confirmation is rejected", () => {
+    const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderTeamSidebar(root, {
+      onDeleteChannel,
+      channelItems: [
+        {
+          id: "all",
+          label: "# all",
+          description: "Shared coordination lane",
+        },
+        {
+          id: "review",
+          label: "# review",
+          description: "Review lane",
+        },
+      ],
+      selectedChannelId: "review",
+    });
+
+    clickElement(findButtonByAriaLabel(container, "Delete channel review"));
+    expect(onDeleteChannel).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it("TeamSidebar keeps the inline create form open when channel creation fails", async () => {
@@ -3268,6 +3295,104 @@ describe("team panels interactions", () => {
     const threadButton = findButtonByText(container, "Thread");
     expect(detailsButton.parentElement?.className).toContain("flex-wrap");
     expect(threadButton.parentElement?.className).toContain("flex-wrap");
+  });
+
+  it("TeamTaskPanel keeps thread access available when developer mode is off", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(9, {
+            payload: { type: "chat_message", text: "open a focused thread for follow-up" },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={null}
+      />
+    );
+
+    expect(findButtonByText(container, "Thread")).toBeDefined();
+    expect(queryButtonByText(container, "Details")).toBeNull();
+  });
+
+  it("TeamTaskPanel disables enter-to-send on mobile-sized viewports", () => {
+    const originalWidth = window.innerWidth;
+    const sendMessage = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 640,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft="mobile draft"
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={sendMessage}
+        messages={[]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+      />
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    const textarea = required(container.querySelector("textarea"), "message composer textarea") as HTMLTextAreaElement;
+    act(() => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("@name to reply · Enter adds a new line");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: originalWidth,
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: originalScrollIntoView,
+    });
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {

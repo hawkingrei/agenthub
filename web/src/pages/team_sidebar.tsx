@@ -681,6 +681,12 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   {!isDefaultChannel && onDeleteChannel ? (
                     <IconButton
                       onClick={() => {
+                        if (
+                          typeof window !== "undefined" &&
+                          !window.confirm(`Delete channel "${channel.label}"?`)
+                        ) {
+                          return;
+                        }
                         void onDeleteChannel(channel.id);
                       }}
                       disabled={isDeleting || creatingChannel}

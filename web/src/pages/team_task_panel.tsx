@@ -44,6 +44,7 @@ import {
   type MentionDraftQuery,
 } from "./team/mailbox_helpers";
 import { TeamThreadRichText } from "./team/team_thread_rich_text";
+import { isMobileInputViewport } from "../components/input_dock";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
@@ -895,6 +896,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
 
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const messageDraftComposingRef = React.useRef(false);
+  const [sendOnEnter, setSendOnEnter] = React.useState(() =>
+    typeof window === "undefined" ? true : !isMobileInputViewport(window.innerWidth)
+  );
   const [activeMention, setActiveMention] = React.useState<MentionDraftQuery | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [expandedItemKeys, setExpandedItemKeys] = React.useState<Record<string, boolean>>({});
@@ -1248,6 +1252,19 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     (text: string) => renderMarkdownWithMentions(text, memberDisplayNamesById),
     [memberDisplayNamesById]
   );
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const syncViewport = () => {
+      setSendOnEnter(!isMobileInputViewport(window.innerWidth));
+    };
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => {
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, []);
   const onRespondPermission = React.useCallback(
     async (payload: PermissionReviewCardPayload, optionId?: string) => {
       if (!token) {
@@ -1430,20 +1447,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                               <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
                               <span className={TEAM_TASK_ACTIVITY_TIME_CLASS}>{formatTs(item.createdAt)}</span>
                             </div>
-                            {developerMode && (
+                            {(developerMode || (isChannelConversation && onOpenThread)) && (
                               <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
-                                <CompactButton
-                                  className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
-                                  onClick={() =>
-                                    setExpandedItemKeys((current) => ({
-                                      ...current,
-                                      [item.key]: !current[item.key],
-                                    }))
-                                  }
-                                  aria-expanded={Boolean(expandedItemKeys[item.key])}
-                                >
-                                  {expandedItemKeys[item.key] ? "Hide" : "Details"}
-                                </CompactButton>
                                 {isChannelConversation && onOpenThread && (
                                   <CompactButton
                                     className={
@@ -1456,6 +1461,20 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                                     Thread
                                   </CompactButton>
                                 )}
+                                {developerMode ? (
+                                  <CompactButton
+                                    className={TEAM_TASK_ACTIVITY_META_BUTTON_CLASS}
+                                    onClick={() =>
+                                      setExpandedItemKeys((current) => ({
+                                        ...current,
+                                        [item.key]: !current[item.key],
+                                      }))
+                                    }
+                                    aria-expanded={Boolean(expandedItemKeys[item.key])}
+                                  >
+                                    {expandedItemKeys[item.key] ? "Hide" : "Details"}
+                                  </CompactButton>
+                                ) : null}
                               </div>
                             )}
                           </div>
@@ -1634,6 +1653,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                   !event.metaKey &&
                   !event.ctrlKey &&
                   !composing &&
+                  sendOnEnter &&
                   canSendMessage
                 ) {
                   event.preventDefault();
@@ -1679,7 +1699,9 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           )}
           <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
             <span className={TEAM_TASK_SHORTCUT_CLASS}>
-              {`@name to reply · Enter to send`}
+              {sendOnEnter
+                ? "@name to reply · Enter to send"
+                : "@name to reply · Enter adds a new line"}
             </span>
           </ToolbarRow>
         </div>
