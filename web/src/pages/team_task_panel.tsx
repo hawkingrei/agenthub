@@ -386,13 +386,16 @@ function TeamActivityBubble({
   );
 }
 
-function TeamTaskPanelLoadingSkeleton() {
+export function TeamTaskPanelLoadingSkeleton() {
   return (
     <div
       className="flex flex-col gap-2.5 px-1 py-1"
       data-team-channel-loading-skeleton="true"
       aria-busy="true"
     >
+      <div className="sr-only" role="status" aria-live="polite">
+        Loading messages...
+      </div>
       <div className="flex flex-col gap-2.5" aria-hidden="true">
         {Array.from({ length: 6 }, (_, index) => {
           const alignRight = index % 3 === 2;

@@ -65,7 +65,7 @@ export function useAutoCollapseToolFoldWhenOutOfView({
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [detailsRef, enabled, onCollapse]);
+  }, [detailsRef, enabled, onCollapse, rootElement]);
 }
 
 export function isToolCallEffectivelyLive(

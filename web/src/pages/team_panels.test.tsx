@@ -21,7 +21,7 @@ import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { TeamActiveRunPanel } from "./team_active_run_panel";
 import { TeamMemberConsolePanel } from "./team_member_console_panel";
 import { TeamOverviewPanel } from "./team_overview_panel";
-import { TeamTaskPanel } from "./team_task_panel";
+import { TeamTaskPanel, TeamTaskPanelLoadingSkeleton } from "./team_task_panel";
 import { TeamTasksPanel } from "./team_tasks_panel";
 import { TeamRunPanel } from "./team_run_panel";
 import { TeamSidebar } from "./team_sidebar";
@@ -2635,42 +2635,15 @@ describe("team panels interactions", () => {
   });
 
   it("TeamTaskPanel keeps the channel loading skeleton free of session-restore copy", () => {
-    renderWithMantine(
-      root,
-      <TeamTaskPanel
-        developerMode={false}
-        tasksLoading={false}
-        onRefreshTasks={vi.fn()}
-        messageDraft=""
-        onMessageDraftChange={vi.fn()}
-        onSendMessage={vi.fn()}
-        messages={[
-          buildTaskMessage(1, {
-            from_actor_id: "leader-agent",
-            to_actor_id: null,
-            route: "group_chat",
-            payload: { type: "chat_message", text: "queued update" },
-          }),
-        ]}
-        humanActorId="user"
-        memberLiveStates={[
-          buildMemberLiveState({
-            member_id: "leader-agent",
-            role: "leader",
-            agent_name: "Leader Agent",
-          }),
-        ]}
-        memberIds={["leader-agent"]}
-        conversationTitle="# all"
-        isChannelConversation={true}
-        messagesLoading={true}
-        busy={null}
-        formatTs={(ts) => `ts-${String(ts)}`}
-        toPrettyJson={(value) => JSON.stringify(value)}
-      />
-    );
+    renderWithMantine(root, <TeamTaskPanelLoadingSkeleton />);
 
+    const loadingStatus = required(
+      container.querySelector('[role="status"]'),
+      "loading status missing"
+    );
     expect(container.textContent).not.toContain("Restoring session...");
+    expect(loadingStatus.textContent).toContain("Loading messages...");
+    expect(loadingStatus.getAttribute("aria-live")).toBe("polite");
   });
 
   it("TeamTaskPanel removes approved permission review cards from the channel after response", async () => {
