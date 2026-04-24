@@ -137,7 +137,11 @@ export function createConfiguredMarkdownRenderer({
 }
 
 function escapeAttribute(value: string): string {
-  return value.replace(/"/g, "&quot;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function decorateFencedCodeBlock(html: string, language: string): string {

@@ -41,10 +41,12 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Close thread");
     expect(html).toContain("Original");
     expect(html).toContain("leader");
+    expect(html).toContain(">L<");
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
     expect(html).toContain("Replies stay scoped to this thread.");
     expect(html).toContain("worker-agent");
+    expect(html).toContain(">W<");
     expect(html).toContain("#43");
     expect(html).toContain("I can take the follow-up from here.");
     expect(html).toContain("Draft follow-up");

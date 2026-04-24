@@ -204,6 +204,36 @@ pub(super) fn openapi_spec() -> Value {
               "spec": { "type": "object", "additionalProperties": true }
             }
           },
+          "TeamChannelRecord": {
+            "type": "object",
+            "required": [
+              "team_id",
+              "channel_id",
+              "task_id",
+              "conversation_id",
+              "created_by_actor_id",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "team_id": { "type": "string" },
+              "channel_id": { "type": "string" },
+              "task_id": { "type": "string" },
+              "conversation_id": { "type": "string" },
+              "description": { "type": ["string", "null"] },
+              "created_by_actor_id": { "type": "string" },
+              "created_at": { "type": "integer", "format": "int64" },
+              "updated_at": { "type": "integer", "format": "int64" }
+            }
+          },
+          "CreateTeamChannelRequest": {
+            "type": "object",
+            "required": ["channel_id"],
+            "properties": {
+              "channel_id": { "type": "string" },
+              "description": { "type": ["string", "null"] }
+            }
+          },
           "CreateTeamRunRequest": {
             "type": "object",
             "properties": {
@@ -378,6 +408,78 @@ pub(super) fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/TeamDefinitionRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/channels": {
+          "get": {
+            "tags": ["teams"],
+            "summary": "List team channels",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Team channels",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/TeamChannelRecord" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "post": {
+            "tags": ["teams"],
+            "summary": "Create team channel",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/CreateTeamChannelRequest" }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "Created team channel",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamChannelRecord" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/api/teams/{id}/channels/{channel_id}": {
+          "delete": {
+            "tags": ["teams"],
+            "summary": "Delete team channel",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+              {
+                "name": "channel_id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Deleted team channel",
+                "content": {
+                  "application/json": {
+                    "schema": { "$ref": "#/components/schemas/TeamChannelRecord" }
                   }
                 }
               }

@@ -135,6 +135,17 @@ describe("renderMarkdown", () => {
     expect(html).toContain('class="md-code-block_code');
   });
 
+  it("escapes fenced code language attributes before injecting them into html", () => {
+    const renderer = createConfiguredMarkdownRenderer({
+      highlight: (_code, language) => `<pre><code>${language}</code></pre>`,
+      sanitizeHref: (href) => href,
+    });
+
+    const html = renderer.render("```ts&<>\nconst value = 1\n```");
+
+    expect(html).toContain('data-language="ts&amp;&lt;&gt;"');
+  });
+
   it("merges markdown code-block classes with existing highlighted classes without duplication", () => {
     const renderer = createConfiguredMarkdownRenderer({
       highlight: () =>

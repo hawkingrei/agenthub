@@ -59,7 +59,7 @@ function resolveThreadAvatarLabel(authorLabel: string | null): string {
   if (!trimmed) {
     return "?";
   }
-  return trimmed.charAt(0);
+  return trimmed.charAt(0).toUpperCase();
 }
 
 export const TeamThreadPane = React.memo(function TeamThreadPane({

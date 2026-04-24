@@ -1098,7 +1098,9 @@ export function TeamPage(props: TeamPageProps) {
       navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels"));
     }
   }, [
+    buildTeamWorkspacePath,
     effectiveSelectedTeamId,
+    navigateTeamRoute,
     routeChannelId,
     routeWorkspaceLens,
     selectedChannelRecord,
