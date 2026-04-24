@@ -24,7 +24,6 @@ export function AcpConversationItemRow({
   );
   return (
     <div
-      key={key}
       className={`acp-conversation-item${isFocusedToolCall ? " is-focused ring-2 ring-sky-300 ring-offset-2 ring-offset-white" : ""}`}
       data-conversation-item-key={key}
       data-tool-call-id={getConversationItemToolCallId(msg)}

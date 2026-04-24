@@ -17,6 +17,18 @@ export function loadTeamMemberAcpRenderCache(
   agentId: string,
   sessionId: string | null | undefined
 ): AgentEvent[] {
+  const cached = peekTeamMemberAcpRenderCache(agentId, sessionId);
+  if (cached.length === 0) {
+    return cached;
+  }
+  touchTeamMemberAcpRenderCache(agentId, sessionId);
+  return cached;
+}
+
+export function peekTeamMemberAcpRenderCache(
+  agentId: string,
+  sessionId: string | null | undefined
+): AgentEvent[] {
   const key = normalizeCacheKey(agentId, sessionId);
   if (!key) {
     return [];
@@ -25,9 +37,23 @@ export function loadTeamMemberAcpRenderCache(
   if (!cached) {
     return [];
   }
+  return cached;
+}
+
+export function touchTeamMemberAcpRenderCache(
+  agentId: string,
+  sessionId: string | null | undefined
+): void {
+  const key = normalizeCacheKey(agentId, sessionId);
+  if (!key) {
+    return;
+  }
+  const cached = memberAcpRenderCache.get(key);
+  if (!cached) {
+    return;
+  }
   memberAcpRenderCache.delete(key);
   memberAcpRenderCache.set(key, cached);
-  return cached;
 }
 
 export function saveTeamMemberAcpRenderCache(

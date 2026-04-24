@@ -28,10 +28,12 @@ export function shouldCollapseToolFoldWhenOutOfView(
 export function useAutoCollapseToolFoldWhenOutOfView({
   detailsRef,
   enabled,
+  rootElement,
   onCollapse,
 }: {
   detailsRef: React.RefObject<HTMLDetailsElement | null>;
   enabled: boolean;
+  rootElement?: HTMLElement | null;
   onCollapse: () => void;
 }): void {
   React.useEffect(() => {
@@ -40,7 +42,7 @@ export function useAutoCollapseToolFoldWhenOutOfView({
     if (typeof window.IntersectionObserver !== "function") return;
     const node = detailsRef.current;
     if (!node) return;
-    const root = node.closest(".acp-conversation");
+    const root = rootElement ?? node.closest(".acp-conversation");
     if (!(root instanceof HTMLElement)) return;
     const observer = new window.IntersectionObserver(
       (entries) => {

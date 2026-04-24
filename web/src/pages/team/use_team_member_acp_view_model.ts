@@ -12,8 +12,9 @@ import {
   omitIncompleteLeadingAcpMessageEvents,
 } from "./acp_history_prefetch";
 import {
-  loadTeamMemberAcpRenderCache,
+  peekTeamMemberAcpRenderCache,
   saveTeamMemberAcpRenderCache,
+  touchTeamMemberAcpRenderCache,
 } from "./team_member_acp_render_cache";
 
 export type TeamMemberAcpTab = "conversation" | "plan" | "debug";
@@ -104,8 +105,24 @@ export function useTeamMemberAcpViewModel({
     if (!memberEventsLoading) {
       return memberEvents;
     }
-    return loadTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
+    return peekTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
   }, [memberEvents, memberEventsLoading, selectedMemberId, selectedSessionId]);
+
+  React.useEffect(() => {
+    if (memberEvents.length > 0 || !memberEventsLoading) {
+      return;
+    }
+    if (effectiveMemberEvents.length === 0) {
+      return;
+    }
+    touchTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
+  }, [
+    effectiveMemberEvents.length,
+    memberEvents.length,
+    memberEventsLoading,
+    selectedMemberId,
+    selectedSessionId,
+  ]);
 
   React.useEffect(() => {
     if (memberEvents.length === 0) {

@@ -144,15 +144,15 @@ function ToolPlainTextView({
 }
 
 export function compressLongHtmlClassAttributesForDisplay(text: string): string {
-  if (!text.includes('class="')) {
+  if (!text.includes("<") || !text.includes('class="')) {
     return text;
   }
-  return text.replace(/class="([^"]+)"/g, (_match, classValue: string) => {
+  return text.replace(/(<[A-Za-z][^>\n]*?)class="([^"]+)"/g, (_match, prefix: string, classValue: string) => {
     if (classValue.length <= TOOL_TEXT_CLASS_ATTRIBUTE_DISPLAY_LIMIT) {
-      return `class="${classValue}"`;
+      return `${prefix}class="${classValue}"`;
     }
     const truncated = `${classValue.slice(0, TOOL_TEXT_CLASS_ATTRIBUTE_DISPLAY_LIMIT - 1)}…`;
-    return `class="${truncated}"`;
+    return `${prefix}class="${truncated}"`;
   });
 }
 

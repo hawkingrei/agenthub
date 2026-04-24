@@ -395,7 +395,7 @@ export function useAcpConversation({
     prevHeight: number;
     prevTop: number;
   } | null>(null);
-  const conversationEnteredTopZoneRef = useRef(false);
+  const conversationLeftTopZoneSinceLoadRef = useRef(false);
   const autoLoadHistoryTimerRef = useRef<number | null>(null);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
@@ -770,14 +770,14 @@ export function useAcpConversation({
     );
     const isInTopZone = el.scrollTop < LOAD_OLDER_TRIGGER_TOP_PX;
     if (!isInTopZone) {
-      conversationEnteredTopZoneRef.current = true;
+      conversationLeftTopZoneSinceLoadRef.current = true;
     }
     if (
       isInTopZone &&
       canLoadOlder &&
-      conversationEnteredTopZoneRef.current
+      conversationLeftTopZoneSinceLoadRef.current
     ) {
-      conversationEnteredTopZoneRef.current = false;
+      conversationLeftTopZoneSinceLoadRef.current = false;
       prepareForLoadOlder();
       onLoadOlder();
     }
@@ -919,7 +919,7 @@ export function useAcpConversation({
     acpStickToBottomRef.current = defaultStickToBottom;
     pendingScrollAdjustRef.current = null;
     lastConversationScrollTopRef.current = null;
-    conversationEnteredTopZoneRef.current = false;
+    conversationLeftTopZoneSinceLoadRef.current = false;
     setConversationStickToBottom(defaultStickToBottom);
     setConversationFrozen(false);
     setConversationFreezeCursor(null);

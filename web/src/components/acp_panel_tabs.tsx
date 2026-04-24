@@ -1,5 +1,6 @@
 import { UnstyledButton } from "@mantine/core";
 import React from "react";
+import type { AcpPlanEntry } from "../acp";
 import { cx } from "../ui/primitives";
 import {
   ACP_PANEL_TABS_CLASS,
@@ -16,7 +17,7 @@ type AcpPanelTabsProps = {
   developerMode: boolean;
   showConversationBadge: boolean;
   pendingCount: number;
-  planEntries: Array<unknown>;
+  planEntries: AcpPlanEntry[];
   onSelectTab: (tab: AcpPanelTab) => void;
 };
 

@@ -720,6 +720,36 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("content");
   });
 
+  it("does not truncate plain text that only mentions class attributes outside html tags", async () => {
+    const longClassValue = [
+      "inline-flex",
+      "items-center",
+      "justify-center",
+      "rounded-lg",
+      "font-semibold",
+      "transition",
+      "active:translate-y-px",
+      "disabled:cursor-not-allowed",
+      "disabled:opacity-50",
+      "shadow-sm",
+    ].join(" ");
+    const plainText = `Debug note: use class="${longClassValue}" on the wrapper`;
+    const html = await renderConversation([
+      {
+        kind: "tool_call",
+        id: "call-class-mention",
+        title: "Shell",
+        status: "completed",
+        raw_output: {
+          aggregated_output: plainText,
+        },
+      },
+    ]);
+
+    expect(html).toContain(`Debug note: use class=&quot;${longClassValue}&quot; on the wrapper`);
+    expect(html).not.toContain("transi…");
+  });
+
   it("shows segmented footer for large structured payloads", async () => {
     const html = await renderConversation([
       {
