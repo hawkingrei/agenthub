@@ -64,6 +64,7 @@ describe("team_page helpers", () => {
     expect(resolveTeamChannelId("")).toBe("all");
     expect(resolveTeamChannelId("?channel=all")).toBe("all");
     expect(resolveTeamChannelId("?channel=research")).toBe("research");
+    expect(resolveTeamChannelId("?channel=%C4%B0nbox")).toBe("İnbox");
     expect(resolveTeamThreadRootMessageId("")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=17")).toBe(17);
     expect(resolveTeamThreadRootMessageId("?thread=abc")).toBeNull();

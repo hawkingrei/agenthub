@@ -910,6 +910,64 @@ describe("TeamPage smoke render", () => {
     }
   });
 
+  it("keeps a non-default channel deep link when channel loading fails", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockRejectedValue(new Error("channel list unavailable"));
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+    window.history.replaceState({}, "", "/workspace/teams/team-1?channel=review");
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?channel=review"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(window.location.pathname).toBe("/workspace/teams/team-1");
+      expect(window.location.search).toBe("?channel=review");
+      expect(container.textContent).toContain("channel list unavailable");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("keeps the active channel when closing a non-default channel thread", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,

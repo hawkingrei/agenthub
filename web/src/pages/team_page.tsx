@@ -251,10 +251,14 @@ type TeamPageProps = {
   defaultWorktreeRoot?: string | null;
 };
 
+function toAsciiLowercase(value: string): string {
+  return value.replace(/[A-Z]/g, (char) => char.toLowerCase());
+}
+
 export function resolveTeamChannelId(search: string): TeamChannelId {
   const params = new URLSearchParams(search);
   const channel = (params.get("channel") ?? "").trim();
-  return channel.length === 0 ? DEFAULT_TEAM_CHANNEL_ID : channel.toLowerCase();
+  return channel.length === 0 ? DEFAULT_TEAM_CHANNEL_ID : toAsciiLowercase(channel);
 }
 
 export function resolveTeamThreadRootMessageId(search: string): number | null {
@@ -838,6 +842,7 @@ export function TeamPage(props: TeamPageProps) {
   >({});
   const [teamChannels, setTeamChannels] = useState<TeamChannelRecord[]>([]);
   const [teamChannelsSettled, setTeamChannelsSettled] = useState(false);
+  const [teamChannelsLoadedSuccessfully, setTeamChannelsLoadedSuccessfully] = useState(false);
   const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null);
   const [taskList, setTaskList] = useState<TeamTaskRecord[]>([]);
   const channelItems = useMemo<ReadonlyArray<TeamChannelItem>>(
@@ -1036,9 +1041,11 @@ export function TeamPage(props: TeamPageProps) {
         return [] as TeamChannelRecord[];
       }
       setTeamChannelsSettled(false);
+      setTeamChannelsLoadedSuccessfully(false);
       try {
         const channels = await api.listTeamChannels(props.token, normalizedTeamId);
         setTeamChannels(channels);
+        setTeamChannelsLoadedSuccessfully(true);
         return channels;
       } catch (err) {
         setError(parseErrorMessage(err));
@@ -1055,6 +1062,7 @@ export function TeamPage(props: TeamPageProps) {
     }
     let active = true;
     setTeamChannelsSettled(false);
+    setTeamChannelsLoadedSuccessfully(false);
     void api
       .listTeamChannels(props.token, effectiveSelectedTeamId)
       .then((channels) => {
@@ -1062,12 +1070,14 @@ export function TeamPage(props: TeamPageProps) {
           return;
         }
         setTeamChannels(channels);
+        setTeamChannelsLoadedSuccessfully(true);
       })
       .catch((err) => {
         if (!active) {
           return;
         }
         setError(parseErrorMessage(err));
+        setTeamChannelsLoadedSuccessfully(false);
       })
       .finally(() => {
         if (active) {
@@ -1094,7 +1104,7 @@ export function TeamPage(props: TeamPageProps) {
       );
       return;
     }
-    if (teamChannelsSettled) {
+    if (teamChannelsSettled && teamChannelsLoadedSuccessfully) {
       navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels"));
     }
   }, [
@@ -1104,6 +1114,7 @@ export function TeamPage(props: TeamPageProps) {
     routeChannelId,
     routeWorkspaceLens,
     selectedChannelRecord,
+    teamChannelsLoadedSuccessfully,
     teamChannelsSettled,
   ]);
   useEffect(() => {
