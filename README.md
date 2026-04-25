@@ -64,7 +64,7 @@ Minimal example:
 
 ```toml
 [server]
-listen = "0.0.0.0:8080"
+listen = "127.0.0.1:8080"
 ```
 
 Then open `http://localhost:8080`.
