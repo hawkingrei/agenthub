@@ -337,6 +337,73 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("coalesces concurrent replace loads for the same member ACP session", async () => {
+    let resolveList: ((events: AgentEvent[]) => void) | null = null;
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockImplementationOnce(
+        () =>
+          new Promise<AgentEvent[]>((resolve) => {
+            resolveList = resolve;
+          })
+      );
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const setMemberEventsLoading = vi.fn();
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      setMemberEvents,
+      setMemberEventsHasMore,
+      setMemberEventsLoading,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+
+      let firstPromise: Promise<void> | null = null;
+      let secondPromise: Promise<void> | null = null;
+      await act(async () => {
+        firstPromise = actions.loadMemberEvents("replace");
+        secondPromise = actions.loadMemberEvents("replace");
+        await Promise.resolve();
+      });
+
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(setMemberEventsLoading).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveList?.([
+          {
+            event_id: 11,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "11",
+            ts: 123,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "Latest visible content.",
+            }),
+          },
+        ]);
+        await Promise.all([firstPromise, secondPromise]);
+      });
+
+      expect(setMemberEvents).toHaveBeenCalledTimes(1);
+      expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("does not auto-prefetch older ACP history when the first page already renders a partial chunked message", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")

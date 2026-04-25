@@ -228,6 +228,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   const teamApi = useMemo(() => buildTeamApiClient(token), [token]);
   const selectedStepIdRef = useRef(selectedStepId);
   selectedStepIdRef.current = selectedStepId;
+  const memberEventReplaceInFlightRef = useRef(
+    new Map<string, Promise<void>>()
+  );
 
   const inboxQueryStateRef = useRef({
     activeRunIdForSelectedTeam,
@@ -435,72 +438,94 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         return;
       }
 
-      setMemberEventsLoading(true);
-      try {
-        const currentSessionEvents = memberEventsRef.current.filter(
-          (event) => (event.session_id ?? null) === sessionId
-        );
-        const beforeId =
-          mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
-        let list = await teamApi.listAgentEvents(
-          agentId,
-          MEMBER_EVENT_PAGE_LIMIT,
-          sessionId,
-          beforeId
-        );
-        let lastFetchedCount = list.length;
-        if (mode === "replace") {
-          const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
-          const hasWarmVisibleCache =
-            countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
-            countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
-          let pageCount = 1;
-          while (
-            !hasWarmVisibleCache &&
-            pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
-            shouldPrefetchInitialAcpHistory(
-              list,
-              sessionId,
-              hasPotentialOlderAgentEvents(lastFetchedCount)
-            )
-          ) {
-            const oldestLoadedId = list[0]?.event_id;
-            if (!oldestLoadedId) {
-              break;
-            }
-            const nextPageLimit = resolveAdaptiveAcpHistoryPageLimit(
-              list,
-              sessionId,
-              MEMBER_EVENT_PAGE_LIMIT
-            );
-            const older = await teamApi.listAgentEvents(
-              agentId,
-              nextPageLimit,
-              sessionId,
-              oldestLoadedId
-            );
-            lastFetchedCount = older.length;
-            if (older.length === 0) {
-              break;
-            }
-            list = upsertAgentEventList(list, older, "prepend", sessionId);
-            pageCount += 1;
-          }
+      const replaceRequestKey = `${agentId}:${sessionId}`;
+      if (mode === "replace") {
+        const inFlight = memberEventReplaceInFlightRef.current.get(replaceRequestKey);
+        if (inFlight) {
+          await inFlight;
+          return;
         }
-        const preserveLoadedHistory =
-          mode === "replace" &&
-          currentSessionEvents.length > 0 &&
-          list.length > 0 &&
-          currentSessionEvents[0]!.event_id < list[0]!.event_id;
-        setMemberEvents((prev) =>
-          upsertAgentEventList(prev, list, mode, sessionId)
-        );
-        if (!preserveLoadedHistory) {
-          setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
-        }
-      } finally {
-        setMemberEventsLoading(false);
       }
+
+      const runLoad = async () => {
+        setMemberEventsLoading(true);
+        try {
+          const currentSessionEvents = memberEventsRef.current.filter(
+            (event) => (event.session_id ?? null) === sessionId
+          );
+          const beforeId =
+            mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
+          let list = await teamApi.listAgentEvents(
+            agentId,
+            MEMBER_EVENT_PAGE_LIMIT,
+            sessionId,
+            beforeId
+          );
+          let lastFetchedCount = list.length;
+          if (mode === "replace") {
+            const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
+            const hasWarmVisibleCache =
+              countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
+              countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
+            let pageCount = 1;
+            while (
+              !hasWarmVisibleCache &&
+              pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
+              shouldPrefetchInitialAcpHistory(
+                list,
+                sessionId,
+                hasPotentialOlderAgentEvents(lastFetchedCount)
+              )
+            ) {
+              const oldestLoadedId = list[0]?.event_id;
+              if (!oldestLoadedId) {
+                break;
+              }
+              const nextPageLimit = resolveAdaptiveAcpHistoryPageLimit(
+                list,
+                sessionId,
+                MEMBER_EVENT_PAGE_LIMIT
+              );
+              const older = await teamApi.listAgentEvents(
+                agentId,
+                nextPageLimit,
+                sessionId,
+                oldestLoadedId
+              );
+              lastFetchedCount = older.length;
+              if (older.length === 0) {
+                break;
+              }
+              list = upsertAgentEventList(list, older, "prepend", sessionId);
+              pageCount += 1;
+            }
+          }
+          const preserveLoadedHistory =
+            mode === "replace" &&
+            currentSessionEvents.length > 0 &&
+            list.length > 0 &&
+            currentSessionEvents[0]!.event_id < list[0]!.event_id;
+          setMemberEvents((prev) =>
+            upsertAgentEventList(prev, list, mode, sessionId)
+          );
+          if (!preserveLoadedHistory) {
+            setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
+          }
+        } finally {
+          setMemberEventsLoading(false);
+        }
+      };
+
+      if (mode !== "replace") {
+        await runLoad();
+        return;
+      }
+
+      const replacePromise = runLoad().finally(() => {
+        memberEventReplaceInFlightRef.current.delete(replaceRequestKey);
+      });
+      memberEventReplaceInFlightRef.current.set(replaceRequestKey, replacePromise);
+      await replacePromise;
     },
     [
       memberEventsRef,
