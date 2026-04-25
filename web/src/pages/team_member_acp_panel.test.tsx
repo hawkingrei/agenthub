@@ -506,6 +506,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     );
 
     expect(container.textContent).toContain("Runtime conversation is active.");
+    expect(container.textContent).not.toContain("Loading activity...");
     expect(
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();

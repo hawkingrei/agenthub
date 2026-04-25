@@ -439,13 +439,16 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       try {
         const beforeId =
           mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
+        const currentSessionEvents = memberEventsRef.current.filter(
+          (event) => (event.session_id ?? null) === sessionId
+        );
         const cachedSessionEvents =
           mode === "replace"
             ? peekTeamMemberAcpRenderCache(agentId, sessionId)
             : [];
         const hasWarmVisibleCache =
-          cachedSessionEvents.length > 0 &&
-          countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1;
+          countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
+          countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
         let list = await teamApi.listAgentEvents(
           agentId,
           MEMBER_EVENT_PAGE_LIMIT,
@@ -487,9 +490,6 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             pageCount += 1;
           }
         }
-        const currentSessionEvents = memberEventsRef.current.filter(
-          (event) => (event.session_id ?? null) === sessionId
-        );
         const preserveLoadedHistory =
           mode === "replace" &&
           currentSessionEvents.length > 0 &&

@@ -691,6 +691,72 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("does not prefetch older ACP history on replace when current session state already has visible content", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            message_id: "message-0",
+            chunk_index: 2,
+          }),
+        },
+      ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      memberEventsRef: {
+        current: [
+          {
+            event_id: 1,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "1",
+            ts: 100,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "Hydrated visible content.",
+            }),
+          },
+        ],
+      },
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("prefers the resolved member agent id when loading detached ACP events", async () => {
     const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
       {
