@@ -138,7 +138,7 @@ export function countVisibleAcpConversationItems(
   ).length;
 }
 
-function countRenderableAcpConversationItems(
+export function countRenderableAcpConversationItems(
   events: AgentEvent[],
   sessionId: string | null | undefined
 ): number {

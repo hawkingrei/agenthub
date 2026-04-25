@@ -28,6 +28,7 @@ import {
 import {
   resolveAdaptiveAcpHistoryPageLimit,
   countVisibleAcpConversationItems,
+  countRenderableAcpConversationItems,
   hasOnlyIncompleteLeadingAcpMessage,
   shouldPrefetchInitialAcpHistory,
 } from "./acp_history_prefetch";
@@ -466,8 +467,8 @@ export function useTeamActions(options: UseTeamActionsOptions) {
           if (mode === "replace") {
             const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
             const hasWarmVisibleCache =
-              countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
-              countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
+              countRenderableAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
+              countRenderableAcpConversationItems(currentSessionEvents, sessionId) >= 1;
             const maxInitialPrefetchPages = hasOnlyIncompleteLeadingAcpMessage(
               list,
               sessionId
