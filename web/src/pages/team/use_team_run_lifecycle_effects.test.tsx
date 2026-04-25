@@ -265,6 +265,68 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
   });
 
+  it("keeps mailbox refresh scoped to snapshot and inbox when the snapshot already matches", async () => {
+    const params = createParams({
+      tab: "mailbox",
+      snapshot: makeSnapshot("team-1"),
+      chatInboxActorId: "leader-actor",
+      loadInbox: vi.fn().mockResolvedValue(undefined),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(params.loadInbox).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(2);
+    expect(params.loadInbox).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls mailbox snapshot without loading inbox when no mailbox actor is selected", async () => {
+    const params = createParams({
+      tab: "mailbox",
+      chatInboxActorId: "   ",
+      loadInbox: vi.fn().mockResolvedValue(undefined),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
+    expect(params.loadInbox).not.toHaveBeenCalled();
+  });
+
   it("skips member ACP snapshot hydration when the current snapshot already matches the active run", async () => {
     const params = createParams({
       tab: "agent_acp",
