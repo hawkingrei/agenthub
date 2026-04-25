@@ -551,7 +551,7 @@ describe("useTeamActions", () => {
         2,
         "token-1",
         "worker-agent",
-        240,
+        180,
         "runtime-session-1",
         100
       );
@@ -559,7 +559,7 @@ describe("useTeamActions", () => {
         3,
         "token-1",
         "worker-agent",
-        240,
+        180,
         "runtime-session-1",
         80
       );
