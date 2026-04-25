@@ -76,13 +76,14 @@ vi.mock("./team/use_team_actions", () => ({
   }) => {
     teamActionsOptionsSpy(options);
     const { setTeams, setAgents } = options;
+    const onTeamsRefreshSettled = options.onTeamsRefreshSettled;
     React.useEffect(() => {
       setTeams(teamPageFixture.teams);
       setAgents(teamPageFixture.agents);
       if (teamPageFixture.settleTeams) {
-        options.onTeamsRefreshSettled?.();
+        onTeamsRefreshSettled?.();
       }
-    }, [options, setAgents, setTeams]);
+    }, [onTeamsRefreshSettled, setAgents, setTeams]);
     return {
       refreshAgents: vi.fn().mockResolvedValue(undefined),
       refreshTeams: vi.fn().mockResolvedValue(undefined),
