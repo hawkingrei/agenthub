@@ -291,6 +291,38 @@ describe("buildAcpView", () => {
     expect(view.messages[0].text).toBe("Hello World");
   });
 
+  it("prefixes an ellipsis when the first visible chunk starts after chunk zero", () => {
+    const events = [
+      {
+        ts: 2,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "World",
+          chunk: true,
+          message_id: "m1",
+          chunk_index: 2,
+        }),
+      },
+      {
+        ts: 1,
+        stream: "acp",
+        session_id: "s1",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "lo ",
+          chunk: true,
+          message_id: "m1",
+          chunk_index: 1,
+        }),
+      },
+    ];
+    const view = buildAcpView(events);
+    expect(view.messages.length).toBe(1);
+    expect(view.messages[0].text).toBe("…lo World");
+  });
+
   it("merges tool call content updates and extracts text blocks", () => {
     const events = [
       {

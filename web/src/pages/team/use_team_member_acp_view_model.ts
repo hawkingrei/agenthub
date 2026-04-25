@@ -144,13 +144,27 @@ export function useTeamMemberAcpViewModel({
     saveTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId, scopedMemberEvents);
   }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
-  const visibleMemberEvents = React.useMemo(
+  const hasOnlyIncompleteLeadingConversationMessage = React.useMemo(
     () =>
-      omitIncompleteLeadingAcpMessageEvents(
+      hasOnlyIncompleteLeadingAcpMessage(
         effectiveMemberEvents,
         selectedSessionId ?? null
       ),
     [effectiveMemberEvents, selectedSessionId]
+  );
+  const visibleMemberEvents = React.useMemo(
+    () =>
+      hasOnlyIncompleteLeadingConversationMessage
+        ? effectiveMemberEvents
+        : omitIncompleteLeadingAcpMessageEvents(
+            effectiveMemberEvents,
+            selectedSessionId ?? null
+          ),
+    [
+      effectiveMemberEvents,
+      hasOnlyIncompleteLeadingConversationMessage,
+      selectedSessionId,
+    ]
   );
   const acpEventLines = React.useMemo(
     () =>
@@ -203,14 +217,6 @@ export function useTeamMemberAcpViewModel({
     [effectiveMemberEvents]
   );
   const hasCompleteSessionContent = visibleMemberEvents.length > 0;
-  const hasOnlyIncompleteLeadingConversationMessage = React.useMemo(
-    () =>
-      hasOnlyIncompleteLeadingAcpMessage(
-        effectiveMemberEvents,
-        selectedSessionId ?? null
-      ),
-    [effectiveMemberEvents, selectedSessionId]
-  );
   const hasVisibleConversationItems =
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =
@@ -282,12 +288,14 @@ export function useTeamMemberAcpViewModel({
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: memberEventsLoading && !hasRenderableConversationContent
-        ? "Loading ACP events..."
+        ? hasOnlyIncompleteLeadingConversationMessage
+          ? "Earlier reply truncated"
+          : "Loading ACP events..."
         : hasOnlyIncompleteLeadingConversationMessage
-          ? "Loading earlier reply..."
-        : acpConversation.showConversationTopReachedHint
-          ? "Already at top"
-          : null,
+          ? "Earlier reply truncated"
+          : acpConversation.showConversationTopReachedHint
+            ? "Already at top"
+            : null,
       focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,

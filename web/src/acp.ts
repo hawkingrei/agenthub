@@ -590,8 +590,10 @@ function parseChunkIndex(value: unknown): number | null {
 }
 
 function joinChunks(chunks: Map<number, string>): string {
-  return [...chunks.entries()]
-    .sort((left, right) => left[0] - right[0])
-    .map((entry) => entry[1])
-    .join("");
+  const orderedChunks = [...chunks.entries()].sort(
+    (left, right) => left[0] - right[0]
+  );
+  const joined = orderedChunks.map((entry) => entry[1]).join("");
+  const firstChunkIndex = orderedChunks[0]?.[0] ?? 0;
+  return firstChunkIndex > 0 ? `…${joined}` : joined;
 }
