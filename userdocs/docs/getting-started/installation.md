@@ -4,6 +4,46 @@ sidebar_position: 1
 
 # Installation and Startup
 
+## Install Release Binaries With Homebrew
+
+AgentHub publishes Homebrew release binaries through the `linkerdog/homebrew-tap`
+tap.
+
+```bash
+brew tap linkerdog/homebrew-tap
+brew install linkerdog/homebrew-tap/agenthub
+```
+
+This installs:
+
+- `agenthub`
+- `agenthub-codex-acp`
+
+To run AgentHub as a background service:
+
+```bash
+brew services start linkerdog/homebrew-tap/agenthub
+```
+
+AgentHub reads configuration from `~/.agenthub/config.toml`.
+
+Minimal example:
+
+```toml
+[server]
+listen = "0.0.0.0:8080"
+```
+
+Then open `http://localhost:8080`.
+
+Current release binaries are available for:
+
+- macOS Apple Silicon (`darwin-arm64`)
+- Linux `x86_64`
+- Linux `aarch64`
+
+## Build From Source
+
 ## Prerequisites
 
 - Rust `1.95.0` (stable toolchain baseline)

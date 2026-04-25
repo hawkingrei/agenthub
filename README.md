@@ -6,7 +6,7 @@ output rendering, SQLite-backed persistence, multi-agent Team orchestration,
 and optional remote execution nodes.
 
 Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
-[Why AgentHub](#why-agenthub) · [Quick Start](#quick-start) ·
+[Why AgentHub](#why-agenthub) · [Install](#install) · [Quick Start](#quick-start) ·
 [Remote Agent Nodes](#remote-agent-nodes-optional) ·
 [Architecture At A Glance](#architecture-at-a-glance) ·
 [Documentation Map](#documentation-map) · [Development](#development)
@@ -34,6 +34,50 @@ for the operational side of agent workflows:
 - Register remote execution nodes and start agents on those nodes
 - Persist session history and operational records in SQLite
 - Receive completion notifications in the web UI
+
+## Install
+
+### Homebrew
+
+AgentHub publishes Homebrew release binaries through the `linkerdog/homebrew-tap`
+tap.
+
+```bash
+brew tap linkerdog/homebrew-tap
+brew install linkerdog/homebrew-tap/agenthub
+```
+
+This installs:
+
+- `agenthub`
+- `agenthub-codex-acp`
+
+To run AgentHub in the background:
+
+```bash
+brew services start linkerdog/homebrew-tap/agenthub
+```
+
+AgentHub reads config from `~/.agenthub/config.toml`.
+
+Minimal example:
+
+```toml
+[server]
+listen = "0.0.0.0:8080"
+```
+
+Then open `http://localhost:8080`.
+
+Current release binaries are available for:
+
+- macOS Apple Silicon (`darwin-arm64`)
+- Linux `x86_64`
+- Linux `aarch64`
+
+### Build From Source
+
+Use the source workflow below if you are developing AgentHub locally.
 
 ## Quick Start
 
