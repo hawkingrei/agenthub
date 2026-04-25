@@ -82,7 +82,7 @@ vi.mock("./team/use_team_actions", () => ({
       if (teamPageFixture.settleTeams) {
         options.onTeamsRefreshSettled?.();
       }
-    }, [setAgents, setTeams]);
+    }, [options, setAgents, setTeams]);
     return {
       refreshAgents: vi.fn().mockResolvedValue(undefined),
       refreshTeams: vi.fn().mockResolvedValue(undefined),

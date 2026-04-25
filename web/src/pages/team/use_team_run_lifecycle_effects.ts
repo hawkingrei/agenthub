@@ -11,7 +11,7 @@ import { resolveActiveRunIdForSelectedTeam, type TeamRunStatusFilter } from "./r
 import type { TeamTab } from "./state";
 
 function shouldPollActiveRunContext(tab: TeamTab): boolean {
-  return tab !== "agent_acp" && tab !== "member_console";
+  return tab !== "agent_acp" && tab !== "member_console" && tab !== "mailbox";
 }
 
 type UseTeamRunLifecycleEffectsOptions = {

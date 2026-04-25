@@ -301,6 +301,7 @@ export function useTeamMemberAcpViewModel({
       ansi,
       canSendInput,
       handleSubmitRequestUserInput,
+      hasRenderableConversationContent,
       memberEventsLoading,
     ]
   );

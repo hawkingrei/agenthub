@@ -192,9 +192,58 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
   });
 
+  it("does not poll active run context while the mailbox tab is selected", async () => {
+    const params = createParams({
+      tab: "mailbox",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const refreshRunBase = (params.refreshRun as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshEventsBase = (params.refreshEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+  });
+
   it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {
     const params = createParams({
       tab: "agent_acp",
+      snapshot: null,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
+  });
+
+  it("hydrates only the active snapshot once for mailbox when snapshot is missing", async () => {
+    const params = createParams({
+      tab: "mailbox",
       snapshot: null,
     });
 

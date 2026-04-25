@@ -309,7 +309,8 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
     expect(container.textContent).not.toContain("Earlier reply truncated");
-    const latestCall = vi.mocked(useAcpConversation).mock.calls.at(-1)?.[0];
+    const acpConversationCalls = vi.mocked(useAcpConversation).mock.calls;
+    const latestCall = acpConversationCalls[acpConversationCalls.length - 1]?.[0];
     expect(latestCall?.acpView.messages).toEqual([]);
   });
 
@@ -396,8 +397,13 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(useAcpConversation).toHaveBeenCalled();
-    const latestCall = vi.mocked(useAcpConversation).mock.calls.at(-1)?.[0];
-    expect(latestCall?.acpView.messages.some((message) => message.text === "Runtime conversation is active.")).toBe(true);
+    const acpConversationCalls = vi.mocked(useAcpConversation).mock.calls;
+    const latestCall = acpConversationCalls[acpConversationCalls.length - 1]?.[0];
+    expect(
+      latestCall?.acpView.messages.some(
+        (message: { text?: string }) => message.text === "Runtime conversation is active."
+      )
+    ).toBe(true);
   });
 
   it("does not render the leading incomplete ACP message while older history is still loading", () => {
