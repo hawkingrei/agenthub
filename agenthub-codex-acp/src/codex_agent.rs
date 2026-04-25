@@ -221,7 +221,33 @@ fn aborted_call_output() -> FunctionCallOutputPayload {
     FunctionCallOutputPayload::from_text("aborted".to_string())
 }
 
-fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct HistoryRepairStats {
+    inserted_function_call_outputs: usize,
+    inserted_custom_tool_call_outputs: usize,
+    dropped_orphan_function_call_outputs: usize,
+    dropped_orphan_custom_tool_call_outputs: usize,
+}
+
+impl HistoryRepairStats {
+    fn total(self) -> usize {
+        self.inserted_function_call_outputs
+            + self.inserted_custom_tool_call_outputs
+            + self.dropped_orphan_function_call_outputs
+            + self.dropped_orphan_custom_tool_call_outputs
+    }
+}
+
+impl std::ops::AddAssign for HistoryRepairStats {
+    fn add_assign(&mut self, rhs: Self) {
+        self.inserted_function_call_outputs += rhs.inserted_function_call_outputs;
+        self.inserted_custom_tool_call_outputs += rhs.inserted_custom_tool_call_outputs;
+        self.dropped_orphan_function_call_outputs += rhs.dropped_orphan_function_call_outputs;
+        self.dropped_orphan_custom_tool_call_outputs += rhs.dropped_orphan_custom_tool_call_outputs;
+    }
+}
+
+fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> HistoryRepairStats {
     let function_call_ids = items
         .iter()
         .filter_map(|item| match item {
@@ -247,17 +273,25 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
         })
         .collect::<HashSet<_>>();
 
-    let before_len = items.len();
+    let mut repaired = HistoryRepairStats::default();
     items.retain(|item| match item {
         ResponseItem::FunctionCallOutput { call_id, .. } => {
-            function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id)
+            let keep =
+                function_call_ids.contains(call_id) || local_shell_call_ids.contains(call_id);
+            if !keep {
+                repaired.dropped_orphan_function_call_outputs += 1;
+            }
+            keep
         }
         ResponseItem::CustomToolCallOutput { call_id, .. } => {
-            custom_tool_call_ids.contains(call_id)
+            let keep = custom_tool_call_ids.contains(call_id);
+            if !keep {
+                repaired.dropped_orphan_custom_tool_call_outputs += 1;
+            }
+            keep
         }
         _ => true,
     });
-    let mut repaired = before_len - items.len();
     let mut function_output_call_ids = items
         .iter()
         .filter_map(|item| match item {
@@ -279,6 +313,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
             ResponseItem::FunctionCall { call_id, .. }
                 if function_output_call_ids.insert(call_id.clone()) =>
             {
+                repaired.inserted_function_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::FunctionCallOutput {
@@ -290,6 +325,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
             ResponseItem::CustomToolCall { call_id, .. }
                 if custom_output_call_ids.insert(call_id.clone()) =>
             {
+                repaired.inserted_custom_tool_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::CustomToolCallOutput {
@@ -303,6 +339,7 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
                 call_id: Some(call_id),
                 ..
             } if function_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_function_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     ResponseItem::FunctionCallOutput {
@@ -315,14 +352,13 @@ fn repair_response_item_history(items: &mut Vec<ResponseItem>) -> usize {
         }
     }
 
-    repaired += synthetic_outputs.len();
     for (idx, output) in synthetic_outputs.into_iter().rev() {
         items.insert(idx + 1, output);
     }
     repaired
 }
 
-fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
+fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> HistoryRepairStats {
     let function_call_ids = items
         .iter()
         .filter_map(|item| match item {
@@ -352,7 +388,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
         })
         .collect::<HashSet<_>>();
 
-    let mut repaired = 0usize;
+    let mut repaired = HistoryRepairStats::default();
     let mut retained = Vec::with_capacity(items.len());
     for item in std::mem::take(items) {
         match item {
@@ -362,7 +398,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                         ResponseItem::FunctionCallOutput { call_id, output },
                     ));
                 } else {
-                    repaired += 1;
+                    repaired.dropped_orphan_function_call_outputs += 1;
                 }
             }
             RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
@@ -379,7 +415,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                         },
                     ));
                 } else {
-                    repaired += 1;
+                    repaired.dropped_orphan_custom_tool_call_outputs += 1;
                 }
             }
             RolloutItem::Compacted(mut compacted) => {
@@ -417,6 +453,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
             RolloutItem::ResponseItem(ResponseItem::FunctionCall { call_id, .. })
                 if function_output_call_ids.insert(call_id.clone()) =>
             {
+                repaired.inserted_function_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
@@ -428,6 +465,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
             RolloutItem::ResponseItem(ResponseItem::CustomToolCall { call_id, .. })
                 if custom_output_call_ids.insert(call_id.clone()) =>
             {
+                repaired.inserted_custom_tool_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::CustomToolCallOutput {
@@ -441,6 +479,7 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
                 call_id: Some(call_id),
                 ..
             }) if function_output_call_ids.insert(call_id.clone()) => {
+                repaired.inserted_function_call_outputs += 1;
                 synthetic_outputs.push((
                     idx,
                     RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
@@ -453,17 +492,16 @@ fn repair_rollout_items(items: &mut Vec<RolloutItem>) -> usize {
         }
     }
 
-    repaired += synthetic_outputs.len();
     for (idx, output) in synthetic_outputs.into_iter().rev() {
         items.insert(idx + 1, output);
     }
     repaired
 }
 
-fn repair_initial_history(history: InitialHistory) -> (InitialHistory, usize) {
+fn repair_initial_history(history: InitialHistory) -> (InitialHistory, HistoryRepairStats) {
     match history {
-        InitialHistory::New => (InitialHistory::New, 0),
-        InitialHistory::Cleared => (InitialHistory::Cleared, 0),
+        InitialHistory::New => (InitialHistory::New, HistoryRepairStats::default()),
+        InitialHistory::Cleared => (InitialHistory::Cleared, HistoryRepairStats::default()),
         InitialHistory::Forked(mut items) => {
             let repaired = repair_rollout_items(&mut items);
             (InitialHistory::Forked(items), repaired)
@@ -661,11 +699,15 @@ impl Agent for CodexAgent {
         let history = RolloutRecorder::get_rollout_history(&rollout_path)
             .await
             .map_err(|e| Error::internal_error().data(e.to_string()))?;
-        let (history, repaired_items) = repair_initial_history(history);
-        if repaired_items > 0 {
+        let (history, repaired_stats) = repair_initial_history(history);
+        if repaired_stats.total() > 0 {
             warn!(
                 session_id = %session_id,
-                repaired_items,
+                repaired_items = repaired_stats.total(),
+                inserted_function_call_outputs = repaired_stats.inserted_function_call_outputs,
+                inserted_custom_tool_call_outputs = repaired_stats.inserted_custom_tool_call_outputs,
+                dropped_orphan_function_call_outputs = repaired_stats.dropped_orphan_function_call_outputs,
+                dropped_orphan_custom_tool_call_outputs = repaired_stats.dropped_orphan_custom_tool_call_outputs,
                 "repaired dirty Codex rollout history before session resume"
             );
         }
@@ -846,7 +888,7 @@ impl Agent for CodexAgent {
 
 #[cfg(test)]
 mod tests {
-    use super::{repair_initial_history, repair_response_item_history};
+    use super::{HistoryRepairStats, repair_initial_history, repair_response_item_history};
     use codex_protocol::{
         ThreadId,
         models::{
@@ -872,8 +914,14 @@ mod tests {
             rollout_path: PathBuf::from("/tmp/rollout.jsonl"),
         });
 
-        let (repaired, repaired_count) = repair_initial_history(history);
-        assert_eq!(repaired_count, 1);
+        let (repaired, repaired_stats) = repair_initial_history(history);
+        assert_eq!(
+            repaired_stats,
+            HistoryRepairStats {
+                inserted_custom_tool_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
         let items = repaired.get_rollout_items();
         assert_eq!(items.len(), 2);
         assert!(matches!(
@@ -901,7 +949,14 @@ mod tests {
         ];
 
         let repaired = repair_response_item_history(&mut history);
-        assert_eq!(repaired, 2);
+        assert_eq!(
+            repaired,
+            HistoryRepairStats {
+                inserted_custom_tool_call_outputs: 1,
+                dropped_orphan_custom_tool_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
         assert_eq!(history.len(), 2);
         assert!(matches!(
             &history[1],
@@ -928,8 +983,14 @@ mod tests {
             }]),
         })]);
 
-        let (repaired, repaired_count) = repair_initial_history(history);
-        assert_eq!(repaired_count, 1);
+        let (repaired, repaired_stats) = repair_initial_history(history);
+        assert_eq!(
+            repaired_stats,
+            HistoryRepairStats {
+                inserted_function_call_outputs: 1,
+                ..HistoryRepairStats::default()
+            }
+        );
         let items = repaired.get_rollout_items();
         let RolloutItem::Compacted(compacted) = &items[0] else {
             panic!("expected compacted item");
