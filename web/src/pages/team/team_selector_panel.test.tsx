@@ -10,6 +10,7 @@ describe("TeamSelectorPanel", () => {
         <TeamSelectorPanel
           busy={null}
           filter=""
+          loading={false}
           hasTeams={false}
           items={[]}
           bodyTextClassName="body"
@@ -32,6 +33,7 @@ describe("TeamSelectorPanel", () => {
         <TeamSelectorPanel
           busy={null}
           filter="tidb"
+          loading={false}
           hasTeams={true}
           items={[
             {
