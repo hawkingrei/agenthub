@@ -154,17 +154,11 @@ export function useTeamMemberAcpViewModel({
   );
   const visibleMemberEvents = React.useMemo(
     () =>
-      hasOnlyIncompleteLeadingConversationMessage
-        ? effectiveMemberEvents
-        : omitIncompleteLeadingAcpMessageEvents(
-            effectiveMemberEvents,
-            selectedSessionId ?? null
-          ),
-    [
-      effectiveMemberEvents,
-      hasOnlyIncompleteLeadingConversationMessage,
-      selectedSessionId,
-    ]
+      omitIncompleteLeadingAcpMessageEvents(
+        effectiveMemberEvents,
+        selectedSessionId ?? null
+      ),
+    [effectiveMemberEvents, selectedSessionId]
   );
   const acpEventLines = React.useMemo(
     () =>
@@ -288,14 +282,10 @@ export function useTeamMemberAcpViewModel({
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: memberEventsLoading && !hasRenderableConversationContent
-        ? hasOnlyIncompleteLeadingConversationMessage
-          ? "Earlier reply truncated"
-          : "Loading ACP events..."
-        : hasOnlyIncompleteLeadingConversationMessage
-          ? "Earlier reply truncated"
-          : acpConversation.showConversationTopReachedHint
-            ? "Already at top"
-            : null,
+        ? "Loading ACP events..."
+        : acpConversation.showConversationTopReachedHint
+          ? "Already at top"
+          : null,
       focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
       containerRef: acpConversation.acpConversationRef,

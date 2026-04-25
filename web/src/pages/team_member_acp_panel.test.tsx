@@ -268,7 +268,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
-  it("renders a truncated ACP reply when only a partial leading chunk is available", () => {
+  it("hides a partial leading ACP chunk instead of rendering it", () => {
     vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
 
     renderWithMantine(
@@ -308,9 +308,9 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
-    expect(container.textContent).toContain("Earlier reply truncated");
+    expect(container.textContent).not.toContain("Earlier reply truncated");
     const latestCall = vi.mocked(useAcpConversation).mock.calls.at(-1)?.[0];
-    expect(latestCall?.acpView.messages[0]?.text).toBe("…partial markdown");
+    expect(latestCall?.acpView.messages).toEqual([]);
   });
 
   it("keeps visible ACP content on screen while background history refresh is still loading", () => {
