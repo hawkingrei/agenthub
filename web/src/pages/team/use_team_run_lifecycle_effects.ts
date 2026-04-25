@@ -19,6 +19,7 @@ type UseTeamRunLifecycleEffectsOptions = {
   runStatusFilter: TeamRunStatusFilter;
   runs: TeamRunRecord[];
   activeRunIdForSelectedTeam: string | null;
+  snapshot: TeamRunSnapshotRecord | null;
   eventsAutoRefresh: boolean;
   tab: TeamTab;
   chatInboxActorId: string;
@@ -57,6 +58,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
+    snapshot,
     eventsAutoRefresh,
     tab,
     chatInboxActorId,
@@ -82,6 +84,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     setChatStickToBottom,
   } = options;
   const hasCompletedInitialActiveRunRefreshRef = useRef(false);
+  const activeRunContextPollingEnabled = shouldPollActiveRunContext(tab);
 
   useEffect(() => {
     hasCompletedInitialActiveRunRefreshRef.current = false;
@@ -162,6 +165,18 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     const loadAll = async () => {
       try {
         setError(null);
+        if (!activeRunContextPollingEnabled) {
+          const currentSnapshotRunId = snapshot?.run.id ?? null;
+          const currentSnapshotTeamId = snapshot?.team.id ?? null;
+          if (
+            currentSnapshotRunId === activeRunIdForSelectedTeam &&
+            (!selectedTeamId || currentSnapshotTeamId === selectedTeamId)
+          ) {
+            return;
+          }
+          await refreshSnapshot(activeRunIdForSelectedTeam);
+          return;
+        }
         const run = await refreshRun(activeRunIdForSelectedTeam);
         if (canceled) return;
         if (selectedTeamId && run.team_id !== selectedTeamId) {
@@ -187,6 +202,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       canceled = true;
     };
   }, [
+    activeRunContextPollingEnabled,
     activeRunIdForSelectedTeam,
     parseError,
     refreshEvents,
@@ -204,13 +220,14 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     setSelectedMemberId,
     setSnapshot,
     setSteps,
+    snapshot,
   ]);
 
   useEffect(() => {
     if (
       !activeRunIdForSelectedTeam ||
       !eventsAutoRefresh ||
-      !shouldPollActiveRunContext(tab)
+      !activeRunContextPollingEnabled
     ) {
       return;
     }
@@ -263,6 +280,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     };
   }, [
     activeRunIdForSelectedTeam,
+    activeRunContextPollingEnabled,
     chatInboxActorId,
     eventsAutoRefresh,
     loadInbox,

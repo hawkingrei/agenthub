@@ -1828,6 +1828,7 @@ export function TeamPage(props: TeamPageProps) {
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
+    snapshot,
     eventsAutoRefresh,
     tab,
     chatInboxActorId: chatActors.inboxActorId,

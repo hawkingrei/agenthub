@@ -51,6 +51,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     runStatusFilter: "all",
     runs: [makeRun("run-1", "team-1")],
     activeRunIdForSelectedTeam: "run-1",
+    snapshot: null,
     eventsAutoRefresh: true,
     tab: "events",
     chatInboxActorId: "",
@@ -189,5 +190,44 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+  });
+
+  it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+      snapshot: null,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(params.refreshSnapshot).toHaveBeenCalledWith("run-1");
+  });
+
+  it("skips member ACP snapshot hydration when the current snapshot already matches the active run", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+      snapshot: makeSnapshot("team-1"),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).not.toHaveBeenCalled();
+    expect(params.refreshEvents).not.toHaveBeenCalled();
+    expect(params.refreshSnapshot).not.toHaveBeenCalled();
   });
 });
