@@ -11,7 +11,7 @@ import { resolveActiveRunIdForSelectedTeam, type TeamRunStatusFilter } from "./r
 import type { TeamTab } from "./state";
 
 function shouldPollActiveRunContext(tab: TeamTab): boolean {
-  return tab !== "agent_acp" && tab !== "member_console" && tab !== "mailbox";
+  return tab !== "agent_acp" && tab !== "member_console";
 }
 
 type UseTeamRunLifecycleEffectsOptions = {
@@ -161,19 +161,66 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       setChatStickToBottom(true);
       return;
     }
+  }, [
+    activeRunIdForSelectedTeam,
+    setChatSeenByConversation,
+    setChatStickToBottom,
+    setEvents,
+    setInbox,
+    setMemberEvents,
+    setSelectedMemberId,
+    setSnapshot,
+    setSteps,
+  ]);
+
+  const currentSnapshotRunId = snapshot?.run.id ?? null;
+  const currentSnapshotTeamId = snapshot?.team.id ?? null;
+
+  useEffect(() => {
+    if (!activeRunIdForSelectedTeam || activeRunContextPollingEnabled) {
+      return;
+    }
+    if (
+      currentSnapshotRunId === activeRunIdForSelectedTeam &&
+      (!selectedTeamId || currentSnapshotTeamId === selectedTeamId)
+    ) {
+      return;
+    }
+    let canceled = false;
+    const hydrateSnapshot = async () => {
+      try {
+        setError(null);
+        await refreshSnapshot(activeRunIdForSelectedTeam);
+      } catch (err) {
+        if (!canceled) {
+          setError(parseError(err));
+        }
+      }
+    };
+    void hydrateSnapshot();
+    return () => {
+      canceled = true;
+    };
+  }, [
+    activeRunContextPollingEnabled,
+    activeRunIdForSelectedTeam,
+    currentSnapshotRunId,
+    currentSnapshotTeamId,
+    parseError,
+    refreshSnapshot,
+    selectedTeamId,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (!activeRunIdForSelectedTeam || !activeRunContextPollingEnabled) {
+      return;
+    }
     let canceled = false;
     const loadAll = async () => {
       try {
         setError(null);
-        if (!activeRunContextPollingEnabled) {
-          const currentSnapshotRunId = snapshot?.run.id ?? null;
-          const currentSnapshotTeamId = snapshot?.team.id ?? null;
-          if (
-            currentSnapshotRunId === activeRunIdForSelectedTeam &&
-            (!selectedTeamId || currentSnapshotTeamId === selectedTeamId)
-          ) {
-            return;
-          }
+        if (tab === "mailbox") {
           await refreshSnapshot(activeRunIdForSelectedTeam);
           return;
         }
@@ -211,16 +258,8 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     refreshSteps,
     selectedTeamId,
     setActiveRunId,
-    setChatSeenByConversation,
-    setChatStickToBottom,
     setError,
-    setEvents,
-    setInbox,
-    setMemberEvents,
-    setSelectedMemberId,
-    setSnapshot,
-    setSteps,
-    snapshot,
+    tab,
   ]);
 
   useEffect(() => {

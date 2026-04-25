@@ -5312,9 +5312,11 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("Active thread has no events yet");
+    expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).toContain("Already at top");
     expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
+    expect(container.textContent).toContain("Runtime session fallback works.");
   });
 
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {

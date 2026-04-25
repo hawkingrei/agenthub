@@ -192,9 +192,11 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
   });
 
-  it("does not poll active run context while the mailbox tab is selected", async () => {
+  it("polls only snapshot for the mailbox tab", async () => {
     const params = createParams({
       tab: "mailbox",
+      chatInboxActorId: "leader-actor",
+      loadInbox: vi.fn().mockResolvedValue(undefined),
     });
 
     act(() => {
@@ -210,6 +212,7 @@ describe("useTeamRunLifecycleEffects", () => {
     const refreshSnapshotBase = (
       params.refreshSnapshot as ReturnType<typeof vi.fn>
     ).mock.calls.length;
+    const loadInboxBase = (params.loadInbox as ReturnType<typeof vi.fn>).mock.calls.length;
 
     await act(async () => {
       vi.advanceTimersByTime(8000);
@@ -218,7 +221,8 @@ describe("useTeamRunLifecycleEffects", () => {
 
     expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
-    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
+    expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase + 2);
   });
 
   it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {
