@@ -1014,7 +1014,7 @@ export function TeamPage(props: TeamPageProps) {
   const [memberEventsLoading, setMemberEventsLoading] = useState(false);
   const memberEventsRef = useRef<AgentEvent[]>([]);
   const [focusedAgentMemberId, setFocusedAgentMemberId] = useState("");
-  const [teamCatalogSettled, setTeamCatalogSettled] = useState(() => isSelectorRoute);
+  const [teamCatalogSettled, setTeamCatalogSettled] = useState(false);
   const handleTeamsRefreshSettled = useCallback(() => {
     setTeamCatalogSettled(true);
   }, []);
@@ -1024,16 +1024,15 @@ export function TeamPage(props: TeamPageProps) {
     [effectiveSelectedTeamId, teams]
   );
   useEffect(() => {
-    if (isSelectorRoute || teams.length > 0) {
+    if (teams.length > 0) {
       setTeamCatalogSettled(true);
     }
-  }, [isSelectorRoute, teams.length]);
+  }, [teams.length]);
   useEffect(() => {
     setSelectedTeamId(routeTeamId);
   }, [routeTeamId]);
   useEffect(() => {
     if (routeTeamId == null) {
-      setTeamCatalogSettled(true);
       return;
     }
     if (teams.length === 0) {
@@ -3571,6 +3570,7 @@ export function TeamPage(props: TeamPageProps) {
           <TeamSelectorPanel
             busy={busy}
             filter={teamSelectorFilter}
+            loading={!teamCatalogSettled && teams.length === 0}
             hasTeams={teams.length > 0}
             items={selectorTeamItems}
             bodyTextClassName={teamSectionBodyTextClassName}

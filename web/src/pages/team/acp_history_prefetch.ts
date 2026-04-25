@@ -3,7 +3,7 @@ import type { AgentEvent } from "../../api";
 import { buildConversationMessages } from "../../conversation";
 
 export const ACP_INITIAL_VISIBLE_MESSAGE_TARGET = 1;
-export const ACP_HISTORY_PAGE_LIMIT_MAX = 240;
+export const ACP_HISTORY_PAGE_LIMIT_MAX = 180;
 
 type LeadingAcpMessageChunkState = {
   messageId: string | null;
@@ -222,7 +222,7 @@ export function resolveAdaptiveAcpHistoryPageLimit(
     return Math.max(baseLimit, ACP_HISTORY_PAGE_LIMIT_MAX);
   }
   if (leadingState.chunkIndex >= 96) {
-    return Math.max(baseLimit, 180);
+    return Math.max(baseLimit, ACP_HISTORY_PAGE_LIMIT_MAX);
   }
   if (leadingState.chunkIndex >= 32 || leadingMessageDominatesPage) {
     return Math.max(baseLimit, 120);

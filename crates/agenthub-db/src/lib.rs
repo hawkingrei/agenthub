@@ -468,6 +468,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await?;
 
     migrate_agent_events_message_column_to_blob(&pool).await?;
+    ensure_main_agent_event_db_indexes(&pool).await?;
 
     sqlx::query(
         r#"
@@ -744,74 +745,6 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     .await
     {
         tracing::warn!("db init: failed to create idx_agent_nodes_name: {}", err);
-    }
-
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
-        ON agent_events(agent_id, seq);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_agent_events_agent_seq: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_seq
-        ON agent_events(agent_id, session_id, seq);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_agent_events_agent_session_seq: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_id
-        ON agent_events(agent_id, id);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_agent_events_agent_id: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_id
-        ON agent_events(agent_id, session_id, id);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!(
-            "db init: failed to create idx_agent_events_agent_session_id: {}",
-            err
-        );
-    }
-    if let Err(err) = sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_agent_events_ts
-        ON agent_events(ts);
-        "#,
-    )
-    .execute(&pool)
-    .await
-    {
-        tracing::warn!("db init: failed to create idx_agent_events_ts: {}", err);
     }
 
     if let Err(err) = sqlx::query(
@@ -1498,6 +1431,12 @@ async fn init_agent_event_db_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     )
     .execute(pool)
     .await?;
+    migrate_per_agent_events_message_column_to_blob(pool).await?;
+    ensure_per_agent_event_db_indexes(pool).await?;
+    Ok(())
+}
+
+async fn ensure_per_agent_event_db_indexes(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_session_id
@@ -1514,6 +1453,48 @@ async fn init_agent_event_db_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     )
     .execute(pool)
     .await?;
+    ensure_agent_events_ts_index(pool).await?;
+    Ok(())
+}
+
+async fn ensure_main_agent_event_db_indexes(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_seq
+        ON agent_events(agent_id, seq);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_seq
+        ON agent_events(agent_id, session_id, seq);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_id
+        ON agent_events(agent_id, id);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_agent_events_agent_session_id
+        ON agent_events(agent_id, session_id, id);
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    ensure_agent_events_ts_index(pool).await?;
+    Ok(())
+}
+
+async fn ensure_agent_events_ts_index(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_events_ts
@@ -1577,6 +1558,71 @@ async fn migrate_agent_events_message_column_to_blob(pool: &SqlitePool) -> anyho
         r#"
         INSERT INTO agent_events_migrated (id, agent_id, session_id, seq, ts, stream, message)
         SELECT id, agent_id, session_id, seq, ts, stream, CAST(message AS BLOB)
+        FROM agent_events
+        ORDER BY id ASC
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DROP TABLE agent_events")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("ALTER TABLE agent_events_migrated RENAME TO agent_events")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn migrate_per_agent_events_message_column_to_blob(pool: &SqlitePool) -> anyhow::Result<()> {
+    let columns = sqlx::query("PRAGMA table_info(agent_events)")
+        .fetch_all(pool)
+        .await?;
+    if columns.is_empty() {
+        return Ok(());
+    }
+
+    let message_type = columns.iter().find_map(|row| {
+        let name = row.get::<String, _>("name");
+        if name.eq_ignore_ascii_case("message") {
+            Some(row.get::<String, _>("type"))
+        } else {
+            None
+        }
+    });
+
+    if message_type
+        .as_deref()
+        .map(|ty| ty.eq_ignore_ascii_case("BLOB"))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    tracing::info!(
+        from = ?message_type,
+        "db init: migrating per-agent agent_events.message column to BLOB"
+    );
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_events_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            seq TEXT NOT NULL,
+            ts INTEGER NOT NULL,
+            stream TEXT NOT NULL,
+            message BLOB NOT NULL
+        );
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO agent_events_migrated (id, session_id, seq, ts, stream, message)
+        SELECT id, session_id, seq, ts, stream, CAST(message AS BLOB)
         FROM agent_events
         ORDER BY id ASC
         "#,
@@ -2214,6 +2260,146 @@ mod tests {
         assert_eq!(
             stored_message,
             b"{\"type\":\"agent_message\",\"text\":\"legacy\"}".to_vec()
+        );
+
+        let index_names = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'agent_events'
+            ORDER BY name
+            "#,
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("load agent_events indexes");
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_agent_id"),
+            "expected idx_agent_events_agent_id after migration, got {index_names:?}"
+        );
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_agent_seq"),
+            "expected idx_agent_events_agent_seq after migration, got {index_names:?}"
+        );
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_agent_session_id"),
+            "expected idx_agent_events_agent_session_id after migration, got {index_names:?}"
+        );
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_agent_session_seq"),
+            "expected idx_agent_events_agent_session_seq after migration, got {index_names:?}"
+        );
+        assert!(
+            index_names.iter().any(|name| name == "idx_agent_events_ts"),
+            "expected idx_agent_events_ts after migration, got {index_names:?}"
+        );
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_agent_event_db_schema_migrates_legacy_per_agent_events() {
+        let dir = unique_temp_dir("db-migrate-per-agent-events");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agent-events.db");
+        let pool = try_connect(&db_path).await.expect("connect sqlite");
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                seq TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                stream TEXT NOT NULL,
+                message TEXT NOT NULL
+            );
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create legacy per-agent agent_events");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_events (session_id, seq, ts, stream, message)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-legacy")
+        .bind("seq-legacy")
+        .bind(chrono::Utc::now().timestamp())
+        .bind("stdout")
+        .bind("{\"type\":\"agent_message\",\"text\":\"legacy\"}")
+        .execute(&pool)
+        .await
+        .expect("insert legacy per-agent event");
+
+        crate::init_agent_event_db_schema(&pool)
+            .await
+            .expect("migrate per-agent agent_events");
+
+        let message_column_type: String = sqlx::query_scalar(
+            r#"
+            SELECT type
+            FROM pragma_table_info('agent_events')
+            WHERE name = 'message'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("read per-agent message column type");
+        assert!(
+            message_column_type.eq_ignore_ascii_case("BLOB"),
+            "expected per-agent message column type to migrate to BLOB, got {message_column_type}"
+        );
+
+        let message_storage_type: String =
+            sqlx::query_scalar("SELECT typeof(message) FROM agent_events WHERE seq = 'seq-legacy'")
+                .fetch_one(&pool)
+                .await
+                .expect("read per-agent message storage type");
+        assert_eq!(
+            message_storage_type, "blob",
+            "expected migrated per-agent row storage type to be blob"
+        );
+
+        let index_names = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'agent_events'
+            ORDER BY name
+            "#,
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("load per-agent agent_events indexes");
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_session_id"),
+            "expected idx_agent_events_session_id after per-agent migration, got {index_names:?}"
+        );
+        assert!(
+            index_names
+                .iter()
+                .any(|name| name == "idx_agent_events_session_seq"),
+            "expected idx_agent_events_session_seq after per-agent migration, got {index_names:?}"
+        );
+        assert!(
+            index_names.iter().any(|name| name == "idx_agent_events_ts"),
+            "expected idx_agent_events_ts after per-agent migration, got {index_names:?}"
         );
 
         pool.close().await;
