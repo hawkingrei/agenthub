@@ -4,19 +4,59 @@ sidebar_position: 1
 
 # Installation and Startup
 
-## Prerequisites
+## Install Release Binaries With Homebrew
+
+AgentHub publishes Homebrew release binaries through the `linkerdog/homebrew-tap`
+tap.
+
+```bash
+brew tap linkerdog/homebrew-tap
+brew install linkerdog/homebrew-tap/agenthub
+```
+
+This installs:
+
+- `agenthub`
+- `agenthub-codex-acp`
+
+To run AgentHub as a background service:
+
+```bash
+brew services start linkerdog/homebrew-tap/agenthub
+```
+
+AgentHub reads configuration from `~/.agenthub/config.toml`.
+
+Minimal example:
+
+```toml
+[server]
+listen = "127.0.0.1:8080"
+```
+
+Then open `http://localhost:8080`.
+
+Current release binaries are available for:
+
+- macOS Apple Silicon (`darwin-arm64`)
+- Linux `x86_64`
+- Linux `aarch64`
+
+## Build From Source
+
+### Prerequisites
 
 - Rust `1.95.0` (stable toolchain baseline)
 - Node.js 20+
 - Git
 
-## Install Web Dependencies
+### Install Web Dependencies
 
 ```bash
 npm --prefix web ci
 ```
 
-## Create A Minimal Config
+### Create A Minimal Config
 
 AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 
@@ -38,7 +78,7 @@ default_root = "/home/you/.agenthub/worktrees"
 `safe_paths` should list the repository roots that users are allowed to use as
 agent workdirs.
 
-## Start AgentHub
+### Start AgentHub
 
 For the standard local workflow:
 
@@ -57,7 +97,7 @@ cargo run -- -c /path/to/config.toml
 
 By default, AgentHub serves the UI at `http://localhost:8080`.
 
-## ACP Provider Baseline
+### ACP Provider Baseline
 
 The default ACP adapter binary is `agenthub-codex-acp`.
 
@@ -65,7 +105,7 @@ The default ACP adapter binary is `agenthub-codex-acp`.
 - If you override `codex_acp.binary`, keep the replacement ACP binary protocol-
   compatible with the same Codex generation
 
-## Optional App Install
+### Optional App Install
 
 On supported browsers, AgentHub can be installed as a standalone web app.
 
@@ -77,7 +117,7 @@ On supported browsers, AgentHub can be installed as a standalone web app.
 For non-localhost deployments, use HTTPS if you want installability and browser
 push to work reliably.
 
-## Runtime Data Location
+### Runtime Data Location
 
 AgentHub stores runtime data under `~/.agenthub/` by default, including:
 
@@ -94,7 +134,7 @@ runtime skills under `~/.agents/skills/agenthub-runtime/...`.
 - Repo-local `.agents/skills` continue to work independently alongside the
   managed AgentHub skill set.
 
-## Smoke Check
+### Smoke Check
 
 After startup:
 

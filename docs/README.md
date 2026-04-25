@@ -9,6 +9,7 @@ contributors.
 - `docs/journal/`: dated implementation checkpoints and compaction notes
 - `docs/todo.md`: active follow-up backlog only
 - `docs/api_naming.md`: payload naming conventions for AgentHub-owned APIs
+- `docs/developer-setup.md`: contributor setup, repository layout, and common commands
 - `userdocs/`: published end-user documentation site (Docusaurus)
 
 ## When You Change Code
