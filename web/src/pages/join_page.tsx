@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { api, parseApiErrorMessage } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { ensurePushSubscription } from "../push";

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import { AdminPage } from "./admin_page";
+import type { AuthState } from "../types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,6 +28,13 @@ function required<T>(value: T | null | undefined, message: string): T {
   }
   return value;
 }
+
+const rootAuth: AuthState = {
+  token: "token-1",
+  userId: "root-user",
+  username: "root",
+  role: "root",
+};
 
 describe("AdminPage", () => {
   let container: HTMLDivElement;
@@ -70,7 +78,7 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={{ username: "root", role: "root" }}
+            auth={rootAuth}
             error={null}
             setError={() => {}}
             safePaths={[]}
@@ -131,7 +139,7 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={{ username: "root", role: "root" }}
+            auth={rootAuth}
             error={null}
             setError={() => {}}
             safePaths={[]}
@@ -185,7 +193,7 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={{ username: "root", role: "root" }}
+            auth={rootAuth}
             error={null}
             setError={() => {}}
             safePaths={[]}
@@ -228,7 +236,7 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={{ username: "root", role: "root" }}
+            auth={rootAuth}
             error={null}
             setError={() => {}}
             safePaths={[]}

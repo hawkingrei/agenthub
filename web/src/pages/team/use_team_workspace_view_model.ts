@@ -370,10 +370,12 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     () =>
       createDisplayNameLookup([
         ["user", "You"],
-        ...selectedTeamMemberLiveStates.map((member) => [
+        ...selectedTeamMemberLiveStates.map(
+          (member): [string, string] => [
           member.member_id,
           member.agent_name?.trim() || member.member_id,
-        ]),
+          ]
+        ),
       ]),
     [selectedTeamMemberLiveStates]
   );

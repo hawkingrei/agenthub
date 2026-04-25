@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamRunRecord, TeamRunSnapshotRecord } from "../../api";
@@ -24,16 +24,24 @@ function makeRun(id: string, teamId: string): TeamRunRecord {
 
 function makeSnapshot(teamId: string): TeamRunSnapshotRecord {
   return {
+    run: makeRun("run-1", teamId),
     team: {
       id: teamId,
       name: "Team One",
+      spec: {},
+      created_at: 1,
+      updated_at: 1,
     },
     leader_member_id: "leader",
     members: [],
-    inbox: [],
     steps: [],
-    tasks: [],
-    generated_at: 1,
+    latest_events: [],
+    mailbox: {
+      pending: 0,
+      delivered: 0,
+      dead_letter: 0,
+      recent_messages: [],
+    },
   };
 }
 

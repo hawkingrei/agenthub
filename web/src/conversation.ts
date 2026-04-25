@@ -242,6 +242,8 @@ export function buildConversationMessages(
       continue;
     }
     if (entry.kind === "plan") {
+      const currentPlan = entry.plan;
+      if (!currentPlan) continue;
       if (pendingThought) {
         items.push({
           kind: "agent_thinking",
@@ -259,10 +261,10 @@ export function buildConversationMessages(
       items.push({
         kind: "agent_plan",
         text: planText,
-        plan_entries: plan.entries?.map((entry) => ({
-          content: entry.content,
-          status: entry.status,
-          priority: entry.priority,
+        plan_entries: currentPlan.entries.map((planEntry) => ({
+          content: planEntry.content,
+          status: planEntry.status,
+          priority: planEntry.priority,
         })),
         live: false,
         seq: entry.seq ?? undefined,

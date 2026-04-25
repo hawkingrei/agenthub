@@ -1,4 +1,3 @@
-import React from "react";
 import "highlight.js/styles/github-dark.css";
 import {
   getThreadMarkdownCacheStats,

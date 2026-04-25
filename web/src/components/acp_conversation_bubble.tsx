@@ -1,5 +1,5 @@
 import React from "react";
-import { ConversationItem } from "../conversation";
+import { ConversationItem, type MessageConversationItem } from "../conversation";
 import { MarkdownBubble } from "./bubbles/markdown_bubble";
 import { PlanBubble } from "./bubbles/plan_bubble";
 import { ThinkingBubble } from "./bubbles/thinking_bubble";
@@ -90,7 +90,12 @@ export const AcpConversationBubble = React.memo(
     }
 
     if (msg.kind === "agent_plan") {
-      return <PlanBubble msg={msg} autoCollapse={autoCollapse} />;
+      return (
+        <PlanBubble
+          msg={msg as MessageConversationItem & { kind: "agent_plan" }}
+          autoCollapse={autoCollapse}
+        />
+      );
     }
 
     if (msg.kind === "explore_group") {

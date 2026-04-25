@@ -248,7 +248,7 @@ export function buildTeamMemberDraftFromSpec(
     .map((item) => asObjectRecord(item))
     .find(
       (item): item is Record<string, unknown> =>
-        Boolean(item) && readMemberId(item) === normalizedMemberId
+        item !== null && readMemberId(item) === normalizedMemberId
     );
   if (!member) {
     return null;
@@ -461,7 +461,7 @@ export function parseOptionalJson(raw: string, field: string): unknown | undefin
     return JSON.parse(trimmed) as unknown;
   } catch (err) {
     const detail = err instanceof Error ? err.message : "unknown parse error";
-    throw new Error(`${field} must be valid JSON (${detail})`, { cause: err });
+    throw new Error(`${field} must be valid JSON (${detail})`);
   }
 }
 

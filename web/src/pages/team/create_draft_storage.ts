@@ -7,6 +7,7 @@ import {
   createInitialTeamDraftState,
   type WorkerDraft,
 } from "./member_helpers";
+import { clampCreateTeamStage } from "./create_helpers";
 import type { CreateTeamStage, TeamCreateState } from "./state";
 
 export type TeamCreateEntryMode = "wizard" | "manual_spec";
@@ -168,7 +169,7 @@ export function loadTeamCreateDraft(
       newTeamDescription: parsed.value.draft.newTeamDescription,
       useSpecOverride: parsed.value.entry_mode === "manual_spec",
       newTeamSpec: parsed.value.draft.newTeamSpec || initial.newTeamSpec,
-      createTeamStage: parsed.value.draft.createTeamStage,
+      createTeamStage: clampCreateTeamStage(parsed.value.draft.createTeamStage),
       leaderMemberId: parsed.value.draft.leaderMemberId,
       leaderModel: parsed.value.draft.leaderModel,
       leaderPrompt: parsed.value.draft.leaderPrompt || initial.leaderPrompt,

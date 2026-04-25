@@ -1,4 +1,3 @@
-import React from "react";
 import { AcpPlanView } from "../acp";
 import {
   ACP_PLAN_INDEX_BADGE_CLASS,

@@ -1,11 +1,11 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import {
   AGENT_SOURCE_TEAM_FORGE,
+  type AgentDiscoveryCardRecord,
   type AgentRecord,
   api,
   type TeamDefinitionRecord,
   type TeamPromptDefaultsRecord,
-  type TeamRunBrowserState,
   type TeamRunRecord,
   type TeamRuntimeRecord,
 } from "../../api";
@@ -32,6 +32,7 @@ import type { TeamMemberAgentStatus } from "./member_helpers";
 import { backfillEmptyWorkerDraftPrompts } from "./member_helpers";
 import { removeTeamMemberLookupEntry, updateCachedTeamRuntimeStatus } from "./page_helpers";
 import { DEFAULT_WORKTREE_ROOT, type TeamCreateState } from "./state";
+import type { TeamRunBrowserState } from "./state";
 
 type UseTeamManagementActionsOptions = {
   token: string;
@@ -96,7 +97,9 @@ type UseTeamManagementActionsOptions = {
   setForgeAgentWorktreeError: (next: string | null) => void;
   setForgeAgentBusy: (next: boolean) => void;
   setTeamMemberAgentsById: Dispatch<SetStateAction<Record<string, AgentRecord | null>>>;
-  setMemberDiscoveryCardsById: Dispatch<SetStateAction<Record<string, unknown>>>;
+  setMemberDiscoveryCardsById: Dispatch<
+    SetStateAction<Record<string, AgentDiscoveryCardRecord | null>>
+  >;
   setMemberDiscoveryCardLoadingById: Dispatch<SetStateAction<Record<string, boolean>>>;
 };
 
@@ -229,7 +232,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       patchTeamCreate({
         ...restoredDraft,
         leaderPrompt: restoredDraft.leaderPrompt || teamPromptDefaults.leader_prompt,
-        workers: backfillEmptyWorkerDraftPrompts(restoredDraft.workers, teamPromptDefaults),
+        workers: backfillEmptyWorkerDraftPrompts(restoredDraft.workers ?? [], teamPromptDefaults),
         showCreateTeamModal: true,
         showForgeAgentForm: false,
         forgeAgentWorktreeError: null,
@@ -581,14 +584,18 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         );
         setTeamMemberAgentsById((prev) => ({
           ...prev,
-          [teamMemberEditDraft.member_id]: prev[teamMemberEditDraft.member_id]
-            ? {
-                ...prev[teamMemberEditDraft.member_id],
-                agent_loop_enabled: loopPayload.enabled,
-                agent_loop_idle_seconds: loopPayload.idle_seconds,
-                agent_loop_prompt: loopPayload.prompt,
-              }
-            : prev[teamMemberEditDraft.member_id],
+          [teamMemberEditDraft.member_id]: (() => {
+            const existingAgent = prev[teamMemberEditDraft.member_id];
+            if (!existingAgent) {
+              return existingAgent;
+            }
+            return {
+              ...existingAgent,
+              agent_loop_enabled: loopPayload.enabled,
+              agent_loop_idle_seconds: loopPayload.idle_seconds,
+              agent_loop_prompt: loopPayload.prompt,
+            } satisfies AgentRecord;
+          })(),
         }));
       } catch (loopErr) {
         setWarning(`Agent loop settings were not applied: ${parseErrorMessage(loopErr)}`);

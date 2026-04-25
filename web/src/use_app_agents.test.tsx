@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuthState } from "./types";
 import { useAppAgents } from "./use_app_agents";
 
 const {
@@ -87,7 +88,12 @@ describe("useAppAgents", () => {
     const onCapture = (value: UseAppAgentsResult) => {
       captures.push(value);
     };
-    const auth = { token: "token-1", rootInitialized: true } as HookProps[0];
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
 
     await act(async () => {
       root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
@@ -144,7 +150,12 @@ describe("useAppAgents", () => {
     const onCapture = (value: UseAppAgentsResult) => {
       captures.push(value);
     };
-    const auth = { token: "token-1", role: "root", rootInitialized: true } as HookProps[0];
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
 
     await act(async () => {
       root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
@@ -199,11 +210,12 @@ describe("useAppAgents", () => {
     const onCapture = (value: UseAppAgentsResult) => {
       captures.push(value);
     };
-    const auth = {
+    const auth: AuthState = {
       token: "token-1",
+      userId: "user-1",
+      username: "root",
       role: "root",
-      rootInitialized: true,
-    } as HookProps[0];
+    };
 
     await act(async () => {
       root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
@@ -231,11 +243,12 @@ describe("useAppAgents", () => {
     const onCapture = (value: UseAppAgentsResult) => {
       captures.push(value);
     };
-    const auth = {
+    const auth: AuthState = {
       token: "token-1",
+      userId: "user-1",
+      username: "root",
       role: "root",
-      rootInitialized: true,
-    } as HookProps[0];
+    };
     getAgentNodeJoinBootstrapMock.mockRejectedValueOnce(new Error("boom"));
 
     await act(async () => {

@@ -109,7 +109,7 @@ describe("routeLiveOutputBatch", () => {
             worktree_repo: null,
             worktree_ref: null,
             code_mode: true,
-            agent_loop_enabled: null,
+            agent_loop_enabled: undefined,
             agent_loop_idle_seconds: null,
             agent_loop_prompt: null,
             status: "idle",

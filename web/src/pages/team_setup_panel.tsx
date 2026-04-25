@@ -1,4 +1,3 @@
-import React from "react";
 import { ActionButton } from "../ui/primitives";
 import {
   TEAM_CREATE_PANEL_CARD_CLASS,

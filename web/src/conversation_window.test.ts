@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { windowConversation, ConversationItem } from "./conversation";
+import type { MessageConversationItem } from "./conversation";
+import { windowConversation } from "./conversation";
 
-function item(kind: ConversationItem["kind"], text: string): ConversationItem {
+function item(kind: MessageConversationItem["kind"], text: string): MessageConversationItem {
   return { kind, text };
 }
 

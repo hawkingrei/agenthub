@@ -694,7 +694,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      const afterTeamTwo = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+      const afterTeamTwo =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
         selectedConversation?: { id?: string };
         selectedConversationLatestRun?: { id?: string };
         selectedTeamId?: string | null;
@@ -708,7 +711,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      const finalOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+      const finalOptions =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
         selectedConversation?: { id?: string };
         selectedConversationLatestRun?: { id?: string };
         selectedTeamId?: string | null;
@@ -804,7 +810,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      const lastOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+      const lastOptions =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
         selectedConversation?: { id?: string; title?: string };
       };
       expect(lastOptions.selectedConversation?.id).toBe("task-review");
@@ -897,7 +906,10 @@ describe("TeamPage smoke render", () => {
         await flushEffects();
       });
 
-      const lastOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+      const lastOptions =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
         selectedConversation?: { id?: string; title?: string };
       };
       expect(lastOptions.selectedConversation?.id).toBe("task-review");
@@ -1875,7 +1887,10 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
-      const lastOptions = teamConversationActionsOptionsSpy.mock.calls.at(-1)?.[0] as {
+      const lastOptions =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
         selectedConversation?: { id?: string };
       };
       expect(lastOptions.selectedConversation?.id).toBe("task-work");

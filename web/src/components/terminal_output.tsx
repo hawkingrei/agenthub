@@ -5,7 +5,7 @@ import { OutputLine } from "../output_cache";
 type TerminalOutputProps = {
   outputs: OutputLine[];
   ansi: (input: string) => string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
   onScroll?: () => void;
 };
 

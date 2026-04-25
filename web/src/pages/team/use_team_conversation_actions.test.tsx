@@ -55,10 +55,15 @@ function buildMailboxMessage(messageId: number, text: string): TeamActorMessageR
     message_id: messageId,
     run_id: "run-1",
     from_actor_id: "leader",
+    from_peer_id: "",
+    from_actor_kind: "agent",
     to_actor_id: "worker",
+    to_peer_id: "",
+    to_actor_kind: "agent",
     channel: "default",
     payload: { type: "chat_message", text },
     transport: "local",
+    route: null,
     status: "pending",
     created_at: 1_700_000_000 + messageId,
     delivered_at: null,
@@ -137,7 +142,7 @@ function buildTaskThreadDetail(
       id: "conv-thread",
       team_id: "team-1",
       task_id: "task-thread",
-      mode: "thread",
+      mode: "to_member",
       topic: "Task thread",
       created_at: 2,
       updated_at: 2,
@@ -470,7 +475,9 @@ describe("useTeamConversationActions", () => {
       });
       expect(taskMessages.state.current).toHaveLength(20);
       expect(taskMessages.state.current[0]?.message_id).toBe(1);
-      expect(taskMessages.state.current.at(-1)?.message_id).toBe(20);
+      expect(taskMessages.state.current[taskMessages.state.current.length - 1]?.message_id).toBe(
+        20
+      );
 
       await act(async () => {
         await captured?.refreshTaskMessages();
@@ -479,7 +486,9 @@ describe("useTeamConversationActions", () => {
       });
       expect(taskMessages.state.current).toHaveLength(20);
       expect(taskMessages.state.current[0]?.message_id).toBe(11);
-      expect(taskMessages.state.current.at(-1)?.message_id).toBe(30);
+      expect(taskMessages.state.current[taskMessages.state.current.length - 1]?.message_id).toBe(
+        30
+      );
       expect(mailboxMessages.state.current).toHaveLength(1);
     } finally {
       cleanupHarness(root, container);
@@ -939,7 +948,9 @@ describe("useTeamConversationActions", () => {
         await Promise.resolve();
       });
 
-      expect(taskMessages.state.current.at(-1)?.conversation_id).toBe("conv-thread");
+      expect(
+        taskMessages.state.current[taskMessages.state.current.length - 1]?.conversation_id
+      ).toBe("conv-thread");
       expect(draft.state.current).toBe("");
 
       sendDeferred.resolve({

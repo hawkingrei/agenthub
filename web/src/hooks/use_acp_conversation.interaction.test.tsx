@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpView } from "../acp";
@@ -598,7 +598,7 @@ describe("useAcpConversation scroll rerender suppression", () => {
     expect(renderCount).toBe(initialRenderCount);
   });
 
-  it("does not auto-load older history until the user has scrolled away from the top zone", () => {
+  it("loads older history only after re-entering the top zone and continuing upward", () => {
     const onLoadOlder = vi.fn();
     const acpView = buildManyMessageView(12);
     act(() => {
@@ -619,18 +619,31 @@ describe("useAcpConversation scroll rerender suppression", () => {
       );
     });
 
-    scrollTop = 0;
+    scrollTop = 120;
     act(() => {
       snapshot?.handleConversationScroll();
     });
     expect(onLoadOlder).not.toHaveBeenCalled();
 
-    scrollTop = 240;
+    scrollTop = 60;
     act(() => {
       snapshot?.handleConversationScroll();
     });
+    expect(onLoadOlder).not.toHaveBeenCalled();
 
     scrollTop = 0;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    scrollTop = 120;
+    act(() => {
+      snapshot?.handleConversationScroll();
+    });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    scrollTop = 40;
     act(() => {
       snapshot?.handleConversationScroll();
     });

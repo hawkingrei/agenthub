@@ -360,9 +360,9 @@ describe("history outside close helpers", () => {
     (globalThis as { Node?: unknown }).Node = undefined;
     try {
       expect(
-        shouldCloseHistoryFromPointerTarget({}, {
+        shouldCloseHistoryFromPointerTarget(new EventTarget(), {
           contains: () => false,
-        } as unknown as { contains(node: Node): boolean })
+        } as unknown as EventTarget & { contains(node: Node): boolean })
       ).toBe(false);
     } finally {
       (globalThis as { Node?: unknown }).Node = originalNode;

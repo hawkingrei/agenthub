@@ -324,7 +324,7 @@ export function AgentNodeSection({
                         <Text size="sm" fw={600}>
                           {node.name}
                         </Text>
-                        <Badge tone={node.is_main ? "subtle" : "info"} className="uppercase">
+                        <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
                           {resolveNodeRoleLabel(node)}
                         </Badge>
                         <Text size="xs" c="dimmed">
@@ -382,7 +382,7 @@ export function AgentNodeSection({
                       <Text size="lg" fw={700}>
                         {selectedNode.name}
                       </Text>
-                      <Badge tone={selectedNode.is_main ? "subtle" : "info"} className="uppercase">
+                      <Badge tone={selectedNode.is_main ? "subtle" : "outline"} className="uppercase">
                         {resolveNodeRoleLabel(selectedNode)}
                       </Badge>
                     </div>
@@ -608,7 +608,7 @@ export function AgentNodeSection({
                             <Text size="sm" fw={600}>
                               {node.name}
                             </Text>
-                            <Badge tone="info" className="uppercase">
+                            <Badge tone="outline" className="uppercase">
                               remote
                             </Badge>
                             <Text size="xs" c="dimmed">

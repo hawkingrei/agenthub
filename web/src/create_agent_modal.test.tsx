@@ -1,15 +1,15 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
 import {
   CreateAgentModal,
+  type CreateAgentModalProps,
   resolveCreateAgentPresetId,
   resolveCreateAgentWorktreeMode,
   shouldAutoExpandCreateAgentAdvancedOptions,
 } from "./components/create_agent_modal";
 
-const baseProps = {
+const baseProps: CreateAgentModalProps = {
   agentName: "",
   setAgentName: () => {},
   agentWorkdir: "",
@@ -32,7 +32,7 @@ const baseProps = {
   onClose: () => {},
 };
 
-const renderModal = (overrides?: Partial<typeof baseProps>) =>
+const renderModal = (overrides?: Partial<CreateAgentModalProps>) =>
   renderToStaticMarkup(
     <MantineProvider>
       <CreateAgentModal {...baseProps} {...overrides} />

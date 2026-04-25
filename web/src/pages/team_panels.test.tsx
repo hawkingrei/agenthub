@@ -309,7 +309,11 @@ function buildMailboxMessage(
     message_id: messageId,
     run_id: "run-1",
     from_actor_id: "leader-agent",
+    from_peer_id: "",
+    from_actor_kind: "agent",
     to_actor_id: "worker-agent",
+    to_peer_id: "",
+    to_actor_kind: "agent",
     channel: "default",
     transport: "local",
     route: null,
@@ -909,7 +913,6 @@ describe("team panels interactions", () => {
               total: 3,
               status: "running",
             }}
-            selectedTeamMemberCount={3}
             selectedTeamHasConfiguredMembers={true}
             teamMemberSummaryByTeamId={new Map()}
             memberLiveStates={[
@@ -2984,8 +2987,8 @@ describe("team panels interactions", () => {
       }
     }
 
-    audioWindow.AudioContext = MockAudioContext;
-    delete audioWindow.webkitAudioContext;
+    audioWindow.AudioContext = MockAudioContext as unknown as typeof AudioContext;
+    Reflect.deleteProperty(audioWindow, "webkitAudioContext");
 
     const renderPanel = (messages: TeamConversationMessageRecord[]) => {
       renderWithMantine(
@@ -3062,12 +3065,12 @@ describe("team panels interactions", () => {
       expect(audioContextSpy).toHaveBeenCalledTimes(1);
     } finally {
       if (previousAudioContext === undefined) {
-        delete audioWindow.AudioContext;
+        Reflect.deleteProperty(audioWindow, "AudioContext");
       } else {
         audioWindow.AudioContext = previousAudioContext;
       }
       if (previousWebkitAudioContext === undefined) {
-        delete audioWindow.webkitAudioContext;
+        Reflect.deleteProperty(audioWindow, "webkitAudioContext");
       } else {
         audioWindow.webkitAudioContext = previousWebkitAudioContext;
       }
@@ -3225,7 +3228,7 @@ describe("team panels interactions", () => {
           buildTaskMessage(7, {
             from_actor_id: "leader-agent",
             to_actor_id: "worker-agent",
-            route: "to_worker",
+            route: "to_member",
             payload: { type: "chat_message", text: "please verify the runtime output" },
           }),
         ]}
@@ -3263,7 +3266,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("to");
     expect(container.textContent).toContain("worker-agent");
     expect(container.textContent).toContain("route");
-    expect(container.textContent).toContain("to_worker");
+    expect(container.textContent).toContain("to_member");
     expect(container.textContent).toContain("work");
     expect(container.textContent).toContain("working/in_review");
     expect(container.textContent).toContain("agent");
@@ -4006,7 +4009,7 @@ describe("team panels interactions", () => {
             buildTaskMessage(7, {
               from_actor_id: "leader-agent",
               to_actor_id: "worker-agent",
-              route: "direct",
+              route: "to_member",
               payload: { type: "chat_message", text: "debug details" },
             }),
           ]}
@@ -4139,12 +4142,42 @@ describe("team panels interactions", () => {
             onCompileTaskRunPreview={onCompileTaskRunPreview}
             canCompileTask={true}
             compiledRunPreview={{
+              task_id: "task-77",
               conversation_id: "conv-77",
               run_payload: {
                 context_id: "ctx-preview",
                 input: { objective: "ship" },
               },
-              plan: { steps: ["review", "ship"] },
+              plan: {
+                task_list: ["ship"],
+                acceptance_criteria: ["review complete", "ship ready"],
+                step_template: [
+                  {
+                    step_key: "review",
+                    member_id: "leader-agent",
+                    role: "leader",
+                    depends_on: [],
+                  },
+                  {
+                    step_key: "ship",
+                    member_id: "worker-1",
+                    role: "worker",
+                    depends_on: ["review"],
+                  },
+                ],
+                role_assignments: [
+                  {
+                    member_id: "leader-agent",
+                    role: "leader",
+                    step_keys: ["review"],
+                  },
+                  {
+                    member_id: "worker-1",
+                    role: "worker",
+                    step_keys: ["ship"],
+                  },
+                ],
+              },
             }}
             onUseCompiledRunPayload={onUseCompiledRunPayload}
             onCreateRunFromCompiledPreview={onCreateRunFromCompiledPreview}
@@ -5055,7 +5088,7 @@ describe("team panels interactions", () => {
     expect(findButtonByText(container, "Cancel Run").disabled).toBe(true);
   });
 
-  it("TeamMemberAcpPanel auto-loads older ACP history for short threads and renders agent thinking", async () => {
+  it("TeamMemberAcpPanel keeps short ACP threads visible without auto-loading older history", async () => {
     vi.useFakeTimers();
     const onLoadOlder = vi.fn();
 
@@ -5109,7 +5142,7 @@ describe("team panels interactions", () => {
         await Promise.resolve();
       });
 
-      expect(onLoadOlder).toHaveBeenCalled();
+      expect(onLoadOlder).not.toHaveBeenCalled();
       expect(container.textContent).toContain(
         "Inspecting the previous failure before replying."
       );

@@ -639,17 +639,17 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 )}
 
                 {selectedTask.context &&
-                  typeof selectedTask.context === "object" &&
-                  !Array.isArray(selectedTask.context) && (
-                    <div className="mt-4">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
-                        Task context
-                      </p>
-                      <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2`}>
-                        {toPrettyJson(selectedTask.context)}
-                      </pre>
-                    </div>
-                  )}
+                typeof selectedTask.context === "object" &&
+                !Array.isArray(selectedTask.context) ? (
+                  <div className="mt-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-notion-text-muted">
+                      Task context
+                    </p>
+                    <pre className={`${TEAM_PANEL_PRE_CLASS} mt-2`}>
+                      {toPrettyJson(selectedTask.context)}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             </details>
           )}
@@ -681,7 +681,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           radius="md"
           value={statusFilter}
           onChange={(value) => setStatusFilter(value as TaskStatusFilter)}
-          data={TASK_STATUS_FILTERS}
+          data={[...TASK_STATUS_FILTERS]}
           aria-label="Task status filter"
           classNames={SEGMENTED_CONTROL_CLASSNAMES}
         />

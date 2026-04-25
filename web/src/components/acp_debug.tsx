@@ -44,7 +44,7 @@ type AcpRuntimeMetrics = {
 type AcpDebugProps = {
   terminalOutputs: OutputLine[];
   ansi: (input: string) => string;
-  terminalRef?: React.RefObject<HTMLDivElement>;
+  terminalRef?: React.RefObject<HTMLDivElement | null>;
   onTerminalScroll?: () => void;
   showTerminalJump?: boolean;
   onJumpToTerminalBottom?: () => void;
@@ -637,7 +637,7 @@ function DebugTerminalOutput({
 }: {
   outputs: OutputLine[];
   ansi: (input: string) => string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
   onScroll?: () => void;
 }) {
   return (

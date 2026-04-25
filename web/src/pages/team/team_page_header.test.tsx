@@ -1,5 +1,4 @@
 import { MantineProvider } from "@mantine/core";
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { TeamPageHeader } from "./team_page_header";

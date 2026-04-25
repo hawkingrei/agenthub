@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useTeamWorkspaceViewModel } from "./use_team_workspace_view_model";
@@ -73,10 +73,10 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       id: "shared-thread",
       team_id: "team-1",
       title: "all",
-      status: "working",
-      kind: "shared_thread",
-      summary: null,
-      latest_message_at: 1,
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { bootstrap_kind: "shared_thread" },
       created_at: 1,
       updated_at: 1,
     } as HookParams["selectedConversation"],

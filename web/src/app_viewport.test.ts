@@ -74,18 +74,18 @@ describe("setupRuntimeViewportVarSync", () => {
     viewport.width = 390;
     viewport.offsetTop = 0;
 
-    const runtimeWindow = new MockEventTarget() as MockEventTarget & {
+    const runtimeWindow = new MockEventTarget() as unknown as MockEventTarget & {
       innerHeight: number;
       innerWidth: number;
-      visualViewport: typeof viewport;
-      requestAnimationFrame: (cb: () => void) => number;
+      visualViewport: VisualViewport;
+      requestAnimationFrame: (cb: (timestamp: number) => void) => number;
       cancelAnimationFrame: (id: number) => void;
     };
     runtimeWindow.innerHeight = 844;
     runtimeWindow.innerWidth = 390;
-    runtimeWindow.visualViewport = viewport;
+    runtimeWindow.visualViewport = viewport as unknown as VisualViewport;
     runtimeWindow.requestAnimationFrame = (cb) => {
-      cb();
+      cb(0);
       return 1;
     };
     runtimeWindow.cancelAnimationFrame = vi.fn();

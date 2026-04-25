@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConversationFreeze,
   buildConversationMessages,
+  type ConversationItem,
   deriveConversationFreezeCursor,
   formatConversationPreview,
   isToolCallLive,
@@ -41,6 +42,27 @@ function toolCall(
   };
 }
 
+function expectMessageText(item: ConversationItem, expected: string): void {
+  if ("text" in item) {
+    expect(item.text).toBe(expected);
+    return;
+  }
+  throw new Error(`Expected message conversation item, received ${item.kind}`);
+}
+
+function expectThinkingItem(
+  item: ConversationItem,
+  expected: { text: string; live: boolean }
+): void {
+  expect(item.kind).toBe("agent_thinking");
+  if ("text" in item && "live" in item) {
+    expect(item.text).toBe(expected.text);
+    expect(item.live).toBe(expected.live);
+    return;
+  }
+  throw new Error(`Expected thinking conversation item, received ${item.kind}`);
+}
+
 describe("buildConversationMessages", () => {
   it("attaches pending thought to the next agent message", () => {
     const messages: AcpMessage[] = [
@@ -49,20 +71,16 @@ describe("buildConversationMessages", () => {
     ];
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(2);
-    expect(items[0].kind).toBe("agent_thinking");
-    expect(items[0].text).toBe("t1");
-    expect(items[0].live).toBe(false);
+    expectThinkingItem(items[0]!, { text: "t1", live: false });
     expect(items[1].kind).toBe("agent_message");
-    expect(items[1].text).toBe("m1");
+    expectMessageText(items[1]!, "m1");
   });
 
   it("emits trailing thought as its own item", () => {
     const messages: AcpMessage[] = [msg("agent_thought", "t1", "s1")];
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(1);
-    expect(items[0].kind).toBe("agent_thinking");
-    expect(items[0].text).toBe("t1");
-    expect(items[0].live).toBe(true);
+    expectThinkingItem(items[0]!, { text: "t1", live: true });
   });
 
   it("concats consecutive thoughts with newline", () => {
@@ -73,9 +91,7 @@ describe("buildConversationMessages", () => {
     ];
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(2);
-    expect(items[0].kind).toBe("agent_thinking");
-    expect(items[0].text).toBe("t1\nt2");
-    expect(items[0].live).toBe(false);
+    expectThinkingItem(items[0]!, { text: "t1\nt2", live: false });
     expect(items[1].kind).toBe("agent_message");
   });
 
@@ -87,8 +103,8 @@ describe("buildConversationMessages", () => {
     ];
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(2);
-    expect(items[0].text).toBe("u1");
-    expect(items[1].text).toBe("m2");
+    expectMessageText(items[0]!, "u1");
+    expectMessageText(items[1]!, "m2");
   });
 
   it("emits thinking before user message when it appears in sequence", () => {
@@ -99,10 +115,9 @@ describe("buildConversationMessages", () => {
     ];
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(3);
-    expect(items[0].kind).toBe("agent_thinking");
-    expect(items[0].text).toBe("t1");
+    expectThinkingItem(items[0]!, { text: "t1", live: false });
     expect(items[1].kind).toBe("user_message");
-    expect(items[1].text).toBe("u1");
+    expectMessageText(items[1]!, "u1");
     expect(items[2].kind).toBe("agent_message");
   });
 
@@ -114,7 +129,7 @@ describe("buildConversationMessages", () => {
     const items = buildConversationMessages(messages, [], null, "s1");
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("agent_message");
-    expect(items[0].text).toBe("m1");
+    expectMessageText(items[0]!, "m1");
   });
 
   it("merges tool calls into the conversation flow", () => {
@@ -200,7 +215,11 @@ describe("buildConversationMessages", () => {
     const items = buildConversationMessages(messages, [], plan, "s1");
     expect(items).toHaveLength(2);
     expect(items[1].kind).toBe("agent_plan");
-    expect(items[1].text).toContain("Do X");
+    if ("text" in items[1]!) {
+      expect(items[1].text).toContain("Do X");
+    } else {
+      throw new Error(`Expected plan conversation item, received ${items[1]!.kind}`);
+    }
   });
 
   it("places plan based on sequence ordering", () => {
@@ -246,7 +265,7 @@ describe("unescapeLineBreaks", () => {
 
 describe("conversation freeze helpers", () => {
   it("derives max cursor from items", () => {
-    const items = [
+    const items: ConversationItem[] = [
       { kind: "user_message", text: "a", event_id: 1, ts: 1 },
       { kind: "agent_message", text: "b", event_id: 3, ts: 3 },
       { kind: "agent_thinking", text: "c", event_id: 2, ts: 2 },
@@ -256,7 +275,7 @@ describe("conversation freeze helpers", () => {
   });
 
   it("prefers event_id over ts when deriving cursor", () => {
-    const items = [
+    const items: ConversationItem[] = [
       { kind: "user_message", text: "a", event_id: 2, ts: 10 },
       { kind: "agent_message", text: "b", ts: 999 },
     ];
@@ -265,7 +284,7 @@ describe("conversation freeze helpers", () => {
   });
 
   it("falls back to ts when event_id is missing", () => {
-    const items = [
+    const items: ConversationItem[] = [
       { kind: "user_message", text: "a", ts: 10 },
       { kind: "agent_message", text: "b", ts: 30 },
     ];
@@ -275,7 +294,7 @@ describe("conversation freeze helpers", () => {
   });
 
   it("filters items beyond max seq and counts pending", () => {
-    const items = [
+    const items: ConversationItem[] = [
       { kind: "user_message", text: "a", event_id: 1, ts: 1 },
       { kind: "agent_message", text: "b", event_id: 2, ts: 2 },
       { kind: "agent_message", text: "c", event_id: 4, ts: 4 },

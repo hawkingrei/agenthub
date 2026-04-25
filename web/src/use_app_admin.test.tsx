@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppAdmin } from "./use_app_admin";
@@ -21,7 +21,7 @@ const {
   getVapidInfoMock: vi.fn(),
   getAdminSettingsMock: vi.fn(),
   joinStartAdminMock: vi.fn(),
-  parseApiErrorMessageMock: vi.fn(() => null),
+  parseApiErrorMessageMock: vi.fn<(error: unknown) => string | null>(() => null),
 }));
 
 vi.mock("./api", () => ({

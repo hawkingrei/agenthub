@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConversationItem } from "../conversation";
 import {
-  AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS,
   DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
   buildConversationTailKey,
   buildVirtualConversationSlice,
@@ -16,7 +15,6 @@ import {
   restoreConversationScrollTop,
   hasReachedConversationTop,
   shouldShowConversationTopReachedHint,
-  shouldAutoLoadConversationHistory,
   shouldDefaultConversationStickToBottom,
   shouldLoadOlderFromMeta,
   shouldUseConversationVirtualization,
@@ -356,21 +354,6 @@ describe("conversation helper decisions", () => {
     const prev = { top: 10, height: 400 };
     expect(nextConversationViewport(prev, 10, 400)).toBe(prev);
     expect(nextConversationViewport(prev, 20, 420)).toEqual({ top: 20, height: 420 });
-  });
-
-  it("derives auto-load eligibility for short conversation windows", () => {
-    expect(AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS).toBe(1200);
-    expect(shouldAutoLoadConversationHistory("debug", "agent-1", true, 2)).toBe(false);
-    expect(shouldAutoLoadConversationHistory("conversation", null, true, 2)).toBe(false);
-    expect(
-      shouldAutoLoadConversationHistory("conversation", "agent-1", false, 2)
-    ).toBe(false);
-    expect(
-      shouldAutoLoadConversationHistory("conversation", "agent-1", true, 20)
-    ).toBe(false);
-    expect(
-      shouldAutoLoadConversationHistory("conversation", "agent-1", true, 4)
-    ).toBe(true);
   });
 
   it("identifies when history has reached top from metadata", () => {

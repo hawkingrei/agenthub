@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -273,17 +273,17 @@ describe("App runtime viewport effects", () => {
     if (originalLocalStorageDescriptor) {
       Object.defineProperty(globalThis, "localStorage", originalLocalStorageDescriptor);
     } else {
-      delete (globalThis as typeof globalThis & { localStorage?: Storage }).localStorage;
+      Reflect.deleteProperty(globalThis, "localStorage");
     }
     if (originalWindowMatchMediaDescriptor) {
       Object.defineProperty(window, "matchMedia", originalWindowMatchMediaDescriptor);
     } else {
-      delete (window as Window & { matchMedia?: unknown }).matchMedia;
+      Reflect.deleteProperty(window, "matchMedia");
     }
     if (originalGlobalMatchMediaDescriptor) {
       Object.defineProperty(globalThis, "matchMedia", originalGlobalMatchMediaDescriptor);
     } else {
-      delete (globalThis as typeof globalThis & { matchMedia?: unknown }).matchMedia;
+      Reflect.deleteProperty(globalThis, "matchMedia");
     }
     if (originalWindowRequestAnimationFrameDescriptor) {
       Object.defineProperty(
@@ -292,7 +292,7 @@ describe("App runtime viewport effects", () => {
         originalWindowRequestAnimationFrameDescriptor
       );
     } else {
-      delete (window as Window & { requestAnimationFrame?: unknown }).requestAnimationFrame;
+      Reflect.deleteProperty(window, "requestAnimationFrame");
     }
     if (originalWindowCancelAnimationFrameDescriptor) {
       Object.defineProperty(
@@ -301,7 +301,7 @@ describe("App runtime viewport effects", () => {
         originalWindowCancelAnimationFrameDescriptor
       );
     } else {
-      delete (window as Window & { cancelAnimationFrame?: unknown }).cancelAnimationFrame;
+      Reflect.deleteProperty(window, "cancelAnimationFrame");
     }
     if (originalGlobalRequestAnimationFrameDescriptor) {
       Object.defineProperty(
@@ -310,8 +310,7 @@ describe("App runtime viewport effects", () => {
         originalGlobalRequestAnimationFrameDescriptor
       );
     } else {
-      delete (globalThis as typeof globalThis & { requestAnimationFrame?: unknown })
-        .requestAnimationFrame;
+      Reflect.deleteProperty(globalThis, "requestAnimationFrame");
     }
     if (originalGlobalCancelAnimationFrameDescriptor) {
       Object.defineProperty(
@@ -320,13 +319,12 @@ describe("App runtime viewport effects", () => {
         originalGlobalCancelAnimationFrameDescriptor
       );
     } else {
-      delete (globalThis as typeof globalThis & { cancelAnimationFrame?: unknown })
-        .cancelAnimationFrame;
+      Reflect.deleteProperty(globalThis, "cancelAnimationFrame");
     }
     if (originalEventSourceDescriptor) {
       Object.defineProperty(globalThis, "EventSource", originalEventSourceDescriptor);
     } else {
-      delete (globalThis as typeof globalThis & { EventSource?: unknown }).EventSource;
+      Reflect.deleteProperty(globalThis, "EventSource");
     }
     if (originalCredentialsDescriptor) {
       Object.defineProperty(
@@ -335,7 +333,7 @@ describe("App runtime viewport effects", () => {
         originalCredentialsDescriptor
       );
     } else {
-      delete (globalThis.navigator as Navigator & { credentials?: unknown }).credentials;
+      Reflect.deleteProperty(globalThis.navigator, "credentials");
     }
     vi.restoreAllMocks();
   });

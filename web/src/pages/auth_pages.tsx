@@ -1,4 +1,3 @@
-import React from "react";
 import { AUTH_CARD_BASE_CLASS, AUTH_PAGE_CLASS } from "../ui/tailwind_classes";
 
 export function AuthRequired() {

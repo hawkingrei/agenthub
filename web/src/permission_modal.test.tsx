@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
@@ -43,12 +42,12 @@ const isDisabledButton = (buttonHtml: string) =>
 
 const hasEnabledButton = (html: string, label: string) => {
   const button = findButtonHtml(html, label);
-  return Boolean(button) && !isDisabledButton(button);
+  return button !== null && !isDisabledButton(button);
 };
 
 const hasDisabledButton = (html: string, label: string) => {
   const button = findButtonHtml(html, label);
-  return Boolean(button) && isDisabledButton(button);
+  return button !== null && isDisabledButton(button);
 };
 
 describe("PermissionModal option id handling", () => {

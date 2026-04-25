@@ -22,6 +22,14 @@ import {
 import { parseErrorMessage } from "./create_helpers";
 import { uuidV7 } from "../../uuid";
 
+function readBootstrapKind(context: unknown): string {
+  if (!context || typeof context !== "object" || Array.isArray(context)) {
+    return "";
+  }
+  const bootstrapKind = (context as { bootstrap_kind?: unknown }).bootstrap_kind;
+  return typeof bootstrapKind === "string" ? bootstrapKind.trim() : "";
+}
+
 const TEAM_CONVERSATION_MESSAGE_LIMIT = 60;
 const TEAM_CONVERSATION_MAILBOX_LIMIT = 40;
 const TEAM_CONVERSATION_OPTIMISTIC_MESSAGE_BASE_ID = Number.MAX_SAFE_INTEGER - 10_000;
@@ -105,8 +113,7 @@ export function useTeamConversationActions({
   const clearConversationMailboxMessages = useCallback(() => {
     replaceConversationMailboxMessages([]);
   }, [replaceConversationMailboxMessages]);
-  const selectedConversationBootstrapKind =
-    selectedConversation?.context?.bootstrap_kind;
+  const selectedConversationBootstrapKind = readBootstrapKind(selectedConversation?.context);
 
   useEffect(() => {
     const normalizedTeamId = selectedTeamId?.trim() ?? "";
@@ -183,7 +190,7 @@ export function useTeamConversationActions({
       try {
         const selectedConversationId = (selectedConversation?.id ?? "").trim();
         const isSharedThreadTask =
-          selectedConversation?.context?.bootstrap_kind === "shared_thread";
+          readBootstrapKind(selectedConversation?.context) === "shared_thread";
         const detailKey = conversationDetailKey(teamId, taskId);
         const cachedConversationRunId =
           conversationDetailRunIdRef.current.get(detailKey);

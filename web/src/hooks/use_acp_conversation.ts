@@ -89,7 +89,6 @@ const TOOL_CALL_JUMP_CONTEXT_LINES = 4;
 const TOOL_CALL_JUMP_MIN_ROW_HEIGHT = 24;
 const FOCUSED_TOOL_CALL_RESET_DELAY_MS = 2500;
 const LOAD_OLDER_TRIGGER_TOP_PX = 80;
-export const AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS = 1200;
 
 export function buildConversationTailKey(conversationMessages: ConversationItem[]): string {
   if (conversationMessages.length === 0) return "empty";
@@ -202,19 +201,6 @@ export function shouldUseConversationVirtualization(
 }
 
 export { nextThreadViewport as nextConversationViewport };
-
-export function shouldAutoLoadConversationHistory(
-  acpTab: "conversation" | "plan" | "debug",
-  activeAgent: string | null,
-  canLoadOlder: boolean,
-  conversationMessageCount: number,
-  minMessages: number = DEFAULT_CONVERSATION_TAIL_WINDOW_SIZE
-): boolean {
-  if (acpTab !== "conversation") return false;
-  if (!activeAgent) return false;
-  if (!canLoadOlder) return false;
-  return conversationMessageCount < minMessages;
-}
 
 export const DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS = 24;
 
@@ -396,7 +382,6 @@ export function useAcpConversation({
     prevTop: number;
   } | null>(null);
   const conversationLeftTopZoneSinceLoadRef = useRef(false);
-  const autoLoadHistoryTimerRef = useRef<number | null>(null);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
@@ -769,13 +754,18 @@ export function useAcpConversation({
       prev === nextTopReachedHint ? prev : nextTopReachedHint
     );
     const isInTopZone = el.scrollTop < LOAD_OLDER_TRIGGER_TOP_PX;
+    const continuedUpwardScrollInTopZone =
+      previousTop != null &&
+      previousTop < LOAD_OLDER_TRIGGER_TOP_PX &&
+      el.scrollTop <= previousTop;
     if (!isInTopZone) {
       conversationLeftTopZoneSinceLoadRef.current = true;
     }
     if (
       isInTopZone &&
       canLoadOlder &&
-      conversationLeftTopZoneSinceLoadRef.current
+      conversationLeftTopZoneSinceLoadRef.current &&
+      continuedUpwardScrollInTopZone
     ) {
       conversationLeftTopZoneSinceLoadRef.current = false;
       prepareForLoadOlder();
@@ -859,59 +849,8 @@ export function useAcpConversation({
         window.clearTimeout(focusedToolCallResetTimerRef.current);
         focusedToolCallResetTimerRef.current = null;
       }
-      if (
-        typeof window !== "undefined" &&
-        autoLoadHistoryTimerRef.current != null
-      ) {
-        window.clearTimeout(autoLoadHistoryTimerRef.current);
-        autoLoadHistoryTimerRef.current = null;
-      }
     };
   }, []);
-
-  useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      autoLoadHistoryTimerRef.current != null
-    ) {
-      window.clearTimeout(autoLoadHistoryTimerRef.current);
-      autoLoadHistoryTimerRef.current = null;
-    }
-    if (
-      !shouldAutoLoadConversationHistory(
-        acpTab,
-        activeAgent,
-        shouldLoadOlder(),
-        conversationMessages.length
-      )
-    ) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      prepareForLoadOlder();
-      onLoadOlder();
-      return;
-    }
-    autoLoadHistoryTimerRef.current = window.setTimeout(() => {
-      autoLoadHistoryTimerRef.current = null;
-      prepareForLoadOlder();
-      onLoadOlder();
-    }, AUTO_LOAD_CONVERSATION_HISTORY_DELAY_MS);
-    return () => {
-      if (autoLoadHistoryTimerRef.current != null) {
-        window.clearTimeout(autoLoadHistoryTimerRef.current);
-        autoLoadHistoryTimerRef.current = null;
-      }
-    };
-  }, [
-    conversationMessages.length,
-    acpTab,
-    activeAgent,
-    activeSessionId,
-    eventMeta,
-    onLoadOlder,
-    shouldLoadOlder,
-  ]);
 
   useEffect(() => {
     didAutoAlignConversationRef.current = false;

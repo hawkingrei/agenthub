@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { PassThrough } from "node:stream";
 import { MantineProvider } from "@mantine/core";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { renderToPipeableStream } from "react-dom/server";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AcpPanel,
@@ -52,7 +51,7 @@ const baseProps: AcpPanelProps = {
     pendingCount: 0,
     avgHeight: 40,
     onScroll: () => {},
-    containerRef: React.createRef<HTMLDivElement>(),
+    containerRef: React.createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement>,
     ansi: (input) => input,
   },
   plan: {
@@ -61,7 +60,7 @@ const baseProps: AcpPanelProps = {
   debug: {
     terminalOutputs: [],
     ansi: (input) => input,
-    terminalRef: React.createRef<HTMLDivElement>(),
+    terminalRef: React.createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement>,
     onTerminalScroll: () => {},
     showTerminalJump: false,
     onJumpToTerminalBottom: () => {},
@@ -106,29 +105,22 @@ const baseProps: AcpPanelProps = {
 };
 
 function renderPanel(node: React.ReactNode): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const stream = new PassThrough();
-    let html = "";
-    stream.on("data", (chunk) => {
-      html += chunk.toString();
-    });
-    stream.on("end", () => {
-      resolve(html.replaceAll("<!-- -->", ""));
-    });
-    stream.on("error", reject);
-
-    const { pipe } = renderToPipeableStream(<MantineProvider>{node}</MantineProvider>, {
-      onAllReady() {
-        pipe(stream);
-      },
-      onError(error) {
-        reject(error);
-      },
-    });
-  });
+  return Promise.resolve(
+    renderToStaticMarkup(<MantineProvider>{node}</MantineProvider>).split("<!-- -->").join("")
+  );
 }
 
-function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): React.ReactElement[] {
+type ClickableButtonElement = React.ReactElement<{
+  children?: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+  type?: string;
+}>;
+
+function collectButtons(
+  node: React.ReactNode,
+  out: ClickableButtonElement[] = []
+): ClickableButtonElement[] {
   if (node == null || typeof node === "string" || typeof node === "number") {
     return out;
   }
@@ -137,15 +129,15 @@ function collectButtons(node: React.ReactNode, out: React.ReactElement[] = []): 
     return out;
   }
   if (!React.isValidElement(node)) return out;
+  const element = node as ClickableButtonElement;
   if (
-    (node.type === "button" ||
-      ((node.props as { type?: string; onClick?: unknown }).type === "button" &&
-        typeof (node.props as { onClick?: unknown }).onClick === "function")) &&
-    typeof (node.props as { className?: unknown }).className === "string"
+    (element.type === "button" ||
+      (element.props.type === "button" && typeof element.props.onClick === "function")) &&
+    typeof element.props.className === "string"
   ) {
-    out.push(node);
+    out.push(element);
   }
-  collectButtons((node.props as { children?: React.ReactNode }).children, out);
+  collectButtons(element.props.children, out);
   return out;
 }
 
@@ -273,23 +265,40 @@ describe("AcpPanel layout", () => {
   });
 
   it("renders plan view when acpTab is plan", async () => {
-    const html = await renderPanel(
-      <AcpPanel
-        {...baseProps}
-        acpTab="plan"
-        plan={{
-          plan: {
-            entries: [
-              { content: "Analyze issue", status: "completed", priority: "high" },
-              { content: "Apply patch", status: "in_progress" },
-            ],
-          },
-        }}
-      />
-    );
-    expect(html).toContain("Current Plan");
-    expect(html).toContain("Analyze issue");
-    expect(html).toContain("Apply patch");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      renderWithMantine(
+        root,
+        <AcpPanel
+          {...baseProps}
+          acpTab="plan"
+          plan={{
+            plan: {
+              entries: [
+                { content: "Analyze issue", status: "completed", priority: "high" },
+                { content: "Apply patch", status: "in_progress" },
+              ],
+            },
+          }}
+        />
+      );
+
+      await act(async () => {
+        await vi.dynamicImportSettled();
+      });
+
+      expect(container.textContent).toContain("Current Plan");
+      expect(container.textContent).toContain("Analyze issue");
+      expect(container.textContent).toContain("Apply patch");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
   });
 
   it("shows plan status on the tab when a plan exists", async () => {

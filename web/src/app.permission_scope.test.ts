@@ -82,9 +82,9 @@ const buildAgentRecord = (id: string, overrides: Partial<AgentRecord> = {}): Age
   worktree_repo: null,
   worktree_ref: null,
   code_mode: true,
-  agent_loop_enabled: null,
-  agent_loop_idle_seconds: null,
-  agent_loop_prompt: null,
+  agent_loop_enabled: undefined,
+  agent_loop_idle_seconds: undefined,
+  agent_loop_prompt: undefined,
   status: "running",
   created_at: 1,
   updated_at: 1,
@@ -275,12 +275,10 @@ describe("app helper decisions", () => {
   });
 
   it("reuses the shared empty ACP view when no active agent is selected", () => {
-    const acpLines = [
+    const acpLines: AgentEvent[] = [
       {
-        ts: 1,
-        stream: "acp",
+        ...buildEvent(1, "session-1", "acp"),
         message: JSON.stringify({ type: "agent_message", text: "hello" }),
-        session_id: "session-1",
       },
     ];
 
@@ -288,12 +286,10 @@ describe("app helper decisions", () => {
   });
 
   it("builds an ACP view when an active agent is selected", () => {
-    const acpLines = [
+    const acpLines: AgentEvent[] = [
       {
-        ts: 1,
-        stream: "acp",
+        ...buildEvent(1, "session-1", "acp"),
         message: JSON.stringify({ type: "agent_message", text: "hello" }),
-        session_id: "session-1",
       },
     ];
 
@@ -721,25 +717,17 @@ describe("app helper decisions", () => {
       ...buildEvent(30, "session-a", "acp"),
       message: JSON.stringify({ type: "run_status", status: "running" }),
     };
-    const unchangedAgent = {
-      id: "agent-9",
+    const unchangedAgent = buildAgentRecord("agent-9", {
       name: "Agent 9",
-      workdir: "/tmp/agent-9",
-      command: "codex",
-      args: [],
-      worktree_mode: "use_existing" as const,
-      code_mode: true,
       status: "stopped",
-      created_at: 1,
-      updated_at: 1,
-    };
+    });
     const activeAgentRecord = {
       ...unchangedAgent,
       id: "agent-1",
       name: "Agent 1",
     };
-    let nextAgents = [activeAgentRecord, unchangedAgent];
-    const updateAgents = vi.fn((updater: (prev: typeof nextAgents) => typeof nextAgents) => {
+    let nextAgents: AgentRecord[] = [activeAgentRecord, unchangedAgent];
+    const updateAgents = vi.fn((updater: (prev: AgentRecord[]) => AgentRecord[]) => {
       nextAgents = updater(nextAgents);
     });
 
@@ -764,18 +752,18 @@ describe("app helper decisions", () => {
 
   it("resolves viewport size with fallback and clamps to positive pixels", () => {
     expect(
-      resolveRuntimeViewportSize({ width: 399.6, height: 701.2 }, 800, 500)
+      resolveRuntimeViewportSize({ width: 399.6, height: 701.2, offsetTop: 0 }, 800, 500)
     ).toEqual({
       width: 400,
       height: 701,
     });
-    expect(resolveRuntimeViewportSize({ width: 1, height: 0 }, 812, 390)).toEqual({
+    expect(resolveRuntimeViewportSize({ width: 1, height: 0, offsetTop: 0 }, 812, 390)).toEqual({
       width: 390,
       height: 812,
     });
     expect(
       resolveRuntimeViewportSize(
-        { width: Number.NaN, height: Number.NEGATIVE_INFINITY },
+        { width: Number.NaN, height: Number.NEGATIVE_INFINITY, offsetTop: 0 },
         844,
         412
       )
@@ -803,7 +791,7 @@ describe("app helper decisions", () => {
     expect(resolveRuntimeViewportAxis(3, 390)).toBe(390);
     expect(resolveRuntimeViewportAxis(320, 844)).toBe(320);
     expect(
-      resolveRuntimeViewportSize({ width: 3, height: 9 }, 844, 390)
+      resolveRuntimeViewportSize({ width: 3, height: 9, offsetTop: 0 }, 844, 390)
     ).toEqual({
       width: 390,
       height: 844,
@@ -1219,11 +1207,11 @@ describe("app helper decisions", () => {
     const scheduledCallbacks: Array<() => void> = [];
     const clearSpy = vi.fn();
     let cancelled = false;
-    let resolvePollOnce: ((count: number) => void) | null = null;
+    let resolvePollOnce: ((count: number) => void) | undefined;
     const pollOnce = vi.fn(
       () =>
         new Promise<number>((resolve) => {
-          resolvePollOnce = resolve;
+          resolvePollOnce = (count: number) => resolve(count);
         })
     );
 

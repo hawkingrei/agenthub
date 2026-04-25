@@ -108,8 +108,8 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
         />
         <KeyValueItem label="Context:" value={run.context_id} />
         <KeyValueItem label="Created:" value={formatTs(run.created_at)} />
-        <KeyValueItem label="Started:" value={formatTs(run.started_at)} />
-        <KeyValueItem label="Ended:" value={formatTs(run.ended_at)} />
+        <KeyValueItem label="Started:" value={formatTs(run.started_at ?? null)} />
+        <KeyValueItem label="Ended:" value={formatTs(run.ended_at ?? null)} />
       </KeyValueList>
     </SurfaceCard>
   );

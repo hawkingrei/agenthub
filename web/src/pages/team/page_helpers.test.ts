@@ -78,7 +78,11 @@ function buildRunEvent(
   };
 }
 
-function buildAgentEvent(eventId: number, message: string): AgentEvent {
+function buildAgentEvent(
+  eventId: number,
+  message: string,
+  overrides: Partial<AgentEvent> = {}
+): AgentEvent {
   return {
     event_id: eventId,
     agent_id: "agent-1",
@@ -87,6 +91,7 @@ function buildAgentEvent(eventId: number, message: string): AgentEvent {
     ts: 1_700_000_000 + eventId,
     stream: "stdout",
     message,
+    ...overrides,
   };
 }
 
@@ -116,7 +121,11 @@ function buildMailboxMessage(
     message_id: messageId,
     run_id: "run-1",
     from_actor_id: "leader-agent",
+    from_peer_id: "",
+    from_actor_kind: "agent",
     to_actor_id: "worker-agent",
+    to_peer_id: "",
+    to_actor_kind: "agent",
     channel: "default",
     transport: "local",
     route: null,
@@ -317,9 +326,7 @@ describe("team page helpers", () => {
 
     expect(merged).toHaveLength(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT);
     expect(merged[0]?.message_id).toBe(6);
-    expect(merged.at(-1)?.message_id).toBe(
-      TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT + 5
-    );
+    expect(merged[merged.length - 1]?.message_id).toBe(TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT + 5);
   });
 
   it("keeps a selected thread while tasks are still loading or detail fallback exists", () => {
@@ -423,7 +430,7 @@ describe("team page helpers", () => {
 
     expect(replace).toHaveLength(TEAM_RUN_EVENT_RETENTION_LIMIT);
     expect(replace[0]?.event_id).toBe(6);
-    expect(replace.at(-1)?.event_id).toBe(105);
+    expect(replace[replace.length - 1]?.event_id).toBe(105);
   });
 
   it("keeps explicit older team run history when prepending older pages", () => {
@@ -439,7 +446,7 @@ describe("team page helpers", () => {
 
     expect(prepend).toHaveLength(TEAM_RUN_EVENT_RETENTION_LIMIT * 2);
     expect(prepend[0]?.event_id).toBe(1);
-    expect(prepend.at(-1)?.event_id).toBe(200);
+    expect(prepend[prepend.length - 1]?.event_id).toBe(200);
   });
 
   it("upserts agent events with dedupe and monotonic ordering", () => {
@@ -489,7 +496,7 @@ describe("team page helpers", () => {
 
     expect(refreshed).toHaveLength(TEAM_MEMBER_EVENT_RETENTION_LIMIT);
     expect(refreshed[0]?.event_id).toBe(5);
-    expect(refreshed.at(-1)?.event_id).toBe(304);
+    expect(refreshed[refreshed.length - 1]?.event_id).toBe(304);
   });
 
   it("builds readable agent labels with model metadata", () => {

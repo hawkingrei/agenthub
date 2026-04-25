@@ -1,5 +1,4 @@
 import { UnstyledButton } from "@mantine/core";
-import React from "react";
 import type { AcpPlanEntry } from "../acp";
 import { cx } from "../ui/primitives";
 import {

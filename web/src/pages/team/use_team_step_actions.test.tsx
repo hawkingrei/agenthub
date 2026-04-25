@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type TeamRunRecord, type TeamRunSnapshotRecord, api } from "../../api";

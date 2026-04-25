@@ -1,57 +1,38 @@
-import { PassThrough } from "node:stream";
 import { MantineProvider } from "@mantine/core";
 import React from "react";
-import { renderToPipeableStream } from "react-dom/server";
+import { renderToReadableStream } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AcpConversation } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
 import { ConversationItem } from "./conversation";
 
-function renderConversation(
+async function renderConversation(
   items: ConversationItem[],
   override?: Partial<React.ComponentProps<typeof AcpConversation>>
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const stream = new PassThrough();
-    let html = "";
-    stream.on("data", (chunk) => {
-      html += chunk.toString();
-    });
-    stream.on("end", () => {
-      resolve(html.replaceAll("<!-- -->", ""));
-    });
-    stream.on("error", reject);
-
-    const { pipe } = renderToPipeableStream(
-      <MantineProvider>
-        <AcpConversation
-          items={items}
-          windowOffset={0}
-          isFrozenView={false}
-          shouldAutoCollapse={false}
-          collapseCutoff={0}
-          runStatus={null}
-          virtualTopSpacer={0}
-          virtualBottomSpacer={0}
-          stickToBottom={true}
-          pendingCount={0}
-          avgHeight={40}
-          onScroll={() => {}}
-          containerRef={React.createRef<HTMLDivElement>()}
-          ansi={(input) => `<span class="ansi-out">${input}</span>`}
-          {...override}
-        />
-      </MantineProvider>,
-      {
-        onAllReady() {
-          pipe(stream);
-        },
-        onError(error) {
-          reject(error);
-        },
-      }
-    );
-  });
+  const stream = await renderToReadableStream(
+    <MantineProvider>
+      <AcpConversation
+        items={items}
+        windowOffset={0}
+        isFrozenView={false}
+        shouldAutoCollapse={false}
+        collapseCutoff={0}
+        runStatus={null}
+        virtualTopSpacer={0}
+        virtualBottomSpacer={0}
+        stickToBottom={true}
+        pendingCount={0}
+        avgHeight={40}
+        onScroll={() => {}}
+        containerRef={React.createRef<HTMLDivElement>()}
+        ansi={(input) => `<span class="ansi-out">${input}</span>`}
+        {...override}
+      />
+    </MantineProvider>
+  );
+  await stream.allReady;
+  return (await new Response(stream).text()).split("<!-- -->").join("");
 }
 
 describe("AcpConversation rendering", () => {
