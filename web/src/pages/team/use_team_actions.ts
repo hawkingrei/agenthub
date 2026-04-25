@@ -442,13 +442,6 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         );
         const beforeId =
           mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
-        const cachedSessionEvents =
-          mode === "replace"
-            ? peekTeamMemberAcpRenderCache(agentId, sessionId)
-            : [];
-        const hasWarmVisibleCache =
-          countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
-          countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
         let list = await teamApi.listAgentEvents(
           agentId,
           MEMBER_EVENT_PAGE_LIMIT,
@@ -457,6 +450,10 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         );
         let lastFetchedCount = list.length;
         if (mode === "replace") {
+          const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
+          const hasWarmVisibleCache =
+            countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
+            countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
           let pageCount = 1;
           while (
             !hasWarmVisibleCache &&

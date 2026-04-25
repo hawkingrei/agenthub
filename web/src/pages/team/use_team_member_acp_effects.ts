@@ -121,6 +121,9 @@ export function useTeamMemberAcpEffects({
   }, []);
 
   const scheduleLiveActivitySync = useCallback(() => {
+    if (!onLiveActivityRef.current) {
+      return;
+    }
     if (activitySyncTimerRef.current != null) {
       window.clearTimeout(activitySyncTimerRef.current);
     }

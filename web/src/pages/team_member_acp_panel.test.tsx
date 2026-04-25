@@ -493,6 +493,48 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.textContent).not.toContain("Restoring session...");
   });
 
+  it("keeps showing loading copy when only non-ACP events are present during initialization", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 0,
+        conversationRenderedItems: 0,
+        conversationTotalItems: 0,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 99,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "99",
+            ts: 1_700_000_099,
+            stream: "stdout",
+            message: "plain terminal output",
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Loading activity...");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).not.toBeNull();
+  });
+
   it("reuses cached ACP events while the selected member session is refreshing", () => {
     vi.mocked(useAcpConversation).mockImplementation(
       ((args: { acpView: { messages: Array<{ text?: string | null }> } }) =>

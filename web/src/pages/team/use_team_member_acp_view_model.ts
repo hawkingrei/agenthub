@@ -8,7 +8,6 @@ import { resolveInputDockJumpMode } from "../../components/acp_panel_helpers";
 import { useAcpConversation } from "../../hooks/use_acp_conversation";
 import {
   ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
-  hasOnlyIncompleteLeadingAcpMessage,
   omitIncompleteLeadingAcpMessageEvents,
 } from "./acp_history_prefetch";
 import {
@@ -144,14 +143,6 @@ export function useTeamMemberAcpViewModel({
     saveTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId, scopedMemberEvents);
   }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
-  const hasOnlyIncompleteLeadingConversationMessage = React.useMemo(
-    () =>
-      hasOnlyIncompleteLeadingAcpMessage(
-        effectiveMemberEvents,
-        selectedSessionId ?? null
-      ),
-    [effectiveMemberEvents, selectedSessionId]
-  );
   const visibleMemberEvents = React.useMemo(
     () =>
       omitIncompleteLeadingAcpMessageEvents(
@@ -210,11 +201,10 @@ export function useTeamMemberAcpViewModel({
     () => effectiveMemberEvents.filter((event) => event.stream !== "acp"),
     [effectiveMemberEvents]
   );
-  const hasCompleteSessionContent = visibleMemberEvents.length > 0;
   const hasVisibleConversationItems =
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =
-    hasCompleteSessionContent || acpConversation.conversationSourceItems > 0;
+    acpConversation.conversationSourceItems > 0;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
@@ -311,7 +301,6 @@ export function useTeamMemberAcpViewModel({
       ansi,
       canSendInput,
       handleSubmitRequestUserInput,
-      hasOnlyIncompleteLeadingConversationMessage,
       memberEventsLoading,
     ]
   );
