@@ -27,10 +27,8 @@ import {
 } from "./create_helpers";
 import {
   resolveAdaptiveAcpHistoryPageLimit,
-  countVisibleAcpConversationItems,
-  countRenderableAcpConversationItems,
   hasOnlyIncompleteLeadingAcpMessage,
-  shouldPrefetchInitialAcpHistory,
+  resolveInitialAcpHistoryDecision,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
 import {
@@ -467,8 +465,16 @@ export function useTeamActions(options: UseTeamActionsOptions) {
           if (mode === "replace") {
             const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
             const hasWarmVisibleCache =
-              countRenderableAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
-              countRenderableAcpConversationItems(currentSessionEvents, sessionId) >= 1;
+              resolveInitialAcpHistoryDecision(
+                cachedSessionEvents,
+                sessionId,
+                false
+              ).renderableCount >= 1 ||
+              resolveInitialAcpHistoryDecision(
+                currentSessionEvents,
+                sessionId,
+                false
+              ).renderableCount >= 1;
             const maxInitialPrefetchPages = hasOnlyIncompleteLeadingAcpMessage(
               list,
               sessionId
@@ -479,11 +485,11 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             while (
               !hasWarmVisibleCache &&
               pageCount < maxInitialPrefetchPages &&
-              shouldPrefetchInitialAcpHistory(
+              resolveInitialAcpHistoryDecision(
                 list,
                 sessionId,
                 hasPotentialOlderAgentEvents(lastFetchedCount)
-              )
+              ).shouldPrefetchInitialHistory
             ) {
               const oldestLoadedId = list[0]?.event_id;
               if (!oldestLoadedId) {
