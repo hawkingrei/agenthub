@@ -45,6 +45,7 @@ export function useTeamMemberAcpEffects({
 }: UseTeamMemberAcpEffectsOptions) {
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
+  const refreshQueuedReasonRef = useRef<"selection" | "poll">("selection");
   const latestSelectionRef = useRef({ agentId: "", sessionId: "" });
   const loadMemberEventsRef = useRef(loadMemberEvents);
   const sseConnectedRef = useRef(false);
@@ -114,6 +115,7 @@ export function useTeamMemberAcpEffects({
     }
     if (refreshInFlightRef.current) {
       refreshQueuedRef.current = true;
+      refreshQueuedReasonRef.current = reason;
       return;
     }
     refreshInFlightRef.current = true;
@@ -133,7 +135,8 @@ export function useTeamMemberAcpEffects({
       refreshInFlightRef.current = false;
       if (refreshQueuedRef.current) {
         refreshQueuedRef.current = false;
-        void refreshSelectedMemberEvents().catch(() => undefined);
+        const queuedReason = refreshQueuedReasonRef.current;
+        void refreshSelectedMemberEvents(queuedReason).catch(() => undefined);
       }
     }
   }, []);

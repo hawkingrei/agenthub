@@ -199,6 +199,51 @@ describe("useTeamMemberAcpEffects", () => {
     expect(params.loadMemberEvents).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves a queued poll refresh reason after an in-flight selection refresh", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
+    let resolveLoad: (() => void) | null = null;
+    const loadMemberEvents = vi
+      .fn<HookParams["loadMemberEvents"]>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveLoad = resolve;
+          })
+      )
+      .mockResolvedValue(undefined);
+
+    const params = createParams({
+      eventsAutoRefresh: true,
+      loadMemberEvents,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(loadMemberEvents).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+
+    expect(loadMemberEvents).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveLoad?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(loadMemberEvents).toHaveBeenCalledTimes(2);
+    expect(loadMemberEvents.mock.calls[1]?.[0]).toBe("replace");
+  });
+
   it("polls member ACP when EventSource is unavailable", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", undefined);
