@@ -16,6 +16,7 @@ export type TeamSelectorItem = {
 type TeamSelectorPanelProps = {
   busy: string | null;
   filter: string;
+  loading: boolean;
   hasTeams: boolean;
   items: readonly TeamSelectorItem[];
   bodyTextClassName: string;
@@ -65,6 +66,7 @@ const TeamSelectorEntry = React.memo(function TeamSelectorEntry({
 export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
   busy,
   filter,
+  loading,
   hasTeams,
   items,
   bodyTextClassName,
@@ -92,7 +94,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
           </ActionButton>
         </div>
 
-        {hasTeams && (
+        {!loading && hasTeams && (
           <div className="mt-1 flex items-center gap-2 px-2">
             <TextInput
               className="flex-1"
@@ -122,12 +124,17 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
 
         <div className="mt-2 flex-1 overflow-y-auto">
           <div className={TEAM_SELECTOR_LIST_CLASS}>
-            {!hasTeams && (
+            {loading && (
+              <p className={`${bodyTextClassName} px-2`} role="status" aria-live="polite">
+                Loading teams...
+              </p>
+            )}
+            {!loading && !hasTeams && (
               <p className={`${bodyTextClassName} px-2`}>
                 No teams yet. Create one to begin.
               </p>
             )}
-            {hasTeams && items.length === 0 && (
+            {!loading && hasTeams && items.length === 0 && (
               <p className={`${bodyTextClassName} px-2`}>No teams match the current filter.</p>
             )}
             {items.map((team) => (

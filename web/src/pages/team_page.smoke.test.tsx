@@ -43,6 +43,7 @@ const {
   teamPageFixture: {
     teams: [] as Array<Record<string, unknown>>,
     agents: [] as Array<Record<string, unknown>>,
+    settleTeams: true,
   },
 }));
 
@@ -78,6 +79,9 @@ vi.mock("./team/use_team_actions", () => ({
     React.useEffect(() => {
       setTeams(teamPageFixture.teams);
       setAgents(teamPageFixture.agents);
+      if (teamPageFixture.settleTeams) {
+        options.onTeamsRefreshSettled?.();
+      }
     }, [setAgents, setTeams]);
     return {
       refreshAgents: vi.fn().mockResolvedValue(undefined),
@@ -255,6 +259,7 @@ describe("TeamPage smoke render", () => {
     useMediaQueryMock.mockReturnValue(false);
     teamPageFixture.teams = [];
     teamPageFixture.agents = [];
+    teamPageFixture.settleTeams = true;
     window.history.pushState({}, "", "/teams");
   });
 
@@ -284,9 +289,49 @@ describe("TeamPage smoke render", () => {
 
     expect(markup).toContain("Teams");
     expect(markup).toContain("New Team");
-    expect(markup).toContain("No teams yet. Create one to begin.");
+    expect(markup).toContain("Loading teams...");
     expect(markup).not.toContain("Workspace Flow");
     expect(markup).not.toContain("Mission before staffing");
+  });
+
+  it("keeps the selector in loading state until teams refresh settles", async () => {
+    teamPageFixture.settleTeams = false;
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId={null}
+              routeSearch=""
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(container.textContent).toContain("Loading teams...");
+      expect(container.textContent).not.toContain("No teams yet. Create one to begin.");
+      expect(container.querySelector('input[aria-label="Filter teams"]')).toBeNull();
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
   });
 
   it("renders a team detail route without crashing", () => {
