@@ -157,6 +157,9 @@ export function shouldPrefetchInitialAcpHistory(
   if (!hasMore) {
     return false;
   }
+  if (hasOnlyIncompleteLeadingAcpMessage(events, sessionId)) {
+    return true;
+  }
   if (countRenderableAcpConversationItems(events, sessionId) >= minVisibleItems) {
     return false;
   }

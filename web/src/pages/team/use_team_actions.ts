@@ -28,6 +28,7 @@ import {
 import {
   resolveAdaptiveAcpHistoryPageLimit,
   countVisibleAcpConversationItems,
+  hasOnlyIncompleteLeadingAcpMessage,
   shouldPrefetchInitialAcpHistory,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
@@ -467,10 +468,16 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             const hasWarmVisibleCache =
               countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1 ||
               countVisibleAcpConversationItems(currentSessionEvents, sessionId) >= 1;
+            const maxInitialPrefetchPages = hasOnlyIncompleteLeadingAcpMessage(
+              list,
+              sessionId
+            )
+              ? 2
+              : MAX_INITIAL_ACP_HISTORY_PAGES;
             let pageCount = 1;
             while (
               !hasWarmVisibleCache &&
-              pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
+              pageCount < maxInitialPrefetchPages &&
               shouldPrefetchInitialAcpHistory(
                 list,
                 sessionId,

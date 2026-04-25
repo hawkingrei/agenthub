@@ -404,7 +404,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("does not auto-prefetch older ACP history when the first page already renders a partial chunked message", async () => {
+  it("fetches one older ACP history page when the first page only contains a partial leading message", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
       .mockResolvedValueOnce([
@@ -481,10 +481,18 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        11
+      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(2);
       const update = setMemberEvents.mock.calls[0]?.[0];
       expect(typeof update).toBe("function");
-      expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([11]);
+      expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([9, 10, 11]);
       expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
     } finally {
       listAgentEvents.mockRestore();
@@ -545,7 +553,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("does not auto-prefetch even for very long chunked messages without warm visible content", async () => {
+  it("fetches only one extra page even for very long chunked messages without warm visible content", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
       .mockResolvedValueOnce([
@@ -564,7 +572,8 @@ describe("useTeamActions", () => {
             chunk_index: 320,
           }),
         },
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
     const captures: TeamActions[] = [];
     const onCapture = (actions: TeamActions) => {
       captures.push(actions);
@@ -589,14 +598,22 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        180,
+        "runtime-session-1",
+        100
+      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(2);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
     }
   });
 
-  it("does not auto-prefetch when the first page is dominated by one chunked message", async () => {
+  it("fetches only one extra page when the first ACP page is dominated by one chunked message", async () => {
     const firstPage = Array.from({ length: 12 }, (_, index) => ({
       event_id: 200 + index,
       agent_id: "worker-agent",
@@ -614,7 +631,8 @@ describe("useTeamActions", () => {
     }));
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
-      .mockResolvedValueOnce(firstPage);
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([]);
     const captures: TeamActions[] = [];
     const onCapture = (actions: TeamActions) => {
       captures.push(actions);
@@ -639,7 +657,15 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        120,
+        "runtime-session-1",
+        200
+      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(2);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
