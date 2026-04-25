@@ -67,7 +67,7 @@ type UseTeamManagementActionsOptions = {
   patchTeamCreate: (patch: Partial<TeamCreateState>) => void;
   resetTeamDraft: () => void;
   refreshTeams: () => Promise<void>;
-  refreshAgents: () => Promise<void>;
+  refreshAgents: () => Promise<unknown>;
   navigateToTeamDetail: (teamId: string) => void;
   navigateToTeamSelector: () => void;
   setError: Dispatch<SetStateAction<string | null>>;

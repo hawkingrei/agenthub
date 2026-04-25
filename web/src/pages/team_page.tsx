@@ -898,6 +898,8 @@ export function TeamPage(props: TeamPageProps) {
     reduceTeamMailboxState,
     DEFAULT_TEAM_MAILBOX_STATE
   );
+  const teamMailboxStateRef = useRef(teamMailboxState);
+  teamMailboxStateRef.current = teamMailboxState;
   const msgFromActorId = teamMailboxState.msgFromActorId;
   const msgToActorId = teamMailboxState.msgToActorId;
   const msgChannel = teamMailboxState.msgChannel;
@@ -957,20 +959,22 @@ export function TeamPage(props: TeamPageProps) {
   const setChatStickToBottom = useCallback(
     (next: SetStateAction<boolean>) =>
       patchTeamMailbox({
-        chatStickToBottom:
-          typeof next === "function" ? next(teamMailboxState.chatStickToBottom) : next,
+        chatStickToBottom: resolveUpdater(
+          teamMailboxStateRef.current.chatStickToBottom,
+          next
+        ),
       }),
-    [patchTeamMailbox, teamMailboxState.chatStickToBottom]
+    [patchTeamMailbox]
   );
   const setChatSeenByConversation = useCallback(
     (next: SetStateAction<Record<string, number>>) =>
       patchTeamMailbox({
-        chatSeenByConversation:
-          typeof next === "function"
-            ? next(teamMailboxState.chatSeenByConversation)
-            : next,
+        chatSeenByConversation: resolveUpdater(
+          teamMailboxStateRef.current.chatSeenByConversation,
+          next
+        ),
       }),
-    [patchTeamMailbox, teamMailboxState.chatSeenByConversation]
+    [patchTeamMailbox]
   );
   const setInboxActorId = useCallback(
     (next: string) => patchTeamMailbox({ inboxActorId: next }),
@@ -991,17 +995,16 @@ export function TeamPage(props: TeamPageProps) {
   const setInbox = useCallback(
     (next: SetStateAction<TeamActorMessageRecord[]>) =>
       patchTeamMailbox({
-        inbox: typeof next === "function" ? next(teamMailboxState.inbox) : next,
+        inbox: resolveUpdater(teamMailboxStateRef.current.inbox, next),
       }),
-    [patchTeamMailbox, teamMailboxState.inbox]
+    [patchTeamMailbox]
   );
   const setSelectedMemberId = useCallback(
     (next: SetStateAction<string>) =>
       patchTeamMailbox({
-        selectedMemberId:
-          typeof next === "function" ? next(teamMailboxState.selectedMemberId) : next,
+        selectedMemberId: resolveUpdater(teamMailboxStateRef.current.selectedMemberId, next),
       }),
-    [patchTeamMailbox, teamMailboxState.selectedMemberId]
+    [patchTeamMailbox]
   );
   const chatMessagesRef = useRef<HTMLUListElement | null>(null);
 
@@ -2561,9 +2564,7 @@ export function TeamPage(props: TeamPageProps) {
     patchTeamCreate,
     resetTeamDraft,
     refreshTeams,
-    refreshAgents: async () => {
-      await refreshAgents();
-    },
+    refreshAgents,
     navigateToTeamDetail,
     navigateToTeamSelector,
     setError,

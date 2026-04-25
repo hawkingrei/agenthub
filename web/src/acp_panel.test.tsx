@@ -427,6 +427,7 @@ describe("AcpPanel debug loading fallback", () => {
       });
     }
     container?.remove();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -437,9 +438,8 @@ describe("AcpPanel debug loading fallback", () => {
       .mockResolvedValueOnce({
         AcpDebug: () => <div>Debug ready</div>,
       } as never);
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+    const reportErrorSpy = vi.fn();
+    vi.stubGlobal("reportError", reportErrorSpy);
 
     renderWithMantine(root, <AcpPanel {...baseProps} acpTab="debug" />);
 
@@ -456,7 +456,7 @@ describe("AcpPanel debug loading fallback", () => {
       ) as HTMLButtonElement | undefined,
       "retry button missing"
     );
-    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(reportErrorSpy).toHaveBeenCalled();
 
     act(() => {
       retryButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
