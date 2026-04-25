@@ -161,4 +161,33 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 2);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
   });
+
+  it("does not poll active run context while the member ACP tab is selected", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const refreshRunBase = (params.refreshRun as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshEventsBase = (params.refreshEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+  });
 });

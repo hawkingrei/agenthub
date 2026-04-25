@@ -10,6 +10,10 @@ import {
 import { resolveActiveRunIdForSelectedTeam, type TeamRunStatusFilter } from "./run_helpers";
 import type { TeamTab } from "./state";
 
+function shouldPollActiveRunContext(tab: TeamTab): boolean {
+  return tab !== "agent_acp" && tab !== "member_console";
+}
+
 type UseTeamRunLifecycleEffectsOptions = {
   selectedTeamId: string | null;
   runStatusFilter: TeamRunStatusFilter;
@@ -203,7 +207,13 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
   ]);
 
   useEffect(() => {
-    if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
+    if (
+      !activeRunIdForSelectedTeam ||
+      !eventsAutoRefresh ||
+      !shouldPollActiveRunContext(tab)
+    ) {
+      return;
+    }
     const refreshActiveRunContext = async () => {
       if (
         typeof document !== "undefined" &&

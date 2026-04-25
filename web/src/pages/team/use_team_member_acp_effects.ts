@@ -21,9 +21,11 @@ type UseTeamMemberAcpEffectsOptions = {
   loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
   setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
+  onLiveActivity?: () => Promise<void> | void;
 };
 
 const TEAM_MEMBER_ACP_POLL_INTERVAL_MS = 4000;
+const TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS = 500;
 
 function isMemberAcpTab(tab: TeamTab): boolean {
   return tab === "agent_acp" || tab === "member_console";
@@ -38,6 +40,7 @@ export function useTeamMemberAcpEffects({
   loadMemberEvents,
   setMemberEvents,
   setMemberEventsHasMore,
+  onLiveActivity,
 }: UseTeamMemberAcpEffectsOptions) {
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
@@ -45,8 +48,12 @@ export function useTeamMemberAcpEffects({
   const loadMemberEventsRef = useRef(loadMemberEvents);
   const sseConnectedRef = useRef(false);
   const sseConnectingRef = useRef(false);
+  const activitySyncInFlightRef = useRef(false);
+  const activitySyncQueuedRef = useRef(false);
+  const activitySyncTimerRef = useRef<number | null>(null);
   const pollFallbackAllowedRef = useRef(false);
   const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
+  const onLiveActivityRef = useRef(onLiveActivity);
 
   useEffect(() => {
     latestSelectionRef.current = {
@@ -67,6 +74,10 @@ export function useTeamMemberAcpEffects({
   useEffect(() => {
     loadMemberEventsRef.current = loadMemberEvents;
   }, [loadMemberEvents]);
+
+  useEffect(() => {
+    onLiveActivityRef.current = onLiveActivity;
+  }, [onLiveActivity]);
 
   const syncPollFallbackEnabled = useCallback(() => {
     const nextEnabled =
@@ -107,6 +118,38 @@ export function useTeamMemberAcpEffects({
         void refreshSelectedMemberEvents().catch(() => undefined);
       }
     }
+  }, []);
+
+  const scheduleLiveActivitySync = useCallback(() => {
+    if (activitySyncTimerRef.current != null) {
+      window.clearTimeout(activitySyncTimerRef.current);
+    }
+    activitySyncTimerRef.current = window.setTimeout(() => {
+      activitySyncTimerRef.current = null;
+      const runSync = async () => {
+        if (activitySyncInFlightRef.current) {
+          activitySyncQueuedRef.current = true;
+          return;
+        }
+        const callback = onLiveActivityRef.current;
+        if (!callback) {
+          return;
+        }
+        activitySyncInFlightRef.current = true;
+        try {
+          for (;;) {
+            activitySyncQueuedRef.current = false;
+            await callback();
+            if (!activitySyncQueuedRef.current) {
+              return;
+            }
+          }
+        } finally {
+          activitySyncInFlightRef.current = false;
+        }
+      };
+      void runSync().catch(() => undefined);
+    }, TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS);
   }, []);
 
   useEffect(() => {
@@ -254,6 +297,7 @@ export function useTeamMemberAcpEffects({
         setMemberEvents((prev) =>
           upsertAgentEventList(prev, liveLines, "replace", sessionId)
         );
+        scheduleLiveActivitySync();
       };
       nextSource.onerror = () => {
         if (source !== nextSource) {
@@ -268,9 +312,14 @@ export function useTeamMemberAcpEffects({
     openSource();
     return () => {
       cancelled = true;
+      if (activitySyncTimerRef.current != null) {
+        window.clearTimeout(activitySyncTimerRef.current);
+        activitySyncTimerRef.current = null;
+      }
       resetMemberAcpStream({ disablePolling: true });
     };
   }, [
+    scheduleLiveActivitySync,
     memberAcpSyncEnabled,
     selectedAgentId,
     selectedSessionId,

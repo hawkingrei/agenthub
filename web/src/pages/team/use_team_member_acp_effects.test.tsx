@@ -83,6 +83,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     loadMemberEvents: vi.fn().mockResolvedValue(undefined),
     setMemberEvents: vi.fn(),
     setMemberEventsHasMore: vi.fn(),
+    onLiveActivity: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -253,6 +254,41 @@ describe("useTeamMemberAcpEffects", () => {
     });
 
     expect(memberEvents.state.current.map((event) => event.event_id)).toEqual([1, 11]);
+  });
+
+  it("syncs related ACP consumers after matching SSE activity", async () => {
+    vi.useFakeTimers();
+    const params = createParams({
+      eventsAutoRefresh: true,
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const source = MockEventSource.instances[0];
+    await act(async () => {
+      source.emitOpen();
+      source.emitMessage(
+        JSON.stringify({
+          type: "batch",
+          payload: [buildAgentEvent(11)],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(params.onLiveActivity).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    expect(params.onLiveActivity).toHaveBeenCalledTimes(1);
   });
 
   it("resumes fallback polling after member ACP SSE errors", async () => {
