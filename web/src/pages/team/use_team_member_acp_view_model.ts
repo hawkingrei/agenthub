@@ -8,7 +8,6 @@ import { resolveInputDockJumpMode } from "../../components/acp_panel_helpers";
 import { useAcpConversation } from "../../hooks/use_acp_conversation";
 import {
   ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
-  hasIncompleteLeadingAcpMessage,
   omitIncompleteLeadingAcpMessageEvents,
 } from "./acp_history_prefetch";
 import {
@@ -98,18 +97,31 @@ export function useTeamMemberAcpViewModel({
 }: UseTeamMemberAcpViewModelArgs) {
   const selectedSessionId =
     selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
-  const effectiveMemberEvents = React.useMemo(() => {
-    if (memberEvents.length > 0) {
+  const scopedMemberEvents = React.useMemo(() => {
+    if (!selectedSessionId) {
       return memberEvents;
+    }
+    return memberEvents.filter((event) => (event.session_id ?? null) === selectedSessionId);
+  }, [memberEvents, selectedSessionId]);
+  const effectiveMemberEvents = React.useMemo(() => {
+    if (scopedMemberEvents.length > 0) {
+      return scopedMemberEvents;
+    }
+    if (!selectedSessionId) {
+      return scopedMemberEvents;
     }
     if (!memberEventsLoading) {
-      return memberEvents;
+      const cachedSessionEvents = peekTeamMemberAcpRenderCache(
+        selectedMemberId,
+        selectedSessionId
+      );
+      return cachedSessionEvents.length > 0 ? cachedSessionEvents : scopedMemberEvents;
     }
     return peekTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
-  }, [memberEvents, memberEventsLoading, selectedMemberId, selectedSessionId]);
+  }, [memberEventsLoading, scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
   React.useEffect(() => {
-    if (memberEvents.length > 0 || !memberEventsLoading) {
+    if (scopedMemberEvents.length > 0 || !memberEventsLoading) {
       return;
     }
     if (effectiveMemberEvents.length === 0) {
@@ -118,21 +130,25 @@ export function useTeamMemberAcpViewModel({
     touchTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
   }, [
     effectiveMemberEvents.length,
-    memberEvents.length,
+    scopedMemberEvents.length,
     memberEventsLoading,
     selectedMemberId,
     selectedSessionId,
   ]);
 
   React.useEffect(() => {
-    if (memberEvents.length === 0) {
+    if (scopedMemberEvents.length === 0) {
       return;
     }
-    saveTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId, memberEvents);
-  }, [memberEvents, selectedMemberId, selectedSessionId]);
+    saveTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId, scopedMemberEvents);
+  }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
   const visibleMemberEvents = React.useMemo(
-    () => omitIncompleteLeadingAcpMessageEvents(effectiveMemberEvents, selectedSessionId ?? null),
+    () =>
+      omitIncompleteLeadingAcpMessageEvents(
+        effectiveMemberEvents,
+        selectedSessionId ?? null
+      ),
     [effectiveMemberEvents, selectedSessionId]
   );
   const acpEventLines = React.useMemo(
@@ -185,12 +201,10 @@ export function useTeamMemberAcpViewModel({
     () => effectiveMemberEvents.filter((event) => event.stream !== "acp"),
     [effectiveMemberEvents]
   );
-  const hasIncompleteLeadingConversationMessage = React.useMemo(
-    () => hasIncompleteLeadingAcpMessage(effectiveMemberEvents, selectedSessionId ?? null),
-    [effectiveMemberEvents, selectedSessionId]
-  );
   const hasVisibleConversationItems =
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
+  const hasRenderableConversationContent =
+    acpConversation.conversationSourceItems > 0;
   const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
@@ -257,13 +271,14 @@ export function useTeamMemberAcpViewModel({
       stickToBottom: acpConversation.conversationStickToBottom,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
-      topHint: memberEventsLoading
+      topHint: memberEventsLoading && !hasRenderableConversationContent
         ? "Loading ACP events..."
         : acpConversation.showConversationTopReachedHint
           ? "Already at top"
           : null,
       focusedToolCallId: acpConversation.focusedConversationToolCallId,
       onScroll: acpConversation.handleConversationScroll,
+      onWheel: acpConversation.handleConversationWheel,
       containerRef: acpConversation.acpConversationRef,
       ansi,
       onSubmitRequestUserInput: canSendInput ? handleSubmitRequestUserInput : undefined,
@@ -280,6 +295,7 @@ export function useTeamMemberAcpViewModel({
       acpConversation.conversationWindowOffset,
       acpConversation.focusedConversationToolCallId,
       acpConversation.handleConversationScroll,
+      acpConversation.handleConversationWheel,
       acpConversation.isFrozenView,
       acpConversation.shouldAutoCollapse,
       acpConversation.showConversationTopReachedHint,
@@ -287,6 +303,7 @@ export function useTeamMemberAcpViewModel({
       ansi,
       canSendInput,
       handleSubmitRequestUserInput,
+      hasRenderableConversationContent,
       memberEventsLoading,
     ]
   );
@@ -329,7 +346,7 @@ export function useTeamMemberAcpViewModel({
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
-    if (memberEventsLoading && !hasVisibleConversationItems) {
+    if (memberEventsLoading && !hasRenderableConversationContent) {
       return "Loading activity...";
     }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
@@ -338,7 +355,7 @@ export function useTeamMemberAcpViewModel({
     return "Active thread";
   }, [
     acpView.hasAcp,
-    hasVisibleConversationItems,
+    hasRenderableConversationContent,
     memberEventsLoading,
     selectedMemberId,
     selectedSessionId,
@@ -359,11 +376,10 @@ export function useTeamMemberAcpViewModel({
       conversationLoading:
         effectiveAcpTab === "conversation" &&
         !hasVisibleConversationItems &&
-        ((memberEventsLoading &&
-          acpConversation.conversationSourceItems <
-            ACP_INITIAL_VISIBLE_MESSAGE_TARGET) ||
-          ((memberEventsLoading || memberEventsHasMore) &&
-            hasIncompleteLeadingConversationMessage)),
+        !hasRenderableConversationContent &&
+        memberEventsLoading &&
+        acpConversation.conversationSourceItems <
+          ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -441,7 +457,7 @@ export function useTeamMemberAcpViewModel({
       canSetModel,
       developerMode,
       effectiveAcpTab,
-      hasIncompleteLeadingConversationMessage,
+      hasRenderableConversationContent,
       handleTerminalScroll,
       jumpToTerminalBottom,
       onAcpSetConfig,
@@ -453,7 +469,6 @@ export function useTeamMemberAcpViewModel({
       conversationBottomClearance,
       hasVisibleInputDock,
       memberEventsLoading,
-      memberEventsHasMore,
       terminalOutputs,
       terminalShowJump,
       terminalRef,

@@ -21,9 +21,12 @@ type UseTeamMemberAcpEffectsOptions = {
   loadMemberEvents: (mode?: "replace" | "prepend") => Promise<void>;
   setMemberEvents: Dispatch<SetStateAction<AgentEvent[]>>;
   setMemberEventsHasMore: Dispatch<SetStateAction<boolean>>;
+  onLiveActivity?: () => Promise<void> | void;
 };
 
 const TEAM_MEMBER_ACP_POLL_INTERVAL_MS = 4000;
+const TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS = 500;
+const TEAM_MEMBER_ACP_SELECTION_REFRESH_DEDUPE_MS = 1500;
 
 function isMemberAcpTab(tab: TeamTab): boolean {
   return tab === "agent_acp" || tab === "member_console";
@@ -38,15 +41,23 @@ export function useTeamMemberAcpEffects({
   loadMemberEvents,
   setMemberEvents,
   setMemberEventsHasMore,
+  onLiveActivity,
 }: UseTeamMemberAcpEffectsOptions) {
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
+  const refreshQueuedReasonRef = useRef<"selection" | "poll">("selection");
   const latestSelectionRef = useRef({ agentId: "", sessionId: "" });
   const loadMemberEventsRef = useRef(loadMemberEvents);
   const sseConnectedRef = useRef(false);
   const sseConnectingRef = useRef(false);
+  const activitySyncInFlightRef = useRef(false);
+  const activitySyncQueuedRef = useRef(false);
+  const activitySyncTimerRef = useRef<number | null>(null);
   const pollFallbackAllowedRef = useRef(false);
   const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
+  const onLiveActivityRef = useRef(onLiveActivity);
+  const lastSelectionRefreshKeyRef = useRef<string | null>(null);
+  const lastSelectionRefreshAtRef = useRef<number>(0);
 
   useEffect(() => {
     latestSelectionRef.current = {
@@ -68,6 +79,10 @@ export function useTeamMemberAcpEffects({
     loadMemberEventsRef.current = loadMemberEvents;
   }, [loadMemberEvents]);
 
+  useEffect(() => {
+    onLiveActivityRef.current = onLiveActivity;
+  }, [onLiveActivity]);
+
   const syncPollFallbackEnabled = useCallback(() => {
     const nextEnabled =
       pollFallbackAllowedRef.current &&
@@ -78,13 +93,29 @@ export function useTeamMemberAcpEffects({
     );
   }, []);
 
-  const refreshSelectedMemberEvents = useCallback(async () => {
+  const refreshSelectedMemberEvents = useCallback(async (reason: "selection" | "poll" = "selection") => {
     const { agentId, sessionId } = latestSelectionRef.current;
     if (!agentId || !sessionId) {
       return;
     }
+    if (reason === "selection") {
+      const selectionKey = `${agentId}:${sessionId}`;
+      const now =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      if (
+        lastSelectionRefreshKeyRef.current === selectionKey &&
+        now - lastSelectionRefreshAtRef.current < TEAM_MEMBER_ACP_SELECTION_REFRESH_DEDUPE_MS
+      ) {
+        return;
+      }
+      lastSelectionRefreshKeyRef.current = selectionKey;
+      lastSelectionRefreshAtRef.current = now;
+    }
     if (refreshInFlightRef.current) {
       refreshQueuedRef.current = true;
+      refreshQueuedReasonRef.current = reason;
       return;
     }
     refreshInFlightRef.current = true;
@@ -104,9 +135,45 @@ export function useTeamMemberAcpEffects({
       refreshInFlightRef.current = false;
       if (refreshQueuedRef.current) {
         refreshQueuedRef.current = false;
-        void refreshSelectedMemberEvents().catch(() => undefined);
+        const queuedReason = refreshQueuedReasonRef.current;
+        void refreshSelectedMemberEvents(queuedReason).catch(() => undefined);
       }
     }
+  }, []);
+
+  const scheduleLiveActivitySync = useCallback(() => {
+    if (!onLiveActivityRef.current) {
+      return;
+    }
+    if (activitySyncTimerRef.current != null) {
+      window.clearTimeout(activitySyncTimerRef.current);
+    }
+    activitySyncTimerRef.current = window.setTimeout(() => {
+      activitySyncTimerRef.current = null;
+      const runSync = async () => {
+        if (activitySyncInFlightRef.current) {
+          activitySyncQueuedRef.current = true;
+          return;
+        }
+        const callback = onLiveActivityRef.current;
+        if (!callback) {
+          return;
+        }
+        activitySyncInFlightRef.current = true;
+        try {
+          for (;;) {
+            activitySyncQueuedRef.current = false;
+            await callback();
+            if (!activitySyncQueuedRef.current) {
+              return;
+            }
+          }
+        } finally {
+          activitySyncInFlightRef.current = false;
+        }
+      };
+      void runSync().catch(() => undefined);
+    }, TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS);
   }, []);
 
   useEffect(() => {
@@ -130,7 +197,7 @@ export function useTeamMemberAcpEffects({
         isMemberAcpTab(tab)
     );
     syncPollFallbackEnabled();
-    void refreshSelectedMemberEvents();
+    void refreshSelectedMemberEvents("selection");
   }, [
     eventsAutoRefresh,
     refreshSelectedMemberEvents,
@@ -155,7 +222,7 @@ export function useTeamMemberAcpEffects({
   useResumeRefresh({
     enabled: memberAcpRefreshEnabled,
     intervalMs: TEAM_MEMBER_ACP_POLL_INTERVAL_MS,
-    refresh: refreshSelectedMemberEvents,
+    refresh: () => refreshSelectedMemberEvents("poll"),
   });
 
   useEffect(() => {
@@ -254,6 +321,7 @@ export function useTeamMemberAcpEffects({
         setMemberEvents((prev) =>
           upsertAgentEventList(prev, liveLines, "replace", sessionId)
         );
+        scheduleLiveActivitySync();
       };
       nextSource.onerror = () => {
         if (source !== nextSource) {
@@ -268,9 +336,14 @@ export function useTeamMemberAcpEffects({
     openSource();
     return () => {
       cancelled = true;
+      if (activitySyncTimerRef.current != null) {
+        window.clearTimeout(activitySyncTimerRef.current);
+        activitySyncTimerRef.current = null;
+      }
       resetMemberAcpStream({ disablePolling: true });
     };
   }, [
+    scheduleLiveActivitySync,
     memberAcpSyncEnabled,
     selectedAgentId,
     selectedSessionId,

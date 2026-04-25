@@ -27,8 +27,8 @@ import {
 } from "./create_helpers";
 import {
   resolveAdaptiveAcpHistoryPageLimit,
-  countVisibleAcpConversationItems,
-  shouldPrefetchInitialAcpHistory,
+  hasOnlyIncompleteLeadingAcpMessage,
+  resolveInitialAcpHistoryDecision,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
 import {
@@ -228,6 +228,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   const teamApi = useMemo(() => buildTeamApiClient(token), [token]);
   const selectedStepIdRef = useRef(selectedStepId);
   selectedStepIdRef.current = selectedStepId;
+  const memberEventReplaceInFlightRef = useRef(
+    new Map<string, Promise<void>>()
+  );
 
   const inboxQueryStateRef = useRef({
     activeRunIdForSelectedTeam,
@@ -435,75 +438,108 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         return;
       }
 
-      setMemberEventsLoading(true);
-      try {
-        const beforeId =
-          mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
-        const cachedSessionEvents =
-          mode === "replace"
-            ? peekTeamMemberAcpRenderCache(agentId, sessionId)
-            : [];
-        const hasWarmVisibleCache =
-          cachedSessionEvents.length > 0 &&
-          countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1;
-        let list = await teamApi.listAgentEvents(
-          agentId,
-          MEMBER_EVENT_PAGE_LIMIT,
-          sessionId,
-          beforeId
-        );
-        let lastFetchedCount = list.length;
-        if (mode === "replace") {
-          let pageCount = 1;
-          while (
-            !hasWarmVisibleCache &&
-            pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
-            shouldPrefetchInitialAcpHistory(
-              list,
-              sessionId,
-              hasPotentialOlderAgentEvents(lastFetchedCount)
-            )
-          ) {
-            const oldestLoadedId = list[0]?.event_id;
-            if (!oldestLoadedId) {
-              break;
-            }
-            const nextPageLimit = resolveAdaptiveAcpHistoryPageLimit(
-              list,
-              sessionId,
-              MEMBER_EVENT_PAGE_LIMIT
-            );
-            const older = await teamApi.listAgentEvents(
-              agentId,
-              nextPageLimit,
-              sessionId,
-              oldestLoadedId
-            );
-            lastFetchedCount = older.length;
-            if (older.length === 0) {
-              break;
-            }
-            list = upsertAgentEventList(list, older, "prepend", sessionId);
-            pageCount += 1;
-          }
+      const replaceRequestKey = `${agentId}:${sessionId}`;
+      if (mode === "replace") {
+        const inFlight = memberEventReplaceInFlightRef.current.get(replaceRequestKey);
+        if (inFlight) {
+          await inFlight;
+          return;
         }
-        const currentSessionEvents = memberEventsRef.current.filter(
-          (event) => (event.session_id ?? null) === sessionId
-        );
-        const preserveLoadedHistory =
-          mode === "replace" &&
-          currentSessionEvents.length > 0 &&
-          list.length > 0 &&
-          currentSessionEvents[0]!.event_id < list[0]!.event_id;
-        setMemberEvents((prev) =>
-          upsertAgentEventList(prev, list, mode, sessionId)
-        );
-        if (!preserveLoadedHistory) {
-          setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
-        }
-      } finally {
-        setMemberEventsLoading(false);
       }
+
+      const runLoad = async () => {
+        setMemberEventsLoading(true);
+        try {
+          const currentSessionEvents = memberEventsRef.current.filter(
+            (event) => (event.session_id ?? null) === sessionId
+          );
+          const beforeId =
+            mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
+          let list = await teamApi.listAgentEvents(
+            agentId,
+            MEMBER_EVENT_PAGE_LIMIT,
+            sessionId,
+            beforeId
+          );
+          let lastFetchedCount = list.length;
+          if (mode === "replace") {
+            const cachedSessionEvents = peekTeamMemberAcpRenderCache(agentId, sessionId);
+            const hasWarmVisibleCache =
+              resolveInitialAcpHistoryDecision(
+                cachedSessionEvents,
+                sessionId,
+                false
+              ).renderableCount >= 1 ||
+              resolveInitialAcpHistoryDecision(
+                currentSessionEvents,
+                sessionId,
+                false
+              ).renderableCount >= 1;
+            const maxInitialPrefetchPages = hasOnlyIncompleteLeadingAcpMessage(
+              list,
+              sessionId
+            )
+              ? 2
+              : MAX_INITIAL_ACP_HISTORY_PAGES;
+            let pageCount = 1;
+            while (
+              !hasWarmVisibleCache &&
+              pageCount < maxInitialPrefetchPages &&
+              resolveInitialAcpHistoryDecision(
+                list,
+                sessionId,
+                hasPotentialOlderAgentEvents(lastFetchedCount)
+              ).shouldPrefetchInitialHistory
+            ) {
+              const oldestLoadedId = list[0]?.event_id;
+              if (!oldestLoadedId) {
+                break;
+              }
+              const nextPageLimit = resolveAdaptiveAcpHistoryPageLimit(
+                list,
+                sessionId,
+                MEMBER_EVENT_PAGE_LIMIT
+              );
+              const older = await teamApi.listAgentEvents(
+                agentId,
+                nextPageLimit,
+                sessionId,
+                oldestLoadedId
+              );
+              lastFetchedCount = older.length;
+              if (older.length === 0) {
+                break;
+              }
+              list = upsertAgentEventList(list, older, "prepend", sessionId);
+              pageCount += 1;
+            }
+          }
+          const preserveLoadedHistory =
+            mode === "replace" &&
+            currentSessionEvents.length > 0 &&
+            list.length > 0 &&
+            currentSessionEvents[0]!.event_id < list[0]!.event_id;
+          setMemberEvents((prev) =>
+            upsertAgentEventList(prev, list, mode, sessionId)
+          );
+          if (!preserveLoadedHistory) {
+            setMemberEventsHasMore(hasPotentialOlderAgentEvents(lastFetchedCount));
+          }
+        } finally {
+          setMemberEventsLoading(false);
+        }
+      };
+
+      if (mode !== "replace") {
+        await runLoad();
+        return;
+      }
+
+      const replacePromise = runLoad().finally(() => {
+        memberEventReplaceInFlightRef.current.delete(replaceRequestKey);
+      });
+      memberEventReplaceInFlightRef.current.set(replaceRequestKey, replacePromise);
+      await replacePromise;
     },
     [
       memberEventsRef,

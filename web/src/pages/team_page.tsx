@@ -1827,6 +1827,7 @@ export function TeamPage(props: TeamPageProps) {
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
+    snapshot,
     eventsAutoRefresh,
     tab,
     chatInboxActorId: chatActors.inboxActorId,
@@ -1992,6 +1993,15 @@ export function TeamPage(props: TeamPageProps) {
     loadMemberEvents,
     setMemberEvents,
     setMemberEventsHasMore,
+    onLiveActivity:
+      tab === "agent_acp" || tab === "member_console"
+        ? async () => {
+            if (!activeRunIdForSelectedTeam) {
+              return;
+            }
+            await refreshSnapshot(activeRunIdForSelectedTeam);
+          }
+        : undefined,
   });
   const pendingConversationCacheHydrationKeyRef = useRef<string | null>(null);
   const pendingMemberAcpCacheHydrationKeyRef = useRef<string | null>(null);

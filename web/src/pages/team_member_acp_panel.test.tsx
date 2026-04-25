@@ -7,7 +7,10 @@ import type { AgentEvent } from "../api";
 import * as acpModule from "../acp";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
-import { clearTeamMemberAcpRenderCache } from "./team/team_member_acp_render_cache";
+import {
+  clearTeamMemberAcpRenderCache,
+  saveTeamMemberAcpRenderCache,
+} from "./team/team_member_acp_render_cache";
 import {
   installReactDomTestGlobals,
   renderWithMantine,
@@ -78,6 +81,7 @@ function buildConversationHookState(overrides: Record<string, unknown> = {}) {
     conversationVirtualized: false,
     focusedConversationToolCallId: null,
     handleConversationScroll: vi.fn(),
+    handleConversationWheel: vi.fn(),
     isFrozenView: false,
     jumpToConversationBottom: vi.fn(),
     shouldAutoCollapse: false,
@@ -265,7 +269,9 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the ACP conversation in loading state while the leading chunked message is incomplete", () => {
+  it("hides a partial leading ACP chunk instead of rendering it", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
+
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -301,7 +307,12 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
 
     expect(
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
-    ).not.toBeNull();
+    ).toBeNull();
+    expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).not.toContain("Earlier reply truncated");
+    const acpConversationCalls = vi.mocked(useAcpConversation).mock.calls;
+    const latestCall = acpConversationCalls[acpConversationCalls.length - 1]?.[0];
+    expect(latestCall?.acpView.messages).toEqual([]);
   });
 
   it("keeps visible ACP content on screen while background history refresh is still loading", () => {
@@ -358,6 +369,42 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
+  });
+
+  it("uses warm session cache immediately after switching to a new ACP session", () => {
+    clearTeamMemberAcpRenderCache();
+    const cachedEvents = buildAcpEvents();
+    saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", cachedEvents);
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).not.toContain("Loading activity...");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
+    expect(useAcpConversation).toHaveBeenCalled();
+    const acpConversationCalls = vi.mocked(useAcpConversation).mock.calls;
+    const latestCall = acpConversationCalls[acpConversationCalls.length - 1]?.[0];
+    expect(
+      latestCall?.acpView.messages.some(
+        (message: { text?: string }) => message.text === "Runtime conversation is active."
+      )
+    ).toBe(true);
   });
 
   it("does not render the leading incomplete ACP message while older history is still loading", () => {
@@ -453,6 +500,48 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(container.textContent).not.toContain("Restoring session...");
   });
 
+  it("keeps showing loading copy when only non-ACP events are present during initialization", () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 0,
+        conversationRenderedItems: 0,
+        conversationTotalItems: 0,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[
+          {
+            event_id: 99,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "99",
+            ts: 1_700_000_099,
+            stream: "stdout",
+            message: "plain terminal output",
+          },
+        ]}
+        memberEventsHasMore={false}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("Loading activity...");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).not.toBeNull();
+  });
+
   it("reuses cached ACP events while the selected member session is refreshing", () => {
     vi.mocked(useAcpConversation).mockImplementation(
       ((args: { acpView: { messages: Array<{ text?: string | null }> } }) =>
@@ -506,6 +595,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     );
 
     expect(container.textContent).toContain("Runtime conversation is active.");
+    expect(container.textContent).not.toContain("Loading activity...");
     expect(
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();

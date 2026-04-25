@@ -41,6 +41,7 @@ type AcpConversationProps = {
   focusedToolCallId?: string | null;
   bottomClearancePx?: number;
   onScroll: () => void;
+  onWheel?: (event: React.WheelEvent<HTMLDivElement>) => void;
   containerRef: React.Ref<HTMLDivElement>;
   ansi: (input: string) => string;
   onSubmitRequestUserInput?: (input: string) => Promise<void> | void;
@@ -73,6 +74,7 @@ export function AcpConversation({
   focusedToolCallId,
   bottomClearancePx = 0,
   onScroll,
+  onWheel,
   containerRef,
   ansi,
   onSubmitRequestUserInput,
@@ -94,6 +96,7 @@ export function AcpConversation({
       data-acp-conversation-scroll="true"
       ref={containerRef}
       onScroll={onScroll}
+      onWheel={onWheel}
       style={conversationScrollStyle}
     >
       <div className="acp-conversation-inner flex w-full flex-col gap-1">

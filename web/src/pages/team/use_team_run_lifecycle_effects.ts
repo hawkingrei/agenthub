@@ -10,11 +10,16 @@ import {
 import { resolveActiveRunIdForSelectedTeam, type TeamRunStatusFilter } from "./run_helpers";
 import type { TeamTab } from "./state";
 
+function shouldPollActiveRunContext(tab: TeamTab): boolean {
+  return tab !== "agent_acp" && tab !== "member_console";
+}
+
 type UseTeamRunLifecycleEffectsOptions = {
   selectedTeamId: string | null;
   runStatusFilter: TeamRunStatusFilter;
   runs: TeamRunRecord[];
   activeRunIdForSelectedTeam: string | null;
+  snapshot: TeamRunSnapshotRecord | null;
   eventsAutoRefresh: boolean;
   tab: TeamTab;
   chatInboxActorId: string;
@@ -53,6 +58,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     runStatusFilter,
     runs,
     activeRunIdForSelectedTeam,
+    snapshot,
     eventsAutoRefresh,
     tab,
     chatInboxActorId,
@@ -78,6 +84,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     setChatStickToBottom,
   } = options;
   const hasCompletedInitialActiveRunRefreshRef = useRef(false);
+  const activeRunContextPollingEnabled = shouldPollActiveRunContext(tab);
 
   useEffect(() => {
     hasCompletedInitialActiveRunRefreshRef.current = false;
@@ -154,10 +161,69 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       setChatStickToBottom(true);
       return;
     }
+  }, [
+    activeRunIdForSelectedTeam,
+    setChatSeenByConversation,
+    setChatStickToBottom,
+    setEvents,
+    setInbox,
+    setMemberEvents,
+    setSelectedMemberId,
+    setSnapshot,
+    setSteps,
+  ]);
+
+  const currentSnapshotRunId = snapshot?.run.id ?? null;
+  const currentSnapshotTeamId = snapshot?.team.id ?? null;
+
+  useEffect(() => {
+    if (!activeRunIdForSelectedTeam || activeRunContextPollingEnabled) {
+      return;
+    }
+    if (
+      currentSnapshotRunId === activeRunIdForSelectedTeam &&
+      (!selectedTeamId || currentSnapshotTeamId === selectedTeamId)
+    ) {
+      return;
+    }
+    let canceled = false;
+    const hydrateSnapshot = async () => {
+      try {
+        setError(null);
+        await refreshSnapshot(activeRunIdForSelectedTeam);
+      } catch (err) {
+        if (!canceled) {
+          setError(parseError(err));
+        }
+      }
+    };
+    void hydrateSnapshot();
+    return () => {
+      canceled = true;
+    };
+  }, [
+    activeRunContextPollingEnabled,
+    activeRunIdForSelectedTeam,
+    currentSnapshotRunId,
+    currentSnapshotTeamId,
+    parseError,
+    refreshSnapshot,
+    selectedTeamId,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (!activeRunIdForSelectedTeam || !activeRunContextPollingEnabled) {
+      return;
+    }
     let canceled = false;
     const loadAll = async () => {
       try {
         setError(null);
+        if (tab === "mailbox") {
+          await refreshSnapshot(activeRunIdForSelectedTeam);
+          return;
+        }
         const run = await refreshRun(activeRunIdForSelectedTeam);
         if (canceled) return;
         if (selectedTeamId && run.team_id !== selectedTeamId) {
@@ -183,6 +249,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       canceled = true;
     };
   }, [
+    activeRunContextPollingEnabled,
     activeRunIdForSelectedTeam,
     parseError,
     refreshEvents,
@@ -191,19 +258,18 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     refreshSteps,
     selectedTeamId,
     setActiveRunId,
-    setChatSeenByConversation,
-    setChatStickToBottom,
     setError,
-    setEvents,
-    setInbox,
-    setMemberEvents,
-    setSelectedMemberId,
-    setSnapshot,
-    setSteps,
+    tab,
   ]);
 
   useEffect(() => {
-    if (!activeRunIdForSelectedTeam || !eventsAutoRefresh) return;
+    if (
+      !activeRunIdForSelectedTeam ||
+      !eventsAutoRefresh ||
+      !activeRunContextPollingEnabled
+    ) {
+      return;
+    }
     const refreshActiveRunContext = async () => {
       if (
         typeof document !== "undefined" &&
@@ -253,6 +319,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     };
   }, [
     activeRunIdForSelectedTeam,
+    activeRunContextPollingEnabled,
     chatInboxActorId,
     eventsAutoRefresh,
     loadInbox,

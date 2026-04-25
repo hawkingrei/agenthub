@@ -5,6 +5,7 @@ import {
   type RefCallback,
   useRef,
   useState,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { AcpView } from "../acp";
 import {
@@ -71,6 +72,7 @@ type UseAcpConversationResult = {
   jumpToConversationBottom: () => void;
   jumpToConversationToolCall: (toolCallId: string) => boolean;
   handleConversationScroll: () => void;
+  handleConversationWheel: (event: WheelEvent | ReactWheelEvent<HTMLDivElement>) => void;
 };
 
 type ConversationVirtualSlice = {
@@ -382,6 +384,7 @@ export function useAcpConversation({
     prevTop: number;
   } | null>(null);
   const conversationLeftTopZoneSinceLoadRef = useRef(false);
+  const lastConversationLoadOlderAtRef = useRef<number>(0);
   const lastConversationScrollTopRef = useRef<number | null>(null);
   const focusedToolCallResetTimerRef = useRef<number | null>(null);
   const [conversationAvgHeight, setConversationAvgHeight] = useState(48);
@@ -507,6 +510,23 @@ export function useAcpConversation({
   const shouldLoadOlder = useCallback(() => {
     return shouldLoadOlderFromMeta(activeAgent, activeSessionId, eventMeta);
   }, [activeAgent, activeSessionId, eventMeta]);
+  const triggerLoadOlder = useCallback(() => {
+    if (!shouldLoadOlder()) {
+      return false;
+    }
+    const now =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    if (now - lastConversationLoadOlderAtRef.current < 400) {
+      return false;
+    }
+    lastConversationLoadOlderAtRef.current = now;
+    conversationLeftTopZoneSinceLoadRef.current = false;
+    prepareForLoadOlder();
+    onLoadOlder();
+    return true;
+  }, [onLoadOlder, shouldLoadOlder]);
   const conversationMeta = useMemo<AcpConversationEventMeta | null>(() => {
     if (!activeAgent) return null;
     const key = `${activeAgent}:${activeSessionId ?? "latest"}`;
@@ -767,19 +787,42 @@ export function useAcpConversation({
       conversationLeftTopZoneSinceLoadRef.current &&
       continuedUpwardScrollInTopZone
     ) {
-      conversationLeftTopZoneSinceLoadRef.current = false;
-      prepareForLoadOlder();
-      onLoadOlder();
+      triggerLoadOlder();
     }
   }, [
     conversationStickToBottom,
     conversationMessages,
-    onLoadOlder,
     shouldVirtualizeConversation,
     syncConversationViewport,
     shouldLoadOlder,
+    triggerLoadOlder,
     conversationMeta,
   ]);
+
+  const handleConversationWheel = useCallback(
+    (event: WheelEvent | ReactWheelEvent<HTMLDivElement>) => {
+      if (event.deltaY >= 0) {
+        return;
+      }
+      const el = acpConversationElementRef.current;
+      if (!el) {
+        return;
+      }
+      if (!shouldLoadOlder()) {
+        return;
+      }
+      const isAtOrNearTop = el.scrollTop <= LOAD_OLDER_TRIGGER_TOP_PX;
+      if (!isAtOrNearTop) {
+        return;
+      }
+      const hasScrollableOverflow = el.scrollHeight > el.clientHeight + 1;
+      if (hasScrollableOverflow && el.scrollTop > 0) {
+        return;
+      }
+      triggerLoadOlder();
+    },
+    [shouldLoadOlder, triggerLoadOlder]
+  );
 
   const handleConversationScroll = useCallback(() => {
     const throttle = conversationScrollThrottleRef.current;
@@ -1055,5 +1098,6 @@ export function useAcpConversation({
     jumpToConversationBottom,
     jumpToConversationToolCall,
     handleConversationScroll,
+    handleConversationWheel,
   };
 }

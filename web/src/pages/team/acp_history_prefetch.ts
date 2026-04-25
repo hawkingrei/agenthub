@@ -4,6 +4,19 @@ import { buildConversationMessages } from "../../conversation";
 
 export const ACP_INITIAL_VISIBLE_MESSAGE_TARGET = 1;
 export const ACP_HISTORY_PAGE_LIMIT_MAX = 180;
+export type InitialAcpHistoryState =
+  | "empty"
+  | "renderable"
+  | "partial_only"
+  | "partial_with_renderable_tail";
+
+export type InitialAcpHistoryDecision = {
+  state: InitialAcpHistoryState;
+  visibleCount: number;
+  renderableCount: number;
+  hasIncompleteLeadingMessage: boolean;
+  shouldPrefetchInitialHistory: boolean;
+};
 
 type LeadingAcpMessageChunkState = {
   messageId: string | null;
@@ -103,6 +116,20 @@ export function hasIncompleteLeadingAcpMessage(
   return resolveLeadingAcpMessageChunkState(events, sessionId).incomplete;
 }
 
+export function hasOnlyIncompleteLeadingAcpMessage(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): boolean {
+  if (!hasIncompleteLeadingAcpMessage(events, sessionId)) {
+    return false;
+  }
+  const visibleEvents = omitIncompleteLeadingAcpMessageEvents(events, sessionId);
+  if (countVisibleAcpConversationItems(visibleEvents, sessionId) >= 1) {
+    return false;
+  }
+  return countVisibleAcpConversationItems(events, sessionId) >= 1;
+}
+
 export function countVisibleAcpConversationItems(
   events: AgentEvent[],
   sessionId: string | null | undefined
@@ -124,7 +151,7 @@ export function countVisibleAcpConversationItems(
   ).length;
 }
 
-function countRenderableAcpConversationItems(
+export function countRenderableAcpConversationItems(
   events: AgentEvent[],
   sessionId: string | null | undefined
 ): number {
@@ -134,22 +161,54 @@ function countRenderableAcpConversationItems(
   );
 }
 
+export function resolveInitialAcpHistoryDecision(
+  events: AgentEvent[],
+  sessionId: string | null | undefined,
+  hasMore: boolean,
+  minVisibleItems: number = ACP_INITIAL_VISIBLE_MESSAGE_TARGET
+): InitialAcpHistoryDecision {
+  const visibleCount = countVisibleAcpConversationItems(events, sessionId);
+  const renderableCount = countRenderableAcpConversationItems(events, sessionId);
+  const hasIncompleteLeadingMessage = hasIncompleteLeadingAcpMessage(events, sessionId);
+  const hasOnlyPartialLeadingMessage =
+    hasIncompleteLeadingMessage &&
+    renderableCount < minVisibleItems &&
+    visibleCount >= minVisibleItems;
+
+  let state: InitialAcpHistoryState;
+  if (renderableCount >= minVisibleItems) {
+    state = hasIncompleteLeadingMessage
+      ? "partial_with_renderable_tail"
+      : "renderable";
+  } else if (hasOnlyPartialLeadingMessage) {
+    state = "partial_only";
+  } else {
+    state = "empty";
+  }
+
+  return {
+    state,
+    visibleCount,
+    renderableCount,
+    hasIncompleteLeadingMessage,
+    shouldPrefetchInitialHistory:
+      hasMore &&
+      (state === "partial_only" || visibleCount < minVisibleItems),
+  };
+}
+
 export function shouldPrefetchInitialAcpHistory(
   events: AgentEvent[],
   sessionId: string | null | undefined,
   hasMore: boolean,
   minVisibleItems: number = ACP_INITIAL_VISIBLE_MESSAGE_TARGET
 ): boolean {
-  if (!hasMore) {
-    return false;
-  }
-  if (countRenderableAcpConversationItems(events, sessionId) >= minVisibleItems) {
-    return false;
-  }
-  if (hasIncompleteLeadingAcpMessage(events, sessionId)) {
-    return true;
-  }
-  return countVisibleAcpConversationItems(events, sessionId) < minVisibleItems;
+  return resolveInitialAcpHistoryDecision(
+    events,
+    sessionId,
+    hasMore,
+    minVisibleItems
+  ).shouldPrefetchInitialHistory;
 }
 
 function countLeadingMessageChunkEvents(

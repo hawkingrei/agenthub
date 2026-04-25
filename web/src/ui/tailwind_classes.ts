@@ -35,24 +35,24 @@ export const ACP_PANEL_ROOT =
 export const ACP_PANEL_ROOT_CLASS = ACP_PANEL_ROOT;
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
+  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
 
 export const ACP_TABS_CLASS =
-  "inline-flex max-w-full flex-wrap items-center gap-0.5";
+  "inline-flex max-w-full shrink-0 items-center gap-1 rounded-xl border border-notion-border/80 bg-white/96 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
 
 export const ACP_PANEL_TABS_CLASS = ACP_TABS_CLASS;
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
-  "acp-tab-button inline-flex h-6 items-center rounded-md px-2 text-[11px] font-medium leading-none transition";
+  "acp-tab-button inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-transparent px-2.5 text-[11px] font-semibold leading-none transition";
 
 export const ACP_TAB_BUTTON_ACTIVE_CLASS =
-  "bg-[rgba(55,53,47,0.07)] text-notion-text";
+  "border-notion-border bg-white text-notion-text shadow-sm";
 
 export const ACP_TAB_BUTTON_IDLE_CLASS =
   "text-notion-text-muted hover:bg-[rgba(55,53,47,0.04)] hover:text-notion-text";
 
 export const ACP_TAB_BADGE_CLASS =
-  "acp-tab-badge ml-1 rounded-full bg-[rgba(55,53,47,0.06)] px-1.5 py-0.5 text-[10px] font-medium text-notion-text-muted";
+  "acp-tab-badge ml-1 rounded-full bg-[rgba(55,53,47,0.06)] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted";
 
 export const ACP_JUMP_BOTTOM_BUTTON_CLASS =
   "acp-jump-bottom absolute bottom-24 right-6 z-[70] inline-flex h-9 w-9 items-center justify-center rounded-full border border-notion-border bg-white shadow-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text active:translate-y-px";

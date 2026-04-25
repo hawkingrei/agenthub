@@ -37,6 +37,10 @@ import {
   renderWithMantine,
   required,
 } from "../test_utils/react_test_helpers";
+import {
+  clearTeamMemberAcpRenderCache,
+  saveTeamMemberAcpRenderCache,
+} from "./team/team_member_acp_render_cache";
 
 installReactDomTestGlobals();
 
@@ -447,12 +451,14 @@ describe("team panels interactions", () => {
   let root: Root;
 
   beforeEach(() => {
+    clearTeamMemberAcpRenderCache();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
   });
 
   afterEach(() => {
+    clearTeamMemberAcpRenderCache();
     act(() => {
       root.unmount();
     });
@@ -5294,6 +5300,21 @@ describe("team panels interactions", () => {
   });
 
   it("TeamMemberAcpPanel keeps ACP shell visible when the session has no thread events yet", () => {
+    saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", [
+      {
+        event_id: 31,
+        agent_id: "worker-agent",
+        session_id: "runtime-session-1",
+        seq: "31",
+        ts: 1_700_000_301,
+        stream: "acp",
+        message: JSON.stringify({
+          type: "agent_message",
+          text: "Runtime session fallback works.",
+        }),
+      },
+    ]);
+
     renderWithMantine(
       root,
       <TeamMemberAcpPanel
@@ -5312,9 +5333,11 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("Active thread has no events yet");
+    expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).toContain("Already at top");
     expect(container.textContent).toContain("Activity");
     expect(container.textContent).toContain("Plan");
+    expect(container.textContent).toContain("Runtime session fallback works.");
   });
 
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {

@@ -88,6 +88,8 @@ agenthub/
 
 - Test-first expectation: non-trivial behavior changes should start from a focused failing or regression test when practical, and the test should remain part of the merged change
 - Bugfix policy: every bugfix must include a corresponding test that reproduces the fixed behavior or locks the regression boundary
+- Skill pointer: use `.agents/skills/agenthub-testing/SKILL.md` when choosing focused validation and regression coverage for AgentHub changes
+- Skill pointer: use `.agents/skills/agenthub-acp-rendering/SKILL.md` for ACP rendering, cache handoff, partial history recovery, and Chrome DevTools MCP verification work
 - Username/password login and join/bootstrap flows
 - ACP rendering and history replay
 - WS reconnect and message integrity (optional)
