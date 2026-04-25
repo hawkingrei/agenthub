@@ -4,7 +4,7 @@ This guide covers local source development for AgentHub contributors.
 
 ## Requirements
 
-- Rust (stable)
+- Rust 1.95.0
 - Node.js 20+
 - Bazel / Bazelisk (optional, for Bazel-driven checks)
 - Git
