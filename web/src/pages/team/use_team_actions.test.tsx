@@ -875,4 +875,57 @@ describe("useTeamActions", () => {
       cleanupHarness(root, container);
     }
   });
+
+  it("uses the active session head when loading older ACP history", async () => {
+    const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      memberEventsRef: {
+        current: [
+          {
+            event_id: 100,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-2",
+            seq: "100",
+            ts: 200,
+            stream: "acp",
+            message: "other-session",
+          },
+          {
+            event_id: 10,
+            agent_id: "worker-agent",
+            session_id: "runtime-session-1",
+            seq: "10",
+            ts: 100,
+            stream: "acp",
+            message: "current-session",
+          },
+        ],
+      },
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("prepend");
+      });
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        10
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
 });

@@ -7,7 +7,10 @@ import type { AgentEvent } from "../api";
 import * as acpModule from "../acp";
 import { TeamMemberAcpPanel } from "./team_member_acp_panel";
 import { useAcpConversation } from "../hooks/use_acp_conversation";
-import { clearTeamMemberAcpRenderCache } from "./team/team_member_acp_render_cache";
+import {
+  clearTeamMemberAcpRenderCache,
+  saveTeamMemberAcpRenderCache,
+} from "./team/team_member_acp_render_cache";
 import {
   installReactDomTestGlobals,
   renderWithMantine,
@@ -375,6 +378,37 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
+  });
+
+  it("uses warm session cache immediately after switching to a new ACP session", () => {
+    clearTeamMemberAcpRenderCache();
+    const cachedEvents = buildAcpEvents();
+    saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", cachedEvents);
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).not.toContain("Loading activity...");
+    expect(
+      container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
+    ).toBeNull();
+    expect(useAcpConversation).toHaveBeenCalled();
+    const latestCall = vi.mocked(useAcpConversation).mock.calls.at(-1)?.[0];
+    expect(latestCall?.acpView.messages.some((message) => message.text === "Runtime conversation is active.")).toBe(true);
   });
 
   it("does not render the leading incomplete ACP message while older history is still loading", () => {

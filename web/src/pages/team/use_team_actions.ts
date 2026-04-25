@@ -437,11 +437,11 @@ export function useTeamActions(options: UseTeamActionsOptions) {
 
       setMemberEventsLoading(true);
       try {
-        const beforeId =
-          mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
         const currentSessionEvents = memberEventsRef.current.filter(
           (event) => (event.session_id ?? null) === sessionId
         );
+        const beforeId =
+          mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
         const cachedSessionEvents =
           mode === "replace"
             ? peekTeamMemberAcpRenderCache(agentId, sessionId)

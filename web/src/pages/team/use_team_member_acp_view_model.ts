@@ -108,8 +108,15 @@ export function useTeamMemberAcpViewModel({
     if (scopedMemberEvents.length > 0) {
       return scopedMemberEvents;
     }
-    if (!memberEventsLoading) {
+    if (!selectedSessionId) {
       return scopedMemberEvents;
+    }
+    if (!memberEventsLoading) {
+      const cachedSessionEvents = peekTeamMemberAcpRenderCache(
+        selectedMemberId,
+        selectedSessionId
+      );
+      return cachedSessionEvents.length > 0 ? cachedSessionEvents : scopedMemberEvents;
     }
     return peekTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId);
   }, [memberEventsLoading, scopedMemberEvents, selectedMemberId, selectedSessionId]);
@@ -348,7 +355,6 @@ export function useTeamMemberAcpViewModel({
   }, [
     acpView.hasAcp,
     hasRenderableConversationContent,
-    hasVisibleConversationItems,
     memberEventsLoading,
     selectedMemberId,
     selectedSessionId,
