@@ -649,6 +649,43 @@ describe("useAcpConversation scroll rerender suppression", () => {
     });
     expect(onLoadOlder).toHaveBeenCalledTimes(1);
   });
+
+  it("loads older history on upward wheel at the top when the conversation cannot scroll", () => {
+    const onLoadOlder = vi.fn();
+    const acpView = buildManyMessageView(1);
+    scrollTop = 0;
+    act(() => {
+      root.render(
+        <HookHarness
+          onSnapshot={onSnapshot}
+          acpView={acpView}
+          onLoadOlder={onLoadOlder}
+          eventMeta={{
+            "agent-1:session-1": {
+              oldestId: 1,
+              hasMore: true,
+              loading: false,
+              loaded: true,
+            },
+          }}
+        />
+      );
+    });
+
+    act(() => {
+      snapshot?.handleConversationWheel({
+        deltaY: -32,
+      } as WheelEvent);
+    });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      snapshot?.handleConversationWheel({
+        deltaY: -32,
+      } as WheelEvent);
+    });
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
 });
 
 function restoreDescriptor(

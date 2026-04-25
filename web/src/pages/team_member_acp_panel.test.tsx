@@ -81,6 +81,7 @@ function buildConversationHookState(overrides: Record<string, unknown> = {}) {
     conversationVirtualized: false,
     focusedConversationToolCallId: null,
     handleConversationScroll: vi.fn(),
+    handleConversationWheel: vi.fn(),
     isFrozenView: false,
     jumpToConversationBottom: vi.fn(),
     shouldAutoCollapse: false,

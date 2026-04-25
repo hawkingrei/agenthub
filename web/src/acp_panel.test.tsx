@@ -51,6 +51,7 @@ const baseProps: AcpPanelProps = {
     pendingCount: 0,
     avgHeight: 40,
     onScroll: () => {},
+    onWheel: () => {},
     containerRef: React.createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement>,
     ansi: (input) => input,
   },
@@ -264,6 +265,46 @@ describe("AcpPanel layout", () => {
     expect(onSelectTab).toHaveBeenNthCalledWith(1, "conversation");
     expect(onSelectTab).toHaveBeenNthCalledWith(2, "plan");
     expect(onSelectTab).toHaveBeenNthCalledWith(3, "debug");
+  });
+
+  it("forwards upward wheel events to the ACP conversation container", async () => {
+    const onWheel = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      renderWithMantine(
+        root,
+        <AcpPanel
+          {...baseProps}
+          conversation={{
+            ...baseProps.conversation,
+            onWheel,
+          }}
+        />
+      );
+
+      const conversationScroll = required(
+        container.querySelector("[data-acp-conversation-scroll='true']") as
+          | HTMLDivElement
+          | undefined,
+        "conversation scroll container missing"
+      );
+
+      act(() => {
+        conversationScroll.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, deltaY: -36 })
+        );
+      });
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+
+    expect(onWheel).toHaveBeenCalledTimes(1);
   });
 
   it("renders plan view when acpTab is plan", async () => {
