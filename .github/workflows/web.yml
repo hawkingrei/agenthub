@@ -25,7 +25,7 @@ jobs:
         run: npm run lint
         working-directory: web
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: npm exec tsc -- --noEmit
         working-directory: web
       - name: Test with coverage
         run: npm run test:coverage

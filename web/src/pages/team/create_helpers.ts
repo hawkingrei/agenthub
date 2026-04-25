@@ -461,7 +461,11 @@ export function parseOptionalJson(raw: string, field: string): unknown | undefin
     return JSON.parse(trimmed) as unknown;
   } catch (err) {
     const detail = err instanceof Error ? err.message : "unknown parse error";
-    throw new Error(`${field} must be valid JSON (${detail})`, { cause: err });
+    const symptom = new Error(`${field} must be valid JSON (${detail})`) as Error & {
+      cause?: unknown;
+    };
+    symptom.cause = err;
+    throw symptom;
   }
 }
 
