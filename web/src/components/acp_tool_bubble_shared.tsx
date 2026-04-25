@@ -7,15 +7,16 @@ import type {
 import { formatConversationPreview, unescapeLineBreaks } from "../conversation";
 import type { ToolGroupStatusTone } from "./acp_tool_call_meta";
 
-export const ACP_TOOL_ROW_CLASS = "acp-row group relative mb-1 flex w-full flex-col items-start rounded-lg border-2 border-transparent px-2 py-2 transition hover:border-black hover:bg-white active:border-black active:bg-white";
+export const ACP_TOOL_ROW_CLASS =
+  "acp-row group relative mb-0.5 flex w-full flex-col items-start rounded-lg border border-transparent px-1.5 py-1.5 transition hover:border-black/10 hover:bg-white/80";
 export const ACP_TOOL_CARD_CLASS =
-  "self-start w-full max-w-full overflow-hidden rounded-[10px] border border-black/6 bg-white/96 shadow-none";
-export const ACP_TOOL_CARD_NESTED_CLASS = "max-w-full bg-slate-50/56 shadow-none";
+  "self-start w-full max-w-full overflow-hidden rounded-xl border border-black/6 bg-white/94 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+export const ACP_TOOL_CARD_NESTED_CLASS = "max-w-full bg-slate-50/48 shadow-none";
 export const ACP_TOOL_SUMMARY_CLASS =
   "flex cursor-pointer list-none items-start gap-2 px-2 py-1.5 [&::-webkit-details-marker]:hidden";
 export const ACP_TOOL_TITLE_CLASS =
-  "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-slate-900";
-export const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-1.5 px-2 pb-2";
+  "min-w-0 flex-1 text-[12px] font-semibold leading-5 text-slate-900";
+export const ACP_TOOL_GROUP_LIST_CLASS = "flex flex-col gap-1 px-2 pb-2";
 
 const FAILED_TOOL_STATUSES = new Set([
   "failed",
