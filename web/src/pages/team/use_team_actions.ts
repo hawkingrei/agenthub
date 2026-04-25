@@ -27,6 +27,7 @@ import {
 } from "./create_helpers";
 import {
   resolveAdaptiveAcpHistoryPageLimit,
+  countVisibleAcpConversationItems,
   shouldPrefetchInitialAcpHistory,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
@@ -42,6 +43,7 @@ import {
   TEAM_RUN_PAGE_LIMIT,
   type TeamRunBrowserState,
 } from "./state";
+import { peekTeamMemberAcpRenderCache } from "./team_member_acp_render_cache";
 
 const MAX_INITIAL_ACP_HISTORY_PAGES = 6;
 
@@ -437,6 +439,13 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       try {
         const beforeId =
           mode === "prepend" ? memberEventsRef.current[0]?.event_id : undefined;
+        const cachedSessionEvents =
+          mode === "replace"
+            ? peekTeamMemberAcpRenderCache(agentId, sessionId)
+            : [];
+        const hasWarmVisibleCache =
+          cachedSessionEvents.length > 0 &&
+          countVisibleAcpConversationItems(cachedSessionEvents, sessionId) >= 1;
         let list = await teamApi.listAgentEvents(
           agentId,
           MEMBER_EVENT_PAGE_LIMIT,
@@ -447,6 +456,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         if (mode === "replace") {
           let pageCount = 1;
           while (
+            !hasWarmVisibleCache &&
             pageCount < MAX_INITIAL_ACP_HISTORY_PAGES &&
             shouldPrefetchInitialAcpHistory(
               list,

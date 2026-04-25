@@ -218,7 +218,7 @@ export function useTeamConversationEffects({
       updateSseState(reconnectAttempt > 0 ? "reconnecting" : "connecting");
       const nextSource = new EventSource(
         `${location.origin}/sse/teams/${encodeURIComponent(
-          selectedTeamId
+          selectedTeamId ?? ""
         )}/tasks/${encodeURIComponent(conversationId)}/messages?token=${encodeURIComponent(
           token
         )}`

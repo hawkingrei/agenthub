@@ -1,5 +1,11 @@
 import React from "react";
-import { ConversationItem, flattenExploreGroupToolCalls, formatConversationPreview, unescapeLineBreaks } from "../conversation";
+import {
+  type ExploreGroupConversationItem,
+  type MessageConversationItem,
+  flattenExploreGroupToolCalls,
+  formatConversationPreview,
+  unescapeLineBreaks,
+} from "../conversation";
 import { resolveToolGroupStatusClassName } from "./acp_tool_call_meta";
 import { deriveToolCallOpenState, isToolCallEffectivelyLive, useAutoCollapseToolFoldWhenOutOfView } from "./acp_tool_fold";
 import { ToolCallBubble } from "./acp_tool_call_bubble";
@@ -142,7 +148,7 @@ function ExploreThinkingEntry({
   item,
   index,
 }: {
-  item: Extract<ConversationItem, { kind: "agent_thinking" }>;
+  item: MessageConversationItem & { kind: "agent_thinking" };
   index: number;
 }) {
   return (
@@ -158,7 +164,7 @@ function ExploreThinkingEntry({
 }
 
 function summarizeExploreGroupPreview(
-  items: ExploreGroupBubbleProps["msg"]["items"]
+  items: ExploreGroupConversationItem["items"]
 ): string {
   const firstThought = items.find((item) => item.kind === "agent_thinking");
   if (!firstThought) return "";

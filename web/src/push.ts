@@ -35,7 +35,8 @@ export async function ensurePushSubscription(token: string) {
     } catch {
       return;
     }
-    const key = urlBase64ToUint8Array(vapid.public_key);
+    const keyBytes = urlBase64ToUint8Array(vapid.public_key);
+    const key = new Uint8Array(keyBytes);
     try {
       sub = await readyRegistration.pushManager.subscribe({
         userVisibleOnly: true,

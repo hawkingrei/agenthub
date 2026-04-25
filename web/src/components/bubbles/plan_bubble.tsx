@@ -1,7 +1,7 @@
 import React from "react";
 import {
   formatConversationPreview,
-  type ConversationItem,
+  type MessageConversationItem,
 } from "../../conversation";
 import {
   ACP_BUBBLE_PLAN_CLASS,
@@ -24,7 +24,7 @@ const ACP_PLAN_LIST_CLASS = "acp-plan-list mt-2.5 grid list-none gap-1.5 p-0";
 const ACP_PLAN_CONTENT_CLASS = "acp-plan-content min-w-0 text-sm text-slate-800";
 
 export type PlanBubbleProps = {
-  msg: Extract<ConversationItem, { kind: "agent_plan" }>;
+  msg: MessageConversationItem & { kind: "agent_plan" };
   autoCollapse: boolean;
 };
 
@@ -64,7 +64,7 @@ export const PlanBubble = React.memo(
                     </div>
                   </div>
                   <ol className={ACP_PLAN_LIST_CLASS}>
-                    {msg.plan_entries?.map((entry, idx) => {
+                    {msg.plan_entries?.map((entry: { content: string; status?: string; priority?: string }, idx: number) => {
                       const status = normalizePlanEntryStatus(entry.status);
                       return (
                         <li

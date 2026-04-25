@@ -6,6 +6,7 @@ import {
   parseAnsiSegmentsCached,
   renderMarkdownCached,
   resetAcpConversationCaches,
+  shouldAutoCollapseConversationItem,
   shouldCollapseToolFoldWhenOutOfView,
 } from "./components/acp_conversation";
 import { preloadThreadMarkdownAssets } from "./components/thread_rich_text";
@@ -55,6 +56,53 @@ describe("isToolCallEffectivelyLive", () => {
     expect(isToolCallEffectivelyLive("in_progress", "completed")).toBe(false);
     expect(isToolCallEffectivelyLive("running", "failed")).toBe(false);
     expect(isToolCallEffectivelyLive("pending", "cancelled")).toBe(false);
+  });
+});
+
+describe("shouldAutoCollapseConversationItem", () => {
+  it("auto-collapses tool bubbles once newer conversation items appear", () => {
+    expect(
+      shouldAutoCollapseConversationItem(
+        { kind: "tool_call", id: "call-1", title: "Read" },
+        {
+          globalIndex: 3,
+          latestVisibleGlobalIndex: 4,
+          shouldAutoCollapse: false,
+          collapseCutoff: 0,
+          isFrozenView: false,
+        }
+      )
+    ).toBe(true);
+  });
+
+  it("keeps the newest visible tool bubble expanded until a later item appears", () => {
+    expect(
+      shouldAutoCollapseConversationItem(
+        { kind: "tool_call", id: "call-1", title: "Read" },
+        {
+          globalIndex: 4,
+          latestVisibleGlobalIndex: 4,
+          shouldAutoCollapse: false,
+          collapseCutoff: 0,
+          isFrozenView: false,
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("does not auto-collapse ordinary messages just because newer items exist", () => {
+    expect(
+      shouldAutoCollapseConversationItem(
+        { kind: "agent_message", text: "done" },
+        {
+          globalIndex: 3,
+          latestVisibleGlobalIndex: 4,
+          shouldAutoCollapse: false,
+          collapseCutoff: 0,
+          isFrozenView: false,
+        }
+      )
+    ).toBe(false);
   });
 });
 

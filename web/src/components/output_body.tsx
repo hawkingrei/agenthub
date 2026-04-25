@@ -11,7 +11,7 @@ import {
 } from "../ui/tailwind_classes";
 
 type OutputBodyProps = {
-  terminalRef: React.RefObject<HTMLDivElement>;
+  terminalRef: React.RefObject<HTMLDivElement | null>;
   onTerminalScroll?: () => void;
   isOutputLoading: boolean;
   isConversationLoading?: boolean;

@@ -92,7 +92,11 @@ export const ToolCallBubble = React.memo(
     );
     const statusMark = getToolCallStatusMark(msg.status);
     const terminalActivityPreview = React.useMemo(() => {
-      const last = msg.terminal_activities?.at(-1);
+      const activities = msg.terminal_activities;
+      const last =
+        activities && activities.length > 0
+          ? activities[activities.length - 1]
+          : undefined;
       return last ? formatTerminalActivityLabel(last) : "";
     }, [msg.terminal_activities]);
 

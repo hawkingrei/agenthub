@@ -10,9 +10,9 @@ import {
 
 installReactDomTestGlobals();
 
-function ThrowOnRender() {
+const ThrowOnRender: React.FC = () => {
   throw new Error("render failed");
-}
+};
 
 describe("OutputErrorBoundary", () => {
   let container: HTMLDivElement;
@@ -38,7 +38,7 @@ describe("OutputErrorBoundary", () => {
       renderWithMantine(
         root,
         <OutputErrorBoundary onReset={onReset}>
-          <ThrowOnRender />
+          {React.createElement(ThrowOnRender)}
         </OutputErrorBoundary>
       );
     });

@@ -21,6 +21,7 @@ import {
   teamSpecHasLeader,
   updateTeamMemberProfileInSpec,
 } from "./create_helpers";
+import type { TeamMemberProfileDraft } from "./create_helpers";
 
 const TEST_PROMPT_DEFAULTS = {
   leader_prompt: "leader-default-prompt",
@@ -54,6 +55,22 @@ function buildForgeAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
     status: "created",
     created_at: 1,
     updated_at: 1,
+    ...overrides,
+  };
+}
+
+function buildProfileDraft(
+  overrides: Partial<TeamMemberProfileDraft> & Pick<TeamMemberProfileDraft, "member_id" | "role">
+): TeamMemberProfileDraft {
+  return {
+    description: "",
+    model: "",
+    prompt: "",
+    skills: [],
+    custom_skills: "",
+    agent_loop_enabled: false,
+    agent_loop_idle_seconds: "",
+    agent_loop_prompt: "",
     ...overrides,
   };
 }
@@ -226,15 +243,13 @@ describe("team create helpers", () => {
     });
     const withLeader = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       leaderAgent,
       TEST_PROMPT_DEFAULTS
     ) as {
@@ -259,15 +274,14 @@ describe("team create helpers", () => {
 
     const withWorker = appendTeamMemberToSpec(
       withLeader,
-      {
+      buildProfileDraft({
         member_id: "worker-1",
         role: "worker",
         description: "Implementation agent",
-        model: "",
         prompt: "Execute with evidence",
         skills: ["team-deliberation-rules"],
         custom_skills: "custom-worker-skill",
-      },
+      }),
       workerAgent,
       TEST_PROMPT_DEFAULTS
     ) as {
@@ -301,15 +315,10 @@ describe("team create helpers", () => {
     expect(() =>
       appendTeamMemberToSpec(
         buildEmptyTeamSpec(),
-        {
+        buildProfileDraft({
           member_id: "worker-1",
           role: "worker",
-          description: "",
-          model: "",
-          prompt: "",
-          skills: [],
-          custom_skills: "",
-        },
+        }),
         buildForgeAgent({ id: "worker-1" }),
         TEST_PROMPT_DEFAULTS
       )
@@ -317,30 +326,20 @@ describe("team create helpers", () => {
 
     const withLeader = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
-        description: "",
-        model: "",
-        prompt: "",
-        skills: [],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1" }),
       TEST_PROMPT_DEFAULTS
     );
     expect(() =>
       appendTeamMemberToSpec(
         withLeader,
-        {
+        buildProfileDraft({
           member_id: "leader-2",
           role: "leader",
-          description: "",
-          model: "",
-          prompt: "",
-          skills: [],
-          custom_skills: "",
-        },
+        }),
         buildForgeAgent({ id: "leader-2" }),
         TEST_PROMPT_DEFAULTS
       )
@@ -350,15 +349,13 @@ describe("team create helpers", () => {
   it("builds editable member draft from spec and preserves role defaults", () => {
     const spec = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1" })
     );
     const draft = buildTeamMemberDraftFromSpec(spec, "leader-1", undefined, TEST_PROMPT_DEFAULTS);
@@ -378,15 +375,13 @@ describe("team create helpers", () => {
   it("drops out-of-range loop idle seconds when building a member draft from spec", () => {
     const spec = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1" })
     ) as { members: Array<Record<string, unknown>> };
     spec.members[0] = {
@@ -406,15 +401,13 @@ describe("team create helpers", () => {
   it("updates existing team member profile fields without replacing runtime hints", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {
@@ -455,15 +448,13 @@ describe("team create helpers", () => {
   it("treats partially numeric agent loop idle input as unset", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {
@@ -496,15 +487,13 @@ describe("team create helpers", () => {
   it("treats out-of-range agent loop idle input as unset", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
-      {
+      buildProfileDraft({
         member_id: "leader-1",
         role: "leader",
         description: "Team architect",
         model: "codex",
-        prompt: "",
         skills: ["team-deliberation-rules"],
-        custom_skills: "",
-      },
+      }),
       buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {

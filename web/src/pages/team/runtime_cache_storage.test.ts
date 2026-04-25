@@ -59,7 +59,11 @@ function buildMailboxMessage(messageId: number): TeamActorMessageRecord {
     message_id: messageId,
     run_id: "run-1",
     from_actor_id: "leader",
+    from_peer_id: "",
+    from_actor_kind: "agent",
     to_actor_id: "worker",
+    to_peer_id: "",
+    to_actor_kind: "agent",
     channel: "default",
     transport: "local",
     route: null,
@@ -129,9 +133,9 @@ describe("team runtime cache storage", () => {
 
     expect(memberEvents).toHaveLength(120);
     expect(memberEvents[0]?.event_id).toBe(21);
-    expect(memberEvents.at(-1)?.event_id).toBe(140);
+    expect(memberEvents[memberEvents.length - 1]?.event_id).toBe(140);
     expect(inboxMessages).toHaveLength(120);
     expect(inboxMessages[0]?.message_id).toBe(21);
-    expect(inboxMessages.at(-1)?.message_id).toBe(140);
+    expect(inboxMessages[inboxMessages.length - 1]?.message_id).toBe(140);
   });
 });

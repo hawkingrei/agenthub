@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api";
+import type { TeamMemberProfileDraft } from "./create_helpers";
+import type { TeamMemberAgentStatus } from "./member_helpers";
 import { useTeamManagementActions } from "./use_team_management_actions";
 import { loadTeamCreateDraft } from "./create_draft_storage";
 
@@ -89,8 +91,8 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     teamMemberDraft: null,
     teamMemberEditDraft: null,
     teamMemberRoleOptions: [
-      { value: "leader", label: "Leader", disabled: false },
-      { value: "worker", label: "Worker", disabled: false },
+      { value: "leader", label: "Leader", description: "Lead the team", disabled: false },
+      { value: "worker", label: "Worker", description: "Implement tasks", disabled: false },
     ],
     teamPromptDefaults: {
       leader_prompt: "lead",
@@ -182,15 +184,26 @@ describe("useTeamManagementActions", () => {
   it("restores create-team draft into wizard state", async () => {
     mockedLoadTeamCreateDraft.mockReturnValueOnce({
       draft: {
-        name: "Restored Team",
-        description: "restored",
+        newTeamName: "Restored Team",
+        newTeamDescription: "restored",
+        newTeamSpec: "{}",
+        createTeamStage: 1,
+        leaderMemberId: "",
+        leaderModel: "",
         leaderPrompt: "",
+        leaderSkills: [],
+        leaderCustomSkills: "",
         workers: [
           {
-            memberId: "worker-1",
+            member_id: "worker-1",
+            description: "",
+            model: "",
             prompt: "",
+            skills: [],
+            custom_skills: "",
           },
         ],
+        teamForgeAgentIds: [],
       },
       error: null,
     });
@@ -203,8 +216,8 @@ describe("useTeamManagementActions", () => {
       expect(params.resetTeamDraft).toHaveBeenCalled();
       expect(params.patchTeamCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: "Restored Team",
-          description: "restored",
+          newTeamName: "Restored Team",
+          newTeamDescription: "restored",
           showCreateTeamModal: true,
           showForgeAgentForm: false,
         })
@@ -253,9 +266,9 @@ describe("useTeamManagementActions", () => {
           member_id: "leader-1",
           role: "leader",
           status: "running",
-          work_status: "idle",
+          missing_agent: false,
         },
-      ] as HookParams["selectedTeamMemberStatuses"],
+      ] as TeamMemberAgentStatus[],
     });
     const mounted = await mountHook(params);
     try {
@@ -308,10 +321,12 @@ describe("useTeamManagementActions", () => {
         description: "Implementation specialist",
         model: "codex",
         prompt: "",
+        skills: [],
+        custom_skills: "",
         agent_loop_enabled: false,
         agent_loop_idle_seconds: "90",
         agent_loop_prompt: "",
-      },
+      } satisfies TeamMemberProfileDraft,
       forgeAgentName: "Forge Worker",
       forgeAgentWorkdir: "/tmp/worktrees/forge-worker",
       forgeAgentPresetId: "codex",

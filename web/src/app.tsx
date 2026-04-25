@@ -1129,7 +1129,7 @@ export function App() {
         <div className="app bg-white" ref={appRootRef}>
           <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
             <LazyAdminPage
-              auth={auth}
+              auth={auth!}
               error={normalizedError}
               setError={setError}
               safePaths={safePaths}
@@ -1166,7 +1166,7 @@ export function App() {
         <div className="app bg-white" ref={appRootRef}>
           <Suspense fallback={<RouteFallback label="Loading teams..." />}>
             <LazyTeamPage
-              auth={auth}
+              auth={auth!}
               token={auth!.token}
               onLogout={onLogout}
               developerMode={developerMode}

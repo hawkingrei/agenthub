@@ -55,7 +55,7 @@ function buildAcpEvents(extraMessages: Record<string, unknown>[] = []): AgentEve
       session_id: "runtime-session-1",
       seq: String(index + 2),
       ts: 1_700_000_001 + index + 1,
-      stream: "acp",
+      stream: "acp" as const,
       message: JSON.stringify(message),
     })),
   ];

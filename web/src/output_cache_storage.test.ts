@@ -116,7 +116,7 @@ describe("output cache storage", () => {
   });
 
   it("returns empty caches on invalid payload", () => {
-    const storage = (globalThis as { localStorage?: MemoryStorage }).localStorage;
+    const storage = (globalThis as unknown as { localStorage?: MemoryStorage }).localStorage;
     storage?.setItem(STORAGE_KEY, "not-json");
 
     const loaded = loadOutputCaches(10, 5);
@@ -125,7 +125,7 @@ describe("output cache storage", () => {
   });
 
   it("drops partially-shaped cached events", () => {
-    const storage = (globalThis as { localStorage?: MemoryStorage }).localStorage;
+    const storage = (globalThis as unknown as { localStorage?: MemoryStorage }).localStorage;
     storage?.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -202,7 +202,7 @@ describe("output cache storage", () => {
   });
 
   it("keeps persisted output cache within the default frontend memory budget", () => {
-    const storage = (globalThis as { localStorage?: MemoryStorage }).localStorage;
+    const storage = (globalThis as unknown as { localStorage?: MemoryStorage }).localStorage;
     const messageBody = "x".repeat(160);
     const outputCache = Object.fromEntries(
       Array.from(

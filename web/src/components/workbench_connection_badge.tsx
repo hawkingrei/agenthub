@@ -1,4 +1,3 @@
-import React from "react";
 import { ConnectionBadge } from "../connection_status";
 
 type WorkbenchConnectionBadgeProps = {

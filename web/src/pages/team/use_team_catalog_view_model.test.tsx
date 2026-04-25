@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { useTeamCatalogViewModel } from "./use_team_catalog_view_model";
@@ -188,9 +188,22 @@ describe("useTeamCatalogViewModel", () => {
         updated_at: 1,
       } as HookParams["selectedTeam"],
       snapshot: {
+        run: {
+          id: "run-1",
+          team_id: "team-other",
+          context_id: "ctx-run-1",
+          status: "working",
+          input: {},
+          created_at: 1,
+          started_at: null,
+          ended_at: null,
+        },
         team: {
           id: "team-other",
           name: "Other Team",
+          spec: {},
+          created_at: 1,
+          updated_at: 1,
         },
         leader_member_id: "leader-1",
         members: [
@@ -206,10 +219,14 @@ describe("useTeamCatalogViewModel", () => {
             session_status: "inactive",
           },
         ],
-        inbox: [],
         steps: [],
-        tasks: [],
-        generated_at: 1,
+        latest_events: [],
+        mailbox: {
+          pending: 0,
+          delivered: 0,
+          dead_letter: 0,
+          recent_messages: [],
+        },
       } as HookParams["snapshot"],
       teamSelectorFilter: "team-empty",
     };

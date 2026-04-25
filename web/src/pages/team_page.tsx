@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type SetStateAction } from "react";
 import { Alert } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconButton } from "../ui/primitives";
@@ -898,6 +898,8 @@ export function TeamPage(props: TeamPageProps) {
     reduceTeamMailboxState,
     DEFAULT_TEAM_MAILBOX_STATE
   );
+  const teamMailboxStateRef = useRef(teamMailboxState);
+  teamMailboxStateRef.current = teamMailboxState;
   const msgFromActorId = teamMailboxState.msgFromActorId;
   const msgToActorId = teamMailboxState.msgToActorId;
   const msgChannel = teamMailboxState.msgChannel;
@@ -955,11 +957,23 @@ export function TeamPage(props: TeamPageProps) {
     [patchTeamMailbox]
   );
   const setChatStickToBottom = useCallback(
-    (next: boolean) => patchTeamMailbox({ chatStickToBottom: next }),
+    (next: SetStateAction<boolean>) =>
+      patchTeamMailbox({
+        chatStickToBottom: resolveUpdater(
+          teamMailboxStateRef.current.chatStickToBottom,
+          next
+        ),
+      }),
     [patchTeamMailbox]
   );
   const setChatSeenByConversation = useCallback(
-    (next: Record<string, number>) => patchTeamMailbox({ chatSeenByConversation: next }),
+    (next: SetStateAction<Record<string, number>>) =>
+      patchTeamMailbox({
+        chatSeenByConversation: resolveUpdater(
+          teamMailboxStateRef.current.chatSeenByConversation,
+          next
+        ),
+      }),
     [patchTeamMailbox]
   );
   const setInboxActorId = useCallback(
@@ -979,11 +993,17 @@ export function TeamPage(props: TeamPageProps) {
     [patchTeamMailbox]
   );
   const setInbox = useCallback(
-    (next: TeamActorMessageRecord[]) => patchTeamMailbox({ inbox: next }),
+    (next: SetStateAction<TeamActorMessageRecord[]>) =>
+      patchTeamMailbox({
+        inbox: resolveUpdater(teamMailboxStateRef.current.inbox, next),
+      }),
     [patchTeamMailbox]
   );
   const setSelectedMemberId = useCallback(
-    (next: string) => patchTeamMailbox({ selectedMemberId: next }),
+    (next: SetStateAction<string>) =>
+      patchTeamMailbox({
+        selectedMemberId: resolveUpdater(teamMailboxStateRef.current.selectedMemberId, next),
+      }),
     [patchTeamMailbox]
   );
   const chatMessagesRef = useRef<HTMLUListElement | null>(null);
@@ -1120,9 +1140,7 @@ export function TeamPage(props: TeamPageProps) {
       navigateTeamRoute(buildTeamWorkspacePath(effectiveSelectedTeamId, "channels"));
     }
   }, [
-    buildTeamWorkspacePath,
     effectiveSelectedTeamId,
-    navigateTeamRoute,
     routeChannelId,
     routeWorkspaceLens,
     selectedChannelRecord,
@@ -3667,7 +3685,7 @@ export function TeamPage(props: TeamPageProps) {
             onOpenTeamMemberForge={openTeamMemberForgeModal}
             tab={tab}
             runsPanelProps={{
-              selectedTeam,
+              selectedTeam: selectedTeam!,
               developerMode: props.developerMode,
               busy,
               onDeleteTeam,

@@ -101,6 +101,12 @@ type TeamTaskPanelProps = {
   activeThreadMessageId?: number | null;
 };
 
+type VisibleConversationItem = {
+  message: TeamConversationMessageRecord;
+  permissionCardPayload: PermissionReviewCardPayload | null;
+  text: string;
+};
+
 function isThreadReplyMessage(message: TeamConversationMessageRecord): boolean {
   return message.route === "team_thread_reply";
 }
@@ -361,7 +367,7 @@ function TeamActivityBubble({
   itemKey: string;
   seenActorIds: string[];
   seenProgress: ReturnType<typeof resolveSeenProgressState>;
-  memberDisplayNamesById: Map<string, string>;
+  memberDisplayNamesById: Record<string, string>;
   children: React.ReactNode;
 }) {
   return (
@@ -712,16 +718,15 @@ function SeenProgressHoverCard({
               aria-valuenow={seenProgress.readCount}
               aria-valuemin={0}
               aria-valuemax={seenProgress.totalCount}
-              style={
-                {
-                  "--value": seenProgress.progress,
-                  "--size": "1rem",
-                  "--thickness": "1rem",
-                  width: "var(--size)",
-                  height: "var(--size)",
-                  background: `conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)`,
-                } satisfies SeenDialStyle
-              }
+              style={{
+                "--value": seenProgress.progress,
+                "--size": "1rem",
+                "--thickness": "1rem",
+                width: "var(--size)",
+                height: "var(--size)",
+                background:
+                  "conic-gradient(rgba(31,122,61,0.82) calc(var(--value) * 1%), rgba(55,53,47,0.12) 0)",
+              } as SeenDialStyle}
             />
             <span className="sr-only">{`${seenProgress.readCount}/${seenProgress.totalCount}`}</span>
           </CompactIconButton>
@@ -1217,8 +1222,8 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   }, [pendingHumanReviewPermissionIds]);
   const activityWindow = React.useMemo(
     () =>
-      windowTeamConversation(
-        orderedMessages.flatMap((message) => {
+      windowTeamConversation<VisibleConversationItem>(
+        orderedMessages.flatMap<VisibleConversationItem>((message) => {
           if (isThreadReplyMessage(message)) {
             return [];
           }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type TeamActorMessageRecord, type TeamRunSnapshotRecord, api } from "../../api";
@@ -118,9 +118,14 @@ function buildMessage(overrides: Partial<TeamActorMessageRecord> = {}): TeamActo
     message_id: 10,
     run_id: "run-1",
     from_actor_id: "leader-1",
+    from_peer_id: "",
+    from_actor_kind: "agent",
     to_actor_id: "worker-2",
+    to_peer_id: "",
+    to_actor_kind: "agent",
     channel: "default",
     transport: "local",
+    route: null,
     payload: {},
     status: "pending",
     created_at: 1,

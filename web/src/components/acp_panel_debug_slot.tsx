@@ -3,6 +3,12 @@ import React from "react";
 import type { AcpDebugProps } from "./acp_debug";
 import { loadAcpDebugModule } from "./acp_debug_loader";
 
+function reportDebugSlotError(error: unknown) {
+  if ("reportError" in globalThis && typeof globalThis.reportError === "function") {
+    globalThis.reportError(error);
+  }
+}
+
 export function AcpDebugSlot(props: AcpDebugProps) {
   const [DebugView, setDebugView] = React.useState<React.ComponentType<AcpDebugProps> | null>(null);
   const [loadFailed, setLoadFailed] = React.useState(false);
@@ -19,7 +25,7 @@ export function AcpDebugSlot(props: AcpDebugProps) {
         }
       })
       .catch((error) => {
-        console.error("Failed to load ACP debug view", error);
+        reportDebugSlotError(error);
         if (!cancelled) {
           setLoadFailed(true);
         }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -264,7 +264,9 @@ describe("App route shell wiring", () => {
     });
     await flushRenderFrames(2);
 
-    const lastCall = agentsRouteShellPropsMock.mock.calls.at(-1)?.[0] as
+    const lastCall = agentsRouteShellPropsMock.mock.calls[
+      agentsRouteShellPropsMock.mock.calls.length - 1
+    ]?.[0] as
       | { workbenchProps: unknown }
       | undefined;
 

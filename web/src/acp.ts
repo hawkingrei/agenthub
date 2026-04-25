@@ -317,12 +317,20 @@ export function buildAcpView(events: AcpEventLine[]): AcpView {
         call.event_id = event.event_id;
         call.ts = event.ts;
       }
-      if (parsed.meta?.terminal_output?.data) {
+      const parsedMeta =
+        parsed.meta && typeof parsed.meta === "object"
+          ? (parsed.meta as Record<string, unknown>)
+          : null;
+      const terminalOutput =
+        parsedMeta?.terminal_output && typeof parsedMeta.terminal_output === "object"
+          ? (parsedMeta.terminal_output as Record<string, unknown>)
+          : null;
+      if (terminalOutput?.data) {
         call.terminal_output =
           (call.terminal_output ?? "") +
-          String(parsed.meta.terminal_output.data);
+          String(terminalOutput.data);
       }
-      const terminalActivity = parseAcpTerminalActivity(parsed.meta?.terminal_activity);
+      const terminalActivity = parseAcpTerminalActivity(parsedMeta?.terminal_activity);
       if (terminalActivity) {
         const prev = call.terminal_activities ?? [];
         const last = prev[prev.length - 1];

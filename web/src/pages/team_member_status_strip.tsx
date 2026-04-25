@@ -1,5 +1,5 @@
 import { Box, SimpleGrid } from "@mantine/core";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { StatusBadge, type StatusTone } from "../components/status_badge";
 import { TeamMemberLiveState } from "./team/member_helpers";
 import {

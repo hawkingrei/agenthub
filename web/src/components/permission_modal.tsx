@@ -1,4 +1,3 @@
-import React from "react";
 import { Badge, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { AcpPermissionRecord } from "../api";
 import {

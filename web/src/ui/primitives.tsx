@@ -96,19 +96,19 @@ const KEY_VALUE_LABEL_CLASS =
 const KEY_VALUE_VALUE_CLASS =
   "min-w-0 break-words text-[12px] leading-relaxed text-notion-text";
 
-type SurfaceCardProps = React.ComponentPropsWithoutRef<typeof Box>;
+type SurfaceCardProps = React.ComponentPropsWithoutRef<"div">;
 
 export function SurfaceCard({ className, ...props }: SurfaceCardProps) {
   return <Box className={cx(SURFACE_CARD_BASE_CLASS, className)} {...props} />;
 }
 
-type InsetSurfaceProps = React.ComponentPropsWithoutRef<typeof Box>;
+type InsetSurfaceProps = React.ComponentPropsWithoutRef<"div">;
 
 export function InsetSurface({ className, ...props }: InsetSurfaceProps) {
   return <Box className={cx(INSET_SURFACE_BASE_CLASS, className)} {...props} />;
 }
 
-type ToolbarRowProps = React.ComponentPropsWithoutRef<typeof Box>;
+type ToolbarRowProps = React.ComponentPropsWithoutRef<"div">;
 
 export function ToolbarRow({ className, ...props }: ToolbarRowProps) {
   return <Box className={cx(TOOLBAR_ROW_BASE_CLASS, className)} {...props} />;
@@ -208,7 +208,7 @@ export const ActionButton = React.forwardRef<HTMLButtonElement, ActionButtonProp
 );
 ActionButton.displayName = "ActionButton";
 
-type IconButtonProps = React.ComponentPropsWithoutRef<typeof ActionIcon> & {
+type IconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: keyof typeof ICON_BUTTON_TONE_CLASS;
   size?: keyof typeof ICON_BUTTON_SIZE_CLASS;
 };
@@ -241,7 +241,7 @@ export function StatusPill({ className, ...props }: StatusPillProps) {
   return <span className={cx(STATUS_PILL_BASE_CLASS, className)} {...props} />;
 }
 
-type BadgeProps = Omit<React.ComponentPropsWithoutRef<typeof Box>, "component"> & {
+type BadgeProps = React.ComponentPropsWithoutRef<"span"> & {
   tone?: keyof typeof BADGE_TONE_CLASS;
   shape?: keyof typeof BADGE_SHAPE_CLASS;
 };
@@ -256,7 +256,7 @@ export function Badge({ tone = "subtle", shape = "tag", className, ...props }: B
   );
 }
 
-type ConversationBubbleProps = React.ComponentPropsWithoutRef<typeof Box>;
+type ConversationBubbleProps = React.ComponentPropsWithoutRef<"div">;
 
 export function ConversationBubble({ className, ...props }: ConversationBubbleProps) {
   return <Box className={cx(CONVERSATION_BUBBLE_BASE_CLASS, className)} {...props} />;
@@ -319,7 +319,7 @@ export const CompactIconButton = React.forwardRef<HTMLButtonElement, CompactIcon
 );
 CompactIconButton.displayName = "CompactIconButton";
 
-type EmptyStateProps = React.ComponentPropsWithoutRef<typeof Box> & {
+type EmptyStateProps = React.ComponentPropsWithoutRef<"div"> & {
   title?: React.ReactNode;
   body?: React.ReactNode;
 };
@@ -334,7 +334,7 @@ export function EmptyState({ title, body, className, children, ...props }: Empty
   );
 }
 
-type InlineNoticeProps = React.ComponentPropsWithoutRef<typeof Box> & {
+type InlineNoticeProps = React.ComponentPropsWithoutRef<"div"> & {
   tone?: keyof typeof INLINE_NOTICE_TONE_CLASS;
 };
 
@@ -347,7 +347,7 @@ export function InlineNotice({ tone = "info", className, ...props }: InlineNotic
   );
 }
 
-type KeyValueListProps = Omit<React.ComponentPropsWithoutRef<typeof Box>, "component">;
+type KeyValueListProps = React.ComponentPropsWithoutRef<"dl">;
 
 export function KeyValueList({ className, ...props }: KeyValueListProps) {
   return <Box component="dl" className={cx(KEY_VALUE_LIST_BASE_CLASS, className)} {...props} />;
@@ -358,7 +358,7 @@ type KeyValueItemProps = {
   value: React.ReactNode;
   labelClassName?: string;
   valueClassName?: string;
-} & Omit<React.ComponentPropsWithoutRef<typeof Box>, "children" | "component">;
+} & Omit<React.ComponentPropsWithoutRef<"div">, "children">;
 
 export function KeyValueItem({
   label,

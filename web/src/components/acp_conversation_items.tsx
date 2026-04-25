@@ -1,4 +1,3 @@
-import React from "react";
 import { type AcpConversationBubbleProps, AcpConversationBubble } from "./acp_conversation_bubble";
 import {
   getConversationItemKey,

@@ -1,4 +1,3 @@
-import React from "react";
 import {
   renderTeamMarkdownCached,
   TEAM_THREAD_RICH_TEXT_BASE_CLASS,

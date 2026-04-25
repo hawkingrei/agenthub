@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -283,10 +283,12 @@ describe("useAgentsWorkbenchPanel", () => {
       })
     );
 
+    const submitRequestUserInput =
+      latestResult?.acpPanelProps.conversation.onSubmitRequestUserInput;
+    expect(submitRequestUserInput).toBeTypeOf("function");
+
     await act(async () => {
-      await latestResult?.acpPanelProps.conversation.onSubmitRequestUserInput(
-        "approve"
-      );
+      await submitRequestUserInput?.("approve");
     });
 
     expect(jumpToConversationBottom).toHaveBeenCalledTimes(1);

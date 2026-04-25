@@ -3,6 +3,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { TeamWorkspaceHeader } from "./team_workspace_header";
+import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
   AgentWorkspaceStatusView,
   TeamMemberAgentControlState,
@@ -34,15 +35,17 @@ const baseAgentControlState: TeamMemberAgentControlState = {
   canDelete: true,
 };
 
-const baseAgentSpecDraft = {
-  name: "worker-1",
+const baseAgentSpecDraft: TeamMemberProfileDraft = {
+  member_id: "worker-1",
   description: "Own planning and keep the team aligned.",
   prompt: "",
-  skills: "",
+  skills: [],
+  custom_skills: "",
   model: "",
   role: "worker" as const,
   agent_loop_enabled: false,
   agent_loop_idle_seconds: "",
+  agent_loop_prompt: "",
 };
 
 const baseRuntimeTone: TeamRuntimeControlTone = {

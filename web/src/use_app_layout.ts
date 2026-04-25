@@ -31,7 +31,12 @@ export function useAppLayout(auth: unknown, error: string | null, agentsCollapse
         appHeader: appHeaderRef.current,
         workspace: workspaceRef.current,
       },
-      typeof ResizeObserver === "undefined" ? undefined : ResizeObserver
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : (ResizeObserver as unknown as new (callback: () => void) => {
+            observe: (target: object) => void;
+            disconnect: () => void;
+          })
     );
   }, [auth, error, agentsCollapsed]);
 

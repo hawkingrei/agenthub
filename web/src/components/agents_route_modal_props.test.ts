@@ -13,7 +13,7 @@ const baseCreateAgentModalProps: CreateAgentModalProps = {
   setAgentName: vi.fn(),
   agentWorkdir: "",
   setAgentWorkdir: vi.fn(),
-  agentPresetId: "codex_default",
+  agentPresetId: "codex",
   setAgentPresetId: vi.fn(),
   worktreeMode: "use_existing",
   setWorktreeMode: vi.fn(),

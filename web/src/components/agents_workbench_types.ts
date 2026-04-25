@@ -23,7 +23,7 @@ export type AgentsWorkbenchProps = {
   scopedAcpPermissionHistory: AcpPermissionRecord[];
   isOutputLoading: boolean;
   isConversationLoading: boolean;
-  terminalRef: React.RefObject<HTMLDivElement>;
+  terminalRef: React.RefObject<HTMLDivElement | null>;
   input: string;
   inputHistory: string[];
   ansi: (input: string) => string;

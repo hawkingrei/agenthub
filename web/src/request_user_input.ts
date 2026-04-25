@@ -93,9 +93,13 @@ export function parseRequestUserInputResponse(
               .map((entry) => entry.trim())
               .filter((entry) => entry.length > 0)
           : [];
-        return [questionId, { answers: answerItems } satisfies RequestUserInputAnswer];
+        return [questionId, { answers: answerItems } satisfies RequestUserInputAnswer] as const;
       })
-      .filter(([, answer]) => answer.answers.length > 0)
+      .filter(
+        (
+          entry
+        ): entry is readonly [string, RequestUserInputAnswer] => entry[1].answers.length > 0
+      )
   );
 
   return Object.keys(answers).length > 0 ? { answers } : null;

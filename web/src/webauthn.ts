@@ -70,8 +70,14 @@ export function urlBase64ToUint8Array(value: string): Uint8Array {
   return new Uint8Array(base64UrlToBuffer(value));
 }
 
-function bufferToBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+function cloneIntoArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const clone = new Uint8Array(bytes.byteLength);
+  clone.set(bytes);
+  return clone.buffer;
+}
+
+function bufferToBase64Url(buffer: ArrayBufferLike): string {
+  const bytes = new Uint8Array(buffer as ArrayBuffer);
   let binary = "";
   bytes.forEach((b) => (binary += String.fromCharCode(b)));
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -97,7 +103,7 @@ function toArrayBuffer(input: unknown, label: string): ArrayBuffer {
     return input;
   }
   if (input instanceof Uint8Array) {
-    return input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+    return cloneIntoArrayBuffer(input);
   }
   if (Array.isArray(input)) {
     return new Uint8Array(input).buffer;
