@@ -96,28 +96,25 @@ export function omitIncompleteLeadingAcpMessageEvents(
   });
 }
 
-export function resolveVisibleAcpMessageEvents(
-  events: AgentEvent[],
-  sessionId: string | null | undefined
-): AgentEvent[] {
-  const trimmedEvents = omitIncompleteLeadingAcpMessageEvents(events, sessionId);
-  if (trimmedEvents.length === events.length) {
-    return trimmedEvents;
-  }
-  if (countVisibleAcpConversationItems(trimmedEvents, sessionId) >= 1) {
-    return trimmedEvents;
-  }
-  if (countVisibleAcpConversationItems(events, sessionId) >= 1) {
-    return events;
-  }
-  return trimmedEvents;
-}
-
 export function hasIncompleteLeadingAcpMessage(
   events: AgentEvent[],
   sessionId: string | null | undefined
 ): boolean {
   return resolveLeadingAcpMessageChunkState(events, sessionId).incomplete;
+}
+
+export function hasOnlyIncompleteLeadingAcpMessage(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): boolean {
+  if (!hasIncompleteLeadingAcpMessage(events, sessionId)) {
+    return false;
+  }
+  const visibleEvents = omitIncompleteLeadingAcpMessageEvents(events, sessionId);
+  if (countVisibleAcpConversationItems(visibleEvents, sessionId) >= 1) {
+    return false;
+  }
+  return countVisibleAcpConversationItems(events, sessionId) >= 1;
 }
 
 export function countVisibleAcpConversationItems(
@@ -146,7 +143,7 @@ function countRenderableAcpConversationItems(
   sessionId: string | null | undefined
 ): number {
   return countVisibleAcpConversationItems(
-    resolveVisibleAcpMessageEvents(events, sessionId),
+    omitIncompleteLeadingAcpMessageEvents(events, sessionId),
     sessionId
   );
 }

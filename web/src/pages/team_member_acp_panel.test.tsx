@@ -269,21 +269,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
   });
 
   it("does not keep the ACP conversation in loading state when only a partial leading chunk is available", () => {
-    vi.mocked(useAcpConversation).mockReturnValue(
-      buildConversationHookState({
-        conversationRenderItems: [
-          {
-            kind: "agent_message",
-            text: "partial markdown",
-            event_id: 7,
-            ts: 123,
-          },
-        ],
-        conversationSourceItems: 1,
-        conversationRenderedItems: 1,
-        conversationTotalItems: 1,
-      }) as never
-    );
+    vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
 
     renderWithMantine(
       root,
@@ -322,6 +308,8 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
       container.querySelector('[data-acp-conversation-loading-skeleton="true"]')
     ).toBeNull();
     expect(container.textContent).toContain("Active thread");
+    expect(container.textContent).toContain("Loading earlier reply...");
+    expect(container.textContent).not.toContain("partial markdown");
   });
 
   it("keeps visible ACP content on screen while background history refresh is still loading", () => {

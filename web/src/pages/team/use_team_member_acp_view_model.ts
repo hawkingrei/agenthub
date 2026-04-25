@@ -8,8 +8,8 @@ import { resolveInputDockJumpMode } from "../../components/acp_panel_helpers";
 import { useAcpConversation } from "../../hooks/use_acp_conversation";
 import {
   ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
-  hasIncompleteLeadingAcpMessage,
-  resolveVisibleAcpMessageEvents,
+  hasOnlyIncompleteLeadingAcpMessage,
+  omitIncompleteLeadingAcpMessageEvents,
 } from "./acp_history_prefetch";
 import {
   peekTeamMemberAcpRenderCache,
@@ -145,7 +145,11 @@ export function useTeamMemberAcpViewModel({
   }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
   const visibleMemberEvents = React.useMemo(
-    () => resolveVisibleAcpMessageEvents(effectiveMemberEvents, selectedSessionId ?? null),
+    () =>
+      omitIncompleteLeadingAcpMessageEvents(
+        effectiveMemberEvents,
+        selectedSessionId ?? null
+      ),
     [effectiveMemberEvents, selectedSessionId]
   );
   const acpEventLines = React.useMemo(
@@ -199,8 +203,12 @@ export function useTeamMemberAcpViewModel({
     [effectiveMemberEvents]
   );
   const hasCompleteSessionContent = visibleMemberEvents.length > 0;
-  const hasIncompleteLeadingConversationMessage = React.useMemo(
-    () => hasIncompleteLeadingAcpMessage(effectiveMemberEvents, selectedSessionId ?? null),
+  const hasOnlyIncompleteLeadingConversationMessage = React.useMemo(
+    () =>
+      hasOnlyIncompleteLeadingAcpMessage(
+        effectiveMemberEvents,
+        selectedSessionId ?? null
+      ),
     [effectiveMemberEvents, selectedSessionId]
   );
   const hasVisibleConversationItems =
@@ -273,8 +281,10 @@ export function useTeamMemberAcpViewModel({
       stickToBottom: acpConversation.conversationStickToBottom,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
-      topHint: memberEventsLoading
+      topHint: memberEventsLoading && !hasRenderableConversationContent
         ? "Loading ACP events..."
+        : hasOnlyIncompleteLeadingConversationMessage
+          ? "Loading earlier reply..."
         : acpConversation.showConversationTopReachedHint
           ? "Already at top"
           : null,
@@ -303,6 +313,7 @@ export function useTeamMemberAcpViewModel({
       ansi,
       canSendInput,
       handleSubmitRequestUserInput,
+      hasOnlyIncompleteLeadingConversationMessage,
       memberEventsLoading,
     ]
   );
@@ -376,11 +387,9 @@ export function useTeamMemberAcpViewModel({
         effectiveAcpTab === "conversation" &&
         !hasVisibleConversationItems &&
         !hasRenderableConversationContent &&
-        ((memberEventsLoading &&
-          acpConversation.conversationSourceItems <
-            ACP_INITIAL_VISIBLE_MESSAGE_TARGET) ||
-          ((memberEventsLoading || memberEventsHasMore) &&
-            hasIncompleteLeadingConversationMessage)),
+        memberEventsLoading &&
+        acpConversation.conversationSourceItems <
+          ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
       conversationBottomClearance,
       onSelectTab: (nextTab: TeamMemberAcpTab) => setAcpTab(nextTab),
       showConversationBadge: acpConversation.showConversationBadge,
@@ -458,7 +467,6 @@ export function useTeamMemberAcpViewModel({
       canSetModel,
       developerMode,
       effectiveAcpTab,
-      hasIncompleteLeadingConversationMessage,
       hasRenderableConversationContent,
       handleTerminalScroll,
       jumpToTerminalBottom,
@@ -471,7 +479,6 @@ export function useTeamMemberAcpViewModel({
       conversationBottomClearance,
       hasVisibleInputDock,
       memberEventsLoading,
-      memberEventsHasMore,
       terminalOutputs,
       terminalShowJump,
       terminalRef,

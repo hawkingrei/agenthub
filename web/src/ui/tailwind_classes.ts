@@ -35,18 +35,18 @@ export const ACP_PANEL_ROOT =
 export const ACP_PANEL_ROOT_CLASS = ACP_PANEL_ROOT;
 
 export const ACP_PANEL_HEAD_CLASS =
-  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-1 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
+  "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
 
 export const ACP_TABS_CLASS =
-  "inline-flex max-w-full flex-wrap items-center gap-0.5";
+  "inline-flex max-w-full flex-wrap items-center gap-1 rounded-lg border border-notion-border bg-white/92 p-1 shadow-sm";
 
 export const ACP_PANEL_TABS_CLASS = ACP_TABS_CLASS;
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
-  "acp-tab-button inline-flex h-6 items-center rounded-md px-2 text-[11px] font-medium leading-none transition";
+  "acp-tab-button inline-flex h-7 items-center justify-center rounded-md px-2.5 text-[11px] font-medium leading-none transition";
 
 export const ACP_TAB_BUTTON_ACTIVE_CLASS =
-  "bg-[rgba(55,53,47,0.07)] text-notion-text";
+  "bg-[rgba(55,53,47,0.08)] text-notion-text shadow-sm";
 
 export const ACP_TAB_BUTTON_IDLE_CLASS =
   "text-notion-text-muted hover:bg-[rgba(55,53,47,0.04)] hover:text-notion-text";
