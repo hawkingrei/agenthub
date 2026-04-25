@@ -96,6 +96,23 @@ export function omitIncompleteLeadingAcpMessageEvents(
   });
 }
 
+export function resolveVisibleAcpMessageEvents(
+  events: AgentEvent[],
+  sessionId: string | null | undefined
+): AgentEvent[] {
+  const trimmedEvents = omitIncompleteLeadingAcpMessageEvents(events, sessionId);
+  if (trimmedEvents.length === events.length) {
+    return trimmedEvents;
+  }
+  if (countVisibleAcpConversationItems(trimmedEvents, sessionId) >= 1) {
+    return trimmedEvents;
+  }
+  if (countVisibleAcpConversationItems(events, sessionId) >= 1) {
+    return events;
+  }
+  return trimmedEvents;
+}
+
 export function hasIncompleteLeadingAcpMessage(
   events: AgentEvent[],
   sessionId: string | null | undefined
@@ -129,7 +146,7 @@ function countRenderableAcpConversationItems(
   sessionId: string | null | undefined
 ): number {
   return countVisibleAcpConversationItems(
-    omitIncompleteLeadingAcpMessageEvents(events, sessionId),
+    resolveVisibleAcpMessageEvents(events, sessionId),
     sessionId
   );
 }
@@ -145,9 +162,6 @@ export function shouldPrefetchInitialAcpHistory(
   }
   if (countRenderableAcpConversationItems(events, sessionId) >= minVisibleItems) {
     return false;
-  }
-  if (hasIncompleteLeadingAcpMessage(events, sessionId)) {
-    return true;
   }
   return countVisibleAcpConversationItems(events, sessionId) < minVisibleItems;
 }

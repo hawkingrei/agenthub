@@ -9,7 +9,7 @@ import { useAcpConversation } from "../../hooks/use_acp_conversation";
 import {
   ACP_INITIAL_VISIBLE_MESSAGE_TARGET,
   hasIncompleteLeadingAcpMessage,
-  omitIncompleteLeadingAcpMessageEvents,
+  resolveVisibleAcpMessageEvents,
 } from "./acp_history_prefetch";
 import {
   peekTeamMemberAcpRenderCache,
@@ -138,7 +138,7 @@ export function useTeamMemberAcpViewModel({
   }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
   const visibleMemberEvents = React.useMemo(
-    () => omitIncompleteLeadingAcpMessageEvents(effectiveMemberEvents, selectedSessionId ?? null),
+    () => resolveVisibleAcpMessageEvents(effectiveMemberEvents, selectedSessionId ?? null),
     [effectiveMemberEvents, selectedSessionId]
   );
   const acpEventLines = React.useMemo(

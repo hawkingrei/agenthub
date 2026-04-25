@@ -337,7 +337,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("prefetches additional ACP history pages until visible messages are complete", async () => {
+  it("does not auto-prefetch older ACP history when the first page already renders a partial chunked message", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
       .mockResolvedValueOnce([
@@ -414,17 +414,10 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenNthCalledWith(
-        2,
-        "token-1",
-        "worker-agent",
-        60,
-        "runtime-session-1",
-        11
-      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
       const update = setMemberEvents.mock.calls[0]?.[0];
       expect(typeof update).toBe("function");
-      expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([9, 10, 11]);
+      expect(update([]).map((event: AgentEvent) => event.event_id)).toEqual([11]);
       expect(setMemberEventsHasMore).toHaveBeenCalledWith(true);
     } finally {
       listAgentEvents.mockRestore();
@@ -485,7 +478,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("raises ACP history page limits for very long chunked messages", async () => {
+  it("does not auto-prefetch even for very long chunked messages without warm visible content", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
       .mockResolvedValueOnce([
@@ -504,25 +497,7 @@ describe("useTeamActions", () => {
             chunk_index: 320,
           }),
         },
-      ])
-      .mockResolvedValueOnce([
-        {
-          event_id: 80,
-          agent_id: "worker-agent",
-          session_id: "runtime-session-1",
-          seq: "80",
-          ts: 121,
-          stream: "acp",
-          message: JSON.stringify({
-            type: "agent_message",
-            text: "older chunk",
-            chunk: true,
-            message_id: "message-1",
-            chunk_index: 300,
-          }),
-        },
-      ])
-      .mockResolvedValueOnce([]);
+      ]);
     const captures: TeamActions[] = [];
     const onCapture = (actions: TeamActions) => {
       captures.push(actions);
@@ -547,29 +522,14 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenNthCalledWith(
-        2,
-        "token-1",
-        "worker-agent",
-        240,
-        "runtime-session-1",
-        100
-      );
-      expect(listAgentEvents).toHaveBeenNthCalledWith(
-        3,
-        "token-1",
-        "worker-agent",
-        240,
-        "runtime-session-1",
-        80
-      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
     }
   });
 
-  it("raises ACP history page limits earlier when the first page is dominated by one chunked message", async () => {
+  it("does not auto-prefetch when the first page is dominated by one chunked message", async () => {
     const firstPage = Array.from({ length: 12 }, (_, index) => ({
       event_id: 200 + index,
       agent_id: "worker-agent",
@@ -587,8 +547,7 @@ describe("useTeamActions", () => {
     }));
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce(firstPage);
     const captures: TeamActions[] = [];
     const onCapture = (actions: TeamActions) => {
       captures.push(actions);
@@ -613,14 +572,7 @@ describe("useTeamActions", () => {
         "runtime-session-1",
         undefined
       );
-      expect(listAgentEvents).toHaveBeenNthCalledWith(
-        2,
-        "token-1",
-        "worker-agent",
-        120,
-        "runtime-session-1",
-        200
-      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);
