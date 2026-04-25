@@ -148,6 +148,57 @@ describe("useTeamMemberAcpEffects", () => {
     expect(params.loadMemberEvents).toHaveBeenCalledWith("replace");
   });
 
+  it("dedupes rapid selection refreshes for the same agent session", async () => {
+    vi.useFakeTimers();
+    const params = createParams();
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(params.loadMemberEvents).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            ...params,
+            token: "token-2",
+          }}
+        />
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(params.loadMemberEvents).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+      await Promise.resolve();
+    });
+
+    act(() => {
+      root.render(
+        <HookHarness
+          params={{
+            ...params,
+            token: "token-3",
+          }}
+        />
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(params.loadMemberEvents).toHaveBeenCalledTimes(2);
+  });
+
   it("polls member ACP when EventSource is unavailable", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", undefined);

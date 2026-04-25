@@ -26,6 +26,7 @@ type UseTeamMemberAcpEffectsOptions = {
 
 const TEAM_MEMBER_ACP_POLL_INTERVAL_MS = 4000;
 const TEAM_MEMBER_ACP_ACTIVITY_SYNC_DEBOUNCE_MS = 500;
+const TEAM_MEMBER_ACP_SELECTION_REFRESH_DEDUPE_MS = 1500;
 
 function isMemberAcpTab(tab: TeamTab): boolean {
   return tab === "agent_acp" || tab === "member_console";
@@ -54,6 +55,8 @@ export function useTeamMemberAcpEffects({
   const pollFallbackAllowedRef = useRef(false);
   const [pollFallbackEnabled, setPollFallbackEnabled] = useState(false);
   const onLiveActivityRef = useRef(onLiveActivity);
+  const lastSelectionRefreshKeyRef = useRef<string | null>(null);
+  const lastSelectionRefreshAtRef = useRef<number>(0);
 
   useEffect(() => {
     latestSelectionRef.current = {
@@ -89,10 +92,25 @@ export function useTeamMemberAcpEffects({
     );
   }, []);
 
-  const refreshSelectedMemberEvents = useCallback(async () => {
+  const refreshSelectedMemberEvents = useCallback(async (reason: "selection" | "poll" = "selection") => {
     const { agentId, sessionId } = latestSelectionRef.current;
     if (!agentId || !sessionId) {
       return;
+    }
+    if (reason === "selection") {
+      const selectionKey = `${agentId}:${sessionId}`;
+      const now =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      if (
+        lastSelectionRefreshKeyRef.current === selectionKey &&
+        now - lastSelectionRefreshAtRef.current < TEAM_MEMBER_ACP_SELECTION_REFRESH_DEDUPE_MS
+      ) {
+        return;
+      }
+      lastSelectionRefreshKeyRef.current = selectionKey;
+      lastSelectionRefreshAtRef.current = now;
     }
     if (refreshInFlightRef.current) {
       refreshQueuedRef.current = true;
@@ -176,7 +194,7 @@ export function useTeamMemberAcpEffects({
         isMemberAcpTab(tab)
     );
     syncPollFallbackEnabled();
-    void refreshSelectedMemberEvents();
+    void refreshSelectedMemberEvents("selection");
   }, [
     eventsAutoRefresh,
     refreshSelectedMemberEvents,
@@ -201,7 +219,7 @@ export function useTeamMemberAcpEffects({
   useResumeRefresh({
     enabled: memberAcpRefreshEnabled,
     intervalMs: TEAM_MEMBER_ACP_POLL_INTERVAL_MS,
-    refresh: refreshSelectedMemberEvents,
+    refresh: () => refreshSelectedMemberEvents("poll"),
   });
 
   useEffect(() => {
