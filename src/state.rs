@@ -499,7 +499,14 @@ mod tests {
         std::fs::create_dir_all(&temp_home).expect("create temp home");
         let _home_guard = set_env_var("HOME", &temp_home);
         let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
-        let config = AppConfig::default();
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Main),
+                node_id: None,
+            }),
+            ..Default::default()
+        };
 
         AppState::seed_safe_paths(&db, &config)
             .await
@@ -757,6 +764,11 @@ mod tests {
         let keys_path = temp_root.join("push").join("vapid.json");
         let event_dir = temp_root.join("agent-events");
         let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Main),
+                node_id: None,
+            }),
             push: Some(PushConfig {
                 subject: Some("mailto:test@example.com".to_string()),
                 keys_path: Some(keys_path.to_string_lossy().to_string()),
@@ -769,7 +781,10 @@ mod tests {
                 .await
                 .expect("initialize main services");
 
-        assert!(push.is_enabled(), "main startup should enable push notifications");
+        assert!(
+            push.is_enabled(),
+            "main startup should enable push notifications"
+        );
         assert!(
             keys_path.exists(),
             "main startup should materialize VAPID keys at {}",
