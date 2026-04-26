@@ -8,15 +8,11 @@ import {
 } from "../api";
 import {
   Badge,
-  EmptyState,
   SelectableListItem,
 } from "../ui/primitives";
 import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
 import {
   AgentNodeDetailCard,
-  describeAgentAttachment,
-  describeSelectedNode,
-  formatNodeTimestamp as formatTimestamp,
   resolveAvailableNodes,
   resolveNodeRoleLabel,
 } from "./agent_node_detail_shared";
