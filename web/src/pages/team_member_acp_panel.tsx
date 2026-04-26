@@ -1,7 +1,11 @@
 import React from "react";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
 import { getTeamStepRuntimeHandleId } from "../api";
-import { buildWorkspaceNodePath, navigateToPath } from "../app_route_selection";
+import {
+  buildWorkspaceNodePath,
+  navigateToPath,
+  shouldHandleInAppLinkClick,
+} from "../app_route_selection";
 import {
   AcpPanel,
 } from "../components/acp_panel";
@@ -219,6 +223,9 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
               className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-ui-border bg-white px-2.5 py-1 text-[11px] font-medium text-notion-text-muted transition hover:border-black hover:text-notion-text"
               title={`Open node detail for ${attachedNodeId}`}
               onClick={(event) => {
+                if (!shouldHandleInAppLinkClick(event)) {
+                  return;
+                }
                 event.preventDefault();
                 navigateToPath(buildWorkspaceNodePath(attachedNodeId));
               }}

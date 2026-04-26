@@ -90,6 +90,17 @@ export function navigateToPath(pathname: string): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+export function shouldHandleInAppLinkClick(event: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  defaultPrevented: boolean;
+}): boolean {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
 export function isTeamsRoute(pathname: string): boolean {
   return (
     pathname === "/teams" ||

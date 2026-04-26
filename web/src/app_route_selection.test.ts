@@ -12,6 +12,7 @@ import {
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceNodeId,
+  shouldHandleInAppLinkClick,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
 } from "./app_route_selection";
@@ -152,5 +153,51 @@ describe("app route selection", () => {
 
     navigateToPath("/workspace?lens=nodes&node=node-west");
     expect(pushStateSpy).toHaveBeenCalledOnce();
+  });
+
+  it("only intercepts plain left-clicks for in-app link navigation", () => {
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 1,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: true,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: true,
+      })
+    ).toBe(false);
   });
 });

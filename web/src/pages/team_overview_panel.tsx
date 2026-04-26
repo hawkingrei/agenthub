@@ -1,5 +1,9 @@
 import React from "react";
-import { buildWorkspaceNodePath, navigateToPath } from "../app_route_selection";
+import {
+  buildWorkspaceNodePath,
+  navigateToPath,
+  shouldHandleInAppLinkClick,
+} from "../app_route_selection";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
@@ -164,6 +168,9 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                         className="inline-flex items-center rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[11px] font-semibold text-blue-700 underline decoration-transparent underline-offset-2 transition hover:border-blue-200 hover:bg-blue-50 hover:decoration-current"
                         title={`Open node detail for ${attachedNodeId}`}
                         onClick={(event) => {
+                          if (!shouldHandleInAppLinkClick(event)) {
+                            return;
+                          }
                           event.preventDefault();
                           event.stopPropagation();
                           navigateToPath(buildWorkspaceNodePath(attachedNodeId));
