@@ -855,8 +855,22 @@ pub(super) fn openapi_spec() -> Value {
                 "content": {
                   "application/json": {
                     "schema": {
-                      "type": "array",
-                      "items": { "$ref": "#/components/schemas/TeamActorMessageRecord" }
+                      "type": "object",
+                      "required": ["messages", "pending_count"],
+                      "properties": {
+                        "messages": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/TeamActorMessageRecord" }
+                        },
+                        "next_cursor": {
+                          "type": ["integer", "null"],
+                          "format": "int64"
+                        },
+                        "pending_count": {
+                          "type": "integer",
+                          "format": "int64"
+                        }
+                      }
                     }
                   }
                 }

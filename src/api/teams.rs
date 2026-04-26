@@ -296,6 +296,13 @@ pub struct ListTeamRunInboxQuery {
     pub include_delivered: Option<bool>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TeamRunInboxResponse {
+    pub messages: Vec<TeamActorMessageRecord>,
+    pub next_cursor: Option<i64>,
+    pub pending_count: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FlushTeamRunContextRequest {
     pub member_id: String,
@@ -1687,7 +1694,7 @@ async fn list_team_run_inbox(
     headers: HeaderMap,
     Path(run_id): Path<String>,
     Query(query): Query<ListTeamRunInboxQuery>,
-) -> Result<Json<Vec<TeamActorMessageRecord>>, ApiError> {
+) -> Result<Json<TeamRunInboxResponse>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let (_run, member_ids) = load_run_and_member_ids_for_user(&state, &run_id, &user).await?;
     let actor_ids =
@@ -1704,8 +1711,10 @@ async fn list_team_run_inbox(
     };
     let service = state.teams.actor_mailbox_service();
     let mut messages = Vec::new();
+    let mut pending_count = 0_i64;
+    let mut next_cursor: Option<i64> = None;
     for actor_id in actor_ids {
-        let actor_messages = service
+        let response = service
             .actor_inbox(ActorInboxRequest {
                 run_id: run_id.clone(),
                 actor_id,
@@ -1714,16 +1723,25 @@ async fn list_team_run_inbox(
                 states: states.clone(),
             })
             .await
-            .map_err(map_actor_service_api_error)?
-            .messages;
-        messages.extend(actor_messages);
+            .map_err(map_actor_service_api_error)?;
+        pending_count += response.pending_count;
+        next_cursor = match (next_cursor, response.next_cursor) {
+            (Some(existing), Some(candidate)) => Some(existing.min(candidate)),
+            (None, candidate) => candidate,
+            (existing, None) => existing,
+        };
+        messages.extend(response.messages);
     }
     messages.sort_by_key(|message| message.message_id);
     messages.dedup_by_key(|message| message.message_id);
     if messages.len() > limit as usize {
         messages.truncate(limit as usize);
     }
-    Ok(Json(messages))
+    Ok(Json(TeamRunInboxResponse {
+        messages,
+        next_cursor,
+        pending_count,
+    }))
 }
 
 async fn ack_team_run_message(

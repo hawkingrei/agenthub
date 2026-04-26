@@ -3184,8 +3184,9 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
     )
     .await
     .expect("list inbox");
-    assert_eq!(inbox.len(), 1);
-    assert_eq!(inbox[0].message_id, local_message.message_id);
+    assert_eq!(inbox.pending_count, 1);
+    assert_eq!(inbox.messages.len(), 1);
+    assert_eq!(inbox.messages[0].message_id, local_message.message_id);
 
     let Json(acked) = ack_team_run_message(
         State(state.clone()),
@@ -3212,7 +3213,8 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
     )
     .await
     .expect("list pending after ack");
-    assert!(pending_after_ack.is_empty());
+    assert_eq!(pending_after_ack.pending_count, 0);
+    assert!(pending_after_ack.messages.is_empty());
 
     let Json(inbox_with_delivered) = list_team_run_inbox(
         State(state.clone()),
@@ -3227,9 +3229,10 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
     )
     .await
     .expect("list inbox include delivered");
-    assert_eq!(inbox_with_delivered.len(), 1);
+    assert_eq!(inbox_with_delivered.pending_count, 0);
+    assert_eq!(inbox_with_delivered.messages.len(), 1);
     assert_eq!(
-        inbox_with_delivered[0].status,
+        inbox_with_delivered.messages[0].status,
         crate::team::TeamActorMessageStatus::Delivered
     );
 
@@ -3373,9 +3376,10 @@ async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
     )
     .await
     .expect("list inbox by user alias");
-    assert_eq!(inbox_by_alias.len(), 2);
-    assert_eq!(inbox_by_alias[0].message_id, alias_message_id);
-    assert_eq!(inbox_by_alias[1].message_id, canonical_message_id);
+    assert_eq!(inbox_by_alias.pending_count, 2);
+    assert_eq!(inbox_by_alias.messages.len(), 2);
+    assert_eq!(inbox_by_alias.messages[0].message_id, alias_message_id);
+    assert_eq!(inbox_by_alias.messages[1].message_id, canonical_message_id);
 
     let Json(inbox_by_canonical) = list_team_run_inbox(
         State(state.clone()),
@@ -3390,9 +3394,11 @@ async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
     )
     .await
     .expect("list inbox by canonical user actor id");
-    assert_eq!(inbox_by_canonical.len(), 2);
+    assert_eq!(inbox_by_canonical.pending_count, 2);
+    assert_eq!(inbox_by_canonical.messages.len(), 2);
     assert!(
         inbox_by_canonical
+            .messages
             .iter()
             .all(|message| message.status == crate::team::TeamActorMessageStatus::Pending)
     );
@@ -3440,9 +3446,11 @@ async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
     )
     .await
     .expect("list delivered by alias actor id");
-    assert_eq!(inbox_with_delivered.len(), 2);
+    assert_eq!(inbox_with_delivered.pending_count, 0);
+    assert_eq!(inbox_with_delivered.messages.len(), 2);
     assert!(
         inbox_with_delivered
+            .messages
             .iter()
             .all(|message| message.status == crate::team::TeamActorMessageStatus::Delivered)
     );

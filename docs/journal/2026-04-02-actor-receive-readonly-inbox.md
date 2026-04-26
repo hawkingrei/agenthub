@@ -23,3 +23,16 @@
 - `cargo test -p agenthub actor_output_preference_contract_covers_all_command_variants -- --nocapture`
 - `cargo test -p agenthub teams_router_http_contract -- --nocapture`
 - `cargo test -p agenthub-team-actor send_and_ack_emit_expected_events -- --nocapture`
+
+## 2026-04-26 Follow-up
+
+- aligned `GET /api/teams/runs/:run_id/messages/inbox` with the mailbox inbox
+  envelope instead of returning a bare message array
+- the HTTP inbox route now preserves:
+  - `messages`
+  - `next_cursor`
+  - `pending_count`
+- this keeps the Team HTTP path consistent with the CLI/runtime mailbox
+  contract:
+  - `actor inbox` remains read-only and exposes unread count
+  - `actor receive` remains the accept-and-consume path

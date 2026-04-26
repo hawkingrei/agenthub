@@ -956,9 +956,10 @@ async fn teams_router_http_contract() {
         .expect("list actor inbox via router");
     assert_eq!(list_inbox_resp.status(), StatusCode::OK);
     let inbox = decode_json_body(list_inbox_resp).await;
-    let inbox = inbox.as_array().expect("inbox array");
+    assert_eq!(inbox["pending_count"], Value::from(2));
+    let inbox = inbox["messages"].as_array().expect("inbox messages array");
     assert_eq!(inbox.len(), 2);
-    for message in inbox.iter() {
+    for message in inbox {
         assert_eq!(message["status"], "pending");
     }
     let message_ids = inbox
