@@ -316,8 +316,7 @@ pub(super) async fn touch_agent_node_last_seen(
     let result = sqlx::query(
         r#"
         UPDATE agent_nodes
-        SET last_seen_at = ?2,
-            updated_at = ?2
+        SET last_seen_at = ?2
         WHERE id = ?1
         "#,
     )
