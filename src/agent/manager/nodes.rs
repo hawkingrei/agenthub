@@ -235,18 +235,14 @@ pub(super) async fn list_agent_node_rows(
         } else {
             ""
         };
-        return sqlx::query(
-            &format!(
-                "
+        let sql = format!(
+            "
             SELECT id, name, grpc_target, tls_server_name, default_worktree_root{select_last_seen}, created_at, updated_at
             FROM agent_nodes
             ORDER BY created_at DESC
             "
-            ),
-        )
-        .fetch_all(db)
-        .await
-        .map_err(Into::into);
+        );
+        return sqlx::query(&sql).fetch_all(db).await.map_err(Into::into);
     }
 
     let select_last_seen = if caps.has_last_seen_at_column {
@@ -254,16 +250,14 @@ pub(super) async fn list_agent_node_rows(
     } else {
         ""
     };
-    sqlx::query(&format!(
+    let sql = format!(
         "
         SELECT id, name, grpc_target, tls_server_name{select_last_seen}, created_at, updated_at
         FROM agent_nodes
         ORDER BY created_at DESC
         "
-    ))
-    .fetch_all(db)
-    .await
-    .map_err(Into::into)
+    );
+    sqlx::query(&sql).fetch_all(db).await.map_err(Into::into)
 }
 
 pub(super) async fn get_agent_node_row(
@@ -277,19 +271,18 @@ pub(super) async fn get_agent_node_row(
         } else {
             ""
         };
-        return sqlx::query(
-            &format!(
-                "
+        let sql = format!(
+            "
             SELECT id, name, grpc_target, tls_server_name, default_worktree_root{select_last_seen}, created_at, updated_at
             FROM agent_nodes
             WHERE id = ?1
             "
-            ),
-        )
-        .bind(node_id)
-        .fetch_one(db)
-        .await
-        .map_err(Into::into);
+        );
+        return sqlx::query(&sql)
+            .bind(node_id)
+            .fetch_one(db)
+            .await
+            .map_err(Into::into);
     }
 
     let select_last_seen = if caps.has_last_seen_at_column {
@@ -297,17 +290,18 @@ pub(super) async fn get_agent_node_row(
     } else {
         ""
     };
-    sqlx::query(&format!(
+    let sql = format!(
         "
         SELECT id, name, grpc_target, tls_server_name{select_last_seen}, created_at, updated_at
         FROM agent_nodes
         WHERE id = ?1
         "
-    ))
-    .bind(node_id)
-    .fetch_one(db)
-    .await
-    .map_err(Into::into)
+    );
+    sqlx::query(&sql)
+        .bind(node_id)
+        .fetch_one(db)
+        .await
+        .map_err(Into::into)
 }
 
 pub(super) async fn touch_agent_node_last_seen(

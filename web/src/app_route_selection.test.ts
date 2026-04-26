@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthState } from "./types";
 import {
   buildWorkspaceNodePath,
   buildWorkspacePath,
+  navigateToPath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
@@ -26,6 +28,11 @@ function location(pathname: string, search = ""): RouteLocationState {
 }
 
 describe("app route selection", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState({}, "", "/");
+  });
+
   it("redirects unauthenticated team routes to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
     expect(shouldRedirectTeamsToLogin("/workspace/teams", null, null)).toBe(true);
@@ -134,5 +141,16 @@ describe("app route selection", () => {
     expect(resolveAppRouteKind(location("/workspace/teams/team-1"), rootAuth, "token-1", null)).toBe(
       "teams"
     );
+  });
+
+  it("does not duplicate history entries when navigating to the current path", () => {
+    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+
+    navigateToPath("/workspace?lens=nodes&node=node-east");
+    expect(pushStateSpy).not.toHaveBeenCalled();
+
+    navigateToPath("/workspace?lens=nodes&node=node-west");
+    expect(pushStateSpy).toHaveBeenCalledOnce();
   });
 });

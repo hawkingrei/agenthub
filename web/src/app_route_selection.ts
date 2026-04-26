@@ -82,6 +82,10 @@ export function buildWorkspaceNodePath(nodeId?: string | null): string {
 }
 
 export function navigateToPath(pathname: string): void {
+  const currentPath = `${window.location.pathname}${window.location.search}`;
+  if (pathname === currentPath) {
+    return;
+  }
   window.history.pushState({}, "", pathname);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }

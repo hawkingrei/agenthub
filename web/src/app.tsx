@@ -1016,8 +1016,9 @@ export function App() {
   const canManageNodes = canManageAgentNodes(auth);
   const rootWorkbenchNode = useMemo(
     () =>
-      canManageNodes && activeWorkspaceLens === "nodes"
-        ? (
+      activeWorkspaceLens === "nodes"
+        ? canManageNodes
+          ? (
             <AgentNodesWorkbench
               nodes={agentNodes}
               agents={agents}
@@ -1039,6 +1040,17 @@ export function App() {
               onUpdateNode={onUpdateAgentNode}
               onDeleteNode={onDeleteAgentNode}
             />
+          )
+          : (
+            <div className="flex h-full items-center justify-center p-6 text-center">
+              <div className="max-w-md space-y-2">
+                <h2 className="text-lg font-semibold text-notion-text">Machines unavailable</h2>
+                <p className="text-sm text-notion-text-muted">
+                  You do not have permission to manage machines. Select another workspace view to
+                  continue.
+                </p>
+              </div>
+            </div>
           )
         : null,
     [
