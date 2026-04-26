@@ -412,6 +412,31 @@ mod tests {
     }
 
     #[test]
+    fn validate_startup_config_rejects_node_mode_without_node_id() {
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Node),
+                node_id: None,
+            }),
+            internal_grpc: Some(InternalGrpcConfig {
+                enabled: Some(true),
+                listen: Some("127.0.0.1:50051".to_string()),
+                security: None,
+                auth: None,
+                bootstrap: None,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            super::validate_startup_config(&config)
+                .expect_err("node mode should require explicit node id")
+                .to_string(),
+            "server.node_id is required when server.role = \"node\""
+        );
+    }
+
+    #[test]
     fn validate_startup_config_rejects_reserved_main_node_id() {
         let config = AppConfig {
             server: Some(ServerConfig {
