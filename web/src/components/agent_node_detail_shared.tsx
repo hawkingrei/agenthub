@@ -118,7 +118,7 @@ export function deriveNodeRuntimeSummary(
 }
 
 function escapeShellValue(value: string): string {
-  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -400,7 +400,7 @@ export function AgentNodeDetailCard({
                       </Badge>
                     ))}
                   </div>
-                  <ActionButton tone="secondary" size="xs" onClick={() => void handleCopyConnectCommand()}>
+                  <ActionButton tone="secondary" size="sm" onClick={() => void handleCopyConnectCommand()}>
                     {copied ? "Copied" : "Copy"}
                   </ActionButton>
                 </div>
@@ -455,7 +455,7 @@ export function AgentNodeDetailCard({
               Route new agents here or open an attached agent for deeper runtime inspection.
             </Text>
             {onCreateAgent ? (
-              <ActionButton tone="secondary" size="xs" onClick={onCreateAgent}>
+              <ActionButton tone="secondary" size="sm" onClick={onCreateAgent}>
                 Create Agent
               </ActionButton>
             ) : null}
@@ -485,7 +485,7 @@ export function AgentNodeDetailCard({
                   {onOpenAgent ? (
                     <ActionButton
                       tone="secondary"
-                      size="xs"
+                      size="sm"
                       onClick={() => onOpenAgent(agent.id)}
                     >
                       Open
