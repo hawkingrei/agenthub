@@ -27,6 +27,7 @@ type AcpPanelProps = {
   acpView: AcpView;
   subtitle: string | null;
   mobileTitle?: string | null;
+  headerContext?: React.ReactNode;
   acpTab: AcpPanelTab;
   developerMode: boolean;
   conversationLoading?: boolean;
@@ -112,6 +113,7 @@ export {
 function AcpPanelView({
   subtitle,
   mobileTitle,
+  headerContext,
   acpTab,
   developerMode,
   conversationLoading = false,
@@ -157,8 +159,15 @@ function AcpPanelView({
           </div>
         ) : null}
         <div
-          className={`${mobileTitle ? "hidden sm:flex " : "flex "}items-center gap-2 max-[720px]:w-full max-[720px]:justify-start max-[720px]:flex-wrap`}
+          className={`${mobileTitle ? "hidden sm:flex " : "flex "}items-center justify-between gap-2 max-[720px]:w-full max-[720px]:justify-start max-[720px]:flex-wrap`}
         >
+          {headerContext ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 max-[720px]:w-full">
+              {headerContext}
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1" />
+          )}
           {tabsNode}
         </div>
       </div>

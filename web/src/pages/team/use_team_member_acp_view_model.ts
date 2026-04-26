@@ -18,6 +18,18 @@ import {
 
 export type TeamMemberAcpTab = "conversation" | "plan" | "debug";
 
+const ACTIVE_MEMBER_STATUSES = new Set([
+  "running",
+  "working",
+  "submitted",
+  "input_required",
+  "pending",
+]);
+
+function normalizeStatusValue(status?: string | null): string {
+  return status?.trim().toLowerCase() || "";
+}
+
 type UseTeamMemberAcpViewModelArgs = {
   developerMode: boolean;
   selectedMemberId: string;
@@ -240,14 +252,14 @@ export function useTeamMemberAcpViewModel({
   const memberModelLabel = selectedMemberSnapshot?.model?.trim() || null;
   const memberRoleLabel =
     selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null;
-  const memberStatus = (
-    acpView.runStatus?.status?.trim() ||
-    selectedMemberSnapshot?.status?.trim() ||
-    selectedMemberSnapshot?.session_status?.trim() ||
-    memberRoleLabel ||
-    "unknown"
-  ).toLowerCase();
-  const thinkingLabel = acpView.thinkingStartTs
+  const snapshotStatus =
+    normalizeStatusValue(selectedMemberSnapshot?.status) ||
+    normalizeStatusValue(selectedMemberSnapshot?.session_status);
+  const acpRunStatus = normalizeStatusValue(acpView.runStatus?.status);
+  const memberStatus =
+    snapshotStatus || acpRunStatus || normalizeStatusValue(memberRoleLabel) || "unknown";
+  const thinkingLabel =
+    acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
     : null;
   const memberStatusLabel = thinkingLabel
@@ -269,6 +281,7 @@ export function useTeamMemberAcpViewModel({
       virtualTopSpacer: acpConversation.conversationVirtualTopSpacer,
       virtualBottomSpacer: acpConversation.conversationVirtualBottomSpacer,
       stickToBottom: acpConversation.conversationStickToBottom,
+      bottomAlignLatest: acpConversation.conversationShouldBottomAlignLatest,
       pendingCount: acpConversation.conversationPendingCount,
       avgHeight: acpConversation.conversationAvgHeight,
       topHint: memberEventsLoading && !hasRenderableConversationContent
@@ -290,6 +303,7 @@ export function useTeamMemberAcpViewModel({
       acpConversation.conversationPendingCount,
       acpConversation.conversationRenderItems,
       acpConversation.conversationStickToBottom,
+      acpConversation.conversationShouldBottomAlignLatest,
       acpConversation.conversationVirtualBottomSpacer,
       acpConversation.conversationVirtualTopSpacer,
       acpConversation.conversationWindowOffset,
@@ -344,15 +358,15 @@ export function useTeamMemberAcpViewModel({
       return null;
     }
     if (!selectedSessionId) {
-      return "No active thread session yet";
+      return "Agent ACP · No active thread session yet";
     }
     if (memberEventsLoading && !hasRenderableConversationContent) {
-      return "Loading activity...";
+      return "Agent ACP · Loading activity...";
     }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
-      return "Active thread has no events yet";
+      return "Agent ACP · Active thread has no events yet";
     }
-    return "Active thread";
+    return "Agent ACP · Active thread";
   }, [
     acpView.hasAcp,
     hasRenderableConversationContent,
@@ -510,6 +524,7 @@ export function useTeamMemberAcpViewModel({
     memberStatus,
     memberStatusLabel,
     memberStatusClassToken,
+    panelSubtitle,
     developerTechnicalMetadata,
     acpPanelProps,
     inputDockJumpMode,

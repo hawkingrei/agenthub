@@ -195,13 +195,14 @@ describe("AgentNodeSection", () => {
       targetNodeId: "node-east",
     });
     expect(html).toContain("Machines");
-    expect(html).toContain("Route &amp; Worktree");
+    expect(html).toContain("Info");
+    expect(html).toContain("Connect Command");
     expect(html).toContain("~/.agenthub/worktrees/node-east");
-    expect(html).toContain("Agents on this machine (0)");
-    expect(html).toContain("Machine ID");
+    expect(html).toContain("Agents on this node (0)");
+    expect(html).toContain("Node ID");
     expect(html).toContain("Route target");
-    expect(html).toContain("Worktree root");
-    expect(html).toContain("No agents on this machine");
+    expect(html).toContain("Default worktree root");
+    expect(html).toContain("No agents on this node");
     expect(html).toContain("Save");
   });
 
@@ -293,9 +294,9 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Worker A");
     expect(html).toContain("Worker B");
     expect(html).toContain("Selected");
-    expect(html).toContain("New agents bind to Node East via encrypted gRPC (node-east.internal).");
+    expect(html).toContain("Remote execution routes through encrypted gRPC (node-east.internal).");
     expect(html).toContain("2 attached agents");
-    expect(html).toContain("Agents on this machine (2)");
+    expect(html).toContain("Agents on this node (2)");
     expect(html).toContain("running");
   });
 
@@ -371,10 +372,10 @@ describe("AgentNodeSection", () => {
       ] as typeof baseProps.agents,
     });
 
-    expect(html).toContain("New agents run on this AgentHub instance");
+    expect(html).toContain("This AgentHub instance is the local control plane");
     expect(html).toContain("local");
-    expect(html).toContain("Agents on this machine (5)");
+    expect(html).toContain("Agents on this node (5)");
     expect(html).toContain("Five");
-    expect(html).not.toContain("No agents on this machine");
+    expect(html).not.toContain("No agents on this node");
   });
 });

@@ -1,0 +1,508 @@
+import React from "react";
+import { Alert, Stack, Text } from "@mantine/core";
+import {
+  AgentNodeJoinBootstrapInfo,
+  AgentNodeRecord,
+  AgentRecord,
+} from "../api";
+import { isAgentActiveStatus } from "../agent_ws";
+import {
+  ActionButton,
+  Badge,
+  EmptyState,
+  KeyValueItem,
+  KeyValueList,
+} from "../ui/primitives";
+
+export const MACHINE_DETAIL_SECTION_CLASS =
+  "rounded-xl border border-ui-border/80 bg-white/72 px-3 py-3";
+export const MACHINE_DETAIL_AGENT_ROW_CLASS =
+  "rounded-lg border border-ui-border/70 bg-white/82 px-3 py-2";
+
+export function resolveAvailableNodes(nodes: AgentNodeRecord[]): AgentNodeRecord[] {
+  return nodes.length > 0
+    ? nodes
+    : [
+        {
+          id: "main",
+          name: "Main Node",
+          grpc_target: null,
+          tls_server_name: null,
+          default_worktree_root: null,
+          last_seen_at: null,
+          is_main: true,
+          created_at: 0,
+          updated_at: 0,
+        },
+      ];
+}
+
+export function formatNodeTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp || timestamp <= 0) {
+    return "Not recorded";
+  }
+  return new Date(timestamp * 1000).toLocaleString();
+}
+
+export function resolveNodeRoleLabel(node: AgentNodeRecord): string {
+  return node.is_main ? "local" : "remote";
+}
+
+export function describeSelectedNode(node: AgentNodeRecord | null): string {
+  if (!node) {
+    return "Select a node to inspect runtime metadata and attached agents.";
+  }
+  if (node.is_main) {
+    return "This AgentHub instance is the local control plane and default execution target.";
+  }
+  return `Remote execution routes through encrypted gRPC${node.tls_server_name ? ` (${node.tls_server_name})` : ""}.`;
+}
+
+export function describeAgentAttachment(agent: AgentRecord): string {
+  const parts = [agent.status];
+  if (agent.worktree_mode) {
+    parts.push(agent.worktree_mode);
+  }
+  return parts.join(" · ");
+}
+
+type NodeRuntimeSummary = {
+  label: string;
+  tone: "subtle" | "outline";
+  hint: string;
+};
+
+const NODE_LAST_SEEN_RECENT_WINDOW_SECONDS = 10 * 60;
+
+export function deriveNodeRuntimeSummary(
+  node: AgentNodeRecord,
+  agents: AgentRecord[]
+): NodeRuntimeSummary {
+  if (node.is_main) {
+    return {
+      label: "Connected",
+      tone: "subtle",
+      hint: "Local control plane node. This is the only node whose connectivity is directly implied by the current process.",
+    };
+  }
+  if (node.last_seen_at && node.last_seen_at > 0) {
+    const ageSeconds = Math.max(
+      0,
+      Math.floor(Date.now() / 1000) - node.last_seen_at
+    );
+    if (ageSeconds <= NODE_LAST_SEEN_RECENT_WINDOW_SECONDS) {
+      return {
+        label: "Recently Seen",
+        tone: "subtle",
+        hint: `This node most recently bootstrapped ${formatNodeTimestamp(node.last_seen_at)}.`,
+      };
+    }
+    return {
+      label: "Seen Earlier",
+      tone: "outline",
+      hint: `The latest bootstrap credential issuance was recorded ${formatNodeTimestamp(node.last_seen_at)}.`,
+    };
+  }
+  if (agents.some((agent) => isAgentActiveStatus(agent.status))) {
+    return {
+      label: "Agent Activity Detected",
+      tone: "subtle",
+      hint: "At least one attached agent is currently active. This is an indirect runtime signal, not a node heartbeat.",
+    };
+  }
+  return {
+    label: "Unverified",
+    tone: "outline",
+    hint: "AgentHub currently has registry metadata for this node, but no direct heartbeat or last-seen signal.",
+  };
+}
+
+function escapeShellValue(value: string): string {
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  if (typeof document === "undefined") {
+    throw new Error("clipboard unavailable");
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!ok) {
+    throw new Error("clipboard write failed");
+  }
+}
+
+type NodeConnectCommandSpec = {
+  command: string;
+  substituted: string[];
+  manual: string[];
+  hasBootstrapToken: boolean;
+  configItems: Array<{ label: string; value: string }>;
+};
+
+export function buildNodeConnectCommandSpec(args: {
+  node: AgentNodeRecord;
+  bootstrap: AgentNodeJoinBootstrapInfo | null;
+}): NodeConnectCommandSpec | null {
+  const { node, bootstrap } = args;
+  if (node.is_main) {
+    return null;
+  }
+  const token = bootstrap?.bootstrap_token?.trim();
+  return {
+    command: [
+      `AGENTHUB_SERVER_ROLE=node`,
+      `AGENTHUB_SERVER_NODE_ID=${escapeShellValue(node.id)}`,
+      `AGENTHUB_INTERNAL_GRPC_ENABLED=true`,
+      `AGENTHUB_INTERNAL_GRPC_LISTEN='0.0.0.0:50051'`,
+      `AGENTHUB_INTERNAL_GRPC_BOOTSTRAP_TOKEN=${escapeShellValue(token || "<bootstrap-token-from-main-control-plane>")}`,
+      `agenthub --config /etc/agenthub/config.toml`,
+    ].join(" "),
+    substituted: [
+      `node_id=${node.id}`,
+      ...(token ? ["bootstrap token"] : []),
+    ],
+    manual: [
+      "config path",
+      "listen addr if 50051 is not correct",
+      ...(token ? [] : ["bootstrap token"]),
+      "TLS/auth config parity with the main control plane",
+    ],
+    hasBootstrapToken: Boolean(token),
+    configItems: [
+      { label: "server.role", value: "node" },
+      { label: "server.node_id", value: node.id },
+      { label: "internal_grpc.enabled", value: "true" },
+      { label: "internal_grpc.listen", value: "0.0.0.0:50051" },
+      {
+        label: "internal_grpc.bootstrap.token",
+        value: token || "<bootstrap-token-from-main-control-plane>",
+      },
+      { label: "config file", value: "/etc/agenthub/config.toml" },
+    ],
+  };
+}
+
+type AgentNodeDetailCardProps = {
+  node: AgentNodeRecord;
+  agents: AgentRecord[];
+  nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
+  nodeJoinBootstrapLoading: boolean;
+  nodeJoinBootstrapError: string | null;
+  onOpenAgent?: (agentId: string) => void;
+  onCreateAgent?: () => void;
+  compact?: boolean;
+};
+
+export function AgentNodeDetailCard({
+  node,
+  agents,
+  nodeJoinBootstrap,
+  nodeJoinBootstrapLoading,
+  nodeJoinBootstrapError,
+  onOpenAgent,
+  onCreateAgent,
+  compact = false,
+}: AgentNodeDetailCardProps) {
+  const connectCommand = buildNodeConnectCommandSpec({ node, bootstrap: nodeJoinBootstrap });
+  const runtimeSummary = deriveNodeRuntimeSummary(node, agents);
+  const [copied, setCopied] = React.useState(false);
+  const [copyError, setCopyError] = React.useState<string | null>(null);
+  const resetCopiedTimeoutRef = React.useRef<number | null>(null);
+  const connectTone =
+    node.is_main || connectCommand?.hasBootstrapToken
+      ? "border-ui-border/80 bg-white/72"
+      : "border-amber-300 bg-amber-50/70";
+
+  React.useEffect(() => {
+    return () => {
+      if (resetCopiedTimeoutRef.current !== null) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopyConnectCommand = React.useCallback(async () => {
+    if (!connectCommand) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(connectCommand.command);
+      setCopied(true);
+      setCopyError(null);
+      if (resetCopiedTimeoutRef.current !== null) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+      resetCopiedTimeoutRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetCopiedTimeoutRef.current = null;
+      }, 1600);
+    } catch (error) {
+      setCopied(false);
+      setCopyError(error instanceof Error ? error.message : "Copy failed");
+    }
+  }, [connectCommand]);
+
+  return (
+    <Stack gap="sm">
+      <div className="rounded-xl border border-ui-border/80 bg-white/90 px-3 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Text size={compact ? "md" : "lg"} fw={700}>
+                {node.name}
+              </Text>
+              <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
+                {resolveNodeRoleLabel(node)}
+              </Badge>
+              <Badge tone={runtimeSummary.tone}>{runtimeSummary.label}</Badge>
+            </div>
+            <Text size="sm" c="dimmed" mt={4}>
+              {describeSelectedNode(node)}
+            </Text>
+            <Text size="xs" c="dimmed" mt={6}>
+              {runtimeSummary.hint}
+            </Text>
+          </div>
+          <Badge tone="outline">
+            {agents.length} attached agent{agents.length === 1 ? "" : "s"}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        <div className={MACHINE_DETAIL_SECTION_CLASS}>
+          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+            Info
+          </Text>
+          <KeyValueList className="mt-3 grid gap-2">
+            <KeyValueItem
+              label="Node ID"
+              value={node.id}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text break-all"
+            />
+            <KeyValueItem
+              label="Role"
+              value={node.is_main ? "Local control plane" : "Remote execution node"}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+            <KeyValueItem
+              label="Runtime signal"
+              value={runtimeSummary.label}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+            <KeyValueItem
+              label="Route target"
+              value={node.is_main ? "local control plane" : (node.grpc_target ?? "encrypted gRPC")}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text break-all"
+            />
+            <KeyValueItem
+              label="TLS server name"
+              value={node.tls_server_name ?? "Uses target host"}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text break-all"
+            />
+            <KeyValueItem
+              label="Default worktree root"
+              value={node.default_worktree_root ?? "Explicit workdir required"}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text break-all"
+            />
+            <KeyValueItem
+              label="Created"
+              value={formatNodeTimestamp(node.created_at)}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+            <KeyValueItem
+              label="Updated"
+              value={formatNodeTimestamp(node.updated_at)}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+            <KeyValueItem
+              label="Last seen"
+              value={formatNodeTimestamp(node.last_seen_at)}
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+            <KeyValueItem
+              label="Registry evidence"
+              value={
+                node.last_seen_at
+                  ? "The latest bootstrap credential issuance is persisted as a lightweight node last-seen signal."
+                  : "No bootstrap-based last-seen signal is persisted for this node yet."
+              }
+              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+              valueClassName="text-xs text-ui-text"
+            />
+          </KeyValueList>
+        </div>
+
+        <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone}`}>
+          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+            Connect
+          </Text>
+          <div className="mt-3">
+            {node.is_main ? (
+              <Text size="sm" c="dimmed">
+                The local control plane node does not need a remote bootstrap command.
+              </Text>
+            ) : nodeJoinBootstrapLoading ? (
+              <Text size="sm" c="dimmed">
+                Loading node bootstrap details...
+              </Text>
+            ) : nodeJoinBootstrapError ? (
+              <Alert color="red" variant="light" title="Bootstrap unavailable">
+                <Text size="sm">{nodeJoinBootstrapError}</Text>
+              </Alert>
+            ) : connectCommand ? (
+              <Stack gap="xs">
+                <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                  Connect Command
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Start the node process with the registered node id, then keep the process
+                  running. The command below only substitutes values this page can derive
+                  canonically.
+                </Text>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {connectCommand.substituted.map((value) => (
+                      <Badge key={value} tone="subtle">
+                        {value}
+                      </Badge>
+                    ))}
+                    {connectCommand.manual.map((value) => (
+                      <Badge key={value} tone="outline">
+                        needs: {value}
+                      </Badge>
+                    ))}
+                  </div>
+                  <ActionButton tone="secondary" size="sm" onClick={() => void handleCopyConnectCommand()}>
+                    {copied ? "Copied" : "Copy"}
+                  </ActionButton>
+                </div>
+                <pre className="overflow-x-auto rounded-lg border border-ui-border/80 bg-slate-950 px-3 py-3 text-[12px] leading-5 text-slate-50">
+                  {connectCommand.command}
+                </pre>
+                {copyError ? (
+                  <Text size="xs" c="red">
+                    {copyError}
+                  </Text>
+                ) : null}
+                {!connectCommand.hasBootstrapToken ? (
+                  <Text size="xs" c="dimmed">
+                    Bootstrap data is missing from the current API response, so the command keeps an
+                    explicit token placeholder instead of pretending it is fully resolved.
+                  </Text>
+                ) : null}
+                <div className="mt-2 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
+                  <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                    Connect Config
+                  </Text>
+                  <KeyValueList className="mt-3 grid gap-2">
+                    {connectCommand.configItems.map((item) => (
+                      <KeyValueItem
+                        key={item.label}
+                        label={item.label}
+                        value={item.value}
+                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+                        valueClassName="text-xs text-ui-text break-all"
+                      />
+                    ))}
+                  </KeyValueList>
+                </div>
+              </Stack>
+            ) : (
+              <Text size="sm" c="dimmed">
+                Bootstrap token details are not available yet. Load them from the root control
+                plane before starting this node.
+              </Text>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className={MACHINE_DETAIL_SECTION_CLASS}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+            Agents on this node ({agents.length})
+          </Text>
+          <div className="flex items-center gap-2">
+            <Text size="xs" c="dimmed">
+              Route new agents here or open an attached agent for deeper runtime inspection.
+            </Text>
+            {onCreateAgent ? (
+              <ActionButton tone="secondary" size="sm" onClick={onCreateAgent}>
+                Create Agent
+              </ActionButton>
+            ) : null}
+          </div>
+        </div>
+        {agents.length > 0 ? (
+          <div className="mt-3 grid gap-2">
+            {agents.map((agent) => (
+              <div key={agent.id} className={MACHINE_DETAIL_AGENT_ROW_CLASS}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Text size="sm" fw={600}>
+                        {agent.name}
+                      </Text>
+                      <Badge tone="subtle" className="uppercase">
+                        {agent.status}
+                      </Badge>
+                    </div>
+                    <Text size="xs" c="dimmed" mt={2}>
+                      {describeAgentAttachment(agent)}
+                    </Text>
+                    <Text size="xs" c="dimmed" mt={8}>
+                      {agent.workdir}
+                    </Text>
+                  </div>
+                  {onOpenAgent ? (
+                    <ActionButton
+                      tone="secondary"
+                      size="sm"
+                      onClick={() => onOpenAgent(agent.id)}
+                    >
+                      Open
+                    </ActionButton>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No agents on this node"
+            body="Create or re-route an agent to make this node active."
+            className="mt-3 border border-dashed border-ui-border bg-white/80 px-3 py-4"
+          />
+        )}
+      </div>
+    </Stack>
+  );
+}

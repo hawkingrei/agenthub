@@ -16,6 +16,7 @@ pub(crate) fn build_main_agent_node_record() -> AgentNodeRecord {
         grpc_target: None,
         tls_server_name: None,
         default_worktree_root: None,
+        last_seen_at: None,
         is_main: true,
         created_at: 0,
         updated_at: 0,
@@ -180,6 +181,7 @@ mod tests {
         assert!(record.grpc_target.is_none());
         assert!(record.tls_server_name.is_none());
         assert!(record.default_worktree_root.is_none());
+        assert!(record.last_seen_at.is_none());
         assert!(record.is_main);
     }
 

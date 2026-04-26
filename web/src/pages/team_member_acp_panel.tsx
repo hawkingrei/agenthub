@@ -2,6 +2,11 @@ import React from "react";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
 import { getTeamStepRuntimeHandleId } from "../api";
 import {
+  buildWorkspaceNodePath,
+  navigateToPath,
+  shouldHandleInAppLinkClick,
+} from "../app_route_selection";
+import {
   AcpPanel,
 } from "../components/acp_panel";
 import { OutputHeaderDetails } from "../components/output_header";
@@ -13,9 +18,8 @@ import {
 } from "./team/use_team_member_acp_view_model";
 import { useTeamMemberAcpInput } from "./team/use_team_member_acp_input";
 import { useTeamMemberAcpPanelState } from "./team/use_team_member_acp_panel_state";
+import { Badge } from "../ui/primitives";
 import {
-  OUTPUT_HEADER_META_CLASS,
-  OUTPUT_HEADER_ROOT_CLASS,
   OUTPUT_HEADER_TITLE_CLASS,
   OUTPUT_HEADER_TITLE_HEADING_CLASS,
   OUTPUT_HEADER_TITLE_MAIN_CLASS,
@@ -31,6 +35,7 @@ type TeamMemberAcpPanelProps = {
   hideMemberTitle?: boolean;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   selectedMemberRole?: string | null;
+  selectedTargetNodeId?: string | null;
   selectedSessionId?: string | null;
   memberEvents: AgentEvent[];
   memberEventsHasMore: boolean;
@@ -58,6 +63,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberTitle: memberTitleProp,
     hideMemberTitle = false,
     selectedMemberRole,
+    selectedTargetNodeId,
     selectedSessionId: selectedSessionIdProp,
     memberEvents,
     memberEventsHasMore,
@@ -124,6 +130,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberStatus,
     memberStatusLabel,
     memberStatusClassToken,
+    panelSubtitle,
     developerTechnicalMetadata,
     acpPanelProps,
     inputDockJumpMode,
@@ -190,45 +197,101 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     }
   }, [hasVisibleInputDock, resetInputDockHeight]);
   const shouldRenderPanel = Boolean(selectedMemberId.trim());
+  const memberDescription = selectedMemberSnapshot?.description?.trim() || null;
+  const attachedNodeId = selectedTargetNodeId?.trim() || null;
+  const infoStripItems = [
+    selectedMemberRole?.trim() || selectedMemberSnapshot?.role?.trim() || null,
+    memberModelLabel,
+    panelSubtitle,
+  ].filter((value): value is string => Boolean(value));
+  const infoStripSummary = infoStripItems.join(" · ");
+  const acpPanelPropsWithoutSubtitle = React.useMemo(
+    () => ({
+      ...acpPanelProps,
+      subtitle: null,
+      headerContext: (
+        <>
+          <StatusBadge
+            label={memberStatusLabel}
+            tone={resolveTeamRunStatusTone(memberStatus)}
+            className={`agent-status status-${memberStatusClassToken}`}
+            title={`status: ${memberStatusLabel}`}
+          />
+          {attachedNodeId ? (
+            <a
+              href={buildWorkspaceNodePath(attachedNodeId)}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-ui-border bg-white px-2.5 py-1 text-[11px] font-medium text-notion-text-muted transition hover:border-black hover:text-notion-text"
+              title={`Open node detail for ${attachedNodeId}`}
+              onClick={(event) => {
+                if (!shouldHandleInAppLinkClick(event)) {
+                  return;
+                }
+                event.preventDefault();
+                navigateToPath(buildWorkspaceNodePath(attachedNodeId));
+              }}
+            >
+              <span className="uppercase tracking-[0.08em] text-[10px]">Attached node</span>
+              <span className="truncate text-notion-text">{attachedNodeId}</span>
+            </a>
+          ) : null}
+          {infoStripSummary ? (
+            <div className="min-w-0">
+              <Badge
+                tone="outline"
+                shape="pill"
+                className="max-w-full truncate text-[11px] font-medium normal-case tracking-normal text-notion-text-muted"
+                title={infoStripSummary}
+              >
+                {infoStripSummary}
+              </Badge>
+            </div>
+          ) : null}
+          <OutputHeaderDetails
+            items={developerTechnicalMetadata}
+            summaryClassName="inline-flex cursor-pointer list-none items-center rounded-full border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10"
+          />
+        </>
+      ),
+    }),
+    [
+      acpPanelProps,
+      attachedNodeId,
+      developerTechnicalMetadata,
+      infoStripSummary,
+      memberStatus,
+      memberStatusClassToken,
+      memberStatusLabel,
+    ]
+  );
 
   return (
-    <div className={`${TEAM_PANEL_CARD_CLASS} p-2`}>
+    <div className={`${TEAM_PANEL_CARD_CLASS} px-2 pb-2 pt-1.5`}>
       {!selectedMemberId.trim() && (
-        <p className={`mt-2 ${TEAM_MUTED_TEXT_CLASS}`}>
+        <p className={`mt-1 ${TEAM_MUTED_TEXT_CLASS}`}>
           Select an agent from the left rail to inspect its thread.
         </p>
       )}
 
       {shouldRenderPanel && (
-        <div className="relative mt-2 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1.5">
-          <div className={`${OUTPUT_HEADER_ROOT_CLASS} shrink-0`}>
-            {!hideMemberTitle && (
+        <div className="relative mt-1 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1">
+          {!hideMemberTitle && (
+            <div className="shrink-0 px-4 pt-1 sm:px-6">
               <div className={OUTPUT_HEADER_TITLE_CLASS}>
                 <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
                   <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
                     <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
-                    {memberModelLabel ? (
-                      <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
-                    ) : null}
                   </div>
+                  {memberDescription ? (
+                    <p className="text-[13px] leading-relaxed text-notion-text-muted">
+                      {memberDescription}
+                    </p>
+                  ) : null}
                 </div>
               </div>
-            )}
-            <div className={OUTPUT_HEADER_META_CLASS}>
-              <StatusBadge
-                label={memberStatusLabel}
-                tone={resolveTeamRunStatusTone(memberStatus)}
-                className={`agent-status status-${memberStatusClassToken}`}
-                title={`status: ${memberStatusLabel}`}
-              />
-              {hideMemberTitle && memberModelLabel ? (
-                <span className="agent-tag hidden sm:inline-flex">{memberModelLabel}</span>
-              ) : null}
-              <OutputHeaderDetails items={developerTechnicalMetadata} />
             </div>
-          </div>
+          )}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <AcpPanel {...acpPanelProps} />
+            <AcpPanel {...acpPanelPropsWithoutSubtitle} />
           </div>
         </div>
       )}

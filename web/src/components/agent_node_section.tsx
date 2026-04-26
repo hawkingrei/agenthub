@@ -8,12 +8,14 @@ import {
 } from "../api";
 import {
   Badge,
-  EmptyState,
-  KeyValueItem,
-  KeyValueList,
   SelectableListItem,
 } from "../ui/primitives";
 import { validateAgentNodeDraft, validateAgentNodeUpdateDraft } from "./agent_node_validation";
+import {
+  AgentNodeDetailCard,
+  resolveAvailableNodes,
+  resolveNodeRoleLabel,
+} from "./agent_node_detail_shared";
 
 type AgentNodeDraft = {
   name: string;
@@ -52,6 +54,7 @@ export type AgentNodeSectionProps = {
   onCreateNode: () => void;
   onUpdateNode: (nodeId: string, payload: AgentNodeUpdate) => void;
   onDeleteNode: (nodeId: string) => void;
+  onOpenNodeDetail?: (nodeId: string) => void;
 };
 
 function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
@@ -63,39 +66,6 @@ function toNodeDraft(node: AgentNodeRecord): AgentNodeDraft {
   };
 }
 
-function resolveNodeRoleLabel(node: AgentNodeRecord): string {
-  return node.is_main ? "local" : "remote";
-}
-
-function describeSelectedNode(node: AgentNodeRecord | null): string {
-  if (!node) {
-    return "Select a machine to route new agents and inspect attached workers.";
-  }
-  if (node.is_main) {
-    return "New agents run on this AgentHub instance and inherit local safe-path and worktree policy.";
-  }
-  return `New agents bind to ${node.name} via encrypted gRPC${node.tls_server_name ? ` (${node.tls_server_name})` : ""}.`;
-}
-
-function formatTimestamp(timestamp: number | null | undefined): string {
-  if (!timestamp || timestamp <= 0) {
-    return "Not recorded";
-  }
-  return new Date(timestamp * 1000).toLocaleString();
-}
-
-function describeAgentAttachment(agent: AgentRecord): string {
-  const parts = [agent.status];
-  if (agent.worktree_mode) {
-    parts.push(agent.worktree_mode);
-  }
-  return parts.join(" · ");
-}
-
-const MACHINE_DETAIL_SECTION_CLASS =
-  "rounded-xl border border-ui-border/80 bg-white/72 px-3 py-3";
-const MACHINE_DETAIL_AGENT_ROW_CLASS =
-  "rounded-lg border border-ui-border/70 bg-white/82 px-3 py-2";
 const MACHINE_ROSTER_ITEM_CLASS =
   "w-full rounded-xl border-2 border-transparent bg-white/70 px-2.5 py-2.5 shadow-none hover:border-black hover:bg-white";
 const MACHINE_ROSTER_ITEM_ACTIVE_CLASS = "border-black bg-white";
@@ -206,30 +176,14 @@ export function AgentNodeSection({
   onCreateNode,
   onUpdateNode,
   onDeleteNode,
+  onOpenNodeDetail,
 }: AgentNodeSectionProps) {
   const createNodeError = validateAgentNodeDraft({
     nodeId: nodeIdInput,
     nodeName: nodeNameInput,
     grpcTarget: grpcTargetInput,
   });
-  const availableNodes = React.useMemo(
-    () =>
-      nodes.length > 0
-        ? nodes
-        : [
-            {
-              id: "main",
-              name: "Main Node",
-              grpc_target: null,
-              tls_server_name: null,
-              default_worktree_root: null,
-              is_main: true,
-              created_at: 0,
-              updated_at: 0,
-            },
-          ],
-    [nodes]
-  );
+  const availableNodes = React.useMemo(() => resolveAvailableNodes(nodes), [nodes]);
   const resolvedTargetNodeId = targetNodeId.trim() || "main";
   const selectedNode =
     availableNodes.find((node) => node.id === resolvedTargetNodeId) ??
@@ -374,151 +328,27 @@ export function AgentNodeSection({
             })}
           </div>
           {selectedNode ? (
-            <div className="rounded-xl border border-ui-border bg-white/90 px-3 py-3">
-              <Stack gap="sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Text size="lg" fw={700}>
-                        {selectedNode.name}
-                      </Text>
-                      <Badge tone={selectedNode.is_main ? "subtle" : "outline"} className="uppercase">
-                        {resolveNodeRoleLabel(selectedNode)}
-                      </Badge>
-                    </div>
-                    <Text size="sm" c="dimmed" mt={4}>
-                      {describeSelectedNode(selectedNode)}
-                    </Text>
-                  </div>
-                  <Badge tone="outline">
-                    {selectedNodeAgents.length} attached agent
-                    {selectedNodeAgents.length === 1 ? "" : "s"}
-                  </Badge>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <div className={MACHINE_DETAIL_SECTION_CLASS}>
-                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                      Name
-                    </Text>
-                    <KeyValueList className="mt-3 grid gap-2">
-                      <KeyValueItem
-                        label="Machine ID"
-                        value={selectedNode.id}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text break-all"
-                      />
-                      <KeyValueItem
-                        label="Display name"
-                        value={selectedNode.name}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text"
-                      />
-                      <KeyValueItem
-                        label="Updated"
-                        value={formatTimestamp(selectedNode.updated_at)}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text"
-                      />
-                    </KeyValueList>
-                  </div>
-
-                  <div className={MACHINE_DETAIL_SECTION_CLASS}>
-                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                      Info
-                    </Text>
-                    <KeyValueList className="mt-3 grid gap-2">
-                      <KeyValueItem
-                        label="Role"
-                        value={selectedNode.is_main ? "Local control plane" : "Remote machine"}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text"
-                      />
-                      <KeyValueItem
-                        label="TLS server name"
-                        value={selectedNode.tls_server_name ?? "Uses target host"}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text break-all"
-                      />
-                      <KeyValueItem
-                        label="Created"
-                        value={formatTimestamp(selectedNode.created_at)}
-                        labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                        valueClassName="text-xs text-ui-text"
-                      />
-                    </KeyValueList>
-                  </div>
-                </div>
-
-                <div className={MACHINE_DETAIL_SECTION_CLASS}>
-                  <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                    Route &amp; Worktree
-                  </Text>
-                  <KeyValueList className="mt-3 grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
-                    <KeyValueItem
-                      label="Route target"
-                      value={
-                        selectedNode.is_main
-                          ? "local control plane"
-                          : selectedNode.grpc_target ?? "encrypted gRPC"
-                      }
-                      labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                      valueClassName="text-xs text-ui-text break-all"
-                    />
-                    <KeyValueItem
-                      label="Worktree root"
-                      value={selectedNode.default_worktree_root ?? "Explicit workdir required"}
-                      labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-                      valueClassName="text-xs text-ui-text break-all"
-                    />
-                  </KeyValueList>
-                </div>
-
-                <div className={MACHINE_DETAIL_SECTION_CLASS}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                      Agents on this machine ({selectedNodeAgents.length})
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      New agents default here until you switch the machine selection above.
-                    </Text>
-                  </div>
-                  {selectedNodeAgents.length > 0 ? (
-                    <div className="mt-3 grid gap-2">
-                      {selectedNodeAgents.map((agent) => (
-                        <div
-                          key={agent.id}
-                          className={MACHINE_DETAIL_AGENT_ROW_CLASS}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <Text size="sm" fw={600}>
-                                {agent.name}
-                              </Text>
-                              <Text size="xs" c="dimmed" mt={2}>
-                                {describeAgentAttachment(agent)}
-                              </Text>
-                            </div>
-                            <Badge tone="subtle" className="uppercase">
-                              {agent.status}
-                            </Badge>
-                          </div>
-                          <Text size="xs" c="dimmed" mt={8}>
-                            {agent.workdir}
-                          </Text>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="No agents on this machine"
-                      body="Create or re-route an agent to make this machine active."
-                      className="mt-3 border border-dashed border-ui-border bg-white/80 px-3 py-4"
-                    />
-                  )}
-                </div>
-              </Stack>
-            </div>
+            <Stack gap="sm">
+              <div className="flex items-center justify-end">
+                {onOpenNodeDetail ? (
+                  <Button
+                    variant="light"
+                    size="xs"
+                    onClick={() => onOpenNodeDetail(selectedNode.id)}
+                  >
+                    Open node detail
+                  </Button>
+                ) : null}
+              </div>
+              <AgentNodeDetailCard
+                node={selectedNode}
+                agents={selectedNodeAgents}
+                nodeJoinBootstrap={nodeJoinBootstrap}
+                nodeJoinBootstrapLoading={nodeJoinBootstrapLoading}
+                nodeJoinBootstrapError={nodeJoinBootstrapError}
+                compact
+              />
+            </Stack>
           ) : null}
         </Stack>
       </div>

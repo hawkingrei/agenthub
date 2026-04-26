@@ -198,4 +198,13 @@ describe("AgentsRouteShell", () => {
     expect(html).not.toContain(OUTPUT_BODY_ROOT_CLASS);
     expect(html).toContain("No agent selected");
   });
+
+  it("renders a root workbench node when the route hosts non-agent content", () => {
+    const html = renderRouteShell({
+      workbenchProps: null,
+      rootWorkbenchNode: <div>Node detail marker</div>,
+    });
+
+    expect(html).toContain("Node detail marker");
+  });
 });

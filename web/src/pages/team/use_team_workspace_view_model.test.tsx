@@ -251,6 +251,38 @@ describe("useTeamWorkspaceViewModel", () => {
     }
   });
 
+  it("does not keep stale agent chrome when the resolved agent workspace member is empty", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+      focusedAgentMemberId: "worker-1",
+      selectedMemberId: "",
+      selectedAgentWorkspaceMemberId: "",
+      selectedAgentWorkspaceLiveState: null,
+      selectedTeamMemberLiveStates: [
+        {
+          member_id: "worker-1",
+          agent_name: "Worker One",
+          lifecycle_status: "running",
+          lifecycle_tone: "active",
+          run_status: "working",
+          step_status: "working",
+          pending_inbox_count: 1,
+          current_work: "Replying to leader",
+          role: "worker",
+        },
+      ] as HookParams["selectedTeamMemberLiveStates"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.isAgentWorkspace).toBe(false);
+      expect(snapshot?.selectedAgentLabel).toBe("Agent");
+      expect(snapshot?.workspaceTitle).toBe("Agent ACP");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
   it("uses canonical selected channel metadata for shared conversation and task chrome", async () => {
     const sharedConversationParams = createParams({
       selectedChannelLabel: "# review",

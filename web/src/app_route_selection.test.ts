@@ -1,13 +1,18 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthState } from "./types";
 import {
+  buildWorkspaceNodePath,
   buildWorkspacePath,
+  navigateToPath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
+  resolveWorkspaceNodeId,
+  shouldHandleInAppLinkClick,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
 } from "./app_route_selection";
@@ -24,6 +29,11 @@ function location(pathname: string, search = ""): RouteLocationState {
 }
 
 describe("app route selection", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState({}, "", "/");
+  });
+
   it("redirects unauthenticated team routes to login", () => {
     expect(shouldRedirectTeamsToLogin("/teams", null, null)).toBe(true);
     expect(shouldRedirectTeamsToLogin("/workspace/teams", null, null)).toBe(true);
@@ -72,10 +82,14 @@ describe("app route selection", () => {
     expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
     expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
     expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=nodes")).toBe("nodes");
     expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1?lens=channels"
     );
+    expect(resolveWorkspaceNodeId("?lens=nodes&node=node-east")).toBe("node-east");
+    expect(resolveWorkspaceNodeId("?lens=nodes")).toBeNull();
+    expect(buildWorkspaceNodePath("node-east")).toBe("/workspace?lens=nodes&node=node-east");
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {
@@ -128,5 +142,62 @@ describe("app route selection", () => {
     expect(resolveAppRouteKind(location("/workspace/teams/team-1"), rootAuth, "token-1", null)).toBe(
       "teams"
     );
+  });
+
+  it("does not duplicate history entries when navigating to the current path", () => {
+    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+    const pushStateSpy = vi.spyOn(window.history, "pushState");
+
+    navigateToPath("/workspace?lens=nodes&node=node-east");
+    expect(pushStateSpy).not.toHaveBeenCalled();
+
+    navigateToPath("/workspace?lens=nodes&node=node-west");
+    expect(pushStateSpy).toHaveBeenCalledOnce();
+  });
+
+  it("only intercepts plain left-clicks for in-app link navigation", () => {
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(true);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 1,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: true,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldHandleInAppLinkClick({
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        defaultPrevented: true,
+      })
+    ).toBe(false);
   });
 });

@@ -519,6 +519,10 @@ describe("team panels interactions", () => {
                 current_work: "collecting evidence",
               }),
             ]}
+            memberTargetNodeById={{
+              "leader-agent": "main",
+              "worker-agent": "node-east",
+            }}
             focusedAgentMemberId="worker-agent"
             tab="member_console"
             onSelectTeam={onSelectTeam}
@@ -589,6 +593,10 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");
     expect(container.textContent).toContain("collecting evidence");
+    expect(container.textContent).toContain("local");
+    expect(container.textContent).toContain("remote");
+    expect(container.textContent).toContain("node=main");
+    expect(container.textContent).toContain("node=node-east");
     expect(container.textContent).toContain("Working");
     expect(container.textContent).not.toContain("id leader-agent");
     expect(container.textContent).not.toContain("id worker-agent");
@@ -1804,6 +1812,10 @@ describe("team panels interactions", () => {
             onRefreshSnapshot={onRefreshSnapshot}
             selectedMemberId="leader-agent"
             onOpenMailboxForMember={onOpenMailboxForMember}
+            memberTargetNodeById={{
+              "leader-agent": "main",
+              "worker-agent": "node-east",
+            }}
           />
         </MantineProvider>
       );
@@ -1820,6 +1832,11 @@ describe("team panels interactions", () => {
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
     expect(container.querySelector(".teams-member-list")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
+    expect(container.textContent).toContain("node=main");
+    expect(container.textContent).toContain("node=node-east");
+    expect(container.textContent).toContain("local");
+    expect(container.textContent).toContain("remote");
+    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
 
     act(() => {
       root.render(
@@ -1881,6 +1898,7 @@ describe("team panels interactions", () => {
             snapshot={buildSnapshot()}
             selectedMemberId="worker-agent"
             onSelectedMemberIdChange={onSelectedMemberIdChange}
+            selectedTargetNodeId="node-east"
             selectedMemberSnapshot={buildMemberSnapshot({
               member_id: "worker-agent",
               role: "worker",
@@ -1922,6 +1940,9 @@ describe("team panels interactions", () => {
       );
     });
 
+    expect(container.textContent).toContain("attached_node");
+    expect(container.textContent).toContain("node-east");
+    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
     clickElement(findButtonByText(container, "Load Older"));
     expect(container.textContent).toContain("Selected member has no associated session yet.");
 
@@ -3978,6 +3999,47 @@ describe("team panels interactions", () => {
     expect(container.innerHTML).toContain(">code</code>");
   });
 
+  it("TeamTaskPanel renders channel mentions with provided display names when live state is missing", async () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          messages={[
+            buildTaskMessage(13, {
+              from_actor_id: "leader-agent",
+              to_actor_id: null,
+              route: "group_chat",
+              payload: {
+                type: "chat_message",
+                text: "hello <at>595d1ae8-fcbd-4111-b5c7-d446a12c044b</at>",
+              },
+            }),
+          ]}
+          humanActorId="user"
+          displayNameByActorId={{
+            "595d1ae8-fcbd-4111-b5c7-d446a12c044b": "tidb-fuzz-bugfix-team-worker-1",
+          }}
+          memberLiveStates={[]}
+          memberIds={["leader-agent", "595d1ae8-fcbd-4111-b5c7-d446a12c044b"]}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+        />
+    );
+
+    await waitForCondition(() =>
+      container.textContent?.includes("@tidb-fuzz-bugfix-team-worker-1") ?? false
+    );
+    expect(container.textContent).toContain("@tidb-fuzz-bugfix-team-worker-1");
+    expect(container.textContent).not.toContain("@595d1ae8-fcbd-4111-b5c7-d446a12c044b");
+  });
+
   it("TeamTaskPanel hides message details when developer mode is off", () => {
     renderWithMantine(
       root,
@@ -4824,7 +4886,7 @@ describe("team panels interactions", () => {
     );
 
     expect(container.querySelector("h3")).toBeNull();
-    expect(container.textContent).toContain("Activity");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).toContain("Inspect");
     expect(container.textContent).toContain("Please investigate this issue.");
@@ -4838,10 +4900,12 @@ describe("team panels interactions", () => {
         developerMode={true}
         selectedMemberId="worker-agent"
         memberTitle="Worker agent"
+        selectedTargetNodeId="node-east"
         selectedMemberSnapshot={buildMemberSnapshot({
           member_id: "worker-agent",
           role: "worker",
           model: "gpt-5",
+          description: "Researches and fixes optimizer issues.",
           status: "working",
           latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
         })}
@@ -4855,11 +4919,16 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("Worker agent");
+    expect(container.textContent).toContain("Researches and fixes optimizer issues.");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
+    expect(container.textContent).toContain("Attached node");
+    expect(container.textContent).toContain("node-east");
     expect(container.textContent).toContain("role");
     expect(container.textContent).toContain("worker");
+    expect(container.textContent).toContain("Agent ACP · Active thread has no events yet");
     expect(container.textContent).toContain("Details");
+    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
     expect(container.textContent).not.toContain("member");
     expect(container.textContent).not.toContain("session");
     expect(container.textContent).not.toContain("role=worker");
@@ -4893,6 +4962,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Worker agent");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
+    expect(container.textContent).toContain("Agent ACP · Active thread has no events yet");
   });
 
   it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
@@ -4943,11 +5013,13 @@ describe("team panels interactions", () => {
     expect(acpShell.classList.contains("flex-col")).toBe(true);
     expect(acpShell.classList.contains("overflow-hidden")).toBe(true);
 
-    const header = required(
+    const memberTitleShell = required(
       acpShell.previousElementSibling as HTMLDivElement | null,
       "team member header missing"
     );
-    expect(header.className).toContain("output-header");
+    expect(memberTitleShell.classList.contains("shrink-0")).toBe(true);
+    expect(memberTitleShell.textContent).toContain("Worker agent");
+    expect(acpRoot.querySelector(".acp-head")).not.toBeNull();
     expect(container.querySelector("textarea")).not.toBeNull();
     expect(container.textContent).not.toContain("Refresh");
     expect(container.textContent).not.toContain("Load Older");
@@ -5231,7 +5303,7 @@ describe("team panels interactions", () => {
         />
     );
 
-    expect(container.textContent).toContain("Activity");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).not.toContain("Inspect");
     expect(container.textContent).not.toContain("Refresh");
@@ -5295,7 +5367,7 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("No active thread session yet");
-    expect(container.textContent).toContain("Activity");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
   });
 
@@ -5335,9 +5407,10 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("Active thread");
     expect(container.textContent).toContain("Already at top");
-    expect(container.textContent).toContain("Activity");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).toContain("Runtime session fallback works.");
+    expect(container.textContent).not.toContain("ThreadAgent ACP · Active thread");
   });
 
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {

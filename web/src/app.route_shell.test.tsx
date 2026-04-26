@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -315,5 +316,38 @@ describe("App route shell wiring", () => {
       20,
       undefined
     );
+  });
+
+  it("renders a non-empty root workbench node when the machines lens is unsupported", async () => {
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-user",
+        userId: "user-2",
+        username: "member",
+        role: "user",
+      })
+    );
+    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+
+    act(() => {
+      renderApp(root);
+    });
+    await flushRenderFrames(10);
+
+    const lastCall = agentsRouteShellPropsMock.mock.calls[
+      agentsRouteShellPropsMock.mock.calls.length - 1
+    ]?.[0] as
+      | {
+          rootWorkbenchNode: React.ReactNode;
+        }
+      | undefined;
+
+    expect(lastCall?.rootWorkbenchNode).toBeTruthy();
+    const rootWorkbenchHtml = renderToStaticMarkup(
+      <MantineProvider>{lastCall?.rootWorkbenchNode}</MantineProvider>
+    );
+    expect(rootWorkbenchHtml).toContain("Machines unavailable");
+    expect(rootWorkbenchHtml).toContain("do not have permission to manage machines");
   });
 });

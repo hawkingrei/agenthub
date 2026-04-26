@@ -1177,6 +1177,12 @@ impl TeamInternalControl for TeamInternalControlService {
                 )
             };
 
+        self.deps
+            .agents
+            .touch_agent_node_last_seen(node_id)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
         Ok(Response::new(IssueNodeCredentialResponse {
             node_id: node_id.to_string(),
             role: role.as_str().to_string(),

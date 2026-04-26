@@ -176,7 +176,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
       {showTeamUnavailable && <TeamUnavailablePanel onBackToSelector={onBackToSelector} />}
 
       {selectedTeam && (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+            isAgentWorkspace ? "gap-2" : "gap-4"
+          }`}
+        >
           <div
             className={`${teamSectionCardClassName} ${teamWorkbenchWorkspaceShellClassName} ${
               isAgentWorkspace ? "py-0.5" : ""
@@ -230,7 +234,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
           )}
 
           {tab !== "runs" && !showRunContextLoading && !showNoActiveRunNotice && (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+            <div
+              className={`flex min-h-0 min-w-0 flex-1 flex-col ${
+                isAgentWorkspace ? "gap-2" : "gap-3"
+              }`}
+            >
               {activeWorkspaceLens === "search" && (
                 <div className={teamSectionCardClassName}>
                   <div className={teamSectionHeadingClassName}>Search</div>

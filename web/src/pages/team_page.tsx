@@ -97,6 +97,7 @@ import {
 import {
   formatTs,
   resolveTeamPageNotice,
+  resolveSelectedAgentWorkspaceMemberId,
   resolveTaskConversationMemberIds,
   resolveTeamMemberAgentControlState,
   shouldClearSelectedTeamMember,
@@ -1312,8 +1313,13 @@ export function TeamPage(props: TeamPageProps) {
     [selectedMemberId, snapshot]
   );
   const selectedAgentWorkspaceMemberId = useMemo(
-    () => selectedMemberId.trim() || focusedAgentMemberId.trim(),
-    [focusedAgentMemberId, selectedMemberId]
+    () =>
+      resolveSelectedAgentWorkspaceMemberId({
+        selectedMemberId,
+        focusedAgentMemberId,
+        routeSelectedMemberId,
+      }),
+    [focusedAgentMemberId, routeSelectedMemberId, selectedMemberId]
   );
   const selectedAgentWorkspaceSnapshot = useMemo(
     () =>
@@ -1344,6 +1350,13 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
+  const memberTargetNodeById = useMemo<Record<string, string | null>>(() => {
+    const entries = Object.entries(teamMemberAgentsById).map(([memberId, agent]) => [
+      memberId,
+      agent ? agent.target_node_id?.trim() || "main" : null,
+    ]);
+    return Object.fromEntries(entries);
+  }, [teamMemberAgentsById]);
   const selectedAgentWorkspaceAgentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
@@ -2948,6 +2961,7 @@ export function TeamPage(props: TeamPageProps) {
       conversationMailboxMessages={conversationMailboxMessages}
       snapshotMailboxMessages={snapshot?.mailbox.recent_messages ?? []}
       humanActorId={HUMAN_MAILBOX_ACTOR_ID}
+      displayNameByActorId={mailboxDisplayNameByActorId}
       memberLiveStates={selectedTeamMemberLiveStates}
       memberIds={taskConversationMemberIds}
       conversationTitle={activeConversationTitle}
@@ -3141,6 +3155,11 @@ export function TeamPage(props: TeamPageProps) {
         selectedMemberRole={
           selectedAgentWorkspaceRuntimeMember?.role ?? selectedAgentWorkspaceSnapshot?.role ?? null
         }
+        selectedTargetNodeId={
+          selectedAgentWorkspaceAgent
+            ? selectedAgentWorkspaceAgent.target_node_id?.trim() || "main"
+            : null
+        }
         selectedSessionId={selectedAgentWorkspaceSessionId}
         memberEvents={memberEvents}
         memberEventsHasMore={memberEventsHasMore}
@@ -3167,6 +3186,7 @@ export function TeamPage(props: TeamPageProps) {
         selectedMemberId,
         onOpenMailboxForMember,
         displayNameByActorId: mailboxDisplayNameByActorId,
+        memberTargetNodeById,
       }
     : null;
   const eventsPanelProps = activeRunForSelectedTeam
@@ -3275,11 +3295,14 @@ export function TeamPage(props: TeamPageProps) {
       }
     : null;
   const memberConsolePanelProps = activeRunForSelectedTeam
-    ? {
+      ? {
         snapshot,
         selectedMemberId,
         onSelectedMemberIdChange: setSelectedMemberId,
         selectedMemberSnapshot,
+        selectedTargetNodeId: selectedAgentWorkspaceAgent
+          ? selectedAgentWorkspaceAgent.target_node_id?.trim() || "main"
+          : null,
         displayNameByActorId: mailboxDisplayNameByActorId,
         memberEvents,
         memberEventsHasMore,
@@ -3604,6 +3627,7 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
             teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
             memberLiveStates={selectedTeamMemberLiveStates}
+            memberTargetNodeById={memberTargetNodeById}
             channelItems={channelItems}
             selectedChannelId={routeChannelId}
             focusedAgentMemberId={focusedAgentMemberId}

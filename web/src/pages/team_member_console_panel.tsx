@@ -1,5 +1,10 @@
 import React from "react";
 import {
+  buildWorkspaceNodePath,
+  navigateToPath,
+  shouldHandleInAppLinkClick,
+} from "../app_route_selection";
+import {
   AgentDiscoveryCardRecord,
   AgentEvent,
   TeamMemberSnapshot,
@@ -29,6 +34,7 @@ type TeamMemberConsolePanelProps = {
   selectedMemberId: string;
   onSelectedMemberIdChange: (memberId: string) => void;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
+  selectedTargetNodeId?: string | null;
   displayNameByActorId?: Record<string, string>;
   memberEvents: AgentEvent[];
   memberEventsHasMore: boolean;
@@ -72,6 +78,7 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
     selectedMemberId,
     onSelectedMemberIdChange,
     selectedMemberSnapshot,
+    selectedTargetNodeId,
     displayNameByActorId = {},
     memberEvents,
     memberEventsHasMore,
@@ -99,6 +106,7 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
       }) ?? []
     );
   }, [selectedMemberSnapshot?.skills]);
+  const attachedNodeId = selectedTargetNodeId?.trim() || null;
 
   return (
     <SurfaceCard className="p-4" data-team-panel="member-console">
@@ -187,6 +195,27 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
               <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
                 {selectedMemberSnapshot.session_status ?? "-"}
               </span>
+            </div>
+            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>attached_node</div>
+              {attachedNodeId ? (
+                <a
+                  href={buildWorkspaceNodePath(attachedNodeId)}
+                  className={`${MEMBER_CONSOLE_DETAIL_VALUE_CLASS} text-blue-700 underline decoration-transparent underline-offset-2 transition hover:decoration-current`}
+                  title={`Open node detail for ${attachedNodeId}`}
+                  onClick={(event) => {
+                    if (!shouldHandleInAppLinkClick(event)) {
+                      return;
+                    }
+                    event.preventDefault();
+                    navigateToPath(buildWorkspaceNodePath(attachedNodeId));
+                  }}
+                >
+                  {attachedNodeId}
+                </a>
+              ) : (
+                <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>-</span>
+              )}
             </div>
             <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
               <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>runtime_handle_id</div>

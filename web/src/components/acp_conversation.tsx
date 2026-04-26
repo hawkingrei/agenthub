@@ -35,6 +35,7 @@ type AcpConversationProps = {
   virtualTopSpacer: number;
   virtualBottomSpacer: number;
   stickToBottom: boolean;
+  bottomAlignLatest?: boolean;
   pendingCount: number;
   avgHeight: number;
   topHint?: string | null;
@@ -68,6 +69,7 @@ export function AcpConversation({
   virtualTopSpacer,
   virtualBottomSpacer,
   stickToBottom,
+  bottomAlignLatest = false,
   pendingCount,
   avgHeight,
   topHint,
@@ -99,7 +101,11 @@ export function AcpConversation({
       onWheel={onWheel}
       style={conversationScrollStyle}
     >
-      <div className="acp-conversation-inner flex w-full flex-col gap-1">
+      <div
+        className={`acp-conversation-inner flex w-full flex-col gap-1 ${
+          bottomAlignLatest ? "min-h-full justify-end" : ""
+        }`}
+      >
         {topHint ? (
           <div className={ACP_CONVERSATION_TOP_HINT_CLASS}>
             {topHint}

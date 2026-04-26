@@ -13,6 +13,7 @@ import type {
 import {
   resolveAgentWorkspaceStatusView,
   resolveSelectedAgentWorkspaceLabel,
+  resolveSelectedAgentWorkspaceMemberId,
   resolveSelectedConversationTask,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
@@ -391,6 +392,30 @@ describe("team page helpers", () => {
         memberIds: ["leader-1", "worker-2"],
       })
     ).toBe(true);
+  });
+
+  it("does not fall back to a stale focused member when the route explicitly targets another member", () => {
+    expect(
+      resolveSelectedAgentWorkspaceMemberId({
+        selectedMemberId: "",
+        focusedAgentMemberId: "worker-1",
+        routeSelectedMemberId: "worker-2",
+      })
+    ).toBe("");
+    expect(
+      resolveSelectedAgentWorkspaceMemberId({
+        selectedMemberId: "worker-2",
+        focusedAgentMemberId: "worker-1",
+        routeSelectedMemberId: "worker-2",
+      })
+    ).toBe("worker-2");
+    expect(
+      resolveSelectedAgentWorkspaceMemberId({
+        selectedMemberId: "",
+        focusedAgentMemberId: "worker-1",
+        routeSelectedMemberId: "",
+      })
+    ).toBe("worker-1");
   });
 
   it("upserts run by id and keeps latest-first sort order", () => {

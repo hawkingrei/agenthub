@@ -6,6 +6,7 @@ use crate::agent::AgentNodeRecord;
 pub(super) struct AgentNodeSchemaCaps {
     pub(super) has_agent_nodes_table: bool,
     pub(super) has_default_worktree_root_column: bool,
+    pub(super) has_last_seen_at_column: bool,
 }
 
 impl AgentNodeSchemaCaps {
@@ -23,6 +24,7 @@ impl AgentNodeSchemaCaps {
             return Ok(Self {
                 has_agent_nodes_table: false,
                 has_default_worktree_root_column: false,
+                has_last_seen_at_column: false,
             });
         }
 
@@ -35,11 +37,15 @@ impl AgentNodeSchemaCaps {
         .fetch_all(db)
         .await?;
         let has_default_worktree_root_column = rows
-            .into_iter()
+            .iter()
             .any(|row| row.get::<String, _>("name") == "default_worktree_root");
+        let has_last_seen_at_column = rows
+            .into_iter()
+            .any(|row| row.get::<String, _>("name") == "last_seen_at");
         Ok(Self {
             has_agent_nodes_table: true,
             has_default_worktree_root_column,
+            has_last_seen_at_column,
         })
     }
 }
@@ -73,6 +79,11 @@ pub(super) fn decode_agent_node_record(
         tls_server_name: row.try_get("tls_server_name").ok(),
         default_worktree_root: if caps.has_default_worktree_root_column {
             row.try_get("default_worktree_root").ok()
+        } else {
+            None
+        },
+        last_seen_at: if caps.has_last_seen_at_column {
+            row.try_get("last_seen_at").ok()
         } else {
             None
         },
@@ -146,6 +157,7 @@ pub(super) async fn insert_agent_node_record(
         grpc_target: Some(record.grpc_target.to_string()),
         tls_server_name: record.tls_server_name.map(str::to_string),
         default_worktree_root: record.default_worktree_root.map(str::to_string),
+        last_seen_at: None,
         is_main: false,
         created_at: record.now,
         updated_at: record.now,
@@ -218,28 +230,34 @@ pub(super) async fn list_agent_node_rows(
         return Ok(Vec::new());
     }
     if caps.has_default_worktree_root_column {
-        return sqlx::query(
-            r#"
-            SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
+        let select_last_seen = if caps.has_last_seen_at_column {
+            ", last_seen_at"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "
+            SELECT id, name, grpc_target, tls_server_name, default_worktree_root{select_last_seen}, created_at, updated_at
             FROM agent_nodes
             ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(db)
-        .await
-        .map_err(Into::into);
+            "
+        );
+        return sqlx::query(&sql).fetch_all(db).await.map_err(Into::into);
     }
 
-    sqlx::query(
-        r#"
-        SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
+    let select_last_seen = if caps.has_last_seen_at_column {
+        ", last_seen_at"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "
+        SELECT id, name, grpc_target, tls_server_name{select_last_seen}, created_at, updated_at
         FROM agent_nodes
         ORDER BY created_at DESC
-        "#,
-    )
-    .fetch_all(db)
-    .await
-    .map_err(Into::into)
+        "
+    );
+    sqlx::query(&sql).fetch_all(db).await.map_err(Into::into)
 }
 
 pub(super) async fn get_agent_node_row(
@@ -248,30 +266,65 @@ pub(super) async fn get_agent_node_row(
     node_id: &str,
 ) -> anyhow::Result<SqliteRow> {
     if caps.has_default_worktree_root_column {
-        return sqlx::query(
-            r#"
-            SELECT id, name, grpc_target, tls_server_name, default_worktree_root, created_at, updated_at
+        let select_last_seen = if caps.has_last_seen_at_column {
+            ", last_seen_at"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "
+            SELECT id, name, grpc_target, tls_server_name, default_worktree_root{select_last_seen}, created_at, updated_at
             FROM agent_nodes
             WHERE id = ?1
-            "#,
-        )
+            "
+        );
+        return sqlx::query(&sql)
+            .bind(node_id)
+            .fetch_one(db)
+            .await
+            .map_err(Into::into);
+    }
+
+    let select_last_seen = if caps.has_last_seen_at_column {
+        ", last_seen_at"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "
+        SELECT id, name, grpc_target, tls_server_name{select_last_seen}, created_at, updated_at
+        FROM agent_nodes
+        WHERE id = ?1
+        "
+    );
+    sqlx::query(&sql)
         .bind(node_id)
         .fetch_one(db)
         .await
-        .map_err(Into::into);
-    }
+        .map_err(Into::into)
+}
 
-    sqlx::query(
+pub(super) async fn touch_agent_node_last_seen(
+    db: &SqlitePool,
+    caps: AgentNodeSchemaCaps,
+    node_id: &str,
+    now: i64,
+) -> anyhow::Result<bool> {
+    if !caps.has_agent_nodes_table || !caps.has_last_seen_at_column {
+        return Ok(false);
+    }
+    let result = sqlx::query(
         r#"
-        SELECT id, name, grpc_target, tls_server_name, created_at, updated_at
-        FROM agent_nodes
+        UPDATE agent_nodes
+        SET last_seen_at = ?2
         WHERE id = ?1
         "#,
     )
     .bind(node_id)
-    .fetch_one(db)
-    .await
-    .map_err(Into::into)
+    .bind(now)
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 pub(super) async fn delete_agent_node_record(

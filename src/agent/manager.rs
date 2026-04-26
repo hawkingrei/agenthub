@@ -30,7 +30,7 @@ use self::executor::{AgentExecutor, LocalExecutor};
 use self::nodes::{
     AgentNodeInsertRecord, AgentNodeSchemaCaps, AgentNodeUpdateRecord, decode_agent_node_record,
     delete_agent_node_record, get_agent_node_row, insert_agent_node_record, list_agent_node_rows,
-    update_agent_node_record,
+    touch_agent_node_last_seen, update_agent_node_record,
 };
 use self::store::{
     AgentInsertRecord, AgentSchemaCaps, RemoteManagedAgentUpsert, decode_agent_record,
@@ -945,6 +945,16 @@ impl AgentManager {
         let schema_caps = self.agent_node_schema_caps().await?;
         let row = get_agent_node_row(&self.db, schema_caps, normalized).await?;
         Ok(decode_agent_node_record(&row, schema_caps))
+    }
+
+    pub async fn touch_agent_node_last_seen(&self, node_id: &str) -> anyhow::Result<bool> {
+        let normalized = node_id.trim();
+        if normalized.is_empty() || normalized == AGENT_NODE_MAIN_ID {
+            return Ok(false);
+        }
+        let schema_caps = self.agent_node_schema_caps().await?;
+        let now = Utc::now().timestamp();
+        touch_agent_node_last_seen(&self.db, schema_caps, normalized, now).await
     }
 
     pub async fn delete_agent_node(&self, node_id: &str) -> anyhow::Result<()> {

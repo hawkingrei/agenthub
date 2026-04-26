@@ -36,7 +36,7 @@ export type AppRouteKind =
   | "post-auth-redirect"
   | "workspace";
 
-export type WorkspaceLens = "channels" | "tasks" | "members" | "search";
+export type WorkspaceLens = "channels" | "tasks" | "members" | "search" | "nodes";
 
 export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   const params = new URLSearchParams(search);
@@ -49,6 +49,7 @@ export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
     case "tasks":
     case "members":
     case "search":
+    case "nodes":
       return lens;
     default:
       return null;
@@ -63,6 +64,41 @@ export function buildWorkspacePath(agentId?: string | null, lens?: WorkspaceLens
     return pathname;
   }
   return `${pathname}?lens=${encodeURIComponent(lens)}`;
+}
+
+export function resolveWorkspaceNodeId(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const nodeId = params.get("node")?.trim() ?? "";
+  return nodeId.length > 0 ? nodeId : null;
+}
+
+export function buildWorkspaceNodePath(nodeId?: string | null): string {
+  const params = new URLSearchParams();
+  params.set("lens", "nodes");
+  if (nodeId?.trim()) {
+    params.set("node", nodeId.trim());
+  }
+  return `/workspace?${params.toString()}`;
+}
+
+export function navigateToPath(pathname: string): void {
+  const currentPath = `${window.location.pathname}${window.location.search}`;
+  if (pathname === currentPath) {
+    return;
+  }
+  window.history.pushState({}, "", pathname);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function shouldHandleInAppLinkClick(event: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  defaultPrevented: boolean;
+}): boolean {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
 export function isTeamsRoute(pathname: string): boolean {

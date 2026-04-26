@@ -63,7 +63,7 @@ export function AcpPanelTabs({
         className={tabButtonClassName(effectiveTab === "conversation", true)}
         onClick={() => onSelectTab("conversation")}
       >
-        Activity
+        Thread
         {showConversationBadge && (
           <span className={ACP_TAB_BADGE_CLASS}>+{pendingCount}</span>
         )}

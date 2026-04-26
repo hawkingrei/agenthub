@@ -3,6 +3,46 @@ use super::*;
 #[tokio::test]
 async fn issue_node_credential_returns_phase0_metadata() {
     let state = build_test_state().await;
+    let before = chrono::Utc::now().timestamp();
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            last_seen_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&state.db)
+    .await
+    .expect("create agent_nodes table");
+    sqlx::query(
+        r#"
+        INSERT INTO agent_nodes (
+            id,
+            name,
+            grpc_target,
+            tls_server_name,
+            last_seen_at,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)
+        "#,
+    )
+    .bind("node-a")
+    .bind("Node A")
+    .bind("https://node-a.internal:50051")
+    .bind("node-a.internal")
+    .bind(before - 60)
+    .bind(before - 60)
+    .execute(&state.db)
+    .await
+    .expect("insert agent node");
     let authz = build_authz();
     let service = TeamInternalControlService::new(
         control_deps(&state),
@@ -36,11 +76,34 @@ async fn issue_node_credential_returns_phase0_metadata() {
     assert!(response.kid.starts_with("shared-hs256-"));
     assert!(response.issued_at > 0);
     assert!(response.expires_at > response.issued_at);
+    let last_seen_at: Option<i64> =
+        sqlx::query_scalar("SELECT last_seen_at FROM agent_nodes WHERE id = ?1")
+            .bind("node-a")
+            .fetch_one(&state.db)
+            .await
+            .expect("load node last_seen_at");
+    assert!(last_seen_at.is_some_and(|value| value >= before));
 }
 
 #[tokio::test]
 async fn issue_node_credential_rejects_bootstrap_token_mismatch() {
     let state = build_test_state().await;
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            last_seen_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&state.db)
+    .await
+    .expect("create agent_nodes table");
     let authz = build_authz();
     let service = TeamInternalControlService::new(
         control_deps(&state),
@@ -72,6 +135,22 @@ async fn issue_node_credential_rejects_bootstrap_token_mismatch() {
 #[tokio::test]
 async fn issue_node_credential_requires_worker_actor_and_run() {
     let state = build_test_state().await;
+    sqlx::query(
+        r#"
+        CREATE TABLE agent_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            grpc_target TEXT NOT NULL,
+            tls_server_name TEXT,
+            last_seen_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&state.db)
+    .await
+    .expect("create agent_nodes table");
     let authz = build_authz();
     let service = TeamInternalControlService::new(
         control_deps(&state),
