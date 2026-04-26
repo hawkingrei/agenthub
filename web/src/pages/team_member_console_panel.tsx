@@ -1,5 +1,5 @@
 import React from "react";
-import { buildWorkspaceNodePath } from "../app_route_selection";
+import { buildWorkspaceNodePath, navigateToPath } from "../app_route_selection";
 import {
   AgentDiscoveryCardRecord,
   AgentEvent,
@@ -199,6 +199,10 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
                   href={buildWorkspaceNodePath(attachedNodeId)}
                   className={`${MEMBER_CONSOLE_DETAIL_VALUE_CLASS} text-blue-700 underline decoration-transparent underline-offset-2 transition hover:decoration-current`}
                   title={`Open node detail for ${attachedNodeId}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigateToPath(buildWorkspaceNodePath(attachedNodeId));
+                  }}
                 >
                   {attachedNodeId}
                 </a>

@@ -225,10 +225,19 @@ export function AgentNodeDetailCard({
   const runtimeSummary = deriveNodeRuntimeSummary(node, agents);
   const [copied, setCopied] = React.useState(false);
   const [copyError, setCopyError] = React.useState<string | null>(null);
+  const resetCopiedTimeoutRef = React.useRef<number | null>(null);
   const connectTone =
     node.is_main || connectCommand?.hasBootstrapToken
       ? "border-ui-border/80 bg-white/72"
       : "border-amber-300 bg-amber-50/70";
+
+  React.useEffect(() => {
+    return () => {
+      if (resetCopiedTimeoutRef.current !== null) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyConnectCommand = React.useCallback(async () => {
     if (!connectCommand) {
@@ -238,8 +247,12 @@ export function AgentNodeDetailCard({
       await copyTextToClipboard(connectCommand.command);
       setCopied(true);
       setCopyError(null);
-      window.setTimeout(() => {
+      if (resetCopiedTimeoutRef.current !== null) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+      resetCopiedTimeoutRef.current = window.setTimeout(() => {
         setCopied(false);
+        resetCopiedTimeoutRef.current = null;
       }, 1600);
     } catch (error) {
       setCopied(false);

@@ -1,7 +1,7 @@
 import React from "react";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
 import { getTeamStepRuntimeHandleId } from "../api";
-import { buildWorkspaceNodePath } from "../app_route_selection";
+import { buildWorkspaceNodePath, navigateToPath } from "../app_route_selection";
 import {
   AcpPanel,
 } from "../components/acp_panel";
@@ -218,6 +218,10 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
               href={buildWorkspaceNodePath(attachedNodeId)}
               className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-ui-border bg-white px-2.5 py-1 text-[11px] font-medium text-notion-text-muted transition hover:border-black hover:text-notion-text"
               title={`Open node detail for ${attachedNodeId}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateToPath(buildWorkspaceNodePath(attachedNodeId));
+              }}
             >
               <span className="uppercase tracking-[0.08em] text-[10px]">Attached node</span>
               <span className="truncate text-notion-text">{attachedNodeId}</span>

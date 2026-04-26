@@ -110,9 +110,9 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Teams Using This Node");
     expect(html).toContain("Papers We Love");
     expect(html).toContain("1 team");
-    expect(html).toContain("1 members");
+    expect(html).toContain("1 member");
     expect(html).toContain("1 active");
-    expect(html).toContain("1 leaders");
+    expect(html).toContain("1 leader");
     expect(html).toContain("0 workers");
     expect(html).toContain("1 agent · 1 team");
     expect(html).toContain("Worker A · leader");

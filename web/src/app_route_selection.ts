@@ -81,6 +81,11 @@ export function buildWorkspaceNodePath(nodeId?: string | null): string {
   return `/workspace?${params.toString()}`;
 }
 
+export function navigateToPath(pathname: string): void {
+  window.history.pushState({}, "", pathname);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export function isTeamsRoute(pathname: string): boolean {
   return (
     pathname === "/teams" ||

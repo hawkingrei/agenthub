@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Stack, Text, TextInput } from "@mantine/core";
+import { isAgentActiveStatus } from "../agent_ws";
 import type { AgentNodeUpdate, TeamDefinitionRecord } from "../api";
 import {
   AgentNodeJoinBootstrapInfo,
@@ -28,6 +29,10 @@ type NodeTeamUsageSummary = {
   }>;
   activeAgentCount: number;
 };
+
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
 
 function parseTeamSpecMembers(
   spec: unknown
@@ -98,7 +103,7 @@ function deriveNodeTeamUsageSummaries(
       }
       const activeAgentCount = matchedMembers.filter((memberId) => {
         const status = agentsById.get(memberId.memberId)?.status ?? "";
-        return status === "running";
+        return isAgentActiveStatus(status);
       }).length;
       return {
         teamId: team.id,
@@ -320,13 +325,13 @@ export function AgentNodesWorkbench({
                   {selectedNodeTeams.length} team{selectedNodeTeams.length === 1 ? "" : "s"}
                 </Badge>
                 <Badge tone="outline">
-                  {selectedNodeTeamMemberCount} members
+                  {pluralize(selectedNodeTeamMemberCount, "member")}
                 </Badge>
                 <Badge tone="subtle">
                   {selectedNodeActiveTeamAgentCount} active
                 </Badge>
-                <Badge tone="outline">{selectedNodeLeaderCount} leaders</Badge>
-                <Badge tone="outline">{selectedNodeWorkerCount} workers</Badge>
+                <Badge tone="outline">{pluralize(selectedNodeLeaderCount, "leader")}</Badge>
+                <Badge tone="outline">{pluralize(selectedNodeWorkerCount, "worker")}</Badge>
               </div>
             </div>
             {selectedNodeTeams.length > 0 ? (
@@ -342,13 +347,21 @@ export function AgentNodesWorkbench({
                           <Text size="sm" fw={600}>
                             {team.teamName}
                           </Text>
-                          <Badge tone="outline">{team.matchedMembers.length} members</Badge>
+                          <Badge tone="outline">
+                            {pluralize(team.matchedMembers.length, "member")}
+                          </Badge>
                           <Badge tone="subtle">{team.activeAgentCount} active</Badge>
                           <Badge tone="outline">
-                            {team.matchedMembers.filter((member) => member.role === "leader").length} leaders
+                            {pluralize(
+                              team.matchedMembers.filter((member) => member.role === "leader").length,
+                              "leader"
+                            )}
                           </Badge>
                           <Badge tone="outline">
-                            {team.matchedMembers.filter((member) => member.role === "worker").length} workers
+                            {pluralize(
+                              team.matchedMembers.filter((member) => member.role === "worker").length,
+                              "worker"
+                            )}
                           </Badge>
                         </div>
                         <Text size="xs" c="dimmed" mt={4}>
