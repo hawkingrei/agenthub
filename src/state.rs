@@ -499,7 +499,14 @@ mod tests {
         std::fs::create_dir_all(&temp_home).expect("create temp home");
         let _home_guard = set_env_var("HOME", &temp_home);
         let _xdg_guard = clear_env_var("XDG_CONFIG_HOME");
-        let config = AppConfig::default();
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Main),
+                node_id: None,
+            }),
+            ..Default::default()
+        };
 
         AppState::seed_safe_paths(&db, &config)
             .await
@@ -672,6 +679,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn setup_database_creates_root_user_for_main_role() {
+        let _guard = ENV_LOCK.lock().await;
+        let temp_home = std::env::temp_dir().join(format!("agenthub-home-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_home).expect("create temp home");
+        let _home_guard = set_env_var("HOME", &temp_home);
+
+        let config = AppConfig::default();
+
+        let db = AppState::setup_database(&config)
+            .await
+            .expect("setup main database");
+
+        let row = sqlx::query("SELECT COUNT(*) AS cnt FROM users WHERE role = 'root'")
+            .fetch_one(&db)
+            .await
+            .expect("count root users");
+        let count: i64 = row.get("cnt");
+        assert_eq!(count, 1, "main startup should create a root user");
+
+        db.close().await;
+        let _ = std::fs::remove_dir_all(&temp_home);
+    }
+
+    #[tokio::test]
     async fn initialize_services_disables_push_for_node_role() {
         let db = test_db().await;
         let temp_root =
@@ -719,6 +750,44 @@ mod tests {
         assert!(
             !keys_path.exists(),
             "node startup should not create VAPID keys at {}",
+            keys_path.display()
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[tokio::test]
+    async fn initialize_services_enables_push_for_main_role() {
+        let db = test_db().await;
+        let temp_root =
+            std::env::temp_dir().join(format!("agenthub-main-startup-{}", Uuid::new_v4()));
+        let keys_path = temp_root.join("push").join("vapid.json");
+        let event_dir = temp_root.join("agent-events");
+        let config = AppConfig {
+            server: Some(ServerConfig {
+                listen: None,
+                role: Some(ServerRole::Main),
+                node_id: None,
+            }),
+            push: Some(PushConfig {
+                subject: Some("mailto:test@example.com".to_string()),
+                keys_path: Some(keys_path.to_string_lossy().to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let (_, _, push, _, _) =
+            AppState::initialize_services(&config, db, AgentEventDbRouter::new(event_dir))
+                .await
+                .expect("initialize main services");
+
+        assert!(
+            push.is_enabled(),
+            "main startup should enable push notifications"
+        );
+        assert!(
+            keys_path.exists(),
+            "main startup should materialize VAPID keys at {}",
             keys_path.display()
         );
 
