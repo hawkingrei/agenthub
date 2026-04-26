@@ -244,6 +244,12 @@ export type TeamActorMessageTransport = "local" | "remote";
 export type TeamActorMessageStatus = "pending" | "delivered" | "dead_letter";
 export type TeamActorIdentityKind = "agent" | "human";
 
+export type TeamRunInboxRecord = {
+  messages: TeamActorMessageRecord[];
+  next_cursor?: number | null;
+  pending_count: number;
+};
+
 export type TeamDefinitionRecord = {
   id: string;
   name: string;
@@ -1123,7 +1129,7 @@ export const api = {
         payload.include_delivered ? "true" : "false"
       );
     }
-    return apiFetch<TeamActorMessageRecord[]>(
+    return apiFetch<TeamRunInboxRecord>(
       `/api/teams/runs/${encodePathSegment(runId)}/messages/inbox?${params.toString()}`,
       token
     );

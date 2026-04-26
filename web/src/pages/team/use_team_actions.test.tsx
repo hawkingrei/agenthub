@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentEvent,
   TeamActorMessageRecord,
+  TeamRunInboxRecord,
   TeamRunEventRecord,
   TeamRunRecord,
   TeamStepRecord,
@@ -268,6 +269,68 @@ describe("useTeamActions", () => {
       expect(rerendered.refreshSnapshot).not.toBe(initial.refreshSnapshot);
       expect(rerendered.onCreateRun).not.toBe(initial.onCreateRun);
     } finally {
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("unwraps inbox messages from the Team inbox envelope", async () => {
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const setInbox = vi.fn<(next: TeamActorMessageRecord[]) => void>();
+    const inboxResponse: TeamRunInboxRecord = {
+      messages: [
+        {
+          message_id: 41,
+          run_id: "run-1",
+          from_actor_id: "leader",
+          from_actor_kind: "agent",
+          from_peer_id: "main",
+          to_actor_id: "worker-1",
+          to_actor_kind: "agent",
+          to_peer_id: "main",
+          channel: "coordination",
+          transport: "local",
+          route: null,
+          payload: { text: "please verify" },
+          status: "pending",
+          created_at: 1,
+          delivered_at: null,
+        },
+      ],
+      next_cursor: 41,
+      pending_count: 1,
+    };
+    const listInboxSpy = vi
+      .spyOn(api, "listTeamRunInbox")
+      .mockResolvedValue(inboxResponse);
+
+    const options = createBaseOptions({
+      token: "token-1",
+      activeRunIdForSelectedTeam: "run-1",
+      inboxActorId: "worker-1",
+      setInbox,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+
+      await act(async () => {
+        await actions.loadInbox();
+      });
+
+      expect(listInboxSpy).toHaveBeenCalledWith("token-1", "run-1", {
+        actor_id: "worker-1",
+        limit: 50,
+        after_id: undefined,
+        include_delivered: false,
+      });
+      expect(setInbox).toHaveBeenCalledWith(inboxResponse.messages);
+    } finally {
+      listInboxSpy.mockRestore();
       cleanupHarness(root, container);
     }
   });

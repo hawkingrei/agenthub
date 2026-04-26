@@ -969,6 +969,53 @@ async fn teams_router_http_contract() {
     assert!(message_ids.contains(&local_message_id));
     assert!(message_ids.contains(&idempotent_message_id));
 
+    let paged_inbox_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!("/runs/{message_run_id}/messages/inbox?actor_id=planner&limit=1"),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list paged actor inbox via router");
+    assert_eq!(paged_inbox_resp.status(), StatusCode::OK);
+    let paged_inbox = decode_json_body(paged_inbox_resp).await;
+    let paged_messages = paged_inbox["messages"]
+        .as_array()
+        .expect("paged inbox messages array");
+    assert_eq!(paged_messages.len(), 1);
+    assert_eq!(
+        paged_inbox["next_cursor"],
+        paged_messages[0]["message_id"],
+        "next_cursor should track the last returned message after truncation"
+    );
+
+    let paged_after_resp = app
+        .clone()
+        .oneshot(build_json_request(
+            Method::GET,
+            &format!(
+                "/runs/{message_run_id}/messages/inbox?actor_id=planner&limit=1&after_id={}",
+                paged_inbox["next_cursor"].as_i64().expect("paged cursor")
+            ),
+            Some(&token),
+            None,
+        ))
+        .await
+        .expect("list paged actor inbox after cursor via router");
+    assert_eq!(paged_after_resp.status(), StatusCode::OK);
+    let paged_after = decode_json_body(paged_after_resp).await;
+    let paged_after_messages = paged_after["messages"]
+        .as_array()
+        .expect("paged inbox messages array after cursor");
+    assert_eq!(paged_after_messages.len(), 1);
+    assert_ne!(
+        paged_after_messages[0]["message_id"],
+        paged_messages[0]["message_id"],
+        "cursor follow-up should not skip to an empty page or repeat the same message"
+    );
+
     let ack_local_message_resp = app
         .clone()
         .oneshot(build_json_request(

@@ -1712,7 +1712,6 @@ async fn list_team_run_inbox(
     let service = state.teams.actor_mailbox_service();
     let mut messages = Vec::new();
     let mut pending_count = 0_i64;
-    let mut next_cursor: Option<i64> = None;
     for actor_id in actor_ids {
         let response = service
             .actor_inbox(ActorInboxRequest {
@@ -1725,11 +1724,6 @@ async fn list_team_run_inbox(
             .await
             .map_err(map_actor_service_api_error)?;
         pending_count += response.pending_count;
-        next_cursor = match (next_cursor, response.next_cursor) {
-            (Some(existing), Some(candidate)) => Some(existing.min(candidate)),
-            (None, candidate) => candidate,
-            (existing, None) => existing,
-        };
         messages.extend(response.messages);
     }
     messages.sort_by_key(|message| message.message_id);
@@ -1737,6 +1731,7 @@ async fn list_team_run_inbox(
     if messages.len() > limit as usize {
         messages.truncate(limit as usize);
     }
+    let next_cursor = messages.last().map(|message| message.message_id);
     Ok(Json(TeamRunInboxResponse {
         messages,
         next_cursor,

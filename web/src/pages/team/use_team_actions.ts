@@ -14,6 +14,7 @@ import {
   type TeamActorMessageRecord,
   type TeamDefinitionRecord,
   type TeamMemberSnapshot,
+  type TeamRunInboxRecord,
   type TeamRunEventRecord,
   type TeamRunRecord,
   type TeamRunSnapshotRecord,
@@ -125,7 +126,7 @@ type TeamApiClient = {
       after_id?: number;
       include_delivered?: boolean;
     }
-  ) => Promise<TeamActorMessageRecord[]>;
+  ) => Promise<TeamRunInboxRecord>;
   listAgentEvents: (
     memberAgentId: string,
     limit: number,
@@ -409,13 +410,13 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       }
       const limit = parseOptionalInteger(currentInboxLimit, "Inbox limit") ?? 100;
       const afterId = parseOptionalInteger(currentInboxAfterId, "Inbox after_id");
-      const list = await teamApi.listTeamRunInbox(runId, {
+      const inbox = await teamApi.listTeamRunInbox(runId, {
         actor_id: actorId,
         limit,
         after_id: afterId,
         include_delivered: includeDelivered,
       });
-      setInbox(list);
+      setInbox(inbox.messages);
     },
     [setInbox, teamApi]
   );
