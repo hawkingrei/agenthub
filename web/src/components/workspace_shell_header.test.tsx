@@ -54,6 +54,18 @@ describe("WorkspaceShellHeader", () => {
     expect(html).toContain("aria-label=\"Open workbench menu\"");
   });
 
+  it("renders machine workspace entries inline with the shared lens bar", () => {
+    const html = renderHeader({
+      lensItems: [
+        { value: "channels", label: "Channels", active: false },
+        { value: "machines", label: "Machines", active: true },
+      ],
+    });
+    expect(html).toContain("Machines");
+    expect(html).toContain("overflow-x-auto");
+    expect(html).toContain("md:flex-1");
+  });
+
   it("gives the lens bar a dedicated mobile row so tabs do not crowd the title lane", () => {
     const html = renderHeader();
     expect(html).toContain("max-md:flex-wrap");

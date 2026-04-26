@@ -437,7 +437,7 @@ export function App() {
         { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
         { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
         ...(canManageAgentNodes(auth)
-          ? [{ value: "nodes", label: "Nodes", active: activeWorkspaceLens === "nodes" }]
+          ? [{ value: "nodes", label: "Machines", active: activeWorkspaceLens === "nodes" }]
           : []),
       ],
     [activeWorkspaceLens, auth]
