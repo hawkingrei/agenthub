@@ -4,6 +4,7 @@ import {
   AgentNodeJoinBootstrapInfo,
   AgentRecord,
   AgentNodeRecord,
+  TeamDefinitionRecord,
   parseApiErrorMessage,
 } from "./api";
 import { AuthState } from "./types";
@@ -38,6 +39,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
   const token = auth?.token ?? null;
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
+  const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
   const [agentNodeJoinBootstrap, setAgentNodeJoinBootstrap] =
     useState<AgentNodeJoinBootstrapInfo | null>(null);
   const [agentNodeJoinBootstrapLoading, setAgentNodeJoinBootstrapLoading] =
@@ -115,6 +117,27 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     [auth, token]
   );
 
+  const refreshTeams = useCallback(
+    async (opts?: { silent?: boolean }): Promise<TeamDefinitionRecord[] | null> => {
+      if (!token || !canManageAgentNodes(auth)) {
+        setTeams([]);
+        return null;
+      }
+      const silent = opts?.silent === true;
+      try {
+        const items = await api.listTeams(token);
+        setTeams(items);
+        return items;
+      } catch (err: unknown) {
+        if (!silent) {
+          setError(parseApiErrorMessage(err) ?? String(err));
+        }
+        return null;
+      }
+    },
+    [auth, token]
+  );
+
   const refreshAgentNodeJoinBootstrap = useCallback(
     async (
       opts?: { silent?: boolean }
@@ -161,6 +184,11 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
 
   useEffect(() => {
     if (!token || !isAgentsRoute) return;
+    void refreshTeams({ silent: true });
+  }, [isAgentsRoute, token, refreshTeams]);
+
+  useEffect(() => {
+    if (!token || !isAgentsRoute) return;
     const timer = window.setInterval(() => {
       void refreshAgents({ silent: true });
     }, AGENT_STATUS_REFRESH_INTERVAL_MS);
@@ -171,6 +199,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     if (!token) {
       setAgents([]);
       setAgentNodes([]);
+      setTeams([]);
       setAgentNodeJoinBootstrap(null);
       setAgentNodeJoinBootstrapLoading(false);
       setAgentNodeJoinBootstrapError(null);
@@ -568,6 +597,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     agents,
     setAgents,
     agentNodes,
+    teams,
     agentNodeJoinBootstrap,
     agentNodeJoinBootstrapLoading,
     agentNodeJoinBootstrapError,
@@ -620,6 +650,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     openCreateAgentModal,
     refreshAgents,
     refreshAgentNodes,
+    refreshTeams,
     refreshAgentNodeJoinBootstrap,
     defaultWorktreeRoot,
   };

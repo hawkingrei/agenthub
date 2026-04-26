@@ -269,6 +269,36 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
+  it("prefers the selected member snapshot status over stale ACP run status in the header", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "idle",
+          session_status: "idle",
+        }}
+        memberEvents={buildAcpEvents([{ type: "run_status", status: "running" }])}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    expect(container.textContent).toContain("idle");
+    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).not.toContain("running · thinking");
+  });
+
   it("hides a partial leading ACP chunk instead of rendering it", () => {
     vi.mocked(useAcpConversation).mockReturnValue(buildConversationHookState() as never);
 

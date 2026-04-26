@@ -80,6 +80,7 @@ export type AgentNodeRecord = {
   grpc_target?: string | null;
   tls_server_name?: string | null;
   default_worktree_root?: string | null;
+  last_seen_at?: number | null;
   is_main: boolean;
   created_at: number;
   updated_at: number;

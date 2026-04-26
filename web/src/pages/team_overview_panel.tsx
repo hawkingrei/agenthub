@@ -1,4 +1,5 @@
 import React from "react";
+import { buildWorkspaceNodePath } from "../app_route_selection";
 import { TeamRunSnapshotRecord } from "../api";
 import { StatusBadge, resolveTeamRunStatusTone } from "../components/status_badge";
 import {
@@ -30,7 +31,12 @@ type TeamOverviewPanelProps = {
   selectedMemberId: string;
   onOpenMailboxForMember: (memberId: string) => void;
   displayNameByActorId?: Record<string, string>;
+  memberTargetNodeById?: Record<string, string | null>;
 };
+
+function isMainNode(nodeId: string): boolean {
+  return nodeId.trim().toLowerCase() === "main";
+}
 
 function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
   const {
@@ -40,6 +46,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
     selectedMemberId,
     onOpenMailboxForMember,
     displayNameByActorId = {},
+    memberTargetNodeById = {},
   } = props;
 
   return (
@@ -124,13 +131,16 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
           </div>
 
           <div className={OVERVIEW_MEMBER_LIST_CLASS}>
-            {snapshot.members.map((member) => (
-              <SelectableListItem
-                key={member.member_id}
-                className="team-member-row"
-                active={selectedMemberId === member.member_id}
-                onClick={() => onOpenMailboxForMember(member.member_id)}
-              >
+            {snapshot.members.map((member) => {
+              const attachedNodeId = memberTargetNodeById[member.member_id]?.trim() || null;
+              const attachedNodeIsMain = attachedNodeId ? isMainNode(attachedNodeId) : false;
+              return (
+                <SelectableListItem
+                  key={member.member_id}
+                  className="team-member-row"
+                  active={selectedMemberId === member.member_id}
+                  onClick={() => onOpenMailboxForMember(member.member_id)}
+                >
                 <div className="flex w-full min-w-0 items-start justify-between gap-2">
                   <span
                     className={`${TEAM_LIST_ITEM_TITLE_CLASS} min-w-0 flex-1 break-words whitespace-normal font-bold leading-5`}
@@ -146,10 +156,34 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                   />
                 </div>
                 <span className={`${TEAM_LIST_ITEM_META_CLASS} break-words whitespace-normal`}>
-                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count}`}
+                  {`model=${member.model ?? "-"} pending=${member.pending_inbox_count} `}
+                  {attachedNodeId ? (
+                    <span className="inline-flex flex-wrap items-center gap-1 align-middle">
+                      <a
+                        href={buildWorkspaceNodePath(attachedNodeId)}
+                        className="inline-flex items-center rounded-full border border-ui-border bg-ui-surface px-2 py-0.5 text-[11px] font-semibold text-blue-700 underline decoration-transparent underline-offset-2 transition hover:border-blue-200 hover:bg-blue-50 hover:decoration-current"
+                        title={`Open node detail for ${attachedNodeId}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {`node=${attachedNodeId}`}
+                      </a>
+                      <span
+                        className={
+                          attachedNodeIsMain
+                            ? "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-700"
+                            : "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-sky-700"
+                        }
+                      >
+                        {attachedNodeIsMain ? "local" : "remote"}
+                      </span>
+                    </span>
+                  ) : (
+                    "node=-"
+                  )}
                 </span>
-              </SelectableListItem>
-            ))}
+                </SelectableListItem>
+              );
+            })}
           </div>
         </>
       )}

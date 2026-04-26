@@ -95,7 +95,7 @@ describe("AgentsWorkbench", () => {
   it("shows the input dock for ACP conversation mode", () => {
     const html = renderWorkbench();
     expect(html).toContain("Send");
-    expect(html).toContain("Activity");
+    expect(html).toContain("Thread");
     expect(html).toContain("/repo/workdir");
   });
 

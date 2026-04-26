@@ -66,6 +66,7 @@ export type AgentsRootPageProps = {
   agentsPanelProps: AgentsPanelProps;
   outputHeaderProps: OutputHeaderProps;
   workbenchProps: AgentsWorkbenchProps | null;
+  rootWorkbenchNode?: React.ReactNode;
   showCreateAgent: boolean;
   createAgentModalProps: CreateAgentModalProps;
   agentNodeSectionProps: AgentNodeSectionProps | null;
@@ -102,6 +103,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   agentsPanelProps,
   outputHeaderProps,
   workbenchProps,
+  rootWorkbenchNode = null,
   showCreateAgent,
   createAgentModalProps,
   agentNodeSectionProps,
@@ -217,6 +219,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           agentsPanelProps={agentsPanelProps}
           outputHeaderProps={outputHeaderProps}
           workbenchProps={workbenchProps}
+          rootWorkbenchNode={rootWorkbenchNode}
         />
       )}
       </div>

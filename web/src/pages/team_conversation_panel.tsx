@@ -21,6 +21,7 @@ type TeamConversationPanelProps = {
   conversationMailboxMessages: TeamActorMessageRecord[];
   snapshotMailboxMessages?: TeamActorMessageRecord[];
   humanActorId?: string;
+  displayNameByActorId?: Record<string, string>;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
   conversationTitle?: string;
@@ -64,6 +65,7 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         messages={messages}
         seenByMessageId={seenByMessageId}
         humanActorId={humanActorId}
+        displayNameByActorId={props.displayNameByActorId}
         memberLiveStates={props.memberLiveStates}
         memberIds={memberIds}
         conversationTitle={props.conversationTitle}

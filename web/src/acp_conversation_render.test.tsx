@@ -22,6 +22,7 @@ async function renderConversation(
         virtualTopSpacer={0}
         virtualBottomSpacer={0}
         stickToBottom={true}
+        bottomAlignLatest={false}
         pendingCount={0}
         avgHeight={40}
         onScroll={() => {}}
@@ -91,6 +92,15 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain(
       "Interacted with background terminal · Run cargo test -p codex-core"
     );
+  });
+
+  it("bottom-aligns the latest content when requested", async () => {
+    const html = await renderConversation(
+      [{ kind: "agent_message", text: "latest", event_id: 1 }],
+      { bottomAlignLatest: true }
+    );
+
+    expect(html).toContain("acp-conversation-inner flex w-full flex-col gap-1 min-h-full justify-end");
   });
 
   it("renders grouped tool calls with a shared fold and nested tool entries", async () => {

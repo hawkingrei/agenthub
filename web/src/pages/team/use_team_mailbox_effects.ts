@@ -120,8 +120,11 @@ export function useTeamMailboxEffects({
   ]);
 
   useEffect(() => {
+    if (tab !== "mailbox") {
+      return;
+    }
     void loadMemberEvents("replace").catch((err) => {
       setError(parseErrorMessage(err));
     });
-  }, [loadMemberEvents, parseErrorMessage, setError]);
+  }, [loadMemberEvents, parseErrorMessage, setError, tab]);
 }

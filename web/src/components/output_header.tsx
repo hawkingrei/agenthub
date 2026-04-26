@@ -27,16 +27,18 @@ type OutputHeaderDetailsItem = {
 export function OutputHeaderDetails({
   items,
   summary = "Details",
+  summaryClassName,
 }: {
   items: OutputHeaderDetailsItem[];
   summary?: string;
+  summaryClassName?: string;
 }) {
   if (items.length === 0) {
     return null;
   }
   return (
     <details className={OUTPUT_HEADER_DETAILS_ROOT_CLASS}>
-      <summary className={OUTPUT_HEADER_DETAILS_SUMMARY_CLASS}>{summary}</summary>
+      <summary className={summaryClassName ?? OUTPUT_HEADER_DETAILS_SUMMARY_CLASS}>{summary}</summary>
       <div className={OUTPUT_HEADER_DETAILS_PANEL_CLASS}>
         <div className={OUTPUT_HEADER_DETAILS_LIST_CLASS}>
           {items.map((item) => (

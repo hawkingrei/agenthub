@@ -89,6 +89,7 @@ type TeamTaskPanelProps = {
   messages: TeamConversationMessageRecord[];
   seenByMessageId?: Record<number, string[]>;
   humanActorId?: string;
+  displayNameByActorId?: Record<string, string>;
   memberLiveStates?: TeamMemberLiveState[];
   memberIds?: string[];
   conversationTitle?: string;
@@ -944,6 +945,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messages,
     seenByMessageId = {},
     humanActorId = "user",
+    displayNameByActorId = {},
     memberLiveStates = [],
     memberIds = [],
     conversationTitle = "all",
@@ -982,9 +984,17 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const memberDisplayNamesById = React.useMemo(
     () =>
       createDisplayNameLookup(
-        memberIds.map((memberId) => [memberId, resolveMentionLabel(memberId, liveStateByMemberId)])
+        [
+          ...memberIds.map(
+            (memberId): [string, string] => [
+              memberId,
+              resolveMentionLabel(memberId, liveStateByMemberId),
+            ]
+          ),
+          ...Object.entries(displayNameByActorId),
+        ]
       ),
-    [liveStateByMemberId, memberIds]
+    [displayNameByActorId, liveStateByMemberId, memberIds]
   );
 
   const mentionCandidates = React.useMemo<MentionCandidate[]>(() => {

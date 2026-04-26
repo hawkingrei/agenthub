@@ -201,8 +201,9 @@ describe("useTeamMailboxEffects", () => {
     expect(params.markConversationSeen).toHaveBeenCalledWith("member-1|member-2", 77);
   });
 
-  it("loads member events in replace mode and reports errors", async () => {
+  it("loads member events in replace mode only for mailbox and reports errors", async () => {
     const params = createParams({
+      tab: "mailbox",
       loadMemberEvents: vi.fn().mockRejectedValue(new Error("fetch-failed")),
       parseErrorMessage: vi.fn(() => "friendly-event-error"),
     });
@@ -216,5 +217,20 @@ describe("useTeamMailboxEffects", () => {
 
     expect(params.loadMemberEvents).toHaveBeenCalledWith("replace");
     expect(params.setError).toHaveBeenCalledWith("friendly-event-error");
+  });
+
+  it("does not load member events outside mailbox", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(params.loadMemberEvents).not.toHaveBeenCalled();
   });
 });

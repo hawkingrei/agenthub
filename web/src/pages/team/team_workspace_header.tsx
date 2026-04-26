@@ -384,16 +384,14 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
       {!isAgentWorkspace && workflowTabItems.length > 0 && (
         <TeamTabsBar tab={tab} onTabChange={onTabChange} items={workflowTabItems} />
       )}
-      {(workspaceNoticeText || developerMode) && (
+      {workspaceNoticeText && (
         <div className={chrome.noticeClassName}>
-          {workspaceNoticeText && (
-            <div className={chrome.noticeTextClassName}>
-              <span className={workspaceNoticeDotClassName} aria-hidden="true" />
-              <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted/85">
-                {workspaceNoticeText}
-              </span>
-            </div>
-          )}
+          <div className={chrome.noticeTextClassName}>
+            <span className={workspaceNoticeDotClassName} aria-hidden="true" />
+            <span className="min-w-0 flex-1 text-[11px] leading-5 text-ui-text-muted/85">
+              {workspaceNoticeText}
+            </span>
+          </div>
         </div>
       )}
       {developerMode && workspaceDetailsOpen && workspaceDetailItems.length > 0 && (

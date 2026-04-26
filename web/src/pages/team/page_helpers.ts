@@ -149,6 +149,27 @@ export function shouldClearSelectedTeamMember({
   return !memberIds.includes(normalizedSelectedMemberId);
 }
 
+type ResolveSelectedAgentWorkspaceMemberIdArgs = {
+  selectedMemberId: string;
+  focusedAgentMemberId: string;
+  routeSelectedMemberId?: string | null;
+};
+
+export function resolveSelectedAgentWorkspaceMemberId({
+  selectedMemberId,
+  focusedAgentMemberId,
+  routeSelectedMemberId,
+}: ResolveSelectedAgentWorkspaceMemberIdArgs): string {
+  const normalizedSelectedMemberId = selectedMemberId.trim();
+  if (normalizedSelectedMemberId) {
+    return normalizedSelectedMemberId;
+  }
+  if (routeSelectedMemberId?.trim()) {
+    return "";
+  }
+  return focusedAgentMemberId.trim();
+}
+
 export function resolveAgentWorkspaceStatusView(
   member: TeamMemberLiveState | null
 ): AgentWorkspaceStatusView {

@@ -57,6 +57,7 @@ type TeamSidebarProps = {
   selectedTeamHasConfiguredMembers?: boolean;
   teamMemberSummaryByTeamId: Map<string, TeamMemberSummary>;
   memberLiveStates: TeamMemberLiveState[];
+  memberTargetNodeById?: Record<string, string | null>;
   channelItems?: ReadonlyArray<TeamChannelItem>;
   selectedChannelId?: TeamChannelItem["id"];
   focusedAgentMemberId: string;
@@ -157,6 +158,26 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
   return currentWork;
 }
 
+function resolveMemberNodeSummary(nodeId: string | null | undefined): {
+  badge: "local" | "remote";
+  label: string;
+} | null {
+  const normalized = nodeId?.trim() || null;
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.toLowerCase() === "main") {
+    return {
+      badge: "local",
+      label: "main",
+    };
+  }
+  return {
+    badge: "remote",
+    label: normalized,
+  };
+}
+
 const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS = "px-2 py-1.5";
 const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS = TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS;
 const TEAM_SIDEBAR_VIRTUAL_LIST_CLASS =
@@ -197,6 +218,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     selectedTeamRuntimeStatus,
     selectedTeamHasConfiguredMembers = false,
     memberLiveStates,
+    memberTargetNodeById = {},
     channelItems = DEFAULT_TEAM_CHANNEL_ITEMS,
     selectedChannelId = "all",
     focusedAgentMemberId,
@@ -753,6 +775,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     focusedAgentMemberId === member.member_id && AGENT_FOCUS_TABS.has(tab);
                   const primaryLabel = resolveMemberPrimaryLabel(member);
                   const currentWorkLabel = resolveCurrentWorkLabel(member);
+                  const nodeSummary = resolveMemberNodeSummary(
+                    memberTargetNodeById[member.member_id]
+                  );
                   const memberStateLabel = formatMemberStateLabel(lifecycle, workStatus);
                   const showMemberStateLabel = shouldShowMemberStateLabel(memberStateLabel);
                   return (
@@ -781,6 +806,18 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
+                          {nodeSummary && (
+                            <span
+                              className={
+                                nodeSummary.badge === "local"
+                                  ? "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700"
+                                  : "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-sky-700"
+                              }
+                              title={`node: ${nodeSummary.label}`}
+                            >
+                              {nodeSummary.badge}
+                            </span>
+                          )}
                           {showMemberStateLabel && (
                             <span className="shrink-0 text-[10px] font-medium text-notion-text-muted">
                               {memberStateLabel}
@@ -796,6 +833,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       {currentWorkLabel && (
                         <span className={TEAM_SIDEBAR_WORK_CLASS}>
                           {currentWorkLabel}
+                        </span>
+                      )}
+                      {nodeSummary && (
+                        <span className={TEAM_SIDEBAR_WORK_CLASS}>
+                          {`node=${nodeSummary.label}`}
                         </span>
                       )}
                     </button>

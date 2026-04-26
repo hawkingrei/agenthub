@@ -148,11 +148,11 @@ describe("AcpPanel layout", () => {
       <AcpPanel {...baseProps} subtitle="/repo/workdir" />
     );
     expect(html).toContain("/repo/workdir");
-    expect(html).toContain("Activity");
+    expect(html).toContain("Thread");
     expect(html).toContain("Plan");
     expect(html).toContain("Inspect");
     expect(html).toContain("acp-tab-button");
-    expect(html).toContain("rounded-xl border border-notion-border/80");
+    expect(html).toContain("rounded-2xl border border-notion-border/80 bg-notion-sidebar/72");
     expect(html).not.toContain("Interrupt");
   });
 
@@ -160,7 +160,7 @@ describe("AcpPanel layout", () => {
     const html = await renderPanel(
       <AcpPanel {...baseProps} developerMode={false} acpTab="debug" />
     );
-    expect(html).toContain("Activity");
+    expect(html).toContain("Thread");
     expect(html).toContain("Plan");
     expect(html).not.toContain("Inspect");
     expect(html).not.toContain("Session Controls");
@@ -208,7 +208,7 @@ describe("AcpPanel layout", () => {
       />
     );
     expect(html).toContain("agenthub");
-    expect(html).toContain("Activity");
+    expect(html).toContain("Thread");
     expect(html).toContain("Plan");
     expect(html).toContain("sm:hidden");
     expect(html).not.toContain("acp-actions");
@@ -233,9 +233,9 @@ describe("AcpPanel layout", () => {
 
       const conversationButton = required(
         Array.from(container.querySelectorAll("button")).find((button) =>
-          button.textContent?.includes("Activity")
+          button.textContent?.includes("Thread")
         ) as HTMLButtonElement | undefined,
-        "activity tab button missing"
+        "thread tab button missing"
       );
       const planButton = required(
         Array.from(container.querySelectorAll("button")).find((button) =>
@@ -333,7 +333,7 @@ describe("AcpPanel layout", () => {
         await vi.dynamicImportSettled();
       });
 
-      expect(container.textContent).toContain("Current Plan");
+      expect(container.textContent).toContain("Plan");
       expect(container.textContent).toContain("Analyze issue");
       expect(container.textContent).toContain("Apply patch");
     } finally {

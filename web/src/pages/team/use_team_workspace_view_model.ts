@@ -103,14 +103,33 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     [selectedMemberId, selectedTeamMemberLiveStates]
   );
   const selectedAgentLiveState = useMemo(
-    () => selectedTeamMemberLiveStates.find((member) => member.member_id === focusedAgentMemberId) ?? null,
-    [focusedAgentMemberId, selectedTeamMemberLiveStates]
+    () =>
+      selectedAgentWorkspaceLiveState ??
+      selectedTeamMemberLiveStates.find(
+        (member) => member.member_id === selectedAgentWorkspaceMemberId
+      ) ??
+      null,
+    [
+      selectedAgentWorkspaceLiveState,
+      selectedAgentWorkspaceMemberId,
+      selectedTeamMemberLiveStates,
+    ]
   );
-  const hasSelectedAgentContext = focusedAgentMemberId.trim().length > 0;
+  const hasSelectedAgentContext = selectedAgentWorkspaceMemberId.trim().length > 0;
   const isAgentWorkspace =
     hasSelectedAgentContext && (tab === "agent_acp" || tab === "mailbox" || tab === "member_console");
 
   const activeWorkspaceLens = routeWorkspaceLens ?? resolveWorkspaceLensForTab(tab);
+  const selectedAgentLabelMemberId = useMemo(() => {
+    const resolvedMemberId = selectedAgentWorkspaceMemberId.trim();
+    if (resolvedMemberId) {
+      return resolvedMemberId;
+    }
+    if (!selectedTeam) {
+      return focusedAgentMemberId.trim();
+    }
+    return "";
+  }, [focusedAgentMemberId, selectedAgentWorkspaceMemberId, selectedTeam]);
   const workspaceLensItems = useMemo(
     () => [
       {
@@ -142,7 +161,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   );
 
   const selectedAgentFallbackName = useMemo(() => {
-    const memberId = focusedAgentMemberId.trim();
+    const memberId = selectedAgentLabelMemberId;
     if (!memberId) {
       return null;
     }
@@ -151,7 +170,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       agents.find((agent) => agent.id === memberId)?.name?.trim() ??
       null
     );
-  }, [agents, focusedAgentMemberId, teamMemberAgentsById]);
+  }, [agents, selectedAgentLabelMemberId, teamMemberAgentsById]);
 
   const selectedMemberFallbackName = useMemo(() => {
     const memberId = selectedMemberId.trim();
@@ -168,11 +187,11 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const selectedAgentLabel = useMemo(
     () =>
       resolveSelectedAgentWorkspaceLabel(
-        focusedAgentMemberId,
+        selectedAgentLabelMemberId,
         selectedAgentLiveState,
         selectedAgentFallbackName
       ),
-    [focusedAgentMemberId, selectedAgentFallbackName, selectedAgentLiveState]
+    [selectedAgentFallbackName, selectedAgentLabelMemberId, selectedAgentLiveState]
   );
   const selectedMailboxLabel = useMemo(
     () =>

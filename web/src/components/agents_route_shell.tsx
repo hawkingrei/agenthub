@@ -87,6 +87,7 @@ AgentsRouteShellView.displayName = "AgentsRouteShellView";
 
 type AgentsRouteShellProps = Omit<AgentsRouteShellViewProps, "workbenchNode"> & {
   workbenchProps: AgentsWorkbenchProps | null;
+  rootWorkbenchNode?: React.ReactNode;
 };
 
 export const AgentsRouteShell = React.memo(function AgentsRouteShell({
@@ -97,6 +98,7 @@ export const AgentsRouteShell = React.memo(function AgentsRouteShell({
   agentsPanelProps,
   outputHeaderProps,
   workbenchProps,
+  rootWorkbenchNode = null,
 }: AgentsRouteShellProps) {
   const workbenchNode = workbenchProps ? (
     <OutputErrorBoundary>
@@ -106,7 +108,7 @@ export const AgentsRouteShell = React.memo(function AgentsRouteShell({
         <LazyAgentsWorkbench {...workbenchProps} />
       </Suspense>
     </OutputErrorBoundary>
-  ) : null;
+  ) : rootWorkbenchNode;
 
   return (
     <AgentsRouteShellView

@@ -59,6 +59,7 @@ type UseAcpConversationResult = {
   collapseCutoff: number;
   shouldAutoCollapse: boolean;
   conversationStickToBottom: boolean;
+  conversationShouldBottomAlignLatest: boolean;
   conversationPendingCount: number;
   conversationAvgHeight: number;
   conversationTotalItems: number;
@@ -1074,6 +1075,9 @@ export function useAcpConversation({
     conversationStickToBottom,
     conversationPendingCount
   );
+  const conversationShouldBottomAlignLatest =
+    conversationStickToBottom &&
+    shouldDefaultConversationStickToBottom(conversationSourceItems.length);
 
   return {
     acpConversationRef,
@@ -1085,6 +1089,7 @@ export function useAcpConversation({
     collapseCutoff,
     shouldAutoCollapse,
     conversationStickToBottom,
+    conversationShouldBottomAlignLatest,
     conversationPendingCount,
     conversationAvgHeight,
     conversationTotalItems: conversationMessages.length,

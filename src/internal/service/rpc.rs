@@ -1150,6 +1150,11 @@ impl TeamInternalControl for TeamInternalControlService {
         } else {
             DEFAULT_TOKEN_TTL_SECONDS
         };
+        self.deps
+            .agents
+            .touch_agent_node_last_seen(node_id)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
         let issued = self
             .authz
             .issue_node_access_token(NodeCredentialRequest {

@@ -17,7 +17,7 @@ export function AcpPlan({ plan }: AcpPlanProps) {
     <section className="acp-plan-view flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
       <div className="rounded-xl border border-ui-border bg-ui-surface p-3 shadow-sm sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-ui-text-primary">Current Plan</h3>
+          <h3 className="text-sm font-semibold text-ui-text-primary">Plan</h3>
           {summary.total > 0 ? (
             <span className="text-xs text-ui-text-muted">
               {summary.completed}/{summary.total} completed
@@ -26,7 +26,7 @@ export function AcpPlan({ plan }: AcpPlanProps) {
         </div>
         {summary.total === 0 ? (
           <div className="mt-3 rounded-lg border border-dashed border-ui-border-strong bg-ui-surface-soft px-3 py-6 text-sm text-ui-text-muted">
-            No active plan yet.
+            No active plan.
           </div>
         ) : (
           <div className="mt-3 space-y-3">

@@ -16,12 +16,14 @@ import {
   resolveDefaultActiveAgentId,
 } from "./app_agents_helpers";
 import {
+  buildWorkspaceNodePath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   isAgentsWorkbenchRoute,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceLens,
+  resolveWorkspaceNodeId,
   buildWorkspacePath,
   type WorkspaceLens,
 } from "./app_route_selection";
@@ -39,6 +41,7 @@ import {
   buildPermissionModalProps,
 } from "./components/agents_route_modal_props";
 import { AgentsRootPage } from "./components/agents_root_page";
+import { AgentNodesWorkbench } from "./components/agent_nodes_workbench";
 import {
   buildAgentsPanelProps,
   buildAgentsWorkbenchProps,
@@ -215,6 +218,7 @@ export function App() {
     agents,
     setAgents,
     agentNodes,
+    teams,
     error: agentsError,
     worktreeError,
     showCreateAgent,
@@ -420,23 +424,35 @@ export function App() {
     () => resolveWorkspaceLens(routeLocation.search) ?? "channels",
     [routeLocation.search]
   );
+  const selectedWorkspaceNodeId = useMemo(
+    () => resolveWorkspaceNodeId(routeLocation.search) ?? "main",
+    [routeLocation.search]
+  );
 
   const workspaceLensItems = useMemo(
-    () => [
-      { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
-      { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
-      { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
-      { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
-    ],
-    [activeWorkspaceLens]
+    () =>
+      [
+        { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
+        { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
+        { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
+        { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
+        ...(canManageAgentNodes(auth)
+          ? [{ value: "nodes", label: "Nodes", active: activeWorkspaceLens === "nodes" }]
+          : []),
+      ],
+    [activeWorkspaceLens, auth]
   );
 
   const onSelectWorkspaceLens = useCallback(
     (value: string) => {
       const lens = value as WorkspaceLens;
+      if (lens === "nodes") {
+        navigateWorkbenchRoute(buildWorkspaceNodePath(selectedWorkspaceNodeId));
+        return;
+      }
       navigateWorkbenchRoute(buildWorkspacePath(activeAgent, lens));
     },
-    [activeAgent, navigateWorkbenchRoute]
+    [activeAgent, navigateWorkbenchRoute, selectedWorkspaceNodeId]
   );
 
   useEffect(() => {
@@ -512,7 +528,7 @@ export function App() {
     setActiveAgent(id);
     setActiveSessionId(agentSessions[id] ?? null);
     setAgentsCollapsed(true);
-    navigateWorkbenchRoute(buildWorkspacePath(id, activeWorkspaceLens));
+    navigateWorkbenchRoute(buildWorkspacePath(id, activeWorkspaceLens === "nodes" ? "channels" : activeWorkspaceLens));
   }, [agentSessions, navigateWorkbenchRoute, setActiveSessionId, activeWorkspaceLens]);
 
   const onRespondPermission = useCallback(async (
@@ -888,6 +904,21 @@ export function App() {
       activeAgentModelLabel,
     ]
   );
+  const routeOutputHeaderProps = useMemo(
+    () =>
+      activeWorkspaceLens === "nodes"
+        ? buildOutputHeaderProps({
+            activeAgent: null,
+            activeSessionId: null,
+            developerMode,
+            hasAcp: false,
+            thinkingStartTs: null,
+            runStatus: null,
+            modelLabel: null,
+          })
+        : outputHeaderProps,
+    [activeWorkspaceLens, developerMode, outputHeaderProps]
+  );
 
   const workbenchProps = useMemo(
     () =>
@@ -980,8 +1011,58 @@ export function App() {
       terminalShowJump,
     ]
   );
+  const routeWorkbenchProps = activeWorkspaceLens === "nodes" ? null : workbenchProps;
 
   const canManageNodes = canManageAgentNodes(auth);
+  const rootWorkbenchNode = useMemo(
+    () =>
+      canManageNodes && activeWorkspaceLens === "nodes"
+        ? (
+            <AgentNodesWorkbench
+              nodes={agentNodes}
+              agents={agents}
+              teams={teams}
+              selectedNodeId={selectedWorkspaceNodeId}
+              nodeJoinBootstrap={agentNodeJoinBootstrap}
+              nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
+              nodeJoinBootstrapError={agentNodeJoinBootstrapError}
+              updatingNodeIds={updatingAgentNodeIds}
+              deletingNodeIds={deletingAgentNodeIds}
+              onSelectNode={(nodeId) => navigateWorkbenchRoute(buildWorkspaceNodePath(nodeId))}
+              onOpenAgent={(agentId) => {
+                setActiveAgent(agentId);
+                setActiveSessionId(agentSessions[agentId] ?? null);
+                setAgentsCollapsed(true);
+                navigateWorkbenchRoute(buildWorkspacePath(agentId, "channels"));
+              }}
+              onCreateAgent={openCreateAgentModal}
+              onUpdateNode={onUpdateAgentNode}
+              onDeleteNode={onDeleteAgentNode}
+            />
+          )
+        : null,
+    [
+      canManageNodes,
+      activeWorkspaceLens,
+      agentNodes,
+      agents,
+      teams,
+      selectedWorkspaceNodeId,
+      agentNodeJoinBootstrap,
+      agentNodeJoinBootstrapLoading,
+      agentNodeJoinBootstrapError,
+      updatingAgentNodeIds,
+      deletingAgentNodeIds,
+      navigateWorkbenchRoute,
+      agentSessions,
+      openCreateAgentModal,
+      onUpdateAgentNode,
+      onDeleteAgentNode,
+      setActiveAgent,
+      setActiveSessionId,
+      setAgentsCollapsed,
+    ]
+  );
   const createAgentDefaultWorktreeRoot = useMemo(
     () =>
       resolveDefaultWorktreeRootForTargetNode(
@@ -1066,6 +1147,8 @@ export function App() {
               onCreateNode: onCreateAgentNode,
               onUpdateNode: onUpdateAgentNode,
               onDeleteNode: onDeleteAgentNode,
+              onOpenNodeDetail: (nodeId: string) =>
+                navigateWorkbenchRoute(buildWorkspaceNodePath(nodeId)),
             }
           : null
       ),
@@ -1094,6 +1177,7 @@ export function App() {
       onCreateAgentNode,
       onUpdateAgentNode,
       onDeleteAgentNode,
+      navigateWorkbenchRoute,
     ]
   );
 
@@ -1211,8 +1295,9 @@ export function App() {
       workspaceStyle={workspaceStyle}
       onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
       agentsPanelProps={agentsPanelProps}
-      outputHeaderProps={outputHeaderProps}
-      workbenchProps={workbenchProps}
+      outputHeaderProps={routeOutputHeaderProps}
+      workbenchProps={routeWorkbenchProps}
+      rootWorkbenchNode={rootWorkbenchNode}
       showCreateAgent={showCreateAgent}
       createAgentModalProps={createAgentModalProps}
       agentNodeSectionProps={agentNodeSectionProps}

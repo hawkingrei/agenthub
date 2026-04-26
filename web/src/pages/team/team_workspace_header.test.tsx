@@ -179,5 +179,6 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).not.toContain('aria-label="More"');
     expect(html).not.toContain("team running");
     expect(html).not.toContain("team=abc");
+    expect(html).not.toContain('class="notice"');
   });
 });

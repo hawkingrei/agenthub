@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { AuthState } from "./types";
 import {
+  buildWorkspaceNodePath,
   buildWorkspacePath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
+  resolveWorkspaceNodeId,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
 } from "./app_route_selection";
@@ -72,10 +74,14 @@ describe("app route selection", () => {
     expect(resolveWorkspaceLens("?lens=channels")).toBe("channels");
     expect(resolveWorkspaceLens("?lens=chat")).toBe("channels");
     expect(resolveWorkspaceLens("?lens=threads")).toBe("channels");
+    expect(resolveWorkspaceLens("?lens=nodes")).toBe("nodes");
     expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1?lens=channels"
     );
+    expect(resolveWorkspaceNodeId("?lens=nodes&node=node-east")).toBe("node-east");
+    expect(resolveWorkspaceNodeId("?lens=nodes")).toBeNull();
+    expect(buildWorkspaceNodePath("node-east")).toBe("/workspace?lens=nodes&node=node-east");
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {

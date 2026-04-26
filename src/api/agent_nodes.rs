@@ -439,6 +439,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_agent_node_returns_last_seen_at_when_present() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = router(state.clone());
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE agent_nodes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                grpc_target TEXT NOT NULL,
+                tls_server_name TEXT,
+                default_worktree_root TEXT,
+                last_seen_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&state.db)
+        .await
+        .expect("create agent_nodes table");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_nodes (
+                id,
+                name,
+                grpc_target,
+                tls_server_name,
+                default_worktree_root,
+                last_seen_at,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("node-east")
+        .bind("Node East")
+        .bind("https://node-east.internal:50051")
+        .bind("node-east.internal")
+        .bind("/tmp/node-east")
+        .bind(now)
+        .bind(now - 120)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .expect("insert agent node");
+
+        let response = app
+            .oneshot(build_json_request(
+                Method::GET,
+                "/node-east",
+                Some(&token),
+                None,
+            ))
+            .await
+            .expect("run get agent node request");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = decode_json_body(response).await;
+        assert_eq!(body["id"], json!("node-east"));
+        assert_eq!(body["last_seen_at"], json!(now));
+    }
+
+    #[tokio::test]
     async fn delete_main_agent_node_returns_bad_request() {
         let state = build_test_state().await;
         let token = create_auth_token(&state).await;

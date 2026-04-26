@@ -150,6 +150,7 @@ pub struct AgentNodeRecord {
     pub grpc_target: Option<String>,
     pub tls_server_name: Option<String>,
     pub default_worktree_root: Option<String>,
+    pub last_seen_at: Option<i64>,
     pub is_main: bool,
     pub created_at: i64,
     pub updated_at: i64,
