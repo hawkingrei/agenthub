@@ -90,6 +90,19 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("canonical Team task creation"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Treat `task` as the primary ownership object"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("Treat `task` as the primary ownership object")
+        );
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Treat `run` and `step` as execution/debug artifacts"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT
+                .contains("Treat `run` and `step` as execution/debug artifacts")
+        );
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("explicit later resume starts the next attempt"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("explicit later resume starts the next attempt")
+        );
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("waiting"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("waiting"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("in_review"));

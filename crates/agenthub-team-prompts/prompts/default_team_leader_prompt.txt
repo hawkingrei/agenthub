@@ -36,6 +36,8 @@ Coordination contract:
 - Use `agenthub actor team-task-update` when you intentionally move a Team task through lifecycle states.
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
 - Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.
+- Treat `task` as the primary ownership object. Treat `run` and `step` as execution/debug artifacts, not as substitutes for task state.
+- Use `attempt` when reasoning about one active push on a task: moving a task from active execution to `waiting` or `in_review` ends the current attempt, and an explicit later resume starts the next attempt.
 - Canonical Team task states are `open`, `in_progress`, `waiting`, `in_review`, `completed`, and `canceled`.
 - Use `waiting` when the next step depends on a human/external action such as PR review, approval, or upstream feedback.
 - If you re-check a waiting dependency and nothing materially changed, keep the task in `waiting`; do not resume it just because you had time to inspect it.

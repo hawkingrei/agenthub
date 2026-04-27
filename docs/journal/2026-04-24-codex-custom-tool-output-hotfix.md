@@ -50,3 +50,12 @@ Operational validation:
 
 - Root-cause why `apply_patch` was recorded without a matching `CustomToolCallOutput`
 - Drop the fork pin once upstream Codex carries an equivalent fix
+
+## 2026-04-27 Follow-up After Upgrading To `openai/codex@rust-v0.125.0`
+
+- The temporary `hawkingrei/codex@8dd355d192ddf148ab2d97c9ba89223739cfdd18` pin is no longer the live dependency source in `agenthub-codex-acp`; PR 430 moved the adapter back onto the official `openai/codex@rust-v0.125.0` baseline.
+- PR 433 then verified the current upstream adapter surface that matters for Team/runtime prompt delivery:
+  - managed Team/runtime ACP skills still materialize under `~/.agents/skills/agenthub-runtime/.../SKILL.md`
+  - native Codex skill injection still keeps dynamic actor runtime context in a separate text prefix block
+  - approvals, `ModelReroute`, and model preset/config-option flows remain aligned after the upstream upgrade
+- This journal entry now serves as historical context for the temporary fork. The active backlog item is no longer “keep the fork pin alive”, but “verify dirty-history resume/compaction semantics on the official upstream baseline and document any remaining behavior gap versus the old fork repair”.
