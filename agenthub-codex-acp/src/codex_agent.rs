@@ -16,7 +16,6 @@ use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
     find_thread_path_by_id_str, parse_cursor,
 };
-use codex_exec_server::{EnvironmentManager, EnvironmentManagerArgs, ExecServerRuntimePaths};
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
@@ -39,6 +38,7 @@ use tracing::{debug, info, warn};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app_server_thread;
+use crate::build_environment_manager;
 use crate::thread::{Thread, adapt_models_manager};
 
 /// The Codex implementation of the ACP Agent trait.
@@ -65,7 +65,7 @@ const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
 
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> Result<Self, Error> {
         let auth_manager = AuthManager::shared(
             config.codex_home.to_path_buf(),
             false,
@@ -83,17 +83,17 @@ impl CodexAgent {
             CollaborationModesConfig {
                 default_mode_request_user_input: true,
             },
-            build_environment_manager(&config),
+            build_environment_manager(&config)?,
             None,
         );
-        Self {
+        Ok(Self {
             auth_manager,
             client_capabilities,
             config,
             thread_manager,
             sessions: Rc::default(),
             session_roots,
-        }
+        })
     }
 
     fn get_thread(&self, session_id: &SessionId) -> Result<Rc<Thread>, Error> {
@@ -215,24 +215,6 @@ impl CodexAgent {
             .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(config)
-    }
-}
-
-fn build_environment_manager(config: &Config) -> Arc<EnvironmentManager> {
-    match ExecServerRuntimePaths::from_optional_paths(
-        std::env::current_exe().ok(),
-        config.codex_linux_sandbox_exe.clone(),
-    ) {
-        Ok(runtime_paths) => Arc::new(EnvironmentManager::new(EnvironmentManagerArgs::from_env(
-            runtime_paths,
-        ))),
-        Err(err) => {
-            warn!(
-                error = %err,
-                "failed to resolve exec-server runtime paths; falling back to test environment manager"
-            );
-            Arc::new(EnvironmentManager::default_for_tests())
-        }
     }
 }
 

@@ -1138,6 +1138,10 @@ impl PromptState {
                 // informational notices (e.g., the post-compact advisory message).
                 client.send_agent_text(message).await;
             }
+            EventMsg::GuardianWarning(WarningEvent { message }) => {
+                warn!("Guardian warning: {message}");
+                client.send_agent_text(message).await;
+            }
             EventMsg::McpStartupUpdate(McpStartupUpdateEvent { server, status }) => {
                 info!("MCP startup update: server={server}, status={status:?}");
             }
@@ -1164,6 +1168,12 @@ impl PromptState {
                     &reason,
                 ))
                 .await;
+            }
+            EventMsg::ModelVerification(event) => {
+                info!("Model verification: {:?}", event.verifications);
+                client
+                    .send_agent_text(render_model_verification_message(&event.verifications))
+                    .await;
             }
             EventMsg::DeprecationNotice(DeprecationNoticeEvent { summary, details }) => {
                 info!("Deprecation notice: summary={summary}, details={details:?}");
@@ -1220,9 +1230,7 @@ impl PromptState {
             | EventMsg::CollabResumeEnd(..)
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
-            | EventMsg::PlanDelta(..)
-            | EventMsg::GuardianWarning(..)
-            | EventMsg::ModelVerification(..) => {}
+            | EventMsg::PlanDelta(..) => {}
             EventMsg::GuardianAssessment(..) => {}
             e @ (EventMsg::McpListToolsResponse(..)
             | EventMsg::ListSkillsResponse(..)
@@ -4032,6 +4040,21 @@ fn render_model_reroute_message(
     format!("Model rerouted: {from_model} -> {to_model} ({reason:?})")
 }
 
+fn render_model_verification_message(
+    verifications: &[codex_protocol::protocol::ModelVerification],
+) -> String {
+    let details = verifications
+        .iter()
+        .map(|verification| match verification {
+            codex_protocol::protocol::ModelVerification::TrustedAccessForCyber => {
+                "trusted_access_for_cyber"
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Model verification: {details}")
+}
+
 fn render_deprecation_notice_message(summary: &str, details: Option<&str>) -> String {
     match details.map(str::trim).filter(|details| !details.is_empty()) {
         Some(details) => format!("Deprecation notice: {summary}\n{details}"),
@@ -4591,6 +4614,15 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn render_model_verification_message_lists_verifications() {
+        let message = render_model_verification_message(&[
+            codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
+        ]);
+
+        assert_eq!(message, "Model verification: trusted_access_for_cyber");
+    }
 
     struct TempManagedSkillsHome {
         home: PathBuf,

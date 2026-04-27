@@ -4,6 +4,7 @@
 use agent_client_protocol_legacy::AgentSideConnection;
 use codex_core::config::ManagedFeatures;
 use codex_core::config::{Config, ConfigOverrides};
+use codex_exec_server::{EnvironmentManager, EnvironmentManagerArgs, ExecServerRuntimePaths};
 use codex_features::{Feature, Features};
 use codex_utils_cli::CliConfigOverrides;
 use std::fmt;
@@ -32,6 +33,28 @@ mod thread;
 
 pub static ACP_CLIENT: OnceLock<Arc<AgentSideConnection>> = OnceLock::new();
 const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
+
+pub(crate) fn build_environment_manager(
+    config: &Config,
+) -> Result<Arc<EnvironmentManager>, agent_client_protocol_legacy::Error> {
+    let current_exe = std::env::current_exe().map_err(|err| {
+        agent_client_protocol_legacy::Error::internal_error().data(format!(
+            "failed to determine current executable path: {err}"
+        ))
+    })?;
+    let runtime_paths = ExecServerRuntimePaths::from_optional_paths(
+        Some(current_exe),
+        config.codex_linux_sandbox_exe.clone(),
+    )
+    .map_err(|err| {
+        agent_client_protocol_legacy::Error::internal_error().data(format!(
+            "failed to resolve exec-server runtime paths: {err}"
+        ))
+    })?;
+    Ok(Arc::new(EnvironmentManager::new(
+        EnvironmentManagerArgs::from_env(runtime_paths),
+    )))
+}
 
 pub(crate) fn spawn_acp_io_task<F>(
     thread_name: &str,
@@ -312,7 +335,9 @@ pub async fn run_main(
     normalize_responses_websocket_support(&mut config);
 
     // Create our Agent implementation with notification channel
-    let agent = Rc::new(codex_agent::CodexAgent::new(config));
+    let agent = Rc::new(codex_agent::CodexAgent::new(config).map_err(|err| {
+        std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
+    })?);
 
     let stdin = tokio::io::stdin().compat();
     let stdout = tokio::io::stdout().compat_write();
