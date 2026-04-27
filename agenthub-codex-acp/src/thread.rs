@@ -4613,7 +4613,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol_legacy::{RequestPermissionResponse, TextContent};
+    use agent_client_protocol_legacy::{RequestPermissionResponse, SessionConfigKind, TextContent};
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
     };
@@ -7344,12 +7344,12 @@ mod tests {
             .expect("at least one model preset")
             .id
             .as_str();
-        assert_eq!(model_select.current_value.0, expected_preset_id);
+        assert_eq!(model_select.current_value.0.as_ref(), expected_preset_id);
         assert!(
             model_select
                 .options
                 .iter()
-                .any(|option| option.value.0 == expected_preset_id)
+                .any(|option| option.value.0.as_ref() == expected_preset_id)
         );
 
         Ok(())
