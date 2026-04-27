@@ -57,6 +57,7 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - selector header and filter row now use `ToolbarRow`
     - create action now uses shared `ActionButton`
     - team rows now use `SelectableListItem`
+    - follow-up cleanup re-aligned the implementation with this contract after a later chrome-only iteration drifted back to a raw `<button>`
   - `web/src/pages/team/team_debug_panels.tsx`
     - debug header and run forms now use `SurfaceCard`
     - debug tab switcher and run actions now use shared `ActionButton`

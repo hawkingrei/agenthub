@@ -3,6 +3,8 @@ import { TextInput } from "@mantine/core";
 import {
   ActionButton,
   IconButton,
+  SelectableListItem,
+  ToolbarRow,
 } from "../../ui/primitives";
 
 export type TeamSelectorItem = {
@@ -38,8 +40,9 @@ const TeamSelectorEntry = React.memo(function TeamSelectorEntry({
   onSelectTeam: (teamId: string) => void;
 }) {
   return (
-    <button
+    <SelectableListItem
       type="button"
+      layout="row"
       className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md bg-transparent px-2 py-1.5 text-left transition hover:bg-[rgba(55,53,47,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       data-team-selector-entry="true"
       data-team-id={team.id}
@@ -59,7 +62,7 @@ const TeamSelectorEntry = React.memo(function TeamSelectorEntry({
           <span className="shrink-0 capitalize">{team.runtimeLabel}</span>
         </div>
       </div>
-    </button>
+    </SelectableListItem>
   );
 });
 
@@ -79,7 +82,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
   return (
     <div className="flex min-h-0 flex-1 justify-center">
       <section className="flex min-h-0 w-full max-w-[680px] flex-col">
-        <div className="mb-1 mt-3 flex items-center justify-between px-2">
+        <ToolbarRow className="mb-1 mt-3 px-2">
           <div className="min-w-0 flex-1">
             <h2 className="text-[14px] font-medium tracking-tight text-notion-text-muted">Teams</h2>
           </div>
@@ -92,10 +95,10 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
           >
             New Team
           </ActionButton>
-        </div>
+        </ToolbarRow>
 
         {!loading && hasTeams && (
-          <div className="mt-1 flex items-center gap-2 px-2">
+          <ToolbarRow className="mt-1 gap-2 px-2">
             <TextInput
               className="flex-1"
               radius="md"
@@ -119,7 +122,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             >
               <i className="bi bi-arrow-clockwise" aria-hidden="true" />
             </IconButton>
-          </div>
+          </ToolbarRow>
         )}
 
         <div className="mt-2 flex-1 overflow-y-auto">

@@ -1,4 +1,4 @@
-import { ActionButton } from "../ui/primitives";
+import { ActionButton, PanelHeader } from "../ui/primitives";
 import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
@@ -25,25 +25,30 @@ export function TeamSetupPanel({
 }: TeamSetupPanelProps) {
   return (
     <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${TEAM_WORKBENCH_PANEL_CLASS}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <span className={TEAM_WORKBENCH_BADGE_CLASS}>Team Setup</span>
-          <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
-            No agents have joined this team yet.
-          </h3>
-          <p className="mt-2 max-w-2xl text-[13px] leading-5 text-ui-text-secondary">
-            The team goal is saved, but runtime and runs stay blocked until you add the
-            first agent.
-          </p>
-        </div>
-        <ActionButton
-          className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}
-          onClick={onForge}
-        >
-          <i className="bi bi-person-plus" aria-hidden="true" />
-          <span>{forgeLabel}</span>
-        </ActionButton>
-      </div>
+      <PanelHeader
+        title={
+          <div className="min-w-0">
+            <span className={`${TEAM_WORKBENCH_BADGE_CLASS} inline-flex`}>Team Setup</span>
+            <h3 className="mt-2 text-[18px] font-semibold tracking-tight text-black">
+              No agents have joined this team yet.
+            </h3>
+          </div>
+        }
+        subtitle="The team goal is saved, but runtime and runs stay blocked until you add the first agent."
+        className="border-b-0 pb-0"
+        titleClassName="text-base font-normal"
+        subtitleClassName="max-w-2xl text-[13px] leading-5 text-ui-text-secondary"
+        contentClassName="gap-0"
+        actions={
+          <ActionButton
+            className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}
+            onClick={onForge}
+          >
+            <i className="bi bi-person-plus" aria-hidden="true" />
+            <span>{forgeLabel}</span>
+          </ActionButton>
+        }
+      />
       <div className={`${TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS} mt-4`}>
         <div className={TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS}>
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>
