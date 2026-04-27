@@ -104,6 +104,12 @@ describe("app route selection", () => {
     expect(buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-77")).toBe(
       "/workspace/teams/team-1?lens=channels&channel=review&task=task-77"
     );
+    expect(
+      buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, " task-77 ")
+    ).toBe("/workspace/teams/team-1?lens=channels&channel=review&task=task-77");
+    expect(
+      buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "   ")
+    ).toBe("/workspace/teams/team-1?lens=channels&channel=review");
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42, null, null, "task-77")).toBe(
       "/workspace/teams/team-1?lens=channels&thread=42&task=task-77"
     );

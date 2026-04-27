@@ -81,6 +81,7 @@ describe("team_page helpers", () => {
     expect(resolveTeamThreadRootMessageId("?thread=7.5")).toBeNull();
     expect(resolveTeamSelectedTaskId("")).toBe("");
     expect(resolveTeamSelectedTaskId("?task=task-7")).toBe("task-7");
+    expect(resolveTeamSelectedTaskId("?task=%20task-7%20")).toBe("task-7");
     expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
     expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
     expect(resolveTeamWorkspaceTab("?tab=thread")).toBe("agent_acp");
