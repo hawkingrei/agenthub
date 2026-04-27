@@ -6,6 +6,7 @@ import {
   ConversationBubble,
   EmptyState,
   SurfaceCard,
+  ToolbarRow,
 } from "../../ui/primitives";
 import { TeamThreadRichText } from "./team_thread_rich_text";
 import {
@@ -84,7 +85,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
       className="flex min-h-0 w-full max-w-[360px] shrink-0 flex-col overflow-hidden border-notion-border/80"
       data-team-surface="thread-pane"
     >
-      <div className="flex items-start justify-between gap-2 border-b border-notion-border/70 px-2.5 py-2">
+      <ToolbarRow className="items-start gap-2 border-b border-notion-border/70 px-2.5 py-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
@@ -121,7 +122,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             Close thread
           </CompactButton>
         </div>
-      </div>
+      </ToolbarRow>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 py-2">
         {!hasSelectedRoot ? (
@@ -225,11 +226,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                 {replyBusy ? "Replying..." : "Reply"}
               </ActionButton>
             </div>
-            <div className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
+            <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
               <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>
                 Reply stays scoped to this thread
               </span>
-            </div>
+            </ToolbarRow>
           </div>
         </div>
       ) : null}
