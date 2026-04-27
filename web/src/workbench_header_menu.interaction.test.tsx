@@ -74,12 +74,18 @@ describe("WorkbenchHeaderMenu interactions", () => {
       );
     });
     act(() => {
+      findButtonByText(container, "Machines").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    });
+    act(() => {
       findButtonByText(container, "Settings").dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true })
       );
     });
 
     expect(onNavigate).toHaveBeenNthCalledWith(1, "/workspace");
-    expect(onNavigate).toHaveBeenNthCalledWith(2, "/admin");
+    expect(onNavigate).toHaveBeenNthCalledWith(2, "/workspace?lens=nodes");
+    expect(onNavigate).toHaveBeenNthCalledWith(3, "/admin");
   });
 });

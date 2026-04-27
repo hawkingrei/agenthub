@@ -153,18 +153,24 @@ type ResolveSelectedAgentWorkspaceMemberIdArgs = {
   selectedMemberId: string;
   focusedAgentMemberId: string;
   routeSelectedMemberId?: string | null;
+  knownMemberIds?: string[] | null;
 };
 
 export function resolveSelectedAgentWorkspaceMemberId({
   selectedMemberId,
   focusedAgentMemberId,
   routeSelectedMemberId,
+  knownMemberIds,
 }: ResolveSelectedAgentWorkspaceMemberIdArgs): string {
   const normalizedSelectedMemberId = selectedMemberId.trim();
   if (normalizedSelectedMemberId) {
     return normalizedSelectedMemberId;
   }
-  if (routeSelectedMemberId?.trim()) {
+  const normalizedRouteMemberId = routeSelectedMemberId?.trim() ?? "";
+  if (normalizedRouteMemberId) {
+    if (knownMemberIds?.includes(normalizedRouteMemberId)) {
+      return normalizedRouteMemberId;
+    }
     return "";
   }
   return focusedAgentMemberId.trim();

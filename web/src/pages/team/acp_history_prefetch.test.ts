@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "../../api";
 import {
   countRenderableAcpConversationItems,
+  resolveAdaptiveAcpHistoryPageCap,
   resolveInitialAcpHistoryDecision,
 } from "./acp_history_prefetch";
 
@@ -138,5 +139,19 @@ describe("resolveInitialAcpHistoryDecision", () => {
     ];
 
     expect(countRenderableAcpConversationItems(events, "runtime-session-1")).toBe(0);
+  });
+
+  it("widens bounded recovery page cap for very high chunk indexes", () => {
+    const events = Array.from({ length: 20 }, (_, index) =>
+      acpEvent(100 + index, {
+        type: "agent_message",
+        text: `chunk-${index}`,
+        chunk: true,
+        message_id: "msg-9",
+        chunk_index: 471 + index,
+      })
+    );
+
+    expect(resolveAdaptiveAcpHistoryPageCap(events, "runtime-session-1", 6)).toBe(25);
   });
 });

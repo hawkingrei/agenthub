@@ -243,6 +243,41 @@ describe("mailbox helpers", () => {
     expect(rendered).toContain("https://example.com/@worker-1");
   });
 
+  it("treats short blank-line-separated chat fragments as plain text instead of markdown paragraphs", () => {
+    const rendered = renderMarkdownWithMentions("跑\n\n一次\n\n同样的命令，但这次给");
+    expect(rendered).not.toContain("<p>");
+    expect(rendered).toContain("跑<br/>一次<br/>同样的命令，但这次给");
+  });
+
+  it("treats short list-like chat fragments as plain text instead of markdown list items", () => {
+    const rendered = renderMarkdownWithMentions("- 跑\n- 一次\n- 同样的命令");
+    expect(rendered).not.toContain("<ul>");
+    expect(rendered).not.toContain("<li>");
+    expect(rendered).toContain("- 跑<br/>- 一次<br/>- 同样的命令");
+  });
+
+  it("keeps explicit markdown structures rendered as markdown", () => {
+    const rendered = renderMarkdownWithMentions("## Checklist\n\n- reproduce the issue\n- send update");
+    expect(rendered).toContain("<h2");
+    expect(rendered).toContain("<ul");
+    expect(rendered).toContain("<li");
+  });
+
+  it("preserves short inline markdown instead of collapsing it into plain text", () => {
+    const rendered = renderMarkdownWithMentions("**bold** and `code` and <https://example.com>");
+    expect(rendered).toContain("<strong>bold</strong>");
+    expect(rendered).toContain("md-inline-code");
+    expect(rendered).toContain(">code</code>");
+    expect(rendered).toContain('href="https://example.com"');
+  });
+
+  it("treats indented fenced code blocks as explicit markdown", () => {
+    const rendered = renderMarkdownWithMentions("  ```ts\nconst answer = 42;\n  ```");
+    expect(rendered).toContain("<pre");
+    expect(rendered).toContain("data-language=\"ts\"");
+    expect(rendered).toContain("answer =");
+  });
+
   it("uses null-prototype lookups and falls back safely for reserved property names", () => {
     const lookup = createDisplayNameLookup([
       ["worker-1", "Worker One"],

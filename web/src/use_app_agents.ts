@@ -26,6 +26,7 @@ import {
 } from "./worktree_defaults";
 import { formatWorktreeError } from "./app_utils";
 import { validateAgentNodeDraft } from "./components/agent_node_validation";
+import { useTeamMemberAgentBackfillEffect } from "./pages/team/use_team_member_agent_backfill_effect";
 import { 
   DEFAULT_AGENT_PRESET_ID, 
   getAgentPreset, 
@@ -40,6 +41,9 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNodeRecord[]>([]);
   const [teams, setTeams] = useState<TeamDefinitionRecord[]>([]);
+  const [teamMemberAgentsById, setTeamMemberAgentsById] = useState<
+    Record<string, AgentRecord | null>
+  >({});
   const [agentNodeJoinBootstrap, setAgentNodeJoinBootstrap] =
     useState<AgentNodeJoinBootstrapInfo | null>(null);
   const [agentNodeJoinBootstrapLoading, setAgentNodeJoinBootstrapLoading] =
@@ -200,6 +204,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       setAgents([]);
       setAgentNodes([]);
       setTeams([]);
+      setTeamMemberAgentsById({});
       setAgentNodeJoinBootstrap(null);
       setAgentNodeJoinBootstrapLoading(false);
       setAgentNodeJoinBootstrapError(null);
@@ -247,6 +252,34 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       })
       .catch(() => undefined);
   }, [token]);
+
+  const teamSpecMemberIds = Array.from(
+    new Set(
+      teams.flatMap((team) => {
+        const members = (team.spec as { members?: unknown } | null)?.members;
+        if (!Array.isArray(members)) {
+          return [];
+        }
+        return members
+          .map((member) =>
+            typeof member === "object" &&
+            member !== null &&
+            typeof (member as { member_id?: unknown }).member_id === "string"
+              ? (member as { member_id: string }).member_id.trim()
+              : ""
+          )
+          .filter((memberId) => memberId.length > 0);
+      })
+    )
+  );
+
+  useTeamMemberAgentBackfillEffect({
+    token: token ?? "",
+    agents,
+    teamSpecMemberIds,
+    teamMemberAgentsById,
+    setTeamMemberAgentsById,
+  });
 
   const applyTargetNodeSelection = useCallback(
     (nextTargetNodeId: string, nextNodes: AgentNodeRecord[] = agentNodes) => {
@@ -639,6 +672,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
     createAgentNodeBusy,
     updatingAgentNodeIds,
     deletingAgentNodeIds,
+    teamMemberAgentsById,
     onCreateAgent,
     onStartAgent,
     onStopAgent,

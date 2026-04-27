@@ -358,15 +358,15 @@ export function useTeamMemberAcpViewModel({
       return null;
     }
     if (!selectedSessionId) {
-      return "Agent ACP · No active thread session yet";
+      return "No active thread session yet";
     }
     if (memberEventsLoading && !hasRenderableConversationContent) {
-      return "Agent ACP · Loading activity...";
+      return "Loading activity...";
     }
     if (!acpView.hasAcp && visibleMemberEvents.length === 0) {
-      return "Agent ACP · Active thread has no events yet";
+      return "Active thread has no events yet";
     }
-    return "Agent ACP · Active thread";
+    return "Active thread";
   }, [
     acpView.hasAcp,
     hasRenderableConversationContent,

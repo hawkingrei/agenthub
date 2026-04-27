@@ -38,6 +38,7 @@ type TeamMemberSummary = {
 
 type TeamSidebarProps = {
   showTeamSelector?: boolean;
+  isRoot?: boolean;
   developerMode: boolean;
   busy: string | null;
   onRefreshTeams: () => Promise<void> | void;
@@ -77,11 +78,15 @@ type TeamSidebarProps = {
   onOpenTeamMemberForge?: () => void;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
+  onOpenMachines?: () => void;
+  currentMachineId?: string | null;
+  onOpenCurrentMachine?: (() => void) | null;
 };
 
 const AGENT_FOCUS_TABS = new Set<TeamTab>(["agent_acp", "member_console", "mailbox"]);
 type TeamSidebarSection = "teams" | "agents";
 const NO_ACTIVE_RUN_CONTEXT = "No active run context.";
+const DEBUG_CURRENT_WORK_PATTERN = /^(?:run_status|step_status)\s*=/i;
 
 function humanizeToken(value: string): string {
   return value
@@ -125,6 +130,9 @@ function formatMemberStateLabel(
   if (lifecycle === "missing") {
     return "Missing";
   }
+  if (lifecycle === "stopped") {
+    return "Stopped";
+  }
   if (workStatus === "blocked") {
     return "Blocked";
   }
@@ -138,16 +146,13 @@ function formatMemberStateLabel(
     return "Done";
   }
   if (workStatus === "idle" || workStatus === "no_run") {
-    if (lifecycle === "working") {
-      return "Online";
-    }
-    return formatLifecycleLabel(lifecycle);
+    return "Idle";
   }
   return formatLifecycleLabel(lifecycle);
 }
 
 function shouldShowMemberStateLabel(label: string): boolean {
-  return label !== "Online" && label !== "Offline";
+  return label.trim().length > 0;
 }
 
 function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
@@ -155,11 +160,14 @@ function resolveCurrentWorkLabel(member: TeamMemberLiveState): string | null {
   if (!currentWork || currentWork === NO_ACTIVE_RUN_CONTEXT) {
     return null;
   }
+  if (DEBUG_CURRENT_WORK_PATTERN.test(currentWork)) {
+    return null;
+  }
   return currentWork;
 }
 
 function resolveMemberNodeSummary(nodeId: string | null | undefined): {
-  badge: "local" | "remote";
+  tone: "local" | "remote";
   label: string;
 } | null {
   const normalized = nodeId?.trim() || null;
@@ -168,12 +176,12 @@ function resolveMemberNodeSummary(nodeId: string | null | undefined): {
   }
   if (normalized.toLowerCase() === "main") {
     return {
-      badge: "local",
+      tone: "local",
       label: "main",
     };
   }
   return {
-    badge: "remote",
+    tone: "remote",
     label: normalized,
   };
 }
@@ -205,6 +213,7 @@ export function resolveMemberIndicatorClassName(
 function TeamSidebarImpl(props: TeamSidebarProps) {
   const {
     showTeamSelector = true,
+    isRoot = false,
     developerMode,
     busy,
     onRefreshTeams,
@@ -235,6 +244,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onOpenTeamMemberForge,
     onStartTeamRuntime,
     onStopTeamRuntime,
+    onOpenMachines,
+    currentMachineId = null,
+    onOpenCurrentMachine = null,
   } = props;
   const [teamFilter, setTeamFilter] = React.useState("");
   const [teamDetailsOpen, setTeamDetailsOpen] = React.useState(false);
@@ -394,6 +406,22 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     )}
                     {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
                       <>
+                        {isRoot && onOpenMachines && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-pc-display" aria-hidden="true" />}
+                            onClick={onOpenMachines}
+                          >
+                            Machines
+                          </Menu.Item>
+                        )}
+                        {isRoot && currentMachineId && onOpenCurrentMachine && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-box-arrow-up-right" aria-hidden="true" />}
+                            onClick={onOpenCurrentMachine}
+                          >
+                            {`Current Machine (${currentMachineId})`}
+                          </Menu.Item>
+                        )}
                         {onOpenTeamMemberForge && (
                           <Menu.Item
                             leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
@@ -431,7 +459,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     )}
                     {developerMode && (
                       <>
-                        {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                        {(onOpenTeamMemberForge ||
+                          onStartTeamRuntime ||
+                          onStopTeamRuntime ||
+                          (isRoot && (onOpenMachines || (currentMachineId && onOpenCurrentMachine)))) && (
                           <Menu.Divider />
                         )}
                         <Menu.Item disabled>
@@ -474,11 +505,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                   <IconButton
                     tone="default"
                     size="md"
-                    className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-8`}
+                    className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-8 w-auto px-2 text-[11px] font-medium text-black/60`}
                     aria-label="Open team actions"
                     title="Open team actions"
                   >
-                    <i className="bi bi-three-dots" aria-hidden="true" />
+                    <span>More</span>
                   </IconButton>
                 </Menu.Target>
                 <Menu.Dropdown>
@@ -792,8 +823,8 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       onClick={() => onSelectAgentTab(member.member_id, "agent_acp")}
                       title={primaryLabel}
                     >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="min-w-0 flex items-center gap-2">
+                      <span className="flex w-full items-center justify-between gap-1.5">
+                        <span className="min-w-0 flex items-center gap-1.5">
                           <span
                             className={`${TEAM_SIDEBAR_INDICATOR_DOT_CLASS} ${resolveMemberIndicatorClassName(
                               lifecycle,
@@ -801,30 +832,34 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             )}`}
                             aria-hidden="true"
                           />
-                          <span className="truncate text-[12px] font-medium">
+                          <span className="truncate text-[11px] font-medium leading-5">
                             {primaryLabel}
                           </span>
                         </span>
-                        <span className="flex shrink-0 items-center gap-1.5">
+                        <span className="flex shrink-0 items-center gap-1">
                           {nodeSummary && (
                             <span
                               className={
-                                nodeSummary.badge === "local"
-                                  ? "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700"
-                                  : "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-sky-700"
+                                nodeSummary.tone === "local"
+                                  ? "inline-flex max-w-[6.75rem] items-center rounded-full border border-emerald-200/80 bg-emerald-50 px-1 py-0.5 text-[9px] font-semibold text-emerald-700"
+                                  : "inline-flex max-w-[6.75rem] items-center rounded-full border border-sky-200/80 bg-sky-50 px-1 py-0.5 text-[9px] font-semibold text-sky-700"
                               }
-                              title={`node: ${nodeSummary.label}`}
+                              title={
+                                nodeSummary.tone === "local"
+                                  ? `Local machine: ${nodeSummary.label}`
+                                  : `Remote machine: ${nodeSummary.label}`
+                              }
                             >
-                              {nodeSummary.badge}
+                              <span className="truncate">{`Machine ${nodeSummary.label}`}</span>
                             </span>
                           )}
                           {showMemberStateLabel && (
-                            <span className="shrink-0 text-[10px] font-medium text-notion-text-muted">
+                            <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.08em] text-notion-text-muted/80">
                               {memberStateLabel}
                             </span>
                           )}
                           {(member.pending_inbox_count ?? 0) > 0 && (
-                            <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[rgba(55,53,47,0.06)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-notion-text-muted">
+                            <span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-[rgba(55,53,47,0.06)] px-1 py-0.5 text-[9px] font-medium leading-none text-notion-text-muted">
                               {member.pending_inbox_count}
                             </span>
                           )}
@@ -833,11 +868,6 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                       {currentWorkLabel && (
                         <span className={TEAM_SIDEBAR_WORK_CLASS}>
                           {currentWorkLabel}
-                        </span>
-                      )}
-                      {nodeSummary && (
-                        <span className={TEAM_SIDEBAR_WORK_CLASS}>
-                          {`node=${nodeSummary.label}`}
                         </span>
                       )}
                     </button>

@@ -27,6 +27,7 @@ describe("WorkbenchHeaderMenu", () => {
     const html = renderMenu();
     expect(html).toContain("Workspace");
     expect(html).toContain("Teams");
+    expect(html).toContain("Machines");
     expect(html).toContain("Settings");
     expect(html).toContain("Logout");
     expect(html).toContain("Workspace");
@@ -36,6 +37,7 @@ describe("WorkbenchHeaderMenu", () => {
     const html = renderMenu({ isRoot: false });
     expect(html).toContain("Workspace");
     expect(html).toContain("Teams");
+    expect(html).not.toContain("Machines");
     expect(html).not.toContain("Settings");
     expect(html).toContain("Logout");
   });

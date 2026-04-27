@@ -20,7 +20,7 @@ export const TEAM_TAB_ITEMS: ReadonlyArray<{ value: TeamTab; label: string }> = 
   { value: "conversation", label: "Conversation" },
   { value: "tasks", label: "Tasks" },
   { value: "runs", label: "Execution Runs" },
-  { value: "agent_acp", label: "Agent ACP" },
+  { value: "agent_acp", label: "Thread" },
   { value: "overview", label: "Overview" },
   { value: "events", label: "Events" },
   { value: "steps", label: "Steps" },

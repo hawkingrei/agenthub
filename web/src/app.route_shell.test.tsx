@@ -350,4 +350,32 @@ describe("App route shell wiring", () => {
     expect(rootWorkbenchHtml).toContain("Machines unavailable");
     expect(rootWorkbenchHtml).toContain("do not have permission to manage machines");
   });
+
+  it("omits the agent output header when the machines lens is active", async () => {
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+
+    act(() => {
+      renderApp(root);
+    });
+    await flushRenderFrames(10);
+
+    const lastCall = agentsRouteShellPropsMock.mock.calls[
+      agentsRouteShellPropsMock.mock.calls.length - 1
+    ]?.[0] as
+      | {
+          showOutputHeader?: boolean;
+        }
+      | undefined;
+
+    expect(lastCall?.showOutputHeader).toBe(false);
+  });
 });

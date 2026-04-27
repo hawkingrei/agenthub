@@ -92,3 +92,127 @@
 
 - `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx src/pages/team_member_acp_panel.test.tsx`
 - `cd web && npm run build`
+
+## Global-to-Team Navigation Follow-up
+
+- `Teams Using This Node` now acts as a real jump surface instead of a read-only roster;
+- node detail team cards link directly into the canonical Team workspace route
+  (`/workspace/teams/<team_id>`) so operators can pivot from a global machine/object page back
+  into the relevant team context without re-searching;
+- the new links preserve browser-native modified-click and open-in-new-tab behavior while still
+  using SPA navigation for plain left-clicks.
+
+### Additional Validation
+
+- `cd web && npm run lint`
+- `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/components/agent_nodes_workbench.test.tsx`
+
+## Shared Menu Entry Follow-up
+
+- added a root-only `Machines` entry to the shared workbench header menu;
+- this keeps Team workspace lens bars team-local (`Channels / Tasks / Members / Search`) while
+  still giving operators one stable way to jump into the global machine/node surface from any
+  workspace shell;
+- the menu entry reuses the canonical `/workspace?lens=nodes` route instead of introducing another
+  machine-specific navigation path.
+
+### Additional Validation
+
+- `cd web && npm run lint`
+- `cd web && pnpm exec vitest run src/workbench_header_menu.test.tsx src/workbench_header_menu.interaction.test.tsx src/components/workspace_shell_header.test.tsx`
+
+## Team Menu Entry Follow-up
+
+- added a root-only `Machines` action to the Team sidebar controls menu;
+- this gives Team workspaces a visible global-machine escape hatch without promoting `Machines`
+  into the Team-local primary tabs;
+- Team shell now exposes the global machine surface in two consistent places:
+  - shared workbench header menu;
+  - Team-specific controls menu.
+- when a Team member is already in focus, the Team controls menu now also exposes a contextual
+  `Current Machine` shortcut so operators can jump straight to that member's attached node instead
+  of first landing on the generic machine roster.
+
+### Additional Validation
+
+- `cd web && npm run lint`
+- `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx src/workbench_header_menu.test.tsx src/workbench_header_menu.interaction.test.tsx`
+
+## Team Member Drill-down Follow-up
+
+- added a shared `buildTeamWorkspacePath(...)` helper to the route-selection layer so Team member
+  deep links can be assembled once and reused outside `team_page.tsx`;
+- upgraded `Teams Using This Node` member badges into compact drill-down capsules:
+  - the primary member label routes to Team member ACP;
+  - a secondary `Console` action routes to Team member console;
+  - both preserve browser-native modified-click behavior while still using SPA navigation for plain
+    left-clicks;
+- this lets the global node detail surface pivot all the way back into the exact Team member
+  runtime context instead of stopping at Team detail.
+
+### Additional Validation
+
+- `cd web && npm run lint`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/components/agent_nodes_workbench.test.tsx`
+
+## Node Detail UI Polish Follow-up
+
+- restructured `Teams Using This Node` into a clearer detail hierarchy:
+  - section-level summary card with aggregate metrics;
+  - per-team cards with compact member/leader/worker metrics;
+  - a dedicated `Member Runtime Drill-down` sub-section for `ACP / Console` entry points;
+- this keeps the global node page closer to an object-detail surface and reduces the old
+  all-badges-on-one-row visual flattening.
+
+### Additional Validation
+
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && pnpm exec vitest run src/components/agent_nodes_workbench.test.tsx`
+- `cd web && npm run build`
+
+## Shared Detail Card UI Follow-up
+
+- polished the shared `AgentNodeDetailCard` so both the canonical node workbench and the inline
+  node section reuse the same stronger detail-page hierarchy;
+- added a compact summary metric strip under the node header, clearer section subcopy for `Info`
+  and `Connect`, and a tighter `Agents on this node` header/action layout;
+- kept all field contracts stable so this slice is purely presentation/hierarchy work on top of the
+  existing node identity and connect-command model.
+
+### Additional Validation
+
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && pnpm exec vitest run src/components/agent_nodes_workbench.test.tsx src/components/agent_node_section.test.tsx`
+- `cd web && npm run build`
+
+## Root Machines Shell Empty-State Cleanup
+
+- the root workspace machines lens was still inheriting the agent output header shell, which left
+  the misleading `No agent selected` / `Select an agent to continue.` empty state above the
+  machines surface;
+- route wiring now passes an explicit `showOutputHeader={false}` path through
+  `AgentsRootPage -> AgentsRouteShell` whenever `lens=nodes` is active;
+- this keeps the root machines surface owned by the node workbench instead of a stale agent shell.
+
+### Additional Validation
+
+- `cd web && pnpm exec vitest run src/agents_route_shell.test.tsx src/app.route_shell.test.tsx src/components/agent_nodes_workbench.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+
+## Team Member Thread Route Vocabulary Follow-up
+
+- the Team member runtime surface was still exposed publicly as `Agent ACP`, even though the actual
+  page reads more like a member thread/runtime detail than a raw ACP-native screen;
+- canonical deep links now serialize the member runtime tab as `tab=thread` while continuing to
+  accept the legacy `tab=agent_acp` alias on read;
+- node-detail drill-down copy now uses `Thread` instead of `ACP`, and the Team workbench tab label
+  follows the same public vocabulary;
+- route-selected members now stay addressable when the Team already knows the member id from
+  runtime/spec/snapshot state, instead of collapsing to the empty `Select an agent from the left
+  rail to inspect its thread.` fallback during intermediate selection state.
+
+### Additional Validation
+
+- `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/pages/team_page.helpers.test.ts src/pages/team/page_helpers.test.ts src/components/agent_nodes_workbench.test.tsx src/pages/team_panels.test.tsx src/pages/team_member_acp_panel.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`

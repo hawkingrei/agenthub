@@ -48,6 +48,11 @@ export const WorkbenchHeaderMenu = React.memo(function WorkbenchHeaderMenu({
         <Menu.Item onClick={() => onNavigate("/workspace/teams")} disabled={active === "teams"}>
           Teams
         </Menu.Item>
+        {isRoot ? (
+          <Menu.Item onClick={() => onNavigate("/workspace?lens=nodes")}>
+            Machines
+          </Menu.Item>
+        ) : null}
         <Menu.Divider />
         {isRoot && (
           <Menu.Item onClick={() => onNavigate("/admin")}>

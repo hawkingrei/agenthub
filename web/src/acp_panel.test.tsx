@@ -152,7 +152,7 @@ describe("AcpPanel layout", () => {
     expect(html).toContain("Plan");
     expect(html).toContain("Inspect");
     expect(html).toContain("acp-tab-button");
-    expect(html).toContain("rounded-2xl border border-notion-border/80 bg-notion-sidebar/72");
+    expect(html).toContain("rounded-[16px] border border-notion-border/85 bg-white/92");
     expect(html).not.toContain("Interrupt");
   });
 

@@ -37,6 +37,7 @@ export type AppRouteKind =
   | "workspace";
 
 export type WorkspaceLens = "channels" | "tasks" | "members" | "search" | "nodes";
+export type TeamMemberRouteTab = "agent_acp" | "mailbox" | "member_console";
 
 export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   const params = new URLSearchParams(search);
@@ -79,6 +80,48 @@ export function buildWorkspaceNodePath(nodeId?: string | null): string {
     params.set("node", nodeId.trim());
   }
   return `/workspace?${params.toString()}`;
+}
+
+export function buildTeamDetailPath(teamId?: string | null): string {
+  const normalizedTeamId = teamId?.trim();
+  if (!normalizedTeamId) {
+    return "/workspace/teams";
+  }
+  return `/workspace/teams/${encodeURIComponent(normalizedTeamId)}`;
+}
+
+export function buildTeamWorkspacePath(
+  teamId?: string | null,
+  lens?: WorkspaceLens | null,
+  channelId?: string | null,
+  threadRootMessageId?: number | null,
+  memberId?: string | null,
+  tab?: TeamMemberRouteTab | null
+): string {
+  const normalizedTeamId = teamId?.trim();
+  if (!normalizedTeamId) {
+    return "/workspace/teams";
+  }
+  const pathname = `/workspace/teams/${encodeURIComponent(normalizedTeamId)}`;
+  const params = new URLSearchParams();
+  if (lens) {
+    params.set("lens", lens);
+  }
+  if (channelId && channelId !== "all") {
+    params.set("channel", channelId);
+  }
+  if (threadRootMessageId && threadRootMessageId > 0) {
+    params.set("thread", String(threadRootMessageId));
+  }
+  const normalizedMemberId = memberId?.trim() ?? "";
+  if (normalizedMemberId) {
+    params.set("member", normalizedMemberId);
+  }
+  if (tab === "agent_acp" || tab === "mailbox" || tab === "member_console") {
+    params.set("tab", tab === "agent_acp" ? "thread" : tab);
+  }
+  const search = params.toString();
+  return search ? `${pathname}?${search}` : pathname;
 }
 
 export function navigateToPath(pathname: string): void {

@@ -36,6 +36,7 @@ type AgentsRouteShellViewProps = {
   onAgentsSplitterPointerDown: React.PointerEventHandler<HTMLDivElement>;
   agentsPanelProps: AgentsPanelProps;
   outputHeaderProps: OutputHeaderProps;
+  showOutputHeader?: boolean;
   workbenchNode: React.ReactNode;
 };
 
@@ -46,6 +47,7 @@ export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
   onAgentsSplitterPointerDown,
   agentsPanelProps,
   outputHeaderProps,
+  showOutputHeader = true,
   workbenchNode,
 }: AgentsRouteShellViewProps) {
   return (
@@ -69,13 +71,15 @@ export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
         />
       )}
       <div className={APP_WORKSPACE_RIGHT_CLASS}>
-        <div
-          className={
-            outputHeaderProps.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"
-          }
-        >
-          <OutputHeader {...outputHeaderProps} />
-        </div>
+        {showOutputHeader ? (
+          <div
+            className={
+              outputHeaderProps.hasAcp ? "max-[720px]:hidden shrink-0" : "shrink-0"
+            }
+          >
+            <OutputHeader {...outputHeaderProps} />
+          </div>
+        ) : null}
         <div className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
           {workbenchNode}
         </div>
@@ -97,6 +101,7 @@ export const AgentsRouteShell = React.memo(function AgentsRouteShell({
   onAgentsSplitterPointerDown,
   agentsPanelProps,
   outputHeaderProps,
+  showOutputHeader = true,
   workbenchProps,
   rootWorkbenchNode = null,
 }: AgentsRouteShellProps) {
@@ -118,6 +123,7 @@ export const AgentsRouteShell = React.memo(function AgentsRouteShell({
       onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
       agentsPanelProps={agentsPanelProps}
       outputHeaderProps={outputHeaderProps}
+      showOutputHeader={showOutputHeader}
       workbenchNode={workbenchNode}
     />
   );

@@ -418,6 +418,17 @@ describe("team page helpers", () => {
     ).toBe("worker-1");
   });
 
+  it("keeps a route-selected member when the team already knows that member id", () => {
+    expect(
+      resolveSelectedAgentWorkspaceMemberId({
+        selectedMemberId: "",
+        focusedAgentMemberId: "worker-1",
+        routeSelectedMemberId: "worker-2",
+        knownMemberIds: ["leader-1", "worker-2"],
+      })
+    ).toBe("worker-2");
+  });
+
   it("upserts run by id and keeps latest-first sort order", () => {
     const list = [buildRun("run-1", 100), buildRun("run-2", 120)];
     const updated = upsertRun(list, buildRun("run-1", 140, "working"));
