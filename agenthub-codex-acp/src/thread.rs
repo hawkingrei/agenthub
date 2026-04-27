@@ -3081,6 +3081,10 @@ impl<A: Auth> ThreadActor<A> {
 
         let current_model = self.get_current_model().await;
         let current_preset = presets.iter().find(|p| p.model == current_model).cloned();
+        let current_model_option_value = current_preset
+            .as_ref()
+            .map(|preset| preset.id.clone())
+            .unwrap_or_else(|| current_model.clone());
 
         let mut model_select_options = Vec::new();
 
@@ -3103,9 +3107,14 @@ impl<A: Auth> ThreadActor<A> {
         );
 
         options.push(
-            SessionConfigOption::select("model", "Model", current_model, model_select_options)
-                .category(SessionConfigOptionCategory::Model)
-                .description("Choose which model Codex should use"),
+            SessionConfigOption::select(
+                "model",
+                "Model",
+                current_model_option_value,
+                model_select_options,
+            )
+            .category(SessionConfigOptionCategory::Model)
+            .description("Choose which model Codex should use"),
         );
 
         // Reasoning effort selector (only if the current preset exists and has >1 supported effort)
@@ -4008,9 +4017,6 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::ElicitationRequest(..)
             | EventMsg::RequestPermissions(..)
             | EventMsg::RequestUserInput(..)
-            | EventMsg::ModelReroute(..)
-            | EventMsg::GuardianWarning(..)
-            | EventMsg::ModelVerification(..)
             | EventMsg::ContextCompacted(..)
     )
 }
@@ -4032,6 +4038,20 @@ async fn forward_global_visible_event(client: &SessionClient, msg: EventMsg) -> 
         }
         EventMsg::GuardianWarning(WarningEvent { message }) => {
             client.send_agent_text(message).await;
+            true
+        }
+        EventMsg::ModelReroute(ModelRerouteEvent {
+            from_model,
+            to_model,
+            reason,
+        }) => {
+            client
+                .send_agent_text(render_model_reroute_message(
+                    &from_model,
+                    &to_model,
+                    &reason,
+                ))
+                .await;
             true
         }
         EventMsg::ModelVerification(event) => {
@@ -5337,7 +5357,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detached_submission_notifications_are_rendered() -> anyhow::Result<()> {
+    async fn test_global_model_notifications_do_not_attach_submissions() -> anyhow::Result<()> {
         let session_id = SessionId::new("test");
         let client = Arc::new(StubClient::new());
         let session_client = SessionClient::with_client(session_id, client.clone(), Arc::default());
@@ -5386,7 +5406,7 @@ mod tests {
             })
             .await;
 
-        assert!(actor.submissions.contains_key("app-server"));
+        assert!(!actor.submissions.contains_key("app-server"));
 
         let notifications = client.notifications.lock().unwrap();
         assert!(notifications.iter().any(|notification| {
@@ -7373,7 +7393,7 @@ mod tests {
         let expected_preset = presets.first().expect("at least one model preset");
         assert_eq!(
             model_select.current_value.0.as_ref(),
-            expected_preset.model.as_str()
+            expected_preset.id.as_str()
         );
         let SessionConfigSelectOptions::Ungrouped(options) = &model_select.options else {
             panic!("expected model options to be ungrouped");
