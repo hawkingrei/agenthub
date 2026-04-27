@@ -24,7 +24,6 @@ use codex_app_server_protocol::{
 use codex_arg0::Arg0DispatchPaths;
 use codex_core::config::Config;
 use codex_core::config_loader::{CloudRequirementsLoader, LoaderOverrides};
-use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::{
@@ -59,6 +58,7 @@ use codex_shell_command::parse_command::parse_command;
 use tokio::sync::Mutex;
 use tracing::warn;
 
+use crate::build_environment_manager;
 use crate::thread::CodexThreadImpl;
 
 const ACP_CLIENT_NAME: &str = "agenthub-codex-acp";
@@ -266,6 +266,7 @@ impl AppServerCodexThread {
                 items,
                 final_output_json_schema,
                 responsesapi_client_metadata,
+                ..
             } => (
                 items.clone(),
                 final_output_json_schema.clone(),
@@ -483,6 +484,7 @@ impl AppServerCodexThread {
                                 last_agent_message: None,
                                 completed_at: None,
                                 duration_ms: None,
+                                time_to_first_token_ms: None,
                             }),
                         });
                         Ok(())
@@ -711,6 +713,7 @@ impl AppServerCodexThread {
                 PermissionGrantScope::Turn => AppPermissionGrantScope::Turn,
                 PermissionGrantScope::Session => AppPermissionGrantScope::Session,
             },
+            strict_auto_review: Some(response.strict_auto_review),
         })
         .map_err(|err| CodexErr::Fatal(err.to_string()))?;
 
@@ -913,15 +916,9 @@ impl AppServerCodexThread {
 
                 Ok(Some(Event {
                     id: submission_id,
-                    msg: EventMsg::RequestPermissions(RequestPermissionsEvent {
-                        call_id: params.item_id,
-                        turn_id: params.turn_id,
-                        reason: params.reason,
-                        permissions: RequestPermissionProfile {
-                            network: params.permissions.network.map(Into::into),
-                            file_system: params.permissions.file_system.map(Into::into),
-                        },
-                    }),
+                    msg: EventMsg::RequestPermissions(permissions_request_event_from_params(
+                        params,
+                    )),
                 }))
             }
             ServerRequest::McpServerElicitationRequest { request_id, params } => {
@@ -1014,6 +1011,32 @@ impl AppServerCodexThread {
                             .map_err(|err| CodexErr::Fatal(err.to_string()))?,
                         thread_name: payload.thread_name,
                     }),
+                }))
+            }
+            ServerNotification::FileChangePatchUpdated(payload) => {
+                let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
+                Ok(submission_id.map(|id| Event {
+                    id,
+                    msg: EventMsg::PatchApplyUpdated(file_change_patch_updated_to_core(payload)),
+                }))
+            }
+            ServerNotification::ModelVerification(payload) => {
+                let submission_id = active_submission_id_for_turn(self, &payload.turn_id)
+                    .await
+                    .unwrap_or_else(noop_submission_id);
+                Ok(Some(Event {
+                    id: submission_id,
+                    msg: EventMsg::ModelVerification(model_verification_to_core(payload)),
+                }))
+            }
+            ServerNotification::GuardianWarning(payload) => {
+                let submission_id = {
+                    let state = self.state.lock().await;
+                    active_submission_id(&state).unwrap_or_else(noop_submission_id)
+                };
+                Ok(Some(Event {
+                    id: submission_id,
+                    msg: EventMsg::GuardianWarning(guardian_warning_to_core(payload)),
                 }))
             }
             ServerNotification::TurnStarted(payload) => {
@@ -1263,6 +1286,7 @@ impl AppServerCodexThread {
                             turn_id: payload.turn_id,
                             tool,
                             arguments,
+                            namespace: None,
                         }),
                     }),
                     (
@@ -1501,6 +1525,7 @@ impl AppServerCodexThread {
                                 turn_id: payload.turn_id,
                                 tool,
                                 arguments,
+                                namespace: None,
                                 content_items: content_items
                                     .unwrap_or_default()
                                     .into_iter()
@@ -1724,6 +1749,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                 personality,
                 windows_sandbox_level: _,
                 service_tier,
+                permission_profile: _,
             } => {
                 self.override_turn_context(OverrideTurnContextArgs {
                     cwd,
@@ -2078,6 +2104,7 @@ fn prepare_submission_start(
             items,
             final_output_json_schema,
             responsesapi_client_metadata,
+            ..
         } => {
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2104,6 +2131,8 @@ fn prepare_submission_start(
                     output_schema: final_output_json_schema.clone(),
                     responsesapi_client_metadata: responsesapi_client_metadata.clone(),
                     collaboration_mode: None,
+                    environments: None,
+                    permission_profile: None,
                 }),
             })
         }
@@ -2509,6 +2538,7 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
             last_agent_message,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
+            time_to_first_token_ms: None,
         }),
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
@@ -2593,7 +2623,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
-        environment_manager: Arc::new(EnvironmentManager::from_env()),
+        environment_manager: build_environment_manager(config)?,
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
         enable_codex_api_key_env: false,
@@ -2605,6 +2635,86 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
     })
     .await
     .map_err(|err| Error::internal_error().data(err.to_string()))
+}
+
+fn permissions_request_event_from_params(
+    params: codex_app_server_protocol::PermissionsRequestApprovalParams,
+) -> RequestPermissionsEvent {
+    RequestPermissionsEvent {
+        call_id: params.item_id,
+        turn_id: params.turn_id,
+        reason: params.reason,
+        permissions: RequestPermissionProfile {
+            network: params.permissions.network.map(Into::into),
+            file_system: params.permissions.file_system.map(Into::into),
+        },
+        cwd: Some(params.cwd),
+    }
+}
+
+fn file_change_patch_updated_to_core(
+    payload: codex_app_server_protocol::FileChangePatchUpdatedNotification,
+) -> codex_protocol::protocol::PatchApplyUpdatedEvent {
+    codex_protocol::protocol::PatchApplyUpdatedEvent {
+        call_id: payload.item_id,
+        changes: payload
+            .changes
+            .into_iter()
+            .map(|change| {
+                (
+                    PathBuf::from(change.path.clone()),
+                    file_update_change_to_core(change),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn file_update_change_to_core(
+    change: codex_app_server_protocol::FileUpdateChange,
+) -> codex_protocol::protocol::FileChange {
+    match change.kind {
+        codex_app_server_protocol::PatchChangeKind::Add => {
+            codex_protocol::protocol::FileChange::Add {
+                content: change.diff,
+            }
+        }
+        codex_app_server_protocol::PatchChangeKind::Delete => {
+            codex_protocol::protocol::FileChange::Delete {
+                content: change.diff,
+            }
+        }
+        codex_app_server_protocol::PatchChangeKind::Update { move_path } => {
+            codex_protocol::protocol::FileChange::Update {
+                unified_diff: change.diff,
+                move_path,
+            }
+        }
+    }
+}
+
+fn guardian_warning_to_core(
+    payload: codex_app_server_protocol::GuardianWarningNotification,
+) -> codex_protocol::protocol::WarningEvent {
+    codex_protocol::protocol::WarningEvent {
+        message: payload.message,
+    }
+}
+
+fn model_verification_to_core(
+    payload: codex_app_server_protocol::ModelVerificationNotification,
+) -> codex_protocol::protocol::ModelVerificationEvent {
+    codex_protocol::protocol::ModelVerificationEvent {
+        verifications: payload
+            .verifications
+            .into_iter()
+            .map(|verification| match verification {
+                codex_app_server_protocol::ModelVerification::TrustedAccessForCyber => {
+                    codex_protocol::protocol::ModelVerification::TrustedAccessForCyber
+                }
+            })
+            .collect(),
+    }
 }
 
 fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
@@ -2681,6 +2791,7 @@ fn server_request_id_to_mcp_request_id(request_id: &RequestId) -> McpRequestId {
 mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use std::fs;
     use uuid::Uuid;
 
@@ -2964,6 +3075,91 @@ mod tests {
                 .expect("question answer")
                 .answers,
             vec!["approved".to_string()]
+        );
+    }
+
+    #[test]
+    fn permissions_request_event_preserves_cwd() {
+        let cwd = AbsolutePathBuf::try_from(std::env::temp_dir()).expect("valid temp dir");
+        let event = permissions_request_event_from_params(
+            codex_app_server_protocol::PermissionsRequestApprovalParams {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "call-1".to_string(),
+                cwd: cwd.clone(),
+                reason: Some("need write access".to_string()),
+                permissions: codex_app_server_protocol::RequestPermissionProfile {
+                    network: Some(codex_app_server_protocol::AdditionalNetworkPermissions {
+                        enabled: Some(true),
+                    }),
+                    file_system: None,
+                },
+            },
+        );
+
+        assert_eq!(event.call_id, "call-1");
+        assert_eq!(event.turn_id, "turn-1");
+        assert_eq!(event.cwd, Some(cwd));
+        assert_eq!(event.reason.as_deref(), Some("need write access"));
+        assert_eq!(
+            event.permissions.network,
+            Some(codex_protocol::models::NetworkPermissions {
+                enabled: Some(true),
+            })
+        );
+    }
+
+    #[test]
+    fn file_change_patch_updated_translation_preserves_call_id_and_changes() {
+        let event = file_change_patch_updated_to_core(
+            codex_app_server_protocol::FileChangePatchUpdatedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "call-1".to_string(),
+                changes: vec![codex_app_server_protocol::FileUpdateChange {
+                    path: "src/main.rs".to_string(),
+                    kind: codex_app_server_protocol::PatchChangeKind::Update { move_path: None },
+                    diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                }],
+            },
+        );
+
+        assert_eq!(event.call_id, "call-1");
+        assert_eq!(event.changes.len(), 1);
+        assert_eq!(
+            event.changes.get(&PathBuf::from("src/main.rs")),
+            Some(&codex_protocol::protocol::FileChange::Update {
+                unified_diff: "@@ -1 +1 @@\n-old\n+new\n".to_string(),
+                move_path: None,
+            })
+        );
+    }
+
+    #[test]
+    fn guardian_warning_translation_preserves_message() {
+        let event =
+            guardian_warning_to_core(codex_app_server_protocol::GuardianWarningNotification {
+                thread_id: "thread-1".to_string(),
+                message: "unsafe operation blocked".to_string(),
+            });
+
+        assert_eq!(event.message, "unsafe operation blocked");
+    }
+
+    #[test]
+    fn model_verification_translation_preserves_verifications() {
+        let event =
+            model_verification_to_core(codex_app_server_protocol::ModelVerificationNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                verifications: vec![
+                    codex_app_server_protocol::ModelVerification::TrustedAccessForCyber,
+                ],
+            });
+
+        assert_eq!(
+            event.verifications,
+            vec![codex_protocol::protocol::ModelVerification::TrustedAccessForCyber]
         );
     }
 

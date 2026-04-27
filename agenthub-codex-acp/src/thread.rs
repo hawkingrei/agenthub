@@ -35,7 +35,7 @@ use codex_protocol::{
     dynamic_tools::{DynamicToolCallOutputContentItem, DynamicToolCallRequest},
     error::CodexErr,
     mcp::CallToolResult,
-    models::{PermissionProfile, ResponseItem, WebSearchAction},
+    models::{AdditionalPermissionProfile, ResponseItem, WebSearchAction},
     openai_models::{ModelPreset, ReasoningEffort},
     parse_command::ParsedCommand,
     plan_tool::{PlanItemArg, StepStatus, UpdatePlanArgs},
@@ -102,7 +102,7 @@ pub trait ModelsManagerImpl {
 }
 
 #[async_trait::async_trait]
-impl ModelsManagerImpl for ModelsManager {
+impl<T: ModelsManager + ?Sized> ModelsManagerImpl for T {
     async fn get_model(&self, model_id: &Option<String>) -> String {
         self.get_default_model(model_id, RefreshStrategy::OnlineIfUncached)
             .await
@@ -111,6 +111,26 @@ impl ModelsManagerImpl for ModelsManager {
     async fn list_models(&self) -> Vec<ModelPreset> {
         self.list_models(RefreshStrategy::OnlineIfUncached).await
     }
+}
+
+#[derive(Debug)]
+struct SharedModelsManagerAdapter(Arc<dyn ModelsManager>);
+
+#[async_trait::async_trait]
+impl ModelsManagerImpl for SharedModelsManagerAdapter {
+    async fn get_model(&self, model_id: &Option<String>) -> String {
+        self.0
+            .get_default_model(model_id, RefreshStrategy::OnlineIfUncached)
+            .await
+    }
+
+    async fn list_models(&self) -> Vec<ModelPreset> {
+        self.0.list_models(RefreshStrategy::OnlineIfUncached).await
+    }
+}
+
+pub fn adapt_models_manager(models_manager: Arc<dyn ModelsManager>) -> Arc<dyn ModelsManagerImpl> {
+    Arc::new(SharedModelsManagerAdapter(models_manager))
 }
 
 pub trait Auth {
@@ -342,7 +362,7 @@ enum PendingPermissionRequest {
     },
     RequestPermissions {
         call_id: String,
-        permissions: PermissionProfile,
+        permissions: codex_protocol::request_permissions::RequestPermissionProfile,
     },
 }
 
@@ -705,21 +725,27 @@ impl PromptState {
                         ..
                     }) => match option_id.0.as_ref() {
                         "approved-for-session" => RequestPermissionsResponse {
-                            permissions: permissions.into(),
+                            permissions: permissions.clone(),
                             scope: PermissionGrantScope::Session,
+                            strict_auto_review: false,
                         },
                         "approved" => RequestPermissionsResponse {
-                            permissions: permissions.into(),
+                            permissions: permissions.clone(),
                             scope: PermissionGrantScope::Turn,
+                            strict_auto_review: false,
                         },
                         _ => RequestPermissionsResponse {
-                            permissions: PermissionProfile::default().into(),
+                            permissions:
+                                codex_protocol::request_permissions::RequestPermissionProfile::default(),
                             scope: PermissionGrantScope::Turn,
+                            strict_auto_review: false,
                         },
                     },
                     RequestPermissionOutcome::Cancelled | _ => RequestPermissionsResponse {
-                        permissions: PermissionProfile::default().into(),
+                        permissions:
+                            codex_protocol::request_permissions::RequestPermissionProfile::default(),
                         scope: PermissionGrantScope::Turn,
+                        strict_auto_review: false,
                     },
                 };
 
@@ -935,7 +961,13 @@ impl PromptState {
                 );
                 self.terminal_interaction(client, event).await;
             }
-            EventMsg::DynamicToolCallRequest(DynamicToolCallRequest { call_id, turn_id, tool, arguments }) => {
+            EventMsg::DynamicToolCallRequest(DynamicToolCallRequest {
+                call_id,
+                turn_id,
+                tool,
+                arguments,
+                ..
+            }) => {
                 info!("Dynamic tool call request: call_id={call_id}, turn_id={turn_id}, tool={tool}");
                 self.start_dynamic_tool_call(client, call_id, tool, arguments).await;
             }
@@ -1017,6 +1049,7 @@ impl PromptState {
                 turn_id,
                 completed_at: _,
                 duration_ms: _,
+                ..
             }) => {
                 info!(
                     "Task {turn_id} completed successfully after {} events. Last agent message: {last_agent_message:?}",
@@ -1105,6 +1138,10 @@ impl PromptState {
                 // informational notices (e.g., the post-compact advisory message).
                 client.send_agent_text(message).await;
             }
+            EventMsg::GuardianWarning(WarningEvent { message }) => {
+                warn!("Guardian warning: {message}");
+                client.send_agent_text(message).await;
+            }
             EventMsg::McpStartupUpdate(McpStartupUpdateEvent { server, status }) => {
                 info!("MCP startup update: server={server}, status={status:?}");
             }
@@ -1131,6 +1168,12 @@ impl PromptState {
                     &reason,
                 ))
                 .await;
+            }
+            EventMsg::ModelVerification(event) => {
+                info!("Model verification: {:?}", event.verifications);
+                client
+                    .send_agent_text(render_model_verification_message(&event.verifications))
+                    .await;
             }
             EventMsg::DeprecationNotice(DeprecationNoticeEvent { summary, details }) => {
                 info!("Deprecation notice: summary={summary}, details={details:?}");
@@ -1445,6 +1488,7 @@ impl PromptState {
             success,
             error,
             duration: _,
+            ..
         } = event;
 
         client
@@ -2038,6 +2082,7 @@ impl PromptState {
             turn_id: _,
             reason,
             permissions,
+            ..
         } = event;
 
         // Create a new tool call for the command execution
@@ -2049,16 +2094,23 @@ impl PromptState {
             content.push(reason.clone());
         }
         if let Some(file_system) = permissions.file_system.as_ref() {
-            if let Some(read) = file_system.read.as_ref() {
+            if let Some((read, write)) = file_system.legacy_read_write_roots() {
+                if let Some(read) = read {
+                    content.push(format!(
+                        "File System Read Access: {}",
+                        read.iter().map(|p| p.display()).join(", ")
+                    ));
+                }
+                if let Some(write) = write {
+                    content.push(format!(
+                        "File System Write Access: {}",
+                        write.iter().map(|p| p.display()).join(", ")
+                    ));
+                }
+            } else {
                 content.push(format!(
-                    "File System Read Access: {}",
-                    read.iter().map(|p| p.display()).join(", ")
-                ));
-            }
-            if let Some(write) = file_system.write.as_ref() {
-                content.push(format!(
-                    "File System Write Access: {}",
-                    write.iter().map(|p| p.display()).join(", ")
+                    "File System Access: {}",
+                    serde_json::to_string_pretty(file_system)?
                 ));
             }
         }
@@ -2078,7 +2130,7 @@ impl PromptState {
             permissions_request_key(&call_id),
             PendingPermissionRequest::RequestPermissions {
                 call_id,
-                permissions: permissions.into(),
+                permissions: permissions.clone(),
             },
             ToolCallUpdate::new(
                 tool_call_id,
@@ -2195,7 +2247,7 @@ struct ExecPermissionOption {
 fn build_exec_permission_options(
     available_decisions: &[ReviewDecision],
     network_approval_context: Option<&NetworkApprovalContext>,
-    additional_permissions: Option<&PermissionProfile>,
+    additional_permissions: Option<&AdditionalPermissionProfile>,
 ) -> Vec<ExecPermissionOption> {
     available_decisions
         .iter()
@@ -3180,6 +3232,7 @@ impl<A: Auth> ThreadActor<A> {
                     personality: None,
                     windows_sandbox_level: None,
                     service_tier: None,
+                    permission_profile: None,
                 },
             )
             .await
@@ -3230,6 +3283,7 @@ impl<A: Auth> ThreadActor<A> {
                     personality: None,
                     windows_sandbox_level: None,
                     service_tier: None,
+                    permission_profile: None,
                 },
             )
             .await
@@ -3330,6 +3384,7 @@ impl<A: Auth> ThreadActor<A> {
                         }],
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
+                        environments: None,
                     }
                 }
                 "review" => {
@@ -3381,6 +3436,7 @@ impl<A: Auth> ThreadActor<A> {
                         items,
                         final_output_json_schema: None,
                         responsesapi_client_metadata: None,
+                        environments: None,
                     }
                 }
             }
@@ -3389,6 +3445,7 @@ impl<A: Auth> ThreadActor<A> {
                 items,
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                environments: None,
             }
         }
 
@@ -3452,6 +3509,7 @@ impl<A: Auth> ThreadActor<A> {
                     personality: None,
                     windows_sandbox_level: None,
                     service_tier: None,
+                    permission_profile: None,
                 },
             )
             .await
@@ -3522,6 +3580,7 @@ impl<A: Auth> ThreadActor<A> {
                     personality: None,
                     windows_sandbox_level: None,
                     service_tier: None,
+                    permission_profile: None,
                 },
             )
             .await
@@ -3950,6 +4009,8 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::RequestPermissions(..)
             | EventMsg::RequestUserInput(..)
             | EventMsg::ModelReroute(..)
+            | EventMsg::GuardianWarning(..)
+            | EventMsg::ModelVerification(..)
             | EventMsg::ContextCompacted(..)
     )
 }
@@ -3969,6 +4030,16 @@ async fn forward_global_visible_event(client: &SessionClient, msg: EventMsg) -> 
                 .await;
             true
         }
+        EventMsg::GuardianWarning(WarningEvent { message }) => {
+            client.send_agent_text(message).await;
+            true
+        }
+        EventMsg::ModelVerification(event) => {
+            client
+                .send_agent_text(render_model_verification_message(&event.verifications))
+                .await;
+            true
+        }
         _ => false,
     }
 }
@@ -3979,6 +4050,21 @@ fn render_model_reroute_message(
     reason: &codex_protocol::protocol::ModelRerouteReason,
 ) -> String {
     format!("Model rerouted: {from_model} -> {to_model} ({reason:?})")
+}
+
+fn render_model_verification_message(
+    verifications: &[codex_protocol::protocol::ModelVerification],
+) -> String {
+    let details = verifications
+        .iter()
+        .map(|verification| match verification {
+            codex_protocol::protocol::ModelVerification::TrustedAccessForCyber => {
+                "trusted_access_for_cyber"
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Model verification: {details}")
 }
 
 fn render_deprecation_notice_message(summary: &str, details: Option<&str>) -> String {
@@ -4533,6 +4619,7 @@ mod tests {
     };
     use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
+    use codex_protocol::protocol::ModelVerificationEvent;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
@@ -4540,6 +4627,15 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn render_model_verification_message_lists_verifications() {
+        let message = render_model_verification_message(&[
+            codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
+        ]);
+
+        assert_eq!(message, "Model verification: trusted_access_for_cyber");
+    }
 
     struct TempManagedSkillsHome {
         home: PathBuf,
@@ -4751,6 +4847,7 @@ mod tests {
                 }],
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                environments: None,
             }],
             "ops don't match {ops:?}"
         );
@@ -5026,6 +5123,7 @@ mod tests {
                 }],
                 final_output_json_schema: None,
                 responsesapi_client_metadata: None,
+                environments: None,
             }],
             "ops don't match {ops:?}"
         );
@@ -5078,6 +5176,7 @@ mod tests {
                     turn_id: "shared-turn".to_string(),
                     completed_at: None,
                     duration_ms: None,
+                    time_to_first_token_ms: None,
                 }));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
@@ -5145,6 +5244,7 @@ mod tests {
                             turn_id: "resumed-turn".to_string(),
                             completed_at: None,
                             duration_ms: None,
+                            time_to_first_token_ms: None,
                         }),
                     })
                     .await;
@@ -5210,6 +5310,24 @@ mod tests {
                 }),
             })
             .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::GuardianWarning(WarningEvent {
+                    message: "Guardian blocked unsafe operation".to_string(),
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::ModelVerification(ModelVerificationEvent {
+                    verifications: vec![
+                        codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
+                    ],
+                }),
+            })
+            .await;
 
         let notifications = client.notifications.lock().unwrap();
         assert!(notifications.iter().any(|notification| {
@@ -5228,6 +5346,24 @@ mod tests {
                     content: ContentBlock::Text(TextContent { text, .. }),
                     ..
                 }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Guardian blocked unsafe operation"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Model verification: trusted_access_for_cyber"
             )
         }));
 
@@ -5367,6 +5503,7 @@ mod tests {
                     turn_id: "shared-turn".to_string(),
                     completed_at: None,
                     duration_ms: None,
+                    time_to_first_token_ms: None,
                 }));
 
                 assert_eq!(first_stop_rx.await??, StopReason::EndTurn);
@@ -5595,6 +5732,7 @@ mod tests {
                             turn_id,
                             completed_at: None,
                             duration_ms: None,
+                            time_to_first_token_ms: None,
                         }));
                     } else if prompt == "approval-block" {
                         self.op_tx
@@ -5654,6 +5792,7 @@ mod tests {
                                     turn_id: id.to_string(),
                                     completed_at: None,
                                     duration_ms: None,
+                                    time_to_first_token_ms: None,
                                 }),
                             })
                             .unwrap();
@@ -5692,6 +5831,7 @@ mod tests {
                                 turn_id: id.to_string(),
                                 completed_at: None,
                                 duration_ms: None,
+                                time_to_first_token_ms: None,
                             }),
                         })
                         .unwrap();
@@ -5729,6 +5869,7 @@ mod tests {
                                 turn_id: id.to_string(),
                                 completed_at: None,
                                 duration_ms: None,
+                                time_to_first_token_ms: None,
                             }),
                         })
                         .unwrap();
@@ -5767,6 +5908,7 @@ mod tests {
                                 turn_id: id.to_string(),
                                 completed_at: None,
                                 duration_ms: None,
+                                time_to_first_token_ms: None,
                             }),
                         })
                         .unwrap();

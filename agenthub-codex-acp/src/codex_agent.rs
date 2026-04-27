@@ -16,7 +16,6 @@ use codex_core::{
     RolloutRecorder, SortDirection, ThreadManager, ThreadSortKey, config::Config,
     find_thread_path_by_id_str, parse_cursor,
 };
-use codex_exec_server::EnvironmentManager;
 use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_env};
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
@@ -39,7 +38,8 @@ use tracing::{debug, info, warn};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::app_server_thread;
-use crate::thread::Thread;
+use crate::build_environment_manager;
+use crate::thread::{Thread, adapt_models_manager};
 
 /// The Codex implementation of the ACP Agent trait.
 ///
@@ -65,11 +65,12 @@ const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
 
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> Result<Self, Error> {
         let auth_manager = AuthManager::shared(
             config.codex_home.to_path_buf(),
             false,
             config.cli_auth_credentials_store_mode,
+            Some(config.chatgpt_base_url.clone()),
         );
 
         let client_capabilities: Arc<Mutex<ClientCapabilities>> = Arc::default();
@@ -82,17 +83,17 @@ impl CodexAgent {
             CollaborationModesConfig {
                 default_mode_request_user_input: true,
             },
-            Arc::new(EnvironmentManager::from_env()),
+            build_environment_manager(&config)?,
             None,
         );
-        Self {
+        Ok(Self {
             auth_manager,
             client_capabilities,
             config,
             thread_manager,
             sessions: Rc::default(),
             session_roots,
-        }
+        })
     }
 
     fn get_thread(&self, session_id: &SessionId) -> Result<Rc<Thread>, Error> {
@@ -657,7 +658,7 @@ impl Agent for CodexAgent {
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            self.thread_manager.get_models_manager(),
+            adapt_models_manager(self.thread_manager.get_models_manager()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
@@ -722,7 +723,7 @@ impl Agent for CodexAgent {
             session_id.clone(),
             thread_impl,
             self.auth_manager.clone(),
-            self.thread_manager.get_models_manager(),
+            adapt_models_manager(self.thread_manager.get_models_manager()),
             self.client_capabilities.clone(),
             config.clone(),
         ));
@@ -763,6 +764,7 @@ impl Agent for CodexAgent {
                 SessionSource::VSCode,
                 SessionSource::Unknown,
             ],
+            None,
             None,
             self.config.model_provider_id.as_str(),
             None,
