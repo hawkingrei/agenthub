@@ -277,7 +277,7 @@ describe("useTeamWorkspaceViewModel", () => {
       const snapshot = mounted.getSnapshot();
       expect(snapshot?.isAgentWorkspace).toBe(false);
       expect(snapshot?.selectedAgentLabel).toBe("Agent");
-      expect(snapshot?.workspaceTitle).toBe("Agent ACP");
+      expect(snapshot?.workspaceTitle).toBe("Thread");
     } finally {
       mounted.cleanup();
     }

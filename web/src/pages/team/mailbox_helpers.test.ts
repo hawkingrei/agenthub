@@ -263,6 +263,21 @@ describe("mailbox helpers", () => {
     expect(rendered).toContain("<li");
   });
 
+  it("preserves short inline markdown instead of collapsing it into plain text", () => {
+    const rendered = renderMarkdownWithMentions("**bold** and `code` and <https://example.com>");
+    expect(rendered).toContain("<strong>bold</strong>");
+    expect(rendered).toContain("md-inline-code");
+    expect(rendered).toContain(">code</code>");
+    expect(rendered).toContain('href="https://example.com"');
+  });
+
+  it("treats indented fenced code blocks as explicit markdown", () => {
+    const rendered = renderMarkdownWithMentions("  ```ts\nconst answer = 42;\n  ```");
+    expect(rendered).toContain("<pre");
+    expect(rendered).toContain("data-language=\"ts\"");
+    expect(rendered).toContain("answer =");
+  });
+
   it("uses null-prototype lookups and falls back safely for reserved property names", () => {
     const lookup = createDisplayNameLookup([
       ["worker-1", "Worker One"],

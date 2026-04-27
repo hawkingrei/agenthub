@@ -22,12 +22,15 @@ export type TaskMailboxRoutePlan = {
 };
 
 const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
-const MARKDOWN_CODE_FENCE_PATTERN = /^(```|~~~)/m;
+const MARKDOWN_CODE_FENCE_PATTERN = /^\s{0,3}(```|~~~)/m;
 const MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+/m;
 const MARKDOWN_BLOCKQUOTE_PATTERN = /^\s{0,3}>\s+/m;
 const MARKDOWN_LINK_PATTERN = /!?\[[^\]]+\]\(([^)]+)\)/;
+const MARKDOWN_AUTOLINK_PATTERN = /<[a-z][a-z0-9+.-]{1,31}:[^>\s]+>/i;
 const MARKDOWN_TABLE_PATTERN = /^\|.+\|\s*$/m;
 const MARKDOWN_HORIZONTAL_RULE_PATTERN = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/m;
+const MARKDOWN_INLINE_STYLE_PATTERN = /(?:\*\*[^*\n]+\*\*|\*[^*\n]+\*|__[^_\n]+__|_[^_\n]+_|~~[^~\n]+~~)/;
+const MARKDOWN_INLINE_CODE_PATTERN = /`[^`\n]+`/;
 const SHORT_CHAT_LIST_ITEM_PATTERN = /^\s*(?:[-*+]|\d+\.)\s+(.+)\s*$/;
 export type MentionDraftQuery = {
   start: number;
@@ -518,8 +521,11 @@ function hasExplicitStructuredMarkdown(text: string): boolean {
     MARKDOWN_HEADING_PATTERN.test(text) ||
     MARKDOWN_BLOCKQUOTE_PATTERN.test(text) ||
     MARKDOWN_LINK_PATTERN.test(text) ||
+    MARKDOWN_AUTOLINK_PATTERN.test(text) ||
     MARKDOWN_TABLE_PATTERN.test(text) ||
-    MARKDOWN_HORIZONTAL_RULE_PATTERN.test(text)
+    MARKDOWN_HORIZONTAL_RULE_PATTERN.test(text) ||
+    MARKDOWN_INLINE_STYLE_PATTERN.test(text) ||
+    MARKDOWN_INLINE_CODE_PATTERN.test(text)
   );
 }
 
