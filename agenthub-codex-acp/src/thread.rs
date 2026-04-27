@@ -5321,6 +5321,16 @@ mod tests {
         actor
             .handle_event(Event {
                 id: "app-server".to_string(),
+                msg: EventMsg::ModelReroute(ModelRerouteEvent {
+                    from_model: "gpt-5".to_string(),
+                    to_model: "gpt-5-cyber".to_string(),
+                    reason: codex_protocol::protocol::ModelRerouteReason::HighRiskCyberActivity,
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
                 msg: EventMsg::ModelVerification(ModelVerificationEvent {
                     verifications: vec![
                         codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
@@ -5355,6 +5365,15 @@ mod tests {
                     content: ContentBlock::Text(TextContent { text, .. }),
                     ..
                 }) if text == "Guardian blocked unsafe operation"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Model rerouted: gpt-5 -> gpt-5-cyber (HighRiskCyberActivity)"
             )
         }));
         assert!(notifications.iter().any(|notification| {
@@ -7273,6 +7292,59 @@ mod tests {
 
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(ops.as_slice(), [Op::OverrideTurnContext { .. }]));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_config_options_uses_model_presets_from_models_manager() -> anyhow::Result<()>
+    {
+        let (_session_id, _client, _thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::GetConfigOptions { response_tx })?;
+
+        let config_options = tokio::try_join!(
+            async {
+                let options = response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(options)
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?
+        .0;
+
+        let mode_option = config_options
+            .iter()
+            .find(|option| option.id.0 == "mode")
+            .expect("mode config option");
+        assert_eq!(
+            mode_option.category,
+            Some(SessionConfigOptionCategory::Mode)
+        );
+
+        let model_option = config_options
+            .iter()
+            .find(|option| option.id.0 == "model")
+            .expect("model config option");
+        assert_eq!(
+            model_option.category,
+            Some(SessionConfigOptionCategory::Model)
+        );
+
+        let SessionConfigKind::Select(model_select) = &model_option.kind else {
+            panic!("expected model option to be a select");
+        };
+        assert_eq!(model_select.current_value.0, all_model_presets()[0].id);
+        assert!(
+            model_select
+                .options
+                .iter()
+                .any(|option| option.value.0 == all_model_presets()[0].id)
+        );
 
         Ok(())
     }

@@ -64,3 +64,43 @@ Expected outcomes:
 - Model/config APIs continue to return valid presets/current model values after
   signature migration.
 - `ModelReroute` events no longer fall into unexpected-event warnings.
+
+## 2026-04-27 Follow-up After Upgrading To `openai/codex@rust-v0.125.0`
+
+The adapter is now on upstream Codex `rust-v0.125.0` (merge commit
+`e4a68410` in the main repo), but the same PR160 verification themes still
+matter:
+
+1. approval IDs must stay bound to event-level approval identity rather than a
+   stale prompt submission id
+2. model preset lookup must still work through the current `ModelsManager`
+   adapter surface
+3. `ModelReroute` must remain observable to ACP clients after the lockfile/API
+   refresh
+
+Current code-path review against `agenthub-codex-acp/src/thread.rs` confirms:
+
+- exec approval still resolves `approval_id.unwrap_or(call_id)` before
+  submitting `Op::ExecApproval`
+- model/session config selectors still source presets through
+  `self.models_manager.list_models().await`
+- `EventMsg::ModelReroute(...)` is still translated into an agent-visible text
+  message instead of falling into the unexpected-event path
+
+Focused verification added on top of the earlier sync work:
+
+- `test_exec_approval_uses_available_decisions`
+  - checks `Op::ExecApproval` keeps the event-level `approval-id`
+- `test_get_config_options_uses_model_presets_from_models_manager`
+  - checks `GetConfigOptions` still exposes stable `mode` / `model` selectors
+    and resolves the current model from `StubModelsManager` presets
+- `test_global_visible_events_without_submission_are_forwarded`
+  - now also checks `ModelReroute` is surfaced as an agent-visible message
+
+Local validation status on this machine:
+
+- `cargo check -p agenthub-codex-acp` passes after the `v0.125.0` adapter sync
+- the focused `agenthub-codex-acp` test invocations are heavier and may still
+  be constrained by local disk space while rebuilding large Codex dependency
+  subgraphs, so CI evidence remains the more reliable close-out path for this
+  verification item
