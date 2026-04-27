@@ -27,6 +27,9 @@ Implemented in this pass:
   flow
 - rename the internal conversation flag from `isSharedConversation` to `isChannelConversation`
   so the Team shell no longer conflates `# all` with other channel lanes
+- encode explicit Team task conversations into canonical Team workspace routes via `task=<task_id>`
+  so Kanban / task-surface entry points can restore the selected conversation on refresh instead of
+  silently falling back to the active channel bootstrap lane
 
 ## Validation
 
@@ -42,6 +45,7 @@ Web:
 - `cd web && pnpm exec vitest run src/api.test.ts src/pages/team_page.helpers.test.ts src/pages/team_page.smoke.test.tsx src/pages/team_page.agent_loop.test.tsx`
 - `cd web && pnpm exec vitest run src/pages/team_page.smoke.test.tsx src/pages/team_panels.test.tsx src/pages/team/team_thread_pane.test.tsx src/pages/team_page.agent_loop.test.tsx`
 - `cd web && npm run build`
+- `cd web && pnpm exec vitest run src/pages/team_page.helpers.test.ts src/pages/team_page.smoke.test.tsx`
 
 ## Remaining Rollout Gaps
 

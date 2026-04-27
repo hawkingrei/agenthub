@@ -9,6 +9,7 @@ import {
   resolveThreadRootMessageIdFromPayload,
   resolveTeamChannelId,
   resolveTeamSelectedMemberId,
+  resolveTeamSelectedTaskId,
   resolveTeamThreadRootMessageId,
   resolveTeamWorkspaceTab,
   validateRunInputJson,
@@ -36,7 +37,7 @@ describe("team_page helpers", () => {
     expect(buildTeamDetailPath("team/1")).toBe("/workspace/teams/team%2F1");
   });
 
-  it("builds team workspace paths with optional lens and thread query", () => {
+  it("builds team workspace paths with optional lens, task, and thread query", () => {
     expect(buildTeamWorkspacePath("team-1")).toBe("/workspace/teams/team-1");
     expect(buildTeamWorkspacePath("team-1", "channels")).toBe(
       "/workspace/teams/team-1?lens=channels"
@@ -49,6 +50,12 @@ describe("team_page helpers", () => {
     );
     expect(buildTeamWorkspacePath("team-1", "channels", "review", -1)).toBe(
       "/workspace/teams/team-1?lens=channels&channel=review"
+    );
+    expect(buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-9")).toBe(
+      "/workspace/teams/team-1?lens=channels&channel=review&task=task-9"
+    );
+    expect(buildTeamWorkspacePath("team-1", "channels", "all", 42, null, null, "task-9")).toBe(
+      "/workspace/teams/team-1?lens=channels&thread=42&task=task-9"
     );
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
@@ -72,6 +79,8 @@ describe("team_page helpers", () => {
     expect(resolveTeamThreadRootMessageId("?thread=0")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=-8")).toBeNull();
     expect(resolveTeamThreadRootMessageId("?thread=7.5")).toBeNull();
+    expect(resolveTeamSelectedTaskId("")).toBe("");
+    expect(resolveTeamSelectedTaskId("?task=task-7")).toBe("task-7");
     expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
     expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
     expect(resolveTeamWorkspaceTab("?tab=thread")).toBe("agent_acp");

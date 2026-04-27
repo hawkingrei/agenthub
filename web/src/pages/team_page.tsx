@@ -282,6 +282,11 @@ export function resolveTeamThreadRootMessageId(search: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+export function resolveTeamSelectedTaskId(search: string): string {
+  const params = new URLSearchParams(search);
+  return (params.get("task") ?? "").trim();
+}
+
 export function resolveTeamSelectedMemberId(search: string): string {
   const params = new URLSearchParams(search);
   return (params.get("member") ?? "").trim();
@@ -352,7 +357,8 @@ export function buildTeamWorkspacePath(
   channelId?: TeamChannelId | null,
   threadRootMessageId?: number | null,
   memberId?: string | null,
-  tab?: TeamTab | null
+  tab?: TeamTab | null,
+  taskId?: string | null
 ): string {
   const pathname = `/workspace/teams/${encodeURIComponent(teamId)}`;
   const params = new URLSearchParams();
@@ -364,6 +370,10 @@ export function buildTeamWorkspacePath(
   }
   if (threadRootMessageId && threadRootMessageId > 0) {
     params.set("thread", String(threadRootMessageId));
+  }
+  const normalizedTaskId = taskId?.trim() ?? "";
+  if (normalizedTaskId) {
+    params.set("task", normalizedTaskId);
   }
   const normalizedMemberId = memberId?.trim() ?? "";
   if (normalizedMemberId) {
@@ -538,6 +548,10 @@ export function TeamPage(props: TeamPageProps) {
   );
   const routeSelectedMemberId = useMemo(
     () => resolveTeamSelectedMemberId(props.routeSearch ?? ""),
+    [props.routeSearch]
+  );
+  const routeSelectedTaskId = useMemo(
+    () => resolveTeamSelectedTaskId(props.routeSearch ?? ""),
     [props.routeSearch]
   );
   const isSelectorRoute = routeTeamId == null;
@@ -1137,6 +1151,12 @@ export function TeamPage(props: TeamPageProps) {
     if (!effectiveSelectedTeamId || !routeTargetsChannelLane) {
       return;
     }
+    if (routeSelectedTaskId) {
+      setSelectedConversationTaskId((prev) =>
+        prev === routeSelectedTaskId ? prev : routeSelectedTaskId
+      );
+      return;
+    }
     if (routeChannelId === DEFAULT_TEAM_CHANNEL_ID) {
       setSelectedConversationTaskId((prev) => (prev ? "" : prev));
       return;
@@ -1153,6 +1173,7 @@ export function TeamPage(props: TeamPageProps) {
   }, [
     effectiveSelectedTeamId,
     routeChannelId,
+    routeSelectedTaskId,
     routeWorkspaceLens,
     selectedChannelRecord,
     teamChannelsLoadedSuccessfully,
@@ -2319,12 +2340,21 @@ export function TeamPage(props: TeamPageProps) {
     await triggerCreateRun();
   }, [selectedTeamHasConfiguredMembers, setError, teamExecutionBlockedReason, triggerCreateRun]);
   const navigateToTeamLens = useCallback(
-    (teamId: string, lens: WorkspaceLens, channelId?: TeamChannelId | null) => {
+    (
+      teamId: string,
+      lens: WorkspaceLens,
+      channelId?: TeamChannelId | null,
+      taskId?: string | null
+    ) => {
       navigateTeamRoute(
         buildTeamWorkspacePath(
           teamId,
           lens,
-          lens === "channels" ? (channelId ?? DEFAULT_TEAM_CHANNEL_ID) : null
+          lens === "channels" ? (channelId ?? DEFAULT_TEAM_CHANNEL_ID) : null,
+          null,
+          null,
+          null,
+          lens === "channels" ? taskId : null
         )
       );
     },
