@@ -84,3 +84,31 @@ Expected result:
   skill inputs.
 - Dynamic actor runtime data appears as a separate text prefix block rather than
   being baked into the managed skill files.
+
+# 2026-04-27 Verification Follow-up
+
+This path now has a tighter automated verification chain:
+
+- `cargo test -p agenthub-managed-skills -- --nocapture`
+  - confirms the managed skill documents are materialized under the canonical
+    `~/.agents/skills/agenthub-runtime/.../SKILL.md` namespace
+- `cargo test -p agenthub-acp prompt_prefix_blocks_keep_managed_skill_file_static_and_runtime_context_dynamic -- --nocapture`
+  - confirms ACP prompt prefix assembly keeps the managed actor runtime skill as
+    a stable absolute-path `<skill>` wrapper and appends the dynamic runtime
+    identity block separately
+- `agenthub-codex-acp/src/thread.rs` continues to carry the focused
+  `build_prompt_items_*` tests that translate trusted managed skill wrappers
+  into native Codex `UserInput::Skill` items while preserving ordinary text
+  blocks as `UserInput::Text`
+
+Local verification result on this machine:
+
+- the managed-skill materialization and ACP prompt-prefix tests passed locally
+- a fresh `cargo test -p agenthub-codex-acp test_build_prompt_items_ -- --nocapture`
+  attempt did not reach the test assertions because the local target directory
+  ran out of space during dependency compilation (`No space left on device`)
+
+Because the adapter-side focused test did not complete on this machine, keep the
+umbrella TODO open until the `agenthub-codex-acp` translation test run (or
+equivalent CI evidence) is recorded alongside these materialization and
+prompt-prefix checks.

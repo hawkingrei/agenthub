@@ -1845,6 +1845,9 @@ mod tests {
         RequestPermissionOutcome, SelectedPermissionOutcome,
     };
     use agenthub_acp_core::build_skill;
+    use agenthub_managed_skills::{
+        ManagedSkillKind, install_managed_skills, managed_skill_doc_path,
+    };
     use sqlx::Row;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::fs;
@@ -1854,6 +1857,8 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
     use uuid::Uuid;
+
+    use crate::test_utils::TempManagedSkillsHome;
 
     fn server_name(server: &McpServer) -> &str {
         match server {
@@ -2411,6 +2416,53 @@ Fallback to the user-level review contract.
             panic!("expected text skill block");
         };
         assert!(skill_block.text.starts_with("<skill>\n"));
+    }
+
+    #[test]
+    fn prompt_prefix_blocks_keep_managed_skill_file_static_and_runtime_context_dynamic() {
+        let home = TempManagedSkillsHome::new("agenthub-acp-runtime-skill-prefix-home");
+        install_managed_skills(Some(home.path())).expect("install managed skills");
+        let skill = super::actor_runtime_skill::build_required_managed_skill(
+            ManagedSkillKind::ActorRuntime,
+            Some(home.path()),
+        )
+        .expect("build managed actor runtime skill");
+        let expected_path =
+            managed_skill_doc_path(ManagedSkillKind::ActorRuntime, Some(home.path()))
+                .expect("resolve actor runtime skill path");
+
+        let blocks = build_prompt_prefix_blocks(&[skill], Some(&sample_actor_context()));
+
+        assert_eq!(blocks.len(), 2);
+
+        let ContentBlock::Text(skill_block) = &blocks[0] else {
+            panic!("expected first prompt prefix block to be text");
+        };
+        assert!(skill_block.text.starts_with("<skill>\n"));
+        assert!(skill_block.text.contains("agenthub-actor-runtime"));
+        assert!(
+            skill_block
+                .text
+                .contains(&format!("<path>{}</path>", expected_path.display()))
+        );
+        assert!(
+            !skill_block
+                .text
+                .contains("current_execution_run_id: run-42")
+        );
+        assert!(!skill_block.text.contains("actor_id: planner"));
+
+        let ContentBlock::Text(runtime_block) = &blocks[1] else {
+            panic!("expected runtime context block to be text");
+        };
+        assert!(runtime_block.text.contains("AgentHub runtime context:"));
+        assert!(
+            runtime_block
+                .text
+                .contains("current_execution_run_id: run-42")
+        );
+        assert!(runtime_block.text.contains("actor_id: planner"));
+        assert!(!runtime_block.text.contains("AgentHub Actor Runtime Skill"));
     }
 
     #[tokio::test]

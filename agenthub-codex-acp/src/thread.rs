@@ -3081,6 +3081,10 @@ impl<A: Auth> ThreadActor<A> {
 
         let current_model = self.get_current_model().await;
         let current_preset = presets.iter().find(|p| p.model == current_model).cloned();
+        let current_model_option_value = current_preset
+            .as_ref()
+            .map(|preset| preset.id.clone())
+            .unwrap_or_else(|| current_model.clone());
 
         let mut model_select_options = Vec::new();
 
@@ -3103,9 +3107,14 @@ impl<A: Auth> ThreadActor<A> {
         );
 
         options.push(
-            SessionConfigOption::select("model", "Model", current_model, model_select_options)
-                .category(SessionConfigOptionCategory::Model)
-                .description("Choose which model Codex should use"),
+            SessionConfigOption::select(
+                "model",
+                "Model",
+                current_model_option_value,
+                model_select_options,
+            )
+            .category(SessionConfigOptionCategory::Model)
+            .description("Choose which model Codex should use"),
         );
 
         // Reasoning effort selector (only if the current preset exists and has >1 supported effort)
@@ -4008,9 +4017,6 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::ElicitationRequest(..)
             | EventMsg::RequestPermissions(..)
             | EventMsg::RequestUserInput(..)
-            | EventMsg::ModelReroute(..)
-            | EventMsg::GuardianWarning(..)
-            | EventMsg::ModelVerification(..)
             | EventMsg::ContextCompacted(..)
     )
 }
@@ -4032,6 +4038,20 @@ async fn forward_global_visible_event(client: &SessionClient, msg: EventMsg) -> 
         }
         EventMsg::GuardianWarning(WarningEvent { message }) => {
             client.send_agent_text(message).await;
+            true
+        }
+        EventMsg::ModelReroute(ModelRerouteEvent {
+            from_model,
+            to_model,
+            reason,
+        }) => {
+            client
+                .send_agent_text(render_model_reroute_message(
+                    &from_model,
+                    &to_model,
+                    &reason,
+                ))
+                .await;
             true
         }
         EventMsg::ModelVerification(event) => {
@@ -4613,7 +4633,9 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol_legacy::{RequestPermissionResponse, TextContent};
+    use agent_client_protocol_legacy::{
+        RequestPermissionResponse, SessionConfigKind, SessionConfigSelectOptions, TextContent,
+    };
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
     };
@@ -5310,25 +5332,6 @@ mod tests {
                 }),
             })
             .await;
-        actor
-            .handle_event(Event {
-                id: "app-server".to_string(),
-                msg: EventMsg::GuardianWarning(WarningEvent {
-                    message: "Guardian blocked unsafe operation".to_string(),
-                }),
-            })
-            .await;
-        actor
-            .handle_event(Event {
-                id: "app-server".to_string(),
-                msg: EventMsg::ModelVerification(ModelVerificationEvent {
-                    verifications: vec![
-                        codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
-                    ],
-                }),
-            })
-            .await;
-
         let notifications = client.notifications.lock().unwrap();
         assert!(notifications.iter().any(|notification| {
             matches!(
@@ -5348,6 +5351,64 @@ mod tests {
                 }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
             )
         }));
+        assert!(actor.submissions.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_global_model_notifications_do_not_attach_submissions() -> anyhow::Result<()> {
+        let session_id = SessionId::new("test");
+        let client = Arc::new(StubClient::new());
+        let session_client = SessionClient::with_client(session_id, client.clone(), Arc::default());
+        let thread = Arc::new(StubCodexThread::new());
+        let models_manager = Arc::new(StubModelsManager);
+        let config = test_config().await?;
+        let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut actor = ThreadActor::new(
+            StubAuth,
+            session_client,
+            thread,
+            models_manager,
+            config,
+            message_rx,
+            resolution_tx,
+            resolution_rx,
+        );
+
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::GuardianWarning(WarningEvent {
+                    message: "Guardian blocked unsafe operation".to_string(),
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::ModelReroute(ModelRerouteEvent {
+                    from_model: "gpt-5".to_string(),
+                    to_model: "gpt-5-cyber".to_string(),
+                    reason: codex_protocol::protocol::ModelRerouteReason::HighRiskCyberActivity,
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::ModelVerification(ModelVerificationEvent {
+                    verifications: vec![
+                        codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
+                    ],
+                }),
+            })
+            .await;
+
+        assert!(!actor.submissions.contains_key("app-server"));
+
+        let notifications = client.notifications.lock().unwrap();
         assert!(notifications.iter().any(|notification| {
             matches!(
                 &notification.update,
@@ -5355,6 +5416,15 @@ mod tests {
                     content: ContentBlock::Text(TextContent { text, .. }),
                     ..
                 }) if text == "Guardian blocked unsafe operation"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Model rerouted: gpt-5 -> gpt-5-cyber (HighRiskCyberActivity)"
             )
         }));
         assert!(notifications.iter().any(|notification| {
@@ -5602,7 +5672,7 @@ mod tests {
     #[async_trait::async_trait]
     impl ModelsManagerImpl for StubModelsManager {
         async fn get_model(&self, _model_id: &Option<String>) -> String {
-            all_model_presets()[0].to_owned().id
+            all_model_presets()[0].to_owned().model
         }
 
         async fn list_models(&self) -> Vec<ModelPreset> {
@@ -7273,6 +7343,66 @@ mod tests {
 
         let ops = thread.ops.lock().unwrap();
         assert!(matches!(ops.as_slice(), [Op::OverrideTurnContext { .. }]));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_config_options_uses_model_presets_from_models_manager() -> anyhow::Result<()>
+    {
+        let (_session_id, _client, _thread, message_tx, local_set) = setup().await?;
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        message_tx.send(ThreadMessage::GetConfigOptions { response_tx })?;
+
+        let config_options = tokio::try_join!(
+            async {
+                let options = response_rx.await??;
+                drop(message_tx);
+                anyhow::Ok(options)
+            },
+            async {
+                local_set.await;
+                anyhow::Ok(())
+            }
+        )?
+        .0;
+
+        let mode_option = config_options
+            .iter()
+            .find(|option| option.id.0.as_ref() == "mode")
+            .expect("mode config option");
+        assert_eq!(
+            mode_option.category,
+            Some(SessionConfigOptionCategory::Mode)
+        );
+
+        let model_option = config_options
+            .iter()
+            .find(|option| option.id.0.as_ref() == "model")
+            .expect("model config option");
+        assert_eq!(
+            model_option.category,
+            Some(SessionConfigOptionCategory::Model)
+        );
+
+        let SessionConfigKind::Select(model_select) = &model_option.kind else {
+            panic!("expected model option to be a select");
+        };
+        let presets = all_model_presets();
+        let expected_preset = presets.first().expect("at least one model preset");
+        assert_eq!(
+            model_select.current_value.0.as_ref(),
+            expected_preset.id.as_str()
+        );
+        let SessionConfigSelectOptions::Ungrouped(options) = &model_select.options else {
+            panic!("expected model options to be ungrouped");
+        };
+        assert!(
+            options
+                .iter()
+                .any(|option| option.value.0.as_ref() == expected_preset.id.as_str())
+        );
 
         Ok(())
     }
