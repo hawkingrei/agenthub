@@ -52,7 +52,7 @@ describe("team_page helpers", () => {
     );
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
-    ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=agent_acp");
+    ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=thread");
     expect(buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", null)).toBe(
       "/workspace/teams/team-1?lens=members&member=worker-2"
     );
@@ -74,6 +74,7 @@ describe("team_page helpers", () => {
     expect(resolveTeamThreadRootMessageId("?thread=7.5")).toBeNull();
     expect(resolveTeamSelectedMemberId("?member=worker-1")).toBe("worker-1");
     expect(resolveTeamWorkspaceTab("?tab=agent_acp")).toBe("agent_acp");
+    expect(resolveTeamWorkspaceTab("?tab=thread")).toBe("agent_acp");
     expect(resolveTeamWorkspaceTab("?tab=mailbox")).toBe("mailbox");
     expect(resolveTeamWorkspaceTab("?tab=member_console")).toBe("member_console");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();

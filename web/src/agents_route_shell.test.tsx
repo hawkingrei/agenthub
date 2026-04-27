@@ -207,4 +207,16 @@ describe("AgentsRouteShell", () => {
 
     expect(html).toContain("Node detail marker");
   });
+
+  it("can omit the output header for root workbench routes", () => {
+    const html = renderRouteShell({
+      workbenchProps: null,
+      rootWorkbenchNode: <div>Node detail marker</div>,
+      showOutputHeader: false,
+    });
+
+    expect(html).toContain("Node detail marker");
+    expect(html).not.toContain("No agent selected");
+    expect(html).not.toContain("Select an agent to continue.");
+  });
 });

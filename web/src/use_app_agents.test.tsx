@@ -8,11 +8,15 @@ import { useAppAgents } from "./use_app_agents";
 const {
   listAgentsMock,
   listAgentNodesMock,
+  listTeamsMock,
+  getAgentMock,
   getAgentNodeJoinBootstrapMock,
   getRuntimeDefaultsMock,
 } = vi.hoisted(() => ({
   listAgentsMock: vi.fn(),
   listAgentNodesMock: vi.fn(),
+  listTeamsMock: vi.fn(),
+  getAgentMock: vi.fn(),
   getAgentNodeJoinBootstrapMock: vi.fn(),
   getRuntimeDefaultsMock: vi.fn(),
 }));
@@ -21,6 +25,8 @@ vi.mock("./api", () => ({
   api: {
     listAgents: listAgentsMock,
     listAgentNodes: listAgentNodesMock,
+    listTeams: listTeamsMock,
+    getAgent: getAgentMock,
     getAgentNodeJoinBootstrap: getAgentNodeJoinBootstrapMock,
     getRuntimeDefaults: getRuntimeDefaultsMock,
   },
@@ -57,10 +63,13 @@ describe("useAppAgents", () => {
     root = createRoot(container);
     listAgentsMock.mockReset();
     listAgentNodesMock.mockReset();
+    listTeamsMock.mockReset();
+    getAgentMock.mockReset();
     getAgentNodeJoinBootstrapMock.mockReset();
     getRuntimeDefaultsMock.mockReset();
     listAgentsMock.mockResolvedValue([]);
     listAgentNodesMock.mockResolvedValue([]);
+    listTeamsMock.mockResolvedValue([]);
     getAgentNodeJoinBootstrapMock.mockResolvedValue({
       enabled: true,
       bootstrap_token: "bootstrap-token",
@@ -263,5 +272,58 @@ describe("useAppAgents", () => {
     expect(latest.agentNodeJoinBootstrapError).toBe(
       "Agent Node Join Bootstrap: Error: boom"
     );
+  });
+
+  it("backfills hidden team member agents for node usage surfaces", async () => {
+    const captures: UseAppAgentsResult[] = [];
+    const onCapture = (value: UseAppAgentsResult) => {
+      captures.push(value);
+    };
+    const auth: AuthState = {
+      token: "token-1",
+      userId: "user-1",
+      username: "root",
+      role: "root",
+    };
+    listTeamsMock.mockResolvedValueOnce([
+      {
+        id: "team-1",
+        name: "tidb fuzz/bugfix team",
+        description: null,
+        spec: {
+          members: [{ member_id: "hidden-worker", role: "worker" }],
+        },
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    getAgentMock.mockResolvedValueOnce({
+      id: "hidden-worker",
+      name: "tidb-fuzz-bugfix-team-worker-1",
+      workdir: "/tmp/hidden-worker",
+      command: "agenthub",
+      args: [],
+      target_node_id: "main",
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: false,
+      status: "idle",
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    await act(async () => {
+      root.render(<HookHarness auth={auth} isAgentsRoute={true} onCapture={onCapture} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const latest = captures[captures.length - 1];
+    expect(listTeamsMock).toHaveBeenCalledWith("token-1");
+    expect(getAgentMock).toHaveBeenCalledWith("token-1", "hidden-worker");
+    expect(latest.teamMemberAgentsById["hidden-worker"]?.target_node_id).toBe("main");
   });
 });

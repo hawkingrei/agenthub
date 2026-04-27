@@ -24,7 +24,17 @@ import {
 import { AGENT_NOT_RUNNING_ERROR, isAgentActiveStatus } from "../agent_ws";
 import { type AgentPresetId } from "../agent_presets";
 import { ErrorBanner } from "../error_banner";
-import { resolveWorkspaceLens, type WorkspaceLens } from "../app_route_selection";
+import {
+  getNavigatorOnline,
+  sanitizeErrorBannerMessage,
+  shouldHideErrorBannerMessage,
+} from "../connection_status";
+import {
+  buildWorkspaceNodePath,
+  navigateToPath,
+  resolveWorkspaceLens,
+  type WorkspaceLens,
+} from "../app_route_selection";
 import { AuthState } from "../types";
 import {
   normalizeWorkdirInput,
@@ -282,10 +292,11 @@ export function resolveTeamWorkspaceTab(search: string): TeamTab | null {
   const raw = (params.get("tab") ?? "").trim();
   if (
     raw === "agent_acp" ||
+    raw === "thread" ||
     raw === "mailbox" ||
     raw === "member_console"
   ) {
-    return raw;
+    return raw === "thread" ? "agent_acp" : raw;
   }
   return null;
 }
@@ -359,7 +370,7 @@ export function buildTeamWorkspacePath(
     params.set("member", normalizedMemberId);
   }
   if (tab === "agent_acp" || tab === "mailbox" || tab === "member_console") {
-    params.set("tab", tab);
+    params.set("tab", tab === "agent_acp" ? "thread" : tab);
   }
   const search = params.toString();
   if (!search) {
@@ -1312,14 +1323,26 @@ export function TeamPage(props: TeamPageProps) {
     () => snapshot?.members.find((member) => member.member_id === selectedMemberId) ?? null,
     [selectedMemberId, snapshot]
   );
+  const knownSelectedTeamMemberIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...selectedTeamMemberLiveStates.map((member) => member.member_id),
+          ...(snapshot?.members.map((member) => member.member_id) ?? []),
+          ...selectedTeamMembers.map((member) => member.member_id),
+        ].map((memberId) => memberId.trim()).filter(Boolean))
+      ),
+    [selectedTeamMemberLiveStates, selectedTeamMembers, snapshot]
+  );
   const selectedAgentWorkspaceMemberId = useMemo(
     () =>
       resolveSelectedAgentWorkspaceMemberId({
         selectedMemberId,
         focusedAgentMemberId,
         routeSelectedMemberId,
+        knownMemberIds: knownSelectedTeamMemberIds,
       }),
-    [focusedAgentMemberId, routeSelectedMemberId, selectedMemberId]
+    [focusedAgentMemberId, knownSelectedTeamMemberIds, routeSelectedMemberId, selectedMemberId]
   );
   const selectedAgentWorkspaceSnapshot = useMemo(
     () =>
@@ -1357,6 +1380,13 @@ export function TeamPage(props: TeamPageProps) {
     ]);
     return Object.fromEntries(entries);
   }, [teamMemberAgentsById]);
+  const focusedMemberTargetNodeId = useMemo(() => {
+    const memberId = focusedAgentMemberId.trim();
+    if (!memberId) {
+      return null;
+    }
+    return memberTargetNodeById[memberId]?.trim() || null;
+  }, [focusedAgentMemberId, memberTargetNodeById]);
   const selectedAgentWorkspaceAgentId = selectedAgentWorkspaceAgent?.id?.trim() ?? "";
   const selectedMemberDiscoveryCard = useMemo(() => {
     const memberId = selectedMemberId.trim();
@@ -3535,6 +3565,13 @@ export function TeamPage(props: TeamPageProps) {
     ]
   );
   const hasOpenTeamModal = showCreateTeamModal || showForgeAgentForm || showTeamMemberEditModal;
+  const normalizedTeamPageError = useMemo(() => {
+    if (!error) {
+      return null;
+    }
+    const message = sanitizeErrorBannerMessage(error, getNavigatorOnline());
+    return shouldHideErrorBannerMessage(message) ? null : message;
+  }, [error]);
 
   return (
     <div className={TEAM_PAGE_ROOT_CLASS}>
@@ -3555,7 +3592,11 @@ export function TeamPage(props: TeamPageProps) {
             onLogout={props.onLogout}
           />
         }
-        errorBanner={error ? <ErrorBanner message={error} onClose={() => setError(null)} /> : null}
+        errorBanner={
+          normalizedTeamPageError ? (
+            <ErrorBanner message={normalizedTeamPageError} onClose={() => setError(null)} />
+          ) : null
+        }
         warningNotice={
           warningNotice?.kind === "runtime" ? (
             <div className={teamRuntimeNoticeClassName} role="status">
@@ -3611,6 +3652,7 @@ export function TeamPage(props: TeamPageProps) {
         sidebarPane={
           <TeamSidebar
             showTeamSelector={false}
+            isRoot={props.auth.role === "root"}
             developerMode={props.developerMode}
             busy={busy}
             onRefreshTeams={refreshTeams}
@@ -3644,6 +3686,13 @@ export function TeamPage(props: TeamPageProps) {
             onOpenTeamMemberForge={openTeamMemberForgeModal}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
+            onOpenMachines={() => navigateToPath(buildWorkspaceNodePath())}
+            currentMachineId={focusedMemberTargetNodeId}
+            onOpenCurrentMachine={
+              focusedMemberTargetNodeId
+                ? () => navigateToPath(buildWorkspaceNodePath(focusedMemberTargetNodeId))
+                : null
+            }
           />
         }
         showWorkbenchPane={showWorkbenchPane}

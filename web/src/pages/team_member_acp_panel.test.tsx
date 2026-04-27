@@ -295,7 +295,7 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     );
 
     expect(container.textContent).toContain("idle");
-    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).not.toContain("running · thinking");
   });
 

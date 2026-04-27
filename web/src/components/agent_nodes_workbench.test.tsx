@@ -109,13 +109,23 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Save Settings");
     expect(html).toContain("Teams Using This Node");
     expect(html).toContain("Papers We Love");
+    expect(html).toContain('href="/workspace/teams/team-1"');
     expect(html).toContain("1 team");
     expect(html).toContain("1 member");
     expect(html).toContain("1 active");
-    expect(html).toContain("1 leader");
-    expect(html).toContain("0 workers");
+    expect(html).toContain("Leaders");
+    expect(html).toContain("Workers");
+    expect(html).toContain("Member Runtime Drill-down");
     expect(html).toContain("1 agent · 1 team");
     expect(html).toContain("Worker A · leader");
+    expect(html).toContain("Working");
+    expect(html).toContain("Worktree: Existing workdir");
+    expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');
+    expect(
+      html
+    ).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=member_console"');
+    expect(html).toContain("Thread");
+    expect(html).toContain("Console");
     expect(html).toContain("Danger Zone");
     expect(html).toContain("This node still has 1 attached agent.");
     expect(html).toContain("Delete Node");
@@ -174,5 +184,43 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Last seen");
     expect(html).toContain("lightweight node last-seen signal");
     expect(html).not.toContain("Agent Activity Detected");
+  });
+
+  it("uses fallback member agents when the root agents list hides team members", () => {
+    const html = renderWorkbench({
+      agents: [],
+      teams: [
+        {
+          id: "team-1",
+          name: "tidb fuzz/bugfix team",
+          description: null,
+          spec: {
+            members: [{ member_id: "hidden-worker", role: "worker" }],
+          },
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+      teamMemberAgentsById: {
+        "hidden-worker": {
+          id: "hidden-worker",
+          name: "tidb-fuzz-bugfix-team-worker-1",
+          command: "agenthub",
+          args: [],
+          workdir: "/tmp/hidden-worker",
+          status: "idle",
+          target_node_id: "node-east",
+          worktree_mode: "use_existing",
+          code_mode: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+      },
+    });
+
+    expect(html).toContain("tidb fuzz/bugfix team");
+    expect(html).toContain("1 team");
+    expect(html).toContain("1 member");
+    expect(html).toContain("tidb-fuzz-bugfix-team-worker-1 · worker");
   });
 });

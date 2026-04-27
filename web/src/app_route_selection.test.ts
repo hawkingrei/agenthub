@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthState } from "./types";
 import {
+  buildTeamDetailPath,
+  buildTeamWorkspacePath,
   buildWorkspaceNodePath,
   buildWorkspacePath,
   navigateToPath,
@@ -86,6 +88,18 @@ describe("app route selection", () => {
     expect(resolveWorkspaceLens("?lens=unknown")).toBe(null);
     expect(buildWorkspacePath("agent-1", "channels")).toBe(
       "/workspace/agents/agent-1?lens=channels"
+    );
+    expect(buildTeamDetailPath("team-1")).toBe("/workspace/teams/team-1");
+    expect(buildTeamDetailPath("team/1")).toBe("/workspace/teams/team%2F1");
+    expect(buildTeamDetailPath("")).toBe("/workspace/teams");
+    expect(buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")).toBe(
+      "/workspace/teams/team-1?lens=members&member=worker-1&tab=thread"
+    );
+    expect(
+      buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", "member_console")
+    ).toBe("/workspace/teams/team-1?lens=members&member=worker-2&tab=member_console");
+    expect(buildTeamWorkspacePath("team-1", "channels", "review", 42)).toBe(
+      "/workspace/teams/team-1?lens=channels&channel=review&thread=42"
     );
     expect(resolveWorkspaceNodeId("?lens=nodes&node=node-east")).toBe("node-east");
     expect(resolveWorkspaceNodeId("?lens=nodes")).toBeNull();

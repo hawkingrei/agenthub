@@ -170,10 +170,10 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {isAgentWorkspace ? (
             <HoverCard
-              width={320}
+              width={300}
               position="bottom-start"
               openDelay={120}
               closeDelay={80}
@@ -187,28 +187,22 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                       type="button"
                       tone="ghost"
                       size="sm"
-                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-2 rounded-2xl border border-black/6 bg-white/85 px-2.5 py-1.5 text-left text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
+                      className={`${chrome.mutedButtonClassName} ${chrome.headerActionButtonClassName} inline-flex max-w-full items-center gap-1.5 rounded-xl border border-black/6 bg-white/88 px-2 py-1 text-left text-[11px] font-medium shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-[2px] hover:border-black/10 hover:bg-white`}
                       aria-label="Agent"
                       title={selectedAgentIdentityDescription}
                     >
-                      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
-                        <i className="bi bi-person text-[12px]" aria-hidden="true" />
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
+                        <i className="bi bi-person text-[11px]" aria-hidden="true" />
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex min-w-0 items-center gap-2 text-[12px] leading-5 text-notion-text">
-                          <span className="max-w-[12rem] truncate font-semibold">
-                            {selectedAgentLabel}
-                          </span>
-                          <span className="shrink-0 text-black/20">|</span>
-                          <span className="truncate text-[12px] font-medium text-black/50">
-                            {selectedAgentIdentityDescription}
-                          </span>
+                      <span className="min-w-0 flex items-center gap-1.5">
+                        <span className="max-w-[11rem] truncate text-[12px] font-semibold leading-5 text-notion-text">
+                          {selectedAgentLabel}
+                        </span>
+                        <span className="rounded-md bg-notion-sidebar/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-notion-text-muted">
+                          {selectedAgentStatusView.role}
                         </span>
                       </span>
-                      <i
-                        className="bi bi-chevron-down shrink-0 text-[10px] text-black/45"
-                        aria-hidden="true"
-                      />
+                      <i className="bi bi-chevron-down shrink-0 text-[9px] text-black/40" aria-hidden="true" />
                     </ActionButton>
                   </HoverCard.Target>
                 </Menu.Target>
@@ -216,14 +210,14 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                     <Menu.Label>{selectedAgentLabel}</Menu.Label>
                     {agentWorkspaceSummaryItems.map((item) => (
                       <Menu.Item key={item.label} disabled>
-                        <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                        <div className="min-w-[220px] text-[12px] leading-5 text-ui-text-secondary">
                           <span className="font-semibold text-ui-text-primary">{item.label}</span>
                           <span className="ml-2">{item.value}</span>
                         </div>
                       </Menu.Item>
                     ))}
                     <Menu.Item disabled>
-                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                      <div className="min-w-[220px] text-[12px] leading-5 text-ui-text-secondary">
                         <span className="font-semibold text-ui-text-primary">Identity</span>
                         <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
                           {selectedAgentIdentityDescription}
@@ -231,7 +225,7 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                       </div>
                     </Menu.Item>
                     <Menu.Item disabled>
-                      <div className="min-w-[240px] text-[12px] leading-5 text-ui-text-secondary">
+                      <div className="min-w-[220px] text-[12px] leading-5 text-ui-text-secondary">
                         <span className="font-semibold text-ui-text-primary">Current work</span>
                         <p className="mt-1 whitespace-pre-wrap text-ui-text-secondary">
                           {selectedAgentStatusView.currentWork}
@@ -269,9 +263,9 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                     </Menu.Item>
                   </Menu.Dropdown>
               </Menu>
-              <HoverCard.Dropdown className="rounded-2xl border border-black/6 bg-white/95 p-3 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-md">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
+              <HoverCard.Dropdown className="rounded-2xl border border-black/6 bg-white/95 p-2.5 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-md">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
                     <i className="bi bi-person text-[13px]" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -283,10 +277,10 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                         {selectedAgentStatusView.role}
                       </span>
                     </div>
-                    <p className="mt-1 text-[12px] leading-5 text-black/60">
+                    <p className="mt-0.5 text-[12px] leading-5 text-black/60">
                       {selectedAgentIdentityDescription}
                     </p>
-                    <p className="mt-2 text-[11px] leading-5 text-black/45">
+                    <p className="mt-1.5 text-[11px] leading-5 text-black/45">
                       {selectedAgentStatusView.currentWork}
                     </p>
                   </div>
@@ -317,13 +311,13 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                     size="sm"
                     className={
                       isAdvancedWorkspace
-                        ? `${chrome.toolbarButtonActiveClassName} h-7 w-7 rounded-md px-0`
-                        : `${chrome.toolbarButtonIdleClassName} h-7 w-7 rounded-md px-0`
+                        ? `${chrome.toolbarButtonActiveClassName} h-6.5 rounded-md px-2 text-[11px] font-medium`
+                        : `${chrome.toolbarButtonIdleClassName} h-6.5 rounded-md px-2 text-[11px] font-medium`
                     }
                     aria-label="More"
                     title="More"
                   >
-                    <i className="bi bi-three-dots" aria-hidden="true" />
+                    <span className="text-black/60">More</span>
                   </ActionButton>
                 </Menu.Target>
                 <Menu.Dropdown>

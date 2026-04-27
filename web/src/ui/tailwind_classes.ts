@@ -38,18 +38,18 @@ export const ACP_PANEL_HEAD_CLASS =
   "acp-head minimal sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-notion-border-faint bg-notion-surface-overlay px-2.5 py-1.5 backdrop-blur-sm sm:px-3 max-[720px]:px-2";
 
 export const ACP_TABS_CLASS =
-  "inline-flex max-w-full shrink-0 items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/72 p-0.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
+  "inline-flex max-w-full shrink-0 items-center gap-0.5 rounded-[16px] border border-notion-border/85 bg-white/92 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.06)]";
 
 export const ACP_PANEL_TABS_CLASS = ACP_TABS_CLASS;
 
 export const ACP_TAB_BUTTON_BASE_CLASS =
-  "acp-tab-button inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-transparent px-3 text-[11px] font-semibold leading-none transition";
+  "acp-tab-button inline-flex h-8 min-w-[4.25rem] shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-3.5 text-[11px] font-semibold leading-none tracking-[0.01em] transition";
 
 export const ACP_TAB_BUTTON_ACTIVE_CLASS =
-  "border-notion-border bg-white text-notion-text shadow-sm";
+  "border-notion-border bg-notion-sidebar text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
 
 export const ACP_TAB_BUTTON_IDLE_CLASS =
-  "text-notion-text-muted hover:bg-white/70 hover:text-notion-text";
+  "text-notion-text-muted hover:bg-notion-hover/80 hover:text-notion-text";
 
 export const ACP_TAB_BADGE_CLASS =
   "acp-tab-badge ml-1 rounded-full bg-[rgba(55,53,47,0.06)] px-1.5 py-0.5 text-[10px] font-semibold text-notion-text-muted";
@@ -243,7 +243,7 @@ export const TEAM_SIDEBAR_NAV_LIST_CLASS =
   "flex min-w-0 flex-col gap-0.5";
 
 const TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS =
-  "flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md px-2 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-text-muted/40 focus-visible:ring-offset-1 focus-visible:ring-offset-notion-sidebar";
+  "flex w-full min-w-0 flex-col items-start gap-0 rounded-md px-2 py-0.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-text-muted/40 focus-visible:ring-offset-1 focus-visible:ring-offset-notion-sidebar";
 
 export const TEAM_SIDEBAR_NAV_ITEM_ACTIVE_CLASS =
   `${TEAM_SIDEBAR_NAV_ITEM_BASE_CLASS} bg-[rgba(55,53,47,0.07)] text-notion-text font-medium`;
@@ -258,13 +258,13 @@ export const TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS =
   "flex w-full items-center gap-2 rounded-md bg-transparent px-2 py-1 text-left text-notion-text-muted transition hover:bg-[rgba(55,53,47,0.05)] hover:text-notion-text";
 
 export const TEAM_SIDEBAR_WORK_CLASS =
-  "truncate pl-5 text-[10px] leading-relaxed text-notion-text-muted/85";
+  "truncate pl-4 text-[9px] leading-4 text-notion-text-muted/78";
 
 export const TEAM_SIDEBAR_BADGE_CLASS =
   "shrink-0 rounded-sm border border-notion-border/60 bg-white/72 px-1.5 py-0.5 text-[10px] font-bold text-notion-text-muted";
 
 export const TEAM_SIDEBAR_INDICATOR_DOT_CLASS =
-  "h-2 w-2 shrink-0 rounded-full mt-0.5";
+  "mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full";
 
 export const TEAM_TASK_ACTIVITY_LIST_CLASS =
   "relative min-h-0 flex flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain before:absolute before:left-[9px] before:top-1.5 before:h-[calc(100%-12px)] before:w-0.5 before:bg-notion-hover";
@@ -628,21 +628,21 @@ export const OUTPUT_HEADER_META_CLASS =
 export const OUTPUT_HEADER_DETAILS_ROOT_CLASS = "output-header-details relative z-[70]";
 
 export const OUTPUT_HEADER_DETAILS_SUMMARY_CLASS =
-  "inline-flex cursor-pointer list-none items-center rounded-md border border-notion-border bg-notion-surface-overlay px-2 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:border-notion-accent/30 hover:bg-notion-hover hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10";
+  "inline-flex cursor-pointer list-none items-center rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-notion-text-muted/62 transition hover:bg-notion-hover/65 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10";
 
 export const OUTPUT_HEADER_DETAILS_PANEL_CLASS =
-  `absolute right-0 top-[calc(100%+8px)] z-[80] min-h-0 min-w-[220px] ${NOTION_FLOATING_PANEL_CLASS}`;
+  `absolute right-0 top-[calc(100%+4px)] z-[80] min-h-0 min-w-[188px] ${NOTION_FLOATING_PANEL_CLASS}`;
 
-export const OUTPUT_HEADER_DETAILS_LIST_CLASS = "flex flex-col gap-1.5";
+export const OUTPUT_HEADER_DETAILS_LIST_CLASS = "flex flex-col gap-0.5";
 
 export const OUTPUT_HEADER_DETAILS_ITEM_CLASS =
-  "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-0.5 text-[11px] text-notion-text";
+  "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-0.5 text-[10px] text-notion-text";
 
 export const OUTPUT_HEADER_DETAILS_LABEL_CLASS =
-  "text-[10px] font-bold uppercase tracking-widest text-notion-text-muted";
+  "text-[9px] font-bold uppercase tracking-[0.16em] text-notion-text-muted";
 
 export const OUTPUT_HEADER_DETAILS_VALUE_CLASS =
-  "mono min-w-0 break-all text-[11px] leading-5 text-notion-text opacity-80";
+  "mono min-w-0 break-all text-[10px] leading-4 text-notion-text opacity-80";
 
 export const OUTPUT_HEADER_PILL_CLASS =
   "output-pill rounded-md border border-notion-border bg-notion-sidebar px-2 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";

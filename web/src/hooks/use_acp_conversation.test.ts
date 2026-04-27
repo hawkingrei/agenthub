@@ -15,6 +15,7 @@ import {
   restoreConversationScrollTop,
   hasReachedConversationTop,
   shouldShowConversationTopReachedHint,
+  shouldBottomAlignConversationLatest,
   shouldDefaultConversationStickToBottom,
   shouldLoadOlderFromMeta,
   shouldUseConversationVirtualization,
@@ -202,6 +203,44 @@ describe("default ACP conversation pinning", () => {
         DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
       )
     ).toBe(true);
+  });
+
+  it("only bottom-aligns when the rendered content is tall enough for the viewport", () => {
+    expect(
+      shouldBottomAlignConversationLatest(
+        true,
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        720,
+        960
+      )
+    ).toBe(false);
+    expect(
+      shouldBottomAlignConversationLatest(
+        true,
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        960,
+        960
+      )
+    ).toBe(true);
+  });
+
+  it("does not bottom-align when stick-to-bottom is off or viewport is unknown", () => {
+    expect(
+      shouldBottomAlignConversationLatest(
+        false,
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        1200,
+        960
+      )
+    ).toBe(false);
+    expect(
+      shouldBottomAlignConversationLatest(
+        true,
+        DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS,
+        1200,
+        0
+      )
+    ).toBe(false);
   });
 });
 

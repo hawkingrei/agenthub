@@ -176,7 +176,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                           navigateToPath(buildWorkspaceNodePath(attachedNodeId));
                         }}
                       >
-                        {`node=${attachedNodeId}`}
+                        {`Machine ${attachedNodeId}`}
                       </a>
                       <span
                         className={
@@ -189,7 +189,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
                       </span>
                     </span>
                   ) : (
-                    "node=-"
+                    "Machine unavailable"
                   )}
                 </span>
                 </SelectableListItem>

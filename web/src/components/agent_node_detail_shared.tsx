@@ -18,6 +18,14 @@ export const MACHINE_DETAIL_SECTION_CLASS =
   "rounded-xl border border-ui-border/80 bg-white/72 px-3 py-3";
 export const MACHINE_DETAIL_AGENT_ROW_CLASS =
   "rounded-lg border border-ui-border/70 bg-white/82 px-3 py-2";
+const MACHINE_DETAIL_METRIC_ITEM_CLASS =
+  "rounded-xl border border-ui-border/70 bg-white/85 px-2.5 py-2 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
+const MACHINE_DETAIL_METRIC_LABEL_CLASS =
+  "text-[10px] font-bold uppercase tracking-[0.08em] text-notion-text-muted/80";
+const MACHINE_DETAIL_METRIC_VALUE_CLASS =
+  "mt-1 text-[13px] font-semibold text-notion-text";
+const MACHINE_DETAIL_SECTION_HEADER_CLASS =
+  "flex flex-wrap items-start justify-between gap-3";
 
 export function resolveAvailableNodes(nodes: AgentNodeRecord[]): AgentNodeRecord[] {
   return nodes.length > 0
@@ -59,11 +67,44 @@ export function describeSelectedNode(node: AgentNodeRecord | null): string {
 }
 
 export function describeAgentAttachment(agent: AgentRecord): string {
-  const parts = [agent.status];
-  if (agent.worktree_mode) {
-    parts.push(agent.worktree_mode);
+  const worktreeModeLabel = formatWorktreeModeLabel(agent.worktree_mode);
+  if (!worktreeModeLabel) {
+    return "";
   }
-  return parts.join(" · ");
+  return `Worktree: ${worktreeModeLabel}`;
+}
+
+function formatAgentStatusLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  switch (normalized) {
+    case "running":
+    case "working":
+      return "Working";
+    case "idle":
+      return "Idle";
+    case "stopped":
+    case "exited":
+      return "Stopped";
+    default:
+      return normalized
+        ? normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+        : "Unknown";
+  }
+}
+
+function formatWorktreeModeLabel(
+  worktreeMode: AgentRecord["worktree_mode"] | null | undefined
+): string | null {
+  switch (worktreeMode) {
+    case "use_existing":
+      return "Existing workdir";
+    case "create_worktree":
+      return "Fresh worktree";
+    case "reuse_worktree":
+      return "Shared worktree";
+    default:
+      return null;
+  }
 }
 
 type NodeRuntimeSummary = {
@@ -223,6 +264,35 @@ export function AgentNodeDetailCard({
 }: AgentNodeDetailCardProps) {
   const connectCommand = buildNodeConnectCommandSpec({ node, bootstrap: nodeJoinBootstrap });
   const runtimeSummary = deriveNodeRuntimeSummary(node, agents);
+  const infoItems = React.useMemo(
+    () =>
+      node.is_main
+        ? [
+            { label: "Node ID", value: node.id },
+            { label: "Role", value: "Local control plane" },
+            { label: "TLS server name", value: "Uses target host" },
+            {
+              label: "Registry evidence",
+              value:
+                "Local node identity is implied by the current AgentHub process rather than remote bootstrap metadata.",
+            },
+          ]
+        : [
+            { label: "Node ID", value: node.id },
+            { label: "Role", value: "Remote execution node" },
+            { label: "TLS server name", value: node.tls_server_name ?? "Uses target host" },
+            { label: "Created", value: formatNodeTimestamp(node.created_at) },
+            { label: "Updated", value: formatNodeTimestamp(node.updated_at) },
+            { label: "Last seen", value: formatNodeTimestamp(node.last_seen_at) },
+            {
+              label: "Registry evidence",
+              value: node.last_seen_at
+                ? "The latest bootstrap credential issuance is persisted as a lightweight node last-seen signal."
+                : "No bootstrap-based last-seen signal is persisted for this node yet.",
+            },
+          ],
+    [node]
+  );
   const [copied, setCopied] = React.useState(false);
   const [copyError, setCopyError] = React.useState<string | null>(null);
   const resetCopiedTimeoutRef = React.useRef<number | null>(null);
@@ -285,85 +355,63 @@ export function AgentNodeDetailCard({
             {agents.length} attached agent{agents.length === 1 ? "" : "s"}
           </Badge>
         </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Runtime signal</div>
+            <div className={MACHINE_DETAIL_METRIC_VALUE_CLASS}>{runtimeSummary.label}</div>
+          </div>
+          <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Route target</div>
+            <div className={`${MACHINE_DETAIL_METRIC_VALUE_CLASS} break-all`}>
+              {node.is_main ? "local control plane" : (node.grpc_target ?? "encrypted gRPC")}
+            </div>
+          </div>
+          <div className={MACHINE_DETAIL_METRIC_ITEM_CLASS}>
+            <div className={MACHINE_DETAIL_METRIC_LABEL_CLASS}>Worktree root</div>
+            <div className={`${MACHINE_DETAIL_METRIC_VALUE_CLASS} break-all`}>
+              {node.default_worktree_root ?? "Explicit workdir required"}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-3 xl:grid-cols-2">
         <div className={MACHINE_DETAIL_SECTION_CLASS}>
-          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-            Info
-          </Text>
+          <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
+            <div>
+              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                Info
+              </Text>
+              <Text size="xs" c="dimmed" mt={4}>
+                Stable registry identity and lightweight runtime evidence for this node.
+              </Text>
+            </div>
+          </div>
           <KeyValueList className="mt-3 grid gap-2">
-            <KeyValueItem
-              label="Node ID"
-              value={node.id}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text break-all"
-            />
-            <KeyValueItem
-              label="Role"
-              value={node.is_main ? "Local control plane" : "Remote execution node"}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
-            <KeyValueItem
-              label="Runtime signal"
-              value={runtimeSummary.label}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
-            <KeyValueItem
-              label="Route target"
-              value={node.is_main ? "local control plane" : (node.grpc_target ?? "encrypted gRPC")}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text break-all"
-            />
-            <KeyValueItem
-              label="TLS server name"
-              value={node.tls_server_name ?? "Uses target host"}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text break-all"
-            />
-            <KeyValueItem
-              label="Default worktree root"
-              value={node.default_worktree_root ?? "Explicit workdir required"}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text break-all"
-            />
-            <KeyValueItem
-              label="Created"
-              value={formatNodeTimestamp(node.created_at)}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
-            <KeyValueItem
-              label="Updated"
-              value={formatNodeTimestamp(node.updated_at)}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
-            <KeyValueItem
-              label="Last seen"
-              value={formatNodeTimestamp(node.last_seen_at)}
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
-            <KeyValueItem
-              label="Registry evidence"
-              value={
-                node.last_seen_at
-                  ? "The latest bootstrap credential issuance is persisted as a lightweight node last-seen signal."
-                  : "No bootstrap-based last-seen signal is persisted for this node yet."
-              }
-              labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
-              valueClassName="text-xs text-ui-text"
-            />
+            {infoItems.map((item) => (
+              <KeyValueItem
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                labelClassName="text-[10px] uppercase tracking-[0.08em] text-ui-text-muted"
+                valueClassName="text-xs text-ui-text break-all"
+              />
+            ))}
           </KeyValueList>
         </div>
 
         <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone}`}>
-          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-            Connect
-          </Text>
+          <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
+            <div>
+              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                Connect
+              </Text>
+              <Text size="xs" c="dimmed" mt={4}>
+                Bootstrap this node from the control plane, or inspect the canonical connect
+                contract if you need to wire it into longer-lived infra.
+              </Text>
+            </div>
+          </div>
           <div className="mt-3">
             {node.is_main ? (
               <Text size="sm" c="dimmed">
@@ -446,20 +494,20 @@ export function AgentNodeDetailCard({
       </div>
 
       <div className={MACHINE_DETAIL_SECTION_CLASS}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-            Agents on this node ({agents.length})
-          </Text>
-          <div className="flex items-center gap-2">
-            <Text size="xs" c="dimmed">
+        <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
+          <div className="min-w-0 flex-1">
+            <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              Agents on this node ({agents.length})
+            </Text>
+            <Text size="xs" c="dimmed" mt={4}>
               Route new agents here or open an attached agent for deeper runtime inspection.
             </Text>
-            {onCreateAgent ? (
-              <ActionButton tone="secondary" size="sm" onClick={onCreateAgent}>
-                Create Agent
-              </ActionButton>
-            ) : null}
           </div>
+          {onCreateAgent ? (
+            <ActionButton tone="secondary" size="sm" onClick={onCreateAgent}>
+              Create Agent
+            </ActionButton>
+          ) : null}
         </div>
         {agents.length > 0 ? (
           <div className="mt-3 grid gap-2">
@@ -472,13 +520,15 @@ export function AgentNodeDetailCard({
                         {agent.name}
                       </Text>
                       <Badge tone="subtle" className="uppercase">
-                        {agent.status}
+                        {formatAgentStatusLabel(agent.status)}
                       </Badge>
                     </div>
-                    <Text size="xs" c="dimmed" mt={2}>
-                      {describeAgentAttachment(agent)}
-                    </Text>
-                    <Text size="xs" c="dimmed" mt={8}>
+                    {describeAgentAttachment(agent) ? (
+                      <Text size="xs" c="dimmed" mt={2}>
+                        {describeAgentAttachment(agent)}
+                      </Text>
+                    ) : null}
+                    <Text size="xs" c="dimmed" mt={6}>
                       {agent.workdir}
                     </Text>
                   </div>

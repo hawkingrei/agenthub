@@ -22,6 +22,13 @@ export type TaskMailboxRoutePlan = {
 };
 
 const MENTION_TAG_REGEX = /<at>\s*([A-Za-z0-9._:-]+)\s*<\/at>/gi;
+const MARKDOWN_CODE_FENCE_PATTERN = /^(```|~~~)/m;
+const MARKDOWN_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+/m;
+const MARKDOWN_BLOCKQUOTE_PATTERN = /^\s{0,3}>\s+/m;
+const MARKDOWN_LINK_PATTERN = /!?\[[^\]]+\]\(([^)]+)\)/;
+const MARKDOWN_TABLE_PATTERN = /^\|.+\|\s*$/m;
+const MARKDOWN_HORIZONTAL_RULE_PATTERN = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/m;
+const SHORT_CHAT_LIST_ITEM_PATTERN = /^\s*(?:[-*+]|\d+\.)\s+(.+)\s*$/;
 export type MentionDraftQuery = {
   start: number;
   end: number;
@@ -496,10 +503,84 @@ function renderMentionTokensIntoHtml(
   );
 }
 
+function renderCanonicalPlainTextWithMentions(
+  text: string,
+  displayNameByActorId?: Record<string, string>
+): string {
+  const tokenized = replaceCanonicalMentionsWithTokens(text);
+  const escaped = escapeTeamHtml(tokenized).replace(/\n/g, "<br/>");
+  return renderMentionTokensIntoHtml(escaped, displayNameByActorId);
+}
+
+function hasExplicitStructuredMarkdown(text: string): boolean {
+  return (
+    MARKDOWN_CODE_FENCE_PATTERN.test(text) ||
+    MARKDOWN_HEADING_PATTERN.test(text) ||
+    MARKDOWN_BLOCKQUOTE_PATTERN.test(text) ||
+    MARKDOWN_LINK_PATTERN.test(text) ||
+    MARKDOWN_TABLE_PATTERN.test(text) ||
+    MARKDOWN_HORIZONTAL_RULE_PATTERN.test(text)
+  );
+}
+
+function isShortListLikeChat(text: string): boolean {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length < 2) {
+    return false;
+  }
+  const items = lines.map((line) => line.match(SHORT_CHAT_LIST_ITEM_PATTERN)?.[1]?.trim() ?? null);
+  if (items.some((item) => item == null)) {
+    return false;
+  }
+  const lengths = items.map((item) => item!.length);
+  const averageLength = lengths.reduce((sum, length) => sum + length, 0) / lengths.length;
+  const maxLength = Math.max(...lengths);
+  return averageLength <= 12 && maxLength <= 24;
+}
+
+function normalizeShortChatParagraphBreaks(text: string): string {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
+  if (paragraphs.length < 2) {
+    return text;
+  }
+  if (paragraphs.some((paragraph) => paragraph.includes("\n"))) {
+    return text;
+  }
+  const lengths = paragraphs.map((paragraph) => paragraph.length);
+  const averageLength = lengths.reduce((sum, length) => sum + length, 0) / lengths.length;
+  const maxLength = Math.max(...lengths);
+  if (averageLength > 18 || maxLength > 40) {
+    return text;
+  }
+  return paragraphs.join("\n");
+}
+
+function shouldPreferPlainTextTeamChat(text: string): boolean {
+  if (!text.includes("\n")) {
+    return false;
+  }
+  if (hasExplicitStructuredMarkdown(text)) {
+    return false;
+  }
+  return normalizeShortChatParagraphBreaks(text) !== text || isShortListLikeChat(text);
+}
+
 export function renderMarkdownWithMentions(
   text: string,
   displayNameByActorId?: Record<string, string>
 ): string {
+  if (shouldPreferPlainTextTeamChat(text)) {
+    return renderCanonicalPlainTextWithMentions(
+      normalizeShortChatParagraphBreaks(text),
+      displayNameByActorId
+    );
+  }
   const tokenized = replaceCanonicalMentionsWithTokens(text);
   const rendered = renderTeamMarkdownCached(tokenized);
   return renderMentionTokensIntoHtml(rendered, displayNameByActorId);

@@ -210,7 +210,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       ...acpPanelProps,
       subtitle: null,
       headerContext: (
-        <>
+        <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-2xl border border-notion-border/80 bg-notion-sidebar/68 px-1.5 py-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <StatusBadge
             label={memberStatusLabel}
             tone={resolveTeamRunStatusTone(memberStatus)}
@@ -220,7 +220,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
           {attachedNodeId ? (
             <a
               href={buildWorkspaceNodePath(attachedNodeId)}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-ui-border bg-white px-2.5 py-1 text-[11px] font-medium text-notion-text-muted transition hover:border-black hover:text-notion-text"
+              className="inline-flex min-w-0 max-w-full items-center rounded-xl border border-transparent px-1.5 py-0.5 text-[11px] font-medium text-notion-text-muted transition hover:bg-white/70 hover:text-notion-text"
               title={`Open node detail for ${attachedNodeId}`}
               onClick={(event) => {
                 if (!shouldHandleInAppLinkClick(event)) {
@@ -230,16 +230,15 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
                 navigateToPath(buildWorkspaceNodePath(attachedNodeId));
               }}
             >
-              <span className="uppercase tracking-[0.08em] text-[10px]">Attached node</span>
-              <span className="truncate text-notion-text">{attachedNodeId}</span>
+              <span className="truncate">{`Machine ${attachedNodeId}`}</span>
             </a>
           ) : null}
           {infoStripSummary ? (
-            <div className="min-w-0">
+            <div className="min-w-0 max-w-full">
               <Badge
                 tone="outline"
                 shape="pill"
-                className="max-w-full truncate text-[11px] font-medium normal-case tracking-normal text-notion-text-muted"
+                className="max-w-full truncate border-transparent bg-transparent px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none"
                 title={infoStripSummary}
               >
                 {infoStripSummary}
@@ -248,9 +247,9 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
           ) : null}
           <OutputHeaderDetails
             items={developerTechnicalMetadata}
-            summaryClassName="inline-flex cursor-pointer list-none items-center rounded-full border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10"
+            summaryClassName="inline-flex cursor-pointer list-none items-center rounded-xl border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:bg-white/70 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10"
           />
-        </>
+        </div>
       ),
     }),
     [
@@ -275,14 +274,14 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       {shouldRenderPanel && (
         <div className="relative mt-1 flex min-h-0 flex-1 flex-col gap-0 sm:gap-1">
           {!hideMemberTitle && (
-            <div className="shrink-0 px-4 pt-1 sm:px-6">
+            <div className="shrink-0 px-4 pt-0.5 sm:px-6">
               <div className={OUTPUT_HEADER_TITLE_CLASS}>
                 <div className={OUTPUT_HEADER_TITLE_TEXT_CLASS}>
                   <div className={OUTPUT_HEADER_TITLE_MAIN_CLASS}>
                     <h2 className={OUTPUT_HEADER_TITLE_HEADING_CLASS}>{memberTitle}</h2>
                   </div>
                   {memberDescription ? (
-                    <p className="text-[13px] leading-relaxed text-notion-text-muted">
+                    <p className="mt-0.5 text-[12px] leading-5 text-notion-text-muted">
                       {memberDescription}
                     </p>
                   ) : null}

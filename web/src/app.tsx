@@ -254,6 +254,7 @@ export function App() {
     createAgentNodeBusy,
     updatingAgentNodeIds,
     deletingAgentNodeIds,
+    teamMemberAgentsById,
     agentNodeJoinBootstrap,
     agentNodeJoinBootstrapLoading,
     agentNodeJoinBootstrapError,
@@ -1012,6 +1013,7 @@ export function App() {
     ]
   );
   const routeWorkbenchProps = activeWorkspaceLens === "nodes" ? null : workbenchProps;
+  const showRouteOutputHeader = activeWorkspaceLens !== "nodes";
 
   const canManageNodes = canManageAgentNodes(auth);
   const rootWorkbenchNode = useMemo(
@@ -1023,6 +1025,7 @@ export function App() {
               nodes={agentNodes}
               agents={agents}
               teams={teams}
+              teamMemberAgentsById={teamMemberAgentsById}
               selectedNodeId={selectedWorkspaceNodeId}
               nodeJoinBootstrap={agentNodeJoinBootstrap}
               nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
@@ -1059,6 +1062,7 @@ export function App() {
       agentNodes,
       agents,
       teams,
+      teamMemberAgentsById,
       selectedWorkspaceNodeId,
       agentNodeJoinBootstrap,
       agentNodeJoinBootstrapLoading,
@@ -1308,6 +1312,7 @@ export function App() {
       onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
       agentsPanelProps={agentsPanelProps}
       outputHeaderProps={routeOutputHeaderProps}
+      showOutputHeader={showRouteOutputHeader}
       workbenchProps={routeWorkbenchProps}
       rootWorkbenchNode={rootWorkbenchNode}
       showCreateAgent={showCreateAgent}

@@ -195,6 +195,7 @@ function renderTeamSidebar(
       <MantineProvider>
         <TeamSidebar
           showTeamSelector={false}
+          isRoot={true}
           developerMode={true}
           busy={null}
           onRefreshTeams={() => {}}
@@ -593,10 +594,8 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");
     expect(container.textContent).toContain("collecting evidence");
-    expect(container.textContent).toContain("local");
-    expect(container.textContent).toContain("remote");
-    expect(container.textContent).toContain("node=main");
-    expect(container.textContent).toContain("node=node-east");
+    expect(container.textContent).toContain("Machine main");
+    expect(container.textContent).toContain("Machine node-east");
     expect(container.textContent).toContain("Working");
     expect(container.textContent).not.toContain("id leader-agent");
     expect(container.textContent).not.toContain("id worker-agent");
@@ -792,6 +791,59 @@ describe("team panels interactions", () => {
     expect(noTeamsCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("hides debug-style current work fallback strings in the team sidebar roster", () => {
+    const team = {
+      id: "team-1",
+      name: "Team One",
+      spec: {},
+      created_at: 1,
+      updated_at: 1,
+    };
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamSidebar
+            developerMode={false}
+            busy={null}
+            onRefreshTeams={vi.fn()}
+            onOpenCreateTeam={vi.fn()}
+            draftTeamName="alpha"
+            leaderMemberId="leader-agent"
+            configuredWorkerCount={1}
+            teams={[team]}
+            selectedTeam={team}
+            selectedTeamId={team.id}
+            teamMemberSummaryByTeamId={new Map()}
+            memberLiveStates={[
+              buildMemberLiveState({
+                member_id: "worker-agent",
+                role: "worker",
+                agent_name: "Worker Agent",
+                lifecycle_status: "idle",
+                lifecycle_tone: "inactive",
+                run_status: "idle",
+                step_status: "idle",
+                current_work: "run_status=idle",
+              }),
+            ]}
+            memberTargetNodeById={{ "worker-agent": "main" }}
+            focusedAgentMemberId=""
+            tab="agent_acp"
+            onSelectTeam={vi.fn()}
+            onSelectChannel={vi.fn()}
+            onSelectKanban={vi.fn()}
+            onSelectAgentTab={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Worker Agent");
+    expect(container.textContent).toContain("Idle");
+    expect(container.textContent).toContain("Machine main");
+    expect(container.textContent).not.toContain("run_status=idle");
+  });
+
   it("TeamSidebar exposes create and delete channel controls for non-default lanes", async () => {
     const onCreateChannel = vi.fn().mockResolvedValue(undefined);
     const onDeleteChannel = vi.fn().mockResolvedValue(undefined);
@@ -911,6 +963,7 @@ describe("team panels interactions", () => {
         <MantineProvider>
           <TeamSidebar
             showTeamSelector={false}
+            isRoot={true}
             developerMode={true}
             busy={null}
             onRefreshTeams={() => {}}
@@ -975,6 +1028,8 @@ describe("team panels interactions", () => {
     const teamOne = buildTeam({ id: "team-1", name: "Team One" });
     const teamTwo = buildTeam({ id: "team-2", name: "Team Two" });
     const onSelectTeam = vi.fn();
+    const onOpenMachines = vi.fn();
+    const onOpenCurrentMachine = vi.fn();
     const onOpenTeamMemberForge = vi.fn();
     const onStartTeamRuntime = vi.fn();
     const onStopTeamRuntime = vi.fn();
@@ -984,6 +1039,7 @@ describe("team panels interactions", () => {
         <MantineProvider>
           <TeamSidebar
             showTeamSelector={false}
+            isRoot={true}
             developerMode={true}
             busy={null}
             onRefreshTeams={() => {}}
@@ -1003,12 +1059,16 @@ describe("team panels interactions", () => {
             selectedTeamHasConfiguredMembers={true}
             teamMemberSummaryByTeamId={new Map()}
             memberLiveStates={[buildMemberLiveState()]}
-            focusedAgentMemberId=""
+            memberTargetNodeById={{ "leader-agent": "main" }}
+            focusedAgentMemberId="leader-agent"
+            currentMachineId="main"
             tab="conversation"
             onSelectTeam={onSelectTeam}
             onSelectChannel={() => {}}
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
+            onOpenMachines={onOpenMachines}
+            onOpenCurrentMachine={onOpenCurrentMachine}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
@@ -1022,6 +1082,12 @@ describe("team panels interactions", () => {
     expect(document.body.textContent).toContain("Team ID");
     clickElement(findInteractiveByText(document.body, "Team Two"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Machines") ?? false);
+    clickElement(findInteractiveByText(document.body, "Machines"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Current Machine (main)") ?? false);
+    clickElement(findInteractiveByText(document.body, "Current Machine (main)"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Add Agent") ?? false);
     clickElement(findInteractiveByText(document.body, "Add Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
@@ -1029,6 +1095,8 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(document.body, "Stop Team"));
 
     expect(onSelectTeam).toHaveBeenCalledWith("team-2");
+    expect(onOpenMachines).toHaveBeenCalledTimes(1);
+    expect(onOpenCurrentMachine).toHaveBeenCalledTimes(1);
     expect(onOpenTeamMemberForge).toHaveBeenCalledTimes(1);
     expect(onStopTeamRuntime).toHaveBeenCalledTimes(1);
     expect(onStartTeamRuntime).not.toHaveBeenCalled();
@@ -1254,7 +1322,7 @@ describe("team panels interactions", () => {
     expect(container.querySelector('[data-team-surface="workflow-tabs"]')).not.toBeNull();
     expect(container.textContent).toContain("Execution Runs");
     expect(container.textContent).toContain("Conversation");
-    expect(container.textContent).toContain("Agent ACP");
+    expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Debug");
     expect(
       Array.from(container.querySelectorAll('[data-team-surface="workflow-tabs"] button')).every(
@@ -1832,10 +1900,8 @@ describe("team panels interactions", () => {
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
     expect(container.querySelector(".teams-member-list")).not.toBeNull();
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
-    expect(container.textContent).toContain("node=main");
-    expect(container.textContent).toContain("node=node-east");
-    expect(container.textContent).toContain("local");
-    expect(container.textContent).toContain("remote");
+    expect(container.textContent).toContain("Machine main");
+    expect(container.textContent).toContain("Machine node-east");
     expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
 
     act(() => {
@@ -4922,11 +4988,11 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Researches and fixes optimizer issues.");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
-    expect(container.textContent).toContain("Attached node");
+    expect(container.textContent).toContain("Machine node-east");
     expect(container.textContent).toContain("node-east");
     expect(container.textContent).toContain("role");
     expect(container.textContent).toContain("worker");
-    expect(container.textContent).toContain("Agent ACP · Active thread has no events yet");
+    expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Details");
     expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
     expect(container.textContent).not.toContain("member");
@@ -4962,7 +5028,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).not.toContain("Worker agent");
     expect(container.textContent).toContain("gpt-5");
     expect(container.textContent).toContain("working");
-    expect(container.textContent).toContain("Agent ACP · Active thread has no events yet");
+    expect(container.textContent).toContain("Active thread has no events yet");
   });
 
   it("TeamMemberAcpPanel keeps the ACP body in a dedicated flex shell above the input dock", () => {
@@ -5410,7 +5476,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Thread");
     expect(container.textContent).toContain("Plan");
     expect(container.textContent).toContain("Runtime session fallback works.");
-    expect(container.textContent).not.toContain("ThreadAgent ACP · Active thread");
+    expect(container.textContent).not.toContain("ThreadThread");
   });
 
   it("TeamMemberAcpPanel sends prompt through ACP input dock", async () => {

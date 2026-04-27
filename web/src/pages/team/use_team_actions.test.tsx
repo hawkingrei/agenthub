@@ -12,6 +12,7 @@ import type {
 import { api } from "../../api";
 import { saveTeamMemberAcpRenderCache, clearTeamMemberAcpRenderCache } from "./team_member_acp_render_cache";
 import { useTeamActions } from "./use_team_actions";
+import { MEMBER_EVENT_PAGE_LIMIT } from "./state";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -500,6 +501,196 @@ describe("useTeamActions", () => {
     }
   });
 
+  it("does not repeat the same older ACP page on an immediate second replace refresh", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            message_id: "message-0",
+            chunk_index: 2,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 9,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "9",
+          ts: 121,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "Recovered complete reply.",
+            message_id: "message-0",
+            chunk_index: 0,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail chunk",
+            chunk: true,
+            message_id: "message-0",
+            chunk_index: 2,
+          }),
+        },
+      ]);
+    const setMemberEvents = vi.fn();
+    const setMemberEventsHasMore = vi.fn();
+    const memberEventsRef = { current: [] as AgentEvent[] };
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      memberEventsRef,
+      setMemberEvents,
+      setMemberEventsHasMore,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+
+      expect(listAgentEvents).toHaveBeenCalledTimes(2);
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "worker-agent",
+        MEMBER_EVENT_PAGE_LIMIT,
+        "runtime-session-1",
+        undefined
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        MEMBER_EVENT_PAGE_LIMIT,
+        "runtime-session-1",
+        11
+      );
+      expect(memberEventsRef.current.map((event) => event.event_id)).toEqual([9, 11]);
+
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+
+      expect(listAgentEvents).toHaveBeenCalledTimes(3);
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        3,
+        "token-1",
+        "worker-agent",
+        MEMBER_EVENT_PAGE_LIMIT,
+        "runtime-session-1",
+        undefined
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("coalesces concurrent prepend loads for the same before_id", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              resolve([
+                {
+                  event_id: 9,
+                  agent_id: "worker-agent",
+                  session_id: "runtime-session-1",
+                  seq: "9",
+                  ts: 121,
+                  stream: "acp",
+                  message: JSON.stringify({
+                    type: "agent_message",
+                    text: "Older recovered reply.",
+                  }),
+                },
+              ]);
+            }, 10);
+          })
+      );
+    const memberEventsRef = {
+      current: [
+        {
+          event_id: 11,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "11",
+          ts: 123,
+          stream: "acp" as const,
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "Visible reply.",
+          }),
+        },
+      ],
+    };
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+      memberEventsRef,
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      let firstPromise: Promise<void> | undefined;
+      let secondPromise: Promise<void> | undefined;
+      await act(async () => {
+        firstPromise = actions.loadMemberEvents("prepend");
+        secondPromise = actions.loadMemberEvents("prepend");
+        await Promise.all([firstPromise, secondPromise]);
+      });
+      expect(listAgentEvents).toHaveBeenCalledTimes(1);
+      expect(listAgentEvents).toHaveBeenCalledWith(
+        "token-1",
+        "worker-agent",
+        MEMBER_EVENT_PAGE_LIMIT,
+        "runtime-session-1",
+        11
+      );
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
   it("does not keep prefetching when complete visible messages already exist after omitting an incomplete leading chunk", async () => {
     const listAgentEvents = vi.spyOn(api, "listAgentEvents").mockResolvedValueOnce([
       {
@@ -553,7 +744,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("fetches only one extra page even for very long chunked messages without warm visible content", async () => {
+  it("stops after one extra page when very long chunked history is already exhausted", async () => {
     const listAgentEvents = vi
       .spyOn(api, "listAgentEvents")
       .mockResolvedValueOnce([
@@ -613,7 +804,7 @@ describe("useTeamActions", () => {
     }
   });
 
-  it("fetches only one extra page when the first ACP page is dominated by one chunked message", async () => {
+  it("stops after one extra page when a chunk-dominated first ACP page has no older history left", async () => {
     const firstPage = Array.from({ length: 12 }, (_, index) => ({
       event_id: 200 + index,
       agent_id: "worker-agent",
@@ -666,6 +857,104 @@ describe("useTeamActions", () => {
         200
       );
       expect(listAgentEvents).toHaveBeenCalledTimes(2);
+    } finally {
+      listAgentEvents.mockRestore();
+      cleanupHarness(root, container);
+    }
+  });
+
+  it("continues bounded ACP recovery across multiple older pages until renderable content appears", async () => {
+    const listAgentEvents = vi
+      .spyOn(api, "listAgentEvents")
+      .mockResolvedValueOnce([
+        {
+          event_id: 100,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "100",
+          ts: 100,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail-320",
+            chunk: true,
+            message_id: "message-3",
+            chunk_index: 320,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 90,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "90",
+          ts: 90,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "tail-200",
+            chunk: true,
+            message_id: "message-3",
+            chunk_index: 200,
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          event_id: 80,
+          agent_id: "worker-agent",
+          session_id: "runtime-session-1",
+          seq: "80",
+          ts: 80,
+          stream: "acp",
+          message: JSON.stringify({
+            type: "agent_message",
+            text: "Recovered visible reply.",
+          }),
+        },
+      ]);
+    const captures: TeamActions[] = [];
+    const onCapture = (actions: TeamActions) => {
+      captures.push(actions);
+    };
+    const options = createBaseOptions({
+      selectedMemberAgentId: "worker-agent",
+      selectedMemberSessionId: "runtime-session-1",
+    });
+
+    const { root, container } = await mountHarness(options, onCapture);
+    try {
+      const actions = captures[captures.length - 1];
+      expect(actions).toBeDefined();
+      await act(async () => {
+        await actions.loadMemberEvents("replace");
+      });
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        1,
+        "token-1",
+        "worker-agent",
+        60,
+        "runtime-session-1",
+        undefined
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        2,
+        "token-1",
+        "worker-agent",
+        180,
+        "runtime-session-1",
+        100
+      );
+      expect(listAgentEvents).toHaveBeenNthCalledWith(
+        3,
+        "token-1",
+        "worker-agent",
+        180,
+        "runtime-session-1",
+        90
+      );
+      expect(listAgentEvents).toHaveBeenCalledTimes(3);
     } finally {
       listAgentEvents.mockRestore();
       cleanupHarness(root, container);

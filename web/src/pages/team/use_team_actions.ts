@@ -26,8 +26,8 @@ import {
   parseOptionalJson,
 } from "./create_helpers";
 import {
+  resolveAdaptiveAcpHistoryPageCap,
   resolveAdaptiveAcpHistoryPageLimit,
-  hasOnlyIncompleteLeadingAcpMessage,
   resolveInitialAcpHistoryDecision,
 } from "./acp_history_prefetch";
 import { upsertAgentEventList, upsertEventList, upsertRun } from "./page_helpers";
@@ -231,6 +231,9 @@ export function useTeamActions(options: UseTeamActionsOptions) {
   const memberEventReplaceInFlightRef = useRef(
     new Map<string, Promise<void>>()
   );
+  const memberEventPrependInFlightRef = useRef(
+    new Map<string, Promise<void>>()
+  );
 
   const inboxQueryStateRef = useRef({
     activeRunIdForSelectedTeam,
@@ -424,6 +427,7 @@ export function useTeamActions(options: UseTeamActionsOptions) {
     async (mode: "replace" | "prepend" = "replace") => {
       const agentId = selectedMemberAgentId?.trim() ?? "";
       if (!agentId) {
+        memberEventsRef.current = [];
         setMemberEvents([]);
         setMemberEventsHasMore(false);
         return;
@@ -433,14 +437,30 @@ export function useTeamActions(options: UseTeamActionsOptions) {
         getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step) ??
         undefined;
       if (!sessionId) {
+        memberEventsRef.current = [];
         setMemberEvents([]);
         setMemberEventsHasMore(false);
         return;
       }
 
       const replaceRequestKey = `${agentId}:${sessionId}`;
+      const currentSessionEvents = memberEventsRef.current.filter(
+        (event) => (event.session_id ?? null) === sessionId
+      );
+      const beforeId =
+        mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
+      const prependRequestKey =
+        mode === "prepend"
+          ? `${agentId}:${sessionId}:${beforeId ?? "none"}`
+          : null;
       if (mode === "replace") {
         const inFlight = memberEventReplaceInFlightRef.current.get(replaceRequestKey);
+        if (inFlight) {
+          await inFlight;
+          return;
+        }
+      } else if (prependRequestKey) {
+        const inFlight = memberEventPrependInFlightRef.current.get(prependRequestKey);
         if (inFlight) {
           await inFlight;
           return;
@@ -450,11 +470,6 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       const runLoad = async () => {
         setMemberEventsLoading(true);
         try {
-          const currentSessionEvents = memberEventsRef.current.filter(
-            (event) => (event.session_id ?? null) === sessionId
-          );
-          const beforeId =
-            mode === "prepend" ? currentSessionEvents[0]?.event_id : undefined;
           let list = await teamApi.listAgentEvents(
             agentId,
             MEMBER_EVENT_PAGE_LIMIT,
@@ -475,12 +490,11 @@ export function useTeamActions(options: UseTeamActionsOptions) {
                 sessionId,
                 false
               ).renderableCount >= 1;
-            const maxInitialPrefetchPages = hasOnlyIncompleteLeadingAcpMessage(
+            const maxInitialPrefetchPages = resolveAdaptiveAcpHistoryPageCap(
               list,
-              sessionId
-            )
-              ? 2
-              : MAX_INITIAL_ACP_HISTORY_PAGES;
+              sessionId,
+              MAX_INITIAL_ACP_HISTORY_PAGES
+            );
             let pageCount = 1;
             while (
               !hasWarmVisibleCache &&
@@ -519,6 +533,13 @@ export function useTeamActions(options: UseTeamActionsOptions) {
             currentSessionEvents.length > 0 &&
             list.length > 0 &&
             currentSessionEvents[0]!.event_id < list[0]!.event_id;
+          const nextEvents = upsertAgentEventList(
+            memberEventsRef.current,
+            list,
+            mode,
+            sessionId
+          );
+          memberEventsRef.current = nextEvents;
           setMemberEvents((prev) =>
             upsertAgentEventList(prev, list, mode, sessionId)
           );
@@ -531,7 +552,18 @@ export function useTeamActions(options: UseTeamActionsOptions) {
       };
 
       if (mode !== "replace") {
-        await runLoad();
+        const prependPromise = runLoad().finally(() => {
+          if (prependRequestKey) {
+            memberEventPrependInFlightRef.current.delete(prependRequestKey);
+          }
+        });
+        if (prependRequestKey) {
+          memberEventPrependInFlightRef.current.set(
+            prependRequestKey,
+            prependPromise
+          );
+        }
+        await prependPromise;
         return;
       }
 

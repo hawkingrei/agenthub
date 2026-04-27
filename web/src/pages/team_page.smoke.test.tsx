@@ -1026,6 +1026,69 @@ describe("TeamPage smoke render", () => {
     }
   });
 
+  it("does not render upstream html error documents into the team error banner", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockRejectedValue(
+      new Error(
+        "<!doctype html><html><head><title>Cloudflare Tunnel error</title></head><body>Error 1033</body></html>"
+      )
+    );
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+    window.history.replaceState({}, "", "/workspace/teams/team-1?channel=review");
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?channel=review"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      expect(container.textContent).not.toContain("Cloudflare Tunnel error");
+      expect(container.textContent).not.toContain("<!doctype html>");
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+    } finally {
+      listTeamChannels.mockResolvedValue([]);
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("keeps the active channel when closing a non-default channel thread", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,

@@ -65,6 +65,7 @@ export type AgentsRootPageProps = {
   onAgentsSplitterPointerDown: React.PointerEventHandler<HTMLDivElement>;
   agentsPanelProps: AgentsPanelProps;
   outputHeaderProps: OutputHeaderProps;
+  showOutputHeader?: boolean;
   workbenchProps: AgentsWorkbenchProps | null;
   rootWorkbenchNode?: React.ReactNode;
   showCreateAgent: boolean;
@@ -102,6 +103,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   onAgentsSplitterPointerDown,
   agentsPanelProps,
   outputHeaderProps,
+  showOutputHeader = true,
   workbenchProps,
   rootWorkbenchNode = null,
   showCreateAgent,
@@ -218,6 +220,7 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
           onAgentsSplitterPointerDown={onAgentsSplitterPointerDown}
           agentsPanelProps={agentsPanelProps}
           outputHeaderProps={outputHeaderProps}
+          showOutputHeader={showOutputHeader}
           workbenchProps={workbenchProps}
           rootWorkbenchNode={rootWorkbenchNode}
         />

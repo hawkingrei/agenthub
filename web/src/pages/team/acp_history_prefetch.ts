@@ -277,3 +277,22 @@ export function resolveAdaptiveAcpHistoryPageLimit(
   }
   return baseLimit;
 }
+
+export function resolveAdaptiveAcpHistoryPageCap(
+  events: AgentEvent[],
+  sessionId: string | null | undefined,
+  basePages: number
+): number {
+  const leadingState = resolveLeadingAcpMessageChunkState(events, sessionId);
+  if (!leadingState.incomplete || leadingState.chunkIndex == null || !leadingState.messageId) {
+    return basePages;
+  }
+  const { sameMessageChunkCount } = countLeadingMessageChunkEvents(
+    events,
+    sessionId,
+    leadingState.messageId
+  );
+  const chunkEventsPerPage = Math.max(1, sameMessageChunkCount);
+  const requiredPages = 1 + Math.ceil((leadingState.chunkIndex + 1) / chunkEventsPerPage);
+  return Math.max(basePages, Math.min(32, requiredPages));
+}

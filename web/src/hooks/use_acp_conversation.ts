@@ -214,6 +214,28 @@ export function shouldDefaultConversationStickToBottom(
   return total >= Math.max(1, minItems);
 }
 
+export function shouldBottomAlignConversationLatest(
+  stickToBottom: boolean,
+  total: number,
+  estimatedTotalHeight: number,
+  viewportHeight: number,
+  minItems: number = DEFAULT_CONVERSATION_PIN_TO_BOTTOM_MIN_ITEMS
+): boolean {
+  if (!stickToBottom) {
+    return false;
+  }
+  if (!shouldDefaultConversationStickToBottom(total, minItems)) {
+    return false;
+  }
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(estimatedTotalHeight) || estimatedTotalHeight <= 0) {
+    return false;
+  }
+  return estimatedTotalHeight >= viewportHeight;
+}
+
 export { normalizeThreadAvgHeightEstimate as normalizeConversationAvgHeightEstimate };
 
 export { restoreThreadScrollTop as restoreConversationScrollTop };
@@ -1075,9 +1097,15 @@ export function useAcpConversation({
     conversationStickToBottom,
     conversationPendingCount
   );
-  const conversationShouldBottomAlignLatest =
-    conversationStickToBottom &&
-    shouldDefaultConversationStickToBottom(conversationSourceItems.length);
+  const estimatedConversationSourceHeight =
+    conversationHeightEstimateModel?.totalHeight ??
+    conversationSourceItems.length * Math.max(24, conversationAvgHeight);
+  const conversationShouldBottomAlignLatest = shouldBottomAlignConversationLatest(
+    conversationStickToBottom,
+    conversationSourceItems.length,
+    estimatedConversationSourceHeight,
+    conversationViewport.height
+  );
 
   return {
     acpConversationRef,

@@ -1,5 +1,11 @@
 import React from "react";
 import { Button, Stack, Text, TextInput } from "@mantine/core";
+import {
+  buildTeamDetailPath,
+  buildTeamWorkspacePath,
+  navigateToPath,
+  shouldHandleInAppLinkClick,
+} from "../app_route_selection";
 import { isAgentActiveStatus } from "../agent_ws";
 import type { AgentNodeUpdate, TeamDefinitionRecord } from "../api";
 import {
@@ -18,6 +24,21 @@ import { validateAgentNodeUpdateDraft } from "./agent_node_validation";
 const NODE_ROSTER_ITEM_CLASS =
   "w-full rounded-xl border-2 border-transparent bg-white/70 px-2.5 py-2.5 shadow-none hover:border-black hover:bg-white";
 const NODE_ROSTER_ITEM_ACTIVE_CLASS = "border-black bg-white";
+const NODE_TEAM_LINK_CLASS =
+  "text-notion-text underline decoration-transparent underline-offset-2 transition hover:decoration-current";
+const NODE_MEMBER_DRILLDOWN_CLASS =
+  "flex min-w-0 max-w-full items-center justify-between gap-2 rounded-2xl border border-ui-border/80 bg-white/92 px-2.5 py-1.5 text-[11px] font-medium text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+const NODE_MEMBER_ACTION_CLASS =
+  "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-notion-text-muted transition hover:bg-black/5 hover:text-notion-text";
+const NODE_TEAM_CARD_CLASS =
+  "rounded-2xl border border-ui-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,250,251,0.88))] px-3.5 py-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]";
+const NODE_TEAM_SUMMARY_CARD_CLASS =
+  "rounded-2xl border border-ui-border/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9))] px-4 py-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]";
+const NODE_TEAM_METRIC_ITEM_CLASS =
+  "rounded-xl border border-ui-border/70 bg-white/80 px-2.5 py-2 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
+const NODE_TEAM_METRIC_LABEL_CLASS =
+  "text-[10px] font-bold uppercase tracking-[0.08em] text-notion-text-muted/80";
+const NODE_TEAM_METRIC_VALUE_CLASS = "mt-1 text-[13px] font-semibold text-notion-text";
 
 type NodeTeamUsageSummary = {
   teamId: string;
@@ -72,9 +93,15 @@ function resolveAgentNodeMembership(agent: AgentRecord): string {
 function deriveNodeTeamUsageSummaries(
   teams: TeamDefinitionRecord[],
   agents: AgentRecord[],
+  fallbackAgentsById: Record<string, AgentRecord | null>,
   nodeId: string
 ): NodeTeamUsageSummary[] {
   const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+  for (const [memberId, agent] of Object.entries(fallbackAgentsById)) {
+    if (agent && !agentsById.has(memberId)) {
+      agentsById.set(memberId, agent);
+    }
+  }
   return teams
     .map((team) => {
       const matchedMembers = parseTeamSpecMembers(team.spec)
@@ -121,10 +148,30 @@ function deriveNodeTeamUsageSummaries(
     });
 }
 
+function handleInAppLinkClick(
+  event: React.MouseEvent<HTMLAnchorElement>,
+  pathname: string
+): void {
+  if (!shouldHandleInAppLinkClick(event)) {
+    return;
+  }
+  event.preventDefault();
+  navigateToPath(pathname);
+}
+
+function buildTeamMemberAcpPath(teamId: string, memberId: string): string {
+  return buildTeamWorkspacePath(teamId, "members", null, null, memberId, "agent_acp");
+}
+
+function buildTeamMemberConsolePath(teamId: string, memberId: string): string {
+  return buildTeamWorkspacePath(teamId, "members", null, null, memberId, "member_console");
+}
+
 type AgentNodesWorkbenchProps = {
   nodes: AgentNodeRecord[];
   agents: AgentRecord[];
   teams?: TeamDefinitionRecord[];
+  teamMemberAgentsById?: Record<string, AgentRecord | null>;
   selectedNodeId: string;
   nodeJoinBootstrap: AgentNodeJoinBootstrapInfo | null;
   nodeJoinBootstrapLoading: boolean;
@@ -142,6 +189,7 @@ export function AgentNodesWorkbench({
   nodes,
   agents,
   teams = [],
+  teamMemberAgentsById = {},
   selectedNodeId,
   nodeJoinBootstrap,
   nodeJoinBootstrapLoading,
@@ -168,10 +216,13 @@ export function AgentNodesWorkbench({
   const teamUsageByNodeId = React.useMemo(() => {
     const summaries = new Map<string, NodeTeamUsageSummary[]>();
     for (const node of availableNodes) {
-      summaries.set(node.id, deriveNodeTeamUsageSummaries(teams, agents, node.id));
+      summaries.set(
+        node.id,
+        deriveNodeTeamUsageSummaries(teams, agents, teamMemberAgentsById, node.id)
+      );
     }
     return summaries;
-  }, [agents, availableNodes, teams]);
+  }, [agents, availableNodes, teamMemberAgentsById, teams]);
   const effectiveSelectedNodeId =
     selectedNodeId.trim() ||
     availableNodes.find((node) => node.is_main)?.id ||
@@ -258,10 +309,14 @@ export function AgentNodesWorkbench({
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+          <div className="xl:sticky xl:top-4 xl:self-start">
           <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-3 shadow-sm">
             <Stack gap="xs">
               <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
                 Nodes
+              </Text>
+              <Text size="xs" c="dimmed">
+                Global machine roster
               </Text>
               {availableNodes.map((node) => {
                 const nodeAgents = agentsByNodeId.get(node.id) ?? [];
@@ -299,26 +354,191 @@ export function AgentNodesWorkbench({
               })}
             </Stack>
           </div>
+          </div>
 
-          <AgentNodeDetailCard
-            node={selectedNode}
-            agents={selectedNodeAgents}
-            nodeJoinBootstrap={nodeJoinBootstrap}
-            nodeJoinBootstrapLoading={nodeJoinBootstrapLoading}
-            nodeJoinBootstrapError={nodeJoinBootstrapError}
-            onOpenAgent={onOpenAgent}
-            onCreateAgent={onCreateAgent}
-          />
-          <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
+          <div className="min-w-0 space-y-4">
+            <AgentNodeDetailCard
+              node={selectedNode}
+              agents={selectedNodeAgents}
+              nodeJoinBootstrap={nodeJoinBootstrap}
+              nodeJoinBootstrapLoading={nodeJoinBootstrapLoading}
+              nodeJoinBootstrapError={nodeJoinBootstrapError}
+              onOpenAgent={onOpenAgent}
+              onCreateAgent={onCreateAgent}
+            />
+            {selectedNode.is_main ? (
+              <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
                 <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                  Teams Using This Node
+                  Danger Zone
                 </Text>
-                <Text size="sm" c="dimmed" mt={6}>
-                  Because nodes are global resources, this section shows which teams currently land
-                  members on the selected node rather than treating node usage as team-local state.
+                <Text size="sm" c="dimmed" mt={8}>
+                  The local control-plane node cannot be deleted or re-pointed from this surface.
                 </Text>
+              </div>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
+                  <Stack gap="sm">
+                    <div>
+                      <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                        Settings
+                      </Text>
+                      <Text size="sm" c="dimmed" mt={6}>
+                        Update routing and default worktree behavior for this node from the canonical
+                        detail page.
+                      </Text>
+                    </div>
+                    {(() => {
+                      const draft = editDrafts[selectedNode.id] ?? {
+                        name: selectedNode.name,
+                        grpcTarget: selectedNode.grpc_target ?? "",
+                        tlsServerName: selectedNode.tls_server_name ?? "",
+                        defaultWorktreeRoot: selectedNode.default_worktree_root ?? "",
+                      };
+                      const updateError = validateAgentNodeUpdateDraft({
+                        nodeName: draft.name,
+                        grpcTarget: draft.grpcTarget,
+                      });
+                      return (
+                        <>
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <TextInput
+                              label="Node name"
+                              value={draft.name}
+                              onChange={(event) =>
+                                setEditDrafts((prev) => ({
+                                  ...prev,
+                                  [selectedNode.id]: {
+                                    ...draft,
+                                    name: event.currentTarget.value,
+                                  },
+                                }))
+                              }
+                            />
+                            <TextInput
+                              label="gRPC target"
+                              value={draft.grpcTarget}
+                              onChange={(event) =>
+                                setEditDrafts((prev) => ({
+                                  ...prev,
+                                  [selectedNode.id]: {
+                                    ...draft,
+                                    grpcTarget: event.currentTarget.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <TextInput
+                              label="TLS server name"
+                              value={draft.tlsServerName}
+                              onChange={(event) =>
+                                setEditDrafts((prev) => ({
+                                  ...prev,
+                                  [selectedNode.id]: {
+                                    ...draft,
+                                    tlsServerName: event.currentTarget.value,
+                                  },
+                                }))
+                              }
+                            />
+                            <TextInput
+                              label="Default worktree root"
+                              placeholder="Optional"
+                              value={draft.defaultWorktreeRoot}
+                              onChange={(event) =>
+                                setEditDrafts((prev) => ({
+                                  ...prev,
+                                  [selectedNode.id]: {
+                                    ...draft,
+                                    defaultWorktreeRoot: event.currentTarget.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <Text size="xs" c={updateError ? "red" : "dimmed"}>
+                              {updateError ??
+                                "Leave Default worktree root blank to require explicit remote workdir."}
+                            </Text>
+                            <Button
+                              variant="light"
+                              size="xs"
+                              loading={Boolean(updatingNodeIds[selectedNode.id])}
+                              disabled={
+                                Boolean(updatingNodeIds[selectedNode.id]) || updateError !== null
+                              }
+                              onClick={() =>
+                                onUpdateNode?.(selectedNode.id, {
+                                  name: draft.name.trim(),
+                                  grpc_target: draft.grpcTarget.trim(),
+                                  tls_server_name: draft.tlsServerName.trim() || null,
+                                  default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
+                                })
+                              }
+                            >
+                              Save Settings
+                            </Button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </Stack>
+                </div>
+
+                <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
+                  <Stack gap="sm">
+                    <div>
+                      <Text size="xs" fw={700} c="red" className="uppercase tracking-[0.08em]">
+                        Danger Zone
+                      </Text>
+                      <Text size="sm" c="dimmed" mt={6}>
+                        Delete this node only after its attached agents have been removed or rerouted.
+                      </Text>
+                    </div>
+                    <Text size="xs" c={selectedNodeAgents.length > 0 ? "red" : "dimmed"}>
+                      {selectedNodeAgents.length > 0
+                        ? `This node still has ${selectedNodeAgents.length} attached agent${selectedNodeAgents.length === 1 ? "" : "s"}.`
+                        : "No attached agents remain on this node."}
+                    </Text>
+                    <Button
+                      color="red"
+                      variant="light"
+                      size="xs"
+                      loading={Boolean(deletingNodeIds[selectedNode.id])}
+                      disabled={
+                        Boolean(deletingNodeIds[selectedNode.id]) || selectedNodeAgents.length > 0
+                      }
+                      onClick={() => onDeleteNode?.(selectedNode.id)}
+                    >
+                      Delete Node
+                    </Button>
+                  </Stack>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
+          <div className={NODE_TEAM_SUMMARY_CARD_CLASS}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-ui-border/70 bg-white/85 text-notion-text-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <i className="bi bi-diagram-3 text-[13px]" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                      Teams Using This Node
+                    </Text>
+                    <Text size="sm" fw={600} mt={2}>
+                      Global team attachment map
+                    </Text>
+                  </div>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="outline">
@@ -330,216 +550,149 @@ export function AgentNodesWorkbench({
                 <Badge tone="subtle">
                   {selectedNodeActiveTeamAgentCount} active
                 </Badge>
-                <Badge tone="outline">{pluralize(selectedNodeLeaderCount, "leader")}</Badge>
-                <Badge tone="outline">{pluralize(selectedNodeWorkerCount, "worker")}</Badge>
               </div>
             </div>
-            {selectedNodeTeams.length > 0 ? (
-              <div className="mt-3 grid gap-2">
-                {selectedNodeTeams.map((team) => (
-                  <div
-                    key={team.teamId}
-                    className="rounded-lg border border-ui-border/70 bg-white/85 px-3 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Text size="sm" fw={600}>
+            <Text size="sm" c="dimmed" mt={10}>
+              Because nodes are global resources, this section shows which teams currently land
+              members on the selected node rather than treating node usage as team-local state.
+            </Text>
+            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+              <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Teams</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeams.length}</div>
+              </div>
+              <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeamMemberCount}</div>
+              </div>
+              <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Leaders</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeLeaderCount}</div>
+              </div>
+              <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Workers</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeWorkerCount}</div>
+              </div>
+            </div>
+          </div>
+          {selectedNodeTeams.length > 0 ? (
+            <div className="mt-3 grid gap-3">
+              {selectedNodeTeams.map((team) => (
+                <div key={team.teamId} className={NODE_TEAM_CARD_CLASS}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href={buildTeamDetailPath(team.teamId)}
+                          className={NODE_TEAM_LINK_CLASS}
+                          title={`Open team detail for ${team.teamName}`}
+                          onClick={(event) =>
+                            handleInAppLinkClick(event, buildTeamDetailPath(team.teamId))
+                          }
+                        >
+                          <Text size="sm" fw={700} span inherit>
                             {team.teamName}
                           </Text>
-                          <Badge tone="outline">
-                            {pluralize(team.matchedMembers.length, "member")}
-                          </Badge>
-                          <Badge tone="subtle">{team.activeAgentCount} active</Badge>
-                          <Badge tone="outline">
-                            {pluralize(
-                              team.matchedMembers.filter((member) => member.role === "leader").length,
-                              "leader"
-                            )}
-                          </Badge>
-                          <Badge tone="outline">
-                            {pluralize(
-                              team.matchedMembers.filter((member) => member.role === "worker").length,
-                              "worker"
-                            )}
-                          </Badge>
+                        </a>
+                        <Badge tone="outline">
+                          {pluralize(team.matchedMembers.length, "member")}
+                        </Badge>
+                        <Badge tone="subtle">{team.activeAgentCount} active</Badge>
+                      </div>
+                      <Text size="xs" c="dimmed" mt={4}>
+                        <a
+                          href={buildTeamDetailPath(team.teamId)}
+                          className={NODE_TEAM_LINK_CLASS}
+                          title={`Open team detail for ${team.teamId}`}
+                          onClick={(event) =>
+                            handleInAppLinkClick(event, buildTeamDetailPath(team.teamId))
+                          }
+                        >
+                          {`team_id=${team.teamId}`}
+                        </a>
+                      </Text>
+                    </div>
+                    <div className="grid min-w-[190px] flex-1 gap-2 sm:max-w-[280px] sm:grid-cols-3">
+                      <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
+                        <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                          {team.matchedMembers.length}
                         </div>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          team_id={team.teamId}
-                        </Text>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {team.matchedMembers.map((member) => (
-                            <Badge key={member.memberId} tone="outline">
-                              {member.label}
-                              {member.role ? ` · ${member.role}` : ""}
-                            </Badge>
-                          ))}
+                      </div>
+                      <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Leaders</div>
+                        <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                          {team.matchedMembers.filter((member) => member.role === "leader").length}
+                        </div>
+                      </div>
+                      <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Workers</div>
+                        <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                          {team.matchedMembers.filter((member) => member.role === "worker").length}
                         </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                title="No team attachments yet"
-                body="No current team members resolve to this node from the global team catalog."
-                className="mt-3 border border-dashed border-ui-border bg-white/80 px-3 py-4"
-              />
-            )}
-          </div>
-          {selectedNode.is_main ? (
-            <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
-              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                Danger Zone
-              </Text>
-              <Text size="sm" c="dimmed" mt={8}>
-                The local control-plane node cannot be deleted or re-pointed from this surface.
-              </Text>
+                  <div className="mt-3 border-t border-ui-border/60 pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                        Member Runtime Drill-down
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Jump straight into the thread or console without re-finding the member inside the
+                        team shell.
+                      </Text>
+                    </div>
+                    <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                      {team.matchedMembers.map((member) => {
+                        const acpPath = buildTeamMemberAcpPath(team.teamId, member.memberId);
+                        const consolePath = buildTeamMemberConsolePath(
+                          team.teamId,
+                          member.memberId
+                        );
+                        return (
+                          <div key={member.memberId} className={NODE_MEMBER_DRILLDOWN_CLASS}>
+                            <a
+                              href={acpPath}
+                              className="min-w-0 flex-1 truncate text-notion-text no-underline"
+                              title={`Open thread for ${member.label}`}
+                              onClick={(event) => handleInAppLinkClick(event, acpPath)}
+                            >
+                              {member.label}
+                              {member.role ? ` · ${member.role}` : ""}
+                            </a>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <a
+                                href={acpPath}
+                                className={NODE_MEMBER_ACTION_CLASS}
+                                title={`Open member thread for ${member.label}`}
+                                onClick={(event) => handleInAppLinkClick(event, acpPath)}
+                              >
+                                Thread
+                              </a>
+                              <a
+                                href={consolePath}
+                                className={NODE_MEMBER_ACTION_CLASS}
+                                title={`Open member console for ${member.label}`}
+                                onClick={(event) => handleInAppLinkClick(event, consolePath)}
+                              >
+                                Console
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
-                <Stack gap="sm">
-                  <div>
-                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                      Settings
-                    </Text>
-                    <Text size="sm" c="dimmed" mt={6}>
-                      Update routing and default worktree behavior for this node from the canonical
-                      detail page.
-                    </Text>
-                  </div>
-                  {(() => {
-                    const draft = editDrafts[selectedNode.id] ?? {
-                      name: selectedNode.name,
-                      grpcTarget: selectedNode.grpc_target ?? "",
-                      tlsServerName: selectedNode.tls_server_name ?? "",
-                      defaultWorktreeRoot: selectedNode.default_worktree_root ?? "",
-                    };
-                    const updateError = validateAgentNodeUpdateDraft({
-                      nodeName: draft.name,
-                      grpcTarget: draft.grpcTarget,
-                    });
-                    return (
-                      <>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                          <TextInput
-                            label="Node name"
-                            value={draft.name}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  name: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                          <TextInput
-                            label="gRPC target"
-                            value={draft.grpcTarget}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  grpcTarget: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                          <TextInput
-                            label="TLS server name"
-                            value={draft.tlsServerName}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  tlsServerName: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                          <TextInput
-                            label="Default worktree root"
-                            placeholder="Optional"
-                            value={draft.defaultWorktreeRoot}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  defaultWorktreeRoot: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <Text size="xs" c={updateError ? "red" : "dimmed"}>
-                            {updateError ??
-                              "Leave Default worktree root blank to require explicit remote workdir."}
-                          </Text>
-                          <Button
-                            variant="light"
-                            size="xs"
-                            loading={Boolean(updatingNodeIds[selectedNode.id])}
-                            disabled={
-                              Boolean(updatingNodeIds[selectedNode.id]) || updateError !== null
-                            }
-                            onClick={() =>
-                              onUpdateNode?.(selectedNode.id, {
-                                name: draft.name.trim(),
-                                grpc_target: draft.grpcTarget.trim(),
-                                tls_server_name: draft.tlsServerName.trim() || null,
-                                default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
-                              })
-                            }
-                          >
-                            Save Settings
-                          </Button>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </Stack>
-              </div>
-
-              <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
-                <Stack gap="sm">
-                  <div>
-                    <Text size="xs" fw={700} c="red" className="uppercase tracking-[0.08em]">
-                      Danger Zone
-                    </Text>
-                    <Text size="sm" c="dimmed" mt={6}>
-                      Delete this node only after its attached agents have been removed or rerouted.
-                    </Text>
-                  </div>
-                  <Text size="xs" c={selectedNodeAgents.length > 0 ? "red" : "dimmed"}>
-                    {selectedNodeAgents.length > 0
-                      ? `This node still has ${selectedNodeAgents.length} attached agent${selectedNodeAgents.length === 1 ? "" : "s"}.`
-                      : "No attached agents remain on this node."}
-                  </Text>
-                  <Button
-                    color="red"
-                    variant="light"
-                    size="xs"
-                    loading={Boolean(deletingNodeIds[selectedNode.id])}
-                    disabled={
-                      Boolean(deletingNodeIds[selectedNode.id]) || selectedNodeAgents.length > 0
-                    }
-                    onClick={() => onDeleteNode?.(selectedNode.id)}
-                  >
-                    Delete Node
-                  </Button>
-                </Stack>
-              </div>
-            </div>
+            <EmptyState
+              title="No team attachments yet"
+              body="No current team members resolve to this node from the global team catalog."
+              className="mt-3 border border-dashed border-ui-border bg-white/80 px-3 py-4"
+            />
           )}
         </div>
       </div>
