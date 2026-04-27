@@ -4613,7 +4613,9 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use agent_client_protocol_legacy::{RequestPermissionResponse, SessionConfigKind, TextContent};
+    use agent_client_protocol_legacy::{
+        RequestPermissionResponse, SessionConfigKind, SessionConfigSelectOptions, TextContent,
+    };
     use agenthub_managed_skills::{
         ManagedSkillKind, install_managed_skills, managed_skill_doc_path, managed_skills_root,
     };
@@ -5310,6 +5312,51 @@ mod tests {
                 }),
             })
             .await;
+        let notifications = client.notifications.lock().unwrap();
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Config warning: invalid profile"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
+            )
+        }));
+        assert!(actor.submissions.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_detached_submission_notifications_are_rendered() -> anyhow::Result<()> {
+        let session_id = SessionId::new("test");
+        let client = Arc::new(StubClient::new());
+        let session_client = SessionClient::with_client(session_id, client.clone(), Arc::default());
+        let thread = Arc::new(StubCodexThread::new());
+        let models_manager = Arc::new(StubModelsManager);
+        let config = test_config().await?;
+        let (_message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (resolution_tx, resolution_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut actor = ThreadActor::new(
+            StubAuth,
+            session_client,
+            thread,
+            models_manager,
+            config,
+            message_rx,
+            resolution_tx,
+            resolution_rx,
+        );
+
         actor
             .handle_event(Event {
                 id: "app-server".to_string(),
@@ -5339,25 +5386,9 @@ mod tests {
             })
             .await;
 
+        assert!(actor.submissions.contains_key("app-server"));
+
         let notifications = client.notifications.lock().unwrap();
-        assert!(notifications.iter().any(|notification| {
-            matches!(
-                &notification.update,
-                SessionUpdate::AgentMessageChunk(ContentChunk {
-                    content: ContentBlock::Text(TextContent { text, .. }),
-                    ..
-                }) if text == "Config warning: invalid profile"
-            )
-        }));
-        assert!(notifications.iter().any(|notification| {
-            matches!(
-                &notification.update,
-                SessionUpdate::AgentMessageChunk(ContentChunk {
-                    content: ContentBlock::Text(TextContent { text, .. }),
-                    ..
-                }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
-            )
-        }));
         assert!(notifications.iter().any(|notification| {
             matches!(
                 &notification.update,
@@ -5621,7 +5652,7 @@ mod tests {
     #[async_trait::async_trait]
     impl ModelsManagerImpl for StubModelsManager {
         async fn get_model(&self, _model_id: &Option<String>) -> String {
-            all_model_presets()[0].to_owned().id
+            all_model_presets()[0].to_owned().model
         }
 
         async fn list_models(&self) -> Vec<ModelPreset> {
@@ -7339,17 +7370,18 @@ mod tests {
             panic!("expected model option to be a select");
         };
         let presets = all_model_presets();
-        let expected_preset_id = presets
-            .first()
-            .expect("at least one model preset")
-            .id
-            .as_str();
-        assert_eq!(model_select.current_value.0.as_ref(), expected_preset_id);
+        let expected_preset = presets.first().expect("at least one model preset");
+        assert_eq!(
+            model_select.current_value.0.as_ref(),
+            expected_preset.model.as_str()
+        );
+        let SessionConfigSelectOptions::Ungrouped(options) = &model_select.options else {
+            panic!("expected model options to be ungrouped");
+        };
         assert!(
-            model_select
-                .options
+            options
                 .iter()
-                .any(|option| option.value.0.as_ref() == expected_preset_id)
+                .any(|option| option.value.0.as_ref() == expected_preset.id.as_str())
         );
 
         Ok(())
