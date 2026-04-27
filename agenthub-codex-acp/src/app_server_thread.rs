@@ -2783,6 +2783,7 @@ fn server_request_id_to_mcp_request_id(request_id: &RequestId) -> McpRequestId {
 mod tests {
     use super::*;
     use codex_core::config::ConfigBuilder;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use std::fs;
     use uuid::Uuid;
 
@@ -3080,7 +3081,9 @@ mod tests {
                 cwd: cwd.clone(),
                 reason: Some("need write access".to_string()),
                 permissions: codex_app_server_protocol::RequestPermissionProfile {
-                    network: Some(codex_app_server_protocol::AdditionalNetworkPermissions::Enabled),
+                    network: Some(codex_app_server_protocol::AdditionalNetworkPermissions {
+                        enabled: Some(true),
+                    }),
                     file_system: None,
                 },
             },
@@ -3092,7 +3095,9 @@ mod tests {
         assert_eq!(event.reason.as_deref(), Some("need write access"));
         assert_eq!(
             event.permissions.network,
-            Some(codex_protocol::config_types::NetworkPermissions::Enabled)
+            Some(codex_protocol::models::NetworkPermissions {
+                enabled: Some(true),
+            })
         );
     }
 
