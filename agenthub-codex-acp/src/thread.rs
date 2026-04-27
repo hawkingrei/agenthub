@@ -7350,7 +7350,7 @@ mod tests {
 
         let mode_option = config_options
             .iter()
-            .find(|option| option.id.0 == "mode")
+            .find(|option| option.id.0.as_ref() == "mode")
             .expect("mode config option");
         assert_eq!(
             mode_option.category,
@@ -7359,7 +7359,7 @@ mod tests {
 
         let model_option = config_options
             .iter()
-            .find(|option| option.id.0 == "model")
+            .find(|option| option.id.0.as_ref() == "model")
             .expect("model config option");
         assert_eq!(
             model_option.category,
