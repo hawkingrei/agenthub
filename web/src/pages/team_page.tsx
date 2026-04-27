@@ -110,6 +110,7 @@ import {
   resolveSelectedAgentWorkspaceMemberId,
   resolveTaskConversationMemberIds,
   resolveTeamMemberAgentControlState,
+  shouldClearSelectedConversationTask,
   shouldClearSelectedTeamMember,
   toPrettyJson,
   upsertRun,
@@ -1178,6 +1179,32 @@ export function TeamPage(props: TeamPageProps) {
     selectedChannelRecord,
     teamChannelsLoadedSuccessfully,
     teamChannelsSettled,
+  ]);
+  useEffect(() => {
+    if (!effectiveSelectedTeamId || !routeSelectedTaskId) {
+      return;
+    }
+    const shouldClearRouteTask = shouldClearSelectedConversationTask({
+      selectedConversationTaskId: routeSelectedTaskId,
+      sharedConversationTaskId: sharedConversation?.id ?? null,
+      taskList,
+      selectedConversationDetailPresent: Boolean(selectedConversationDetail),
+      tasksLoading,
+    });
+    if (!shouldClearRouteTask) {
+      return;
+    }
+    navigateTeamRoute(
+      buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
+    );
+  }, [
+    effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
+    selectedConversationDetail,
+    sharedConversation?.id,
+    taskList,
+    tasksLoading,
   ]);
   useEffect(() => {
     const memberId = routeSelectedMemberId.trim();
