@@ -24,7 +24,7 @@ use codex_app_server_protocol::{
 use codex_arg0::Arg0DispatchPaths;
 use codex_core::config::Config;
 use codex_core::config_loader::{CloudRequirementsLoader, LoaderOverrides};
-use codex_exec_server::EnvironmentManager;
+use codex_exec_server::{EnvironmentManager, EnvironmentManagerArgs, ExecServerRuntimePaths};
 use codex_feedback::CodexFeedback;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::{
@@ -266,6 +266,7 @@ impl AppServerCodexThread {
                 items,
                 final_output_json_schema,
                 responsesapi_client_metadata,
+                ..
             } => (
                 items.clone(),
                 final_output_json_schema.clone(),
@@ -483,6 +484,7 @@ impl AppServerCodexThread {
                                 last_agent_message: None,
                                 completed_at: None,
                                 duration_ms: None,
+                                time_to_first_token_ms: None,
                             }),
                         });
                         Ok(())
@@ -711,6 +713,7 @@ impl AppServerCodexThread {
                 PermissionGrantScope::Turn => AppPermissionGrantScope::Turn,
                 PermissionGrantScope::Session => AppPermissionGrantScope::Session,
             },
+            strict_auto_review: Some(response.strict_auto_review),
         })
         .map_err(|err| CodexErr::Fatal(err.to_string()))?;
 
@@ -921,6 +924,7 @@ impl AppServerCodexThread {
                             network: params.permissions.network.map(Into::into),
                             file_system: params.permissions.file_system.map(Into::into),
                         },
+                        cwd: None,
                     }),
                 }))
             }
@@ -1016,6 +1020,9 @@ impl AppServerCodexThread {
                     }),
                 }))
             }
+            ServerNotification::FileChangePatchUpdated(_)
+            | ServerNotification::ModelVerification(_)
+            | ServerNotification::GuardianWarning(_) => Ok(None),
             ServerNotification::TurnStarted(payload) => {
                 let (submission_id, interrupt_request) = {
                     let mut state = self.state.lock().await;
@@ -1263,6 +1270,7 @@ impl AppServerCodexThread {
                             turn_id: payload.turn_id,
                             tool,
                             arguments,
+                            namespace: None,
                         }),
                     }),
                     (
@@ -1501,6 +1509,7 @@ impl AppServerCodexThread {
                                 turn_id: payload.turn_id,
                                 tool,
                                 arguments,
+                                namespace: None,
                                 content_items: content_items
                                     .unwrap_or_default()
                                     .into_iter()
@@ -1724,6 +1733,7 @@ impl CodexThreadImpl for AppServerCodexThread {
                 personality,
                 windows_sandbox_level: _,
                 service_tier,
+                permission_profile: _,
             } => {
                 self.override_turn_context(OverrideTurnContextArgs {
                     cwd,
@@ -2078,6 +2088,7 @@ fn prepare_submission_start(
             items,
             final_output_json_schema,
             responsesapi_client_metadata,
+            ..
         } => {
             state.active_turn = Some(ActiveTurn {
                 submission_id: submission_id.to_string(),
@@ -2104,6 +2115,8 @@ fn prepare_submission_start(
                     output_schema: final_output_json_schema.clone(),
                     responsesapi_client_metadata: responsesapi_client_metadata.clone(),
                     collaboration_mode: None,
+                    environments: None,
+                    permission_profile: None,
                 }),
             })
         }
@@ -2509,6 +2522,7 @@ fn turn_completed_event_msg(turn: &Turn, last_agent_message: Option<String>) -> 
             last_agent_message,
             completed_at: turn.completed_at,
             duration_ms: turn.duration_ms,
+            time_to_first_token_ms: None,
         }),
         TurnStatus::Interrupted => EventMsg::TurnAborted(TurnAbortedEvent {
             turn_id: Some(turn.id.clone()),
@@ -2585,6 +2599,11 @@ fn app_server_web_search_action_to_core(
 }
 
 async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error> {
+    let runtime_paths = ExecServerRuntimePaths::from_optional_paths(
+        std::env::current_exe().ok(),
+        config.codex_linux_sandbox_exe.clone(),
+    )
+    .map_err(|err| Error::internal_error().data(err.to_string()))?;
     InProcessAppServerClient::start(InProcessClientStartArgs {
         arg0_paths: Arg0DispatchPaths::default(),
         config: Arc::new(config.clone()),
@@ -2593,7 +2612,9 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
-        environment_manager: Arc::new(EnvironmentManager::from_env()),
+        environment_manager: Arc::new(EnvironmentManager::new(EnvironmentManagerArgs::from_env(
+            runtime_paths,
+        ))),
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
         enable_codex_api_key_env: false,
