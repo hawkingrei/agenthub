@@ -43,7 +43,7 @@ const TeamSelectorEntry = React.memo(function TeamSelectorEntry({
     <SelectableListItem
       type="button"
       layout="row"
-      className="flex w-full min-w-0 items-start justify-between gap-3 rounded-md bg-transparent px-2 py-1.5 text-left transition hover:bg-[rgba(55,53,47,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      className="w-full min-w-0 items-start justify-between gap-3 text-left"
       data-team-selector-entry="true"
       data-team-id={team.id}
       data-team-name={team.name}

@@ -139,7 +139,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                 {resolveThreadAvatarLabel(rootAuthorLabel)}
               </div>
               <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
-                <ToolbarRow className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
+                <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
                   <span className="font-semibold text-notion-text">
                     {rootAuthorLabel ?? "Unknown"}
                   </span>
@@ -152,7 +152,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                   >
                     Original
                   </Badge>
-                </ToolbarRow>
+                </div>
                 <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
                   {rootText ? (
                     <TeamThreadRichText
@@ -182,13 +182,13 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                       {resolveThreadAvatarLabel(reply.authorLabel)}
                     </div>
                     <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
-                      <ToolbarRow className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
+                      <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
                         <span className="font-semibold text-notion-text">
                           {reply.authorLabel ?? "Unknown"}
                         </span>
                         <span>{formatTs(reply.createdAt)}</span>
                         <span>{`#${reply.messageId}`}</span>
-                      </ToolbarRow>
+                      </div>
                       <ConversationBubble className={TEAM_THREAD_MESSAGE_BUBBLE_CLASS}>
                         <TeamThreadRichText
                           className="text-[13px] leading-6 text-notion-text"
