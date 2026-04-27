@@ -4619,6 +4619,7 @@ mod tests {
     };
     use codex_core::test_support::all_model_presets;
     use codex_protocol::config_types::ModeKind;
+    use codex_protocol::protocol::ModelVerificationEvent;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use tokio::{
         sync::{Mutex, Notify, mpsc::UnboundedSender},
