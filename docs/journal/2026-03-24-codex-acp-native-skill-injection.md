@@ -91,7 +91,7 @@ This path now has a tighter automated verification chain:
 
 - `cargo test -p agenthub-managed-skills -- --nocapture`
   - confirms the managed skill documents are materialized under the canonical
-    `.agents/skills/agenthub-runtime/.../SKILL.md` namespace
+    `~/.agents/skills/agenthub-runtime/.../SKILL.md` namespace
 - `cargo test -p agenthub-acp prompt_prefix_blocks_keep_managed_skill_file_static_and_runtime_context_dynamic -- --nocapture`
   - confirms ACP prompt prefix assembly keeps the managed actor runtime skill as
     a stable absolute-path `<skill>` wrapper and appends the dynamic runtime

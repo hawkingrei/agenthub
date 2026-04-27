@@ -7338,12 +7338,18 @@ mod tests {
         let SessionConfigKind::Select(model_select) = &model_option.kind else {
             panic!("expected model option to be a select");
         };
-        assert_eq!(model_select.current_value.0, all_model_presets()[0].id);
+        let presets = all_model_presets();
+        let expected_preset_id = presets
+            .first()
+            .expect("at least one model preset")
+            .id
+            .as_str();
+        assert_eq!(model_select.current_value.0, expected_preset_id);
         assert!(
             model_select
                 .options
                 .iter()
-                .any(|option| option.value.0 == all_model_presets()[0].id)
+                .any(|option| option.value.0 == expected_preset_id)
         );
 
         Ok(())
