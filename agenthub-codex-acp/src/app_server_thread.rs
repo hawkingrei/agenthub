@@ -1021,16 +1021,24 @@ impl AppServerCodexThread {
                 }))
             }
             ServerNotification::ModelVerification(payload) => {
-                let submission_id = active_submission_id_for_turn(self, &payload.turn_id).await;
-                Ok(submission_id.map(|id| Event {
-                    id,
+                let submission_id = active_submission_id_for_turn(self, &payload.turn_id)
+                    .await
+                    .unwrap_or_else(noop_submission_id);
+                Ok(Some(Event {
+                    id: submission_id,
                     msg: EventMsg::ModelVerification(model_verification_to_core(payload)),
                 }))
             }
-            ServerNotification::GuardianWarning(payload) => Ok(Some(Event {
-                id: payload.thread_id.clone(),
-                msg: EventMsg::GuardianWarning(guardian_warning_to_core(payload)),
-            })),
+            ServerNotification::GuardianWarning(payload) => {
+                let submission_id = {
+                    let state = self.state.lock().await;
+                    active_submission_id(&state).unwrap_or_else(noop_submission_id)
+                };
+                Ok(Some(Event {
+                    id: submission_id,
+                    msg: EventMsg::GuardianWarning(guardian_warning_to_core(payload)),
+                }))
+            }
             ServerNotification::TurnStarted(payload) => {
                 let (submission_id, interrupt_request) = {
                     let mut state = self.state.lock().await;

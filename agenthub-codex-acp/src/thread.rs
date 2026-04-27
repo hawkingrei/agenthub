@@ -4009,6 +4009,8 @@ fn should_attach_detached_submission(msg: &EventMsg) -> bool {
             | EventMsg::RequestPermissions(..)
             | EventMsg::RequestUserInput(..)
             | EventMsg::ModelReroute(..)
+            | EventMsg::GuardianWarning(..)
+            | EventMsg::ModelVerification(..)
             | EventMsg::ContextCompacted(..)
     )
 }
@@ -4025,6 +4027,16 @@ async fn forward_global_visible_event(client: &SessionClient, msg: EventMsg) -> 
                     &summary,
                     details.as_deref(),
                 ))
+                .await;
+            true
+        }
+        EventMsg::GuardianWarning(WarningEvent { message }) => {
+            client.send_agent_text(message).await;
+            true
+        }
+        EventMsg::ModelVerification(event) => {
+            client
+                .send_agent_text(render_model_verification_message(&event.verifications))
                 .await;
             true
         }
@@ -5297,6 +5309,24 @@ mod tests {
                 }),
             })
             .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::GuardianWarning(WarningEvent {
+                    message: "Guardian blocked unsafe operation".to_string(),
+                }),
+            })
+            .await;
+        actor
+            .handle_event(Event {
+                id: "app-server".to_string(),
+                msg: EventMsg::ModelVerification(ModelVerificationEvent {
+                    verifications: vec![
+                        codex_protocol::protocol::ModelVerification::TrustedAccessForCyber,
+                    ],
+                }),
+            })
+            .await;
 
         let notifications = client.notifications.lock().unwrap();
         assert!(notifications.iter().any(|notification| {
@@ -5315,6 +5345,24 @@ mod tests {
                     content: ContentBlock::Text(TextContent { text, .. }),
                     ..
                 }) if text == "Deprecation notice: old field is deprecated\nUse new_field instead."
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Guardian blocked unsafe operation"
+            )
+        }));
+        assert!(notifications.iter().any(|notification| {
+            matches!(
+                &notification.update,
+                SessionUpdate::AgentMessageChunk(ContentChunk {
+                    content: ContentBlock::Text(TextContent { text, .. }),
+                    ..
+                }) if text == "Model verification: trusted_access_for_cyber"
             )
         }));
 
