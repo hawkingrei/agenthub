@@ -2,7 +2,7 @@
 
 ## Summary
 
-- aligned the active Codex backlog to the post-`v0.125.0` reality by removing stale TODO items that still assumed the temporary fork pin was live or that the managed-skill / PR160 verification work was unfinished
+- aligned the active Codex backlog to the post-`openai/codex@rust-v0.125.0` reality by removing stale TODO items that still assumed the temporary fork pin was live or that the managed-skill / PR160 verification work was unfinished
 - tightened the default Team leader and worker prompts so they explicitly treat `task` as the primary ownership object, keep `run` / `step` as execution-debug artifacts, and use `attempt` for one active push that ends when the task moves to `waiting` or `in_review`
 
 ## What Changed
@@ -10,7 +10,7 @@
 - `docs/todo.md`
   - replaced the stale fork-pin TODO pair with one follow-up that matches the current official `openai/codex@rust-v0.125.0` baseline
   - removed the already-completed managed-skill materialization and PR160 sync verification TODO items from the active ACP backlog
-  - generalized the old `Codex 0.121` MCP parallel-tool-call TODO so it no longer hard-codes an obsolete version number
+  - retargeted the remaining MCP parallel-tool-call TODO to the current `openai/codex@rust-v0.125.0` baseline and this journal entry instead of the older `0.121` upgrade note
 - `docs/journal/2026-04-24-codex-custom-tool-output-hotfix.md`
   - appended a follow-up that records the shift from the temporary fork pin to the official upstream baseline and explains what remains open
 - `crates/agenthub-team-prompts/prompts/default_team_leader_prompt.txt`

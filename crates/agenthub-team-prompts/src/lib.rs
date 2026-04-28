@@ -17,6 +17,14 @@ mod tests {
         DEFAULT_TEAM_LEADER_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
     };
 
+    fn verify_execution_vocabulary(prompt: &str) {
+        assert!(prompt.contains("Treat `task` as the primary ownership object"));
+        assert!(prompt.contains("Treat `run` and `step` as execution/debug artifacts"));
+        assert!(prompt.contains("explicit later resume starts the next attempt"));
+        assert!(prompt.contains("waiting"));
+        assert!(prompt.contains("in_review"));
+    }
+
     #[test]
     fn default_prompt_resolves_by_role() {
         assert_eq!(
@@ -90,23 +98,8 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("team-task-lifecycle"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("canonical Team task creation"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("advance assigned tasks"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Treat `task` as the primary ownership object"));
-        assert!(
-            DEFAULT_TEAM_WORKER_PROMPT.contains("Treat `task` as the primary ownership object")
-        );
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Treat `run` and `step` as execution/debug artifacts"));
-        assert!(
-            DEFAULT_TEAM_WORKER_PROMPT
-                .contains("Treat `run` and `step` as execution/debug artifacts")
-        );
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("explicit later resume starts the next attempt"));
-        assert!(
-            DEFAULT_TEAM_WORKER_PROMPT.contains("explicit later resume starts the next attempt")
-        );
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("waiting"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("waiting"));
-        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("in_review"));
-        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("in_review"));
+        verify_execution_vocabulary(DEFAULT_TEAM_LEADER_PROMPT);
+        verify_execution_vocabulary(DEFAULT_TEAM_WORKER_PROMPT);
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Inspect inbox regularly"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Receive inbox work"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Think from first principles"));
