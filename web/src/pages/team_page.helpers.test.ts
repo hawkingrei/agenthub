@@ -62,6 +62,9 @@ describe("team_page helpers", () => {
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp")
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-1&tab=thread");
+    expect(
+      buildTeamWorkspacePath("team-1", "channels", "review", null, null, null, "task-9")
+    ).toBe("/workspace/teams/team-1?lens=channels&channel=review&task=task-9");
     expect(buildTeamWorkspacePath("team-1", "members", null, null, " worker-2 ", null)).toBe(
       "/workspace/teams/team-1?lens=members&member=worker-2"
     );
@@ -77,6 +80,9 @@ describe("team_page helpers", () => {
     expect(buildTeamLensNavigationPath("team-1", "members", null, "task-9")).toBe(
       "/workspace/teams/team-1?lens=members"
     );
+    expect(
+      buildTeamWorkspacePath("team-1", "members", null, null, "worker-3", "conversation" as never, "task-9")
+    ).toBe("/workspace/teams/team-1?lens=members&task=task-9&member=worker-3");
   });
 
   it("parses team channel and thread query state", () => {

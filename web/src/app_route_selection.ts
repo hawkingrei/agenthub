@@ -38,6 +38,15 @@ export type AppRouteKind =
 
 export type WorkspaceLens = "channels" | "tasks" | "members" | "search" | "nodes";
 export type TeamMemberRouteTab = "agent_acp" | "mailbox" | "member_console";
+const TEAM_MEMBER_ROUTE_TABS = new Set<TeamMemberRouteTab>([
+  "agent_acp",
+  "mailbox",
+  "member_console",
+]);
+
+export function isTeamMemberRouteTab(value: string | null | undefined): value is TeamMemberRouteTab {
+  return value != null && TEAM_MEMBER_ROUTE_TABS.has(value as TeamMemberRouteTab);
+}
 
 export function resolveWorkspaceLens(search: string): WorkspaceLens | null {
   const params = new URLSearchParams(search);
@@ -122,11 +131,25 @@ export function buildTeamWorkspacePath(
   if (normalizedMemberId) {
     params.set("member", normalizedMemberId);
   }
-  if (tab === "agent_acp" || tab === "mailbox" || tab === "member_console") {
+  if (isTeamMemberRouteTab(tab)) {
     params.set("tab", tab === "agent_acp" ? "thread" : tab);
   }
   const search = params.toString();
   return search ? `${pathname}?${search}` : pathname;
+}
+
+export function resolveTeamSelectedTaskId(search: string): string {
+  const params = new URLSearchParams(search);
+  return (params.get("task") ?? "").trim();
+}
+
+export function resolveTeamMemberRouteTab(search: string): TeamMemberRouteTab | null {
+  const params = new URLSearchParams(search);
+  const raw = (params.get("tab") ?? "").trim();
+  if (raw === "thread") {
+    return "agent_acp";
+  }
+  return isTeamMemberRouteTab(raw) ? raw : null;
 }
 
 export function navigateToPath(pathname: string): void {

@@ -30,9 +30,14 @@ import {
   shouldHideErrorBannerMessage,
 } from "../connection_status";
 import {
+  buildTeamDetailPath as buildCanonicalTeamDetailPath,
+  buildTeamWorkspacePath as buildCanonicalTeamWorkspacePath,
   buildWorkspaceNodePath,
+  isTeamMemberRouteTab,
   navigateToPath,
+  resolveTeamMemberRouteTab,
   resolveWorkspaceLens,
+  type TeamMemberRouteTab,
   type WorkspaceLens,
 } from "../app_route_selection";
 import { AuthState } from "../types";
@@ -318,17 +323,7 @@ export function resolveTeamSelectedMemberId(search: string): string {
 }
 
 export function resolveTeamWorkspaceTab(search: string): TeamTab | null {
-  const params = new URLSearchParams(search);
-  const raw = (params.get("tab") ?? "").trim();
-  if (
-    raw === "agent_acp" ||
-    raw === "thread" ||
-    raw === "mailbox" ||
-    raw === "member_console"
-  ) {
-    return raw === "thread" ? "agent_acp" : raw;
-  }
-  return null;
+  return resolveTeamMemberRouteTab(search);
 }
 
 export function parseTeamAgentInputSessionMismatch(
@@ -361,7 +356,7 @@ export function resolveSelectedAgentWorkspaceSessionId(
 }
 
 export function buildTeamDetailPath(teamId: string): string {
-  return `/workspace/teams/${encodeURIComponent(teamId)}`;
+  return buildCanonicalTeamDetailPath(teamId);
 }
 
 function navigateTeamRoute(pathname: string): void {
@@ -385,33 +380,16 @@ export function buildTeamWorkspacePath(
   tab?: TeamTab | null,
   taskId?: string | null
 ): string {
-  const pathname = `/workspace/teams/${encodeURIComponent(teamId)}`;
-  const params = new URLSearchParams();
-  if (lens) {
-    params.set("lens", lens);
-  }
-  if (channelId && channelId !== "all") {
-    params.set("channel", channelId);
-  }
-  if (threadRootMessageId && threadRootMessageId > 0) {
-    params.set("thread", String(threadRootMessageId));
-  }
-  const normalizedTaskId = taskId?.trim() ?? "";
-  if (normalizedTaskId) {
-    params.set("task", normalizedTaskId);
-  }
-  const normalizedMemberId = memberId?.trim() ?? "";
-  if (normalizedMemberId) {
-    params.set("member", normalizedMemberId);
-  }
-  if (tab === "agent_acp" || tab === "mailbox" || tab === "member_console") {
-    params.set("tab", tab === "agent_acp" ? "thread" : tab);
-  }
-  const search = params.toString();
-  if (!search) {
-    return pathname;
-  }
-  return `${pathname}?${search}`;
+  const normalizedTab: TeamMemberRouteTab | null = isTeamMemberRouteTab(tab) ? tab : null;
+  return buildCanonicalTeamWorkspacePath(
+    teamId,
+    lens,
+    channelId,
+    threadRootMessageId,
+    memberId,
+    normalizedTab,
+    taskId
+  );
 }
 
 export function buildTeamLensNavigationPath(
