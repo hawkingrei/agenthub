@@ -117,7 +117,7 @@ fn synthesized_child_path(
     let mut segments: Vec<PathBuf> = inherited_path
         .as_deref()
         .map(std::env::split_paths)
-        .map(|paths| paths.collect())
+        .map(|paths| paths.filter(|path| !path.as_os_str().is_empty()).collect())
         .unwrap_or_default();
     if segments.iter().any(|path| path == &sibling_dir) {
         return inherited_path;
@@ -211,6 +211,20 @@ mod tests {
         assert_eq!(segments[0], PathBuf::from("/tmp/agenthub/target/debug"));
         assert_eq!(segments[1], PathBuf::from("/usr/bin"));
         assert_eq!(segments[2], PathBuf::from("/bin"));
+    }
+
+    #[test]
+    fn synthesized_child_path_filters_empty_inherited_segments() {
+        let current_exe = PathBuf::from("/tmp/agenthub/target/debug/agenthub");
+        let path = synthesized_child_path(
+            "agenthub-codex-acp",
+            Some(OsString::from("")),
+            Some(current_exe.as_path()),
+        )
+        .expect("synthesized path");
+
+        let segments: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert_eq!(segments, vec![PathBuf::from("/tmp/agenthub/target/debug")]);
     }
 
     #[test]

@@ -3054,7 +3054,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedConversation &&
     selectedChannelRecord?.task_id !== selectedConversation.id
       ? selectedConversation.id
-      : routeSelectedTaskId || null;
+      : null;
   const conversationPanel = (
     <TeamConversationPanel
       conversationKey={selectedConversation?.id}

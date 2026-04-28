@@ -1289,6 +1289,106 @@ describe("TeamPage smoke render", () => {
     }
   });
 
+  it("drops redundant bootstrap task ids when returning from a channel bootstrap thread", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockResolvedValue([
+      {
+        team_id: "team-1",
+        channel_id: "review",
+        task_id: "task-review",
+        conversation_id: "conv-review",
+        description: "Review lane",
+        created_by_actor_id: "user:user-1",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+    getTeamTask.mockResolvedValue({
+      task: {
+        id: "task-review",
+        team_id: "team-1",
+        title: "review",
+        status: "open",
+        created_by_actor_id: "user:user-1",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "team_channel", channel_id: "review" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-review",
+        team_id: "team-1",
+        task_id: "task-review",
+        mode: "group_chat",
+        topic: "review",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?lens=channels&channel=review&task=task-review&thread=17"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      const viewInChannelButton = Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("View in channel")
+      ) as HTMLButtonElement | undefined;
+      expect(viewInChannelButton).toBeDefined();
+
+      await act(async () => {
+        viewInChannelButton?.click();
+        await flushEffects();
+      });
+
+      expect(window.location.pathname).toBe("/workspace/teams/team-1");
+      expect(window.location.search).toBe("?lens=channels&channel=review");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("keeps the explicit task conversation when returning from a channel-scoped task thread", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,

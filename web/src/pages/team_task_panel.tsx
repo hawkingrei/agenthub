@@ -272,10 +272,6 @@ function resolveMessageText(
   return resolveChatMessageText(message.payload);
 }
 
-function canOpenThreadFromMessage(message: TeamConversationMessageRecord): boolean {
-  return !isThreadReplyMessage(message) && resolveMessageText(message) !== null;
-}
-
 function resolveThreadAuthorLabel(
   actorId: string,
   humanActorId: string,
@@ -1287,7 +1283,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           payload: message.payload,
           text: item.text,
           permissionCardPayload: item.permissionCardPayload,
-          canOpenThread: item.permissionCardPayload == null && canOpenThreadFromMessage(message),
+          canOpenThread:
+            item.permissionCardPayload == null &&
+            !isThreadReplyMessage(message) &&
+            item.text !== null,
         };
       }),
     [activityWindow.items]
