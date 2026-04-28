@@ -1,4 +1,5 @@
 import React from "react";
+import { isAgentActiveStatus } from "../agent_ws";
 import { AgentEvent, TeamMemberSnapshot } from "../api";
 import { getTeamStepRuntimeHandleId } from "../api";
 import {
@@ -35,6 +36,7 @@ type TeamMemberAcpPanelProps = {
   hideMemberTitle?: boolean;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   selectedMemberRole?: string | null;
+  selectedAgentStatus?: string | null;
   selectedTargetNodeId?: string | null;
   selectedSessionId?: string | null;
   memberEvents: AgentEvent[];
@@ -63,6 +65,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberTitle: memberTitleProp,
     hideMemberTitle = false,
     selectedMemberRole,
+    selectedAgentStatus,
     selectedTargetNodeId,
     selectedSessionId: selectedSessionIdProp,
     memberEvents,
@@ -83,8 +86,11 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
   const [acpTab, setAcpTab] = React.useState<TeamMemberAcpTab>("conversation");
   const [, setThinkingTick] = React.useState(0);
   const ansi = React.useCallback((inputValue: string) => inputValue, []);
+  const normalizedAgentStatus = selectedAgentStatus?.trim().toLowerCase() ?? "";
   const resolvedSelectedSessionId =
-    selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
+    normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+      ? null
+      : selectedSessionIdProp ?? getTeamStepRuntimeHandleId(selectedMemberSnapshot?.latest_step);
   const {
     terminalRef,
     terminalShowJump,
@@ -140,6 +146,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberTitle: memberTitleProp,
     selectedMemberSnapshot,
     selectedMemberRole,
+    selectedAgentStatus,
     selectedSessionId: selectedSessionIdProp,
     memberEvents,
     memberEventsHasMore,
@@ -257,6 +264,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       attachedNodeId,
       developerTechnicalMetadata,
       infoStripSummary,
+      selectedAgentStatus,
       memberStatus,
       memberStatusClassToken,
       memberStatusLabel,

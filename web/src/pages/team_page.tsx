@@ -345,8 +345,13 @@ export function parseTeamAgentInputSessionMismatch(
 
 export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
-  runtimeSessionId: string | null | undefined
+  runtimeSessionId: string | null | undefined,
+  agentStatus?: string | null
 ): string | null {
+  const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
+  if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+    return null;
+  }
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
   if (normalizedRuntimeSessionId) {
     return normalizedRuntimeSessionId;
@@ -1396,12 +1401,6 @@ export function TeamPage(props: TeamPageProps) {
       ) ?? null
     );
   }, [selectedAgentWorkspaceMemberId, selectedTeamRuntime]);
-  const selectedAgentWorkspaceSessionId = useMemo(() => {
-    return resolveSelectedAgentWorkspaceSessionId(
-      selectedAgentWorkspaceSnapshot?.latest_step,
-      selectedAgentWorkspaceRuntimeMember?.session_id ?? null
-    );
-  }, [selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
   const selectedAgentWorkspaceAgent = useMemo(() => {
     const memberId = selectedAgentWorkspaceMemberId.trim();
     if (!memberId) {
@@ -1409,6 +1408,13 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
+  const selectedAgentWorkspaceSessionId = useMemo(() => {
+    return resolveSelectedAgentWorkspaceSessionId(
+      selectedAgentWorkspaceSnapshot?.latest_step,
+      selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
+      selectedAgentWorkspaceAgent?.status ?? null
+    );
+  }, [selectedAgentWorkspaceAgent, selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
   const memberTargetNodeById = useMemo<Record<string, string | null>>(() => {
     const entries = Object.entries(teamMemberAgentsById).map(([memberId, agent]) => [
       memberId,
@@ -3248,6 +3254,7 @@ export function TeamPage(props: TeamPageProps) {
         selectedMemberRole={
           selectedAgentWorkspaceRuntimeMember?.role ?? selectedAgentWorkspaceSnapshot?.role ?? null
         }
+        selectedAgentStatus={selectedAgentWorkspaceAgent?.status ?? null}
         selectedTargetNodeId={
           selectedAgentWorkspaceAgent
             ? selectedAgentWorkspaceAgent.target_node_id?.trim() || "main"

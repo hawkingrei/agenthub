@@ -168,7 +168,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
 }: TeamWorkbenchContentProps) {
   return (
     <div
-      className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:mx-auto lg:w-full lg:max-w-[1180px] lg:pr-0"
+      className="teams-main flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden pb-3 pr-1 lg:w-full lg:pr-0"
       data-team-surface="workbench"
     >
       {showTeamBootstrapLoading && <TeamLoadingPanel />}

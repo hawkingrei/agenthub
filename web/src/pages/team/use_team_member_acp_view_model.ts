@@ -1,5 +1,6 @@
 import React from "react";
 import { buildAcpView } from "../../acp";
+import { isAgentActiveStatus } from "../../agent_ws";
 import type { AgentEvent, TeamMemberSnapshot } from "../../api";
 import { getTeamStepRuntimeHandleId } from "../../api";
 import { getAcpConversationCacheStats } from "../../components/acp_conversation_cache_stats";
@@ -36,6 +37,7 @@ type UseTeamMemberAcpViewModelArgs = {
   memberTitle?: string | null;
   selectedMemberSnapshot: TeamMemberSnapshot | null;
   selectedMemberRole?: string | null;
+  selectedAgentStatus?: string | null;
   selectedSessionId?: string | null;
   memberEvents: AgentEvent[];
   memberEventsHasMore: boolean;
@@ -75,6 +77,7 @@ export function useTeamMemberAcpViewModel({
   memberTitle: memberTitleProp,
   selectedMemberSnapshot,
   selectedMemberRole,
+  selectedAgentStatus,
   selectedSessionId: selectedSessionIdProp,
   memberEvents,
   memberEventsHasMore,
@@ -177,6 +180,9 @@ export function useTeamMemberAcpViewModel({
   );
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
+  const normalizedAgentStatus = normalizeStatusValue(selectedAgentStatus);
+  const agentAllowsInput =
+    !normalizedAgentStatus || isAgentActiveStatus(normalizedAgentStatus);
   const conversationEventMeta = React.useMemo(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId || !selectedSessionId) {
@@ -204,7 +210,7 @@ export function useTeamMemberAcpViewModel({
     activeSessionId: selectedSessionId ?? null,
     acpTab: effectiveAcpTab,
     eventMeta: conversationEventMeta,
-    isAgentActive: Boolean(selectedSessionId),
+    isAgentActive: Boolean(selectedSessionId) && agentAllowsInput,
     onLoadOlder: () => {
       void onLoadOlder?.();
     },
@@ -217,7 +223,9 @@ export function useTeamMemberAcpViewModel({
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =
     acpConversation.conversationSourceItems > 0;
-  const canSendInput = Boolean(selectedMemberId.trim() && selectedSessionId && onSendInput);
+  const canSendInput = Boolean(
+    selectedMemberId.trim() && selectedSessionId && onSendInput && agentAllowsInput
+  );
   const hasInProgressToolCall = acpView.toolCalls.some(
     (call) => call.status === "in_progress"
   );
@@ -257,7 +265,11 @@ export function useTeamMemberAcpViewModel({
     normalizeStatusValue(selectedMemberSnapshot?.session_status);
   const acpRunStatus = normalizeStatusValue(acpView.runStatus?.status);
   const memberStatus =
-    snapshotStatus || acpRunStatus || normalizeStatusValue(memberRoleLabel) || "unknown";
+    (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
+      ? normalizedAgentStatus
+      : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
+    normalizeStatusValue(memberRoleLabel) ||
+    "unknown";
   const thinkingLabel =
     acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
@@ -357,6 +369,9 @@ export function useTeamMemberAcpViewModel({
     if (!selectedMemberId.trim()) {
       return null;
     }
+    if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+      return "Agent is stopped";
+    }
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
@@ -371,6 +386,7 @@ export function useTeamMemberAcpViewModel({
     acpView.hasAcp,
     hasRenderableConversationContent,
     memberEventsLoading,
+    normalizedAgentStatus,
     selectedMemberId,
     selectedSessionId,
     visibleMemberEvents.length,

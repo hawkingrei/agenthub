@@ -691,7 +691,7 @@ export const INPUT_DOCK_SEND_BUTTON_CLASS =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white transition hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px";
 
 export const TEAM_PAGE_ROOT_CLASS =
-  "mx-auto flex min-h-0 flex-1 w-full max-w-[1680px] flex-col gap-3 bg-white px-3 py-2 sm:px-4 lg:px-6";
+  "flex min-h-0 flex-1 w-full flex-col gap-3 bg-white px-2.5 py-2 sm:px-3 lg:px-4 xl:px-5";
 
 export const TEAM_SECTION_CARD_CLASS =
   "min-h-0 min-w-0 rounded-lg border border-notion-border bg-white px-2.5 py-1.5 shadow-sm transition-all";
@@ -721,7 +721,7 @@ export const TEAM_WORKBENCH_PANEL_CLASS =
   "shrink-0 rounded-xl border border-notion-border bg-white p-2 shadow-lg backdrop-blur-md";
 
 export const TEAM_WORKBENCH_HEADER_SHELL_CLASS =
-  "flex flex-wrap items-center justify-between gap-2.5 bg-white px-3 py-1.5 sm:px-4 sm:py-2 border-b border-notion-border transition-all";
+  "flex flex-wrap items-center justify-between gap-2.5 border-b border-notion-border bg-white px-2.5 py-1.5 sm:px-3 sm:py-2 transition-all";
 
 export const TEAM_WORKBENCH_HEADER_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-md text-notion-text-muted transition hover:bg-notion-hover hover:text-notion-text";
@@ -730,7 +730,7 @@ export const TEAM_WORKBENCH_HEADER_STATUS_CLASS =
   "inline-flex items-center gap-1.5 rounded-md border border-notion-border/70 bg-notion-sidebar/72 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-notion-text-muted transition hover:bg-notion-hover";
 
 export const TEAM_WORKBENCH_WORKSPACE_SHELL_CLASS =
-  "shrink-0 flex min-h-0 flex-col rounded-xl border border-notion-border bg-white px-3 py-2 shadow-sm transition-all";
+  "shrink-0 flex min-h-0 flex-col rounded-xl border border-notion-border bg-white px-2.5 py-2 shadow-sm transition-all";
 
 export const TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS =
   "min-w-0 bg-white px-4 py-3 border-r border-notion-border last:border-r-0";

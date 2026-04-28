@@ -173,7 +173,8 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
-        "runtime-session"
+        "runtime-session",
+        "running"
       )
     ).toBe("runtime-session");
     expect(
@@ -182,9 +183,20 @@ describe("team_page helpers", () => {
           member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
-        "   "
+        "   ",
+        null
       )
     ).toBe("snapshot-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
+          remote_task_id: "snapshot-session",
+        } as never,
+        "runtime-session",
+        "stopped"
+      )
+    ).toBeNull();
     expect(resolveSelectedAgentWorkspaceSessionId(null, null)).toBeNull();
   });
 
