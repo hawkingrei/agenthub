@@ -392,6 +392,13 @@ async fn setup_test_db() -> SqlitePool {
     pool
 }
 
+fn task_attempt_number(task: &crate::team::TeamTaskRecord) -> Option<i64> {
+    task.context
+        .get("execution")
+        .and_then(|value| value.get("attempt_number"))
+        .and_then(Value::as_i64)
+}
+
 async fn insert_team_conversation_message(
     db: &SqlitePool,
     conversation_id: &str,
@@ -2498,6 +2505,7 @@ async fn linked_run_input_required_and_resume_sync_task_waiting_transitions() {
         .await
         .expect("reload after start");
     assert_eq!(after_start.status, TeamTaskStatus::InProgress);
+    assert_eq!(task_attempt_number(&after_start), Some(1));
 
     let _ = manager
         .set_step_input_required(
@@ -2512,6 +2520,7 @@ async fn linked_run_input_required_and_resume_sync_task_waiting_transitions() {
         .await
         .expect("reload after input required");
     assert_eq!(after_input_required.status, TeamTaskStatus::Waiting);
+    assert_eq!(task_attempt_number(&after_input_required), Some(1));
 
     let _ = manager
         .resume_step(&step.id, Some(json!({"answer":"approved"})))
@@ -2522,6 +2531,7 @@ async fn linked_run_input_required_and_resume_sync_task_waiting_transitions() {
         .await
         .expect("reload after resume");
     assert_eq!(after_resume.status, TeamTaskStatus::InProgress);
+    assert_eq!(task_attempt_number(&after_resume), Some(2));
 
     let _ = manager
         .complete_step(&step.id, Some(json!({"result":"done"})))
@@ -2532,6 +2542,7 @@ async fn linked_run_input_required_and_resume_sync_task_waiting_transitions() {
         .await
         .expect("reload after complete");
     assert_eq!(after_complete.status, TeamTaskStatus::InReview);
+    assert_eq!(task_attempt_number(&after_complete), Some(2));
 }
 
 #[tokio::test]
@@ -2577,6 +2588,48 @@ async fn cancel_run_preserves_waiting_task() {
 
     let reloaded = manager.get_task(&task.id).await.expect("reload task");
     assert_eq!(reloaded.status, TeamTaskStatus::Waiting);
+    assert_eq!(task_attempt_number(&reloaded), None);
+}
+
+#[tokio::test]
+async fn linked_run_create_sets_first_attempt_number() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "linked-task-attempt-create-team".to_string(),
+            description: Some("team with linked task attempt projection".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Attempt-number task",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("attempt-create"),
+        )
+        .await
+        .expect("create task");
+    assert_eq!(task_attempt_number(&task), None);
+
+    let _ = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"start linked execution"}),
+        )
+        .await
+        .expect("create linked run");
+
+    let reloaded = manager.get_task(&task.id).await.expect("reload task");
+    assert_eq!(reloaded.status, TeamTaskStatus::InProgress);
+    assert_eq!(task_attempt_number(&reloaded), Some(1));
 }
 
 #[tokio::test]
@@ -7140,6 +7193,57 @@ async fn restart_run_creates_new_submission_with_same_context_and_input() {
         .expect("list restarted run events");
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type, "run_submitted");
+}
+
+#[tokio::test]
+async fn restart_run_keeps_linked_task_on_same_attempt_when_already_in_progress() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db);
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "restart-run-attempt-team".to_string(),
+            description: Some("team to verify restart keeps attempt projection".to_string()),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner"}]}),
+        })
+        .await
+        .expect("create team");
+
+    let (task, _) = manager
+        .create_task(
+            &team.id,
+            "Restart-safe attempt projection",
+            "user",
+            json!({"source":"ui"}),
+            "group_chat",
+            Some("restart-attempt"),
+        )
+        .await
+        .expect("create task");
+
+    let run = manager
+        .create_run(
+            &team.id,
+            Some(&task.id),
+            json!({"task_id": task.id, "prompt":"active execution push"}),
+        )
+        .await
+        .expect("create linked run");
+    let after_create = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after create");
+    assert_eq!(after_create.status, TeamTaskStatus::InProgress);
+    assert_eq!(task_attempt_number(&after_create), Some(1));
+
+    let _ = manager.restart_run(&run.id).await.expect("restart run");
+
+    let after_restart = manager
+        .get_task(&task.id)
+        .await
+        .expect("reload after restart");
+    assert_eq!(after_restart.status, TeamTaskStatus::InProgress);
+    assert_eq!(task_attempt_number(&after_restart), Some(1));
 }
 
 #[tokio::test]

@@ -5026,6 +5026,38 @@ fn extract_linked_task_id_from_run_input(input: &Value) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+fn compute_next_task_execution_context(
+    current_status: &TeamTaskStatus,
+    current_context: &Value,
+    next_status: &TeamTaskStatus,
+) -> Option<Value> {
+    if *next_status != TeamTaskStatus::InProgress || *current_status == TeamTaskStatus::InProgress {
+        return None;
+    }
+
+    let mut next_context = current_context.clone();
+    let next_attempt_number = current_context
+        .pointer("/execution/attempt_number")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        + 1;
+
+    let context_obj = next_context
+        .as_object_mut()
+        .expect("team task context should always be a JSON object");
+    let execution = context_obj
+        .entry("execution".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let execution_obj = execution
+        .as_object_mut()
+        .expect("task execution context should always be a JSON object");
+    execution_obj.insert(
+        "attempt_number".to_string(),
+        Value::Number(next_attempt_number.into()),
+    );
+    Some(next_context)
+}
+
 async fn load_run_status_sync_meta_tx(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     run_id: &str,
@@ -5059,27 +5091,60 @@ async fn sync_linked_task_status_tx(
         return Ok(());
     };
 
-    let status_raw = team_task_status_to_str(&status);
-    let query = if preserve_waiting {
+    let current_row = sqlx::query(
         r#"
-        UPDATE team_tasks
-        SET status = ?3, updated_at = ?4
-        WHERE id = ?1 AND team_id = ?2 AND status <> ?3 AND status <> 'waiting'
-        "#
-    } else {
-        r#"
-        UPDATE team_tasks
-        SET status = ?3, updated_at = ?4
-        WHERE id = ?1 AND team_id = ?2 AND status <> ?3
-        "#
+        SELECT status, context_json
+        FROM team_tasks
+        WHERE id = ?1 AND team_id = ?2
+        "#,
+    )
+    .bind(task_id)
+    .bind(team_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(current_row) = current_row else {
+        return Ok(());
     };
-    sqlx::query(query)
-        .bind(task_id)
-        .bind(team_id)
-        .bind(status_raw)
-        .bind(now)
-        .execute(&mut **tx)
-        .await?;
+
+    let current_status_raw: String = current_row.get("status");
+    let current_status = codec::team_task_status_from_str(&current_status_raw);
+    let current_context_json: String = current_row.get("context_json");
+    let current_context: Value =
+        serde_json::from_str(&current_context_json).unwrap_or_else(|_| serde_json::json!({}));
+
+    let effective_status = if preserve_waiting && current_status == TeamTaskStatus::Waiting {
+        current_status.clone()
+    } else {
+        status
+    };
+    let next_context =
+        compute_next_task_execution_context(&current_status, &current_context, &effective_status);
+    if current_status == effective_status && next_context.is_none() {
+        return Ok(());
+    }
+
+    let mut builder = QueryBuilder::<Sqlite>::new("UPDATE team_tasks SET ");
+    let mut first = true;
+    if current_status != effective_status {
+        builder.push("status = ");
+        builder.push_bind(team_task_status_to_str(&effective_status));
+        first = false;
+    }
+    if let Some(next_context) = next_context.as_ref() {
+        builder.push(", ");
+        builder.push("context_json = ");
+        builder.push_bind(next_context.to_string());
+    }
+    if !first {
+        builder.push(", ");
+    }
+    builder.push("updated_at = ");
+    builder.push_bind(now);
+    builder.push(" WHERE id = ");
+    builder.push_bind(task_id);
+    builder.push(" AND team_id = ");
+    builder.push_bind(team_id);
+    builder.build().execute(&mut **tx).await?;
     Ok(())
 }
 
