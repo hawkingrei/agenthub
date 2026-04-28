@@ -1289,6 +1289,106 @@ describe("TeamPage smoke render", () => {
     }
   });
 
+  it("keeps the explicit task conversation when returning from a channel-scoped task thread", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockResolvedValue([
+      {
+        team_id: "team-1",
+        channel_id: "review",
+        task_id: "task-review",
+        conversation_id: "conv-review",
+        description: "Review lane",
+        created_by_actor_id: "user:user-1",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+    getTeamTask.mockResolvedValue({
+      task: {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "user:user-1",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "team_channel", channel_id: "review" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-work",
+        team_id: "team-1",
+        task_id: "task-work",
+        mode: "group_chat",
+        topic: "Investigate regression",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?lens=channels&channel=review&task=task-work&thread=17"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      const viewInChannelButton = Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("View in channel")
+      ) as HTMLButtonElement | undefined;
+      expect(viewInChannelButton).toBeDefined();
+
+      await act(async () => {
+        viewInChannelButton?.click();
+        await flushEffects();
+      });
+
+      expect(window.location.pathname).toBe("/workspace/teams/team-1");
+      expect(window.location.search).toBe("?lens=channels&channel=review&task=task-work");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
   it("keeps the active channel when closing a non-default thread deep link without an explicit lens", async () => {
     const buildTeam = (id: string, name: string) => ({
       id,
@@ -1481,6 +1581,106 @@ describe("TeamPage smoke render", () => {
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
       expect(window.location.search).toBe("?channel=review");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("keeps the explicit task conversation when closing a channel-scoped task thread without an explicit lens", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockResolvedValue([
+      {
+        team_id: "team-1",
+        channel_id: "review",
+        task_id: "task-review",
+        conversation_id: "conv-review",
+        description: "Review lane",
+        created_by_actor_id: "user:user-1",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+    getTeamTask.mockResolvedValue({
+      task: {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "user:user-1",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "team_channel", channel_id: "review" },
+        created_at: 1,
+        updated_at: 1,
+      },
+      conversation: {
+        id: "conv-work",
+        team_id: "team-1",
+        task_id: "task-work",
+        mode: "group_chat",
+        topic: "Investigate regression",
+        created_at: 1,
+        updated_at: 1,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?channel=review&task=task-work&thread=17"
+            />
+          </MantineProvider>
+        );
+        await flushEffects();
+      });
+
+      const closeThreadButton = Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Close thread")
+      ) as HTMLButtonElement | undefined;
+      expect(closeThreadButton).toBeDefined();
+
+      await act(async () => {
+        closeThreadButton?.click();
+        await flushEffects();
+      });
+
+      expect(window.location.pathname).toBe("/workspace/teams/team-1");
+      expect(window.location.search).toBe("?channel=review&task=task-work");
     } finally {
       act(() => {
         root.unmount();
@@ -1985,13 +2185,13 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
-      const openThreadButton = Array.from(document.body.querySelectorAll("button")).find(
-        (button) => button.textContent?.includes("Open thread")
+      const openConversationButton = Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Open conversation")
       ) as HTMLButtonElement | undefined;
-      expect(openThreadButton).toBeDefined();
+      expect(openConversationButton).toBeDefined();
 
       await act(async () => {
-        openThreadButton?.click();
+        openConversationButton?.click();
         await Promise.resolve();
         await Promise.resolve();
       });

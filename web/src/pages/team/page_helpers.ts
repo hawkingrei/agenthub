@@ -25,6 +25,7 @@ function sortRuns(runs: TeamRunRecord[]): TeamRunRecord[] {
 
 export const DEFAULT_TEAM_THREAD_TITLE = "all";
 export const DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND = "shared_thread";
+export const TEAM_CHANNEL_TASK_BOOTSTRAP_KIND = "team_channel";
 export const TEAM_CONVERSATION_MESSAGE_RETENTION_LIMIT = 60;
 export const TEAM_RUN_EVENT_RETENTION_LIMIT = 100;
 export const TEAM_MEMBER_EVENT_RETENTION_LIMIT = 300;
@@ -557,6 +558,30 @@ export function isSharedThreadTask(task: TeamTaskRecord): boolean {
     (task.context as { bootstrap_kind?: unknown }).bootstrap_kind ===
     DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND
   );
+}
+
+export function resolveTaskChannelId(task: TeamTaskRecord | null | undefined): string | null {
+  if (!task?.context || typeof task.context !== "object" || Array.isArray(task.context)) {
+    return null;
+  }
+  const bootstrapKind = (task.context as { bootstrap_kind?: unknown }).bootstrap_kind;
+  const channelId = (task.context as { channel_id?: unknown }).channel_id;
+  if (bootstrapKind !== TEAM_CHANNEL_TASK_BOOTSTRAP_KIND || typeof channelId !== "string") {
+    return null;
+  }
+  const normalizedChannelId = channelId.trim();
+  return normalizedChannelId || null;
+}
+
+export function isChannelScopedConversationTask(
+  task: TeamTaskRecord | null | undefined,
+  channelId: string
+): boolean {
+  const normalizedChannelId = channelId.trim();
+  if (!normalizedChannelId || normalizedChannelId === "all") {
+    return false;
+  }
+  return resolveTaskChannelId(task) === normalizedChannelId;
 }
 
 export function listTeamWorkspaceTasks(

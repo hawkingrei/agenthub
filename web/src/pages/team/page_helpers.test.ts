@@ -19,9 +19,11 @@ import {
   DEFAULT_TEAM_THREAD_TITLE,
   DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND,
   formatTs,
+  isChannelScopedConversationTask,
   listTeamWorkspaceTasks,
   mergeConversationMessages,
   pickNextWorkerAgentId,
+  resolveTaskChannelId,
   resolveTeamRuntimeControlTone,
   resolveTeamPageNotice,
   resolveTeamRuntimeStatus,
@@ -589,6 +591,25 @@ describe("team page helpers", () => {
     );
     expect(DEFAULT_TEAM_THREAD_TITLE).toBe("all");
     expect(DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND).toBe("shared_thread");
+  });
+
+  it("derives channel-scoped conversation metadata from team_channel task context", () => {
+    const reviewTask = buildTask("task-review", 100, 120, {
+      title: "Review follow-up",
+      context: { bootstrap_kind: "team_channel", channel_id: "review" },
+    });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+
+    expect(resolveTaskChannelId(reviewTask)).toBe("review");
+    expect(resolveTaskChannelId(sharedTask)).toBeNull();
+    expect(resolveTaskChannelId(null)).toBeNull();
+    expect(isChannelScopedConversationTask(reviewTask, "review")).toBe(true);
+    expect(isChannelScopedConversationTask(reviewTask, "all")).toBe(false);
+    expect(isChannelScopedConversationTask(reviewTask, "research")).toBe(false);
+    expect(isChannelScopedConversationTask(sharedTask, "review")).toBe(false);
   });
 
   it("falls back to the fetched conversation detail task when the visible task list is stale", () => {

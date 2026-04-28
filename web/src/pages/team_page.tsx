@@ -111,6 +111,7 @@ import {
 } from "./team/member_helpers";
 import {
   formatTs,
+  isChannelScopedConversationTask,
   resolveTeamPageNotice,
   resolveSelectedAgentWorkspaceMemberId,
   resolveTaskConversationMemberIds,
@@ -3043,9 +3044,17 @@ export function TeamPage(props: TeamPageProps) {
       selectedConversation &&
       (
         (routeChannelId === DEFAULT_TEAM_CHANNEL_ID && selectedConversationIsShared) ||
-        selectedChannelRecord?.task_id === selectedConversation.id
+        selectedChannelRecord?.task_id === selectedConversation.id ||
+        isChannelScopedConversationTask(selectedConversation, routeChannelId)
       )
   );
+  const activeChannelConversationTaskId =
+    selectedConversationMatchesChannelLane &&
+    !selectedConversationIsShared &&
+    selectedConversation &&
+    selectedChannelRecord?.task_id !== selectedConversation.id
+      ? selectedConversation.id
+      : routeSelectedTaskId || null;
   const conversationPanel = (
     <TeamConversationPanel
       conversationKey={selectedConversation?.id}
@@ -3081,7 +3090,10 @@ export function TeamPage(props: TeamPageProps) {
                   effectiveSelectedTeamId,
                   routeWorkspaceLens,
                   routeChannelId,
-                  messageId
+                  messageId,
+                  null,
+                  null,
+                  activeChannelConversationTaskId
                 )
               );
             }
@@ -3116,8 +3128,21 @@ export function TeamPage(props: TeamPageProps) {
     if (!effectiveSelectedTeamId) {
       return null;
     }
-    return buildTeamWorkspacePath(effectiveSelectedTeamId, routeWorkspaceLens, routeChannelId);
-  }, [effectiveSelectedTeamId, routeChannelId, routeWorkspaceLens]);
+    return buildTeamWorkspacePath(
+      effectiveSelectedTeamId,
+      routeWorkspaceLens,
+      routeChannelId,
+      null,
+      null,
+      null,
+      activeChannelConversationTaskId
+    );
+  }, [
+    activeChannelConversationTaskId,
+    effectiveSelectedTeamId,
+    routeChannelId,
+    routeWorkspaceLens,
+  ]);
   const threadPane = canOpenThreadForSelectedConversation && routeThreadRootMessageId ? (
     <TeamThreadPane
       channelLabel={selectedChannelItem.label}
