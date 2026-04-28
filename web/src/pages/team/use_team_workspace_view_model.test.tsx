@@ -406,12 +406,82 @@ describe("useTeamWorkspaceViewModel", () => {
       act(() => {
         snapshot?.onSelectConversationSubject();
       });
-      expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "channels", "review");
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "channels", "review", "");
 
       act(() => {
         snapshot?.onSelectWorkspaceLens("channels");
       });
-      expect(params.navigateToTeamLens).toHaveBeenLastCalledWith("team-1", "channels", "review");
+      expect(params.navigateToTeamLens).toHaveBeenLastCalledWith(
+        "team-1",
+        "channels",
+        "review"
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("passes the selected task id when routing into a task conversation", async () => {
+    const params = createParams({
+      selectedChannelId: "review",
+      selectedChannelLabel: "# review",
+      selectedChannelDescription: "Focused design and implementation review lane.",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectConversationSubject("task-77");
+      });
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith(
+        "team-1",
+        "channels",
+        "review",
+        "task-77"
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("trims the selected task id before updating conversation route state", async () => {
+    const params = createParams({
+      selectedChannelId: "review",
+      selectedChannelLabel: "# review",
+      selectedChannelDescription: "Focused design and implementation review lane.",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectConversationSubject(" task-77 ");
+      });
+      expect(params.setSelectedConversationTaskId).toHaveBeenCalledWith("task-77");
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith(
+        "team-1",
+        "channels",
+        "review",
+        "task-77"
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("updates task conversation state without routing when no team is selected", async () => {
+    const params = createParams({
+      selectedTeam: null,
+      selectedTeamId: null,
+      selectedChannelId: "review",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectConversationSubject(" task-77 ");
+      });
+      expect(params.setSelectedConversationTaskId).toHaveBeenCalledWith("task-77");
+      expect(params.navigateToTeamLens).not.toHaveBeenCalled();
     } finally {
       mounted.cleanup();
     }

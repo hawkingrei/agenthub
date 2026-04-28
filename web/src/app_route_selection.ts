@@ -96,7 +96,8 @@ export function buildTeamWorkspacePath(
   channelId?: string | null,
   threadRootMessageId?: number | null,
   memberId?: string | null,
-  tab?: TeamMemberRouteTab | null
+  tab?: TeamMemberRouteTab | null,
+  taskId?: string | null
 ): string {
   const normalizedTeamId = teamId?.trim();
   if (!normalizedTeamId) {
@@ -112,6 +113,10 @@ export function buildTeamWorkspacePath(
   }
   if (threadRootMessageId && threadRootMessageId > 0) {
     params.set("thread", String(threadRootMessageId));
+  }
+  const normalizedTaskId = taskId?.trim() ?? "";
+  if (normalizedTaskId) {
+    params.set("task", normalizedTaskId);
   }
   const normalizedMemberId = memberId?.trim() ?? "";
   if (normalizedMemberId) {

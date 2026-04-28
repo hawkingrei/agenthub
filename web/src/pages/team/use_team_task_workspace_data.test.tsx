@@ -5,13 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api";
 import { useTeamTaskWorkspaceData } from "./use_team_task_workspace_data";
 
+const { getApiErrorStatusMock } = vi.hoisted(() => ({
+  getApiErrorStatusMock: vi.fn<() => number | null>(() => null),
+}));
+
 vi.mock("../../api", () => ({
   api: {
     listTeamTasks: vi.fn(),
     getTeamSharedThread: vi.fn(),
     getTeamTask: vi.fn(),
   },
-  getApiErrorStatus: vi.fn(() => null),
+  getApiErrorStatus: getApiErrorStatusMock,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -113,6 +117,8 @@ describe("useTeamTaskWorkspaceData", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    getApiErrorStatusMock.mockReset();
+    getApiErrorStatusMock.mockReturnValue(null);
   });
 
   it("loads task list and shared conversation when a team becomes active", async () => {
@@ -166,7 +172,7 @@ describe("useTeamTaskWorkspaceData", () => {
     }
   });
 
-  it("fetches selected conversation detail and clears stale selection when task disappears", async () => {
+  it("clears a selected conversation only after the detail fetch confirms a 404", async () => {
     mockedApi.listTeamTasks.mockResolvedValue([] as never);
     mockedApi.getTeamSharedThread.mockResolvedValue({
       task: {
@@ -182,77 +188,59 @@ describe("useTeamTaskWorkspaceData", () => {
       },
       latest_run: null,
     } as never);
-    mockedApi.getTeamTask.mockResolvedValueOnce({
-      task: {
-        id: "task-2",
-        team_id: "team-1",
-        title: "Investigate",
-        status: "in_progress",
-        created_by_actor_id: "leader",
-        assigned_member_id: null,
-        context: {},
-        created_at: 1,
-        updated_at: 7,
-      },
-      latest_run: {
-        id: "run-2",
-        team_id: "team-1",
-        context_id: "ctx-2",
-        status: "working",
-        input: {},
-        created_at: 1,
-        started_at: null,
-        ended_at: null,
-      },
-      messages: [],
-      mailbox_messages: [],
+    mockedApi.getTeamTask.mockRejectedValueOnce({
+      status: 404,
+      message: "task not found",
     } as never);
+    getApiErrorStatusMock.mockReturnValue(404);
 
     const params = createParams({
       selectedConversationTaskId: "task-2",
-      taskList: [
-        {
-          id: "task-2",
-          team_id: "team-1",
-          title: "Investigate",
-          status: "in_progress",
-          created_by_actor_id: "leader",
-          assigned_member_id: null,
-          context: {},
-          created_at: 1,
-          updated_at: 7,
-        },
-      ] as HookParams["taskList"],
     });
     const mounted = await mountHook(params);
     try {
       await act(async () => {
         await Promise.resolve();
+        await Promise.resolve();
       });
       expect(mockedApi.getTeamTask).toHaveBeenCalledWith("token-1", "team-1", "task-2");
-      expect(params.setSelectedConversationDetail).toHaveBeenCalled();
+      expect(params.setSelectedConversationDetail).toHaveBeenCalledWith(null);
+      expect(params.setSelectedConversationTaskId).toHaveBeenCalledWith("");
+    } finally {
+      mounted.cleanup();
+    }
+  });
 
-      const nextParams = createParams({
-        ...params,
-        taskList: [
-          {
-            id: "task-3",
-            team_id: "team-1",
-            title: "Still present",
-            status: "in_progress",
-            created_by_actor_id: "leader",
-            assigned_member_id: null,
-            context: {},
-            created_at: 1,
-            updated_at: 8,
-          },
-        ] as HookParams["taskList"],
-        selectedConversationDetail: null,
-        tasksLoading: false,
+  it("keeps the selected conversation when the detail fetch fails without a 404", async () => {
+    mockedApi.listTeamTasks.mockResolvedValue([] as never);
+    mockedApi.getTeamSharedThread.mockResolvedValue({
+      task: {
+        id: "shared-thread",
+        team_id: "team-1",
+        title: "all",
+        status: "working",
+        created_by_actor_id: "leader",
+        assigned_member_id: null,
+        context: { bootstrap_kind: "shared_thread" },
+        created_at: 1,
+        updated_at: 6,
+      },
+      latest_run: null,
+    } as never);
+    mockedApi.getTeamTask.mockRejectedValueOnce(new Error("network failed"));
+    getApiErrorStatusMock.mockReturnValue(null);
+
+    const params = createParams({
+      selectedConversationTaskId: "task-2",
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
       });
-      await mounted.rerender(nextParams);
-      expect(nextParams.setSelectedConversationTaskId).toHaveBeenCalledWith("");
-      expect(nextParams.setSelectedConversationDetail).toHaveBeenCalledWith(null);
+      expect(mockedApi.getTeamTask).toHaveBeenCalledWith("token-1", "team-1", "task-2");
+      expect(params.setSelectedConversationTaskId).not.toHaveBeenCalledWith("");
     } finally {
       mounted.cleanup();
     }

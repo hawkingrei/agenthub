@@ -53,7 +53,12 @@ type UseTeamWorkspaceViewModelOptions = {
   setTeamsSidebarCollapsed: Dispatch<SetStateAction<boolean>>;
   setActiveRunId: Dispatch<SetStateAction<string | null>>;
   setRunLookupId: (next: string) => void;
-  navigateToTeamLens: (teamId: string, lens: WorkspaceLens, channelId?: string | null) => void;
+  navigateToTeamLens: (
+    teamId: string,
+    lens: WorkspaceLens,
+    channelId?: string | null,
+    taskId?: string | null
+  ) => void;
   navigateToTeamDetail: (teamId: string) => void;
   navigateToTeamMemberWorkspace: (teamId: string, memberId: string, tab: TeamTab) => void;
   navigateToSidebarTeam: (teamId: string) => void;
@@ -434,11 +439,12 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
 
   const onSelectConversationSubject = useCallback(
     (taskId?: string | null) => {
+      const normalizedTaskId = typeof taskId === "string" ? taskId.trim() : "";
       setFocusedAgentMemberId("");
-      setSelectedConversationTaskId(typeof taskId === "string" ? taskId.trim() : "");
+      setSelectedConversationTaskId(normalizedTaskId);
       setTab("conversation");
       if (selectedTeamId) {
-        navigateToTeamLens(selectedTeamId, "channels", selectedChannelId);
+        navigateToTeamLens(selectedTeamId, "channels", selectedChannelId, normalizedTaskId);
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);

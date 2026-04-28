@@ -331,14 +331,12 @@ describe("team page helpers", () => {
   });
 
   it("keeps a selected thread while tasks are still loading or detail fallback exists", () => {
-    const taskList = [buildTask("task-1", 10)];
-
     expect(
       shouldClearSelectedConversationTask({
         selectedConversationTaskId: "task-missing",
         sharedConversationTaskId: "shared",
-        taskList,
         selectedConversationDetailPresent: false,
+        selectedConversationDetailMissing: false,
         tasksLoading: true,
       })
     ).toBe(false);
@@ -347,20 +345,20 @@ describe("team page helpers", () => {
       shouldClearSelectedConversationTask({
         selectedConversationTaskId: "task-missing",
         sharedConversationTaskId: "shared",
-        taskList,
         selectedConversationDetailPresent: true,
+        selectedConversationDetailMissing: false,
         tasksLoading: false,
       })
     ).toBe(false);
   });
 
-  it("clears a non-shared selected thread only after task refresh confirms it disappeared", () => {
+  it("clears a non-shared selected thread only after task detail confirms it disappeared", () => {
     expect(
       shouldClearSelectedConversationTask({
         selectedConversationTaskId: "task-missing",
         sharedConversationTaskId: "shared",
-        taskList: [buildTask("task-1", 10), buildTask("task-2", 20)],
         selectedConversationDetailPresent: false,
+        selectedConversationDetailMissing: true,
         tasksLoading: false,
       })
     ).toBe(true);
@@ -369,8 +367,18 @@ describe("team page helpers", () => {
       shouldClearSelectedConversationTask({
         selectedConversationTaskId: "shared",
         sharedConversationTaskId: "shared",
-        taskList: [buildTask("task-1", 10)],
         selectedConversationDetailPresent: false,
+        selectedConversationDetailMissing: true,
+        tasksLoading: false,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldClearSelectedConversationTask({
+        selectedConversationTaskId: "task-missing",
+        sharedConversationTaskId: "shared",
+        selectedConversationDetailPresent: false,
+        selectedConversationDetailMissing: false,
         tasksLoading: false,
       })
     ).toBe(false);

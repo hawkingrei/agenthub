@@ -1996,6 +1996,119 @@ describe("TeamPage smoke render", () => {
         await Promise.resolve();
       });
 
+      expect(window.location.pathname).toBe("/workspace/teams/team-1");
+      expect(window.location.search).toBe("?lens=channels&task=task-work");
+
+      const lastOptions =
+        teamConversationActionsOptionsSpy.mock.calls[
+          teamConversationActionsOptionsSpy.mock.calls.length - 1
+        ]?.[0] as {
+        selectedConversation?: { id?: string };
+      };
+      expect(lastOptions.selectedConversation?.id).toBe("task-work");
+      expect(getTeamTask).toHaveBeenCalledWith("token", "team-1", "task-work");
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+  });
+
+  it("restores an explicit task conversation from the route on refresh", async () => {
+    const buildTeam = (id: string, name: string) => ({
+      id,
+      name,
+      description: "Mission",
+      spec: {
+        spec_version: 1,
+        leader_member_id: "leader",
+        entrypoint: "leader_plan",
+        steps: [],
+        members: [{ member_id: "leader", role: "leader", prompt: "Plan" }],
+      },
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    teamPageFixture.teams = [buildTeam("team-1", "Team One")];
+    listTeamChannels.mockResolvedValue([
+      {
+        team_id: "team-1",
+        channel_id: "review",
+        task_id: "task-review",
+        conversation_id: "conv-review",
+        description: "Review lane",
+        created_by_actor_id: "user:user-1",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    getTeamSharedThread.mockResolvedValue(buildSharedThreadDetail("team-1", "task-all", "run-all"));
+    listTeamTasks.mockResolvedValue([
+      {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "leader",
+        assigned_member_id: "leader",
+        context: { owner: "leader" },
+        created_at: 1,
+        updated_at: 2,
+      },
+    ]);
+    getTeamTask.mockResolvedValue({
+      task: {
+        id: "task-work",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "open",
+        created_by_actor_id: "leader",
+        assigned_member_id: "leader",
+        context: { owner: "leader" },
+        created_at: 1,
+        updated_at: 2,
+      },
+      conversation: {
+        id: "conv-task-work",
+        team_id: "team-1",
+        task_id: "task-work",
+        mode: "group_chat",
+        topic: "Investigate regression",
+        created_at: 1,
+        updated_at: 2,
+      },
+      latest_run: null,
+    });
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <MantineProvider>
+            <TeamPage
+              auth={{
+                token: "token",
+                userId: "user-1",
+                username: "root",
+                role: "root",
+              }}
+              token="token"
+              onLogout={() => {}}
+              developerMode={false}
+              routeTeamId="team-1"
+              routeSearch="?lens=channels&channel=review&task=task-work"
+            />
+          </MantineProvider>
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
       const lastOptions =
         teamConversationActionsOptionsSpy.mock.calls[
           teamConversationActionsOptionsSpy.mock.calls.length - 1

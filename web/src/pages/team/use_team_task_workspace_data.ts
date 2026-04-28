@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import {
   api,
   getApiErrorStatus,
@@ -69,6 +69,7 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
   } = options;
 
   const resolvedSelectedConversationTaskId = selectedConversationTaskId.trim();
+  const [selectedConversationDetailMissing, setSelectedConversationDetailMissing] = useState(false);
 
   const selectedConversation = useMemo(() => {
     if (!effectiveSelectedTeamId) {
@@ -195,10 +196,12 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     }
     const taskId = resolvedSelectedConversationTaskId;
     if (!taskId) {
+      setSelectedConversationDetailMissing(false);
       setSelectedConversationDetail(null);
       return;
     }
     if (sharedConversation?.id === taskId) {
+      setSelectedConversationDetailMissing(false);
       setSelectedConversationDetail(null);
       return;
     }
@@ -209,12 +212,14 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
         if (!active) {
           return;
         }
+        setSelectedConversationDetailMissing(false);
         setSelectedConversationDetail(detail);
       })
       .catch((err) => {
         if (!active) {
           return;
         }
+        setSelectedConversationDetailMissing(getApiErrorStatus(err) === 404);
         setSelectedConversationDetail(null);
         setError(parseErrorMessage(err));
       });
@@ -234,8 +239,8 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     const shouldClearSelection = shouldClearSelectedConversationTask({
       selectedConversationTaskId: resolvedSelectedConversationTaskId,
       sharedConversationTaskId: sharedConversation?.id ?? null,
-      taskList,
       selectedConversationDetailPresent: Boolean(selectedConversationDetail),
+      selectedConversationDetailMissing,
       tasksLoading,
     });
     if (!shouldClearSelection) {
@@ -248,8 +253,8 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     selectedConversationDetail,
     setSelectedConversationDetail,
     setSelectedConversationTaskId,
+    selectedConversationDetailMissing,
     sharedConversation?.id,
-    taskList,
     tasksLoading,
   ]);
 
@@ -276,5 +281,6 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     refreshTasks,
     refreshSharedConversation,
     onRefreshTasks,
+    selectedConversationDetailMissing,
   };
 }
