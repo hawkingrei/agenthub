@@ -288,6 +288,30 @@ export function resolveTeamSelectedTaskId(search: string): string {
   return (params.get("task") ?? "").trim();
 }
 
+export function resolveRouteScopedConversationTaskSelection(options: {
+  previousTaskId: string;
+  routeSelectedTaskId: string;
+  routeChannelId: TeamChannelId;
+  selectedChannelTaskId: string | null | undefined;
+}): string | null {
+  const {
+    previousTaskId,
+    routeSelectedTaskId,
+    routeChannelId,
+    selectedChannelTaskId,
+  } = options;
+  if (routeSelectedTaskId) {
+    return previousTaskId === routeSelectedTaskId ? previousTaskId : routeSelectedTaskId;
+  }
+  if (routeChannelId === DEFAULT_TEAM_CHANNEL_ID) {
+    return previousTaskId ? "" : previousTaskId;
+  }
+  if (selectedChannelTaskId) {
+    return previousTaskId === selectedChannelTaskId ? previousTaskId : selectedChannelTaskId;
+  }
+  return null;
+}
+
 export function resolveTeamSelectedMemberId(search: string): string {
   const params = new URLSearchParams(search);
   return (params.get("member") ?? "").trim();
@@ -388,6 +412,23 @@ export function buildTeamWorkspacePath(
     return pathname;
   }
   return `${pathname}?${search}`;
+}
+
+export function buildTeamLensNavigationPath(
+  teamId: string,
+  lens: WorkspaceLens,
+  channelId?: TeamChannelId | null,
+  taskId?: string | null
+): string {
+  return buildTeamWorkspacePath(
+    teamId,
+    lens,
+    lens === "channels" ? (channelId ?? DEFAULT_TEAM_CHANNEL_ID) : null,
+    null,
+    null,
+    null,
+    lens === "channels" ? taskId : null
+  );
 }
 
 export function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
@@ -1152,20 +1193,14 @@ export function TeamPage(props: TeamPageProps) {
     if (!effectiveSelectedTeamId || !routeTargetsChannelLane) {
       return;
     }
-    if (routeSelectedTaskId) {
-      setSelectedConversationTaskId((prev) =>
-        prev === routeSelectedTaskId ? prev : routeSelectedTaskId
-      );
-      return;
-    }
-    if (routeChannelId === DEFAULT_TEAM_CHANNEL_ID) {
-      setSelectedConversationTaskId((prev) => (prev ? "" : prev));
-      return;
-    }
-    if (selectedChannelRecord) {
-      setSelectedConversationTaskId((prev) =>
-        prev === selectedChannelRecord.task_id ? prev : selectedChannelRecord.task_id
-      );
+    const selectedTaskId = resolveRouteScopedConversationTaskSelection({
+      previousTaskId: selectedConversationTaskId,
+      routeSelectedTaskId,
+      routeChannelId,
+      selectedChannelTaskId: selectedChannelRecord?.task_id,
+    });
+    if (selectedTaskId !== null) {
+      setSelectedConversationTaskId(() => selectedTaskId);
       return;
     }
     if (teamChannelsSettled && teamChannelsLoadedSuccessfully) {
@@ -1176,6 +1211,7 @@ export function TeamPage(props: TeamPageProps) {
     routeChannelId,
     routeSelectedTaskId,
     routeWorkspaceLens,
+    selectedConversationTaskId,
     selectedChannelRecord,
     teamChannelsLoadedSuccessfully,
     teamChannelsSettled,
@@ -2373,17 +2409,7 @@ export function TeamPage(props: TeamPageProps) {
       channelId?: TeamChannelId | null,
       taskId?: string | null
     ) => {
-      navigateTeamRoute(
-        buildTeamWorkspacePath(
-          teamId,
-          lens,
-          lens === "channels" ? (channelId ?? DEFAULT_TEAM_CHANNEL_ID) : null,
-          null,
-          null,
-          null,
-          lens === "channels" ? taskId : null
-        )
-      );
+      navigateTeamRoute(buildTeamLensNavigationPath(teamId, lens, channelId, taskId));
     },
     []
   );

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTeamLensNavigationPath,
   buildTeamDetailPath,
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveRouteScopedConversationTaskSelection,
   resolveSelectedAgentWorkspaceSessionId,
   resolveThreadRootMessageIdFromPayload,
   resolveTeamChannelId,
@@ -66,6 +68,15 @@ describe("team_page helpers", () => {
     expect(
       buildTeamWorkspacePath("team-1", "members", null, null, "worker-3", "conversation" as never)
     ).toBe("/workspace/teams/team-1?lens=members&member=worker-3");
+    expect(buildTeamLensNavigationPath("team-1", "channels", null, "task-9")).toBe(
+      "/workspace/teams/team-1?lens=channels&task=task-9"
+    );
+    expect(buildTeamLensNavigationPath("team-1", "channels", "review", "task-9")).toBe(
+      "/workspace/teams/team-1?lens=channels&channel=review&task=task-9"
+    );
+    expect(buildTeamLensNavigationPath("team-1", "members", null, "task-9")).toBe(
+      "/workspace/teams/team-1?lens=members"
+    );
   });
 
   it("parses team channel and thread query state", () => {
@@ -88,6 +99,65 @@ describe("team_page helpers", () => {
     expect(resolveTeamWorkspaceTab("?tab=mailbox")).toBe("mailbox");
     expect(resolveTeamWorkspaceTab("?tab=member_console")).toBe("member_console");
     expect(resolveTeamWorkspaceTab("?tab=overview")).toBeNull();
+  });
+
+  it("resolves route-scoped conversation task selection across task and channel lanes", () => {
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "",
+        routeSelectedTaskId: "task-7",
+        routeChannelId: "review",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-7");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "task-7",
+        routeSelectedTaskId: "task-7",
+        routeChannelId: "review",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-7");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "",
+        routeSelectedTaskId: "",
+        routeChannelId: "all",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "task-review",
+        routeSelectedTaskId: "",
+        routeChannelId: "all",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "",
+        routeSelectedTaskId: "",
+        routeChannelId: "review",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-review");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "task-review",
+        routeSelectedTaskId: "",
+        routeChannelId: "review",
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-review");
+    expect(
+      resolveRouteScopedConversationTaskSelection({
+        previousTaskId: "",
+        routeSelectedTaskId: "",
+        routeChannelId: "review",
+        selectedChannelTaskId: null,
+      })
+    ).toBeNull();
   });
 
   it("prefers runtime session ids over snapshot handles for member ACP routing", () => {
