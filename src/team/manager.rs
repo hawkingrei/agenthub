@@ -5037,10 +5037,7 @@ fn compute_next_task_execution_context(
 
     let mut next_context = current_context.clone();
     let next_attempt_number = current_context
-        .as_object()
-        .and_then(|context| context.get("execution"))
-        .and_then(Value::as_object)
-        .and_then(|execution| execution.get("attempt_number"))
+        .pointer("/execution/attempt_number")
         .and_then(Value::as_i64)
         .unwrap_or(0)
         + 1;
@@ -5134,12 +5131,9 @@ async fn sync_linked_task_status_tx(
         first = false;
     }
     if let Some(next_context) = next_context.as_ref() {
-        if !first {
-            builder.push(", ");
-        }
+        builder.push(", ");
         builder.push("context_json = ");
         builder.push_bind(next_context.to_string());
-        first = false;
     }
     if !first {
         builder.push(", ");
