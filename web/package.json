@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.6",
-    "@mantine/core": "9.1.0",
+    "@mantine/core": "9.1.1",
     "@mantine/hooks": "9.1.1",
     "bootstrap-icons": "^1.11.3",
     "highlight.js": "^11.11.1",
