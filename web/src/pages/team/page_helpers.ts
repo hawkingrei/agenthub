@@ -105,16 +105,16 @@ export function resolveSelectedAgentWorkspaceLabel(
 type ShouldClearSelectedConversationTaskArgs = {
   selectedConversationTaskId: string;
   sharedConversationTaskId: string | null;
-  taskList: TeamTaskRecord[];
   selectedConversationDetailPresent: boolean;
+  selectedConversationDetailMissing: boolean;
   tasksLoading: boolean;
 };
 
 export function shouldClearSelectedConversationTask({
   selectedConversationTaskId,
   sharedConversationTaskId,
-  taskList,
   selectedConversationDetailPresent,
+  selectedConversationDetailMissing,
   tasksLoading,
 }: ShouldClearSelectedConversationTaskArgs): boolean {
   const normalizedSelectedTaskId = selectedConversationTaskId.trim();
@@ -124,10 +124,10 @@ export function shouldClearSelectedConversationTask({
   if (normalizedSelectedTaskId === (sharedConversationTaskId?.trim() ?? "")) {
     return false;
   }
-  if (tasksLoading || selectedConversationDetailPresent || taskList.length === 0) {
+  if (tasksLoading || selectedConversationDetailPresent || !selectedConversationDetailMissing) {
     return false;
   }
-  return !taskList.some((task) => task.id === normalizedSelectedTaskId);
+  return true;
 }
 
 type ShouldClearSelectedTeamMemberArgs = {

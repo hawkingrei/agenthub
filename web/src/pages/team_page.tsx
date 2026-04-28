@@ -1217,32 +1217,6 @@ export function TeamPage(props: TeamPageProps) {
     teamChannelsSettled,
   ]);
   useEffect(() => {
-    if (!effectiveSelectedTeamId || !routeSelectedTaskId) {
-      return;
-    }
-    const shouldClearRouteTask = shouldClearSelectedConversationTask({
-      selectedConversationTaskId: routeSelectedTaskId,
-      sharedConversationTaskId: sharedConversation?.id ?? null,
-      taskList,
-      selectedConversationDetailPresent: Boolean(selectedConversationDetail),
-      tasksLoading,
-    });
-    if (!shouldClearRouteTask) {
-      return;
-    }
-    navigateTeamRoute(
-      buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
-    );
-  }, [
-    effectiveSelectedTeamId,
-    routeChannelId,
-    routeSelectedTaskId,
-    selectedConversationDetail,
-    sharedConversation?.id,
-    taskList,
-    tasksLoading,
-  ]);
-  useEffect(() => {
     const memberId = routeSelectedMemberId.trim();
     if (!memberId) {
       return;
@@ -2031,6 +2005,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedTask,
     refreshTasks,
     onRefreshTasks,
+    selectedConversationDetailMissing,
   } = useTeamTaskWorkspaceData({
     token: props.token,
     effectiveSelectedTeamId,
@@ -2076,6 +2051,33 @@ export function TeamPage(props: TeamPageProps) {
     setConversationMailboxMessages,
     setTaskMessageDraft,
   });
+
+  useEffect(() => {
+    if (!effectiveSelectedTeamId || !routeSelectedTaskId) {
+      return;
+    }
+    const shouldClearRouteTask = shouldClearSelectedConversationTask({
+      selectedConversationTaskId: routeSelectedTaskId,
+      sharedConversationTaskId: sharedConversation?.id ?? null,
+      selectedConversationDetailPresent: Boolean(selectedConversationDetail),
+      selectedConversationDetailMissing,
+      tasksLoading,
+    });
+    if (!shouldClearRouteTask) {
+      return;
+    }
+    navigateTeamRoute(
+      buildTeamWorkspacePath(effectiveSelectedTeamId, "channels", routeChannelId)
+    );
+  }, [
+    effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
+    selectedConversationDetail,
+    selectedConversationDetailMissing,
+    sharedConversation?.id,
+    tasksLoading,
+  ]);
 
   useTeamConversationEffects({
     token: props.token,

@@ -2168,7 +2168,7 @@ describe("TeamPage smoke render", () => {
         updated_at: 2,
       },
     ]);
-    getTeamTask.mockRejectedValue(new Error("task not found"));
+    getTeamTask.mockRejectedValue({ status: 404, message: "task not found" });
 
     window.history.replaceState(
       {},
