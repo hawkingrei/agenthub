@@ -5437,6 +5437,36 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
   });
 
+  it("TeamMemberAcpPanel hides input when the selected agent is stopped", async () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={false}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        selectedMemberSnapshot={null}
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedSessionId="stale-session-1"
+        memberEvents={[]}
+        memberEventsHasMore={false}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent?.toLowerCase()).toContain("agent is stopped");
+    expect(container.textContent?.toLowerCase()).toContain("stopped");
+    expect(container.querySelector("textarea")).toBeNull();
+  });
+
   it("TeamMemberAcpPanel keeps ACP shell visible when the session has no thread events yet", () => {
     saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", [
       {

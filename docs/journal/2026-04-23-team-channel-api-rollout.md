@@ -59,3 +59,17 @@ Still remaining:
   across both `# all` and non-default channels
 - close the remaining unified workspace shell follow-ups after the Team channel model is no longer
   hardcoded
+
+## 2026-04-28 Follow-up
+
+- converged Team workspace route construction back onto the canonical shared helper in
+  `web/src/app_route_selection.ts` so `task=` deep links no longer depend on a drifting
+  `team_page.tsx`-local path builder
+- kept the existing `TeamPage` helper exports stable for focused tests, but the local Team route
+  helper now delegates to the shared route contract instead of re-encoding its own query shape
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/pages/team_page.helpers.test.ts`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run build`

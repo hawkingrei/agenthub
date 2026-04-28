@@ -7,10 +7,13 @@ import {
   buildTeamWorkspacePath,
   buildWorkspaceNodePath,
   buildWorkspacePath,
+  isTeamMemberRouteTab,
   navigateToPath,
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
+  resolveTeamMemberRouteTab,
   resolveTeamRoute,
+  resolveTeamSelectedTaskId,
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceNodeId,
@@ -113,9 +116,20 @@ describe("app route selection", () => {
     expect(buildTeamWorkspacePath("team-1", "channels", "all", 42, null, null, "task-77")).toBe(
       "/workspace/teams/team-1?lens=channels&thread=42&task=task-77"
     );
+    expect(
+      buildTeamWorkspacePath("team-1", "members", null, null, "worker-1", "agent_acp", "task-9")
+    ).toBe("/workspace/teams/team-1?lens=members&task=task-9&member=worker-1&tab=thread");
     expect(resolveWorkspaceNodeId("?lens=nodes&node=node-east")).toBe("node-east");
     expect(resolveWorkspaceNodeId("?lens=nodes")).toBeNull();
     expect(buildWorkspaceNodePath("node-east")).toBe("/workspace?lens=nodes&node=node-east");
+    expect(resolveTeamSelectedTaskId("?task=task-9")).toBe("task-9");
+    expect(resolveTeamSelectedTaskId("?task=%20task-9%20")).toBe("task-9");
+    expect(resolveTeamSelectedTaskId("")).toBe("");
+    expect(resolveTeamMemberRouteTab("?tab=thread")).toBe("agent_acp");
+    expect(resolveTeamMemberRouteTab("?tab=member_console")).toBe("member_console");
+    expect(resolveTeamMemberRouteTab("?tab=overview")).toBeNull();
+    expect(isTeamMemberRouteTab("agent_acp")).toBe(true);
+    expect(isTeamMemberRouteTab("overview")).toBe(false);
   });
 
   it("derives the post-auth redirect target only on the workspace root aliases", () => {
