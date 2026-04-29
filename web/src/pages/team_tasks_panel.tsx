@@ -446,7 +446,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
               size="md"
               onClick={() => onOpenConversation(selectedTask.id)}
             >
-              Open thread
+              Open conversation
             </ActionButton>
           </div>
 

@@ -73,3 +73,23 @@ Focused validation for this follow-up:
 - `cd web && pnpm exec vitest run src/app_route_selection.test.ts src/pages/team_page.helpers.test.ts`
 - `cd web && npm exec tsc -- --noEmit`
 - `cd web && npm run build`
+
+## 2026-04-28 Follow-up 2
+
+- extended channel-lane thread routing so explicit task conversations that still belong to the
+  active non-default channel now keep `task=<task_id>` when opening a thread and when returning
+  from the right-side thread pane
+- this closes the route-shape gap for:
+  - `?lens=channels&channel=review&task=task-work&thread=<message_id>`
+  - `?channel=review&task=task-work&thread=<message_id>`
+- tightened the Team task-detail CTA language so Kanban no longer labels task-conversation entry
+  as `Open thread`; the task detail now says `Open conversation`, leaving `Thread` reserved for
+  message-rooted split-view behavior
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/page_helpers.test.ts src/pages/team_page.smoke.test.tsx`
+- `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+- `cd web && npm run build`

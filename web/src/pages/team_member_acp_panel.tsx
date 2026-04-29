@@ -264,7 +264,6 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       attachedNodeId,
       developerTechnicalMetadata,
       infoStripSummary,
-      selectedAgentStatus,
       memberStatus,
       memberStatusClassToken,
       memberStatusLabel,

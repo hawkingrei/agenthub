@@ -272,6 +272,10 @@ function resolveMessageText(
   return resolveChatMessageText(message.payload);
 }
 
+function canOpenThreadFromMessage(message: TeamConversationMessageRecord): boolean {
+  return !isThreadReplyMessage(message) && resolveMessageText(message) !== null;
+}
+
 function resolveThreadAuthorLabel(
   actorId: string,
   humanActorId: string,
@@ -1283,6 +1287,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           payload: message.payload,
           text: item.text,
           permissionCardPayload: item.permissionCardPayload,
+          canOpenThread: item.permissionCardPayload == null && canOpenThreadFromMessage(message),
         };
       }),
     [activityWindow.items]
@@ -1520,7 +1525,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                             </div>
                             {(developerMode || (isChannelConversation && onOpenThread)) && (
                               <div className={TEAM_TASK_ACTIVITY_HEADER_META_CLASS}>
-                                {isChannelConversation && onOpenThread && (
+                                {isChannelConversation && onOpenThread && item.canOpenThread && (
                                   <CompactButton
                                     className={
                                       activeThreadMessageId === item.sequence

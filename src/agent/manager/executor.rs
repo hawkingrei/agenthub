@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use async_trait::async_trait;
@@ -56,6 +58,16 @@ impl AgentExecutor for LocalExecutor {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // Keep PATH-based resolution, but stabilize sibling helper discovery when
+        // AgentHub itself was launched from a build output directory with the ACP
+        // adapter next to it.
+        if let Some(path) = synthesized_child_path(
+            &request.command_path,
+            std::env::var_os("PATH"),
+            std::env::current_exe().ok().as_deref(),
+        ) {
+            command.env("PATH", path);
+        }
         self.proxy_policy.apply_to_command(&mut command);
         for (key, value) in &request.extra_env {
             command.env(key, value);
@@ -89,11 +101,58 @@ impl AgentExecutor for LocalExecutor {
     }
 }
 
+fn synthesized_child_path(
+    command_path: &str,
+    inherited_path: Option<OsString>,
+    current_exe: Option<&Path>,
+) -> Option<OsString> {
+    if Path::new(command_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        != Some(command_path)
+    {
+        return inherited_path;
+    }
+    let sibling_dir = resolve_runtime_sibling_bin_dir(current_exe)?;
+    let mut segments: Vec<PathBuf> = inherited_path
+        .as_deref()
+        .map(std::env::split_paths)
+        .map(|paths| paths.collect())
+        .unwrap_or_default();
+    if segments.iter().any(|path| path == &sibling_dir) {
+        return inherited_path;
+    }
+    segments.insert(0, sibling_dir);
+    std::env::join_paths(segments).ok()
+}
+
+fn resolve_runtime_sibling_bin_dir(current_exe: Option<&Path>) -> Option<PathBuf> {
+    let current = current_exe?;
+    let parent = current.parent()?;
+    // Test binaries run from `target/*/deps`, but the shipped adapter lives in the
+    // parent bin directory next to the main AgentHub binary.
+    let sibling_dir = if parent.file_name().and_then(|name| name.to_str()) == Some("deps") {
+        parent.parent()?
+    } else {
+        parent
+    };
+    if sibling_dir.as_os_str().is_empty() {
+        return None;
+    }
+    Some(sibling_dir.to_path_buf())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
     use uuid::Uuid;
 
-    use super::{AgentExecutor, LocalExecutionRequest, LocalExecutor};
+    use super::{
+        AgentExecutor, LocalExecutionRequest, LocalExecutor, resolve_runtime_sibling_bin_dir,
+        synthesized_child_path,
+    };
     use crate::agent::manager::ProxyPolicy;
 
     fn temp_workdir(prefix: &str) -> std::path::PathBuf {
@@ -134,5 +193,43 @@ mod tests {
         assert_eq!(stdout.trim(), "RUST_BACKTRACE=1");
 
         let _ = std::fs::remove_dir_all(&workdir);
+    }
+
+    #[test]
+    fn synthesized_child_path_prepends_sibling_bin_dir_for_bare_commands() {
+        let current_exe = PathBuf::from("/tmp/agenthub/target/debug/agenthub");
+        let inherited = Some(OsString::from("/usr/bin:/bin"));
+
+        let path = synthesized_child_path(
+            "agenthub-codex-acp",
+            inherited.clone(),
+            Some(current_exe.as_path()),
+        )
+        .expect("synthesized path");
+
+        let segments: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert_eq!(segments[0], PathBuf::from("/tmp/agenthub/target/debug"));
+        assert_eq!(segments[1], PathBuf::from("/usr/bin"));
+        assert_eq!(segments[2], PathBuf::from("/bin"));
+    }
+
+    #[test]
+    fn synthesized_child_path_leaves_explicit_command_paths_unchanged() {
+        let inherited = Some(OsString::from("/usr/bin:/bin"));
+        let path = synthesized_child_path(
+            "/tmp/bin/agenthub-codex-acp",
+            inherited.clone(),
+            Some(Path::new("/tmp/agenthub/target/debug/agenthub")),
+        );
+
+        assert_eq!(path, inherited);
+    }
+
+    #[test]
+    fn resolve_runtime_sibling_bin_dir_uses_parent_of_deps_test_binary() {
+        let current_exe = Path::new("/tmp/agenthub/target/debug/deps/agenthub-tests");
+        let sibling_dir =
+            resolve_runtime_sibling_bin_dir(Some(current_exe)).expect("resolve sibling dir");
+        assert_eq!(sibling_dir, PathBuf::from("/tmp/agenthub/target/debug"));
     }
 }

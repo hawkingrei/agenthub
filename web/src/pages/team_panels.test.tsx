@@ -3439,6 +3439,51 @@ describe("team panels interactions", () => {
     expect(queryButtonByText(container, "Details")).toBeNull();
   });
 
+  it("TeamTaskPanel hides thread access for permission review cards", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        token="token"
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(11, {
+            payload: {
+              type: "permission_review_card",
+              permission_id: "perm-1",
+              agent_id: "agent-1",
+              options: [
+                { option_id: "approve", name: "Approve", kind: "approve" },
+                { option_id: "cancel", name: "Cancel", kind: "cancel" },
+              ],
+              summary: "Run a command",
+              status: "pending",
+            },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={null}
+      />
+    );
+
+    expect(queryButtonByText(container, "Thread")).toBeNull();
+    expect(container.querySelector("[data-team-permission-card='true']")).not.toBeNull();
+  });
+
   it("TeamTaskPanel disables enter-to-send on mobile-sized viewports", () => {
     const originalWidth = window.innerWidth;
     const sendMessage = vi.fn();
@@ -4335,7 +4380,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Investigate bug"));
     await openTaskDetailModal(container, "Prepare rollout");
     clickElement(findInteractiveByText(container, "In progress", "button, label"));
-    clickElement(findButtonByText(document.body, "Open thread"));
+    clickElement(findButtonByText(document.body, "Open conversation"));
     clickElement(findButtonByText(container, "Open # review"));
     clickElement(findInteractiveByText(document.body, "Developer tools", "summary"));
     changeInputValue(
@@ -4373,7 +4418,7 @@ describe("team panels interactions", () => {
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
     expect(container.textContent).toContain("# review");
-    expect(document.body.textContent).toContain("Open thread");
+    expect(document.body.textContent).toContain("Open conversation");
     expect(container.textContent).toContain("Open # review");
     expect(document.body.textContent).toContain("Latest execution run");
     expect(document.body.textContent).toContain("Shipped the rollout summary.");
