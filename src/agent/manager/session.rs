@@ -130,11 +130,7 @@ impl AgentManager {
         .bind(now)
         .execute(&self.db)
         .await?;
-        if !self
-            .has_agent_persistent_session_failures_table()
-            .await
-            .unwrap_or(false)
-        {
+        if !self.has_agent_persistent_session_failures_table().await? {
             return Ok(());
         }
         sqlx::query(
@@ -189,7 +185,9 @@ impl AgentManager {
         provider: &str,
     ) -> anyhow::Result<i64> {
         if !self.has_agent_persistent_session_failures_table().await? {
-            return Ok(0);
+            anyhow::bail!(
+                "agent_persistent_session_failures table is unavailable; cannot track resume failures for fresh-session fallback"
+            );
         }
         let now = Utc::now().timestamp();
         sqlx::query(
