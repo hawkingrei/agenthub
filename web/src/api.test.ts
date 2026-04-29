@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { __testOnlyApiInternals, api } from "./api";
+import { __testOnlyApiInternals, api, buildTeamRunContextSseUrl } from "./api";
 
 describe("api request headers", () => {
   afterEach(() => {
@@ -179,6 +179,19 @@ describe("api request headers", () => {
     const headers = new Headers(init.headers);
     expect(headers.get("Authorization")).toBe("Bearer token-1");
     expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("builds the team run-context SSE URL with encoded dynamic segments", () => {
+    expect(
+      buildTeamRunContextSseUrl(
+        "https://agenthub.example",
+        "team/one",
+        "run with spaces",
+        "token+value/1"
+      )
+    ).toBe(
+      "https://agenthub.example/sse/teams/team%2Fone/runs/run%20with%20spaces/context?token=token%2Bvalue%2F1"
+    );
   });
 
   it("lists and mutates team channels through the public channel endpoints", async () => {

@@ -341,6 +341,35 @@ describe("useTeamMemberBackfillEffect", () => {
     expect(getAgentSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps shared backfill caches isolated per auth token", async () => {
+    const getAgentSpy = vi.spyOn(api, "getAgent").mockImplementation(async (_token, agentId) => {
+      if (agentId === "missing-a") {
+        return makeAgent("missing-a");
+      }
+      throw makeApiError(404, "not-found");
+    });
+
+    const left = createParams({
+      token: "token-1",
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+    });
+    const right = createParams({
+      token: "token-2",
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+    });
+
+    act(() => {
+      root.render(<DualHookHarness left={left} right={right} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(2);
+    expect(getAgentSpy.mock.calls.map(([token]) => token)).toEqual(["token-1", "token-2"]);
+  });
+
   it("retains shared cooldown entries when members temporarily leave and rejoin the team spec", async () => {
     const getAgentSpy = vi.spyOn(api, "getAgent").mockRejectedValue(
       makeApiError(404, "not-found")

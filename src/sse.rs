@@ -1171,8 +1171,8 @@ mod tests {
             mailbox_dead_letter: 0,
         };
 
-        let delta = super::build_team_run_context_delta(&previous, &next)
-            .expect("delta should be emitted");
+        let delta =
+            super::build_team_run_context_delta(&previous, &next).expect("delta should be emitted");
         assert!(delta.refresh_run);
         assert!(delta.refresh_events);
         assert!(delta.refresh_snapshot);

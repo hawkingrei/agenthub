@@ -19,33 +19,46 @@ type ResolvedTeamMemberAgent = {
 };
 
 const TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS = 60_000;
-const teamMemberLastResolvedAt = new Map<string, number>();
-const teamMemberInFlightRequests = new Map<string, Promise<ResolvedTeamMemberAgent>>();
+const teamMemberLastResolvedAt = new Map<string, Map<string, number>>();
+const teamMemberInFlightRequests = new Map<
+  string,
+  Map<string, Promise<ResolvedTeamMemberAgent>>
+>();
 
-function buildTeamMemberBackfillKey(token: string, memberId: string): string {
-  return `${token}\u0000${memberId}`;
+function getSharedMemberMap<T>(
+  cache: Map<string, Map<string, T>>,
+  token: string,
+  createIfMissing: boolean
+): Map<string, T> | undefined {
+  const existing = cache.get(token);
+  if (existing || !createIfMissing) {
+    return existing;
+  }
+  const next = new Map<string, T>();
+  cache.set(token, next);
+  return next;
 }
 
 // Shared caches keep duplicate Team shell instances from immediately re-fetching the
 // same hidden member record before the first backfill result has propagated into state.
 function getSharedResolvedAt(token: string, memberId: string): number | undefined {
-  return teamMemberLastResolvedAt.get(buildTeamMemberBackfillKey(token, memberId));
+  return getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.get(memberId);
 }
 
 function setSharedResolvedAt(token: string, memberId: string, resolvedAt: number): void {
-  teamMemberLastResolvedAt.set(buildTeamMemberBackfillKey(token, memberId), resolvedAt);
+  getSharedMemberMap(teamMemberLastResolvedAt, token, true)?.set(memberId, resolvedAt);
 }
 
 function hasSharedInFlightRequest(token: string, memberId: string): boolean {
-  return teamMemberInFlightRequests.has(buildTeamMemberBackfillKey(token, memberId));
+  return getSharedMemberMap(teamMemberInFlightRequests, token, false)?.has(memberId) ?? false;
 }
 
 function loadSharedMemberAgent(
   token: string,
   memberId: string
 ): Promise<ResolvedTeamMemberAgent> {
-  const cacheKey = buildTeamMemberBackfillKey(token, memberId);
-  const existing = teamMemberInFlightRequests.get(cacheKey);
+  const requestCache = getSharedMemberMap(teamMemberInFlightRequests, token, true)!;
+  const existing = requestCache.get(memberId);
   if (existing) {
     return existing;
   }
@@ -59,9 +72,12 @@ function loadSharedMemberAgent(
       return { memberId };
     })
     .finally(() => {
-      teamMemberInFlightRequests.delete(cacheKey);
+      requestCache.delete(memberId);
+      if (requestCache.size === 0) {
+        teamMemberInFlightRequests.delete(token);
+      }
     });
-  teamMemberInFlightRequests.set(cacheKey, request);
+  requestCache.set(memberId, request);
   return request;
 }
 

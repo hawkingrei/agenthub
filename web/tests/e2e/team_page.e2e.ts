@@ -1092,8 +1092,8 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   const inboxBeforePolling = counters.inbox;
   await page.waitForTimeout(4500);
   expect(counters.events).toBe(eventsBeforePolling);
-  expect(counters.snapshot).toBeGreaterThan(snapshotBeforePolling);
-  expect(counters.inbox).toBeGreaterThan(inboxBeforePolling);
+  expect(counters.snapshot).toBe(snapshotBeforePolling);
+  expect(counters.inbox).toBe(inboxBeforePolling);
 
   await openAdvancedView(page, "Debug");
   await page.getByRole("button", { name: "Mailbox Raw" }).click();

@@ -13,6 +13,7 @@ import {
   TeamRunRecord,
   TeamRunSnapshotRecord,
   TeamStepRecord,
+  buildTeamRunContextSseUrl,
 } from "../../api";
 import { resolveActiveRunIdForSelectedTeam, type TeamRunStatusFilter } from "./run_helpers";
 import type { TeamTab } from "./state";
@@ -445,11 +446,12 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
       // The SSE payload is only a lightweight invalidation signal. The hook still
       // refreshes the tab-specific minimal read set so the route keeps one source of truth.
       const nextSource = new EventSource(
-        `${location.origin}/sse/teams/${encodeURIComponent(
-          normalizedTeamId
-        )}/runs/${encodeURIComponent(normalizedRunId)}/context?token=${encodeURIComponent(
+        buildTeamRunContextSseUrl(
+          location.origin,
+          normalizedTeamId,
+          normalizedRunId,
           token
-        )}`
+        )
       );
       source = nextSource;
       nextSource.onopen = () => {

@@ -2,7 +2,11 @@
 import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TeamRunRecord, TeamRunSnapshotRecord } from "../../api";
+import {
+  buildTeamRunContextSseUrl,
+  type TeamRunRecord,
+  type TeamRunSnapshotRecord,
+} from "../../api";
 import { useTeamRunLifecycleEffects } from "./use_team_run_lifecycle_effects";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -246,6 +250,14 @@ describe("useTeamRunLifecycleEffects", () => {
 
     expect(MockEventSource.instances).toHaveLength(1);
     const source = MockEventSource.instances[0];
+    expect(source?.url).toBe(
+      buildTeamRunContextSseUrl(
+        window.location.origin,
+        params.selectedTeamId ?? "",
+        params.activeRunIdForSelectedTeam ?? "",
+        params.token
+      )
+    );
     act(() => {
       source.emitOpen();
     });
@@ -313,6 +325,42 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
     expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase + 2);
+  });
+
+  it("does not interval-poll mailbox context while run-context SSE stays connected", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams({
+      tab: "mailbox",
+      chatInboxActorId: "leader-actor",
+      loadInbox: vi.fn().mockResolvedValue(undefined),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+    const source = MockEventSource.instances[0];
+    act(() => {
+      source.emitOpen();
+    });
+
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+    const loadInboxBase = (params.loadInbox as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+    expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase);
   });
 
   it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {
