@@ -267,6 +267,16 @@ export function useTeamMemberAcpViewModel({
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeStatusValue(memberRoleLabel) ||
     "unknown";
+  // Keep "session is starting" narrow to members that already report an active
+  // runtime-like status; an entirely idle member should still render the old
+  // empty-shell copy instead of a misleading progress state.
+  const isStartingAcpSession = Boolean(
+    selectedMemberId.trim() &&
+      !selectedSessionId &&
+      [normalizedAgentStatus, snapshotStatus, acpRunStatus].some(
+        (status) => status && isAgentActiveStatus(status)
+      )
+  );
   const thinkingLabel =
     acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
@@ -369,6 +379,9 @@ export function useTeamMemberAcpViewModel({
     if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
       return "Agent is stopped";
     }
+    if (isStartingAcpSession) {
+      return "Starting ACP session...";
+    }
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
@@ -384,6 +397,7 @@ export function useTeamMemberAcpViewModel({
     hasRenderableConversationContent,
     memberEventsLoading,
     normalizedAgentStatus,
+    isStartingAcpSession,
     selectedMemberId,
     selectedSessionId,
     visibleMemberEvents.length,
@@ -537,6 +551,7 @@ export function useTeamMemberAcpViewModel({
     memberStatus,
     memberStatusLabel,
     memberStatusClassToken,
+    isStartingAcpSession,
     panelSubtitle,
     developerTechnicalMetadata,
     acpPanelProps,

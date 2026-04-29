@@ -5779,6 +5779,37 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("Plan");
   });
 
+  it("TeamMemberAcpPanel shows startup progress when the member is active but has no ACP session yet", () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+          developerMode={false}
+          selectedMemberId="worker-agent"
+          memberTitle="Worker agent"
+          selectedMemberSnapshot={{
+            id: "worker-agent",
+            role: "worker",
+            status: "running",
+          } as never}
+          selectedMemberRole="worker"
+          selectedAgentStatus="running"
+          memberEvents={[]}
+          memberEventsHasMore={false}
+          memberEventsLoading={false}
+          eventsLoading={false}
+          oldestMemberEventId={null}
+          onLoadOlder={vi.fn()}
+        />
+    );
+
+    expect(container.textContent).toContain("Starting ACP session...");
+    expect(container.textContent).toContain("Starting session");
+    expect(
+      container.querySelector('[role="progressbar"][aria-label="Starting ACP session"]')
+    ).not.toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+  });
+
   it("TeamMemberAcpPanel hides input when the selected agent is stopped", async () => {
     renderWithMantine(
       root,
