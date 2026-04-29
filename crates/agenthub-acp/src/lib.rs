@@ -1840,12 +1840,11 @@ mod tests {
     use super::{
         ACP_PERMISSION_REVIEW_TIMEOUT, AcpActorContinuityEnvelope, AcpActorSkillContext,
         AcpCommand, AcpHandle, AcpPermissionRespondResult, AcpPermissionService,
-        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError,
-        acp_permission_review_timeout, acp_session_start_timeout,
-        build_prompt_prefix_blocks, dedupe_skills, format_auth_required_message,
-        handle_auth_required_failure, is_auth_required_error, load_mcp_servers_from_path,
-        load_skills_from_config, load_workdir_skills, remove_skills_conflicting_with_reserved,
-        should_queue_while_prompts_active,
+        AcpPromptDeliveryPolicy, AcpRuntimeLocation, AcpSendError, acp_permission_review_timeout,
+        acp_session_start_timeout, build_prompt_prefix_blocks, dedupe_skills,
+        format_auth_required_message, handle_auth_required_failure, is_auth_required_error,
+        load_mcp_servers_from_path, load_skills_from_config, load_workdir_skills,
+        remove_skills_conflicting_with_reserved, should_queue_while_prompts_active,
     };
     use agent_client_protocol_legacy::{
         ContentBlock, Error as AcpError, ErrorCode as AcpErrorCode, McpServer,
