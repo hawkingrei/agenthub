@@ -529,6 +529,10 @@ impl AgentManager {
                 .bind(agent_id)
                 .execute(&mut *tx)
                 .await?;
+            sqlx::query("DELETE FROM agent_persistent_session_failures WHERE agent_id = ?1")
+                .bind(agent_id)
+                .execute(&mut *tx)
+                .await?;
         }
         sqlx::query("DELETE FROM agents WHERE id = ?1")
             .bind(agent_id)

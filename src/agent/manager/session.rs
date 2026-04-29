@@ -23,6 +23,7 @@ use agent_client_protocol_legacy::Implementation;
 
 const RESUMED_ACP_SESSION_GRACE_PERIOD: Duration = Duration::from_secs(2);
 const RESUMED_ACP_SESSION_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResumedSessionStartupState {
@@ -39,6 +40,10 @@ fn should_retry_resumed_acp_session(
         startup_state,
         ResumedSessionStartupState::Exited { success: false }
     ) && resumed_session_id == Some(actual_session_id)
+}
+
+fn should_force_fresh_session_after_resume_failures(failure_count: i64) -> bool {
+    failure_count >= RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY
 }
 
 async fn observe_resumed_session_startup(
@@ -125,6 +130,16 @@ impl AgentManager {
         .bind(now)
         .execute(&self.db)
         .await?;
+        sqlx::query(
+            r#"
+            DELETE FROM agent_persistent_session_failures
+            WHERE agent_id = ?1 AND provider = ?2
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .execute(&self.db)
+        .await?;
         Ok(())
     }
 
@@ -145,7 +160,52 @@ impl AgentManager {
         .bind(provider)
         .execute(&self.db)
         .await?;
+        sqlx::query(
+            r#"
+            DELETE FROM agent_persistent_session_failures
+            WHERE agent_id = ?1 AND provider = ?2
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .execute(&self.db)
+        .await?;
         Ok(())
+    }
+
+    async fn increment_persistent_session_failure(
+        &self,
+        agent_id: &str,
+        provider: &str,
+    ) -> anyhow::Result<i64> {
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            INSERT INTO agent_persistent_session_failures (agent_id, provider, failure_count, updated_at)
+            VALUES (?1, ?2, 1, ?3)
+            ON CONFLICT(agent_id, provider)
+            DO UPDATE SET
+                failure_count = agent_persistent_session_failures.failure_count + 1,
+                updated_at = excluded.updated_at
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+        let row = sqlx::query(
+            r#"
+            SELECT failure_count
+            FROM agent_persistent_session_failures
+            WHERE agent_id = ?1 AND provider = ?2
+            "#,
+        )
+        .bind(agent_id)
+        .bind(provider)
+        .fetch_one(&self.db)
+        .await?;
+        Ok(row.get::<i64, _>("failure_count"))
     }
 
     pub async fn live_session_id_for_agent(
@@ -680,8 +740,9 @@ impl AgentManager {
             {
                 Ok(handle) => handle,
                 Err(err) => {
+                    let err_message = err.to_string();
                     if let Err(record_err) = self
-                        .record_failed_session(&agent.id, &session_id, &err.to_string())
+                        .record_failed_session(&agent.id, &session_id, &err_message)
                         .await
                     {
                         tracing::error!(
@@ -819,12 +880,32 @@ impl AgentManager {
             )
             .await;
             if should_retry_resumed_acp_session(Some(resume_id), acp_session_id, startup_state) {
+                let failure_count = self
+                    .increment_persistent_session_failure(&agent.id, provider_id)
+                    .await
+                    .unwrap_or(RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY);
                 tracing::warn!(
                     agent_id = %agent.id,
                     session_id = %session_id,
                     acp_session_id = %acp_session_id,
                     resumed_session_id = %resume_id,
-                    "resumed acp session exited during startup; clearing persistent session and retrying with a new session"
+                    failure_count,
+                    "resumed acp session exited during startup"
+                );
+                if !should_force_fresh_session_after_resume_failures(failure_count) {
+                    return Err(anyhow::anyhow!(
+                        "resumed acp session exited during startup (attempt {}/{})",
+                        failure_count,
+                        RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY
+                    ));
+                }
+                tracing::warn!(
+                    agent_id = %agent.id,
+                    session_id = %session_id,
+                    acp_session_id = %acp_session_id,
+                    resumed_session_id = %resume_id,
+                    failure_count,
+                    "resumed acp session exited during startup repeatedly; clearing persistent session and retrying with a new session"
                 );
                 Self::finalize_process_exit(
                     &self.db,
@@ -976,6 +1057,26 @@ impl AgentManager {
                 "failed to persist failed agent session row"
             );
         }
+        if let Err(err) = sqlx::query(
+            r#"
+            UPDATE agent_sessions
+            SET status = 'failed', ended_at = ?1
+            WHERE id = ?2 AND agent_id = ?3
+            "#,
+        )
+        .bind(now)
+        .bind(session_id)
+        .bind(agent_id)
+        .execute(&self.db)
+        .await
+        {
+            tracing::warn!(
+                agent_id = %agent_id,
+                session_id = %session_id,
+                error = %err,
+                "failed to update failed agent session row"
+            );
+        }
 
         let failure_message = format!("start failed: {}", message);
         if let Err(err) = persist_agent_event(
@@ -1005,8 +1106,9 @@ impl AgentManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        RESUMED_ACP_SESSION_GRACE_PERIOD, RESUMED_ACP_SESSION_POLL_INTERVAL,
-        ResumedSessionStartupState, observe_resumed_session_startup,
+        RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY, RESUMED_ACP_SESSION_GRACE_PERIOD,
+        RESUMED_ACP_SESSION_POLL_INTERVAL, ResumedSessionStartupState,
+        observe_resumed_session_startup, should_force_fresh_session_after_resume_failures,
         should_retry_resumed_acp_session,
     };
     use std::sync::Arc;
@@ -1040,6 +1142,20 @@ mod tests {
             Some("resume-1"),
             "resume-1",
             ResumedSessionStartupState::Running,
+        ));
+    }
+
+    #[test]
+    fn fresh_session_retry_only_triggers_after_three_resume_failures() {
+        assert!(!should_force_fresh_session_after_resume_failures(1));
+        assert!(!should_force_fresh_session_after_resume_failures(
+            RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY - 1
+        ));
+        assert!(should_force_fresh_session_after_resume_failures(
+            RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY
+        ));
+        assert!(should_force_fresh_session_after_resume_failures(
+            RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY + 1
         ));
     }
 
