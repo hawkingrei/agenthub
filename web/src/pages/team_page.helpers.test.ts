@@ -6,6 +6,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveChannelRouteTaskId,
   resolveRouteScopedConversationTaskSelection,
   resolveSelectedAgentWorkspaceSessionId,
   resolveThreadRootMessageIdFromPayload,
@@ -162,6 +163,54 @@ describe("team_page helpers", () => {
         routeSelectedTaskId: "",
         routeChannelId: "review",
         selectedChannelTaskId: null,
+      })
+    ).toBeNull();
+  });
+
+  it("keeps only explicit task conversations in channel-thread route state", () => {
+    expect(
+      resolveChannelRouteTaskId({
+        routeSelectedTaskId: "task-review",
+        selectedConversationTaskId: "task-review",
+        selectedConversationIsShared: false,
+        selectedConversationMatchesChannelLane: true,
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBeNull();
+    expect(
+      resolveChannelRouteTaskId({
+        routeSelectedTaskId: "task-work",
+        selectedConversationTaskId: "task-work",
+        selectedConversationIsShared: false,
+        selectedConversationMatchesChannelLane: true,
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-work");
+    expect(
+      resolveChannelRouteTaskId({
+        routeSelectedTaskId: "",
+        selectedConversationTaskId: "task-work",
+        selectedConversationIsShared: false,
+        selectedConversationMatchesChannelLane: true,
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBe("task-work");
+    expect(
+      resolveChannelRouteTaskId({
+        routeSelectedTaskId: "task-review",
+        selectedConversationTaskId: "",
+        selectedConversationIsShared: true,
+        selectedConversationMatchesChannelLane: true,
+        selectedChannelTaskId: "task-review",
+      })
+    ).toBeNull();
+    expect(
+      resolveChannelRouteTaskId({
+        routeSelectedTaskId: "task-review",
+        selectedConversationTaskId: "task-review",
+        selectedConversationIsShared: false,
+        selectedConversationMatchesChannelLane: false,
+        selectedChannelTaskId: "task-review",
       })
     ).toBeNull();
   });

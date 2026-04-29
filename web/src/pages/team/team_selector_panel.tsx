@@ -6,6 +6,7 @@ import {
   SelectableListItem,
   ToolbarRow,
 } from "../../ui/primitives";
+import { WorkspacePanelLoadingFallback } from "../../components/workspace_panel_loading_fallback";
 
 export type TeamSelectorItem = {
   id: string;
@@ -128,9 +129,11 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
         <div className="mt-2 flex-1 overflow-y-auto">
           <div className={TEAM_SELECTOR_LIST_CLASS}>
             {loading && (
-              <p className={`${bodyTextClassName} px-2`} role="status" aria-live="polite">
-                Loading teams...
-              </p>
+              <WorkspacePanelLoadingFallback
+                title="Loading teams..."
+                body="AgentHub is loading the available team workspaces."
+                className="mx-2"
+              />
             )}
             {!loading && !hasTeams && (
               <p className={`${bodyTextClassName} px-2`}>

@@ -10,6 +10,8 @@ import {
   ActionButton,
   EmptyState,
   InsetSurface,
+  KeyValueItem,
+  KeyValueList,
   PanelHeader,
   SelectableListItem,
   StatusPill,
@@ -105,34 +107,21 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
 
       {snapshot && (
         <>
-          <div className={`teams-overview-meta ${OVERVIEW_META_CLASS}`}>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Leader</strong>
-              <StatusPill className="mono border-notion-accent/20 text-notion-accent">
-                {snapshot.leader_member_id ?? "-"}
-              </StatusPill>
-            </span>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Members</strong>
-              <span className="font-bold">{snapshot.members.length}</span>
-            </span>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Pending Mailbox</strong>
-              <span className="font-bold">{snapshot.mailbox.pending}</span>
-            </span>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Delivered</strong>
-              <span className="font-bold">{snapshot.mailbox.delivered}</span>
-            </span>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Dead Letter</strong>
-              <span className="font-bold">{snapshot.mailbox.dead_letter}</span>
-            </span>
-            <span>
-              <strong className="text-notion-text-muted font-bold uppercase text-[10px] tracking-widest mr-2">Recent Events</strong>
-              <span className="font-bold">{snapshot.latest_events.length}</span>
-            </span>
-          </div>
+          <KeyValueList className={`teams-overview-meta ${OVERVIEW_META_CLASS}`}>
+            <KeyValueItem
+              label="Leader"
+              value={
+                <StatusPill className="mono border-notion-accent/20 text-notion-accent">
+                  {snapshot.leader_member_id ?? "-"}
+                </StatusPill>
+              }
+            />
+            <KeyValueItem label="Members" value={snapshot.members.length} />
+            <KeyValueItem label="Pending mailbox" value={snapshot.mailbox.pending} />
+            <KeyValueItem label="Delivered" value={snapshot.mailbox.delivered} />
+            <KeyValueItem label="Dead letter" value={snapshot.mailbox.dead_letter} />
+            <KeyValueItem label="Recent events" value={snapshot.latest_events.length} />
+          </KeyValueList>
 
           <div className={OVERVIEW_MEMBER_LIST_CLASS}>
             {snapshot.members.map((member) => {

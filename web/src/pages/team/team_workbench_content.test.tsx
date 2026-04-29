@@ -32,7 +32,7 @@ describe("team_workbench_content", () => {
       root.render(<TeamPanelLoadingFallback />);
     });
 
-    expect(container.textContent).toContain("Loading panel...");
+    expect(container.textContent).toContain("Loading workspace panel...");
     expect(container.firstElementChild?.className).toContain("rounded-2xl");
   });
 

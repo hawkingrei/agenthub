@@ -1,6 +1,13 @@
 import React from "react";
 import { TeamRunEventRecord } from "../api";
-import { ActionButton, EmptyState, InlineNotice, PanelHeader, SurfaceCard } from "../ui/primitives";
+import {
+  ActionButton,
+  EmptyState,
+  InlineNotice,
+  PanelHeader,
+  SurfaceCard,
+  ToolbarRow,
+} from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_PANEL_PRE_CLASS,
@@ -50,39 +57,39 @@ function TeamEventsPanelImpl(props: TeamEventsPanelProps) {
         title="Run Events"
         titleClassName={TEAM_PANEL_TITLE_CLASS}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-          <label className={EVENTS_CHECKBOX_LABEL_CLASS}>
-            <input
-              type="checkbox"
-              checked={eventsAutoRefresh}
-              onChange={(event) => onEventsAutoRefreshChange(event.target.checked)}
-            />
-            Auto refresh
-          </label>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={() => {
-              void onRefreshEvents();
-            }}
-            disabled={eventsLoading}
-            title="Refresh events"
-            aria-label="Refresh events"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </ActionButton>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={() => {
-              void onLoadOlderEvents();
-            }}
-            disabled={previewMode || eventsLoading || !eventsHasMore || oldestEventId == null}
-          >
-            Load Older
-          </ActionButton>
-          </div>
+          <ToolbarRow className="justify-end gap-2">
+            <label className={EVENTS_CHECKBOX_LABEL_CLASS}>
+              <input
+                type="checkbox"
+                checked={eventsAutoRefresh}
+                onChange={(event) => onEventsAutoRefreshChange(event.target.checked)}
+              />
+              Auto refresh
+            </label>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={() => {
+                void onRefreshEvents();
+              }}
+              disabled={eventsLoading}
+              title="Refresh events"
+              aria-label="Refresh events"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
+            </ActionButton>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={() => {
+                void onLoadOlderEvents();
+              }}
+              disabled={previewMode || eventsLoading || !eventsHasMore || oldestEventId == null}
+            >
+              Load Older
+            </ActionButton>
+          </ToolbarRow>
         }
       />
       {previewMode && (

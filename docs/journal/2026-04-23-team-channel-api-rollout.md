@@ -93,3 +93,195 @@ Focused validation for this follow-up:
 - `cd web && npm exec tsc -- --noEmit`
 - `cd web && npm run lint`
 - `cd web && npm run build`
+
+## 2026-04-29 Follow-up
+
+- tightened the Kanban/task-surface conversation entry so channel-scoped tasks route back into
+  their owning Team lane instead of inheriting whichever channel the operator last had selected
+- `Open conversation` from Kanban task detail now preserves:
+  - `?lens=channels&channel=review&task=task-work`
+  - instead of incorrectly falling back to `?lens=channels&task=task-work`
+- kept the change narrow by routing only the task-detail CTA through the task-owned channel id;
+  the existing channel-thread and refresh-restore behavior remains unchanged
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/use_team_workspace_view_model.test.tsx src/pages/team_panels.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+- `cd web && npm run build`
+
+Validation note:
+
+- local `vitest` and `vite build` attempts in this pass were blocked by `ENOSPC` while Vite tried
+  to write temporary files under `web/node_modules/.vite-temp`; the new regression coverage is in
+  place, but the final local run needs disk space before it can complete
+
+## 2026-04-29 Follow-up 2
+
+- preserved explicit task conversations when switching away from `Channels` and then returning via
+  the workspace lens bar
+- `onSelectWorkspaceLens("channels")` now keeps the active non-shared task conversation route
+  instead of collapsing back to the selected channel bootstrap lane
+- this keeps `?lens=channels&channel=review&task=task-77` stable across lens hops and finishes one
+  more route-parity gap in multi-channel phase 2
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/use_team_workspace_view_model.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- browser MCP baseline remains blocked in this pass because the saved `agenthub-team-ui` browser
+  session is currently back on the login page
+- `vitest` still shares the same local `ENOSPC` blocker until disk space is recovered
+
+## 2026-04-29 Follow-up 3
+
+- canonicalized legacy `?lens=channels&task=<id>` routes when the selected task actually belongs
+  to a non-default Team channel
+- once the task detail loads, TeamPage now upgrades that route to the canonical lane shape:
+  - `?lens=channels&channel=review&task=task-work`
+- preserved `thread=<message_id>` during the same canonicalization path so older task links can
+  still regain full channel-thread semantics after refresh
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team_page.smoke.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- local `vitest` remains blocked by the same Vite `ENOSPC` temp-file failure until disk space is
+  recovered
+
+## 2026-04-29 Follow-up 4
+
+- tightened the channel timeline thread affordance so it now carries live reply-count context
+  instead of staying a bare `Thread` button
+- channel messages with existing thread replies now render:
+  - `Thread · 1 reply`
+  - `Thread · N replies`
+- this keeps the center timeline closer to the split-view spec: thread access is visible from the
+  parent channel lane without duplicating reply bodies inline
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- focused `vitest` remains blocked by the same local `ENOSPC` condition until disk space is freed
+
+## 2026-04-29 Follow-up 5
+
+- marked the active thread root inside the parent channel timeline when the right-side thread pane
+  is open
+- the center lane now keeps a lightweight focused state on the source message instead of only
+  changing the thread button copy
+- this makes the split-view relationship clearer: the right pane is subordinate to a visible source
+  message in the parent channel, not a detached chat surface
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- local focused `vitest` still depends on recovering disk space from the current `ENOSPC`
+
+## 2026-04-29 Follow-up 6
+
+- added a compact source-message summary strip to the right-side thread pane header
+- thread now makes its parent-context relationship explicit with:
+  - `Source`
+  - `From <author> · #<root_message_id>`
+- this keeps the pane subordinate to the parent channel message without adding heavy debug chrome
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/team_thread_pane.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- local focused `vitest` is still blocked by the same `ENOSPC` condition until disk space is freed
+
+## 2026-04-29 Follow-up 7
+
+- expanded the thread-pane source strip into a two-line compact context block
+- the first line still keeps the canonical source identity:
+  - `Source`
+  - `From <author> · #<root_message_id>`
+- the second line now carries a one-line preview of the original root message text when chat text is
+  available
+- this keeps the right pane readable as a focused child context even when the operator no longer
+  has the parent channel root fully in view
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/team_thread_pane.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+Validation note:
+
+- local focused `vitest` remains blocked by the same `ENOSPC` condition until disk space is freed
+
+## 2026-04-29 Follow-up 8
+
+- separated `View in channel` from `Close thread` behavior inside split-view
+- `View in channel` now closes the right-side pane and asks the center timeline to scroll the
+  source message back into view
+- the jump stays as local UI state instead of route state so canonical Team URLs remain:
+  - `?channel=<id>`
+  - `?channel=<id>&task=<id>`
+- `Close thread` still just dismisses the pane without forcing a source-message jump
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team_panels.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+## 2026-04-29 Follow-up 9
+
+- tightened the right-side thread-pane hierarchy so it now reads more explicitly as:
+  - `Original`
+  - `Thread replies`
+  - `Reply in thread`
+- replaced the previous generic helper copy with clearer reply-context language:
+  - `Reply stays in this thread, not the parent channel`
+- this keeps the pane acting like a focused child context instead of a second full channel surface
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team/team_thread_pane.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`
+
+## 2026-04-29 Follow-up 10
+
+- canonicalized the task query that rides along channel-thread routes so bootstrap lane tasks no
+  longer leak into thread open/close/view-in-channel URLs as redundant `task=` params
+- explicit task conversations still keep `task=<task_id>` when they differ from the selected
+  channel bootstrap task, but channel bootstrap conversations now return to:
+  - `?lens=channels&channel=review`
+  - instead of the redundant `?lens=channels&channel=review&task=task-review`
+- the route-decision logic now lives in a focused helper with an inline comment describing the
+  canonicalization boundary, so later split-view work does not drift back into local ad-hoc query
+  shaping
+
+Focused validation for this follow-up:
+
+- `cd web && pnpm exec vitest run src/pages/team_page.helpers.test.ts src/pages/team_page.smoke.test.tsx`
+- `cd web && npm exec tsc -- --noEmit`
+- `cd web && npm run lint`

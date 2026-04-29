@@ -95,6 +95,6 @@ describe("WorkspaceShellHeader", () => {
         <TeamPanelLoadingFallback />
       </MantineProvider>
     );
-    expect(html).toContain("Loading panel...");
+    expect(html).toContain("Loading workspace panel...");
   });
 });

@@ -44,13 +44,18 @@ surface/header/button patterns stop drifting independently across Agents and Tea
   - `web/src/pages/team_overview_panel.tsx`
     - playbook surface now uses `InsetSurface`
     - member mailbox rows now use `SelectableListItem`
+    - snapshot meta strip now uses `KeyValueList` / `KeyValueItem` instead of a handwritten
+      stats row
   - `web/src/pages/team_run_panel.tsx`
     - run browser body now uses `InsetSurface`
     - list header/footer and run actions use `ToolbarRow`
     - run rows now use `SelectableListItem`
+    - the `Execution Runs` filter/refresh actions now also use `ToolbarRow` instead of a
+      handwritten flex wrapper
   - `web/src/pages/team_active_run_panel.tsx`
     - run action bar now uses `ToolbarRow`
     - refresh/cancel/resume/restart now use shared `ActionButton`
+    - header action cluster now also uses `ToolbarRow` instead of a bare fragment
   - `web/src/pages/team_mailbox_panel.tsx`
     - actor selection rows now use `SelectableListItem`
   - `web/src/pages/team/team_selector_panel.tsx`
@@ -79,8 +84,13 @@ surface/header/button patterns stop drifting independently across Agents and Tea
     - mailbox shell now uses `SurfaceCard`
     - advanced controls shell now uses `InsetSurface`
     - chat composer action row now uses `ToolbarRow`
+    - conversation header accept/jump actions now also use `ToolbarRow` instead of a
+      handwritten flex wrapper
+  - `web/src/pages/team_events_panel.tsx`
+    - run-events header actions now use `ToolbarRow` instead of a handwritten flex wrapper
   - `web/src/pages/team_member_console_panel.tsx`
     - member detail shell now uses `InsetSurface`
+    - header actions now use `ToolbarRow` instead of a handwritten flex wrapper
   - `web/src/use_app_output_cache.ts`, `web/src/use_app_permissions.ts`, `web/src/use_app_sse_events.ts`, `web/src/use_app_acp_ui.ts`
     - cleaned up lingering type imports after the hook extraction so dispatcher/output-cache signatures match actual exports
   - `web/src/components/bubbles/markdown_bubble.tsx`, `web/src/pages/team_task_panel.tsx`, `web/src/pages/team_mailbox_panel.tsx`

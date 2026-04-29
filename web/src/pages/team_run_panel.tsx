@@ -136,29 +136,31 @@ function TeamRunPanelImpl(props: TeamRunPanelProps) {
           title="Execution Runs"
           titleClassName="text-[13px] font-bold uppercase tracking-tight text-notion-text"
           actions={
-            <div className="actions flex flex-wrap items-center gap-2">
-            <NativeSelect
-              className="w-full sm:w-[164px]"
-              aria-label="Run status filter"
-              value={runStatusFilter}
-              onChange={(event) => onRunStatusFilterChange(event.currentTarget.value as TeamRunStatusFilter)}
-              data={runStatusFilterOptions}
-              size="xs"
-              radius="sm"
-            />
-            <ActionButton
-              tone="secondary"
-              size="md"
-              onClick={() => {
-                void onRefreshRuns();
-              }}
-              disabled={runsLoading}
-              title="Refresh execution runs"
-              aria-label="Refresh execution runs"
-            >
-              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            </ActionButton>
-            </div>
+            <ToolbarRow className="justify-end gap-2">
+              <NativeSelect
+                className="w-full sm:w-[164px]"
+                aria-label="Run status filter"
+                value={runStatusFilter}
+                onChange={(event) =>
+                  onRunStatusFilterChange(event.currentTarget.value as TeamRunStatusFilter)
+                }
+                data={runStatusFilterOptions}
+                size="xs"
+                radius="sm"
+              />
+              <ActionButton
+                tone="secondary"
+                size="md"
+                onClick={() => {
+                  void onRefreshRuns();
+                }}
+                disabled={runsLoading}
+                title="Refresh execution runs"
+                aria-label="Refresh execution runs"
+              >
+                <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              </ActionButton>
+            </ToolbarRow>
           }
         />
 

@@ -267,6 +267,13 @@ Required constraint:
 
 - human chat input must not directly create canonical Team task records
 
+Core product goal:
+
+- let a human mark one outgoing conversation message as "task-oriented intent"
+- keep that intent close to the composer instead of hiding it in Kanban-only workflows
+- preserve the existing Team rule that leader planning/runtime decide whether and how a canonical
+  Team `task` should be materialized
+
 Recommended direction:
 
 - composer may expose a lightweight task affordance such as:
@@ -277,6 +284,165 @@ Recommended direction:
   a canonical Team `task`
 - non-default channels may shape the draft/request context, but must not bypass leader/runtime
   canonicalization
+
+Product interpretation:
+
+- this is a `conversation -> task-intent` affordance
+- it is not a direct `create canonical task now` action
+- the first rollout should optimize clarity of intent, not attempt to expose full task
+  configuration in the composer
+
+#### 7.1 Placement And Surface Rules
+
+The affordance should stay attached to the active Team conversation composer.
+
+Recommended first-rollout placement:
+
+- show the affordance as a compact secondary control adjacent to the send action
+- keep it in the same visual language as other lightweight Team controls
+- do not add a thick horizontal toolbar or a multi-row composer chrome layer
+
+Allowed surfaces:
+
+- channel composer
+- thread reply composer
+
+Disallowed surfaces for the first rollout:
+
+- ACP/agent runtime input docks
+- Kanban canonical task editor
+- global workspace shell header
+
+#### 7.2 Interaction Model
+
+The affordance should behave like a lightweight mode toggle, not a separate form page.
+
+Default state:
+
+- composer behaves like ordinary Team conversation input
+- the task affordance is visible but not active
+
+Armed state:
+
+- after the user activates the affordance, the composer enters a lightweight `task request` mode
+- show a thin context strip above or inside the composer, for example:
+  - `Task request`
+  - `Send as a task-oriented request for leader planning`
+- keep the main text area unchanged
+- allow the user to cancel the mode before sending
+
+Send behavior in armed state:
+
+- sending still creates one conversation message in the current channel/thread context
+- that message carries task-request intent metadata
+- sending does not immediately create a canonical Team task row in Kanban
+
+Exit behavior:
+
+- after successful send, the composer returns to ordinary conversation mode
+- if the user cancels before send, the mode clears without mutating the typed text
+
+#### 7.3 Visual Direction
+
+We should learn from Slock's lightweight "As Task" pattern, but preserve AgentHub's current shell.
+
+Required visual direction:
+
+- compact secondary control
+- minimal additional height
+- one thin context strip when active
+- no modal, no drawer, no expanded inline task form in the first rollout
+
+Explicit anti-goals:
+
+- do not add Slack-like rich composer toolbars
+- do not open a task-configuration side panel from the composer
+- do not ask for assignee, run policy, channel selection, or execution metadata before send
+- do not make the affordance visually heavier than the primary send action
+
+#### 7.4 Semantic Contract
+
+The first rollout should treat the affordance as an intent marker on a conversation message.
+
+Required semantic properties:
+
+- the message remains part of the selected channel/thread conversation history
+- the message is clearly distinguishable to Team planning/runtime as a task-oriented request
+- Team leader/runtime may later:
+  - materialize a canonical Team task
+  - ignore the request
+  - ask for clarification
+  - merge it into an existing task or lane
+
+Important constraint:
+
+- the affordance should not promise that every marked message becomes a task
+- the affordance should only promise that the message is delivered as task-oriented intent
+
+#### 7.5 Relationship To Channel And Thread Context
+
+The affordance should inherit the active communication context rather than invent a separate one.
+
+Rules:
+
+- in a channel composer, the task-request message belongs to that selected channel
+- in a thread composer, the task-request message belongs to that thread context while still
+  remaining subordinate to the parent channel
+- a non-default channel may shape the meaning of the request
+  - for example `# review` implies review-oriented task requests
+  - for example `# research` implies investigation-oriented task requests
+- but channel choice alone must not create or classify canonical Team tasks automatically
+
+#### 7.6 Relationship To Kanban
+
+Kanban remains the canonical task surface.
+
+Still true after this affordance ships:
+
+- Kanban is where canonical tasks live
+- leader planning/runtime own materialization into Kanban
+- composer-level task intent is an upstream signal, not a replacement for Kanban
+
+This means:
+
+- the first rollout should not insert optimistic task cards directly into Kanban on send
+- if later product work wants a stronger link, it should surface as:
+  - `requested task created`
+  - `linked to existing task`
+  - or another explicit follow-up event after canonicalization
+
+#### 7.7 URL And Persistence Guidance
+
+The first rollout should avoid introducing a dedicated URL mode for task-request composer state.
+
+Guidance:
+
+- ordinary `channel` / `thread` route state remains canonical
+- the temporary armed-state of the composer does not need its own query parameter
+- drafts may stay local to the current page session in the first rollout
+
+This keeps the feature lightweight and prevents task-intent UX from overcomplicating shell routing.
+
+#### 7.8 Rollout Slice
+
+The first implementation slice should be intentionally narrow.
+
+Phase 5A:
+
+- add the lightweight composer affordance
+- add the thin active-state strip
+- send one conversation message with task-request intent metadata
+- do not change Kanban materialization semantics yet
+
+Phase 5B:
+
+- surface clearer follow-up feedback when leader/runtime later materialize a task from that request
+- optionally show a compact linkage from the request message to the resulting canonical task
+
+Phase 5C:
+
+- evaluate whether richer task-draft affordances are needed
+- only after the lightweight mode proves useful and does not blur the Team task contract
 
 ### 8) Relationship To Existing Team Semantics
 

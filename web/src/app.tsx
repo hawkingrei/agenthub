@@ -47,6 +47,11 @@ import {
   buildAgentsWorkbenchProps,
   buildOutputHeaderProps,
 } from "./components/agents_route_shell_props";
+import { buildStandardWorkspaceLensItems } from "./components/workspace_lens_items";
+import {
+  WorkspaceMachinesUnavailablePlaceholder,
+  WorkspaceSearchLensPlaceholder,
+} from "./components/workspace_lens_placeholder";
 import {
   getLocalStorageItemSafe,
   setLocalStorageItemSafe,
@@ -59,10 +64,10 @@ import {
 import {
   AUTH_CARD_BASE_CLASS,
   AUTH_PAGE_CLASS,
-  ROUTE_FALLBACK_SHELL_CLASS,
 } from "./ui/tailwind_classes";
 import { parseSendInputSessionMismatch } from "./app_utils";
 import { resolveDefaultWorktreeRootForTargetNode } from "./worktree_defaults";
+import { WorkspacePanelLoadingFallback } from "./components/workspace_panel_loading_fallback";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -160,8 +165,16 @@ function PostLoginRedirect({ target }: { target: string }): null {
   return null;
 }
 
-function RouteFallback({ label }: { label: string }) {
-  return <div className={ROUTE_FALLBACK_SHELL_CLASS}>{label}</div>;
+export function RouteFallback({ label }: { label: string }) {
+  return (
+    <div className="mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center px-6 py-10">
+      <WorkspacePanelLoadingFallback
+        title={label}
+        body="AgentHub is loading this workspace route."
+        className="w-full max-w-md"
+      />
+    </div>
+  );
 }
 
 function AuthGateCard({ title, message }: { title: string; message: string }) {
@@ -432,15 +445,9 @@ export function App() {
 
   const workspaceLensItems = useMemo(
     () =>
-      [
-        { value: "channels", label: "Channels", active: activeWorkspaceLens === "channels" },
-        { value: "tasks", label: "Tasks", active: activeWorkspaceLens === "tasks" },
-        { value: "members", label: "Members", active: activeWorkspaceLens === "members" },
-        { value: "search", label: "Search", active: activeWorkspaceLens === "search" },
-        ...(canManageAgentNodes(auth)
-          ? [{ value: "nodes", label: "Machines", active: activeWorkspaceLens === "nodes" }]
-          : []),
-      ],
+      buildStandardWorkspaceLensItems(activeWorkspaceLens, {
+        includeNodes: canManageAgentNodes(auth),
+      }),
     [activeWorkspaceLens, auth]
   );
 
@@ -1045,15 +1052,11 @@ export function App() {
             />
           )
           : (
-            <div className="flex h-full items-center justify-center p-6 text-center">
-              <div className="max-w-md space-y-2">
-                <h2 className="text-lg font-semibold text-notion-text">Machines unavailable</h2>
-                <p className="text-sm text-notion-text-muted">
-                  You do not have permission to manage machines. Select another workspace view to
-                  continue.
-                </p>
-              </div>
-            </div>
+            <WorkspaceMachinesUnavailablePlaceholder className="m-6 text-center" />
+          )
+        : activeWorkspaceLens === "search"
+          ? (
+            <WorkspaceSearchLensPlaceholder className="m-4" />
           )
         : null,
     [

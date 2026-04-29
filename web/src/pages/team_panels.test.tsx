@@ -2128,6 +2128,58 @@ describe("team panels interactions", () => {
     expect(onLoadOlder).toHaveBeenCalled();
   });
 
+  it("TeamMemberConsolePanel windows long loaded member histories", () => {
+    const memberEvents = Array.from({ length: 90 }, (_, index) => ({
+      event_id: index + 1,
+      agent_id: "agent-1",
+      session_id: "session-1",
+      seq: String(index + 1),
+      ts: 100 + index,
+      stream: "stdout",
+      message: `worker output ${index + 1}`,
+    })) satisfies AgentEvent[];
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamMemberConsolePanel
+            snapshot={buildSnapshot()}
+            selectedMemberId="worker-agent"
+            onSelectedMemberIdChange={() => {}}
+            selectedTargetNodeId="node-east"
+            selectedMemberSnapshot={buildMemberSnapshot({
+              member_id: "worker-agent",
+              role: "worker",
+              latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "task-77" }),
+            })}
+            memberEvents={memberEvents}
+            memberEventsHasMore={true}
+            memberEventsLoading={false}
+            eventsLoading={false}
+            oldestMemberEventId={1}
+            displayedRunEvents={[]}
+            previewLimit={5}
+            onRefresh={() => {}}
+            onLoadOlder={() => {}}
+            toPrettyJson={(value) => JSON.stringify(value)}
+            formatTs={(ts) => `ts-${String(ts)}`}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Showing latest 80 of 90 loaded member events.");
+    const eventRows = Array.from(
+      container.querySelectorAll('[data-team-panel="member-console"] .teams-event-list > li')
+    );
+    expect(eventRows).toHaveLength(81);
+    expect(eventRows[0]?.textContent).toContain("Showing latest 80 of 90 loaded member events.");
+    expect(eventRows[1]?.textContent).toContain("#11");
+    expect(eventRows[1]?.textContent).toContain("worker output 11");
+    expect(eventRows[eventRows.length - 1]?.textContent).toContain("#90");
+    expect(eventRows[eventRows.length - 1]?.textContent).toContain("worker output 90");
+  });
+
   it("TeamTaskPanel supports create/select/send workflow", () => {
     const onMessageDraftChange = vi.fn();
     const onSendMessage = vi.fn();
@@ -3439,6 +3491,106 @@ describe("team panels interactions", () => {
     expect(queryButtonByText(container, "Details")).toBeNull();
   });
 
+  it("TeamTaskPanel surfaces thread reply counts on the channel timeline affordance", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(12, {
+            payload: { type: "chat_message", text: "review the rollout note" },
+          }),
+          buildTaskMessage(13, {
+            route: "team_thread_reply",
+            payload: {
+              type: "chat_message",
+              text: "I have one follow-up.",
+              thread_root_message_id: 12,
+            },
+          }),
+          buildTaskMessage(14, {
+            route: "team_thread_reply",
+            payload: {
+              type: "chat_message",
+              text: "Second follow-up stays in the thread pane.",
+              thread_root_message_id: 12,
+            },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={null}
+      />
+    );
+
+    expect(findButtonByText(container, "Thread · 2 replies")).toBeDefined();
+    expect(container.textContent).not.toContain("I have one follow-up.");
+    expect(container.textContent).not.toContain("Second follow-up stays in the thread pane.");
+  });
+
+  it("TeamTaskPanel marks the active thread root inside the channel timeline", () => {
+    renderWithMantine(
+      root,
+      <TeamTaskPanel
+        developerMode={false}
+        tasksLoading={false}
+        onRefreshTasks={vi.fn()}
+        messageDraft=""
+        onMessageDraftChange={vi.fn()}
+        onSendMessage={vi.fn()}
+        messages={[
+          buildTaskMessage(21, {
+            payload: { type: "chat_message", text: "focus this thread root" },
+          }),
+          buildTaskMessage(22, {
+            payload: { type: "chat_message", text: "leave this message idle" },
+          }),
+        ]}
+        seenByMessageId={{}}
+        humanActorId="user:u-1"
+        memberLiveStates={[buildMemberLiveState()]}
+        memberIds={["leader-agent", "worker-agent"]}
+        conversationTitle="Shared thread"
+        isChannelConversation={true}
+        messagesLoading={false}
+        busy={null}
+        formatTs={(ts) => `ts-${String(ts)}`}
+        toPrettyJson={(value) => JSON.stringify(value)}
+        onOpenThread={vi.fn()}
+        activeThreadMessageId={21}
+      />
+    );
+
+    const items = Array.from(
+      container.querySelectorAll("[data-team-channel-item='true']")
+    ) as HTMLElement[];
+    const activeItem = items.find(
+      (item) => item.getAttribute("data-team-thread-root-active") === "true"
+    );
+    const inactiveItem = items.find(
+      (item) => item.getAttribute("data-team-thread-root-active") === "false"
+    );
+
+    expect(activeItem?.textContent).toContain("focus this thread root");
+    expect(activeItem?.className).toContain("ring-1");
+    expect(activeItem?.className).toContain("bg-notion-hover/60");
+    expect(inactiveItem?.textContent).toContain("leave this message idle");
+  });
+
   it("TeamTaskPanel hides thread access for permission review cards", () => {
     renderWithMantine(
       root,
@@ -3546,6 +3698,58 @@ describe("team panels interactions", () => {
       writable: true,
       value: originalScrollIntoView,
     });
+  });
+
+  it("TeamTaskPanel scrolls the requested source message into view when thread focus returns to channel", async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          messages={[
+            buildTaskMessage(41, {
+              from_actor_id: "leader-agent",
+              route: "group_chat",
+              payload: { type: "chat_message", text: "source message" },
+            }),
+          ]}
+          seenByMessageId={{}}
+          humanActorId="user:u-1"
+          memberLiveStates={[buildMemberLiveState()]}
+          memberIds={["leader-agent", "worker-agent"]}
+          conversationTitle="Shared thread"
+          isChannelConversation={true}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          jumpToMessageId={41}
+          onJumpToMessageSettled={vi.fn()}
+        />
+      );
+
+      await waitForCondition(() => scrollIntoView.mock.calls.length > 0);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", inline: "nearest" });
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      });
+    }
   });
 
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
@@ -4281,7 +4485,11 @@ describe("team panels interactions", () => {
                 title: "Prepare rollout",
                 status: "in_progress",
                 assigned_member_id: "worker-1",
-                context: { owner: "leader" },
+                context: {
+                  owner: "leader",
+                  bootstrap_kind: "team_channel",
+                  channel_id: "review",
+                },
                 created_at: 90,
                 updated_at: 220,
               }),
@@ -4399,7 +4607,7 @@ describe("team panels interactions", () => {
 
     expect(document.body.querySelector('[data-team-compile-preview="true"]')).not.toBeNull();
     expect(onSelectedTaskIdChange).toHaveBeenCalledWith("task-1");
-    expect(onOpenConversation).toHaveBeenNthCalledWith(1, "task-2");
+    expect(onOpenConversation).toHaveBeenNthCalledWith(1, "task-2", "review");
     expect(onOpenConversation).toHaveBeenNthCalledWith(2);
     expect(onCompilePreviewContextIdChange).toHaveBeenCalledWith("ctx-next");
     expect(onCompileTaskRunPreview).toHaveBeenCalledTimes(1);
@@ -4418,6 +4626,9 @@ describe("team panels interactions", () => {
       "Kanban is the canonical Team task surface. Human requests and clarifications should go through"
     );
     expect(container.textContent).toContain("# review");
+    expect(document.body.textContent).toContain(
+      "Task conversation stays in # review; Team runtime controls manage lifecycle here."
+    );
     expect(document.body.textContent).toContain("Open conversation");
     expect(container.textContent).toContain("Open # review");
     expect(document.body.textContent).toContain("Latest execution run");

@@ -158,26 +158,27 @@ export function useTeamMemberAcpViewModel({
     saveTeamMemberAcpRenderCache(selectedMemberId, selectedSessionId, scopedMemberEvents);
   }, [scopedMemberEvents, selectedMemberId, selectedSessionId]);
 
-  const visibleMemberEvents = React.useMemo(
-    () =>
-      omitIncompleteLeadingAcpMessageEvents(
-        effectiveMemberEvents,
-        selectedSessionId ?? null
-      ),
-    [effectiveMemberEvents, selectedSessionId]
-  );
-  const acpEventLines = React.useMemo(
-    () =>
-      visibleMemberEvents.map((event) => ({
-        ts: event.ts,
-        seq: event.seq,
-        event_id: event.event_id,
-        stream: event.stream,
-        message: event.message,
-        session_id: event.session_id,
-      })),
-    [visibleMemberEvents]
-  );
+  const memberEventProjection = React.useMemo(() => {
+    const visible = omitIncompleteLeadingAcpMessageEvents(
+      effectiveMemberEvents,
+      selectedSessionId ?? null
+    );
+    const acpEventLines = visible.map((event) => ({
+      ts: event.ts,
+      seq: event.seq,
+      event_id: event.event_id,
+      stream: event.stream,
+      message: event.message,
+      session_id: event.session_id,
+    }));
+    const terminalOutputs = effectiveMemberEvents.filter((event) => event.stream !== "acp");
+    return {
+      visibleMemberEvents: visible,
+      acpEventLines,
+      terminalOutputs,
+    };
+  }, [effectiveMemberEvents, selectedSessionId]);
+  const { visibleMemberEvents, acpEventLines, terminalOutputs } = memberEventProjection;
   const acpView = React.useMemo(() => buildAcpView(acpEventLines), [acpEventLines]);
   const effectiveAcpTab = !developerMode && acpTab === "debug" ? "conversation" : acpTab;
   const normalizedAgentStatus = normalizeStatusValue(selectedAgentStatus);
@@ -215,10 +216,6 @@ export function useTeamMemberAcpViewModel({
       void onLoadOlder?.();
     },
   });
-  const terminalOutputs = React.useMemo(
-    () => effectiveMemberEvents.filter((event) => event.stream !== "acp"),
-    [effectiveMemberEvents]
-  );
   const hasVisibleConversationItems =
     acpConversation.conversationSourceItems >= ACP_INITIAL_VISIBLE_MESSAGE_TARGET;
   const hasRenderableConversationContent =

@@ -16,6 +16,7 @@ import {
 } from "../ui/primitives";
 import { selectRunsForTask } from "./team/run_helpers";
 import type { TeamMemberLiveState } from "./team/member_helpers";
+import { resolveTaskChannelId } from "./team/page_helpers";
 import {
   NOTION_MODAL_CLASSNAMES,
   NOTION_MODAL_OVERLAY_PROPS,
@@ -46,7 +47,7 @@ type TeamTasksPanelProps = {
   selectedTaskId: string;
   onSelectedTaskIdChange: (taskId: string) => void;
   onRefreshTasks: () => Promise<void> | void;
-  onOpenConversation: (taskId?: string | null) => void;
+  onOpenConversation: (taskId?: string | null, taskChannelId?: string | null) => void;
   busy: string | null;
   runs: TeamRunRecord[];
   onOpenRun: (runId: string) => void;
@@ -267,6 +268,10 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
     () => (selectedTask ? selectRunsForTask(runs, selectedTask.id) : []),
     [runs, selectedTask]
   );
+  const selectedTaskConversationLabel = React.useMemo(() => {
+    const taskChannelId = resolveTaskChannelId(selectedTask);
+    return taskChannelId ? `# ${taskChannelId}` : channelLabel;
+  }, [channelLabel, selectedTask]);
   const latestRun = relatedRuns[0] ?? null;
   const showInitialLoadingState = tasksLoading && tasks.length === 0;
 
@@ -437,14 +442,16 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
           </div>
 
           <div className="mt-2 rounded-md bg-notion-sidebar/30 px-3 py-2 text-[13px] text-notion-text-muted italic border border-notion-border/50">
-            Task managed through Team runtime controls.
+            {`Task conversation stays in ${selectedTaskConversationLabel}; Team runtime controls manage lifecycle here.`}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <ActionButton
               tone="secondary"
               size="md"
-              onClick={() => onOpenConversation(selectedTask.id)}
+              onClick={() =>
+                onOpenConversation(selectedTask.id, resolveTaskChannelId(selectedTask))
+              }
             >
               Open conversation
             </ActionButton>

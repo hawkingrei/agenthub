@@ -32,6 +32,8 @@ type TeamConversationPanelProps = {
   toPrettyJson: (value: unknown) => string;
   onOpenThread?: (messageId: number) => void;
   activeThreadMessageId?: number | null;
+  jumpToMessageId?: number | null;
+  onJumpToMessageSettled?: () => void;
 };
 
 function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
@@ -76,6 +78,8 @@ function TeamConversationPanelImpl(props: TeamConversationPanelProps) {
         toPrettyJson={props.toPrettyJson}
         onOpenThread={props.onOpenThread}
         activeThreadMessageId={props.activeThreadMessageId}
+        jumpToMessageId={props.jumpToMessageId}
+        onJumpToMessageSettled={props.onJumpToMessageSettled}
       />
     </div>
   );

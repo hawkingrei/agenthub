@@ -51,6 +51,26 @@ type MailboxTemplateOption = {
   label: string;
 };
 
+type MailboxActorRow = {
+  memberId: string;
+  role: string;
+  pendingInboxCount: number;
+  status: string;
+  unread: number;
+  isHuman: boolean;
+  label: string;
+};
+
+type MailboxConversationRow = {
+  message: TeamActorMessageRecord;
+  isOutgoing: boolean;
+  htmlPayload: string | null;
+  payload: string;
+  fromLabel: string;
+  toLabel: string;
+  canAccept: boolean;
+};
+
 type TeamMailboxPanelProps = {
   developerMode: boolean;
   mode?: "full" | "advanced_only";
@@ -203,30 +223,96 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
   const showAdvancedControls = mode === "advanced_only";
   const showDeveloperMailboxTools = developerMode && showAdvancedControls;
   const normalizedHumanActorId = humanActorId.trim();
-  const acceptVisibleMessages = conversationMessages.filter((message) =>
-    isMessageAcceptableForInbox(message, chatActors.inboxActorId, normalizedHumanActorId)
-  );
   const humanPendingCount =
     snapshot?.mailbox.recent_messages.filter(
       (message) =>
         message.to_actor_id === normalizedHumanActorId &&
         message.status === "pending"
     ).length ?? 0;
-  const mailboxMembers = snapshot?.members ?? [];
-  const mailboxActors = [
-    ...mailboxMembers,
-    ...(normalizedHumanActorId &&
-    !mailboxMembers.some((member) => member.member_id === normalizedHumanActorId)
-      ? [
-          {
-            member_id: normalizedHumanActorId,
-            role: "human",
-            pending_inbox_count: humanPendingCount,
-            status: "human",
-          },
-        ]
-      : []),
-  ];
+  const mailboxActorRows = React.useMemo<MailboxActorRow[]>(() => {
+    const mailboxMembers = snapshot?.members ?? [];
+    const mailboxActors = [
+      ...mailboxMembers,
+      ...(normalizedHumanActorId &&
+      !mailboxMembers.some((member) => member.member_id === normalizedHumanActorId)
+        ? [
+            {
+              member_id: normalizedHumanActorId,
+              role: "human",
+              pending_inbox_count: humanPendingCount,
+              status: "human",
+            },
+          ]
+        : []),
+    ];
+    return mailboxActors.map((member) => {
+      const isHuman = member.role === "human";
+      return {
+        memberId: member.member_id,
+        role: member.role,
+        pendingInboxCount: member.pending_inbox_count,
+        status: member.status,
+        unread: unreadByMemberId[member.member_id] ?? 0,
+        isHuman,
+        label: resolveMailboxActorLabel(
+          member.member_id,
+          displayNameByActorId,
+          normalizedHumanActorId
+        ),
+      };
+    });
+  }, [
+    displayNameByActorId,
+    humanPendingCount,
+    normalizedHumanActorId,
+    snapshot?.members,
+    unreadByMemberId,
+  ]);
+  const conversationRows = React.useMemo<MailboxConversationRow[]>(() => {
+    // Precompute mailbox row presentation so long conversations do not repeatedly
+    // re-parse payload text and actor labels during every list render.
+    return conversationMessages.map((message) => {
+      const isOutgoing = message.from_actor_id === chatActors.fromActorId;
+      const chatText = resolveVisibleTeamPayloadText(message.payload);
+      const payload = chatText ?? toPrettyJson(message.payload);
+      const htmlPayload =
+        chatText === null
+          ? null
+          : renderPlainTextWithMentions(payload, displayNameByActorId);
+      return {
+        message,
+        isOutgoing,
+        htmlPayload,
+        payload,
+        fromLabel: resolveMailboxActorLabel(
+          message.from_actor_id,
+          displayNameByActorId,
+          normalizedHumanActorId
+        ),
+        toLabel: resolveMailboxActorLabel(
+          message.to_actor_id,
+          displayNameByActorId,
+          normalizedHumanActorId
+        ),
+        canAccept: isMessageAcceptableForInbox(
+          message,
+          chatActors.inboxActorId,
+          normalizedHumanActorId
+        ),
+      };
+    });
+  }, [
+    chatActors.fromActorId,
+    chatActors.inboxActorId,
+    conversationMessages,
+    displayNameByActorId,
+    normalizedHumanActorId,
+    toPrettyJson,
+  ]);
+  const acceptVisibleMessages = React.useMemo(
+    () => conversationRows.filter((row) => row.canAccept).map((row) => row.message),
+    [conversationRows]
+  );
 
   const advancedControls = (
     <div className={MAILBOX_ADVANCED_GRID_CLASS}>
@@ -380,25 +466,18 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
         <div className={MAILBOX_SHELL_CLASS}>
           <div className={MAILBOX_MEMBER_LIST_CLASS}>
             <h4 className={MAILBOX_SECTION_TITLE_CLASS}>Agents</h4>
-            {mailboxActors.map((member) => {
-              const unread = unreadByMemberId[member.member_id] ?? 0;
-              const isHuman = member.role === "human";
+            {mailboxActorRows.map((member) => {
               return (
                 <SelectableListItem
-                  key={member.member_id}
-                  active={selectedMemberId === member.member_id}
-                  onClick={() => onSelectMember(member.member_id)}
+                  key={member.memberId}
+                  active={selectedMemberId === member.memberId}
+                  onClick={() => onSelectMember(member.memberId)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className={`${TEAM_LIST_ITEM_TITLE_CLASS} font-bold`}>
-                      {resolveMailboxActorLabel(
-                        member.member_id,
-                        displayNameByActorId,
-                        normalizedHumanActorId
-                      )}{" "}
-                      ({member.role})
+                      {member.label} ({member.role})
                     </span>
-                    {!isHuman && (
+                    {!member.isHuman && (
                       <StatusBadge
                         label={member.status}
                         tone={resolveTeamRunStatusTone(member.status)}
@@ -409,18 +488,18 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   </div>
                   <div className="flex w-full items-center justify-between gap-2 mt-0.5">
                     <span className={TEAM_LIST_ITEM_META_CLASS}>
-                      {isHuman ? "human actor" : `pending=${member.pending_inbox_count}`}
+                      {member.isHuman ? "human actor" : `pending=${member.pendingInboxCount}`}
                     </span>
-                    {unread > 0 && (
+                    {member.unread > 0 && (
                       <span className="teams-member-unread shrink-0 rounded-sm bg-state-warning-bg border border-state-warning-border px-1.5 py-0.5 text-[10px] font-bold text-state-warning-text">
-                        unread={unread}
+                        unread={member.unread}
                       </span>
                     )}
                   </div>
                 </SelectableListItem>
               );
             })}
-            {mailboxActors.length === 0 && (
+            {mailboxActorRows.length === 0 && (
               <EmptyState className={`${TEAM_MUTED_TEXT_CLASS} px-2`} body="No members available." />
             )}
           </div>
@@ -446,7 +525,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   auto_follow={chatStickToBottom ? "on" : "off"}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <ToolbarRow className="flex-none justify-end">
                 <ActionButton
                   tone="secondary"
                   size="md"
@@ -473,7 +552,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
                   <i className="bi bi-chevron-down" aria-hidden="true" />
                   <span>Jump to bottom</span>
                 </ActionButton>
-              </div>
+              </ToolbarRow>
             </ToolbarRow>
 
             <ul
@@ -481,60 +560,42 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
               ref={chatMessagesRef}
               onScroll={() => onConversationScroll()}
             >
-              {conversationMessages.map((message) => {
-                const isOutgoing = message.from_actor_id === chatActors.fromActorId;
-                const chatText = resolveVisibleTeamPayloadText(message.payload);
-                const payload = chatText ?? toPrettyJson(message.payload);
-                const fromLabel = resolveMailboxActorLabel(
-                  message.from_actor_id,
-                  displayNameByActorId,
-                  normalizedHumanActorId
-                );
-                const toLabel = resolveMailboxActorLabel(
-                  message.to_actor_id,
-                  displayNameByActorId,
-                  normalizedHumanActorId
-                );
-
+              {conversationRows.map((row) => {
                 return (
                   <li
-                    key={message.message_id}
-                    className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${isOutgoing ? "items-end" : "items-start"}`}
+                    key={row.message.message_id}
+                    className={`${MAILBOX_MESSAGE_ITEM_CLASS} ${row.isOutgoing ? "items-end" : "items-start"}`}
                   >
-                    <div className={isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
-                      <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
+                    <div className={row.isOutgoing ? MAILBOX_MESSAGE_BUBBLE_OUTGOING_CLASS : MAILBOX_MESSAGE_BUBBLE_INCOMING_CLASS}>
+                      <div className={`${MAILBOX_MESSAGE_HEAD_CLASS} ${row.isOutgoing ? "justify-end text-right" : "justify-start text-left"}`}>
                         <span className="font-bold">
-                          {fromLabel}
+                          {row.fromLabel}
                         </span>
                         <span className="opacity-60">{" → "}</span>
                         <span className="font-bold">
-                          {toLabel}
+                          {row.toLabel}
                         </span>
                         <span className="opacity-40">{" · "}</span>
-                        <span className="opacity-60">{formatTs(message.created_at)}</span>
+                        <span className="opacity-60">{formatTs(row.message.created_at)}</span>
                       </div>
                       <div className="mt-0.5 text-[14px] leading-6">
-                        {chatText !== null ? (
+                        {row.htmlPayload !== null ? (
                           <div
                             dangerouslySetInnerHTML={{
-                              __html: renderPlainTextWithMentions(payload, displayNameByActorId),
+                              __html: row.htmlPayload,
                             }}
                           />
                         ) : (
-                          <pre className="mono whitespace-pre-wrap rounded border border-black/5 bg-white/40 p-1.5 text-[12px]">{payload}</pre>
+                          <pre className="mono whitespace-pre-wrap rounded border border-black/5 bg-white/40 p-1.5 text-[12px]">{row.payload}</pre>
                         )}
                       </div>
-                      {isMessageAcceptableForInbox(
-                        message,
-                        chatActors.inboxActorId,
-                        normalizedHumanActorId
-                      ) && (
-                        <div className={`mt-2 flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
+                      {row.canAccept && (
+                        <div className={`mt-2 flex ${row.isOutgoing ? "justify-end" : "justify-start"}`}>
                           <ActionButton
                             tone="secondary"
                             size="md"
                             onClick={() => {
-                              void onAcceptMessage(message);
+                              void onAcceptMessage(row.message);
                             }}
                             disabled={busy !== null}
                           >

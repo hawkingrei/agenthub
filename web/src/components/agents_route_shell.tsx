@@ -12,6 +12,7 @@ import {
   OUTPUT_BODY_LOADING_CLASS,
   OUTPUT_BODY_ROOT_CLASS,
 } from "../ui/tailwind_classes";
+import { WorkspacePanelLoadingFallback } from "./workspace_panel_loading_fallback";
 
 const LazyAgentsWorkbench = React.lazy(async () => {
   const module = await import("./agents_workbench");
@@ -22,8 +23,7 @@ function WorkbenchBodyFallback({ hasAcp }: { hasAcp: boolean }) {
   return (
     <div className={hasAcp ? OUTPUT_BODY_ACP_ROOT_CLASS : OUTPUT_BODY_ROOT_CLASS}>
       <div className={OUTPUT_BODY_LOADING_CLASS}>
-        <i className="bi bi-hourglass-split spinner" aria-hidden="true" />
-        <div className="label">Loading...</div>
+        <WorkspacePanelLoadingFallback className="w-full max-w-md" />
       </div>
     </div>
   );

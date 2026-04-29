@@ -68,7 +68,7 @@ vi.mock("./webauthn", () => ({
   registerCredentialToJson: vi.fn(() => ({})),
 }));
 
-import { App } from "./app";
+import { App, RouteFallback } from "./app";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -219,6 +219,18 @@ describe("App route shell wiring", () => {
     });
   });
 
+  it("renders the shared route loading fallback chrome", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <RouteFallback label="Loading teams..." />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Loading teams...");
+    expect(html).toContain("loading this workspace route");
+    expect(html).toContain("data-workspace-panel-loading=\"true\"");
+  });
+
   afterEach(() => {
     act(() => {
       root.unmount();
@@ -349,6 +361,40 @@ describe("App route shell wiring", () => {
     );
     expect(rootWorkbenchHtml).toContain("Machines unavailable");
     expect(rootWorkbenchHtml).toContain("do not have permission to manage machines");
+  });
+
+  it("renders the shared workspace search placeholder in the root shell", async () => {
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+    window.history.replaceState({}, "", "/workspace?lens=search");
+
+    act(() => {
+      renderApp(root);
+    });
+    await flushRenderFrames(10);
+
+    const lastCall = agentsRouteShellPropsMock.mock.calls[
+      agentsRouteShellPropsMock.mock.calls.length - 1
+    ]?.[0] as
+      | {
+          rootWorkbenchNode: React.ReactNode;
+        }
+      | undefined;
+
+    expect(lastCall?.rootWorkbenchNode).toBeTruthy();
+    const rootWorkbenchHtml = renderToStaticMarkup(
+      <MantineProvider>{lastCall?.rootWorkbenchNode}</MantineProvider>
+    );
+    expect(rootWorkbenchHtml).toContain("Shared search is still being wired in");
+    expect(rootWorkbenchHtml).toContain("shell-level placeholder");
+    expect(rootWorkbenchHtml).toContain("data-workspace-lens-placeholder=\"search\"");
   });
 
   it("omits the agent output header when the machines lens is active", async () => {
