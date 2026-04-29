@@ -705,6 +705,19 @@ impl AgentManager {
         Ok(count > 0)
     }
 
+    async fn has_agent_persistent_session_failures_table(&self) -> anyhow::Result<bool> {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'agent_persistent_session_failures'
+            "#,
+        )
+        .fetch_one(&self.db)
+        .await?;
+        Ok(count > 0)
+    }
+
     async fn validate_target_node_id(&self, raw: Option<&str>) -> anyhow::Result<Option<String>> {
         let normalized = normalize_target_node_id(raw);
         let Some(node_id) = normalized.as_deref() else {

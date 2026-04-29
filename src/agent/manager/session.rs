@@ -130,6 +130,13 @@ impl AgentManager {
         .bind(now)
         .execute(&self.db)
         .await?;
+        if !self
+            .has_agent_persistent_session_failures_table()
+            .await
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
         sqlx::query(
             r#"
             DELETE FROM agent_persistent_session_failures
@@ -160,6 +167,9 @@ impl AgentManager {
         .bind(provider)
         .execute(&self.db)
         .await?;
+        if !self.has_agent_persistent_session_failures_table().await? {
+            return Ok(());
+        }
         sqlx::query(
             r#"
             DELETE FROM agent_persistent_session_failures
@@ -178,6 +188,9 @@ impl AgentManager {
         agent_id: &str,
         provider: &str,
     ) -> anyhow::Result<i64> {
+        if !self.has_agent_persistent_session_failures_table().await? {
+            return Ok(0);
+        }
         let now = Utc::now().timestamp();
         sqlx::query(
             r#"
