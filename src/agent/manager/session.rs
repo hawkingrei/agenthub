@@ -893,10 +893,25 @@ impl AgentManager {
             )
             .await;
             if should_retry_resumed_acp_session(Some(resume_id), acp_session_id, startup_state) {
-                let failure_count = self
+                let failure_count = match self
                     .increment_persistent_session_failure(&agent.id, provider_id)
                     .await
-                    .unwrap_or(RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY);
+                {
+                    Ok(failure_count) => failure_count,
+                    Err(err) => {
+                        let fallback_failure_count =
+                            RESUMED_ACP_SESSION_FAILURES_BEFORE_FRESH_RETRY;
+                        tracing::warn!(
+                            agent_id = %agent.id,
+                            provider = %provider_id,
+                            resumed_session_id = %resume_id,
+                            error = %err,
+                            fallback_failure_count,
+                            "failed to persist resumed acp session failure count; using fallback"
+                        );
+                        fallback_failure_count
+                    }
+                };
                 tracing::warn!(
                     agent_id = %agent.id,
                     session_id = %session_id,
