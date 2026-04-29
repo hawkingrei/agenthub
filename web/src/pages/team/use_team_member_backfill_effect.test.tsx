@@ -420,4 +420,45 @@ describe("useTeamMemberBackfillEffect", () => {
 
     expect(getAgentSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("expires shared resolved buckets after the retention window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-29T00:00:00Z"));
+    const getAgentSpy = vi.spyOn(api, "getAgent").mockImplementation(async (_token, agentId) => {
+      if (agentId === "missing-a") {
+        return makeAgent("missing-a");
+      }
+      throw makeApiError(404, "not-found");
+    });
+
+    let params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      setTeamMemberAgentsById: vi.fn(),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(new Date("2026-04-29T00:11:00Z"));
+    params = createParams({
+      teamSpecMemberIds: ["listed-agent", "missing-a"],
+      setTeamMemberAgentsById: params.setTeamMemberAgentsById,
+    });
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getAgentSpy).toHaveBeenCalledTimes(2);
+  });
 });

@@ -218,7 +218,7 @@ const OUTPUT_STREAM_BATCH_MAX_BYTES: usize = 64 * 1024;
 const OUTPUT_STREAM_BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 const TEAM_CONVERSATION_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
-const TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
@@ -562,10 +562,14 @@ fn team_run_context_stream(
     team_id: String,
     run_id: String,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
+    let mut heartbeat = tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut poll = tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     futures::stream::unfold(
         (
-            tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL),
-            tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL),
+            heartbeat,
+            poll,
             None::<TeamRunContextFingerprint>,
             state,
             team_id,

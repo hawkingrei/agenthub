@@ -19,6 +19,9 @@ type ResolvedTeamMemberAgent = {
 };
 
 const TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS = 60_000;
+const TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS =
+  TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS * 10;
+const MAX_SHARED_TEAM_MEMBER_TOKEN_BUCKETS = 64;
 const teamMemberLastResolvedAt = new Map<string, Map<string, number>>();
 const teamMemberInFlightRequests = new Map<
   string,
@@ -31,7 +34,12 @@ function getSharedMemberMap<T>(
   createIfMissing: boolean
 ): Map<string, T> | undefined {
   const existing = cache.get(token);
-  if (existing || !createIfMissing) {
+  if (existing) {
+    cache.delete(token);
+    cache.set(token, existing);
+    return existing;
+  }
+  if (!createIfMissing) {
     return existing;
   }
   const next = new Map<string, T>();
@@ -39,14 +47,59 @@ function getSharedMemberMap<T>(
   return next;
 }
 
+function pruneSharedResolvedAt(now: number): void {
+  const expiresBefore = now - TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS;
+  for (const [token, resolvedAtByMemberId] of teamMemberLastResolvedAt) {
+    for (const [memberId, resolvedAt] of resolvedAtByMemberId) {
+      if (resolvedAt < expiresBefore) {
+        resolvedAtByMemberId.delete(memberId);
+      }
+    }
+    if (
+      resolvedAtByMemberId.size === 0 &&
+      !(teamMemberInFlightRequests.get(token)?.size)
+    ) {
+      teamMemberLastResolvedAt.delete(token);
+    }
+  }
+}
+
+function evictOldestSharedResolvedBuckets(): void {
+  while (teamMemberLastResolvedAt.size > MAX_SHARED_TEAM_MEMBER_TOKEN_BUCKETS) {
+    const oldestToken = teamMemberLastResolvedAt.keys().next().value;
+    if (oldestToken === undefined) {
+      return;
+    }
+    if (teamMemberInFlightRequests.get(oldestToken)?.size) {
+      const activeBucket = teamMemberLastResolvedAt.get(oldestToken);
+      teamMemberLastResolvedAt.delete(oldestToken);
+      if (activeBucket) {
+        teamMemberLastResolvedAt.set(oldestToken, activeBucket);
+      }
+      return;
+    }
+    teamMemberLastResolvedAt.delete(oldestToken);
+  }
+}
+
 // Shared caches keep duplicate Team shell instances from immediately re-fetching the
 // same hidden member record before the first backfill result has propagated into state.
 function getSharedResolvedAt(token: string, memberId: string): number | undefined {
-  return getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.get(memberId);
+  const resolvedAt = getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.get(memberId);
+  if (
+    resolvedAt != null &&
+    resolvedAt >= Date.now() - TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS
+  ) {
+    return resolvedAt;
+  }
+  getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.delete(memberId);
+  return undefined;
 }
 
 function setSharedResolvedAt(token: string, memberId: string, resolvedAt: number): void {
+  pruneSharedResolvedAt(resolvedAt);
   getSharedMemberMap(teamMemberLastResolvedAt, token, true)?.set(memberId, resolvedAt);
+  evictOldestSharedResolvedBuckets();
 }
 
 function hasSharedInFlightRequest(token: string, memberId: string): boolean {

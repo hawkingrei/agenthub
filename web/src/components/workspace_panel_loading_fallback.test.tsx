@@ -14,6 +14,9 @@ describe("WorkspacePanelLoadingFallback", () => {
     expect(html).toContain("Loading workspace panel...");
     expect(html).toContain("loading this workspace surface");
     expect(html).toContain("data-workspace-panel-loading=\"true\"");
+    expect(html).toContain("role=\"status\"");
+    expect(html).toContain("aria-live=\"polite\"");
+    expect(html).toContain("aria-busy=\"true\"");
     expect(html).toContain("loading-shell-card");
   });
 });
