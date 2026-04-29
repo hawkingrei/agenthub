@@ -515,6 +515,8 @@ impl AgentManager {
         guard.remove(agent_id);
         drop(guard);
         let has_persistent_sessions_table = self.has_agent_persistent_sessions_table().await?;
+        let has_persistent_session_failures_table =
+            self.has_agent_persistent_session_failures_table().await?;
         let mut tx = self.db.begin().await?;
         sqlx::query("DELETE FROM acp_permission_requests WHERE agent_id = ?1")
             .bind(agent_id)
@@ -526,6 +528,12 @@ impl AgentManager {
             .await?;
         if has_persistent_sessions_table {
             sqlx::query("DELETE FROM agent_persistent_sessions WHERE agent_id = ?1")
+                .bind(agent_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        if has_persistent_session_failures_table {
+            sqlx::query("DELETE FROM agent_persistent_session_failures WHERE agent_id = ?1")
                 .bind(agent_id)
                 .execute(&mut *tx)
                 .await?;

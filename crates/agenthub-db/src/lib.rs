@@ -452,6 +452,21 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS agent_persistent_session_failures (
+            agent_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            failure_count INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (agent_id, provider),
+            FOREIGN KEY(agent_id) REFERENCES agents(id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS agent_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL,

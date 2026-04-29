@@ -136,6 +136,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberStatus,
     memberStatusLabel,
     memberStatusClassToken,
+    isStartingAcpSession,
     panelSubtitle,
     developerTechnicalMetadata,
     acpPanelProps,
@@ -252,6 +253,19 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
               </Badge>
             </div>
           ) : null}
+          {isStartingAcpSession ? (
+            <div className="inline-flex min-w-[12rem] items-center gap-2 rounded-xl border border-notion-border/70 bg-white/80 px-2 py-1 text-[11px] font-medium text-notion-text-muted">
+              <span className="shrink-0">Starting session</span>
+              <span
+                role="progressbar"
+                aria-label="Starting ACP session"
+                aria-valuetext="Starting ACP session"
+                className="relative h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-notion-hover/80"
+              >
+                <span className="absolute inset-y-0 left-0 w-2/5 animate-pulse rounded-full bg-notion-accent/75" />
+              </span>
+            </div>
+          ) : null}
           <OutputHeaderDetails
             items={developerTechnicalMetadata}
             summaryClassName="inline-flex cursor-pointer list-none items-center rounded-xl border border-transparent bg-transparent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-notion-text-muted/70 transition hover:bg-white/70 hover:text-notion-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-notion-accent/10"
@@ -264,6 +278,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       attachedNodeId,
       developerTechnicalMetadata,
       infoStripSummary,
+      isStartingAcpSession,
       memberStatus,
       memberStatusClassToken,
       memberStatusLabel,

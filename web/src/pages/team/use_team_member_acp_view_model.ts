@@ -267,6 +267,16 @@ export function useTeamMemberAcpViewModel({
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeStatusValue(memberRoleLabel) ||
     "unknown";
+  // Prefer authoritative snapshot/runtime status for startup gating so stale
+  // ACP stream state does not keep the UI in a misleading "starting" mode.
+  const isStartingAcpSession = Boolean(
+    selectedMemberId.trim() &&
+      !selectedSessionId &&
+      ((snapshotStatus && isAgentActiveStatus(snapshotStatus)) ||
+        (!snapshotStatus &&
+          normalizedAgentStatus &&
+          isAgentActiveStatus(normalizedAgentStatus)))
+  );
   const thinkingLabel =
     acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
@@ -369,6 +379,9 @@ export function useTeamMemberAcpViewModel({
     if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
       return "Agent is stopped";
     }
+    if (isStartingAcpSession) {
+      return "Starting ACP session...";
+    }
     if (!selectedSessionId) {
       return "No active thread session yet";
     }
@@ -384,6 +397,7 @@ export function useTeamMemberAcpViewModel({
     hasRenderableConversationContent,
     memberEventsLoading,
     normalizedAgentStatus,
+    isStartingAcpSession,
     selectedMemberId,
     selectedSessionId,
     visibleMemberEvents.length,
@@ -537,6 +551,7 @@ export function useTeamMemberAcpViewModel({
     memberStatus,
     memberStatusLabel,
     memberStatusClassToken,
+    isStartingAcpSession,
     panelSubtitle,
     developerTechnicalMetadata,
     acpPanelProps,
