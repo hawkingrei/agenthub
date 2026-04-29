@@ -267,15 +267,15 @@ export function useTeamMemberAcpViewModel({
       : snapshotStatus || acpRunStatus || normalizedAgentStatus) ||
     normalizeStatusValue(memberRoleLabel) ||
     "unknown";
-  // Keep "session is starting" narrow to members that already report an active
-  // runtime-like status; an entirely idle member should still render the old
-  // empty-shell copy instead of a misleading progress state.
+  // Prefer authoritative snapshot/runtime status for startup gating so stale
+  // ACP stream state does not keep the UI in a misleading "starting" mode.
   const isStartingAcpSession = Boolean(
     selectedMemberId.trim() &&
       !selectedSessionId &&
-      [normalizedAgentStatus, snapshotStatus, acpRunStatus].some(
-        (status) => status && isAgentActiveStatus(status)
-      )
+      ((snapshotStatus && isAgentActiveStatus(snapshotStatus)) ||
+        (!snapshotStatus &&
+          normalizedAgentStatus &&
+          isAgentActiveStatus(normalizedAgentStatus)))
   );
   const thinkingLabel =
     acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)

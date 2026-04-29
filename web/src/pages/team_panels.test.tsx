@@ -5786,11 +5786,11 @@ describe("team panels interactions", () => {
           developerMode={false}
           selectedMemberId="worker-agent"
           memberTitle="Worker agent"
-          selectedMemberSnapshot={{
-            id: "worker-agent",
+          selectedMemberSnapshot={buildMemberSnapshot({
+            member_id: "worker-agent",
             role: "worker",
             status: "running",
-          } as never}
+          })}
           selectedMemberRole="worker"
           selectedAgentStatus="running"
           memberEvents={[]}
@@ -5798,6 +5798,7 @@ describe("team panels interactions", () => {
           memberEventsLoading={false}
           eventsLoading={false}
           oldestMemberEventId={null}
+          onSendInput={vi.fn()}
           onLoadOlder={vi.fn()}
         />
     );
