@@ -1442,6 +1442,10 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       visibleActivityItems,
     ]
   );
+  const visibleActivitySequenceKey = React.useMemo(
+    () => visibleActivityRows.map((row) => String(row.item.sequence)).join(","),
+    [visibleActivityRows]
+  );
   const latestWaterfallKey =
     visibleWaterfallItems.length > 0
       ? visibleWaterfallItems[visibleWaterfallItems.length - 1]?.key ?? "empty"
@@ -1580,7 +1584,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     // can regain the source message context without polluting canonical Team URLs.
     target.scrollIntoView({ block: "center", inline: "nearest" });
     onJumpToMessageSettled?.();
-  }, [jumpToMessageId, messagesLoading, onJumpToMessageSettled]);
+  }, [jumpToMessageId, messagesLoading, onJumpToMessageSettled, visibleActivitySequenceKey]);
 
   const handleActivityScroll = React.useCallback(() => {
     const node = activityListRef.current;

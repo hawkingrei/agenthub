@@ -3752,6 +3752,92 @@ describe("team panels interactions", () => {
     }
   });
 
+  it("TeamTaskPanel retries jump-to-message after the tail window expands the target row into view", async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderWithMantine(
+        root,
+        <TeamTaskPanel
+          developerMode={false}
+          tasksLoading={false}
+          onRefreshTasks={vi.fn()}
+          messageDraft=""
+          onMessageDraftChange={vi.fn()}
+          onSendMessage={vi.fn()}
+          messages={Array.from({ length: 26 }, (_, index) =>
+            buildTaskMessage(index + 1, {
+              from_actor_id: "leader-agent",
+              route: "group_chat",
+              payload: { type: "chat_message", text: `source ${index + 1}` },
+            })
+          )}
+          seenByMessageId={{}}
+          humanActorId="user:u-1"
+          memberLiveStates={[buildMemberLiveState()]}
+          memberIds={["leader-agent", "worker-agent"]}
+          conversationTitle="Shared thread"
+          isChannelConversation={true}
+          messagesLoading={false}
+          busy={null}
+          formatTs={(ts) => `ts-${String(ts)}`}
+          toPrettyJson={(value) => JSON.stringify(value)}
+          jumpToMessageId={1}
+          onJumpToMessageSettled={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      const scrollNode = required(
+        container.querySelector('[data-team-channel-scroll="true"]') as HTMLDivElement | null,
+        "team channel scroll container missing"
+      );
+      Object.defineProperty(scrollNode, "scrollHeight", {
+        configurable: true,
+        value: 640,
+      });
+      Object.defineProperty(scrollNode, "clientHeight", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(scrollNode, "scrollTop", {
+        configurable: true,
+        writable: true,
+        value: 640,
+      });
+
+      act(() => {
+        scrollNode.scrollTop = 720;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+
+      act(() => {
+        scrollNode.scrollTop = 80;
+        scrollNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+      });
+
+      await waitForCondition(() => scrollIntoView.mock.calls.length > 0);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", inline: "nearest" });
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      });
+    }
+  });
+
   it("TeamTaskPanel sticks to bottom by default and shows a jump action after manual upward scroll", async () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
     const rafSpy = vi

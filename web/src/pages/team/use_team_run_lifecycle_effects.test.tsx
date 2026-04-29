@@ -363,6 +363,44 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase);
   });
 
+  it("hydrates the steps state from snapshot refreshes on the steps tab", async () => {
+    const nextSteps = [
+      {
+        id: "step-2",
+        run_id: "run-1",
+        step_key: "compile",
+        member_id: "worker-1",
+        status: "working",
+        payload: {},
+        result: null,
+        created_at: 2,
+        updated_at: 2,
+      },
+    ];
+    const params = createParams({
+      tab: "steps",
+      refreshSnapshot: vi.fn().mockResolvedValue({
+        ...makeSnapshot("team-1"),
+        steps: nextSteps,
+      }),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.setSteps).toHaveBeenCalledWith(nextSteps);
+  });
+
   it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {
     const params = createParams({
       tab: "agent_acp",

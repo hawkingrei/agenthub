@@ -164,6 +164,11 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
             refreshRun(runId).catch(() => undefined),
             refreshSnapshot(runId).catch(() => undefined),
           ]);
+        } else if (tab === "steps") {
+          const nextSnapshot = await refreshSnapshot(runId).catch(() => undefined);
+          if (nextSnapshot) {
+            setSteps(nextSnapshot.steps);
+          }
         } else {
           await refreshSnapshot(runId).catch(() => undefined);
         }
@@ -187,6 +192,7 @@ export function useTeamRunLifecycleEffects(options: UseTeamRunLifecycleEffectsOp
     refreshEvents,
     refreshRun,
     refreshSnapshot,
+    setSteps,
     tab,
   ]);
 
