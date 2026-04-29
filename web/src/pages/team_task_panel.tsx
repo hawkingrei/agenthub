@@ -100,6 +100,8 @@ type TeamTaskPanelProps = {
   toPrettyJson: (value: unknown) => string;
   onOpenThread?: (messageId: number) => void;
   activeThreadMessageId?: number | null;
+  jumpToMessageId?: number | null;
+  onJumpToMessageSettled?: () => void;
 };
 
 type VisibleConversationItem = {
@@ -107,6 +109,13 @@ type VisibleConversationItem = {
   permissionCardPayload: PermissionReviewCardPayload | null;
   text: string;
 };
+
+function formatThreadButtonLabel(replyCount: number): string {
+  if (replyCount <= 0) {
+    return "Thread";
+  }
+  return replyCount === 1 ? "Thread · 1 reply" : `Thread · ${replyCount} replies`;
+}
 
 function isThreadReplyMessage(message: TeamConversationMessageRecord): boolean {
   return message.route === "team_thread_reply";
@@ -276,6 +285,17 @@ function canOpenThreadFromMessage(message: TeamConversationMessageRecord): boole
   return !isThreadReplyMessage(message) && resolveMessageText(message) !== null;
 }
 
+function resolveThreadRootMessageIdFromPayload(payload: unknown): number | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const raw = (payload as { thread_root_message_id?: unknown }).thread_root_message_id;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) {
+    return null;
+  }
+  return raw;
+}
+
 function resolveThreadAuthorLabel(
   actorId: string,
   humanActorId: string,
@@ -306,11 +326,16 @@ function resolveMentionLabel(
 
 function resolveActivityItemClassName(
   actorId: string,
-  humanActorId: string
+  humanActorId: string,
+  isActiveThreadRoot: boolean
 ): string {
-  return isHumanMailboxActor(actorId, humanActorId)
+  const baseClassName = isHumanMailboxActor(actorId, humanActorId)
     ? TEAM_TASK_ACTIVITY_ITEM_HUMAN_CLASS
     : TEAM_TASK_ACTIVITY_ITEM_AGENT_CLASS;
+  if (!isActiveThreadRoot) {
+    return baseClassName;
+  }
+  return `${baseClassName} rounded-xl bg-notion-hover/60 ring-1 ring-notion-accent/20`;
 }
 
 function resolveActivityContentClassName(
@@ -957,9 +982,11 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     messagesLoading,
     busy,
     formatTs,
-    onOpenThread,
-    activeThreadMessageId = null,
-  } = props;
+  onOpenThread,
+  activeThreadMessageId = null,
+  jumpToMessageId = null,
+  onJumpToMessageSettled,
+} = props;
 
   const messageTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const messageDraftComposingRef = React.useRef(false);
@@ -975,6 +1002,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const [permissionBusyId, setPermissionBusyId] = React.useState<string | null>(null);
   const [permissionErrorById, setPermissionErrorById] = React.useState<Record<string, string>>({});
   const activityListRef = React.useRef<HTMLDivElement | null>(null);
+  const activityItemRefs = React.useRef(new Map<number, HTMLDivElement>());
   const lastActivityScrollTopRef = React.useRef<number | null>(null);
   const conversationViewportKeyRef = React.useRef("");
   const initialStickResolvedRef = React.useRef(false);
@@ -1288,9 +1316,37 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
           text: item.text,
           permissionCardPayload: item.permissionCardPayload,
           canOpenThread: item.permissionCardPayload == null && canOpenThreadFromMessage(message),
+          threadReplyCount: 0,
         };
       }),
     [activityWindow.items]
+  );
+  const threadReplyCountByRootMessageId = React.useMemo(() => {
+    const replyCountByRootMessageId = new Map<number, number>();
+    // Keep thread reply counting keyed off the full ordered message list so
+    // viewport-window changes do not rescan the entire conversation history.
+    for (const message of orderedMessages) {
+      if (!isThreadReplyMessage(message)) {
+        continue;
+      }
+      const rootMessageId = resolveThreadRootMessageIdFromPayload(message.payload);
+      if (rootMessageId == null) {
+        continue;
+      }
+      replyCountByRootMessageId.set(
+        rootMessageId,
+        (replyCountByRootMessageId.get(rootMessageId) ?? 0) + 1
+      );
+    }
+    return replyCountByRootMessageId;
+  }, [orderedMessages]);
+  const visibleActivityItems = React.useMemo(
+    () =>
+      visibleWaterfallItems.map((item) => ({
+        ...item,
+        threadReplyCount: threadReplyCountByRootMessageId.get(item.sequence) ?? 0,
+      })),
+    [threadReplyCountByRootMessageId, visibleWaterfallItems]
   );
   const hiddenWaterfallCount = activityWindow.offset;
   const shouldDelayInitialConversationRender =
@@ -1311,6 +1367,85 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
       : TEAM_TASK_ACTIVITY_LIST_EMPTY_CLASS;
   const showInitialThreadLoading =
     !shouldDelayInitialConversationRender && messagesLoading && visibleWaterfallItems.length === 0;
+  const seenProgressByMessageId = React.useMemo(() => {
+    const next = new Map<number, SeenProgressState>();
+    // Precompute read-state once per visible item so long channel timelines do not
+    // rebuild the same progress breakdown during every row render.
+    for (const item of visibleActivityItems) {
+      next.set(
+        item.sequence,
+        resolveSeenProgressState(
+          seenByMessageId[item.sequence] ?? [],
+          memberIds,
+          item.fromActorId
+        )
+      );
+    }
+    return next;
+  }, [memberIds, seenByMessageId, visibleActivityItems]);
+  const visibleActivityRows = React.useMemo(
+    () =>
+      visibleActivityItems.map((item) => {
+        const seenActorIds = seenByMessageId[item.sequence] ?? [];
+        const seenProgress =
+          seenProgressByMessageId.get(item.sequence) ??
+          resolveSeenProgressState(seenActorIds, memberIds, item.fromActorId);
+        const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
+        const permissionCardPayload = item.permissionCardPayload;
+        return {
+          item,
+          state: liveStateByMemberId.get(item.fromActorId),
+          isHumanAuthor,
+          isActiveThreadRoot: activeThreadMessageId === item.sequence,
+          authorLabel: resolveThreadAuthorLabel(
+            item.fromActorId,
+            humanActorId,
+            liveStateByMemberId
+          ),
+          seenActorIds,
+          seenProgress,
+          shouldShowSeenMeta: isHumanAuthor || seenProgress.totalCount > 0,
+          itemClassName: resolveActivityItemClassName(
+            item.fromActorId,
+            humanActorId,
+            activeThreadMessageId === item.sequence
+          ),
+          contentClassName: resolveActivityContentClassName(item.fromActorId, humanActorId),
+          bubbleClassName: `${resolveActivityBubbleToneClassName(
+            item.fromActorId,
+            humanActorId
+          )} ${resolveActivityBubbleLayoutClassName(isHumanAuthor || seenProgress.totalCount > 0)}`,
+          threadButtonLabel: formatThreadButtonLabel(item.threadReplyCount),
+          permissionCardPayload,
+          permissionRecord: permissionCardPayload
+            ? permissionRecordsById[permissionCardPayload.permission_id]
+            : undefined,
+          permissionBusy:
+            permissionCardPayload != null &&
+            permissionBusyId === permissionCardPayload.permission_id,
+          permissionErrorText:
+            permissionCardPayload != null
+              ? permissionErrorById[permissionCardPayload.permission_id]
+              : undefined,
+        };
+      }),
+    [
+      activeThreadMessageId,
+      humanActorId,
+      liveStateByMemberId,
+      memberIds,
+      permissionBusyId,
+      permissionErrorById,
+      permissionRecordsById,
+      seenByMessageId,
+      seenProgressByMessageId,
+      visibleActivityItems,
+    ]
+  );
+  const visibleActivitySequenceKey = React.useMemo(
+    () => visibleActivityRows.map((row) => String(row.item.sequence)).join(","),
+    [visibleActivityRows]
+  );
   const latestWaterfallKey =
     visibleWaterfallItems.length > 0
       ? visibleWaterfallItems[visibleWaterfallItems.length - 1]?.key ?? "empty"
@@ -1437,6 +1572,20 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
     };
   }, [latestWaterfallKey, messagesLoading, orderedMessages.length, scrollActivityToBottom, stickToBottom]);
 
+  React.useEffect(() => {
+    if (jumpToMessageId == null || messagesLoading) {
+      return;
+    }
+    const target = activityItemRefs.current.get(jumpToMessageId);
+    if (!target) {
+      return;
+    }
+    // Keep this as local UI state instead of route state so `View in channel`
+    // can regain the source message context without polluting canonical Team URLs.
+    target.scrollIntoView({ block: "center", inline: "nearest" });
+    onJumpToMessageSettled?.();
+  }, [jumpToMessageId, messagesLoading, onJumpToMessageSettled, visibleActivitySequenceKey]);
+
   const handleActivityScroll = React.useCallback(() => {
     const node = activityListRef.current;
     if (!node) {
@@ -1483,30 +1632,39 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                       style={{ height: hiddenWaterfallSpacerHeight }}
                     />
                   )}
-                  {visibleWaterfallItems.map((item) => {
-                    const state = liveStateByMemberId.get(item.fromActorId);
-                    const isHumanAuthor = isHumanMailboxActor(item.fromActorId, humanActorId);
-                    const authorLabel = resolveThreadAuthorLabel(
-                      item.fromActorId,
-                      humanActorId,
-                      liveStateByMemberId
-                    );
-                    const permissionCardPayload = item.permissionCardPayload;
-                    const seenActorIds = seenByMessageId[item.sequence] ?? [];
-                    const seenProgress = resolveSeenProgressState(
+                  {visibleActivityRows.map((row) => {
+                    const {
+                      item,
+                      state,
+                      isHumanAuthor,
+                      isActiveThreadRoot,
+                      authorLabel,
                       seenActorIds,
-                      memberIds,
-                      item.fromActorId
-                    );
-                    const shouldShowSeenMeta =
-                      isHumanMailboxActor(item.fromActorId, humanActorId) ||
-                      seenProgress.totalCount > 0;
+                      seenProgress,
+                      shouldShowSeenMeta,
+                      itemClassName,
+                      contentClassName,
+                      bubbleClassName,
+                      threadButtonLabel,
+                      permissionCardPayload,
+                      permissionRecord,
+                      permissionBusy,
+                      permissionErrorText,
+                    } = row;
                     return (
                       <div
                         key={item.key}
-                        className={resolveActivityItemClassName(item.fromActorId, humanActorId)}
+                        ref={(node) => {
+                          if (node) {
+                            activityItemRefs.current.set(item.sequence, node);
+                            return;
+                          }
+                          activityItemRefs.current.delete(item.sequence);
+                        }}
+                        className={itemClassName}
                         data-activity-author-kind={isHumanAuthor ? "human" : "agent"}
                         data-team-channel-item="true"
+                        data-team-thread-root-active={isActiveThreadRoot ? "true" : "false"}
                       >
                         <div
                           className={
@@ -1517,7 +1675,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         >
                           {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
                         </div>
-                        <div className={resolveActivityContentClassName(item.fromActorId, humanActorId)}>
+                        <div className={contentClassName}>
                           <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                             <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>
                               <span className={TEAM_TASK_ACTIVITY_AUTHOR_CLASS}>{authorLabel}</span>
@@ -1528,13 +1686,13 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                                 {isChannelConversation && onOpenThread && item.canOpenThread && (
                                   <CompactButton
                                     className={
-                                      activeThreadMessageId === item.sequence
+                                      isActiveThreadRoot
                                         ? `${TEAM_TASK_ACTIVITY_META_BUTTON_CLASS} bg-transparent text-notion-text-muted/82`
                                         : TEAM_TASK_ACTIVITY_META_BUTTON_CLASS
                                     }
                                     onClick={() => onOpenThread(item.sequence)}
                                   >
-                                    Thread
+                                    {threadButtonLabel}
                                   </CompactButton>
                                 )}
                                 {developerMode ? (
@@ -1558,19 +1716,16 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                             <div data-team-channel-bubble="permission" className="mt-1 max-w-full">
                               <PermissionReviewCard
                                 payload={permissionCardPayload}
-                                permissionRecord={permissionRecordsById[permissionCardPayload.permission_id]}
-                                busy={permissionBusyId === permissionCardPayload.permission_id}
-                                errorText={permissionErrorById[permissionCardPayload.permission_id]}
+                                permissionRecord={permissionRecord}
+                                busy={permissionBusy}
+                                errorText={permissionErrorText}
                                 onRespond={onRespondPermission}
                               />
                             </div>
                           ) : (
                             <TeamActivityBubble
                               bubbleKind={isHumanAuthor ? "human" : "agent"}
-                              bubbleClassName={`${resolveActivityBubbleToneClassName(
-                                item.fromActorId,
-                                humanActorId
-                              )} ${resolveActivityBubbleLayoutClassName(shouldShowSeenMeta)}`}
+                              bubbleClassName={bubbleClassName}
                               showSeenMeta={shouldShowSeenMeta}
                               itemKey={item.key}
                               seenActorIds={seenActorIds}

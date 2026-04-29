@@ -1,6 +1,8 @@
 import React from "react";
 import type { WorkspaceLens } from "../../app_route_selection";
 import type { TeamDefinitionRecord } from "../../api";
+import { WorkspaceSearchLensPlaceholder } from "../../components/workspace_lens_placeholder";
+import { WorkspacePanelLoadingFallback } from "../../components/workspace_panel_loading_fallback";
 import { ActionButton } from "../../ui/primitives";
 import {
   TeamLoadingPanel,
@@ -82,11 +84,7 @@ export function prefetchTeamSetupSurface(): void {
 }
 
 export function TeamPanelLoadingFallback() {
-  return (
-    <div className="rounded-2xl border border-notion-border bg-white/88 px-4 py-6 text-sm text-ui-text-muted shadow-sm">
-      Loading panel...
-    </div>
-  );
+  return <WorkspacePanelLoadingFallback />;
 }
 
 type TeamWorkbenchContentProps = {
@@ -96,10 +94,8 @@ type TeamWorkbenchContentProps = {
   selectedTeam: TeamDefinitionRecord | null;
   isAgentWorkspace: boolean;
   teamSectionCardClassName: string;
-  teamSectionHeadingClassName: string;
   teamSectionTitleClassName: string;
   teamSectionBodyTextClassName: string;
-  teamSectionHintTextClassName: string;
   panelSecondaryButtonClassName: string;
   teamWorkbenchWorkspaceShellClassName: string;
   workspaceHeaderProps: React.ComponentProps<typeof TeamWorkspaceHeader>;
@@ -135,10 +131,8 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   selectedTeam,
   isAgentWorkspace,
   teamSectionCardClassName,
-  teamSectionHeadingClassName,
   teamSectionTitleClassName,
   teamSectionBodyTextClassName,
-  teamSectionHintTextClassName,
   panelSecondaryButtonClassName,
   teamWorkbenchWorkspaceShellClassName,
   workspaceHeaderProps,
@@ -206,11 +200,11 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
           )}
 
           {showRunContextLoading && (
-            <div className={teamSectionCardClassName}>
-              <p className="text-sm text-ui-text-muted">
-                Loading run context for selected team...
-              </p>
-            </div>
+            <WorkspacePanelLoadingFallback
+              className={teamSectionCardClassName}
+              title="Loading run context..."
+              body="AgentHub is loading the selected team's execution context."
+            />
           )}
 
           {showNoActiveRunNotice && (
@@ -240,13 +234,7 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               }`}
             >
               {activeWorkspaceLens === "search" && (
-                <div className={teamSectionCardClassName}>
-                  <div className={teamSectionHeadingClassName}>Search</div>
-                  <h3 className={teamSectionTitleClassName}>Search is still workspace-local</h3>
-                  <p className={teamSectionHintTextClassName}>
-                    Use Channels, Tasks, or Members while shared search rollup is being wired in.
-                  </p>
-                </div>
+                <WorkspaceSearchLensPlaceholder className={teamSectionCardClassName} />
               )}
 
               {activeWorkspaceLens !== "search" && tab === "conversation" && (

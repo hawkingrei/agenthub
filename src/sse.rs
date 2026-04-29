@@ -18,7 +18,9 @@ use tokio::{
 use crate::agent::AgentOutput;
 use crate::api::{ApiError, load_team_for_user};
 use crate::state::AppState;
-use crate::team::TeamConversationStreamEvent;
+use crate::team::{
+    TeamConversationStreamEvent, TeamRunContextFingerprint, TeamRunContextStreamEvent,
+};
 
 #[derive(Debug, serde::Deserialize)]
 struct SseTokenQuery {
@@ -35,6 +37,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/agents", get(sse_agents))
         .route("/agents/{id}", get(sse_agent))
+        .route(
+            "/teams/{team_id}/runs/{run_id}/context",
+            get(sse_team_run_context),
+        )
         .route(
             "/teams/{team_id}/tasks/{task_id}/messages",
             get(sse_team_task_messages),
@@ -132,6 +138,27 @@ async fn sse_team_task_messages(
     team_conversation_sse_response(event_rx, team_id, task_id, conversation.id)
 }
 
+async fn sse_team_run_context(
+    State(state): State<AppState>,
+    Path((team_id, run_id)): Path<(String, String)>,
+    Query(query): Query<SseTokenQuery>,
+) -> impl IntoResponse {
+    let user = match state.auth.validate_session(&query.token).await {
+        Ok(user) => user,
+        Err(_) => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+    };
+    if let Err(error) = load_team_for_user(&state, &team_id, &user).await {
+        return error.into_response();
+    }
+    let run = match state.teams.get_run(&run_id).await {
+        Ok(run) if run.team_id == team_id => run,
+        Ok(_) => return (StatusCode::NOT_FOUND, "run not found").into_response(),
+        Err(error) => return map_sse_not_found_error(error, "run not found").into_response(),
+    };
+    let stream = team_run_context_stream(state, run.team_id, run.id);
+    decorate_sse_response(Sse::new(stream).into_response())
+}
+
 fn map_sse_not_found_error(error: anyhow::Error, msg: &str) -> ApiError {
     if matches!(
         error.downcast_ref::<SqlxError>(),
@@ -190,6 +217,8 @@ const OUTPUT_STREAM_BATCH_MAX_EVENTS: usize = 32;
 const OUTPUT_STREAM_BATCH_MAX_BYTES: usize = 64 * 1024;
 const OUTPUT_STREAM_BATCH_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 const TEAM_CONVERSATION_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 fn output_stream(
     output_rxs: Vec<broadcast::Receiver<AgentOutput>>,
@@ -484,6 +513,123 @@ fn team_conversation_stream(
     )
 }
 
+#[derive(Debug, serde::Serialize)]
+struct TeamRunContextSseMessage {
+    r#type: String,
+    payload: TeamRunContextStreamEvent,
+}
+
+fn team_run_context_event_to_message(event: TeamRunContextStreamEvent) -> TeamRunContextSseMessage {
+    TeamRunContextSseMessage {
+        r#type: "team_run_context".to_string(),
+        payload: event,
+    }
+}
+
+fn optional_id(id: i64) -> Option<i64> {
+    (id > 0).then_some(id)
+}
+
+fn build_team_run_context_delta(
+    previous: &TeamRunContextFingerprint,
+    next: &TeamRunContextFingerprint,
+) -> Option<TeamRunContextStreamEvent> {
+    let refresh_run = previous.run_status != next.run_status;
+    let refresh_events = previous.latest_event_id != next.latest_event_id;
+    let refresh_mailbox = previous.latest_mailbox_message_id != next.latest_mailbox_message_id
+        || previous.mailbox_pending != next.mailbox_pending
+        || previous.mailbox_delivered != next.mailbox_delivered
+        || previous.mailbox_dead_letter != next.mailbox_dead_letter;
+    let refresh_snapshot = refresh_run || refresh_events || refresh_mailbox;
+    if !(refresh_run || refresh_events || refresh_mailbox) {
+        return None;
+    }
+    Some(TeamRunContextStreamEvent {
+        team_id: next.team_id.clone(),
+        run_id: next.run_id.clone(),
+        refresh_run,
+        refresh_events,
+        refresh_snapshot,
+        refresh_mailbox,
+        latest_event_id: optional_id(next.latest_event_id),
+        latest_mailbox_message_id: optional_id(next.latest_mailbox_message_id),
+        source: "poll_delta".to_string(),
+    })
+}
+
+fn team_run_context_stream(
+    state: AppState,
+    team_id: String,
+    run_id: String,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let mut heartbeat = tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_HEARTBEAT_INTERVAL);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut poll = tokio::time::interval(TEAM_RUN_CONTEXT_STREAM_POLL_INTERVAL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    futures::stream::unfold(
+        (
+            heartbeat,
+            poll,
+            None::<TeamRunContextFingerprint>,
+            state,
+            team_id,
+            run_id,
+        ),
+        |(mut heartbeat, mut poll, mut previous, state, team_id, run_id)| async move {
+            loop {
+                tokio::select! {
+                    _ = heartbeat.tick() => {
+                        return Some((
+                            Ok(Event::default().data("heartbeat")),
+                            (heartbeat, poll, previous, state, team_id, run_id),
+                        ));
+                    }
+                    _ = poll.tick() => {
+                        // The Team workbench still reads snapshots/events over HTTP. This stream
+                        // only ships a compact invalidation fingerprint so one SSE connection can
+                        // replace the old 4s triple-poll loop without introducing a second
+                        // snapshot-format contract to keep in sync.
+                        let next = match state.teams.read_run_context_fingerprint(&run_id).await {
+                            Ok(next) => next,
+                            Err(error) if matches!(error.downcast_ref::<SqlxError>(), Some(SqlxError::RowNotFound)) => {
+                                return None;
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    team_id = %team_id,
+                                    run_id = %run_id,
+                                    error = %error,
+                                    "team run context sse fingerprint refresh failed"
+                                );
+                                continue;
+                            }
+                        };
+                        if next.team_id != team_id {
+                            return None;
+                        }
+                        let event = previous
+                            .as_ref()
+                            .and_then(|prev| build_team_run_context_delta(prev, &next));
+                        previous = Some(next);
+                        if let Some(event) = event {
+                            let text = match serde_json::to_string(
+                                &team_run_context_event_to_message(event),
+                            ) {
+                                Ok(text) => text,
+                                Err(_) => continue,
+                            };
+                            return Some((
+                                Ok(Event::default().data(text)),
+                                (heartbeat, poll, previous, state, team_id, run_id),
+                            ));
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
 fn push_batched_output(state: &mut OutputStreamState, output: AgentOutput) {
     state.batch_bytes = state
         .batch_bytes
@@ -557,7 +703,10 @@ mod tests {
         config::{AppConfig, PushConfig, WebConfig},
         push::PushService,
         state::AppState,
-        team::{TeamConversationStreamEvent, TeamDefinitionConfig, TeamManager},
+        team::{
+            TeamConversationStreamEvent, TeamDefinitionConfig, TeamManager,
+            TeamRunContextFingerprint,
+        },
     };
 
     use super::parse_agent_ids;
@@ -970,6 +1119,70 @@ mod tests {
             .await
             .expect("execute request");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn team_run_context_sse_requires_valid_token() {
+        let state = build_team_test_state().await;
+        let team = state
+            .teams
+            .create_team(TeamDefinitionConfig {
+                name: "sse-team-run-auth".to_string(),
+                description: Some("team run context sse auth".to_string()),
+                spec: serde_json::json!({
+                    "entrypoint":"leader_plan",
+                    "members":[{"member_id":"leader"}]
+                }),
+            })
+            .await
+            .expect("create team");
+        let run = state
+            .teams
+            .create_run(&team.id, Some("ctx-run-auth"), serde_json::json!({}))
+            .await
+            .expect("create run");
+        let app = super::router(state);
+        let response = app
+            .oneshot(build_sse_request(&format!(
+                "/teams/{}/runs/{}/context?token=bad-token",
+                team.id, run.id
+            )))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn build_team_run_context_delta_marks_expected_refresh_targets() {
+        let previous = TeamRunContextFingerprint {
+            team_id: "team-1".to_string(),
+            run_id: "run-1".to_string(),
+            run_status: "working".to_string(),
+            latest_event_id: 10,
+            latest_mailbox_message_id: 5,
+            mailbox_pending: 1,
+            mailbox_delivered: 2,
+            mailbox_dead_letter: 0,
+        };
+        let next = TeamRunContextFingerprint {
+            team_id: "team-1".to_string(),
+            run_id: "run-1".to_string(),
+            run_status: "completed".to_string(),
+            latest_event_id: 11,
+            latest_mailbox_message_id: 6,
+            mailbox_pending: 0,
+            mailbox_delivered: 3,
+            mailbox_dead_letter: 0,
+        };
+
+        let delta =
+            super::build_team_run_context_delta(&previous, &next).expect("delta should be emitted");
+        assert!(delta.refresh_run);
+        assert!(delta.refresh_events);
+        assert!(delta.refresh_snapshot);
+        assert!(delta.refresh_mailbox);
+        assert_eq!(delta.latest_event_id, Some(11));
+        assert_eq!(delta.latest_mailbox_message_id, Some(6));
     }
 
     #[tokio::test]

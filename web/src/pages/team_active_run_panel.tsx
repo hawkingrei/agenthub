@@ -7,6 +7,7 @@ import {
   KeyValueList,
   PanelHeader,
   SurfaceCard,
+  ToolbarRow,
 } from "../ui/primitives";
 
 type TeamActiveRunPanelProps = {
@@ -45,52 +46,52 @@ function TeamActiveRunPanelImpl(props: TeamActiveRunPanelProps) {
         title="Active Execution Run"
         titleClassName={titleClassName}
         actions={
-          <>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            title="Refresh active execution run"
-            aria-label="Refresh active execution run"
-            onClick={onRefresh}
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </ActionButton>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={onCancel}
-            disabled={busy === "cancel-run" || run.status === "canceled"}
-          >
-            Cancel Execution Run
-          </ActionButton>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={onResume}
-            disabled={busy === "resume-run" || !canResumeRun}
-            title={
-              canResumeRun
-                ? "Resume a failed/canceled run"
-                : "Resume is available for failed/canceled runs"
-            }
-          >
-            Resume Execution Run
-          </ActionButton>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={onRestart}
-            disabled={busy === "restart-run" || !canRestartRun}
-            title={
-              canRestartRun
-                ? "Create a fresh run from the same context/input"
-                : "Restart is available for completed/failed/canceled runs"
-            }
-          >
-            Restart Execution Run
-          </ActionButton>
-          </>
+          <ToolbarRow className="justify-end gap-2">
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              title="Refresh active execution run"
+              aria-label="Refresh active execution run"
+              onClick={onRefresh}
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
+            </ActionButton>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={onCancel}
+              disabled={busy === "cancel-run" || run.status === "canceled"}
+            >
+              Cancel Execution Run
+            </ActionButton>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={onResume}
+              disabled={busy === "resume-run" || !canResumeRun}
+              title={
+                canResumeRun
+                  ? "Resume a failed/canceled run"
+                  : "Resume is available for failed/canceled runs"
+              }
+            >
+              Resume Execution Run
+            </ActionButton>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={onRestart}
+              disabled={busy === "restart-run" || !canRestartRun}
+              title={
+                canRestartRun
+                  ? "Create a fresh run from the same context/input"
+                  : "Restart is available for completed/failed/canceled runs"
+              }
+            >
+              Restart Execution Run
+            </ActionButton>
+          </ToolbarRow>
         }
       />
       <KeyValueList className="mt-3 gap-y-2 text-sm text-ui-text-secondary sm:grid-cols-2 xl:grid-cols-3">

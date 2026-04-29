@@ -2,12 +2,52 @@
 import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TeamRunRecord, TeamRunSnapshotRecord } from "../../api";
+import {
+  buildTeamRunContextSseUrl,
+  type TeamRunRecord,
+  type TeamRunSnapshotRecord,
+} from "../../api";
 import { useTeamRunLifecycleEffects } from "./use_team_run_lifecycle_effects";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type HookParams = Parameters<typeof useTeamRunLifecycleEffects>[0];
+
+class MockEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: MockEventSource[] = [];
+
+  readonly url: string;
+  readyState = MockEventSource.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    MockEventSource.instances.push(this);
+  }
+
+  emitOpen() {
+    this.readyState = MockEventSource.OPEN;
+    this.onopen?.(new Event("open"));
+  }
+
+  emitMessage(data: string) {
+    this.onmessage?.(new MessageEvent("message", { data }));
+  }
+
+  emitError() {
+    this.readyState = MockEventSource.CLOSED;
+    this.onerror?.(new Event("error"));
+  }
+
+  close() {
+    this.readyState = MockEventSource.CLOSED;
+  }
+}
 
 function makeRun(id: string, teamId: string): TeamRunRecord {
   return {
@@ -47,6 +87,7 @@ function makeSnapshot(teamId: string): TeamRunSnapshotRecord {
 
 function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
+    token: "token-1",
     selectedTeamId: "team-1",
     runStatusFilter: "all",
     runs: [makeRun("run-1", "team-1")],
@@ -59,7 +100,6 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     refreshTeams: vi.fn().mockResolvedValue(undefined),
     refreshTeamRuns: vi.fn().mockResolvedValue(undefined),
     refreshRun: vi.fn().mockResolvedValue(makeRun("run-1", "team-1")),
-    refreshSteps: vi.fn().mockResolvedValue(undefined),
     refreshEvents: vi.fn().mockResolvedValue(undefined),
     refreshSnapshot: vi.fn().mockResolvedValue(makeSnapshot("team-1")),
     loadInbox: vi.fn().mockResolvedValue(undefined),
@@ -90,6 +130,8 @@ describe("useTeamRunLifecycleEffects", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal("EventSource", undefined);
+    MockEventSource.instances = [];
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -135,7 +177,7 @@ describe("useTeamRunLifecycleEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
 
@@ -144,7 +186,7 @@ describe("useTeamRunLifecycleEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 1);
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
 
@@ -158,7 +200,7 @@ describe("useTeamRunLifecycleEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase + 2);
+    expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 2);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
   });
@@ -192,6 +234,66 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
   });
 
+  it("uses team run context SSE instead of interval polling for event-driven tabs", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams({
+      tab: "events",
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+    const source = MockEventSource.instances[0];
+    expect(source?.url).toBe(
+      buildTeamRunContextSseUrl(
+        window.location.origin,
+        params.selectedTeamId ?? "",
+        params.activeRunIdForSelectedTeam ?? "",
+        params.token
+      )
+    );
+    act(() => {
+      source.emitOpen();
+    });
+
+    const refreshEventsBase = (params.refreshEvents as ReturnType<typeof vi.fn>).mock.calls.length;
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+
+    await act(async () => {
+      source.emitMessage(
+        JSON.stringify({
+          type: "team_run_context",
+          payload: {
+            team_id: "team-1",
+            run_id: "run-1",
+            refresh_events: true,
+            refresh_snapshot: true,
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase + 1);
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
+  });
+
   it("polls only snapshot for the mailbox tab", async () => {
     const params = createParams({
       tab: "mailbox",
@@ -223,6 +325,80 @@ describe("useTeamRunLifecycleEffects", () => {
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 2);
     expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase + 2);
+  });
+
+  it("does not interval-poll mailbox context while run-context SSE stays connected", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const params = createParams({
+      tab: "mailbox",
+      chatInboxActorId: "leader-actor",
+      loadInbox: vi.fn().mockResolvedValue(undefined),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(MockEventSource.instances).toHaveLength(1);
+    const source = MockEventSource.instances[0];
+    act(() => {
+      source.emitOpen();
+    });
+
+    const refreshSnapshotBase = (
+      params.refreshSnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
+    const loadInboxBase = (params.loadInbox as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase);
+    expect(params.loadInbox).toHaveBeenCalledTimes(loadInboxBase);
+  });
+
+  it("hydrates the steps state from snapshot refreshes on the steps tab", async () => {
+    const nextSteps = [
+      {
+        id: "step-2",
+        run_id: "run-1",
+        step_key: "compile",
+        member_id: "worker-1",
+        status: "working",
+        payload: {},
+        result: null,
+        created_at: 2,
+        updated_at: 2,
+      },
+    ];
+    const params = createParams({
+      tab: "steps",
+      refreshSnapshot: vi.fn().mockResolvedValue({
+        ...makeSnapshot("team-1"),
+        steps: nextSteps,
+      }),
+    });
+
+    act(() => {
+      root.render(<HookHarness params={params} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(8000);
+      await Promise.resolve();
+    });
+
+    expect(params.setSteps).toHaveBeenCalledWith(nextSteps);
   });
 
   it("hydrates only the active snapshot once for member ACP when snapshot is missing", async () => {

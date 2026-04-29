@@ -656,6 +656,17 @@ function encodePathSegment(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
+export function buildTeamRunContextSseUrl(
+  origin: string,
+  teamId: string,
+  runId: string,
+  token: string
+): string {
+  return `${origin}/sse/teams/${encodePathSegment(teamId)}/runs/${encodePathSegment(
+    runId
+  )}/context?token=${encodeURIComponent(token)}`;
+}
+
 export const api = {
   registerStart: (
     username: string,

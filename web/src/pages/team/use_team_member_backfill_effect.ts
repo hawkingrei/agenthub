@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { AgentRecord } from "../../api";
 import { api, getApiErrorStatus } from "../../api";
@@ -19,6 +19,125 @@ type ResolvedTeamMemberAgent = {
 };
 
 const TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS = 60_000;
+const TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS =
+  TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS * 10;
+const MAX_SHARED_TEAM_MEMBER_TOKEN_BUCKETS = 64;
+const teamMemberLastResolvedAt = new Map<string, Map<string, number>>();
+const teamMemberInFlightRequests = new Map<
+  string,
+  Map<string, Promise<ResolvedTeamMemberAgent>>
+>();
+
+function getSharedMemberMap<T>(
+  cache: Map<string, Map<string, T>>,
+  token: string,
+  createIfMissing: boolean
+): Map<string, T> | undefined {
+  const existing = cache.get(token);
+  if (existing) {
+    cache.delete(token);
+    cache.set(token, existing);
+    return existing;
+  }
+  if (!createIfMissing) {
+    return existing;
+  }
+  const next = new Map<string, T>();
+  cache.set(token, next);
+  return next;
+}
+
+function pruneSharedResolvedAt(now: number): void {
+  const expiresBefore = now - TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS;
+  for (const [token, resolvedAtByMemberId] of teamMemberLastResolvedAt) {
+    for (const [memberId, resolvedAt] of resolvedAtByMemberId) {
+      if (resolvedAt < expiresBefore) {
+        resolvedAtByMemberId.delete(memberId);
+      }
+    }
+    if (
+      resolvedAtByMemberId.size === 0 &&
+      !(teamMemberInFlightRequests.get(token)?.size)
+    ) {
+      teamMemberLastResolvedAt.delete(token);
+    }
+  }
+}
+
+function evictOldestSharedResolvedBuckets(): void {
+  while (teamMemberLastResolvedAt.size > MAX_SHARED_TEAM_MEMBER_TOKEN_BUCKETS) {
+    const oldestToken = teamMemberLastResolvedAt.keys().next().value;
+    if (oldestToken === undefined) {
+      return;
+    }
+    if (teamMemberInFlightRequests.get(oldestToken)?.size) {
+      const activeBucket = teamMemberLastResolvedAt.get(oldestToken);
+      teamMemberLastResolvedAt.delete(oldestToken);
+      if (activeBucket) {
+        teamMemberLastResolvedAt.set(oldestToken, activeBucket);
+      }
+      return;
+    }
+    teamMemberLastResolvedAt.delete(oldestToken);
+  }
+}
+
+// Shared caches keep duplicate Team shell instances from immediately re-fetching the
+// same hidden member record before the first backfill result has propagated into state.
+function getSharedResolvedAt(token: string, memberId: string): number | undefined {
+  const resolvedAt = getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.get(memberId);
+  if (
+    resolvedAt != null &&
+    resolvedAt >= Date.now() - TEAM_MEMBER_BACKFILL_CACHE_RETENTION_MS
+  ) {
+    return resolvedAt;
+  }
+  getSharedMemberMap(teamMemberLastResolvedAt, token, false)?.delete(memberId);
+  return undefined;
+}
+
+function setSharedResolvedAt(token: string, memberId: string, resolvedAt: number): void {
+  pruneSharedResolvedAt(resolvedAt);
+  getSharedMemberMap(teamMemberLastResolvedAt, token, true)?.set(memberId, resolvedAt);
+  evictOldestSharedResolvedBuckets();
+}
+
+function hasSharedInFlightRequest(token: string, memberId: string): boolean {
+  return getSharedMemberMap(teamMemberInFlightRequests, token, false)?.has(memberId) ?? false;
+}
+
+function loadSharedMemberAgent(
+  token: string,
+  memberId: string
+): Promise<ResolvedTeamMemberAgent> {
+  const requestCache = getSharedMemberMap(teamMemberInFlightRequests, token, true)!;
+  const existing = requestCache.get(memberId);
+  if (existing) {
+    return existing;
+  }
+  const request = api
+    .getAgent(token, memberId)
+    .then((agent) => ({ memberId, agent }))
+    .catch((err) => {
+      if (getApiErrorStatus(err) === 404) {
+        return { memberId, agent: null };
+      }
+      return { memberId };
+    })
+    .finally(() => {
+      requestCache.delete(memberId);
+      if (requestCache.size === 0) {
+        teamMemberInFlightRequests.delete(token);
+      }
+    });
+  requestCache.set(memberId, request);
+  return request;
+}
+
+export function resetTeamMemberBackfillCachesForTest(): void {
+  teamMemberLastResolvedAt.clear();
+  teamMemberInFlightRequests.clear();
+}
 
 function stableSerializeRecord(value: unknown): string {
   return JSON.stringify(sortRecordValue(value));
@@ -58,17 +177,7 @@ export function useTeamMemberBackfillEffect({
   teamMemberAgentsById,
   setTeamMemberAgentsById,
 }: UseTeamMemberBackfillEffectParams) {
-  const lastResolvedAtRef = useRef<Map<string, number>>(new Map());
-
   useEffect(() => {
-    const memberIdSet = new Set(teamSpecMemberIds);
-    if (lastResolvedAtRef.current.size > 0) {
-      for (const memberId of lastResolvedAtRef.current.keys()) {
-        if (!memberIdSet.has(memberId)) {
-          lastResolvedAtRef.current.delete(memberId);
-        }
-      }
-    }
     if (!token || teamSpecMemberIds.length === 0) {
       return;
     }
@@ -78,10 +187,13 @@ export function useTeamMemberBackfillEffect({
       if (listedAgentIds.has(memberId)) {
         return false;
       }
+      const lastResolvedAt = getSharedResolvedAt(token, memberId);
+      const withinSharedCooldown =
+        lastResolvedAt != null &&
+        now - lastResolvedAt < TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS;
       if (!Object.prototype.hasOwnProperty.call(teamMemberAgentsById, memberId)) {
-        return true;
+        return !withinSharedCooldown && !hasSharedInFlightRequest(token, memberId);
       }
-      const lastResolvedAt = lastResolvedAtRef.current.get(memberId);
       return (
         lastResolvedAt == null ||
         now - lastResolvedAt >= TEAM_MEMBER_BACKFILL_REVALIDATE_COOLDOWN_MS
@@ -94,19 +206,7 @@ export function useTeamMemberBackfillEffect({
     let canceled = false;
     const loadMissingMemberAgents = async () => {
       const resolved: ResolvedTeamMemberAgent[] = await Promise.all(
-        unresolvedMemberIds.map(async (memberId) => {
-          try {
-            return {
-              memberId,
-              agent: await api.getAgent(token, memberId),
-            };
-          } catch (err) {
-            if (getApiErrorStatus(err) === 404) {
-              return { memberId, agent: null };
-            }
-            return { memberId };
-          }
-        })
+        unresolvedMemberIds.map((memberId) => loadSharedMemberAgent(token, memberId))
       );
       if (canceled) {
         return;
@@ -117,7 +217,7 @@ export function useTeamMemberBackfillEffect({
       const resolvedAt = Date.now();
       for (const { memberId, agent } of resolved) {
         if (agent !== undefined) {
-          lastResolvedAtRef.current.set(memberId, resolvedAt);
+          setSharedResolvedAt(token, memberId, resolvedAt);
         }
       }
       setTeamMemberAgentsById((prev) => {

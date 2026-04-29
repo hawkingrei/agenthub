@@ -209,6 +209,8 @@ describe("useTeamWorkspaceViewModel", () => {
       act(() => {
         snapshot?.onSelectWorkspaceLens("search");
       });
+      expect(params.setTab).toHaveBeenCalledWith("conversation");
+      expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("");
       expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "search");
       act(() => {
         snapshot?.workspaceLensItems[2]?.onPrefetch?.();
@@ -411,11 +413,79 @@ describe("useTeamWorkspaceViewModel", () => {
       act(() => {
         snapshot?.onSelectWorkspaceLens("channels");
       });
+      expect(params.setTab).toHaveBeenLastCalledWith("conversation");
+      expect(params.setFocusedAgentMemberId).toHaveBeenLastCalledWith("");
       expect(params.navigateToTeamLens).toHaveBeenLastCalledWith(
         "team-1",
         "channels",
-        "review"
+        "review",
+        ""
       );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("preserves the explicit task conversation when returning to channels", async () => {
+    const params = createParams({
+      selectedChannelId: "review",
+      selectedChannelLabel: "# review",
+      selectedChannelDescription: "Focused design and implementation review lane.",
+      selectedConversation: {
+        id: "task-77",
+        team_id: "team-1",
+        title: "Investigate regression",
+        status: "in_progress",
+        created_by_actor_id: "leader",
+        assigned_member_id: "leader",
+        context: {
+          bootstrap_kind: "team_channel",
+          channel_id: "review",
+        },
+        created_at: 1,
+        updated_at: 1,
+      } as HookParams["selectedConversation"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectWorkspaceLens("channels");
+      });
+      expect(params.setTab).toHaveBeenCalledWith("conversation");
+      expect(params.navigateToTeamLens).toHaveBeenLastCalledWith(
+        "team-1",
+        "channels",
+        "review",
+        "task-77"
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("resets hidden member workspace state when switching into shell-level members and tasks lenses", async () => {
+    const params = createParams({
+      tab: "agent_acp",
+      focusedAgentMemberId: "worker-2",
+      selectedMemberId: "worker-2",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectWorkspaceLens("members");
+      });
+      expect(params.setTab).toHaveBeenCalledWith("overview");
+      expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("");
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "members");
+
+      act(() => {
+        snapshot?.onSelectWorkspaceLens("tasks");
+      });
+      expect(params.setTab).toHaveBeenCalledWith("tasks");
+      expect(params.setFocusedAgentMemberId).toHaveBeenCalledWith("");
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith("team-1", "tasks");
     } finally {
       mounted.cleanup();
     }
@@ -482,6 +552,30 @@ describe("useTeamWorkspaceViewModel", () => {
       });
       expect(params.setSelectedConversationTaskId).toHaveBeenCalledWith("task-77");
       expect(params.navigateToTeamLens).not.toHaveBeenCalled();
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("routes channel-scoped task conversations back to the task lane", async () => {
+    const params = createParams({
+      selectedChannelId: "all",
+      selectedChannelLabel: "# all",
+      selectedChannelDescription:
+        "Shared coordination lane for requests, updates, and cross-cutting discussion.",
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      act(() => {
+        snapshot?.onSelectConversationSubject("task-77", "review");
+      });
+      expect(params.navigateToTeamLens).toHaveBeenCalledWith(
+        "team-1",
+        "channels",
+        "review",
+        "task-77"
+      );
     } finally {
       mounted.cleanup();
     }

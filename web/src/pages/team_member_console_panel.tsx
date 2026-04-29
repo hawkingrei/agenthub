@@ -18,6 +18,7 @@ import {
   InsetSurface,
   PanelHeader,
   SurfaceCard,
+  ToolbarRow,
 } from "../ui/primitives";
 import {
   resolveDisplayName,
@@ -28,6 +29,7 @@ import {
   TEAM_PANEL_PRE_CLASS,
   TEAM_PANEL_TITLE_CLASS,
 } from "../ui/tailwind_classes";
+import { windowTeamConversation } from "./team/team_conversation_viewport";
 
 type TeamMemberConsolePanelProps = {
   snapshot: TeamRunSnapshotRecord | null;
@@ -71,6 +73,37 @@ const MEMBER_CONSOLE_EMPTY_TEXT_CLASS = TEAM_MUTED_TEXT_CLASS;
 const MEMBER_CONSOLE_PROMPT_DETAILS_CLASS = "rounded-lg border border-ui-border bg-ui-surface p-2";
 const MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS =
   "cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ui-text-muted";
+const MEMBER_CONSOLE_EVENT_WINDOW_NOTICE_CLASS =
+  "rounded-lg border border-ui-border bg-ui-surface-soft/70 px-2 py-1 text-[11px] text-ui-text-muted";
+const MEMBER_CONSOLE_EVENT_TAIL_WINDOW_SIZE = 80;
+
+type TeamMemberConsoleSelectOption = {
+  memberId: string;
+  label: string;
+  role: string;
+};
+
+type TeamMemberConsoleMemberEventRow = {
+  eventId: number;
+  stream: string;
+  tsLabel: string;
+  message: string;
+};
+
+type TeamMemberConsoleRunEventRow = {
+  eventId: number;
+  eventType: string;
+  tsLabel: string;
+  payloadText: string;
+};
+
+type TeamMemberConsoleDetailItem = {
+  label: string;
+  value: string;
+  wrap?: boolean;
+  href?: string;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
+};
 
 function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
   const {
@@ -107,6 +140,110 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
     );
   }, [selectedMemberSnapshot?.skills]);
   const attachedNodeId = selectedTargetNodeId?.trim() || null;
+  const memberOptions = React.useMemo<TeamMemberConsoleSelectOption[]>(
+    () =>
+      (snapshot?.members ?? []).map((member) => ({
+        memberId: member.member_id,
+        label: resolveDisplayName(member.member_id, displayNameByActorId, member.member_id),
+        role: member.role,
+      })),
+    [displayNameByActorId, snapshot?.members]
+  );
+  const memberEventRows = React.useMemo<TeamMemberConsoleMemberEventRow[]>(
+    () =>
+      memberEvents.map((event) => ({
+        eventId: event.event_id,
+        stream: event.stream,
+        tsLabel: formatTs(event.ts),
+        message: event.message,
+      })),
+    [formatTs, memberEvents]
+  );
+  const runEventRows = React.useMemo<TeamMemberConsoleRunEventRow[]>(
+    () =>
+      // Precompute preview rows so large member-console histories do not repeat
+      // timestamp formatting and payload JSON rendering during every list render.
+      displayedRunEvents.map((event) => ({
+        eventId: event.event_id,
+        eventType: event.event_type,
+        tsLabel: formatTs(event.ts),
+        payloadText: toPrettyJson(event.payload),
+      })),
+    [displayedRunEvents, formatTs, toPrettyJson]
+  );
+  const memberEventWindow = React.useMemo(
+    () => windowTeamConversation(memberEventRows, true, MEMBER_CONSOLE_EVENT_TAIL_WINDOW_SIZE),
+    [memberEventRows]
+  );
+  const memberDetailItems = React.useMemo<TeamMemberConsoleDetailItem[]>(() => {
+    if (!selectedMemberSnapshot) {
+      return [];
+    }
+    return [
+      { label: "member_id", value: selectedMemberSnapshot.member_id },
+      { label: "role", value: selectedMemberSnapshot.role },
+      { label: "model", value: selectedMemberSnapshot.model ?? "-" },
+      {
+        label: "member_description",
+        value: selectedMemberSnapshot.description ?? "-",
+        wrap: true,
+      },
+      { label: "status", value: selectedMemberSnapshot.status },
+      { label: "session_status", value: selectedMemberSnapshot.session_status ?? "-" },
+      attachedNodeId
+        ? {
+            label: "attached_node",
+            value: attachedNodeId,
+            href: buildWorkspaceNodePath(attachedNodeId),
+            onClick: (event) => {
+              if (!shouldHandleInAppLinkClick(event)) {
+                return;
+              }
+              event.preventDefault();
+              navigateToPath(buildWorkspaceNodePath(attachedNodeId));
+            },
+          }
+        : { label: "attached_node", value: "-" },
+      {
+        label: "runtime_handle_id",
+        value: getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) ?? "-",
+      },
+      {
+        label: "skills",
+        value:
+          selectedMemberSnapshot.skills.length > 0
+            ? selectedMemberSnapshot.skills.join(", ")
+            : "-",
+        wrap: true,
+      },
+      {
+        label: "mcp_skills",
+        value: mcpSkills.length > 0 ? mcpSkills.join(", ") : "-",
+        wrap: true,
+      },
+    ];
+  }, [attachedNodeId, mcpSkills, selectedMemberSnapshot]);
+  const discoveryCardDetailItems = React.useMemo<TeamMemberConsoleDetailItem[]>(() => {
+    if (!memberDiscoveryCard) {
+      return [];
+    }
+    return [
+      { label: "card_id", value: memberDiscoveryCard.card_id },
+      { label: "schema_version", value: memberDiscoveryCard.schema_version },
+      { label: "description", value: memberDiscoveryCard.description, wrap: true },
+      { label: "acp_provider", value: memberDiscoveryCard.runtime.acp_provider ?? "-" },
+      { label: "worktree_mode", value: memberDiscoveryCard.runtime.worktree_mode },
+      { label: "code_mode", value: memberDiscoveryCard.runtime.code_mode ? "true" : "false" },
+      {
+        label: "capability_tags",
+        value:
+          memberDiscoveryCard.capability_tags.length > 0
+            ? memberDiscoveryCard.capability_tags.join(", ")
+            : "-",
+        wrap: true,
+      },
+    ];
+  }, [memberDiscoveryCard]);
 
   return (
     <SurfaceCard className="p-4" data-team-panel="member-console">
@@ -114,36 +251,36 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
         title="Member Console"
         titleClassName={TEAM_PANEL_TITLE_CLASS}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={() => {
-              void onRefresh();
-            }}
-            disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
-            title="Refresh member console"
-            aria-label="Refresh member console"
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Refresh</span>
-          </ActionButton>
-          <ActionButton
-            tone="secondary"
-            size="sm"
-            onClick={() => {
-              void onLoadOlder();
-            }}
-            disabled={
-              !selectedMemberSnapshot ||
-              memberEventsLoading ||
-              !memberEventsHasMore ||
-              oldestMemberEventId == null
-            }
-          >
-            Load Older
-          </ActionButton>
-          </div>
+          <ToolbarRow className="justify-end gap-2">
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={() => {
+                void onRefresh();
+              }}
+              disabled={selectedMemberSnapshot ? memberEventsLoading : eventsLoading}
+              title="Refresh member console"
+              aria-label="Refresh member console"
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Refresh</span>
+            </ActionButton>
+            <ActionButton
+              tone="secondary"
+              size="sm"
+              onClick={() => {
+                void onLoadOlder();
+              }}
+              disabled={
+                !selectedMemberSnapshot ||
+                memberEventsLoading ||
+                !memberEventsHasMore ||
+                oldestMemberEventId == null
+              }
+            >
+              Load Older
+            </ActionButton>
+          </ToolbarRow>
         }
       />
 
@@ -154,10 +291,9 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
           onChange={(event) => onSelectedMemberIdChange(event.target.value)}
         >
           <option value="">Select member</option>
-          {snapshot?.members.map((member) => (
-            <option key={member.member_id} value={member.member_id}>
-              {resolveDisplayName(member.member_id, displayNameByActorId, member.member_id)} (
-              {member.role})
+          {memberOptions.map((member) => (
+            <option key={member.memberId} value={member.memberId}>
+              {member.label} ({member.role})
             </option>
           ))}
         </select>
@@ -166,75 +302,31 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
       {selectedMemberSnapshot && (
         <InsetSurface className={MEMBER_CONSOLE_DETAIL_CLASS}>
           <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>member_id</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                {selectedMemberSnapshot.member_id}
-              </span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>role</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.role}</span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>model</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.model ?? "-"}</span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>member_description</div>
-              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
-                {selectedMemberSnapshot.description ?? "-"}
-              </span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>status</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>{selectedMemberSnapshot.status}</span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>session_status</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                {selectedMemberSnapshot.session_status ?? "-"}
-              </span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>attached_node</div>
-              {attachedNodeId ? (
-                <a
-                  href={buildWorkspaceNodePath(attachedNodeId)}
-                  className={`${MEMBER_CONSOLE_DETAIL_VALUE_CLASS} text-blue-700 underline decoration-transparent underline-offset-2 transition hover:decoration-current`}
-                  title={`Open node detail for ${attachedNodeId}`}
-                  onClick={(event) => {
-                    if (!shouldHandleInAppLinkClick(event)) {
-                      return;
+            {memberDetailItems.map((item) => (
+              <div key={item.label} className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>{item.label}</div>
+                {item.href ? (
+                  <a
+                    href={item.href}
+                    className={`${MEMBER_CONSOLE_DETAIL_VALUE_CLASS} text-blue-700 underline decoration-transparent underline-offset-2 transition hover:decoration-current`}
+                    title={`Open node detail for ${item.value}`}
+                    onClick={item.onClick}
+                  >
+                    {item.value}
+                  </a>
+                ) : (
+                  <span
+                    className={
+                      item.wrap
+                        ? MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS
+                        : MEMBER_CONSOLE_DETAIL_VALUE_CLASS
                     }
-                    event.preventDefault();
-                    navigateToPath(buildWorkspaceNodePath(attachedNodeId));
-                  }}
-                >
-                  {attachedNodeId}
-                </a>
-              ) : (
-                <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>-</span>
-              )}
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>runtime_handle_id</div>
-              <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                {getTeamStepRuntimeHandleId(selectedMemberSnapshot.latest_step) ?? "-"}
-              </span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>skills</div>
-              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
-                {selectedMemberSnapshot.skills.length > 0 ? selectedMemberSnapshot.skills.join(", ") : "-"}
-              </span>
-            </div>
-            <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-              <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>mcp_skills</div>
-              <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
-                {mcpSkills.length > 0 ? mcpSkills.join(", ") : "-"}
-              </span>
-            </div>
+                  >
+                    {item.value}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
           <details className={MEMBER_CONSOLE_PROMPT_DETAILS_CLASS}>
             <summary className={MEMBER_CONSOLE_PROMPT_SUMMARY_CLASS}>
@@ -251,50 +343,20 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
             )}
             {!memberDiscoveryCardLoading && memberDiscoveryCard && (
               <div className={MEMBER_CONSOLE_DETAIL_GRID_CLASS}>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>card_id</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                    {memberDiscoveryCard.card_id}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>schema_version</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                    {memberDiscoveryCard.schema_version}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>description</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
-                    {memberDiscoveryCard.description}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>acp_provider</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                    {memberDiscoveryCard.runtime.acp_provider ?? "-"}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>worktree_mode</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                    {memberDiscoveryCard.runtime.worktree_mode}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>code_mode</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_VALUE_CLASS}>
-                    {memberDiscoveryCard.runtime.code_mode ? "true" : "false"}
-                  </span>
-                </div>
-                <div className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
-                  <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>capability_tags</div>
-                  <span className={MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS}>
-                    {memberDiscoveryCard.capability_tags.length > 0
-                      ? memberDiscoveryCard.capability_tags.join(", ")
-                      : "-"}
-                  </span>
-                </div>
+                {discoveryCardDetailItems.map((item) => (
+                  <div key={item.label} className={MEMBER_CONSOLE_DETAIL_ITEM_CLASS}>
+                    <div className={MEMBER_CONSOLE_DETAIL_LABEL_CLASS}>{item.label}</div>
+                    <span
+                      className={
+                        item.wrap
+                          ? MEMBER_CONSOLE_DETAIL_WRAP_VALUE_CLASS
+                          : MEMBER_CONSOLE_DETAIL_VALUE_CLASS
+                      }
+                    >
+                      {item.value}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
             {!memberDiscoveryCardLoading && !memberDiscoveryCard && (
@@ -332,12 +394,17 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
 
       {selectedMemberSnapshot && (
         <ul className={MEMBER_CONSOLE_LIST_CLASS}>
-          {memberEvents.map((event) => (
-            <li key={event.event_id} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
+          {memberEventWindow.offset > 0 && (
+            <li className={MEMBER_CONSOLE_EVENT_WINDOW_NOTICE_CLASS}>
+              {`Showing latest ${memberEventWindow.items.length} of ${memberEventWindow.total} loaded member events.`}
+            </li>
+          )}
+          {memberEventWindow.items.map((event) => (
+            <li key={event.eventId} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
               <div className={MEMBER_CONSOLE_EVENT_HEAD_CLASS}>
-                <span className="mono">#{event.event_id}</span>
+                <span className="mono">#{event.eventId}</span>
                 <span>{event.stream}</span>
-                <span>{formatTs(event.ts)}</span>
+                <span>{event.tsLabel}</span>
               </div>
               <pre className={TEAM_PANEL_PRE_CLASS}>{event.message}</pre>
             </li>
@@ -347,14 +414,14 @@ function TeamMemberConsolePanelImpl(props: TeamMemberConsolePanelProps) {
 
       {!selectedMemberSnapshot && (
         <ul className={MEMBER_CONSOLE_LIST_CLASS}>
-          {displayedRunEvents.map((event) => (
-            <li key={event.event_id} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
+          {runEventRows.map((event) => (
+            <li key={event.eventId} className={MEMBER_CONSOLE_LIST_ITEM_CLASS}>
               <div className={MEMBER_CONSOLE_EVENT_HEAD_CLASS}>
-                <span className="mono">#{event.event_id}</span>
-                <span>{event.event_type}</span>
-                <span>{formatTs(event.ts)}</span>
+                <span className="mono">#{event.eventId}</span>
+                <span>{event.eventType}</span>
+                <span>{event.tsLabel}</span>
               </div>
-              <pre className={TEAM_PANEL_PRE_CLASS}>{toPrettyJson(event.payload)}</pre>
+              <pre className={TEAM_PANEL_PRE_CLASS}>{event.payloadText}</pre>
             </li>
           ))}
         </ul>

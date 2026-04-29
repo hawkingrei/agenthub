@@ -7,6 +7,7 @@ import type {
   TeamTaskRecord,
 } from "../../api";
 import type { WorkspaceLens } from "../../app_route_selection";
+import { buildStandardWorkspaceLensItems } from "../../components/workspace_lens_items";
 import { createDisplayNameLookup } from "./mailbox_helpers";
 import { describeTeamKanban } from "./channel_metadata";
 import type { TeamMemberLiveState, TeamMemberAgentStatusSummary } from "./member_helpers";
@@ -136,32 +137,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
     return "";
   }, [focusedAgentMemberId, selectedAgentWorkspaceMemberId, selectedTeam]);
   const workspaceLensItems = useMemo(
-    () => [
-      {
-        value: "channels",
-        label: "Channels",
-        active: activeWorkspaceLens === "channels",
-        onPrefetch: () => prefetchWorkspaceLens?.("channels"),
-      },
-      {
-        value: "tasks",
-        label: "Tasks",
-        active: activeWorkspaceLens === "tasks",
-        onPrefetch: () => prefetchWorkspaceLens?.("tasks"),
-      },
-      {
-        value: "members",
-        label: "Members",
-        active: activeWorkspaceLens === "members",
-        onPrefetch: () => prefetchWorkspaceLens?.("members"),
-      },
-      {
-        value: "search",
-        label: "Search",
-        active: activeWorkspaceLens === "search",
-        onPrefetch: () => prefetchWorkspaceLens?.("search"),
-      },
-    ],
+    () =>
+      buildStandardWorkspaceLensItems(activeWorkspaceLens, {
+        onPrefetch: prefetchWorkspaceLens,
+      }),
     [activeWorkspaceLens, prefetchWorkspaceLens]
   );
 
@@ -234,6 +213,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   const selectedConversationIsShared = useMemo(
     () => (selectedConversation ? isSharedThreadTask(selectedConversation) : true),
     [selectedConversation]
+  );
+  const selectedConversationRouteTaskId = useMemo(
+    () => (selectedConversation && !selectedConversationIsShared ? selectedConversation.id : ""),
+    [selectedConversation, selectedConversationIsShared]
   );
 
   const currentWorkspaceTabLabel = useMemo(
@@ -438,13 +421,22 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
   );
 
   const onSelectConversationSubject = useCallback(
-    (taskId?: string | null) => {
+    (taskId?: string | null, taskChannelId?: string | null) => {
       const normalizedTaskId = typeof taskId === "string" ? taskId.trim() : "";
+      const normalizedTaskChannelId =
+        typeof taskChannelId === "string" ? taskChannelId.trim() : "";
       setFocusedAgentMemberId("");
       setSelectedConversationTaskId(normalizedTaskId);
       setTab("conversation");
       if (selectedTeamId) {
-        navigateToTeamLens(selectedTeamId, "channels", selectedChannelId, normalizedTaskId);
+        // Channel-scoped task conversations should route back to their owning lane
+        // instead of inheriting whichever channel the operator last had selected.
+        navigateToTeamLens(
+          selectedTeamId,
+          "channels",
+          normalizedTaskChannelId || selectedChannelId,
+          normalizedTaskId
+        );
       }
       if (isCompactWorkbench) {
         setTeamsSidebarCollapsed(true);
@@ -532,11 +524,28 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
         return;
       }
       const lens = value as WorkspaceLens;
-      if (lens === "search") {
+      // Shell-level lens switches should also reset the hidden Team-local tab
+      // state so the URL and the in-memory workspace context stay aligned.
+      if (lens === "tasks") {
+        setTab("tasks");
+      } else if (lens === "members") {
+        setTab("overview");
+      } else {
+        setTab("conversation");
+      }
+      if (lens === "search" || lens === "channels" || lens === "tasks" || lens === "members") {
         setFocusedAgentMemberId("");
       }
       if (lens === "channels") {
-        navigateToTeamLens(selectedTeamId, lens, selectedChannelId);
+        // Preserve the explicit task conversation when the operator leaves and
+        // returns to the channel lane; otherwise channel-scoped tasks collapse
+        // back into the bootstrap lane.
+        navigateToTeamLens(
+          selectedTeamId,
+          lens,
+          selectedChannelId,
+          selectedConversationRouteTaskId
+        );
       } else {
         navigateToTeamLens(selectedTeamId, lens);
       }
@@ -548,8 +557,10 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       isCompactWorkbench,
       navigateToTeamLens,
       selectedChannelId,
+      selectedConversationRouteTaskId,
       selectedTeamId,
       setFocusedAgentMemberId,
+      setTab,
       setTeamsSidebarCollapsed,
     ]
   );

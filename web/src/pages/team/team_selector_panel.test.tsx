@@ -24,6 +24,8 @@ describe("TeamSelectorPanel", () => {
     );
 
     expect(html).toContain("Loading teams...");
+    expect(html).toContain("available team workspaces");
+    expect(html).toContain("data-workspace-panel-loading=\"true\"");
     expect(html).not.toContain("No teams yet. Create one to begin.");
     expect(html).not.toContain("Search teams");
   });

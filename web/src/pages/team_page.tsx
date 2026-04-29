@@ -58,6 +58,7 @@ import { TeamPageHeader } from "./team/team_page_header";
 import { TeamPageShell } from "./team/team_page_shell";
 import { TeamSelectorPanel } from "./team/team_selector_panel";
 import { TeamThreadPane } from "./team/team_thread_pane";
+import { WorkspacePanelLoadingFallback } from "../components/workspace_panel_loading_fallback";
 import {
   TeamPanelLoadingFallback,
   prefetchTeamSetupSurface,
@@ -112,6 +113,7 @@ import {
 import {
   formatTs,
   isChannelScopedConversationTask,
+  resolveTaskChannelId,
   resolveTeamPageNotice,
   resolveSelectedAgentWorkspaceMemberId,
   resolveTaskConversationMemberIds,
@@ -316,6 +318,41 @@ export function resolveRouteScopedConversationTaskSelection(options: {
     return previousTaskId === selectedChannelTaskId ? previousTaskId : selectedChannelTaskId;
   }
   return null;
+}
+
+export function resolveChannelRouteTaskId(options: {
+  routeSelectedTaskId: string | null | undefined;
+  selectedConversationTaskId: string | null | undefined;
+  selectedConversationIsShared: boolean;
+  selectedConversationMatchesChannelLane: boolean;
+  selectedChannelTaskId: string | null | undefined;
+}): string | null {
+  const {
+    routeSelectedTaskId,
+    selectedConversationTaskId,
+    selectedConversationIsShared,
+    selectedConversationMatchesChannelLane,
+    selectedChannelTaskId,
+  } = options;
+  if (!selectedConversationMatchesChannelLane) {
+    return null;
+  }
+  const normalizedChannelTaskId = selectedChannelTaskId?.trim() ?? "";
+  const normalizedConversationTaskId = selectedConversationTaskId?.trim() ?? "";
+  if (
+    !selectedConversationIsShared &&
+    normalizedConversationTaskId &&
+    normalizedConversationTaskId !== normalizedChannelTaskId
+  ) {
+    return normalizedConversationTaskId;
+  }
+  const normalizedRouteTaskId = routeSelectedTaskId?.trim() ?? "";
+  // Drop the channel bootstrap task from thread routes so channel-scoped lanes
+  // only keep `task=` when the operator is looking at an explicit task conversation.
+  if (!normalizedRouteTaskId || normalizedRouteTaskId === normalizedChannelTaskId) {
+    return null;
+  }
+  return normalizedRouteTaskId;
 }
 
 export function resolveTeamSelectedMemberId(search: string): string {
@@ -1909,6 +1946,7 @@ export function TeamPage(props: TeamPageProps) {
   ]);
 
   useTeamRunLifecycleEffects({
+    token: props.token,
     selectedTeamId: effectiveSelectedTeamId,
     runStatusFilter,
     runs,
@@ -1921,7 +1959,6 @@ export function TeamPage(props: TeamPageProps) {
     refreshTeams,
     refreshTeamRuns,
     refreshRun,
-    refreshSteps,
     refreshEvents,
     refreshSnapshot,
     loadInbox,
@@ -2036,6 +2073,40 @@ export function TeamPage(props: TeamPageProps) {
     setConversationMailboxMessages,
     setTaskMessageDraft,
   });
+  useEffect(() => {
+    if (
+      !effectiveSelectedTeamId ||
+      routeWorkspaceLens !== "channels" ||
+      routeChannelId !== DEFAULT_TEAM_CHANNEL_ID ||
+      !routeSelectedTaskId
+    ) {
+      return;
+    }
+    const owningChannelId = resolveTaskChannelId(selectedConversation);
+    if (!owningChannelId) {
+      return;
+    }
+    // Canonicalize old task-only channel routes so channel-scoped conversations
+    // regain their owning lane semantics, including thread-pane behavior.
+    navigateTeamRoute(
+      buildTeamWorkspacePath(
+        effectiveSelectedTeamId,
+        "channels",
+        owningChannelId,
+        routeThreadRootMessageId,
+        null,
+        null,
+        routeSelectedTaskId
+      )
+    );
+  }, [
+    effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
+    routeThreadRootMessageId,
+    routeWorkspaceLens,
+    selectedConversation,
+  ]);
 
   useEffect(() => {
     if (!effectiveSelectedTeamId || !routeSelectedTaskId) {
@@ -3019,7 +3090,9 @@ export function TeamPage(props: TeamPageProps) {
         { text }
       );
       setThreadReplyDraft("");
-      await refreshTaskMessages(selectedConversation?.id ?? undefined);
+      if (typeof EventSource === "undefined") {
+        await refreshTaskMessages(selectedConversation?.id ?? undefined);
+      }
     } catch (err) {
       setError(parseErrorMessage(err));
     } finally {
@@ -3049,12 +3122,14 @@ export function TeamPage(props: TeamPageProps) {
       )
   );
   const activeChannelConversationTaskId =
-    selectedConversationMatchesChannelLane &&
-    !selectedConversationIsShared &&
-    selectedConversation &&
-    selectedChannelRecord?.task_id !== selectedConversation.id
-      ? selectedConversation.id
-      : routeSelectedTaskId || null;
+    resolveChannelRouteTaskId({
+      routeSelectedTaskId,
+      selectedConversationTaskId: selectedConversation?.id,
+      selectedConversationIsShared,
+      selectedConversationMatchesChannelLane,
+      selectedChannelTaskId: selectedChannelRecord?.task_id,
+    });
+  const [channelFocusMessageId, setChannelFocusMessageId] = React.useState<number | null>(null);
   const conversationPanel = (
     <TeamConversationPanel
       conversationKey={selectedConversation?.id}
@@ -3081,6 +3156,10 @@ export function TeamPage(props: TeamPageProps) {
       activeThreadMessageId={
         selectedConversationMatchesChannelLane ? routeThreadRootMessageId : null
       }
+      jumpToMessageId={channelFocusMessageId}
+      onJumpToMessageSettled={() => {
+        setChannelFocusMessageId(null);
+      }}
       onOpenThread={
         effectiveSelectedTeamId &&
         selectedConversationMatchesChannelLane
@@ -3157,6 +3236,7 @@ export function TeamPage(props: TeamPageProps) {
       replyBusy={busy === "send-thread-reply"}
       formatTs={formatTs}
       onViewInChannel={() => {
+        setChannelFocusMessageId(routeThreadRootMessageId);
         const nextPath = buildCurrentThreadlessPath();
         if (!nextPath) {
           return;
@@ -3265,9 +3345,11 @@ export function TeamPage(props: TeamPageProps) {
   const agentAcpPanel = (
     <Suspense
       fallback={
-        <div className={teamSectionCardClassName}>
-          <p className={teamSectionBodyTextClassName}>Loading agent ACP...</p>
-        </div>
+        <WorkspacePanelLoadingFallback
+          className={teamSectionCardClassName}
+          title="Loading agent ACP..."
+          body="AgentHub is loading the selected member runtime context."
+        />
       }
     >
       <LazyTeamMemberAcpPanel
@@ -3799,10 +3881,8 @@ export function TeamPage(props: TeamPageProps) {
             selectedTeam={selectedTeam}
             isAgentWorkspace={isAgentWorkspace}
             teamSectionCardClassName={teamSectionCardClassName}
-            teamSectionHeadingClassName={teamSectionHeadingClassName}
             teamSectionTitleClassName={teamSectionTitleClassName}
             teamSectionBodyTextClassName={teamSectionBodyTextClassName}
-            teamSectionHintTextClassName={teamSectionHintTextClassName}
             panelSecondaryButtonClassName={panelSecondaryButtonClassName}
             teamWorkbenchWorkspaceShellClassName={teamWorkbenchWorkspaceShellClassName}
             workspaceHeaderProps={{

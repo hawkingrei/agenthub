@@ -157,6 +157,31 @@ pub struct TeamConversationStreamEvent {
     pub source: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct TeamRunContextStreamEvent {
+    pub team_id: String,
+    pub run_id: String,
+    pub refresh_run: bool,
+    pub refresh_events: bool,
+    pub refresh_snapshot: bool,
+    pub refresh_mailbox: bool,
+    pub latest_event_id: Option<i64>,
+    pub latest_mailbox_message_id: Option<i64>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamRunContextFingerprint {
+    pub team_id: String,
+    pub run_id: String,
+    pub run_status: String,
+    pub latest_event_id: i64,
+    pub latest_mailbox_message_id: i64,
+    pub mailbox_pending: i64,
+    pub mailbox_delivered: i64,
+    pub mailbox_dead_letter: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct TeamMemoryFlushRequest {
     pub member_id: String,
@@ -3995,6 +4020,57 @@ impl TeamManager {
         .execute(&self.db)
         .await?;
         Ok(())
+    }
+
+    pub async fn read_run_context_fingerprint(
+        &self,
+        run_id: &str,
+    ) -> anyhow::Result<TeamRunContextFingerprint> {
+        let run_row = sqlx::query(
+            r#"
+            SELECT team_id, status
+            FROM team_runs
+            WHERE id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&self.db)
+        .await?;
+        let team_id: String = run_row.get("team_id");
+        let run_status: String = run_row.get("status");
+        let latest_event_id = sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT MAX(id)
+            FROM team_run_events
+            WHERE run_id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&self.db)
+        .await?
+        .unwrap_or(0);
+        let latest_mailbox_message_id = sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT MAX(id)
+            FROM team_actor_messages
+            WHERE run_id = ?1
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&self.db)
+        .await?
+        .unwrap_or(0);
+        let status_counts = self.list_actor_message_status_counts(run_id).await?;
+        Ok(TeamRunContextFingerprint {
+            team_id,
+            run_id: run_id.to_string(),
+            run_status,
+            latest_event_id,
+            latest_mailbox_message_id,
+            mailbox_pending: status_counts.get("pending").copied().unwrap_or(0),
+            mailbox_delivered: status_counts.get("delivered").copied().unwrap_or(0),
+            mailbox_dead_letter: status_counts.get("dead_letter").copied().unwrap_or(0),
+        })
     }
 
     pub async fn cancel_run(&self, run_id: &str) -> anyhow::Result<TeamRunRecord> {

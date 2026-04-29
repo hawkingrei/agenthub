@@ -185,7 +185,7 @@ describe("AgentsRouteShell", () => {
   it("renders the lazy workbench fallback when workbench props are present", () => {
     const html = renderRouteShell();
 
-    expect(html).toContain("Loading...");
+    expect(html).toContain("Loading workspace panel...");
     expect(html).toContain(OUTPUT_BODY_ACP_ROOT_CLASS);
   });
 
@@ -194,7 +194,7 @@ describe("AgentsRouteShell", () => {
       workbenchProps: null,
     });
 
-    expect(html).not.toContain("Loading...");
+    expect(html).not.toContain("Loading workspace panel...");
     expect(html).not.toContain(OUTPUT_BODY_ROOT_CLASS);
     expect(html).toContain("No agent selected");
   });
