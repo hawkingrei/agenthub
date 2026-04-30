@@ -14,23 +14,23 @@ contributors.
 
 ## Topic Map
 
-Use these docs instead of expanding `AGENTS.md` with detailed workflow rules:
+Use these docs instead of expanding [AGENTS.md](../AGENTS.md) with detailed workflow rules:
 
 - Team product/runtime model:
-  - `docs/features/agents-teams.md`
-  - `docs/features/actor-foundation.md`
-  - `docs/features/acp-runtime.md`
+  - [docs/features/agents-teams.md](features/agents-teams.md)
+  - [docs/features/actor-foundation.md](features/actor-foundation.md)
+  - [docs/features/acp-runtime.md](features/acp-runtime.md)
 - Team channels, conversation, and thread behavior:
-  - `docs/features/team-channels-threads.md`
-  - `docs/features/team-conversation-event-bus.md`
+  - [docs/features/team-channels-threads.md](features/team-channels-threads.md)
+  - [docs/features/team-conversation-event-bus.md](features/team-conversation-event-bus.md)
 - Team workspace memory and context boundaries:
-  - `docs/features/team-workspace-memory-contract.md`
+  - [docs/features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
 - Frontend and workspace-shell design:
-  - `docs/features/frontend-design.md`
-  - `docs/features/workspace-unified-ia.md`
+  - [docs/features/frontend-design.md](features/frontend-design.md)
+  - [docs/features/workspace-unified-ia.md](features/workspace-unified-ia.md)
 - CI / validation follow-up rules:
-  - `docs/todo.md`
-  - related entries in `docs/journal/`
+  - [docs/todo.md](todo.md)
+  - related entries in [docs/journal/](journal/)
 
 ## When You Change Code
 
