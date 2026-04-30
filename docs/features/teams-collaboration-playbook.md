@@ -179,6 +179,11 @@ Shared-channel discussion rules:
   - design or implementation tradeoffs that need discussion
   - dependency or risk updates that require shared awareness
   - scoped facts, progress, and evidence that benefit shared visibility
+- When a human-authored shared-channel message is relevant to a worker's active work, or is neutral-but-actionable context for that worker, the worker should send a short visible acknowledgement first:
+  - ownership (`I am taking this`)
+  - immediate plan (`I will check PR 68127 and report back`)
+  - current progress (`still verifying CI / patching now`)
+- The acknowledgement should be short and timely; deeper execution and evidence can follow in later updates.
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
   teammates when opening or continuing that shared-channel discussion.
 - In human-authored shared-channel markdown, keep those mentions as raw stable `@member_id`
@@ -257,6 +262,7 @@ Team collaboration should run with the canonical actor CLI mailbox path as the p
 - Default routing should be direct mailbox first:
   - use a single-target mailbox message when exactly one teammate owns the next action
   - reserve shared-channel for human-visible or genuinely multi-recipient updates
+  - when a human shared-channel message is relevant to active work, emit a short in-channel acknowledgement before falling back to deeper mailbox-only execution
 - Turn loop should stay deterministic:
   - pull inbox -> process -> ack -> send/report -> next pull.
 - Team prompt dynamic tail should include an explicit `Allowed actions` block to deny bypass paths.
