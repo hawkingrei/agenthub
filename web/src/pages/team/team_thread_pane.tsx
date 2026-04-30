@@ -228,11 +228,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             <div className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
               <DeterministicAvatar
                 name={rootRenderMessage?.authorLabel ?? "Unknown"}
-                stableId={
-                  rootRenderMessage?.authorLabel === "Unknown"
-                    ? rootRenderMessage.messageId
-                    : rootRenderMessage?.authorLabel ?? rootMessageId
-                }
+                stableId={rootAuthorLabel || rootMessageId}
                 className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
               />
               <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>

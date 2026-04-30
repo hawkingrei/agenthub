@@ -114,7 +114,10 @@ export const DeterministicAvatar = React.memo(function DeterministicAvatar({
   title,
   ariaHidden = true,
 }: DeterministicAvatarProps) {
-  const model = buildDeterministicAvatarModel(name, stableId);
+  const model = React.useMemo(
+    () => buildDeterministicAvatarModel(name, stableId),
+    [name, stableId]
+  );
   return (
     <span
       className={`inline-flex shrink-0 overflow-hidden rounded-full ${className}`.trim()}

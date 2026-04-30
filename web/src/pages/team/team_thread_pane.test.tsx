@@ -129,6 +129,38 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Reply");
   });
 
+  it("uses the root message id for unknown-author avatar seeds", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamThreadPane
+          channelLabel="# review"
+          rootMessageId={51}
+          rootAuthorLabel={null}
+          rootCreatedAt={1713480000000}
+          rootText={null}
+          replies={[
+            {
+              messageId: 52,
+              authorLabel: null,
+              createdAt: 1713480060000,
+              text: "System follow-up",
+            },
+          ]}
+          replyDraft=""
+          onReplyDraftChange={vi.fn()}
+          onSendReply={vi.fn()}
+          replyBusy={false}
+          formatTs={() => "2026/4/19 00:00:00"}
+          onViewInChannel={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain('data-avatar-seed="Unknown::51"');
+    expect(html).toContain('data-avatar-seed="Unknown::52"');
+  });
+
   it("truncates long source previews without changing the root thread content", () => {
     const longRootText =
       "This is a long source message that should stay fully visible in the original root bubble while the compact source strip only carries a short preview for context.";
