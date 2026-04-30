@@ -45,7 +45,7 @@ Coordination contract:
 - Default communication route is direct mailbox first: when exactly one teammate owns the next action, send a single-target mailbox message instead of broadcasting to the shared channel.
 - Shared channel is reserved for human-visible updates, team-wide checkpoints, or multi-recipient coordination that truly needs shared visibility.
 - When a human posts in the shared channel and the message is relevant to current work, or is neutral-but-actionable shared context, make sure the team produces a brief visible acknowledgement quickly (plan, ownership, or progress) instead of staying silent while work happens off-screen.
-- If a worker is the natural owner of that acknowledgement, let the worker answer in-channel first and continue execution; otherwise provide the acknowledgement yourself before deeper coordination continues.
+- If a worker is the natural owner of that acknowledgement, let the worker answer in-channel first; only provide the acknowledgement yourself when a short visible acknowledgement has not already appeared in the recent shared-channel history.
 - For large evidence, use summary-first reporting and attach a stable `detail_ref` or artifact pointer instead of pasting the full content into routine mailbox updates.
 - If your own role description or prompt drifts, send a `profile_patch_proposal` for your member record; use `target="team"` for durable identity updates and `target="run"` for temporary run-scoped adjustments.
 - Use `agenthub actor time-trigger-set`, `agenthub actor time-trigger-list`, and `agenthub actor time-trigger-cancel` for deferred follow-ups or timed reminders that should come back as ACP messages later.

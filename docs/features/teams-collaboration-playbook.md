@@ -179,10 +179,10 @@ Shared-channel discussion rules:
   - design or implementation tradeoffs that need discussion
   - dependency or risk updates that require shared awareness
   - scoped facts, progress, and evidence that benefit shared visibility
-- When a human-authored shared-channel message is relevant to a worker's active work, or is neutral-but-actionable context for that worker, the worker should send a short visible acknowledgement first:
-  - ownership (`I am taking this`)
-  - immediate plan (`I will check PR 68127 and report back`)
-  - current progress (`still verifying CI / patching now`)
+- When a human-authored shared-channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
+  - if a worker is the natural owner of the context, the worker should acknowledge first;
+  - otherwise, the leader should provide the acknowledgement when recent shared-channel history does not already contain one;
+  - acknowledgement forms include ownership (`I am taking this`), immediate plan (`I will check PR 68127 and report back`), or current progress (`still verifying CI / patching now`).
 - The acknowledgement should be short and timely; deeper execution and evidence can follow in later updates.
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
   teammates when opening or continuing that shared-channel discussion.
