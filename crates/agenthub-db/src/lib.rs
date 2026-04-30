@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use serde_json::Value;
 use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
@@ -751,6 +752,7 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
     migrate_team_tasks_add_assigned_member_id(&pool).await?;
     migrate_team_channel_bootstrap_uniqueness(&pool).await?;
     migrate_safe_paths_to_absolute(&pool).await?;
+    migrate_legacy_team_coordinator_terms(&pool).await?;
     if let Err(err) = sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_agent_nodes_name
@@ -1952,6 +1954,208 @@ async fn migrate_safe_paths_to_absolute(pool: &SqlitePool) -> anyhow::Result<()>
     Ok(())
 }
 
+async fn migrate_legacy_team_coordinator_terms(pool: &SqlitePool) -> anyhow::Result<()> {
+    let mut migrated_team_specs = 0_u64;
+    let mut migrated_task_contexts = 0_u64;
+    let mut migrated_conversation_routes = 0_u64;
+    let mut migrated_permission_review_roles = 0_u64;
+    let mut migrated_permission_review_statuses = 0_u64;
+
+    let mut tx = pool.begin().await?;
+
+    if sqlite_table_exists(pool, "team_definitions").await? {
+        let rows = sqlx::query("SELECT id, spec_json FROM team_definitions ORDER BY id ASC")
+            .fetch_all(&mut *tx)
+            .await?;
+        for row in rows {
+            let id: String = row.get("id");
+            let spec_json: String = row.get("spec_json");
+            if let Some(normalized) = normalize_legacy_team_spec_json(&spec_json)? {
+                sqlx::query("UPDATE team_definitions SET spec_json = ?1 WHERE id = ?2")
+                    .bind(normalized)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                migrated_team_specs += 1;
+            }
+        }
+    }
+
+    if sqlite_table_exists(pool, "team_tasks").await?
+        && sqlite_table_has_column(pool, "team_tasks", "context_json").await?
+    {
+        let rows = sqlx::query("SELECT id, context_json FROM team_tasks ORDER BY id ASC")
+            .fetch_all(&mut *tx)
+            .await?;
+        for row in rows {
+            let id: String = row.get("id");
+            let context_json: String = row.get("context_json");
+            if let Some(normalized) = normalize_legacy_team_task_context_json(&context_json)? {
+                sqlx::query("UPDATE team_tasks SET context_json = ?1 WHERE id = ?2")
+                    .bind(normalized)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                migrated_task_contexts += 1;
+            }
+        }
+    }
+
+    if sqlite_table_exists(pool, "team_conversation_messages").await?
+        && sqlite_table_has_column(pool, "team_conversation_messages", "route").await?
+    {
+        let result = sqlx::query(
+            "UPDATE team_conversation_messages SET route = 'to_coordinator' WHERE route = 'to_leader'",
+        )
+        .execute(&mut *tx)
+        .await?;
+        migrated_conversation_routes += result.rows_affected();
+    }
+
+    if sqlite_table_exists(pool, "acp_permission_requests").await? {
+        if sqlite_table_has_column(pool, "acp_permission_requests", "requester_role").await? {
+            let result = sqlx::query(
+                "UPDATE acp_permission_requests SET requester_role = 'coordinator' WHERE requester_role = 'leader'",
+            )
+            .execute(&mut *tx)
+            .await?;
+            migrated_permission_review_roles += result.rows_affected();
+        }
+        if sqlite_table_has_column(pool, "acp_permission_requests", "review_dispatch_status")
+            .await?
+        {
+            let result = sqlx::query(
+                r#"
+                UPDATE acp_permission_requests
+                SET review_dispatch_status = CASE review_dispatch_status
+                    WHEN 'leader_dispatched' THEN 'coordinator_dispatched'
+                    WHEN 'leader_idle_dispatched' THEN 'coordinator_idle_dispatched'
+                    ELSE review_dispatch_status
+                END
+                WHERE review_dispatch_status IN ('leader_dispatched', 'leader_idle_dispatched')
+                "#,
+            )
+            .execute(&mut *tx)
+            .await?;
+            migrated_permission_review_statuses += result.rows_affected();
+        }
+    }
+
+    tx.commit().await?;
+
+    if migrated_team_specs > 0
+        || migrated_task_contexts > 0
+        || migrated_conversation_routes > 0
+        || migrated_permission_review_roles > 0
+        || migrated_permission_review_statuses > 0
+    {
+        tracing::info!(
+            migrated_team_specs,
+            migrated_task_contexts,
+            migrated_conversation_routes,
+            migrated_permission_review_roles,
+            migrated_permission_review_statuses,
+            "db init: normalized legacy leader team terms to coordinator"
+        );
+    }
+
+    Ok(())
+}
+
+fn normalize_legacy_team_spec_json(raw: &str) -> anyhow::Result<Option<String>> {
+    let mut spec: Value = serde_json::from_str(raw)?;
+    let Some(spec_obj) = spec.as_object_mut() else {
+        return Ok(None);
+    };
+    let mut changed = false;
+
+    if !spec_obj.contains_key("coordinator_member_id")
+        && let Some(value) = spec_obj.get("leader_member_id").cloned()
+    {
+        spec_obj.insert("coordinator_member_id".to_string(), value);
+        changed = true;
+    }
+    if spec_obj.remove("leader_member_id").is_some() {
+        changed = true;
+    }
+
+    if let Some(entrypoint) = spec_obj.get_mut("entrypoint")
+        && normalize_legacy_team_step_string(entrypoint)
+    {
+        changed = true;
+    }
+
+    if let Some(members) = spec_obj.get_mut("members").and_then(Value::as_array_mut) {
+        for member in members {
+            let Some(member_obj) = member.as_object_mut() else {
+                continue;
+            };
+            if let Some(role) = member_obj.get_mut("role")
+                && role.as_str() == Some("leader")
+            {
+                *role = Value::String("coordinator".to_string());
+                changed = true;
+            }
+        }
+    }
+
+    if let Some(steps) = spec_obj.get_mut("steps").and_then(Value::as_array_mut) {
+        for step in steps {
+            let Some(step_obj) = step.as_object_mut() else {
+                continue;
+            };
+            if let Some(step_key) = step_obj.get_mut("step_key")
+                && normalize_legacy_team_step_string(step_key)
+            {
+                changed = true;
+            }
+            if let Some(depends_on) = step_obj.get_mut("depends_on").and_then(Value::as_array_mut) {
+                for dep in depends_on {
+                    if normalize_legacy_team_step_string(dep) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if !changed {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::to_string(&spec)?))
+}
+
+fn normalize_legacy_team_task_context_json(raw: &str) -> anyhow::Result<Option<String>> {
+    let mut context: Value = serde_json::from_str(raw)?;
+    let Some(context_obj) = context.as_object_mut() else {
+        return Ok(None);
+    };
+    let mut changed = false;
+    if let Some(bootstrap_source) = context_obj.get_mut("bootstrap_source")
+        && bootstrap_source.as_str() == Some("leader_created")
+    {
+        *bootstrap_source = Value::String("coordinator_created".to_string());
+        changed = true;
+    }
+    if !changed {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::to_string(&context)?))
+}
+
+fn normalize_legacy_team_step_string(value: &mut Value) -> bool {
+    let Some(raw) = value.as_str() else {
+        return false;
+    };
+    let replacement = match raw {
+        "leader_plan" => "coordinator_plan",
+        "leader_synthesize" => "coordinator_synthesize",
+        _ => return false,
+    };
+    *value = Value::String(replacement.to_string());
+    true
+}
+
 async fn sqlite_table_exists(pool: &SqlitePool, table_name: &str) -> anyhow::Result<bool> {
     let exists = sqlx::query_scalar::<_, i64>(
         r#"
@@ -1990,6 +2194,7 @@ mod tests {
         init_db_at_path, try_connect,
     };
     use agenthub_config::path_utils::expand_tilde;
+    use serde_json::json;
     use sqlx::Row;
     use sqlx::SqlitePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -2599,7 +2804,7 @@ mod tests {
         .bind("team-legacy")
         .bind("legacy-team")
         .bind(Some("legacy task schema"))
-        .bind(r#"{"members":[{"member_id":"leader","role":"leader"}]}"#)
+        .bind(r#"{"members":[{"member_id":"coordinator","role":"coordinator"}]}"#)
         .bind(Some("root"))
         .bind(now)
         .bind(now)
@@ -2813,6 +3018,233 @@ mod tests {
         .await
         .expect("read assigned_member_id column");
         assert_eq!(assigned_member_id_column, "assigned_member_id");
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_migrates_legacy_leader_terms_to_coordinator() {
+        let dir = unique_temp_dir("db-migrate-leader-terms");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+
+        let pool = init_db_at_path(&db_path).await.expect("init db");
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_definitions (
+                id, name, description, spec_json, owner_user_id, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("team-legacy-leader")
+        .bind("legacy-leader-team")
+        .bind(Some("legacy leader spec"))
+        .bind(
+            json!({
+                "leader_member_id":"planner",
+                "entrypoint":"leader_plan",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"}
+                ],
+                "steps":[
+                    {"step_key":"leader_plan","member_id":"planner","depends_on":[]},
+                    {"step_key":"worker_1","member_id":"worker-1","depends_on":["leader_plan"]},
+                    {"step_key":"leader_synthesize","member_id":"planner","depends_on":["worker_1"]}
+                ]
+            })
+            .to_string(),
+        )
+        .bind(Some("root"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert team definition");
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_tasks (
+                id, team_id, title, status, created_by_actor_id, assigned_member_id, context_json, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "#,
+        )
+        .bind("task-legacy-leader")
+        .bind("team-legacy-leader")
+        .bind("all")
+        .bind("open")
+        .bind("user:test")
+        .bind(None::<String>)
+        .bind(json!({"bootstrap_source":"leader_created"}).to_string())
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert task");
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversations (
+                id, team_id, task_id, mode, topic, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+        )
+        .bind("conversation-legacy-leader")
+        .bind("team-legacy-leader")
+        .bind("task-legacy-leader")
+        .bind("to_coordinator")
+        .bind(Some("legacy"))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert conversation");
+
+        sqlx::query(
+            r#"
+            INSERT INTO team_conversation_messages (
+                conversation_id, task_id, from_actor_id, to_actor_id, route, payload_json, created_at, idempotency_key
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+            "#,
+        )
+        .bind("conversation-legacy-leader")
+        .bind("task-legacy-leader")
+        .bind("user:test")
+        .bind(Some("planner"))
+        .bind("to_leader")
+        .bind(json!({"text":"hello"}).to_string())
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert conversation message");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agents (
+                id, name, workdir, command, args, worktree_mode, worktree_repo, worktree_ref,
+                code_mode, source, status, created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, ?7, ?8, ?9, ?10, ?11)
+            "#,
+        )
+        .bind("agent-1")
+        .bind("agent-1")
+        .bind("/tmp")
+        .bind("echo")
+        .bind("[]")
+        .bind("use_existing")
+        .bind(0_i64)
+        .bind("manual")
+        .bind("running")
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .expect("insert permission review agent");
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_sessions (id, agent_id, status, started_at, ended_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind("session-1")
+        .bind("agent-1")
+        .bind("running")
+        .bind(now)
+        .bind(None::<i64>)
+        .execute(&pool)
+        .await
+        .expect("insert permission review session");
+
+        sqlx::query(
+            r#"
+            INSERT INTO acp_permission_requests (
+                id, agent_id, session_id, status, options_json, created_at,
+                requester_role, review_dispatch_status
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+        )
+        .bind("perm-legacy-leader")
+        .bind("agent-1")
+        .bind("session-1")
+        .bind("pending")
+        .bind("[]")
+        .bind(now)
+        .bind(Some("leader"))
+        .bind(Some("leader_dispatched"))
+        .execute(&pool)
+        .await
+        .expect("insert permission request");
+
+        pool.close().await;
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with leader-term migration");
+
+        let spec_json: String =
+            sqlx::query_scalar("SELECT spec_json FROM team_definitions WHERE id = ?1")
+                .bind("team-legacy-leader")
+                .fetch_one(&pool)
+                .await
+                .expect("read migrated spec");
+        let spec: serde_json::Value =
+            serde_json::from_str(&spec_json).expect("decode migrated spec");
+        assert_eq!(spec["coordinator_member_id"], json!("planner"));
+        assert!(spec.get("leader_member_id").is_none());
+        assert_eq!(spec["entrypoint"], json!("coordinator_plan"));
+        assert_eq!(spec["members"][0]["role"], json!("coordinator"));
+        assert_eq!(spec["steps"][0]["step_key"], json!("coordinator_plan"));
+        assert_eq!(spec["steps"][1]["depends_on"][0], json!("coordinator_plan"));
+        assert_eq!(
+            spec["steps"][2]["step_key"],
+            json!("coordinator_synthesize")
+        );
+
+        let context_json: String =
+            sqlx::query_scalar("SELECT context_json FROM team_tasks WHERE id = ?1")
+                .bind("task-legacy-leader")
+                .fetch_one(&pool)
+                .await
+                .expect("read migrated task context");
+        let context: serde_json::Value =
+            serde_json::from_str(&context_json).expect("decode migrated task context");
+        assert_eq!(context["bootstrap_source"], json!("coordinator_created"));
+
+        let route: String = sqlx::query_scalar(
+            "SELECT route FROM team_conversation_messages WHERE conversation_id = ?1",
+        )
+        .bind("conversation-legacy-leader")
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated route");
+        assert_eq!(route, "to_coordinator");
+
+        let permission_row = sqlx::query(
+            "SELECT requester_role, review_dispatch_status FROM acp_permission_requests WHERE id = ?1",
+        )
+        .bind("perm-legacy-leader")
+        .fetch_one(&pool)
+        .await
+        .expect("read migrated permission request");
+        assert_eq!(
+            permission_row.get::<Option<String>, _>("requester_role"),
+            Some("coordinator".to_string())
+        );
+        assert_eq!(
+            permission_row.get::<Option<String>, _>("review_dispatch_status"),
+            Some("coordinator_dispatched".to_string())
+        );
 
         pool.close().await;
         let _ = std::fs::remove_file(&db_path);
