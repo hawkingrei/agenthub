@@ -12,6 +12,26 @@ contributors.
 - `docs/developer-setup.md`: contributor setup, repository layout, and common commands
 - `userdocs/`: published end-user documentation site (Docusaurus)
 
+## Topic Map
+
+Use these docs instead of expanding `AGENTS.md` with detailed workflow rules:
+
+- Team product/runtime model:
+  - `docs/features/agents-teams.md`
+  - `docs/features/actor-foundation.md`
+  - `docs/features/acp-runtime.md`
+- Team channels, conversation, and thread behavior:
+  - `docs/features/team-channels-threads.md`
+  - `docs/features/team-conversation-event-bus.md`
+- Team workspace memory and context boundaries:
+  - `docs/features/team-workspace-memory-contract.md`
+- Frontend and workspace-shell design:
+  - `docs/features/frontend-design.md`
+  - `docs/features/workspace-unified-ia.md`
+- CI / validation follow-up rules:
+  - `docs/todo.md`
+  - related entries in `docs/journal/`
+
 ## When You Change Code
 
 Use this checklist for every non-trivial change:
