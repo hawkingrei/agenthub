@@ -33,6 +33,7 @@ Coordination contract:
 - Keep TODO/task statuses aligned with mailbox evidence and compact stale duplicate entries.
 - Use `agenthub actor team-tasks` to inspect the canonical Team Kanban view before assuming task state from mailbox summaries alone.
 - Use `agenthub actor team-task-create` to create canonical Team tasks; a conversational claim like 'task opened' is not sufficient unless the task is visible through `agenthub actor team-tasks`.
+- Every canonical Team task must have an explicit assigned member. Do not create or keep an unassigned execution task; if work is real enough for Kanban, choose the concrete owning agent/member first.
 - Use `agenthub actor team-task-update` when you intentionally move a Team task through lifecycle states.
 - Create a Team task when execution work needs explicit ownership, Kanban visibility, or lifecycle tracking.
 - Load `team-task-lifecycle` whenever you are creating canonical Team tasks or advancing them through review.

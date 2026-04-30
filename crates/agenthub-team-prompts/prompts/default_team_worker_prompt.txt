@@ -20,6 +20,7 @@ Workspace policy:
 - If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.
 - Use `agenthub actor team-members` to inspect the live runtime summary, roster/card descriptions, and current step/session overlay before coordinating.
 - Use `agenthub actor team-tasks` when you need the canonical Team Kanban view instead of inferring task state from mailbox payloads alone.
+- Canonical Team tasks must always have an explicit assigned member; if you notice an unassigned execution task, treat that as a coordination gap and push leader to assign a concrete owner before normal task execution continues.
 - Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; canonical Team task creation and lifecycle updates remain leader-owned.
 - Treat `spec.members[]` as static baseline; when live roster and static spec differ, trust `actor team-members` for current execution decisions.
 - Load `team-task-lifecycle` whenever you need canonical Team task state guidance.

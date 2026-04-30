@@ -37,8 +37,10 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 - Leader/System interprets shared conversation input and turns agreed execution work into internal
   `task` records.
 - A `task` is the primary agent-facing work object.
-- `task.assigned_member_id` is the canonical owner slot, but it stays empty until ownership is set
-  explicitly; the system must not guess an assignee.
+- `task.assigned_member_id` is the canonical owner slot.
+- Canonical execution tasks must not stay unassigned; if a task is materialized onto Kanban, leader
+  must choose a concrete owner explicitly instead of relying on implicit scheduling or leaving the
+  task owner empty.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
 - Human-facing UI / HTTP APIs may display canonical task status and ownership, but they do not

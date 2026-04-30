@@ -67,6 +67,7 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-tasks"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-task-create"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor team-task-update"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("must have an explicit assigned member"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("actor time-trigger-set"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("agent_loop"));
@@ -76,6 +77,7 @@ mod tests {
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-members"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-tasks"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor team-task-create"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("must always have an explicit assigned member"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("profile_patch_proposal"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("actor time-trigger-set"));
         assert!(
