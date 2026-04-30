@@ -19,6 +19,12 @@ import {
 
 export type TeamMemberAcpTab = "conversation" | "plan" | "debug";
 
+export type TeamMemberAcpActivityItem = {
+  id: string;
+  label: string;
+  title?: string;
+};
+
 const ACTIVE_MEMBER_STATUSES = new Set([
   "running",
   "working",
@@ -372,6 +378,53 @@ export function useTeamMemberAcpViewModel({
     acpView.rawEvents.length,
     acpView.toolCalls.length,
   ]);
+  const activitySummaryItems = React.useMemo<TeamMemberAcpActivityItem[]>(() => {
+    if (!selectedMemberId.trim() || !selectedSessionId || isStartingAcpSession) {
+      return [];
+    }
+    const items: TeamMemberAcpActivityItem[] = [];
+    // Use renderable ACP conversation items here instead of raw event count so the
+    // summary matches what the operator can actually read in the panel.
+    if (acpConversation.conversationSourceItems > 0) {
+      const updateCount = acpConversation.conversationSourceItems;
+      items.push({
+        id: "updates",
+        label: `${updateCount} update${updateCount === 1 ? "" : "s"}`,
+        title: `${updateCount} renderable ACP conversation update${updateCount === 1 ? "" : "s"} loaded for this thread`,
+      });
+    }
+    if (acpView.toolCalls.length > 0) {
+      const toolCallCount = acpView.toolCalls.length;
+      items.push({
+        id: "tool-calls",
+        label: `${toolCallCount} tool call${toolCallCount === 1 ? "" : "s"}`,
+        title: `${toolCallCount} ACP tool call${toolCallCount === 1 ? "" : "s"} recorded for this thread`,
+      });
+    }
+    if (memberEventsHasMore) {
+      items.push({
+        id: "older-history",
+        label: "Older history available",
+        title: "Load older ACP history for this thread",
+      });
+    }
+    if (memberEventsLoading) {
+      items.push({
+        id: "syncing",
+        label: "Syncing",
+        title: "Refreshing ACP activity for this thread",
+      });
+    }
+    return items;
+  }, [
+    acpConversation.conversationSourceItems,
+    acpView.toolCalls.length,
+    isStartingAcpSession,
+    memberEventsHasMore,
+    memberEventsLoading,
+    selectedMemberId,
+    selectedSessionId,
+  ]);
   const panelSubtitle = React.useMemo(() => {
     if (!selectedMemberId.trim()) {
       return null;
@@ -553,6 +606,7 @@ export function useTeamMemberAcpViewModel({
     memberStatusClassToken,
     isStartingAcpSession,
     panelSubtitle,
+    activitySummaryItems,
     developerTechnicalMetadata,
     acpPanelProps,
     inputDockJumpMode,

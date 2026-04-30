@@ -14,6 +14,7 @@ import {
   resolveAgentWorkspaceStatusView,
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedAgentWorkspaceMemberId,
+  resolveChannelLaneConversationTask,
   resolveSelectedConversationTask,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
@@ -626,6 +627,28 @@ describe("team page helpers", () => {
         fallbackTask,
       })
     ).toEqual(fallbackTask);
+  });
+
+  it("prefers the current channel lane conversation over stale local task selection", () => {
+    const staleTask = buildTask("task-stale", 120, 140, {
+      title: "Old task thread",
+      status: "in_progress",
+      context: { channel_id: "review", bootstrap_kind: "team_channel" },
+    });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "all",
+        selectedConversation: staleTask,
+        selectedChannelTaskId: "task-all",
+        sharedConversation: sharedTask,
+        taskList: [sharedTask, staleTask],
+      })
+    ).toEqual(sharedTask);
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {

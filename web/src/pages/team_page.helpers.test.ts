@@ -223,6 +223,7 @@ describe("team_page helpers", () => {
           remote_task_id: "snapshot-session",
         } as never,
         "runtime-session",
+        null,
         "running"
       )
     ).toBe("runtime-session");
@@ -233,6 +234,7 @@ describe("team_page helpers", () => {
           remote_task_id: "snapshot-session",
         } as never,
         "   ",
+        null,
         null
       )
     ).toBe("snapshot-session");
@@ -240,13 +242,25 @@ describe("team_page helpers", () => {
       resolveSelectedAgentWorkspaceSessionId(
         {
           member_id: "worker-1",
+          remote_task_id: "new-snapshot-session",
+        } as never,
+        "   ",
+        "sticky-session",
+        "running"
+      )
+    ).toBe("sticky-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
         "runtime-session",
+        "sticky-session",
         "stopped"
       )
     ).toBeNull();
-    expect(resolveSelectedAgentWorkspaceSessionId(null, null)).toBeNull();
+    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {

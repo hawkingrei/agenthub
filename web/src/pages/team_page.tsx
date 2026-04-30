@@ -384,6 +384,7 @@ export function parseTeamAgentInputSessionMismatch(
 export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
   runtimeSessionId: string | null | undefined,
+  previousSessionId?: string | null,
   agentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
@@ -393,6 +394,12 @@ export function resolveSelectedAgentWorkspaceSessionId(
   const normalizedRuntimeSessionId = runtimeSessionId?.trim() ?? "";
   if (normalizedRuntimeSessionId) {
     return normalizedRuntimeSessionId;
+  }
+  const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";
+  // Keep the previous ACP session identity sticky while runtime metadata catches up
+  // so a transient latest_step/runtime refresh does not blank the visible thread.
+  if (normalizedPreviousSessionId) {
+    return normalizedPreviousSessionId;
   }
   const snapshotSessionId = getTeamStepRuntimeHandleId(latestStep);
   return snapshotSessionId?.trim() || null;
@@ -1446,13 +1453,33 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
+  const selectedAgentWorkspaceSessionRef = useRef<{
+    memberId: string;
+    sessionId: string | null;
+  }>({ memberId: "", sessionId: null });
   const selectedAgentWorkspaceSessionId = useMemo(() => {
+    const previousSessionId =
+      selectedAgentWorkspaceSessionRef.current.memberId === selectedAgentWorkspaceMemberId
+        ? selectedAgentWorkspaceSessionRef.current.sessionId
+        : null;
     return resolveSelectedAgentWorkspaceSessionId(
       selectedAgentWorkspaceSnapshot?.latest_step,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
+      previousSessionId,
       selectedAgentWorkspaceAgent?.status ?? null
     );
-  }, [selectedAgentWorkspaceAgent, selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
+  }, [
+    selectedAgentWorkspaceAgent,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceRuntimeMember,
+    selectedAgentWorkspaceSnapshot,
+  ]);
+  useEffect(() => {
+    selectedAgentWorkspaceSessionRef.current = {
+      memberId: selectedAgentWorkspaceMemberId,
+      sessionId: selectedAgentWorkspaceSessionId,
+    };
+  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceSessionId]);
   const memberTargetNodeById = useMemo<Record<string, string | null>>(() => {
     const entries = Object.entries(teamMemberAgentsById).map(([memberId, agent]) => [
       memberId,
@@ -2031,6 +2058,8 @@ export function TeamPage(props: TeamPageProps) {
   } = useTeamTaskWorkspaceData({
     token: props.token,
     effectiveSelectedTeamId,
+    routeChannelId,
+    selectedChannelTaskId: selectedChannelRecord?.task_id,
     selectedConversationTaskId,
     selectedConversationDetail,
     sharedConversation,

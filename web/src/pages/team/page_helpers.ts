@@ -634,6 +634,41 @@ export function resolveSelectedConversationTask({
   );
 }
 
+export function resolveChannelLaneConversationTask({
+  routeChannelId,
+  selectedConversation,
+  selectedChannelTaskId,
+  sharedConversation,
+  taskList,
+}: {
+  routeChannelId: string;
+  selectedConversation: TeamTaskRecord | null;
+  selectedChannelTaskId?: string | null;
+  sharedConversation: TeamTaskRecord | null;
+  taskList: TeamTaskRecord[];
+}): TeamTaskRecord | null {
+  const normalizedChannelId = routeChannelId.trim().toLowerCase();
+  if (!normalizedChannelId) {
+    return selectedConversation;
+  }
+  if (normalizedChannelId === DEFAULT_TEAM_THREAD_TITLE) {
+    return sharedConversation ?? selectedConversation;
+  }
+  if (selectedConversation && isChannelScopedConversationTask(selectedConversation, normalizedChannelId)) {
+    return selectedConversation;
+  }
+  const normalizedSelectedChannelTaskId = selectedChannelTaskId?.trim() ?? "";
+  if (!normalizedSelectedChannelTaskId) {
+    return selectedConversation;
+  }
+  // Channel routes should render the lane's canonical conversation even when
+  // stale local task selection still points at a previously opened task thread.
+  return (
+    taskList.find((task) => task.id === normalizedSelectedChannelTaskId) ??
+    (selectedConversation?.id === normalizedSelectedChannelTaskId ? selectedConversation : null)
+  );
+}
+
 function parseMailboxPayload(payload: unknown): unknown {
   if (typeof payload !== "string") {
     return payload;

@@ -42,6 +42,8 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
     token: "token-1",
     effectiveSelectedTeamId: "team-1",
+    routeChannelId: "all",
+    selectedChannelTaskId: "shared-thread",
     selectedConversationTaskId: "",
     selectedConversationDetail: null,
     sharedConversation: null,
@@ -167,6 +169,85 @@ describe("useTeamTaskWorkspaceData", () => {
       expect(params.setCompiledRunPreview).toHaveBeenCalledWith(null);
       expect(params.setCompilePreviewContextId).toHaveBeenCalledWith("");
       expect(mounted.getSnapshot()?.resolvedSelectedConversationTaskId).toBe("");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("keeps the channel lane pinned to the shared thread when stale task selection remains", async () => {
+    const sharedConversation = {
+      id: "shared-thread",
+      team_id: "team-1",
+      title: "all",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { bootstrap_kind: "shared_thread" },
+      created_at: 1,
+      updated_at: 10,
+    } as const;
+    const staleTask = {
+      id: "task-2",
+      team_id: "team-1",
+      title: "Implementation thread",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { bootstrap_kind: "team_channel", channel_id: "review" },
+      created_at: 2,
+      updated_at: 20,
+    } as const;
+    const staleDetail: NonNullable<HookParams["selectedConversationDetail"]> = {
+      task: staleTask,
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "review",
+        created_at: 2,
+        updated_at: 2,
+      },
+      latest_run: {
+        id: "run-task-2",
+        team_id: "team-1",
+        context_id: "",
+        status: "working",
+        input: {},
+        summary: null,
+        created_at: 2,
+        started_at: 2,
+        ended_at: null,
+      },
+    };
+    const sharedLatestRun = {
+      id: "run-shared",
+      team_id: "team-1",
+      context_id: "",
+      status: "working",
+      input: {},
+      summary: null,
+      created_at: 1,
+      started_at: 1,
+      ended_at: null,
+    } as unknown as HookParams["sharedConversationLatestRun"];
+    mockedApi.getTeamTask.mockResolvedValue(staleDetail);
+
+    const mounted = await mountHook(
+      createParams({
+        routeChannelId: "all",
+        selectedChannelTaskId: "shared-thread",
+        selectedConversationTaskId: "task-2",
+        sharedConversation,
+        sharedConversationLatestRun: sharedLatestRun,
+        selectedConversationDetail: staleDetail,
+        taskList: [sharedConversation, staleTask],
+      })
+    );
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.selectedConversation?.id).toBe("shared-thread");
+      expect(snapshot?.selectedConversationLatestRun?.id).toBe("run-shared");
     } finally {
       mounted.cleanup();
     }
