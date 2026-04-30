@@ -73,7 +73,7 @@ describe("TeamThreadPane", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Thread");
+    expect(html).toContain("Reply in thread");
     expect(html).toContain("# all");
     expect(html).toContain("1 reply");
     expect(html).toContain("Focused replies stay anchored to the source message.");
@@ -83,14 +83,14 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("View in channel");
     expect(html).toContain("Close thread");
     expect(html).toContain("Original");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain("leader");
-    expect(html).toContain(">L<");
+    expect(html).toContain('data-avatar-seed="leader::leader"');
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain("worker-agent");
-    expect(html).toContain(">W<");
+    expect(html).toContain('data-avatar-seed="worker-agent::worker-agent"');
     expect(html).toContain("#43");
     expect(html).toContain("I can take the follow-up from here.");
     expect(html).toContain("Draft follow-up");
@@ -129,6 +129,38 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Reply");
   });
 
+  it("uses the root message id for unknown-author avatar seeds", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamThreadPane
+          channelLabel="# review"
+          rootMessageId={51}
+          rootAuthorLabel={null}
+          rootCreatedAt={1713480000000}
+          rootText={null}
+          replies={[
+            {
+              messageId: 52,
+              authorLabel: null,
+              createdAt: 1713480060000,
+              text: "System follow-up",
+            },
+          ]}
+          replyDraft=""
+          onReplyDraftChange={vi.fn()}
+          onSendReply={vi.fn()}
+          replyBusy={false}
+          formatTs={() => "2026/4/19 00:00:00"}
+          onViewInChannel={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain('data-avatar-seed="Unknown::51"');
+    expect(html).toContain('data-avatar-seed="Unknown::52"');
+  });
+
   it("truncates long source previews without changing the root thread content", () => {
     const longRootText =
       "This is a long source message that should stay fully visible in the original root bubble while the compact source strip only carries a short preview for context.";
@@ -153,7 +185,7 @@ describe("TeamThreadPane", () => {
     );
 
     expect(html).toContain("From leader · #88");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain(
       "This is a long source message that should stay fully visible in the original root bubble while the compact source str..."
     );

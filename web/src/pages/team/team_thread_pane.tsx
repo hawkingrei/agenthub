@@ -8,6 +8,7 @@ import {
   SurfaceCard,
   ToolbarRow,
 } from "../../ui/primitives";
+import { DeterministicAvatar } from "../../components/deterministic_avatar";
 import { TeamThreadRichText } from "./team_thread_rich_text";
 import {
   CONVERSATION_MESSAGE_INLINE_ROW_CLASS,
@@ -30,7 +31,6 @@ type TeamThreadReplyItem = {
 type TeamThreadRenderMessage = {
   messageId: number;
   authorLabel: string;
-  avatarLabel: string;
   createdAtLabel: string;
   text: string;
 };
@@ -70,14 +70,6 @@ function formatThreadComposerHelperText(sendOnEnter: boolean): string {
   return sendOnEnter
     ? "Reply stays in this thread · Enter to reply"
     : "Reply stays in this thread · Enter adds a new line";
-}
-
-function resolveThreadAvatarLabel(authorLabel: string | null): string {
-  const trimmed = authorLabel?.trim();
-  if (!trimmed) {
-    return "?";
-  }
-  return trimmed.charAt(0).toUpperCase();
 }
 
 function formatThreadSourceSummary(
@@ -134,7 +126,6 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
     return {
       messageId: rootMessageId,
       authorLabel,
-      avatarLabel: resolveThreadAvatarLabel(authorLabel),
       createdAtLabel: formatTs(rootCreatedAt),
       text: rootText ?? "",
     };
@@ -146,7 +137,6 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         return {
           messageId: reply.messageId,
           authorLabel,
-          avatarLabel: resolveThreadAvatarLabel(authorLabel),
           createdAtLabel: formatTs(reply.createdAt),
           text: reply.text,
         };
@@ -175,7 +165,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
-              Thread
+              Reply in thread
             </div>
             <Badge
               tone="outline"
@@ -236,9 +226,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         ) : (
           <div className="flex flex-col gap-3">
             <div className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
-              <div className={TEAM_THREAD_MESSAGE_AVATAR_CLASS} aria-hidden="true">
-                {rootRenderMessage?.avatarLabel ?? "?"}
-              </div>
+              <DeterministicAvatar
+                name={rootRenderMessage?.authorLabel ?? "Unknown"}
+                stableId={rootAuthorLabel || rootMessageId}
+                className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
+              />
               <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
                 <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
                   <span className="font-semibold text-notion-text">
@@ -270,7 +262,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             </div>
             <div className={TEAM_THREAD_SECTION_ROW_CLASS}>
               <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
-                Thread replies
+                Replies
               </div>
               <span className="text-[10px] text-notion-text-muted">{replyCountLabel}</span>
             </div>
@@ -282,9 +274,11 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
               ) : (
                 replyRenderMessages.map((reply) => (
                   <div key={reply.messageId} className={TEAM_THREAD_MESSAGE_ROW_CLASS}>
-                    <div className={TEAM_THREAD_MESSAGE_AVATAR_CLASS} aria-hidden="true">
-                      {reply.avatarLabel}
-                    </div>
+                    <DeterministicAvatar
+                      name={reply.authorLabel}
+                      stableId={reply.authorLabel === "Unknown" ? reply.messageId : reply.authorLabel}
+                      className={TEAM_THREAD_MESSAGE_AVATAR_CLASS}
+                    />
                     <div className={TEAM_THREAD_MESSAGE_CONTENT_CLASS}>
                       <div className={TEAM_THREAD_MESSAGE_META_ROW_CLASS}>
                         <span className="font-semibold text-notion-text">{reply.authorLabel}</span>
