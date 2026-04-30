@@ -6,6 +6,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveNextSelectedAgentWorkspaceStickySession,
   resolveChannelRouteTaskId,
   resolveRouteScopedConversationTaskSelection,
   resolveSelectedAgentWorkspaceSessionId,
@@ -223,6 +224,7 @@ describe("team_page helpers", () => {
           remote_task_id: "snapshot-session",
         } as never,
         "runtime-session",
+        null,
         "running"
       )
     ).toBe("runtime-session");
@@ -233,6 +235,7 @@ describe("team_page helpers", () => {
           remote_task_id: "snapshot-session",
         } as never,
         "   ",
+        null,
         null
       )
     ).toBe("snapshot-session");
@@ -240,13 +243,47 @@ describe("team_page helpers", () => {
       resolveSelectedAgentWorkspaceSessionId(
         {
           member_id: "worker-1",
+          remote_task_id: "new-snapshot-session",
+        } as never,
+        "   ",
+        "sticky-session",
+        "running"
+      )
+    ).toBe("sticky-session");
+    expect(
+      resolveSelectedAgentWorkspaceSessionId(
+        {
+          member_id: "worker-1",
           remote_task_id: "snapshot-session",
         } as never,
         "runtime-session",
+        "sticky-session",
         "stopped"
       )
     ).toBeNull();
-    expect(resolveSelectedAgentWorkspaceSessionId(null, null)).toBeNull();
+    expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();
+  });
+
+  it("updates sticky ACP session state declaratively across member changes", () => {
+    const initial = { memberId: "", sessionId: null as string | null };
+    const workerOne = resolveNextSelectedAgentWorkspaceStickySession(
+      initial,
+      "worker-1",
+      "session-1"
+    );
+    expect(workerOne).toEqual({ memberId: "worker-1", sessionId: "session-1" });
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "worker-1", null)
+    ).toBe(workerOne);
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "worker-2", null)
+    ).toEqual({ memberId: "worker-2", sessionId: null });
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "", null)
+    ).toEqual({ memberId: "", sessionId: null });
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {

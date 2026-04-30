@@ -11,6 +11,8 @@ import { parseErrorMessage } from "./create_helpers";
 import {
   isCurrentTeamScopedRequest,
   listTeamWorkspaceTasks,
+  resolveChannelLaneConversationTask,
+  resolveSelectedConversationLatestRun,
   resolveSelectedConversationTask,
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
@@ -20,6 +22,9 @@ import {
 type UseTeamTaskWorkspaceDataOptions = {
   token: string;
   effectiveSelectedTeamId: string | null;
+  routeChannelId: string;
+  routeSelectedTaskId?: string | null;
+  selectedChannelTaskId?: string | null;
   selectedConversationTaskId: string;
   selectedConversationDetail: TeamTaskDetailResponse | null;
   sharedConversation: TeamTaskRecord | null;
@@ -46,6 +51,9 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
   const {
     token,
     effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
+    selectedChannelTaskId,
     selectedConversationTaskId,
     selectedConversationDetail,
     sharedConversation,
@@ -75,32 +83,44 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     if (!effectiveSelectedTeamId) {
       return null;
     }
-    return resolveSelectedConversationTask({
+    const resolvedConversation = resolveSelectedConversationTask({
       taskList,
       selectedTaskId: resolvedSelectedConversationTaskId,
       sharedConversation,
       fallbackTask: selectedConversationDetail?.task ?? null,
     });
+    const nextConversation = resolveChannelLaneConversationTask({
+      routeChannelId,
+      routeSelectedTaskId,
+      selectedConversationTaskId: resolvedSelectedConversationTaskId,
+      selectedConversation: resolvedConversation,
+      selectedChannelTaskId,
+      sharedConversation,
+      taskList,
+    });
+    return nextConversation;
   }, [
     effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
     resolvedSelectedConversationTaskId,
+    selectedChannelTaskId,
     selectedConversationDetail?.task,
     sharedConversation,
     taskList,
   ]);
 
   const selectedConversationLatestRun = useMemo(() => {
-    if (!resolvedSelectedConversationTaskId) {
-      return sharedConversationLatestRun;
-    }
-    if (sharedConversation?.id === resolvedSelectedConversationTaskId) {
-      return sharedConversationLatestRun;
-    }
-    return selectedConversationDetail?.latest_run ?? null;
+    return resolveSelectedConversationLatestRun({
+      selectedConversation,
+      selectedConversationDetail,
+      sharedConversation,
+      sharedConversationLatestRun,
+    });
   }, [
-    resolvedSelectedConversationTaskId,
+    selectedConversation,
     selectedConversationDetail,
-    sharedConversation?.id,
+    sharedConversation,
     sharedConversationLatestRun,
   ]);
 

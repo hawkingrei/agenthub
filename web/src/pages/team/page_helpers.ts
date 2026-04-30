@@ -8,6 +8,7 @@ import type {
   TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
+  TeamTaskDetailResponse,
   TeamTaskRecord,
 } from "../../api";
 import type { StatusTone } from "../../components/status_badge";
@@ -631,6 +632,90 @@ export function resolveSelectedConversationTask({
     taskList.find((task) => task.id === resolvedSelectedTaskId) ??
     fallbackTask ??
     null
+  );
+}
+
+export function resolveSelectedConversationLatestRun({
+  selectedConversation,
+  selectedConversationDetail,
+  sharedConversation,
+  sharedConversationLatestRun,
+}: {
+  selectedConversation: TeamTaskRecord | null;
+  selectedConversationDetail: TeamTaskDetailResponse | null;
+  sharedConversation: TeamTaskRecord | null;
+  sharedConversationLatestRun: TeamRunRecord | null;
+}): TeamRunRecord | null {
+  if (!selectedConversation) {
+    return null;
+  }
+  if (sharedConversation?.id === selectedConversation.id) {
+    return sharedConversationLatestRun;
+  }
+  if (selectedConversationDetail?.task?.id === selectedConversation.id) {
+    return selectedConversationDetail.latest_run ?? null;
+  }
+  return null;
+}
+
+export function resolveChannelLaneConversationTask({
+  routeChannelId,
+  routeSelectedTaskId,
+  selectedConversationTaskId,
+  selectedConversation,
+  selectedChannelTaskId,
+  sharedConversation,
+  taskList,
+}: {
+  routeChannelId: string;
+  routeSelectedTaskId?: string | null;
+  selectedConversationTaskId?: string | null;
+  selectedConversation: TeamTaskRecord | null;
+  selectedChannelTaskId?: string | null;
+  sharedConversation: TeamTaskRecord | null;
+  taskList: TeamTaskRecord[];
+}): TeamTaskRecord | null {
+  const normalizedChannelId = routeChannelId.trim().toLowerCase();
+  const normalizedRouteTaskId = routeSelectedTaskId?.trim() ?? "";
+  const normalizedSelectedConversationTaskId = selectedConversationTaskId?.trim() ?? "";
+  const selectedConversationChannelId = resolveTaskChannelId(selectedConversation);
+  const selectedConversationMatchesExplicitRoute =
+    Boolean(normalizedRouteTaskId) && selectedConversation?.id === normalizedRouteTaskId;
+  const selectedConversationMatchesLocalSelection =
+    Boolean(normalizedSelectedConversationTaskId) &&
+    selectedConversation?.id === normalizedSelectedConversationTaskId;
+  const shouldPreservePlainTaskSelection =
+    selectedConversationMatchesLocalSelection && !selectedConversationChannelId;
+  if (!normalizedChannelId) {
+    return selectedConversation;
+  }
+  if (normalizedChannelId === DEFAULT_TEAM_THREAD_TITLE) {
+    if (selectedConversationMatchesExplicitRoute || shouldPreservePlainTaskSelection) {
+      return selectedConversation;
+    }
+    return sharedConversation ?? selectedConversation;
+  }
+  if (
+    selectedConversation &&
+    (selectedConversationChannelId === normalizedChannelId ||
+      shouldPreservePlainTaskSelection ||
+      (selectedConversationMatchesExplicitRoute &&
+        selectedConversationChannelId !== DEFAULT_TEAM_THREAD_TITLE))
+  ) {
+    // Channel lanes should keep explicit task conversations, but should not let
+    // stale channel-scoped selections from another lane override the lane's
+    // canonical conversation.
+    return selectedConversation;
+  }
+  const normalizedSelectedChannelTaskId = selectedChannelTaskId?.trim() ?? "";
+  if (!normalizedSelectedChannelTaskId) {
+    return selectedConversation;
+  }
+  // Channel routes should render the lane's canonical conversation even when
+  // stale local task selection still points at a previously opened task thread.
+  return (
+    taskList.find((task) => task.id === normalizedSelectedChannelTaskId) ??
+    (selectedConversation?.id === normalizedSelectedChannelTaskId ? selectedConversation : null)
   );
 }
 

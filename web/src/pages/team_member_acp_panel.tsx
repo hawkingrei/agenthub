@@ -138,6 +138,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
     memberStatusClassToken,
     isStartingAcpSession,
     panelSubtitle,
+    activitySummaryItems,
     developerTechnicalMetadata,
     acpPanelProps,
     inputDockJumpMode,
@@ -253,6 +254,24 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
               </Badge>
             </div>
           ) : null}
+          {activitySummaryItems.length > 0 ? (
+            <div
+              className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1"
+              data-team-member-acp-activity-strip="true"
+            >
+              {activitySummaryItems.map((item) => (
+                <Badge
+                  key={item.id}
+                  tone="outline"
+                  shape="pill"
+                  className="max-w-full truncate border-notion-border/70 bg-white/80 px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-notion-text-muted shadow-none"
+                  title={item.title ?? item.label}
+                >
+                  {item.label}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           {isStartingAcpSession ? (
             <div className="inline-flex min-w-[12rem] items-center gap-2 rounded-xl border border-notion-border/70 bg-white/80 px-2 py-1 text-[11px] font-medium text-notion-text-muted">
               <span className="shrink-0">Starting session</span>
@@ -278,6 +297,7 @@ function TeamMemberAcpPanelImpl(props: TeamMemberAcpPanelProps) {
       attachedNodeId,
       developerTechnicalMetadata,
       infoStripSummary,
+      activitySummaryItems,
       isStartingAcpSession,
       memberStatus,
       memberStatusClassToken,

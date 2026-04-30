@@ -269,6 +269,138 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a compact ACP activity strip for loaded updates, tool calls, and older history", async () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 2,
+        conversationRenderedItems: 2,
+        conversationTotalItems: 2,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents([
+          {
+            type: "tool_call_update",
+            id: "tool-1",
+            content: [
+              {
+                type: "content",
+                content: { type: "text", text: "{\"command\": \"cargo test\"}" },
+              },
+            ],
+          },
+        ])}
+        memberEventsHasMore={true}
+        memberEventsLoading={false}
+        eventsLoading={false}
+        oldestMemberEventId={11}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const activityStrip = required(
+      container.querySelector('[data-team-member-acp-activity-strip="true"]') as HTMLDivElement | null,
+      "acp activity strip missing"
+    );
+    expect(activityStrip.textContent).toContain("2 updates");
+    expect(activityStrip.textContent).toContain("1 tool call");
+    expect(activityStrip.textContent).toContain("Older history available");
+  });
+
+  it("shows syncing in the ACP activity strip while refreshing a live session", async () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 1,
+        conversationRenderedItems: 1,
+        conversationTotalItems: 1,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId="runtime-session-1"
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={null}
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={false}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const activityStrip = required(
+      container.querySelector('[data-team-member-acp-activity-strip="true"]') as HTMLDivElement | null,
+      "acp activity strip missing"
+    );
+    expect(activityStrip.textContent).toContain("1 update");
+    expect(activityStrip.textContent).toContain("Syncing");
+  });
+
+  it("hides the ACP activity strip when no ACP session is available yet", async () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 3,
+        conversationRenderedItems: 3,
+        conversationTotalItems: 3,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId={undefined}
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "pending",
+          session_status: "pending",
+        }}
+        selectedAgentStatus="running"
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-team-member-acp-activity-strip="true"]')).toBeNull();
+  });
+
   it("prefers the selected member snapshot status over stale ACP run status in the header", () => {
     renderWithMantine(
       root,

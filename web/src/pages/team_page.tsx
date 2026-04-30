@@ -384,6 +384,7 @@ export function parseTeamAgentInputSessionMismatch(
 export function resolveSelectedAgentWorkspaceSessionId(
   latestStep: TeamStepRecord | null | undefined,
   runtimeSessionId: string | null | undefined,
+  previousSessionId?: string | null,
   agentStatus?: string | null
 ): string | null {
   const normalizedAgentStatus = agentStatus?.trim().toLowerCase() ?? "";
@@ -394,8 +395,42 @@ export function resolveSelectedAgentWorkspaceSessionId(
   if (normalizedRuntimeSessionId) {
     return normalizedRuntimeSessionId;
   }
+  const normalizedPreviousSessionId = previousSessionId?.trim() ?? "";
+  // Keep the previous ACP session identity sticky while runtime metadata catches up
+  // so a transient latest_step/runtime refresh does not blank the visible thread.
+  if (normalizedPreviousSessionId) {
+    return normalizedPreviousSessionId;
+  }
   const snapshotSessionId = getTeamStepRuntimeHandleId(latestStep);
   return snapshotSessionId?.trim() || null;
+}
+
+export function resolveNextSelectedAgentWorkspaceStickySession(
+  previous: { memberId: string; sessionId: string | null },
+  memberId: string,
+  resolvedSessionId: string | null
+): { memberId: string; sessionId: string | null } {
+  const normalizedMemberId = memberId.trim();
+  const normalizedResolvedSessionId = resolvedSessionId?.trim() || null;
+  if (!normalizedMemberId) {
+    if (!previous.memberId && previous.sessionId == null) {
+      return previous;
+    }
+    return { memberId: "", sessionId: null };
+  }
+  if (previous.memberId !== normalizedMemberId) {
+    return {
+      memberId: normalizedMemberId,
+      sessionId: normalizedResolvedSessionId,
+    };
+  }
+  if (!normalizedResolvedSessionId || previous.sessionId === normalizedResolvedSessionId) {
+    return previous;
+  }
+  return {
+    memberId: normalizedMemberId,
+    sessionId: normalizedResolvedSessionId,
+  };
 }
 
 export function buildTeamDetailPath(teamId: string): string {
@@ -1446,13 +1481,38 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
-  const selectedAgentWorkspaceSessionId = useMemo(() => {
+  const [selectedAgentWorkspaceStickySession, setSelectedAgentWorkspaceStickySession] = useState<{
+    memberId: string;
+    sessionId: string | null;
+  }>({ memberId: "", sessionId: null });
+  const selectedAgentWorkspaceResolvedSessionId = useMemo(() => {
+    const previousSessionId =
+      selectedAgentWorkspaceStickySession.memberId === selectedAgentWorkspaceMemberId
+        ? selectedAgentWorkspaceStickySession.sessionId
+        : null;
     return resolveSelectedAgentWorkspaceSessionId(
       selectedAgentWorkspaceSnapshot?.latest_step,
       selectedAgentWorkspaceRuntimeMember?.session_id ?? null,
+      previousSessionId,
       selectedAgentWorkspaceAgent?.status ?? null
     );
-  }, [selectedAgentWorkspaceAgent, selectedAgentWorkspaceRuntimeMember, selectedAgentWorkspaceSnapshot]);
+  }, [
+    selectedAgentWorkspaceAgent,
+    selectedAgentWorkspaceMemberId,
+    selectedAgentWorkspaceRuntimeMember,
+    selectedAgentWorkspaceSnapshot,
+    selectedAgentWorkspaceStickySession,
+  ]);
+  const selectedAgentWorkspaceSessionId = selectedAgentWorkspaceResolvedSessionId;
+  useEffect(() => {
+    setSelectedAgentWorkspaceStickySession((previous) =>
+      resolveNextSelectedAgentWorkspaceStickySession(
+        previous,
+        selectedAgentWorkspaceMemberId,
+        selectedAgentWorkspaceResolvedSessionId
+      )
+    );
+  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceResolvedSessionId]);
   const memberTargetNodeById = useMemo<Record<string, string | null>>(() => {
     const entries = Object.entries(teamMemberAgentsById).map(([memberId, agent]) => [
       memberId,
@@ -2031,6 +2091,9 @@ export function TeamPage(props: TeamPageProps) {
   } = useTeamTaskWorkspaceData({
     token: props.token,
     effectiveSelectedTeamId,
+    routeChannelId,
+    routeSelectedTaskId,
+    selectedChannelTaskId: selectedChannelRecord?.task_id,
     selectedConversationTaskId,
     selectedConversationDetail,
     sharedConversation,
