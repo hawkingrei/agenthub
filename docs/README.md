@@ -1,36 +1,62 @@
 # Documentation Guide
 
-This folder contains engineering-facing documentation for AgentHub
-contributors.
+This folder contains the engineering-facing documentation for AgentHub.
 
-## Structure
+Use it as the contributor entrypoint after the repository `README.md`. The
+root `README.md` is product-facing; this directory is architecture- and
+implementation-facing.
 
-- `docs/features/`: stable domain-oriented engineering specs
-- `docs/journal/`: dated implementation checkpoints and compaction notes
-- `docs/todo.md`: active follow-up backlog only
-- `docs/api_naming.md`: payload naming conventions for AgentHub-owned APIs
-- `docs/developer-setup.md`: contributor setup, repository layout, and common commands
-- `userdocs/`: published end-user documentation site (Docusaurus)
+## Start Here
 
-## Topic Map
+- Contributor setup and local workflow:
+  - [developer-setup.md](developer-setup.md)
+- Architecture index:
+  - [architecture-map.md](architecture-map.md)
+- Active backlog:
+  - [todo.md](todo.md)
+- Feature spec standard:
+  - [features/README.md](features/README.md)
 
-Use these docs instead of expanding [AGENTS.md](../AGENTS.md) with detailed workflow rules:
+## Documentation Surfaces
 
-- Team product/runtime model:
-  - [docs/features/agents-teams.md](features/agents-teams.md)
-  - [docs/features/actor-foundation.md](features/actor-foundation.md)
-  - [docs/features/acp-runtime.md](features/acp-runtime.md)
-- Team channels, conversation, and thread behavior:
-  - [docs/features/team-channels-threads.md](features/team-channels-threads.md)
-  - [docs/features/team-conversation-event-bus.md](features/team-conversation-event-bus.md)
-- Team workspace memory and context boundaries:
-  - [docs/features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
-- Frontend and workspace-shell design:
-  - [docs/features/frontend-design.md](features/frontend-design.md)
-  - [docs/features/workspace-unified-ia.md](features/workspace-unified-ia.md)
-- CI / validation follow-up rules:
-  - [docs/todo.md](todo.md)
-  - related entries in [docs/journal/](journal/)
+- `docs/features/`
+  - stable domain-oriented engineering specifications
+- `docs/journal/`
+  - dated implementation checkpoints and compaction notes
+- `docs/todo.md`
+  - active follow-up backlog only
+- `docs/api_naming.md`
+  - payload naming conventions for AgentHub-owned APIs
+- `docs/developer-setup.md`
+  - contributor setup, repository layout, and common commands
+- `userdocs/`
+  - published end-user documentation site (Docusaurus)
+
+## Architecture Topic Map
+
+Use these docs instead of expanding [AGENTS.md](../AGENTS.md) with detailed
+workflow or runtime rules.
+
+- Product and runtime model:
+  - [features/agents-teams.md](features/agents-teams.md)
+  - [features/backend-runtime-logic.md](features/backend-runtime-logic.md)
+  - [features/actor-foundation.md](features/actor-foundation.md)
+- ACP and runtime rendering:
+  - [features/acp-runtime.md](features/acp-runtime.md)
+- Team channels, conversation, and threads:
+  - [features/team-channels-threads.md](features/team-channels-threads.md)
+  - [features/team-conversation-event-bus.md](features/team-conversation-event-bus.md)
+- Team workspace memory and continuity:
+  - [features/team-workspace-memory-contract.md](features/team-workspace-memory-contract.md)
+- Frontend and workspace shell:
+  - [features/frontend-design.md](features/frontend-design.md)
+  - [features/workspace-unified-ia.md](features/workspace-unified-ia.md)
+- Nodes and distributed execution:
+  - [features/agent-nodes.md](features/agent-nodes.md)
+  - [features/distributed-node-architecture.md](features/distributed-node-architecture.md)
+- CI and active verification:
+  - [todo.md](todo.md)
+  - related entries in [journal/](journal/)
 
 ## When You Change Code
 

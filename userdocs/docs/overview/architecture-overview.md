@@ -7,6 +7,10 @@ sidebar_position: 3
 This page explains the main runtime pieces behind AgentHub without going into
 internal implementation detail.
 
+AgentHub is designed as a self-hosted AI agent control plane with a clear split
+between the operator-facing control plane and the machine-local or remote
+execution plane.
+
 ## High-Level Shape
 
 AgentHub is designed as one main control-plane service:
@@ -16,7 +20,8 @@ AgentHub is designed as one main control-plane service:
 - one SQLite-backed persistence layer
 - HTTP plus SSE for browser interaction and live updates
 
-That baseline is enough for local and many shared internal deployments.
+That baseline is enough for local and many shared internal deployments while
+still preserving a path to remote execution nodes.
 
 ## Control Plane Versus Execution Plane
 

@@ -4,9 +4,9 @@ sidebar_position: 1
 
 # Product Overview
 
-AgentHub is a control plane for AI-agent work. It keeps agent sessions alive,
-gives operators one place to inspect and steer them, and adds structured
-history instead of relying on raw terminal scrollback alone.
+AgentHub is a self-hosted control plane for AI-agent work. It keeps long-lived
+agent sessions alive, gives operators one place to inspect and steer them, and
+adds structured history instead of relying on raw terminal scrollback alone.
 
 ## Core Idea
 
@@ -19,8 +19,11 @@ AgentHub is not just a prompt box for one terminal session. It combines:
 - optional remote execution nodes for multi-machine rollout
 
 The important shift is that AgentHub treats the browser as a control surface,
-not as the place where the agent actually lives. The runtime, history, and
+not as the place where the agent actually lives. Runtime, history, and
 coordination state stay on the backend.
+
+This makes AgentHub closer to an AI agent control plane than to a thin chat
+wrapper.
 
 ## Why Teams Use It
 
@@ -42,6 +45,13 @@ AgentHub is a strong fit when you need one or more of these:
 - output should stay replayable and auditable
 - work should run in isolated worktrees by default
 - one machine is no longer enough for all agent execution
+
+It is especially useful for engineering teams that want:
+
+- a self-hosted coding-agent workbench
+- a multi-agent Team coordination surface
+- replayable ACP output for review and debugging
+- one control plane across local and remote execution
 
 ## Choose The Right Workflow
 

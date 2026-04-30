@@ -5,8 +5,8 @@ slug: /
 
 # AgentHub Docs
 
-AgentHub is a single-binary control plane for long-lived AI agents, Team
-workflows, and optional remote execution nodes.
+AgentHub is a self-hosted AI agent control plane for long-lived coding agents,
+structured ACP timelines, Team workflows, and optional remote execution nodes.
 
 ## What AgentHub Gives You
 
@@ -19,6 +19,15 @@ AgentHub is built for the operational side of agent work:
 - route execution to remote nodes with actor p2p control and mailbox relay when
   one machine is not enough
 - keep runtime state, history, and operator control in one place
+
+If you are evaluating AgentHub as an:
+
+- AI agent control plane
+- self-hosted multi-agent platform
+- structured ACP workbench
+- remote agent execution system
+
+start with the overview pages below.
 
 ## Why This Matters
 
