@@ -1029,8 +1029,10 @@ async fn reply_team_thread(
     if text.is_empty() {
         return Err(ApiError::bad_request("text is required"));
     }
-    let mention_actor_ids =
-        normalize_thread_reply_mention_actor_ids(payload.mention_actor_ids, &actor_scope.member_ids);
+    let mention_actor_ids = normalize_thread_reply_mention_actor_ids(
+        payload.mention_actor_ids,
+        &actor_scope.member_ids,
+    );
     let reply = state
         .teams
         .reply_thread(
@@ -2822,11 +2824,23 @@ async fn collect_thread_participant_actor_ids(
             &candidate_message.payload,
             &actor_scope.member_ids,
         ) {
-            push_member_mention(actor_id.as_str(), &actor_scope.member_ids, &mut seen, &mut participant_ids);
+            push_member_mention(
+                actor_id.as_str(),
+                &actor_scope.member_ids,
+                &mut seen,
+                &mut participant_ids,
+            );
         }
     }
-    for actor_id in extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids) {
-        push_member_mention(actor_id.as_str(), &actor_scope.member_ids, &mut seen, &mut participant_ids);
+    for actor_id in
+        extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids)
+    {
+        push_member_mention(
+            actor_id.as_str(),
+            &actor_scope.member_ids,
+            &mut seen,
+            &mut participant_ids,
+        );
     }
     Ok(participant_ids)
 }
