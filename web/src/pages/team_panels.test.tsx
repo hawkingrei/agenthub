@@ -5843,6 +5843,58 @@ describe("team panels interactions", () => {
     expect(container.querySelector("textarea")).toBeNull();
   });
 
+  it("TeamMemberAcpPanel suppresses stale active-thread chrome when a stopped snapshot still points at an old session", async () => {
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        memberTitle="Worker agent"
+        selectedMemberSnapshot={buildMemberSnapshot({
+          member_id: "worker-agent",
+          role: "worker",
+          status: "stopped",
+          session_status: "stopped",
+          latest_step: buildStep({ member_id: "worker-agent", remote_task_id: "stale-session-1" }),
+        })}
+        selectedMemberRole="worker"
+        selectedAgentStatus="stopped"
+        selectedSessionId="stale-session-1"
+        memberEvents={[
+          {
+            event_id: 31,
+            agent_id: "worker-agent",
+            session_id: "stale-session-1",
+            seq: "31",
+            ts: 1_700_000_301,
+            stream: "acp",
+            message: JSON.stringify({
+              type: "agent_message",
+              text: "Runtime session fallback works.",
+            }),
+          },
+        ]}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={31}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Agent is stopped");
+    expect(container.textContent).not.toContain("Active thread");
+    expect(container.textContent).not.toContain("Starting session");
+    expect(container.textContent).not.toContain("Syncing");
+    expect(container.querySelector('[data-team-member-acp-activity-strip="true"]')).toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+  });
+
   it("TeamMemberAcpPanel keeps ACP shell visible when the session has no thread events yet", () => {
     saveTeamMemberAcpRenderCache("worker-agent", "runtime-session-1", [
       {
