@@ -1,5 +1,6 @@
 import React from "react";
 import { CloseButton, Menu, TextInput, UnstyledButton } from "@mantine/core";
+import { DeterministicAvatar } from "../components/deterministic_avatar";
 import { TeamDefinitionRecord } from "../api";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
 import { IconButton } from "../ui/primitives";
@@ -825,13 +826,20 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                     >
                       <span className="flex w-full items-center justify-between gap-1.5">
                         <span className="min-w-0 flex items-center gap-1.5">
-                          <span
-                            className={`${TEAM_SIDEBAR_INDICATOR_DOT_CLASS} ${resolveMemberIndicatorClassName(
-                              lifecycle,
-                              workStatus
-                            )}`}
-                            aria-hidden="true"
-                          />
+                          <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center">
+                            <DeterministicAvatar
+                              name={primaryLabel}
+                              stableId={member.member_id}
+                              className="h-5 w-5 border border-black/8 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+                            />
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 ${TEAM_SIDEBAR_INDICATOR_DOT_CLASS} ${resolveMemberIndicatorClassName(
+                                lifecycle,
+                                workStatus
+                              )}`}
+                              aria-hidden="true"
+                            />
+                          </span>
                           <span className="truncate text-[11px] font-medium leading-5">
                             {primaryLabel}
                           </span>

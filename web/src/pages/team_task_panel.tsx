@@ -45,6 +45,7 @@ import {
 } from "./team/mailbox_helpers";
 import { TeamThreadRichText } from "./team/team_thread_rich_text";
 import { isMobileInputViewport } from "../components/input_dock";
+import { DeterministicAvatar } from "../components/deterministic_avatar";
 import {
   TEAM_PANEL_CARD_CLASS,
   TEAM_PANEL_TEXTAREA_CLASS,
@@ -1666,15 +1667,15 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
                         data-team-channel-item="true"
                         data-team-thread-root-active={isActiveThreadRoot ? "true" : "false"}
                       >
-                        <div
+                        <DeterministicAvatar
+                          name={authorLabel}
+                          stableId={item.fromActorId || item.sequence}
                           className={
                             isHumanAuthor
                               ? TEAM_TASK_ACTIVITY_AVATAR_HUMAN_CLASS
                               : TEAM_TASK_ACTIVITY_AVATAR_AGENT_CLASS
                           }
-                        >
-                          {isHumanAuthor ? "U" : authorLabel.charAt(0).toUpperCase()}
-                        </div>
+                        />
                         <div className={contentClassName}>
                           <div className={TEAM_TASK_ACTIVITY_HEADER_ROW_CLASS}>
                             <div className={TEAM_TASK_ACTIVITY_AUTHOR_ROW_CLASS}>

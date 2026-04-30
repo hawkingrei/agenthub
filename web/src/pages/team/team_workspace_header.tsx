@@ -1,6 +1,7 @@
 import React from "react";
 import { HoverCard, Menu, Tooltip } from "@mantine/core";
 import { NOTION_FLOATING_MENU_PROPS } from "../../ui/floating_surfaces";
+import { DeterministicAvatar } from "../../components/deterministic_avatar";
 import { ActionButton } from "../../ui/primitives";
 import { TEAM_SOFT_CHROME_SHADOW_CLASS } from "../../ui/tailwind_classes";
 import { TeamTabsBar } from "../team_tabs_bar";
@@ -191,9 +192,11 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
                       aria-label="Agent"
                       title={selectedAgentIdentityDescription}
                     >
-                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
-                        <i className="bi bi-person text-[11px]" aria-hidden="true" />
-                      </span>
+                      <DeterministicAvatar
+                        name={selectedAgentLabel}
+                        stableId={selectedAgentWorkspaceMemberId}
+                        className="h-5 w-5 border border-sky-200/80"
+                      />
                       <span className="min-w-0 flex items-center gap-1.5">
                         <span className="max-w-[11rem] truncate text-[12px] font-semibold leading-5 text-notion-text">
                           {selectedAgentLabel}
@@ -265,9 +268,11 @@ export const TeamWorkspaceHeader = React.memo(function TeamWorkspaceHeader({
               </Menu>
               <HoverCard.Dropdown className="rounded-2xl border border-black/6 bg-white/95 p-2.5 shadow-[0_12px_40px_rgba(15,23,42,0.12)] backdrop-blur-md">
                 <div className="flex min-w-0 items-start gap-2.5">
-                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-sky-200/80 bg-sky-50 text-sky-700">
-                    <i className="bi bi-person text-[13px]" aria-hidden="true" />
-                  </span>
+                  <DeterministicAvatar
+                    name={selectedAgentLabel}
+                    stableId={selectedAgentWorkspaceMemberId}
+                    className="h-7 w-7 border border-sky-200/80"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[13px] font-semibold text-notion-text">

@@ -536,6 +536,8 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
+    expect(container.querySelector('[data-avatar-seed="Leader Agent::leader-agent"]')).not.toBeNull();
+    expect(container.querySelector('[data-avatar-seed="Worker Agent::worker-agent"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
     await waitForCondition(() => document.body.textContent?.includes("Create Team") ?? false);

@@ -128,6 +128,7 @@ describe("TeamWorkspaceHeader", () => {
     expect(html).toContain("aria-label=\"Agent\"");
     expect(html).toContain("worker-1");
     expect(html).toContain("Own planning and keep the team aligned.");
+    expect(html).toContain('data-avatar-seed="worker-1::member-1"');
     expect(html).toContain("team=abc");
     expect(html).not.toContain("3/3 online");
   });
