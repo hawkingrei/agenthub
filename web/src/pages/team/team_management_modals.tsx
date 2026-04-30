@@ -426,7 +426,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
         </div>
         <p className="mt-2 text-[13px] leading-5 text-ui-text-secondary">
           {roleProfile?.intro ??
-            "Configure the agent identity, skills, and prompt before attaching it to the team."}
+            "Add the agent identity before attaching it to the team."}
         </p>
         <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3 shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -457,7 +457,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
           />
           <p className="mt-2 text-[11px] leading-5 text-ui-text-muted">
             {roleOptions.find((option) => option.value === draft.role)?.description ??
-              "Select the role before editing skills and prompt."}
+              "Select the role before describing how this agent should help."}
           </p>
         </SurfaceCard>
         <div className={`${chrome.setupChecklistClassName} mt-4`}>
@@ -469,17 +469,17 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
               </p>
             </div>
             <div className={chrome.infoStripItemClassName}>
-              <p className={chrome.infoStripLabelClassName}>Skills</p>
+              <p className={chrome.infoStripLabelClassName}>Defaults</p>
               <p className={chrome.infoStripValueClassName}>
                 {roleProfile?.skillsHint ??
-                  "Select required skills first, then add optional helpers."}
+                  "Role skills and system instructions are managed automatically."}
               </p>
             </div>
             <div className={chrome.infoStripItemClassName}>
-              <p className={chrome.infoStripLabelClassName}>Prompt Scope</p>
+              <p className={chrome.infoStripLabelClassName}>Description</p>
               <p className={chrome.infoStripValueClassName}>
                 {roleProfile?.promptHint ??
-                  "Keep the role prompt focused on scope, responsibilities, and delivery rules."}
+                  "Describe the scope, responsibilities, or working style in plain language."}
               </p>
             </div>
           </div>
@@ -488,49 +488,17 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
         <TextInput
           className="mt-4"
           radius="md"
-          label="Identity"
-          placeholder="Short role description exposed on the agent card"
+          label="Description"
+          placeholder="What should this agent help with?"
           value={draft.description}
           onChange={(event) =>
             onPatchDraft({ description: event.currentTarget.value })
           }
         />
-        <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft/70 p-3 shadow-none">
-          <p className={chrome.infoStripLabelClassName}>System Skills</p>
-          <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-            Role-bound Team skills are injected automatically from the system skill path. They are
-            no longer configured per member.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(draft.role === "leader"
-              ? DEFAULT_TEAM_LEADER_SKILLS
-              : DEFAULT_TEAM_WORKER_SKILLS
-            ).map((skill) => (
-              <span
-                key={`${draft.role}-system-skill-${skill}`}
-                className={TEAM_CREATE_SKILL_TAG_SELECTED_CLASS}
-              >
-                {skill}
-              </span>
-            ))}
-          </div>
-        </SurfaceCard>
-        <Textarea
-          className="mt-3"
-          radius="md"
-          label="Prompt"
-          minRows={6}
-          autosize
-          value={draft.prompt}
-          onChange={(event) => onPatchDraft({ prompt: event.currentTarget.value })}
-          styles={{
-            input: {
-              fontFamily: "monospace",
-              fontSize: "12px",
-              lineHeight: "1.5",
-            },
-          }}
-        />
+        <Alert className="mt-4" radius="md" color="blue" variant="light" title="Managed automatically">
+          AgentHub injects the role-specific system prompt and Team skills automatically for the
+          selected role. The default Add Agent flow only asks for identity and scope.
+        </Alert>
       </SurfaceCard>
     </CreateAgentModal>
   );

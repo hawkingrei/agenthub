@@ -32,6 +32,11 @@ export type CreateAgentModalProps = {
   confirmLabel?: string;
   agentPresetLabel?: string;
   agentPresetSummaryLabel?: string;
+  commandSummaryLabel?: string;
+  showCommandSummary?: boolean;
+  runtimeModeSectionLabel?: string;
+  advancedOptionsLabel?: string;
+  advancedOptionsHint?: string;
   teamStyled?: boolean;
   agentName: string;
   setAgentName: (value: string) => void;
@@ -71,6 +76,8 @@ const TEAM_AGENT_MODAL_MUTED_BUTTON_CLASS =
 const TEAM_AGENT_MODAL_INFO_STRIP_CLASS =
   "overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm";
 const TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS =
+  "grid gap-px bg-ui-border sm:grid-cols-[minmax(0,1fr)_170px]";
+const TEAM_AGENT_MODAL_INFO_STRIP_GRID_WITH_COMMAND_CLASS =
   "grid gap-px bg-ui-border sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_170px]";
 const TEAM_AGENT_MODAL_INFO_ITEM_CLASS =
   "min-w-0 bg-ui-surface px-3 py-2.5";
@@ -115,6 +122,11 @@ export function CreateAgentModal({
   confirmLabel = "Create Agent",
   agentPresetLabel = "Agent preset",
   agentPresetSummaryLabel = "Preset",
+  commandSummaryLabel = "Command",
+  showCommandSummary = true,
+  runtimeModeSectionLabel = "Mode",
+  advancedOptionsLabel = "Advanced workspace options",
+  advancedOptionsHint = "Worktree mode and git worktree parameters.",
   teamStyled = false,
   agentName,
   setAgentName,
@@ -166,7 +178,7 @@ export function CreateAgentModal({
     value: entry.id,
     label: entry.label,
   }));
-  const runtimeModeLabel = codeMode ? "Code" : "Chat";
+  const runtimeModeValue = codeMode ? "Code" : "Chat";
 
   React.useEffect(() => {
     if (!isCreateWorktreeMode) {
@@ -202,8 +214,8 @@ export function CreateAgentModal({
       <Stack gap="sm">
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
           <TextInput
-            label="Agent name"
-            placeholder="Agent name"
+            label="Name"
+            placeholder="e.g. Alice"
             value={agentName}
             onChange={(event) => setAgentName(event.currentTarget.value)}
           />
@@ -217,7 +229,7 @@ export function CreateAgentModal({
           />
           {showWorkdirInput ? (
             <TextInput
-              label={isCreateWorktreeMode ? "Workdir (optional override)" : "Workdir"}
+              label={isCreateWorktreeMode ? "Workdir (optional override)" : "Workspace path"}
               placeholder={workdirPlaceholder}
               value={agentWorkdir}
               onChange={(event) => setAgentWorkdir(event.currentTarget.value)}
@@ -225,7 +237,7 @@ export function CreateAgentModal({
           ) : (
             <Stack gap={4}>
               <Text size="sm" fw={500}>
-                Workdir
+                Workspace path
               </Text>
               <Text size="sm" c="dimmed">
                 Auto-create under: {workdirPlaceholder}
@@ -253,10 +265,12 @@ export function CreateAgentModal({
               onClick={() => setShowAdvancedOptions((prev) => !prev)}
               aria-expanded={showAdvancedOptions}
             >
-              {showAdvancedOptions ? "Hide Advanced Options" : "Show Advanced Options"}
+              {showAdvancedOptions
+                ? `Hide ${advancedOptionsLabel}`
+                : `Show ${advancedOptionsLabel}`}
             </Button>
             <Text size="xs" c="dimmed">
-              Worktree mode and git worktree parameters.
+              {advancedOptionsHint}
             </Text>
           </Stack>
         ) : null}
@@ -264,7 +278,7 @@ export function CreateAgentModal({
         {showWorktreeAdvancedOptions && showAdvancedOptions ? (
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <Select
-              label="Worktree mode"
+              label="Workspace mode"
               placeholder="Select worktree mode"
               value={worktreeMode}
               data={worktreeOptions}
@@ -279,7 +293,7 @@ export function CreateAgentModal({
             {worktreeMode === "create_worktree" ||
             worktreeMode === "reuse_worktree" ? (
               <TextInput
-                label="Worktree repo path"
+                label="Repository path"
                 placeholder="Worktree repo path"
                 value={worktreeRepo}
                 onChange={(event) => setWorktreeRepo(event.currentTarget.value)}
@@ -287,8 +301,8 @@ export function CreateAgentModal({
             ) : null}
             {worktreeMode === "create_worktree" ? (
               <TextInput
-                label="Worktree ref"
-                placeholder="Worktree ref (branch or commit)"
+                label="Repository ref"
+                placeholder="Branch or commit"
                 value={worktreeRef}
                 onChange={(event) => setWorktreeRef(event.currentTarget.value)}
               />
@@ -297,23 +311,33 @@ export function CreateAgentModal({
         ) : null}
 
         <div className={TEAM_AGENT_MODAL_INFO_STRIP_CLASS}>
-          <div className={TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS}>
+          <div
+            className={
+              showCommandSummary
+                ? TEAM_AGENT_MODAL_INFO_STRIP_GRID_WITH_COMMAND_CLASS
+                : TEAM_AGENT_MODAL_INFO_STRIP_GRID_CLASS
+            }
+          >
             <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
               <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>
                 {agentPresetSummaryLabel}
               </p>
               <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{preset.label}</p>
             </div>
-            <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
-              <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>Command</p>
-              <p className={`${TEAM_AGENT_MODAL_INFO_VALUE_CLASS} break-all font-mono text-[12px]`}>
-                {commandSummary || "Auto resolve from preset"}
-              </p>
-            </div>
+            {showCommandSummary ? (
+              <div className={TEAM_AGENT_MODAL_INFO_ITEM_CLASS}>
+                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>{commandSummaryLabel}</p>
+                <p
+                  className={`${TEAM_AGENT_MODAL_INFO_VALUE_CLASS} break-all font-mono text-[12px]`}
+                >
+                  {commandSummary || "Auto resolve from preset"}
+                </p>
+              </div>
+            ) : null}
             <div className={`${TEAM_AGENT_MODAL_INFO_ITEM_CLASS} flex items-center justify-between gap-3`}>
               <div className="min-w-0">
-                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>Mode</p>
-                <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{runtimeModeLabel}</p>
+                <p className={TEAM_AGENT_MODAL_INFO_LABEL_CLASS}>{runtimeModeSectionLabel}</p>
+                <p className={TEAM_AGENT_MODAL_INFO_VALUE_CLASS}>{runtimeModeValue}</p>
               </div>
               <Switch
                 aria-label="Toggle code mode"

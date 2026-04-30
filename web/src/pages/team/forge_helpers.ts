@@ -188,22 +188,22 @@ export function resolveTeamMemberRoleProfile(role: TeamMemberRole): TeamMemberRo
   if (role === "leader") {
     return {
       profileLabel: "Leader Profile",
-      intro: "Configure the planning identity that owns delegation, review, and final synthesis.",
+      intro: "Add the planning agent that owns delegation, review, and final synthesis.",
       focus: "Own planning, review, and final synthesis.",
       skillsHint:
-        "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
+        "Role skills and system instructions are injected automatically.",
       promptHint:
-        "Keep the prompt focused on planning policy, delegation rules, and synthesis expectations.",
+        "Describe what this leader should own for the team.",
     };
   }
   return {
     profileLabel: "Worker Profile",
-    intro: "Configure the execution identity that implements scoped work and reports evidence.",
+    intro: "Add the execution agent that implements scoped work and reports evidence.",
     focus: "Deliver implementation, validation, and execution evidence.",
     skillsHint:
-      "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
+      "Role skills and system instructions are injected automatically.",
     promptHint:
-      "Keep the prompt focused on scope boundaries, evidence quality, and handoff discipline.",
+      "Describe what this worker should help with for the team.",
   };
 }
 
