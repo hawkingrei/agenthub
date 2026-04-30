@@ -1084,6 +1084,7 @@ impl TeamManager {
         root_message_id: i64,
         from_actor_id: &str,
         text: &str,
+        mention_actor_ids: &[String],
     ) -> anyhow::Result<super::TeamThreadReplyRecord> {
         let normalized_actor_id = from_actor_id.trim();
         if normalized_actor_id.is_empty() {
@@ -1094,6 +1095,12 @@ impl TeamManager {
             anyhow::bail!("text is required");
         }
 
+        let normalized_mentions = mention_actor_ids
+            .iter()
+            .map(|actor_id| actor_id.trim())
+            .filter(|actor_id| !actor_id.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         let thread = self
             .open_thread(team_id, channel_id, root_message_id)
             .await?;
@@ -1106,6 +1113,7 @@ impl TeamManager {
                 serde_json::json!({
                     "type": "chat_message",
                     "text": normalized_text,
+                    "mention_actor_ids": normalized_mentions,
                     "thread_root_message_id": root_message_id,
                 }),
             )

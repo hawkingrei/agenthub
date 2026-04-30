@@ -95,7 +95,7 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("I can take the follow-up from here.");
     expect(html).toContain("Draft follow-up");
     expect(html).toContain("Reply in thread · # all");
-    expect(html).toContain("Reply stays in this thread · Enter to reply");
+    expect(html).toContain("@name to reply · Enter to reply");
     expect(html).toContain("Reply");
     expect(html).toContain("max-w-[360px]");
     expect(html).toContain("rounded-full");
@@ -257,7 +257,11 @@ describe("TeamThreadPane", () => {
     });
 
     expect(onSendReply).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("Reply stays in this thread · Enter to reply");
+    expect(onSendReply).toHaveBeenCalledWith({
+      text: "Ready to reply",
+      mentionActorIds: [],
+    });
+    expect(container.textContent).toContain("@name to reply · Enter to reply");
   });
 
   it("keeps Enter as newline on mobile-sized viewports", () => {
@@ -302,6 +306,100 @@ describe("TeamThreadPane", () => {
     });
 
     expect(onSendReply).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Reply stays in this thread · Enter adds a new line");
+    expect(container.textContent).toContain("@name to reply · Enter adds a new line");
+  });
+
+  it("lets the thread composer select teammate mentions", () => {
+    const onSendReply = vi.fn();
+    const onReplyDraftChange = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="leader"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="@wo"
+            onReplyDraftChange={onReplyDraftChange}
+            onSendReply={onSendReply}
+            replyBusy={false}
+            mentionCandidates={[
+              {
+                actorId: "worker-agent",
+                label: "Worker Agent",
+                aliases: ["worker-agent"],
+              },
+            ]}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    expect(container.textContent).toContain("Select teammate mention");
+    const option = container.querySelector('[data-team-mention-option="worker-agent"]');
+    expect(option).not.toBeNull();
+    act(() => {
+      option?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    });
+    expect(onReplyDraftChange).toHaveBeenCalledWith("@Worker Agent");
+    expect(onSendReply).not.toHaveBeenCalled();
+  });
+
+  it("canonicalizes teammate mentions before sending a thread reply", () => {
+    const onSendReply = vi.fn();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1440,
+    });
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="leader"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="Ping @worker-agent now"
+            onReplyDraftChange={vi.fn()}
+            onSendReply={onSendReply}
+            replyBusy={false}
+            mentionCandidates={[
+              {
+                actorId: "worker-agent",
+                label: "Worker Agent",
+                aliases: ["worker-agent"],
+              },
+            ]}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(onSendReply).toHaveBeenCalledWith({
+      text: "Ping <at>worker-agent</at> now",
+      mentionActorIds: ["worker-agent"],
+    });
   });
 });

@@ -169,13 +169,16 @@ describe("api request headers", () => {
 
     await api.replyTeamThread("token-1", "team-1", "review", 42, {
       text: "Thread reply",
+      mention_actor_ids: ["worker-1"],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/teams/team-1/channels/review/threads/42/replies");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe(JSON.stringify({ text: "Thread reply" }));
+    expect(init.body).toBe(
+      JSON.stringify({ text: "Thread reply", mention_actor_ids: ["worker-1"] })
+    );
     const headers = new Headers(init.headers);
     expect(headers.get("Authorization")).toBe("Bearer token-1");
     expect(headers.get("Content-Type")).toBe("application/json");

@@ -916,7 +916,7 @@ export const api = {
     teamId: string,
     channelId: string,
     rootMessageId: number,
-    payload: { text: string }
+    payload: { text: string; mention_actor_ids?: string[] }
   ) =>
     apiFetch<TeamThreadReplyRecord>(
       `/api/teams/${encodePathSegment(teamId)}/channels/${encodePathSegment(channelId)}/threads/${rootMessageId}/replies`,

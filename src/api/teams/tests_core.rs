@@ -4902,6 +4902,7 @@ async fn team_thread_reply_api_appends_reply_metadata_for_root_message() {
         Path((team.id.clone(), "all".to_string(), root_message.message_id)),
         Json(ReplyTeamThreadRequest {
             text: "Threaded follow-up".to_string(),
+            mention_actor_ids: vec![],
         }),
     )
     .await
@@ -4917,6 +4918,7 @@ async fn team_thread_reply_api_appends_reply_metadata_for_root_message() {
         json!(root_message.message_id)
     );
     assert_eq!(reply.message.payload["text"], json!("Threaded follow-up"));
+    assert_eq!(reply.message.payload["mention_actor_ids"], json!([]));
 }
 
 #[tokio::test]
@@ -5054,6 +5056,7 @@ async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
         Path((team.id.clone(), "review".to_string(), 17)),
         Json(ReplyTeamThreadRequest {
             text: "Missing channel".to_string(),
+            mention_actor_ids: vec![],
         }),
     )
     .await
@@ -5070,6 +5073,7 @@ async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
         Path((team.id.clone(), "all".to_string(), 99999)),
         Json(ReplyTeamThreadRequest {
             text: "Missing root".to_string(),
+            mention_actor_ids: vec![],
         }),
     )
     .await
@@ -5082,6 +5086,128 @@ async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
         .await
         .expect("shared thread task still exists");
     assert_eq!(shared_task.team_id, team.id);
+}
+
+#[tokio::test]
+async fn team_thread_reply_api_notifies_existing_thread_participants() {
+    let state = build_test_state().await;
+    let headers = auth_headers(&state).await;
+
+    let Json(team) = create_team(
+        State(state.clone()),
+        headers.clone(),
+        Json(CreateTeamRequest {
+            name: "thread-reply-participants-team".to_string(),
+            description: Some("thread participant mailbox forwarding coverage".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"worker-1","role":"worker"},
+                    {"member_id":"worker-2","role":"worker"}
+                ]
+            }),
+        }),
+    )
+    .await
+    .expect("create team");
+
+    let Json(shared_thread) =
+        ensure_team_shared_thread(State(state.clone()), headers.clone(), Path(team.id.clone()))
+            .await
+            .expect("ensure shared thread");
+
+    let root_message = state
+        .teams
+        .append_task_conversation_message(
+            &shared_thread.task.id,
+            "planner",
+            None,
+            "group_chat",
+            json!({
+                "type":"chat_message",
+                "text":"Track the follow-up in this thread"
+            }),
+        )
+        .await
+        .expect("append shared root message");
+
+    state
+        .teams
+        .reply_thread(
+            &team.id,
+            "all",
+            root_message.message_id,
+            "worker-1",
+            "I am already looking into it.",
+            &[],
+        )
+        .await
+        .expect("append worker thread reply");
+
+    let Json(reply) = reply_team_thread(
+        State(state.clone()),
+        headers,
+        Path((team.id.clone(), "all".to_string(), root_message.message_id)),
+        Json(ReplyTeamThreadRequest {
+            text: "Please keep this thread updated.".to_string(),
+            mention_actor_ids: vec!["worker-2".to_string()],
+        }),
+    )
+    .await
+    .expect("reply team thread");
+
+    let mailbox_run = state
+        .teams
+        .get_latest_run_for_task(&team.id, &shared_thread.task.id)
+        .await
+        .expect("load shared thread mailbox run")
+        .expect("shared thread mailbox run should exist");
+
+    let rows = sqlx::query(
+        r#"
+        SELECT from_actor_id, to_actor_id, payload_json
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(&mailbox_run.id)
+    .fetch_all(&state.db)
+    .await
+    .expect("load mailbox rows");
+
+    let recipients = rows
+        .iter()
+        .map(|row| row.get::<String, _>("to_actor_id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        recipients,
+        vec![
+            "planner".to_string(),
+            "worker-1".to_string(),
+            "worker-2".to_string()
+        ]
+    );
+    for row in &rows {
+        assert_eq!(row.get::<String, _>("from_actor_id"), "planner");
+        let forwarded_payload: Value =
+            serde_json::from_str(row.get::<String, _>("payload_json").as_str())
+                .expect("parse forwarded payload");
+        assert_eq!(
+            forwarded_payload["delivery_scope"],
+            Value::from("thread_participants")
+        );
+        assert_eq!(
+            forwarded_payload["task_message_id"],
+            Value::from(reply.message.message_id)
+        );
+        assert_eq!(
+            forwarded_payload["thread_root_message_id"],
+            Value::from(root_message.message_id)
+        );
+        assert_eq!(forwarded_payload["mention_actor_ids"], json!(["worker-2"]));
+    }
 }
 
 #[tokio::test]
