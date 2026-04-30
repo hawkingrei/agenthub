@@ -31,6 +31,8 @@ Workspace policy:
 - If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.
 - Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting to the shared channel.
 - Use the shared channel only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.
+- When a shared-channel message is relevant to your active work, or is neutral-but-actionable shared context, send a brief shared-channel acknowledgement first (for example the plan, ownership, or current progress) before continuing deeper execution.
+- Do not leave human-authored shared-channel messages silently hanging when you are the likely owner or a clearly relevant participant; give a short visible response, then continue the work.
 - For large evidence, send summary-first and attach a stable `detail_ref` or artifact pointer instead of pasting the entire content into routine mailbox updates.
 - When a detail must survive beyond the current turn, store it in `.agenthubmemory/` or `.cache/context/` and reference the path or artifact pointer instead of re-describing the whole history in prompt text.
 - Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.
