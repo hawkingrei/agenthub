@@ -13,9 +13,11 @@ describe("DeterministicAvatar", () => {
 
     expect(first.seed).toBe("Worker Agent::worker-1");
     expect(second.seed).toBe(first.seed);
+    expect(second.variantKey).toBe(first.variantKey);
     expect(second.backgroundColor).toBe(first.backgroundColor);
     expect(second.foregroundColor).toBe(first.foregroundColor);
-    expect(second.cells).toEqual(first.cells);
+    expect(second.borderColor).toBe(first.borderColor);
+    expect(second.accentColor).toBe(first.accentColor);
     expect(resolveDeterministicAvatarSeed("Worker Agent", "worker-1")).toBe(first.seed);
   });
 
@@ -24,10 +26,10 @@ describe("DeterministicAvatar", () => {
     const second = renderDeterministicAvatarModel("Worker Agent", "worker-2");
 
     expect(second.seed).not.toBe(first.seed);
-    expect(second.cells).not.toEqual(first.cells);
+    expect(second.variantKey).not.toBe(first.variantKey);
   });
 
-  it("renders a deterministic SVG avatar shell", () => {
+  it("renders a deterministic object avatar shell", () => {
     const html = renderToStaticMarkup(
       <DeterministicAvatar
         name="Leader"
@@ -37,8 +39,8 @@ describe("DeterministicAvatar", () => {
     );
 
     expect(html).toContain('data-avatar-seed="Leader::leader-agent"');
-    expect(html).toContain("<svg");
+    expect(html).toContain('data-avatar-variant="');
     expect(html).toContain('class="inline-flex shrink-0 overflow-hidden rounded-full h-7 w-7 border border-black/8"');
-    expect(html).toContain('role="presentation"');
+    expect(html).toContain("<svg");
   });
 });
