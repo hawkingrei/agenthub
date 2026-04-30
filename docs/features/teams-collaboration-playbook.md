@@ -161,7 +161,7 @@ Context-size rule:
   context, that directly involved worker may answer in the relevant Team channel immediately instead of only
   relaying the explanation to leader.
 - Leader still owns making sure the original human question receives a visible answer; if a worker
-  only answered upstream or in mailbox, leader should turn that into a channel reply or synthesis
+  only answered to the leader or in mailbox, leader should turn that into a channel reply or synthesis
   update rather than silently absorbing it.
 - Human requests are collected as planning input, not direct task records.
 - Team backend no longer depends on a background step-orchestrator worker to advance routine task
@@ -178,7 +178,7 @@ Mailbox operational priority (suggested):
 - medium: member card/discovery broadcasts
 - low: routine assignment updates
 
-Team-channel discussion rules:
+Team channel discussion rules:
 
 - `# all` is the default Team channel, not the only shared lane.
 - Other Team channels are also shared team lanes; they simply carry narrower work-scoped context.
@@ -187,9 +187,9 @@ Team-channel discussion rules:
   - design or implementation tradeoffs that need discussion
   - dependency or risk updates that require shared awareness
   - scoped facts, progress, and evidence that benefit shared visibility
-- When a human-authored shared-channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
+- When a human-authored Team channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
   - if a worker is the natural owner of the context, the worker should acknowledge first;
-  - otherwise, the leader should provide the acknowledgement when recent shared-channel history does not already contain one;
+  - otherwise, the leader should provide the acknowledgement when recent Team channel history does not already contain one;
   - acknowledgement forms include ownership (`I am taking this`), immediate plan (`I will check PR 68127 and report back`), or current progress (`still verifying CI / patching now`).
 - The acknowledgement should be short and timely; deeper execution and evidence can follow in later updates.
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted

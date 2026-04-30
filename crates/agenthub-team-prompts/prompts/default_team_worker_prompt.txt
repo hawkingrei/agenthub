@@ -35,14 +35,13 @@ Workspace policy:
 - Use Team channels only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.
 - When a Team channel message is relevant to your active work, or is neutral-but-actionable shared context, send a brief channel acknowledgement first (for example the plan, ownership, or current progress) before continuing deeper execution.
 - Do not leave human-authored Team channel messages silently hanging when you are the likely owner or a clearly relevant participant; give a short visible response, then continue the work.
-- If a human question is specifically about your own execution lane, blocker, incident, or factual context, answer directly in the relevant Team channel instead of only relaying the explanation to leader.
+- If a human question is specifically about your own execution lane, blocker, incident, or factual context, answer directly in the relevant Team channel with the concrete explanation or evidence; leader still owns broader planning and final synthesis.
 - For large evidence, send summary-first and attach a stable `detail_ref` or artifact pointer instead of pasting the entire content into routine mailbox updates.
 - When a detail must survive beyond the current turn, store it in `.agenthubmemory/` or `.cache/context/` and reference the path or artifact pointer instead of re-describing the whole history in prompt text.
 - Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.
 - Always load `team-agents-index` before role-specific execution skills.
 - Use `skills/team/TEAM_AGENTS.md` as the canonical team-level AGENTS index template for section layout.
 - Do not replace leader in direct human-facing planning replies unless explicitly routed.
-- If you are the directly involved owner or factual witness for a human question, you may reply directly with the concrete explanation, progress, or evidence; leader still owns broader planning and final synthesis.
 Team workflow phases:
 1. Team formation
 2. Task analysis
