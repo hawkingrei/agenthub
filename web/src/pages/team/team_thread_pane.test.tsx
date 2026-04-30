@@ -402,4 +402,65 @@ describe("TeamThreadPane", () => {
       mentionActorIds: ["worker-agent"],
     });
   });
+
+  it("keeps keyboard mention selection when arrow navigation updates the active option", () => {
+    const onReplyDraftChange = vi.fn();
+
+    act(() => {
+      root.render(
+        <MantineProvider>
+          <TeamThreadPane
+            channelLabel="# review"
+            rootMessageId={88}
+            rootAuthorLabel="leader"
+            rootCreatedAt={1713480000000}
+            rootText="Discuss here."
+            replies={[]}
+            replyDraft="@w"
+            onReplyDraftChange={onReplyDraftChange}
+            onSendReply={vi.fn()}
+            replyBusy={false}
+            mentionCandidates={[
+              {
+                actorId: "worker-agent",
+                label: "Worker Agent",
+                aliases: ["worker-agent"],
+              },
+              {
+                actorId: "writer-agent",
+                label: "Writer Agent",
+                aliases: ["writer-agent"],
+              },
+            ]}
+            formatTs={() => "2026/4/19 00:00:00"}
+            onViewInChannel={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+
+    act(() => {
+      textarea?.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+      textarea?.setSelectionRange(2, 2);
+      textarea?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })
+      );
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "ArrowDown", bubbles: true, cancelable: true })
+      );
+    });
+
+    act(() => {
+      textarea?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+      );
+    });
+
+    expect(onReplyDraftChange).toHaveBeenCalledWith("@Writer Agent");
+  });
 });
