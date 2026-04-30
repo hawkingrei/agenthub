@@ -22,6 +22,7 @@ type UseTeamTaskWorkspaceDataOptions = {
   token: string;
   effectiveSelectedTeamId: string | null;
   routeChannelId: string;
+  routeSelectedTaskId?: string | null;
   selectedChannelTaskId?: string | null;
   selectedConversationTaskId: string;
   selectedConversationDetail: TeamTaskDetailResponse | null;
@@ -50,6 +51,7 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
     token,
     effectiveSelectedTeamId,
     routeChannelId,
+    routeSelectedTaskId,
     selectedChannelTaskId,
     selectedConversationTaskId,
     selectedConversationDetail,
@@ -86,16 +88,20 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
       sharedConversation,
       fallbackTask: selectedConversationDetail?.task ?? null,
     });
-    return resolveChannelLaneConversationTask({
+    const nextConversation = resolveChannelLaneConversationTask({
       routeChannelId,
+      routeSelectedTaskId,
+      selectedConversationTaskId: resolvedSelectedConversationTaskId,
       selectedConversation: resolvedConversation,
       selectedChannelTaskId,
       sharedConversation,
       taskList,
     });
+    return nextConversation;
   }, [
     effectiveSelectedTeamId,
     routeChannelId,
+    routeSelectedTaskId,
     resolvedSelectedConversationTaskId,
     selectedChannelTaskId,
     selectedConversationDetail?.task,

@@ -43,6 +43,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     token: "token-1",
     effectiveSelectedTeamId: "team-1",
     routeChannelId: "all",
+    routeSelectedTaskId: "",
     selectedChannelTaskId: "shared-thread",
     selectedConversationTaskId: "",
     selectedConversationDetail: null,
@@ -248,6 +249,117 @@ describe("useTeamTaskWorkspaceData", () => {
       const snapshot = mounted.getSnapshot();
       expect(snapshot?.selectedConversation?.id).toBe("shared-thread");
       expect(snapshot?.selectedConversationLatestRun?.id).toBe("run-shared");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("preserves an explicit task route on the shared channel lane", async () => {
+    const sharedConversation = {
+      id: "shared-thread",
+      team_id: "team-1",
+      title: "all",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { bootstrap_kind: "shared_thread" },
+      created_at: 1,
+      updated_at: 10,
+    } as const;
+    const explicitTask = {
+      id: "task-2",
+      team_id: "team-1",
+      title: "Implementation thread",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { owner: "leader" },
+      created_at: 2,
+      updated_at: 20,
+    } as const;
+    const explicitDetail: NonNullable<HookParams["selectedConversationDetail"]> = {
+      task: explicitTask,
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "implementation",
+        created_at: 2,
+        updated_at: 2,
+      },
+      latest_run: null,
+    };
+
+    const mounted = await mountHook(
+      createParams({
+        routeChannelId: "all",
+        routeSelectedTaskId: "task-2",
+        selectedChannelTaskId: "shared-thread",
+        selectedConversationTaskId: "task-2",
+        sharedConversation,
+        selectedConversationDetail: explicitDetail,
+        taskList: [sharedConversation, explicitTask],
+      })
+    );
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.selectedConversation?.id).toBe("task-2");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("preserves an explicit task route on a named channel lane", async () => {
+    const explicitTask = {
+      id: "task-2",
+      team_id: "team-1",
+      title: "Implementation thread",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { owner: "leader" },
+      created_at: 2,
+      updated_at: 20,
+    } as const;
+    const explicitDetail: NonNullable<HookParams["selectedConversationDetail"]> = {
+      task: explicitTask,
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "implementation",
+        created_at: 2,
+        updated_at: 2,
+      },
+      latest_run: null,
+    };
+    const channelTask = {
+      id: "task-review",
+      team_id: "team-1",
+      title: "review",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { bootstrap_kind: "team_channel", channel_id: "review" },
+      created_at: 1,
+      updated_at: 10,
+    } as const;
+
+    const mounted = await mountHook(
+      createParams({
+        routeChannelId: "review",
+        routeSelectedTaskId: "task-2",
+        selectedChannelTaskId: "task-review",
+        selectedConversationTaskId: "task-2",
+        selectedConversationDetail: explicitDetail,
+        taskList: [channelTask, explicitTask],
+      })
+    );
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.selectedConversation?.id).toBe("task-2");
     } finally {
       mounted.cleanup();
     }

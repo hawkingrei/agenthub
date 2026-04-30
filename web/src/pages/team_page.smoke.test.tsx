@@ -2059,8 +2059,7 @@ describe("TeamPage smoke render", () => {
             />
           </MantineProvider>
         );
-        await Promise.resolve();
-        await Promise.resolve();
+        await flushEffects();
       });
 
       expect(container.querySelector('[aria-label="Show teams panel"]')).not.toBeNull();
@@ -2487,8 +2486,7 @@ describe("TeamPage smoke render", () => {
 
       await act(async () => {
         taskCardButton?.click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await flushEffects();
       });
 
       const openConversationButton = Array.from(document.body.querySelectorAll("button")).find(
@@ -2498,8 +2496,7 @@ describe("TeamPage smoke render", () => {
 
       await act(async () => {
         openConversationButton?.click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await flushEffects();
       });
 
       expect(window.location.pathname).toBe("/workspace/teams/team-1");
@@ -2611,8 +2608,7 @@ describe("TeamPage smoke render", () => {
             />
           </MantineProvider>
         );
-        await Promise.resolve();
-        await Promise.resolve();
+        await flushEffects();
       });
 
       const lastOptions =

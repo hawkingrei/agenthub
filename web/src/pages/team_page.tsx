@@ -2059,6 +2059,7 @@ export function TeamPage(props: TeamPageProps) {
     token: props.token,
     effectiveSelectedTeamId,
     routeChannelId,
+    routeSelectedTaskId,
     selectedChannelTaskId: selectedChannelRecord?.task_id,
     selectedConversationTaskId,
     selectedConversationDetail,

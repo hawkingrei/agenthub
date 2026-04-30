@@ -643,12 +643,86 @@ describe("team page helpers", () => {
     expect(
       resolveChannelLaneConversationTask({
         routeChannelId: "all",
+        selectedConversationTaskId: "task-stale",
         selectedConversation: staleTask,
         selectedChannelTaskId: "task-all",
         sharedConversation: sharedTask,
         taskList: [sharedTask, staleTask],
       })
     ).toEqual(sharedTask);
+  });
+
+  it("preserves an explicit plain task conversation on a channel lane", () => {
+    const explicitTask = buildTask("task-work", 120, 140, {
+      title: "Investigate regression",
+      status: "in_progress",
+      context: { owner: "leader" },
+    });
+    const channelTask = buildTask("task-review", 110, 130, {
+      title: "review",
+      status: "in_progress",
+      context: { channel_id: "review", bootstrap_kind: "team_channel" },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "review",
+        routeSelectedTaskId: "task-work",
+        selectedConversationTaskId: "task-work",
+        selectedConversation: explicitTask,
+        selectedChannelTaskId: "task-review",
+        sharedConversation: null,
+        taskList: [channelTask, explicitTask],
+      })
+    ).toEqual(explicitTask);
+  });
+
+  it("preserves an explicit channel-scoped task while route canonicalization catches up", () => {
+    const explicitTask = buildTask("task-work", 120, 140, {
+      title: "Review lane task",
+      status: "in_progress",
+      context: { channel_id: "review", bootstrap_kind: "team_channel" },
+    });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "all",
+        routeSelectedTaskId: "task-work",
+        selectedConversationTaskId: "task-work",
+        selectedConversation: explicitTask,
+        selectedChannelTaskId: "task-all",
+        sharedConversation: sharedTask,
+        taskList: [sharedTask, explicitTask],
+      })
+    ).toEqual(explicitTask);
+  });
+
+  it("preserves a locally selected plain task before route state catches up", () => {
+    const explicitTask = buildTask("task-work", 120, 140, {
+      title: "Investigate regression",
+      status: "in_progress",
+      context: { owner: "leader" },
+    });
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+
+    expect(
+      resolveChannelLaneConversationTask({
+        routeChannelId: "all",
+        routeSelectedTaskId: "",
+        selectedConversationTaskId: "task-work",
+        selectedConversation: explicitTask,
+        selectedChannelTaskId: "task-all",
+        sharedConversation: sharedTask,
+        taskList: [sharedTask, explicitTask],
+      })
+    ).toEqual(explicitTask);
   });
 
   it("resolves seen-by coverage from delivered mailbox fan-out", () => {
