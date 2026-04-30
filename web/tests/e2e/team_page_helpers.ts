@@ -141,6 +141,10 @@ export async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
+  const nameLabelPattern = /^(Name|Agent name)$/;
+  const descriptionLabelPattern = /^(Description|Identity)$/;
+  const runtimeLabelPattern = /^(Runtime|Role model)$/;
+  const workspaceLabelPattern = /^(Workspace path|Workdir(?: \(optional override\))?)$/;
   const openButtonLabel = "Add Agent";
   const confirmLabel = "Create Agent";
   const primaryOpenButton = page
@@ -152,7 +156,7 @@ export async function createTeamMemberFromModal(
   const selectionError = page.getByText("Select a team first", { exact: true });
   const dialog = page
     .locator("[role='dialog']")
-    .filter({ has: page.getByLabel("Agent name", { exact: true }) })
+    .filter({ has: page.getByLabel(nameLabelPattern) })
     .last();
   const waitForDialog = async (): Promise<boolean> => {
     try {
@@ -202,14 +206,14 @@ export async function createTeamMemberFromModal(
     }
   }
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Agent name").fill(deriveAgentName(options.identity, options.workdir));
+  await dialog.getByLabel(nameLabelPattern).fill(deriveAgentName(options.identity, options.workdir));
   if (options.identity) {
-    await dialog.getByLabel("Identity").fill(options.identity);
+    await dialog.getByLabel(descriptionLabelPattern).fill(options.identity);
   }
   if (options.model && options.model !== "codex") {
-    await dialog.getByLabel("Role model").selectOption(options.model);
+    await dialog.getByLabel(runtimeLabelPattern).selectOption(options.model);
   }
-  await dialog.getByLabel(/Workdir/).fill(options.workdir);
+  await dialog.getByLabel(workspaceLabelPattern).fill(options.workdir);
   await dialog.getByRole("button", { name: confirmLabel }).click();
   await expect(dialog).toBeHidden();
 }

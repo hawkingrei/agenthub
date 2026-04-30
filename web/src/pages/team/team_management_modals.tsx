@@ -259,8 +259,8 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
             <TextInput
               className="mt-4"
               radius="md"
-              label="Identity"
-              placeholder="Short role description exposed on the agent card"
+              label="Description"
+              placeholder="What should this agent help with?"
               value={draft.description}
               onChange={(event) =>
                 onPatchDraft({ description: event.currentTarget.value })
@@ -497,7 +497,8 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
         />
         <Alert className="mt-4" radius="md" color="blue" variant="light" title="Managed automatically">
           AgentHub injects the role-specific system prompt and Team skills automatically for the
-          selected role. The default Add Agent flow only asks for identity and scope.
+          selected role. The default Add Agent flow only asks for a description and workspace
+          settings.
         </Alert>
       </SurfaceCard>
     </CreateAgentModal>

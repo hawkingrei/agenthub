@@ -3696,7 +3696,7 @@ export function TeamPage(props: TeamPageProps) {
       title: "Add Agent",
       confirmLabel: "Create Agent",
       agentPresetLabel: "Runtime",
-      agentPresetSummaryLabel: "Runtime",
+      agentPresetSummaryLabel: "Preset",
       commandSummaryLabel: "Launch command",
       showCommandSummary: false,
       runtimeModeSectionLabel: "Interaction mode",
