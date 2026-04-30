@@ -37,6 +37,10 @@ function normalizeStatusValue(status?: string | null): string {
   return status?.trim().toLowerCase() || "";
 }
 
+function isActiveMemberStatus(status: string): boolean {
+  return ACTIVE_MEMBER_STATUSES.has(status);
+}
+
 type UseTeamMemberAcpViewModelArgs = {
   developerMode: boolean;
   selectedMemberId: string;
@@ -267,6 +271,9 @@ export function useTeamMemberAcpViewModel({
     normalizeStatusValue(selectedMemberSnapshot?.status) ||
     normalizeStatusValue(selectedMemberSnapshot?.session_status);
   const acpRunStatus = normalizeStatusValue(acpView.runStatus?.status);
+  const hasAuthoritativeStoppedStatus =
+    (Boolean(normalizedAgentStatus) && !isAgentActiveStatus(normalizedAgentStatus)) ||
+    (Boolean(snapshotStatus) && !isActiveMemberStatus(snapshotStatus));
   const memberStatus =
     (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)
       ? normalizedAgentStatus
@@ -277,14 +284,15 @@ export function useTeamMemberAcpViewModel({
   // ACP stream state does not keep the UI in a misleading "starting" mode.
   const isStartingAcpSession = Boolean(
     selectedMemberId.trim() &&
+      !hasAuthoritativeStoppedStatus &&
       !selectedSessionId &&
-      ((snapshotStatus && isAgentActiveStatus(snapshotStatus)) ||
+      ((snapshotStatus && isActiveMemberStatus(snapshotStatus)) ||
         (!snapshotStatus &&
           normalizedAgentStatus &&
           isAgentActiveStatus(normalizedAgentStatus)))
   );
   const thinkingLabel =
-    acpView.thinkingStartTs && ACTIVE_MEMBER_STATUSES.has(snapshotStatus || acpRunStatus)
+    acpView.thinkingStartTs && isActiveMemberStatus(snapshotStatus || acpRunStatus)
     ? `thinking ${Math.max(0, Math.floor(Date.now() / 1000 - acpView.thinkingStartTs))}s`
     : null;
   const memberStatusLabel = thinkingLabel
@@ -379,7 +387,12 @@ export function useTeamMemberAcpViewModel({
     acpView.toolCalls.length,
   ]);
   const activitySummaryItems = React.useMemo<TeamMemberAcpActivityItem[]>(() => {
-    if (!selectedMemberId.trim() || !selectedSessionId || isStartingAcpSession) {
+    if (
+      !selectedMemberId.trim() ||
+      !selectedSessionId ||
+      isStartingAcpSession ||
+      hasAuthoritativeStoppedStatus
+    ) {
       return [];
     }
     const items: TeamMemberAcpActivityItem[] = [];
@@ -419,6 +432,7 @@ export function useTeamMemberAcpViewModel({
   }, [
     acpConversation.conversationSourceItems,
     acpView.toolCalls.length,
+    hasAuthoritativeStoppedStatus,
     isStartingAcpSession,
     memberEventsHasMore,
     memberEventsLoading,
@@ -429,7 +443,7 @@ export function useTeamMemberAcpViewModel({
     if (!selectedMemberId.trim()) {
       return null;
     }
-    if (normalizedAgentStatus && !isAgentActiveStatus(normalizedAgentStatus)) {
+    if (hasAuthoritativeStoppedStatus) {
       return "Agent is stopped";
     }
     if (isStartingAcpSession) {
@@ -447,9 +461,9 @@ export function useTeamMemberAcpViewModel({
     return "Active thread";
   }, [
     acpView.hasAcp,
+    hasAuthoritativeStoppedStatus,
     hasRenderableConversationContent,
     memberEventsLoading,
-    normalizedAgentStatus,
     isStartingAcpSession,
     selectedMemberId,
     selectedSessionId,
