@@ -2714,9 +2714,15 @@ async fn maybe_forward_thread_reply_to_mailbox(
     let Some(mailbox_sender) = resolve_task_mailbox_sender(actor_scope) else {
         return Ok(());
     };
-    let recipient_ids =
-        collect_thread_participant_actor_ids(state, task, actor_scope, root_message_id, message)
-            .await?;
+    let recipient_ids = collect_thread_participant_actor_ids(
+        state,
+        task,
+        actor_scope,
+        root_message_id,
+        mailbox_sender.as_str(),
+        message,
+    )
+    .await?;
     if recipient_ids.is_empty() {
         return Ok(());
     }
@@ -2749,12 +2755,14 @@ async fn collect_thread_participant_actor_ids(
     task: &TeamTaskRecord,
     actor_scope: &TaskActorScope,
     root_message_id: i64,
+    mailbox_sender: &str,
     message: &TeamConversationMessageRecord,
 ) -> Result<Vec<String>, ApiError> {
     let messages =
         query_thread_participant_messages(state, task.id.as_str(), root_message_id).await?;
     let mut participant_ids = Vec::new();
     let mut seen = HashSet::new();
+    seen.insert(mailbox_sender.to_string());
     for candidate_message in messages {
         push_member_mention(
             candidate_message.from_actor_id.as_str(),
@@ -2804,14 +2812,21 @@ async fn query_thread_participant_messages(
             payload_json,
             created_at
         FROM team_conversation_messages
+        WHERE id = ?2
+        UNION ALL
+        SELECT
+            id,
+            conversation_id,
+            task_id,
+            from_actor_id,
+            to_actor_id,
+            route,
+            payload_json,
+            created_at
+        FROM team_conversation_messages
         WHERE task_id = ?1
-          AND (
-            id = ?2
-            OR (
-              route = 'team_thread_reply'
-              AND json_extract(payload_json, '$.thread_root_message_id') = ?2
-            )
-          )
+          AND route = 'team_thread_reply'
+          AND json_extract(payload_json, '$.thread_root_message_id') = ?2
         ORDER BY id ASC
         "#,
     )
@@ -2836,7 +2851,7 @@ fn parse_thread_participant_message_row(
         conversation_id: row.get("conversation_id"),
         task_id: row.get("task_id"),
         from_actor_id: row.get("from_actor_id"),
-        to_actor_id: row.try_get("to_actor_id")?,
+        to_actor_id: row.get::<Option<String>, _>("to_actor_id"),
         route: row.get("route"),
         payload,
         created_at: row.get("created_at"),

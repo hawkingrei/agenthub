@@ -5181,14 +5181,7 @@ async fn team_thread_reply_api_notifies_existing_thread_participants() {
         .iter()
         .map(|row| row.get::<String, _>("to_actor_id"))
         .collect::<Vec<_>>();
-    assert_eq!(
-        recipients,
-        vec![
-            "planner".to_string(),
-            "worker-1".to_string(),
-            "worker-2".to_string()
-        ]
-    );
+    assert_eq!(recipients, vec!["worker-1".to_string(), "worker-2".to_string()]);
     for row in &rows {
         assert_eq!(row.get::<String, _>("from_actor_id"), "planner");
         let forwarded_payload: Value =

@@ -885,6 +885,41 @@ async fn init_db_at_path(db_path: &std::path::Path) -> anyhow::Result<SqlitePool
 
     if let Err(err) = sqlx::query(
         r#"
+        CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_task_route_id
+        ON team_conversation_messages(task_id, route, id);
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_task_route_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_team_conversation_messages_task_route_thread_root_id
+        ON team_conversation_messages(
+            task_id,
+            route,
+            json_extract(payload_json, '$.thread_root_message_id'),
+            id
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        tracing::warn!(
+            "db init: failed to create idx_team_conversation_messages_task_route_thread_root_id: {}",
+            err
+        );
+    }
+
+    if let Err(err) = sqlx::query(
+        r#"
         CREATE INDEX IF NOT EXISTS idx_team_channel_message_replicas_run_channel
         ON team_channel_message_replicas(run_id, channel_id, stored_at DESC);
         "#,
@@ -2902,6 +2937,45 @@ mod tests {
             "unexpected error: {err:?}"
         );
 
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn init_db_creates_team_conversation_task_route_indexes() {
+        let dir = unique_temp_dir("db-team-conversation-task-route-indexes");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let db_path = dir.join("agenthub.db");
+
+        let pool = init_db_at_path(&db_path)
+            .await
+            .expect("init db with team conversation indexes");
+
+        let index_names = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = 'team_conversation_messages'
+              AND name IN (
+                'idx_team_conversation_messages_task_route_id',
+                'idx_team_conversation_messages_task_route_thread_root_id'
+              )
+            ORDER BY name ASC
+            "#,
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("read team conversation task route indexes");
+        assert_eq!(
+            index_names,
+            vec![
+                "idx_team_conversation_messages_task_route_id".to_string(),
+                "idx_team_conversation_messages_task_route_thread_root_id".to_string(),
+            ]
+        );
+
+        pool.close().await;
         let _ = std::fs::remove_file(&db_path);
         let _ = std::fs::remove_dir_all(&dir);
     }
