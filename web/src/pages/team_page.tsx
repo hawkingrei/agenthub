@@ -96,6 +96,7 @@ import {
 } from "./team/forge_helpers";
 import {
   MailboxTemplateKey,
+  type MentionCandidate,
   buildMailboxConversationKey,
   buildMailboxPayloadTemplate,
   countUnreadConversationMessages,
@@ -3132,12 +3133,12 @@ export function TeamPage(props: TeamPageProps) {
     setError,
     teamExecutionBlockedReason,
   ]);
-  const onSendThreadReply = useCallback(async () => {
+  const onSendThreadReply = useCallback(async (payload: { text: string; mentionActorIds: string[] }) => {
     if (!effectiveSelectedTeamId || !routeThreadRootMessageId) {
       setError("Open a thread first");
       return;
     }
-    const text = threadReplyDraft.trim();
+    const text = payload.text.trim();
     if (!text) {
       setError("Thread reply is required");
       return;
@@ -3150,7 +3151,7 @@ export function TeamPage(props: TeamPageProps) {
         effectiveSelectedTeamId,
         selectedChannelItem.id,
         routeThreadRootMessageId,
-        { text }
+        { text, mention_actor_ids: payload.mentionActorIds }
       );
       setThreadReplyDraft("");
       if (typeof EventSource === "undefined") {
@@ -3170,7 +3171,6 @@ export function TeamPage(props: TeamPageProps) {
     selectedConversation?.id,
     setBusy,
     setError,
-    threadReplyDraft,
   ]);
   useEffect(() => {
     setThreadReplyDraft("");
@@ -3266,6 +3266,22 @@ export function TeamPage(props: TeamPageProps) {
         : [],
     [canOpenThreadForSelectedConversation, routeThreadRootMessageId, taskMessages]
   );
+  const threadMentionCandidates = useMemo<MentionCandidate[]>(
+    () =>
+      selectedTeamMemberLiveStates.map((member) => {
+        const actorId = member.member_id.trim();
+        const label =
+          member.agent_name?.trim() ||
+          mailboxDisplayNameByActorId[actorId]?.trim() ||
+          actorId;
+        return {
+          actorId,
+          label,
+          aliases: [actorId],
+        };
+      }),
+    [mailboxDisplayNameByActorId, selectedTeamMemberLiveStates]
+  );
   const buildCurrentThreadlessPath = useCallback(() => {
     if (!effectiveSelectedTeamId) {
       return null;
@@ -3297,6 +3313,7 @@ export function TeamPage(props: TeamPageProps) {
       onReplyDraftChange={setThreadReplyDraft}
       onSendReply={onSendThreadReply}
       replyBusy={busy === "send-thread-reply"}
+      mentionCandidates={threadMentionCandidates}
       formatTs={formatTs}
       onViewInChannel={() => {
         setChannelFocusMessageId(routeThreadRootMessageId);

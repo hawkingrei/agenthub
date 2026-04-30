@@ -5,11 +5,18 @@ import {
   CompactButton,
   ConversationBubble,
   EmptyState,
+  MenuOptionButton,
   SurfaceCard,
   ToolbarRow,
 } from "../../ui/primitives";
 import { DeterministicAvatar } from "../../components/deterministic_avatar";
 import { TeamThreadRichText } from "./team_thread_rich_text";
+import {
+  applyMentionAtTag,
+  canonicalizeMentionDraft,
+  type MentionCandidate,
+  resolveMentionDraftQuery,
+} from "./mailbox_helpers";
 import {
   CONVERSATION_MESSAGE_INLINE_ROW_CLASS,
   TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS,
@@ -44,11 +51,12 @@ type TeamThreadPaneProps = {
   replies: TeamThreadReplyItem[];
   replyDraft: string;
   onReplyDraftChange: (value: string) => void;
-  onSendReply: () => void | Promise<void>;
+  onSendReply: (payload: { text: string; mentionActorIds: string[] }) => void | Promise<void>;
   replyBusy?: boolean;
   formatTs: (ts?: number | null) => string;
   onViewInChannel: () => void;
   onClose: () => void;
+  mentionCandidates?: MentionCandidate[];
 };
 
 const TEAM_THREAD_MESSAGE_ROW_CLASS =
@@ -65,13 +73,6 @@ const TEAM_THREAD_SECTION_ROW_CLASS =
 function formatThreadReplyCount(count: number): string {
   return count === 1 ? "1 reply" : `${count} replies`;
 }
-
-function formatThreadComposerHelperText(sendOnEnter: boolean): string {
-  return sendOnEnter
-    ? "Reply stays in this thread · Enter to reply"
-    : "Reply stays in this thread · Enter adds a new line";
-}
-
 function formatThreadSourceSummary(
   rootAuthorLabel: string | null,
   rootMessageId: number | null
@@ -108,8 +109,12 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
   formatTs,
   onViewInChannel,
   onClose,
+  mentionCandidates = [],
 }: TeamThreadPaneProps) {
   const hasSelectedRoot = rootMessageId != null;
+  const replyTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [activeMention, setActiveMention] = React.useState<ReturnType<typeof resolveMentionDraftQuery>>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = React.useState(0);
   const [sendOnEnter, setSendOnEnter] = React.useState(() =>
     typeof window === "undefined" ? true : !isMobileInputViewport(window.innerWidth)
   );
@@ -156,6 +161,84 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+  const filteredMentionCandidates = React.useMemo(() => {
+    if (!activeMention) {
+      return [];
+    }
+    const keyword = activeMention.keyword.trim().toLowerCase();
+    return mentionCandidates
+      .filter((candidate) =>
+        keyword.length === 0
+          ? true
+          : [candidate.label, candidate.actorId, ...candidate.aliases].some((value) =>
+              value.toLowerCase().startsWith(keyword)
+            )
+      )
+      .slice(0, 8);
+  }, [activeMention, mentionCandidates]);
+  const mentionQueryMatches = React.useCallback(
+    (
+      left: ReturnType<typeof resolveMentionDraftQuery>,
+      right: ReturnType<typeof resolveMentionDraftQuery>
+    ) =>
+      left?.start === right?.start &&
+      left?.end === right?.end &&
+      left?.keyword === right?.keyword,
+    []
+  );
+  const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
+    if (cursor === null || Number.isNaN(cursor)) {
+      setActiveMention(null);
+      setActiveMentionIndex(0);
+      return;
+    }
+    const next = resolveMentionDraftQuery(draft, cursor);
+    setActiveMention((prev) => {
+      if (mentionQueryMatches(prev, next)) {
+        return prev;
+      }
+      setActiveMentionIndex(0);
+      return next;
+    });
+  }, [mentionQueryMatches]);
+  React.useEffect(() => {
+    const textarea = replyTextareaRef.current;
+    const cursor =
+      textarea && document.activeElement === textarea
+        ? textarea.selectionStart
+        : replyDraft.length;
+    updateMentionQuery(replyDraft, cursor);
+  }, [replyDraft, updateMentionQuery]);
+  const applyMentionSelection = React.useCallback(
+    (candidate: MentionCandidate) => {
+      if (!activeMention) {
+        return;
+      }
+      const applied = applyMentionAtTag(replyDraft, activeMention, candidate.label);
+      onReplyDraftChange(applied.text);
+      setActiveMention(null);
+      setActiveMentionIndex(0);
+      requestAnimationFrame(() => {
+        const textarea = replyTextareaRef.current;
+        if (!textarea) {
+          return;
+        }
+        textarea.focus();
+        textarea.setSelectionRange(applied.cursor, applied.cursor);
+      });
+    },
+    [activeMention, onReplyDraftChange, replyDraft]
+  );
+  const sendCurrentReply = React.useCallback(() => {
+    const normalizedDraft = canonicalizeMentionDraft(replyDraft, mentionCandidates);
+    if (!normalizedDraft.text.trim()) {
+      return;
+    }
+    void onSendReply({
+      text: normalizedDraft.text,
+      mentionActorIds: normalizedDraft.mentionActorIds,
+    });
+  }, [mentionCandidates, onSendReply, replyDraft]);
   return (
     <SurfaceCard
       className="flex min-h-0 w-full max-w-[360px] shrink-0 flex-col overflow-hidden border-notion-border/80"
@@ -307,12 +390,58 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             </div>
             <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
               <textarea
+                ref={replyTextareaRef}
                 className={`${TEAM_PANEL_TEXTAREA_CLASS} min-h-[40px] flex-1 border-transparent px-0 py-0 text-[13px] leading-5 shadow-none focus:border-transparent focus:ring-0`}
                 rows={2}
                 placeholder={`Reply in thread · ${channelLabel}`}
                 value={replyDraft}
-                onChange={(event) => onReplyDraftChange(event.currentTarget.value)}
+                onChange={(event) => {
+                  const nextDraft = event.currentTarget.value;
+                  onReplyDraftChange(nextDraft);
+                  updateMentionQuery(nextDraft, event.currentTarget.selectionStart);
+                }}
+                onClick={(event) =>
+                  updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+                }
+                onKeyUp={(event) =>
+                  updateMentionQuery(event.currentTarget.value, event.currentTarget.selectionStart)
+                }
+                onBlur={() => {
+                  setTimeout(() => {
+                    setActiveMention(null);
+                    setActiveMentionIndex(0);
+                  }, 0);
+                }}
                 onKeyDown={(event) => {
+                  if (activeMention && filteredMentionCandidates.length > 0) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setActiveMentionIndex((prev) => (prev + 1) % filteredMentionCandidates.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveMentionIndex((prev) =>
+                        prev === 0 ? filteredMentionCandidates.length - 1 : prev - 1
+                      );
+                      return;
+                    }
+                    if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
+                      event.preventDefault();
+                      const selected =
+                        filteredMentionCandidates[activeMentionIndex] ?? filteredMentionCandidates[0];
+                      if (selected) {
+                        applyMentionSelection(selected);
+                      }
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setActiveMention(null);
+                      setActiveMentionIndex(0);
+                      return;
+                    }
+                  }
                   if (
                     event.key === "Enter" &&
                     !event.shiftKey &&
@@ -324,22 +453,49 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
                     replyDraft.trim().length > 0
                   ) {
                     event.preventDefault();
-                    void onSendReply();
+                    sendCurrentReply();
                   }
                 }}
               />
               <ActionButton
                 type="button"
                 className={TEAM_MESSAGE_COMPOSER_SEND_BUTTON_CLASS}
-                onClick={() => void onSendReply()}
+                onClick={() => {
+                  sendCurrentReply();
+                }}
                 disabled={replyBusy || replyDraft.trim().length === 0}
               >
                 {replyBusy ? "Replying..." : "Reply"}
               </ActionButton>
             </div>
+            {activeMention && filteredMentionCandidates.length > 0 && (
+              <div className="mt-2 overflow-hidden rounded-xl border border-ui-border bg-ui-surface shadow-sm">
+                <div className="px-3 py-1 text-xs text-ui-text-muted">
+                  Select teammate mention (`@` without selection stays plain text)
+                </div>
+                <div className="max-h-44 overflow-auto py-1">
+                  {filteredMentionCandidates.map((candidate, index) => (
+                    <MenuOptionButton
+                      key={candidate.actorId}
+                      active={index === activeMentionIndex}
+                      data-team-mention-option={candidate.actorId}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applyMentionSelection(candidate);
+                      }}
+                    >
+                      <span>{candidate.label}</span>
+                      <span className="text-[11px] text-ui-text-muted">{`@${candidate.label}`}</span>
+                    </MenuOptionButton>
+                  ))}
+                </div>
+              </div>
+            )}
             <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
               <span className={TEAM_MESSAGE_COMPOSER_HELPER_TEXT_CLASS}>
-                {formatThreadComposerHelperText(sendOnEnter)}
+                {sendOnEnter
+                  ? "@name to reply · Enter to reply"
+                  : "@name to reply · Enter adds a new line"}
               </span>
             </ToolbarRow>
           </div>

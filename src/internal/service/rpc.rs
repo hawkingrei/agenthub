@@ -677,6 +677,7 @@ impl TeamInternalControl for TeamInternalControlService {
                 payload.root_message_id,
                 actor_id,
                 text,
+                &[],
             )
             .await
             .map_err(map_manager_error)?;

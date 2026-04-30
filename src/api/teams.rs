@@ -22,9 +22,11 @@ use axum::{
     http::HeaderMap,
     routing::{delete, get, post, put},
 };
+use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::api::authz::require_user;
@@ -199,6 +201,8 @@ pub struct ListTeamTaskMessagesQuery {
 #[derive(Debug, Deserialize)]
 pub struct ReplyTeamThreadRequest {
     pub text: String,
+    #[serde(default)]
+    pub mention_actor_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1019,6 +1023,7 @@ async fn reply_team_thread(
 ) -> Result<Json<TeamThreadReplyRecord>, ApiError> {
     let user = require_user(&headers, &state).await?;
     let team = load_team_for_user(&state, &team_id, &user).await?;
+    let actor_scope = parse_task_actor_scope(&team.spec, &user)?;
     if root_message_id <= 0 {
         return Err(ApiError::bad_request("root_message_id must be positive"));
     }
@@ -1026,6 +1031,10 @@ async fn reply_team_thread(
     if text.is_empty() {
         return Err(ApiError::bad_request("text is required"));
     }
+    let mention_actor_ids = normalize_thread_reply_mention_actor_ids(
+        payload.mention_actor_ids,
+        &actor_scope.member_ids,
+    );
     let reply = state
         .teams
         .reply_thread(
@@ -1034,9 +1043,34 @@ async fn reply_team_thread(
             root_message_id,
             &canonical_user_actor_id(&user),
             text,
+            mention_actor_ids.as_slice(),
         )
         .await
         .map_err(map_reply_thread_error)?;
+    let task = state
+        .teams
+        .get_task(&reply.thread.task_id)
+        .await
+        .map_err(|err| map_not_found_error(err, "task not found"))?;
+    if let Err(err) = maybe_forward_thread_reply_to_mailbox(
+        &state,
+        &team,
+        &task,
+        &actor_scope,
+        root_message_id,
+        &reply.message,
+    )
+    .await
+    {
+        tracing::warn!(
+            team_id = %team.id,
+            task_id = %reply.thread.task_id,
+            message_id = reply.message.message_id,
+            root_message_id,
+            "thread reply mailbox forwarding failed: {:?}",
+            err
+        );
+    }
     Ok(Json(reply))
 }
 
@@ -2652,46 +2686,239 @@ async fn maybe_forward_task_message_to_mailbox(
     else {
         return Ok(());
     };
-    for to_actor_id in recipient_ids {
-        let forwarded_payload = build_task_mailbox_forward_payload(
-            &message.payload,
-            message,
-            mention_ids.as_slice(),
-            delivery_scope,
+    let forwarded_payload = build_task_mailbox_forward_payload(
+        &message.payload,
+        message,
+        mention_ids.as_slice(),
+        delivery_scope,
+    );
+    forward_mailbox_payload_to_actor_ids(
+        state,
+        &run,
+        mailbox_sender.as_str(),
+        recipient_ids,
+        forwarded_payload,
+        format!("task:{}:{}", message.task_id, message.message_id),
+    )
+    .await
+}
+
+async fn maybe_forward_thread_reply_to_mailbox(
+    state: &AppState,
+    team: &TeamDefinitionRecord,
+    task: &TeamTaskRecord,
+    actor_scope: &TaskActorScope,
+    root_message_id: i64,
+    message: &TeamConversationMessageRecord,
+) -> Result<(), ApiError> {
+    let Some(mailbox_sender) = resolve_task_mailbox_sender(actor_scope) else {
+        return Ok(());
+    };
+    let recipient_ids = collect_thread_participant_actor_ids(
+        state,
+        task,
+        actor_scope,
+        root_message_id,
+        mailbox_sender.as_str(),
+        message,
+    )
+    .await?;
+    if recipient_ids.is_empty() {
+        return Ok(());
+    }
+    let Some(run) =
+        resolve_task_message_mailbox_run(state, team, task, &message.conversation_id).await?
+    else {
+        return Ok(());
+    };
+    let mention_ids =
+        extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids);
+    let forwarded_payload = build_task_mailbox_forward_payload(
+        &message.payload,
+        message,
+        mention_ids.as_slice(),
+        "thread_participants",
+    );
+    forward_mailbox_payload_to_actor_ids(
+        state,
+        &run,
+        mailbox_sender.as_str(),
+        recipient_ids,
+        forwarded_payload,
+        format!("thread:{}:{}", message.task_id, message.message_id),
+    )
+    .await
+}
+
+async fn collect_thread_participant_actor_ids(
+    state: &AppState,
+    task: &TeamTaskRecord,
+    actor_scope: &TaskActorScope,
+    root_message_id: i64,
+    mailbox_sender: &str,
+    message: &TeamConversationMessageRecord,
+) -> Result<Vec<String>, ApiError> {
+    let messages =
+        query_thread_participant_messages(state, task.id.as_str(), root_message_id).await?;
+    let mut participant_ids = Vec::new();
+    let mut seen = HashSet::new();
+    seen.insert(mailbox_sender.to_string());
+    for candidate_message in messages {
+        push_member_mention(
+            candidate_message.from_actor_id.as_str(),
+            &actor_scope.member_ids,
+            &mut seen,
+            &mut participant_ids,
         );
-        let send_result = state
-            .teams
-            .actor_mailbox_service()
-            .actor_send(ActorSendRequest {
-                run_id: run.id.clone(),
-                from_actor_id: mailbox_sender.clone(),
-                from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-                to_actor_id: Some(to_actor_id.clone()),
-                channel_id: None,
-                to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-                channel: Some("default".to_string()),
-                transport: Some(TeamActorMessageTransport::Local),
-                route: None,
-                payload: forwarded_payload,
-                idempotency_key: Some(format!(
-                    "task:{}:{}:{}",
-                    message.task_id, message.message_id, to_actor_id
-                )),
-            })
-            .await
-            .map_err(map_actor_service_api_error)?;
-        if let Err(err) =
-            maybe_notify_actor_new_mailbox_message_type(state, &run.id, &send_result).await
-        {
-            tracing::warn!(
-                run_id = %run.id,
-                to_actor_id = %to_actor_id,
-                message_id = send_result.message_id,
-                "task mailbox type hint notify failed: {}",
-                err
+        for actor_id in extract_task_message_mention_actor_ids(
+            &candidate_message.payload,
+            &actor_scope.member_ids,
+        ) {
+            push_member_mention(
+                actor_id.as_str(),
+                &actor_scope.member_ids,
+                &mut seen,
+                &mut participant_ids,
             );
         }
     }
+    for actor_id in
+        extract_task_message_mention_actor_ids(&message.payload, &actor_scope.member_ids)
+    {
+        push_member_mention(
+            actor_id.as_str(),
+            &actor_scope.member_ids,
+            &mut seen,
+            &mut participant_ids,
+        );
+    }
+    Ok(participant_ids)
+}
+
+async fn query_thread_participant_messages(
+    state: &AppState,
+    task_id: &str,
+    root_message_id: i64,
+) -> Result<Vec<TeamConversationMessageRecord>, ApiError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            id,
+            conversation_id,
+            task_id,
+            from_actor_id,
+            to_actor_id,
+            route,
+            payload_json,
+            created_at
+        FROM team_conversation_messages
+        WHERE id = ?2
+        UNION ALL
+        SELECT
+            id,
+            conversation_id,
+            task_id,
+            from_actor_id,
+            to_actor_id,
+            route,
+            payload_json,
+            created_at
+        FROM team_conversation_messages
+        WHERE task_id = ?1
+          AND route = 'team_thread_reply'
+          AND json_extract(payload_json, '$.thread_root_message_id') = ?2
+        ORDER BY id ASC
+        "#,
+    )
+    .bind(task_id)
+    .bind(root_message_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| map_team_internal_error(err.into()))?;
+    rows.iter()
+        .map(parse_thread_participant_message_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(map_team_internal_error)
+}
+
+fn parse_thread_participant_message_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> anyhow::Result<TeamConversationMessageRecord> {
+    let payload_json: String = row.get("payload_json");
+    let payload: Value = serde_json::from_str(&payload_json)?;
+    Ok(TeamConversationMessageRecord {
+        message_id: row.get("id"),
+        conversation_id: row.get("conversation_id"),
+        task_id: row.get("task_id"),
+        from_actor_id: row.get("from_actor_id"),
+        to_actor_id: row.get::<Option<String>, _>("to_actor_id"),
+        route: row.get("route"),
+        payload,
+        created_at: row.get("created_at"),
+    })
+}
+
+fn normalize_thread_reply_mention_actor_ids(
+    mention_actor_ids: Vec<String>,
+    member_ids: &HashSet<String>,
+) -> Vec<String> {
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for actor_id in mention_actor_ids {
+        push_member_mention(actor_id.as_str(), member_ids, &mut seen, &mut normalized);
+    }
+    normalized
+}
+
+async fn forward_mailbox_payload_to_actor_ids(
+    state: &AppState,
+    run: &TeamRunRecord,
+    from_actor_id: &str,
+    recipient_ids: Vec<String>,
+    forwarded_payload: Value,
+    idempotency_prefix: String,
+) -> Result<(), ApiError> {
+    let actor_mailbox_service = state.teams.actor_mailbox_service();
+    let run_id = run.id.clone();
+    let sender = from_actor_id.to_string();
+    try_join_all(recipient_ids.into_iter().map(|to_actor_id| {
+        let run_id = run_id.clone();
+        let sender = sender.clone();
+        let payload = forwarded_payload.clone();
+        let actor_mailbox_service = actor_mailbox_service.clone();
+        let idempotency_key = format!("{idempotency_prefix}:{to_actor_id}");
+        async move {
+            let send_result = actor_mailbox_service
+                .actor_send(ActorSendRequest {
+                    run_id: run_id.clone(),
+                    from_actor_id: sender,
+                    from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                    to_actor_id: Some(to_actor_id.clone()),
+                    channel_id: None,
+                    to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+                    channel: Some("default".to_string()),
+                    transport: Some(TeamActorMessageTransport::Local),
+                    route: None,
+                    payload,
+                    idempotency_key: Some(idempotency_key),
+                })
+                .await
+                .map_err(map_actor_service_api_error)?;
+            if let Err(err) =
+                maybe_notify_actor_new_mailbox_message_type(state, &run_id, &send_result).await
+            {
+                tracing::warn!(
+                    run_id = %run_id,
+                    to_actor_id = %to_actor_id,
+                    message_id = send_result.message_id,
+                    "mailbox type hint notify failed: {}",
+                    err
+                );
+            }
+            Ok::<(), ApiError>(())
+        }
+    }))
+    .await?;
     Ok(())
 }
 

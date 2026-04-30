@@ -2226,6 +2226,7 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
             review_root_message_id,
             "worker",
             "This should stay in the review thread.",
+            &[],
         )
         .await
         .expect("reply to review thread");
