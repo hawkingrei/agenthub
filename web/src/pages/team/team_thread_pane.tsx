@@ -165,7 +165,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
-              Thread
+              Reply in thread
             </div>
             <Badge
               tone="outline"
@@ -262,7 +262,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             </div>
             <div className={TEAM_THREAD_SECTION_ROW_CLASS}>
               <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-notion-text-muted">
-                Thread replies
+                Replies
               </div>
               <span className="text-[10px] text-notion-text-muted">{replyCountLabel}</span>
             </div>

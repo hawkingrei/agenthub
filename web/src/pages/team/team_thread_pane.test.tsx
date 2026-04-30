@@ -73,7 +73,7 @@ describe("TeamThreadPane", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Thread");
+    expect(html).toContain("Reply in thread");
     expect(html).toContain("# all");
     expect(html).toContain("1 reply");
     expect(html).toContain("Focused replies stay anchored to the source message.");
@@ -83,12 +83,12 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("View in channel");
     expect(html).toContain("Close thread");
     expect(html).toContain("Original");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain("leader");
     expect(html).toContain('data-avatar-seed="leader::leader"');
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain("worker-agent");
     expect(html).toContain('data-avatar-seed="worker-agent::worker-agent"');
     expect(html).toContain("#43");
@@ -153,7 +153,7 @@ describe("TeamThreadPane", () => {
     );
 
     expect(html).toContain("From leader · #88");
-    expect(html).toContain("Thread replies");
+    expect(html).toContain("Replies");
     expect(html).toContain(
       "This is a long source message that should stay fully visible in the original root bubble while the compact source str..."
     );
