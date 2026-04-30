@@ -12,6 +12,7 @@ import {
   isCurrentTeamScopedRequest,
   listTeamWorkspaceTasks,
   resolveChannelLaneConversationTask,
+  resolveSelectedConversationLatestRun,
   resolveSelectedConversationTask,
   resolveSelectedTeamTask,
   shouldClearSelectedConversationTask,
@@ -110,16 +111,12 @@ export function useTeamTaskWorkspaceData(options: UseTeamTaskWorkspaceDataOption
   ]);
 
   const selectedConversationLatestRun = useMemo(() => {
-    if (!selectedConversation) {
-      return null;
-    }
-    if (sharedConversation?.id === selectedConversation.id) {
-      return sharedConversationLatestRun;
-    }
-    if (selectedConversationDetail?.task?.id === selectedConversation.id) {
-      return selectedConversationDetail.latest_run ?? null;
-    }
-    return null;
+    return resolveSelectedConversationLatestRun({
+      selectedConversation,
+      selectedConversationDetail,
+      sharedConversation,
+      sharedConversationLatestRun,
+    });
   }, [
     selectedConversation,
     selectedConversationDetail,

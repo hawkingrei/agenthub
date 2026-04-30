@@ -405,6 +405,34 @@ export function resolveSelectedAgentWorkspaceSessionId(
   return snapshotSessionId?.trim() || null;
 }
 
+export function resolveNextSelectedAgentWorkspaceStickySession(
+  previous: { memberId: string; sessionId: string | null },
+  memberId: string,
+  resolvedSessionId: string | null
+): { memberId: string; sessionId: string | null } {
+  const normalizedMemberId = memberId.trim();
+  const normalizedResolvedSessionId = resolvedSessionId?.trim() || null;
+  if (!normalizedMemberId) {
+    if (!previous.memberId && previous.sessionId == null) {
+      return previous;
+    }
+    return { memberId: "", sessionId: null };
+  }
+  if (previous.memberId !== normalizedMemberId) {
+    return {
+      memberId: normalizedMemberId,
+      sessionId: normalizedResolvedSessionId,
+    };
+  }
+  if (!normalizedResolvedSessionId || previous.sessionId === normalizedResolvedSessionId) {
+    return previous;
+  }
+  return {
+    memberId: normalizedMemberId,
+    sessionId: normalizedResolvedSessionId,
+  };
+}
+
 export function buildTeamDetailPath(teamId: string): string {
   return buildCanonicalTeamDetailPath(teamId);
 }
@@ -1453,14 +1481,14 @@ export function TeamPage(props: TeamPageProps) {
     }
     return teamMemberAgentsById[memberId] ?? agents.find((agent) => agent.id === memberId) ?? null;
   }, [agents, selectedAgentWorkspaceMemberId, teamMemberAgentsById]);
-  const selectedAgentWorkspaceSessionRef = useRef<{
+  const [selectedAgentWorkspaceStickySession, setSelectedAgentWorkspaceStickySession] = useState<{
     memberId: string;
     sessionId: string | null;
   }>({ memberId: "", sessionId: null });
-  const selectedAgentWorkspaceSessionId = useMemo(() => {
+  const selectedAgentWorkspaceResolvedSessionId = useMemo(() => {
     const previousSessionId =
-      selectedAgentWorkspaceSessionRef.current.memberId === selectedAgentWorkspaceMemberId
-        ? selectedAgentWorkspaceSessionRef.current.sessionId
+      selectedAgentWorkspaceStickySession.memberId === selectedAgentWorkspaceMemberId
+        ? selectedAgentWorkspaceStickySession.sessionId
         : null;
     return resolveSelectedAgentWorkspaceSessionId(
       selectedAgentWorkspaceSnapshot?.latest_step,
@@ -1473,13 +1501,18 @@ export function TeamPage(props: TeamPageProps) {
     selectedAgentWorkspaceMemberId,
     selectedAgentWorkspaceRuntimeMember,
     selectedAgentWorkspaceSnapshot,
+    selectedAgentWorkspaceStickySession,
   ]);
+  const selectedAgentWorkspaceSessionId = selectedAgentWorkspaceResolvedSessionId;
   useEffect(() => {
-    selectedAgentWorkspaceSessionRef.current = {
-      memberId: selectedAgentWorkspaceMemberId,
-      sessionId: selectedAgentWorkspaceSessionId,
-    };
-  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceSessionId]);
+    setSelectedAgentWorkspaceStickySession((previous) =>
+      resolveNextSelectedAgentWorkspaceStickySession(
+        previous,
+        selectedAgentWorkspaceMemberId,
+        selectedAgentWorkspaceResolvedSessionId
+      )
+    );
+  }, [selectedAgentWorkspaceMemberId, selectedAgentWorkspaceResolvedSessionId]);
   const memberTargetNodeById = useMemo<Record<string, string | null>>(() => {
     const entries = Object.entries(teamMemberAgentsById).map(([memberId, agent]) => [
       memberId,

@@ -15,6 +15,7 @@ import {
   resolveSelectedAgentWorkspaceLabel,
   resolveSelectedAgentWorkspaceMemberId,
   resolveChannelLaneConversationTask,
+  resolveSelectedConversationLatestRun,
   resolveSelectedConversationTask,
   buildAgentLabel,
   DEFAULT_TEAM_THREAD_TITLE,
@@ -650,6 +651,59 @@ describe("team page helpers", () => {
         taskList: [sharedTask, staleTask],
       })
     ).toEqual(sharedTask);
+  });
+
+  it("resolves the latest run from the active selected conversation", () => {
+    const sharedTask = buildTask("task-all", 100, 120, {
+      title: DEFAULT_TEAM_THREAD_TITLE,
+      context: { bootstrap_kind: DEFAULT_TEAM_THREAD_BOOTSTRAP_KIND },
+    });
+    const explicitTask = buildTask("task-work", 120, 140, {
+      title: "Investigate regression",
+      status: "in_progress",
+      context: { owner: "leader" },
+    });
+    const sharedRun = buildRun("run-shared", 10, "working");
+    const explicitRun = buildRun("run-explicit", 20, "working");
+
+    expect(
+      resolveSelectedConversationLatestRun({
+        selectedConversation: sharedTask,
+        selectedConversationDetail: null,
+        sharedConversation: sharedTask,
+        sharedConversationLatestRun: sharedRun,
+      })?.id
+    ).toBe("run-shared");
+
+    expect(
+      resolveSelectedConversationLatestRun({
+        selectedConversation: explicitTask,
+        selectedConversationDetail: {
+          task: explicitTask,
+          conversation: {
+            id: "conv-task-work",
+            team_id: "team-1",
+            task_id: "task-work",
+            mode: "group_chat",
+            topic: "implementation",
+            created_at: 1,
+            updated_at: 1,
+          },
+          latest_run: explicitRun,
+        },
+        sharedConversation: sharedTask,
+        sharedConversationLatestRun: sharedRun,
+      })?.id
+    ).toBe("run-explicit");
+
+    expect(
+      resolveSelectedConversationLatestRun({
+        selectedConversation: explicitTask,
+        selectedConversationDetail: null,
+        sharedConversation: sharedTask,
+        sharedConversationLatestRun: sharedRun,
+      })
+    ).toBeNull();
   });
 
   it("preserves an explicit plain task conversation on a channel lane", () => {

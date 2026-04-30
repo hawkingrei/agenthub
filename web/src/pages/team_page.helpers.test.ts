@@ -6,6 +6,7 @@ import {
   buildTeamWorkspacePath,
   formatTeamRuntimeActionSummary,
   parseTeamAgentInputSessionMismatch,
+  resolveNextSelectedAgentWorkspaceStickySession,
   resolveChannelRouteTaskId,
   resolveRouteScopedConversationTaskSelection,
   resolveSelectedAgentWorkspaceSessionId,
@@ -261,6 +262,28 @@ describe("team_page helpers", () => {
       )
     ).toBeNull();
     expect(resolveSelectedAgentWorkspaceSessionId(null, null, null)).toBeNull();
+  });
+
+  it("updates sticky ACP session state declaratively across member changes", () => {
+    const initial = { memberId: "", sessionId: null as string | null };
+    const workerOne = resolveNextSelectedAgentWorkspaceStickySession(
+      initial,
+      "worker-1",
+      "session-1"
+    );
+    expect(workerOne).toEqual({ memberId: "worker-1", sessionId: "session-1" });
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "worker-1", null)
+    ).toBe(workerOne);
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "worker-2", null)
+    ).toEqual({ memberId: "worker-2", sessionId: null });
+
+    expect(
+      resolveNextSelectedAgentWorkspaceStickySession(workerOne, "", null)
+    ).toEqual({ memberId: "", sessionId: null });
   });
 
   it("extracts positive thread root message ids from conversation payloads", () => {

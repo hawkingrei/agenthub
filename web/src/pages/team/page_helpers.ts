@@ -8,6 +8,7 @@ import type {
   TeamRuntimeRecord,
   TeamRunEventRecord,
   TeamRunRecord,
+  TeamTaskDetailResponse,
   TeamTaskRecord,
 } from "../../api";
 import type { StatusTone } from "../../components/status_badge";
@@ -632,6 +633,29 @@ export function resolveSelectedConversationTask({
     fallbackTask ??
     null
   );
+}
+
+export function resolveSelectedConversationLatestRun({
+  selectedConversation,
+  selectedConversationDetail,
+  sharedConversation,
+  sharedConversationLatestRun,
+}: {
+  selectedConversation: TeamTaskRecord | null;
+  selectedConversationDetail: TeamTaskDetailResponse | null;
+  sharedConversation: TeamTaskRecord | null;
+  sharedConversationLatestRun: TeamRunRecord | null;
+}): TeamRunRecord | null {
+  if (!selectedConversation) {
+    return null;
+  }
+  if (sharedConversation?.id === selectedConversation.id) {
+    return sharedConversationLatestRun;
+  }
+  if (selectedConversationDetail?.task?.id === selectedConversation.id) {
+    return selectedConversationDetail.latest_run ?? null;
+  }
+  return null;
 }
 
 export function resolveChannelLaneConversationTask({
