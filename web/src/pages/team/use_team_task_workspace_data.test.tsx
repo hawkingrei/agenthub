@@ -365,6 +365,62 @@ describe("useTeamTaskWorkspaceData", () => {
     }
   });
 
+  it("uses the selected conversation detail run when the explicit task thread is active", async () => {
+    const explicitTask = {
+      id: "task-2",
+      team_id: "team-1",
+      title: "Implementation thread",
+      status: "in_progress",
+      created_by_actor_id: "leader",
+      assigned_member_id: null,
+      context: { owner: "leader" },
+      created_at: 2,
+      updated_at: 20,
+    } as const;
+    const explicitLatestRun = {
+      id: "run-task-2",
+      team_id: "team-1",
+      context_id: "",
+      status: "working",
+      input: {},
+      summary: null,
+      created_at: 2,
+      started_at: 2,
+      ended_at: null,
+    } as unknown as HookParams["sharedConversationLatestRun"];
+    const explicitDetail: NonNullable<HookParams["selectedConversationDetail"]> = {
+      task: explicitTask,
+      conversation: {
+        id: "conv-task-2",
+        team_id: "team-1",
+        task_id: "task-2",
+        mode: "group_chat",
+        topic: "implementation",
+        created_at: 2,
+        updated_at: 2,
+      },
+      latest_run: explicitLatestRun,
+    };
+
+    const mounted = await mountHook(
+      createParams({
+        routeChannelId: "all",
+        routeSelectedTaskId: "task-2",
+        selectedChannelTaskId: "shared-thread",
+        selectedConversationTaskId: "task-2",
+        selectedConversationDetail: explicitDetail,
+        taskList: [explicitTask],
+      })
+    );
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.selectedConversation?.id).toBe("task-2");
+      expect(snapshot?.selectedConversationLatestRun?.id).toBe("run-task-2");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
   it("clears a selected conversation only after the detail fetch confirms a 404", async () => {
     mockedApi.listTeamTasks.mockResolvedValue([] as never);
     mockedApi.getTeamSharedThread.mockResolvedValue({

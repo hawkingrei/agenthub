@@ -359,6 +359,48 @@ describe("TeamMemberAcpPanel jump-to-bottom alignment", () => {
     expect(activityStrip.textContent).toContain("Syncing");
   });
 
+  it("hides the ACP activity strip when no ACP session is available yet", async () => {
+    vi.mocked(useAcpConversation).mockReturnValue(
+      buildConversationHookState({
+        conversationSourceItems: 3,
+        conversationRenderedItems: 3,
+        conversationTotalItems: 3,
+      }) as never
+    );
+
+    renderWithMantine(
+      root,
+      <TeamMemberAcpPanel
+        developerMode={true}
+        selectedMemberId="worker-agent"
+        selectedSessionId={undefined}
+        selectedMemberRole="worker"
+        selectedMemberSnapshot={{
+          member_id: "worker-agent",
+          role: "worker",
+          skills: [],
+          pending_inbox_count: 0,
+          status: "pending",
+          session_status: "pending",
+        }}
+        selectedAgentStatus="running"
+        memberEvents={buildAcpEvents()}
+        memberEventsHasMore={true}
+        memberEventsLoading={true}
+        eventsLoading={false}
+        oldestMemberEventId={null}
+        onSendInput={vi.fn()}
+        onLoadOlder={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-team-member-acp-activity-strip="true"]')).toBeNull();
+  });
+
   it("prefers the selected member snapshot status over stale ACP run status in the header", () => {
     renderWithMantine(
       root,
