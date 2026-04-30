@@ -106,24 +106,24 @@ describe("CreateAgentModal interactions", () => {
       worktreeMode: "create_worktree",
       worktreeError: "repo is required",
     });
-    expect(container.textContent).toContain("Hide Advanced Options");
-    expect(container.textContent).toContain("Worktree repo path");
+    expect(container.textContent).toContain("Hide Advanced workspace options");
+    expect(container.textContent).toContain("Repository path");
 
-    const toggleButton = findButtonByText(container, "Hide Advanced Options");
+    const toggleButton = findButtonByText(container, "Hide Advanced workspace options");
     act(() => {
       toggleButton.dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true })
       );
     });
-    expect(container.textContent).toContain("Show Advanced Options");
-    expect(container.textContent).not.toContain("Worktree repo path");
+    expect(container.textContent).toContain("Show Advanced workspace options");
+    expect(container.textContent).not.toContain("Repository path");
 
     renderHarness(root, {
       worktreeMode: "create_worktree",
       worktreeError: "repo path is still missing",
       agentName: "agent-a",
     });
-    expect(container.textContent).toContain("Show Advanced Options");
-    expect(container.textContent).not.toContain("Worktree repo path");
+    expect(container.textContent).toContain("Show Advanced workspace options");
+    expect(container.textContent).not.toContain("Repository path");
   });
 });

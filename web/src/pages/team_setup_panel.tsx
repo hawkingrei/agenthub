@@ -61,7 +61,7 @@ export function TeamSetupPanel({
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>
             <p className={TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS}>First Agent</p>
             <p className={TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS}>
-              Add the first agent with identity, skills, prompt, and workdir.
+              Add the first agent with a role, a short description, and a workspace.
             </p>
           </div>
           <div className={TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS}>

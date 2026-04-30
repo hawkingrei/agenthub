@@ -90,6 +90,8 @@ describe("Team management modals", () => {
 
     expect(html).toContain("Edit worker-1");
     expect(html).toContain("gpt-5.4");
+    expect(html).toContain("Description");
+    expect(html).toContain("What should this agent help with?");
     expect(html).toContain("Save Profile");
     expect(html).toContain("Role-bound Team skills come from the system-managed skill path");
   });
@@ -115,8 +117,8 @@ describe("Team management modals", () => {
             profileLabel: "Leader Profile",
             intro: "Own coordination.",
             focus: "Planning",
-            skillsHint: "Keep the system skills.",
-            promptHint: "Stay scoped.",
+            skillsHint: "Defaults are managed for you.",
+            promptHint: "Describe what this agent should own.",
           }}
           roleOptions={[
             {
@@ -143,8 +145,9 @@ describe("Team management modals", () => {
           modalProps={{
             title: "Add Agent",
             confirmLabel: "Create Agent",
-            agentPresetLabel: "Role model",
+            agentPresetLabel: "Runtime",
             agentPresetSummaryLabel: "Model",
+            showCommandSummary: false,
             teamStyled: true,
             agentName: "leader-1",
             setAgentName: vi.fn(),
@@ -173,7 +176,11 @@ describe("Team management modals", () => {
     );
 
     expect(html).toContain("Leader Profile");
-    expect(html).toContain("Role-bound Team skills are injected automatically");
+    expect(html).toContain("Managed automatically");
+    expect(html).toContain("What should this agent help with?");
+    expect(html).toContain("only asks for a description and workspace settings");
     expect(html).toContain("Single leader");
+    expect(html).not.toContain("Prompt Scope");
+    expect(html).not.toContain("Launch command");
   });
 });

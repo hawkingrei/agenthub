@@ -69,23 +69,17 @@ describe("team forge helpers", () => {
   it("resolves distinct role profile copy", () => {
     expect(resolveTeamMemberRoleProfile("leader")).toEqual({
       profileLabel: "Leader Profile",
-      intro:
-        "Configure the planning identity that owns delegation, review, and final synthesis.",
+      intro: "Add the planning agent that owns delegation, review, and final synthesis.",
       focus: "Own planning, review, and final synthesis.",
-      skillsHint:
-        "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
-      promptHint:
-        "Keep the prompt focused on planning policy, delegation rules, and synthesis expectations.",
+      skillsHint: "Role skills and system instructions are injected automatically.",
+      promptHint: "Describe what this leader should own for the team.",
     });
     expect(resolveTeamMemberRoleProfile("worker")).toEqual({
       profileLabel: "Worker Profile",
-      intro:
-        "Configure the execution identity that implements scoped work and reports evidence.",
+      intro: "Add the execution agent that implements scoped work and reports evidence.",
       focus: "Deliver implementation, validation, and execution evidence.",
-      skillsHint:
-        "Role-bound Team skills are injected automatically; configure identity and prompt, not per-member skills.",
-      promptHint:
-        "Keep the prompt focused on scope boundaries, evidence quality, and handoff discipline.",
+      skillsHint: "Role skills and system instructions are injected automatically.",
+      promptHint: "Describe what this worker should help with for the team.",
     });
   });
 

@@ -42,10 +42,10 @@ const renderModal = (overrides?: Partial<CreateAgentModalProps>) =>
 describe("CreateAgentModal", () => {
   it("renders repo and ref inputs for create_worktree", () => {
     const html = renderModal({ worktreeMode: "create_worktree" });
-    expect(html).toContain("Hide Advanced Options");
-    expect(html).toContain("Worktree mode");
-    expect(html).toContain("Worktree repo path");
-    expect(html).toContain("Worktree ref");
+    expect(html).toContain("Hide Advanced workspace options");
+    expect(html).toContain("Workspace mode");
+    expect(html).toContain("Repository path");
+    expect(html).toContain("Repository ref");
     expect(html).toContain("Auto-create under:");
     expect(html).toContain("Customize path");
     expect(html).not.toContain("Workdir (optional override)");
@@ -53,16 +53,16 @@ describe("CreateAgentModal", () => {
 
   it("renders repo input only for reuse_worktree", () => {
     const html = renderModal({ worktreeMode: "reuse_worktree" });
-    expect(html).toContain("Worktree repo path");
-    expect(html).not.toContain("Worktree ref");
+    expect(html).toContain("Repository path");
+    expect(html).not.toContain("Repository ref");
   });
 
   it("hides worktree inputs for use_existing", () => {
     const html = renderModal({ worktreeMode: "use_existing" });
-    expect(html).toContain("Show Advanced Options");
+    expect(html).toContain("Show Advanced workspace options");
     expect(html).not.toContain("Select worktree mode");
-    expect(html).not.toContain("Worktree repo path");
-    expect(html).not.toContain("Worktree ref");
+    expect(html).not.toContain("Repository path");
+    expect(html).not.toContain("Repository ref");
   });
 
   it("can hide worktree advanced controls entirely", () => {
@@ -70,11 +70,11 @@ describe("CreateAgentModal", () => {
       worktreeMode: "create_worktree",
       showWorktreeAdvancedOptions: false,
     });
-    expect(html).not.toContain("Show Advanced Options");
-    expect(html).not.toContain("Hide Advanced Options");
+    expect(html).not.toContain("Show Advanced workspace options");
+    expect(html).not.toContain("Hide Advanced workspace options");
     expect(html).not.toContain("Select worktree mode");
-    expect(html).not.toContain("Worktree repo path");
-    expect(html).not.toContain("Worktree ref");
+    expect(html).not.toContain("Repository path");
+    expect(html).not.toContain("Repository ref");
   });
 
   it("renders error alert and guidance list when worktreeError is set", () => {
@@ -92,6 +92,13 @@ describe("CreateAgentModal", () => {
     expect(html).toContain("gemini --acp");
     expect(html).toContain("Mode");
     expect(html).toContain("Chat");
+  });
+
+  it("can hide the command summary strip", () => {
+    const html = renderModal({ showCommandSummary: false });
+    expect(html).not.toContain("Command");
+    expect(html).not.toContain("agenthub-codex-acp");
+    expect(html).toContain("Mode");
   });
 
   it("renders custom workdir placeholder", () => {
