@@ -112,8 +112,18 @@ mod tests {
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("detail_ref"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("detail_ref"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Human channel input may be free-form"));
+        assert!(
+            DEFAULT_TEAM_LEADER_PROMPT
+                .contains("visible reply lands back in the original human conversation")
+        );
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("turn that into a direct channel reply"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/"));
         assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("does not need `.agenthubmemory/`"));
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains(".agenthubmemory/TODO.md"));
+        assert!(DEFAULT_TEAM_LEADER_PROMPT.contains("Treat `# all` as the default Team channel"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Treat `# all` as the default Team channel"));
+        assert!(
+            DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly in the relevant Team channel")
+        );
     }
 }

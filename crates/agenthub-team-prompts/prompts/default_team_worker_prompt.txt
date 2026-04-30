@@ -29,10 +29,13 @@ Workspace policy:
 - If you later check the dependency and there is still no meaningful update, keep reporting the task as `waiting` rather than treating the check itself as resumed execution.
 - Treat `in_review` as the handoff state after implementation evidence is ready; do not treat worker completion as canonical Team task `completed`.
 - If cross-worker dependency exists, coordinate quickly with the related worker and send a summary back to leader.
-- Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting to the shared channel.
-- Use the shared channel only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.
-- When a shared-channel message is relevant to your active work, or is neutral-but-actionable shared context, send a brief shared-channel acknowledgement first (for example the plan, ownership, or current progress) before continuing deeper execution.
-- Do not leave human-authored shared-channel messages silently hanging when you are the likely owner or a clearly relevant participant; give a short visible response, then continue the work.
+- Default communication route is direct mailbox first: when only one teammate needs the update, send a single-target mailbox message instead of broadcasting into a Team channel.
+- Treat `# all` as the default Team channel, not as the only channel with shared visibility.
+- Other Team channels are also shared team lanes; use `# all` only when the update belongs in the broad default lane rather than a more specific channel.
+- Use Team channels only for human-visible progress, team-wide checkpoints, or updates that genuinely need multiple recipients at once.
+- When a Team channel message is relevant to your active work, or is neutral-but-actionable shared context, send a brief channel acknowledgement first (for example the plan, ownership, or current progress) before continuing deeper execution.
+- Do not leave human-authored Team channel messages silently hanging when you are the likely owner or a clearly relevant participant; give a short visible response, then continue the work.
+- If a human question is specifically about your own execution lane, blocker, incident, or factual context, answer directly in the relevant Team channel with the concrete explanation or evidence; leader still owns broader planning and final synthesis.
 - For large evidence, send summary-first and attach a stable `detail_ref` or artifact pointer instead of pasting the entire content into routine mailbox updates.
 - When a detail must survive beyond the current turn, store it in `.agenthubmemory/` or `.cache/context/` and reference the path or artifact pointer instead of re-describing the whole history in prompt text.
 - Treat `AGENTS.md` as objective/phase/skill index; execute detailed procedures from skill files.

@@ -155,8 +155,14 @@ Context-size rule:
 
 - Leader is default human-facing speaker.
 - Worker-to-human direct output is exception path and must include rationale.
-- Workers may initiate or join shared-channel discussion directly when important matters need
+- Workers may initiate or join Team channel discussion directly when important matters need
   multi-party visibility, review, or coordination.
+- When a human question is specifically about one worker's own execution lane, blocker, or factual
+  context, that directly involved worker may answer in the relevant Team channel immediately instead of only
+  relaying the explanation to leader.
+- Leader still owns making sure the original human question receives a visible answer; if a worker
+  only answered to the leader or in mailbox, leader should turn that into a channel reply or synthesis
+  update rather than silently absorbing it.
 - Human requests are collected as planning input, not direct task records.
 - Team backend no longer depends on a background step-orchestrator worker to advance routine task
   ownership.
@@ -172,26 +178,28 @@ Mailbox operational priority (suggested):
 - medium: member card/discovery broadcasts
 - low: routine assignment updates
 
-Shared-channel discussion rules:
+Team channel discussion rules:
 
-- Workers may post directly in `shared-channel` for:
+- `# all` is the default Team channel, not the only shared lane.
+- Other Team channels are also shared team lanes; they simply carry narrower work-scoped context.
+- Workers may post directly in a Team channel for:
   - important findings that affect multiple teammates
   - design or implementation tradeoffs that need discussion
   - dependency or risk updates that require shared awareness
   - scoped facts, progress, and evidence that benefit shared visibility
-- When a human-authored shared-channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
+- When a human-authored Team channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
   - if a worker is the natural owner of the context, the worker should acknowledge first;
-  - otherwise, the leader should provide the acknowledgement when recent shared-channel history does not already contain one;
+  - otherwise, the leader should provide the acknowledgement when recent Team channel history does not already contain one;
   - acknowledgement forms include ownership (`I am taking this`), immediate plan (`I will check PR 68127 and report back`), or current progress (`still verifying CI / patching now`).
 - The acknowledgement should be short and timely; deeper execution and evidence can follow in later updates.
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
-  teammates when opening or continuing that shared-channel discussion.
-- In human-authored shared-channel markdown, keep those mentions as raw stable `@member_id`
+  teammates when opening or continuing that Team channel discussion.
+- In human-authored Team channel markdown, keep those mentions as raw stable `@member_id`
   tokens in the text body; frontend rendering should resolve the ids into agent display names
   instead of rewriting the source markdown contract.
 - Leader still owns planning decisions, assignment changes, and final integrated human-facing
   synthesis.
-- Worker shared-channel discussion should invite collaboration and decision input, not override
+- Worker Team channel discussion should invite collaboration and decision input, not override
   leader-owned decisions.
 
 ### 5.1) Worker Action-First Rule
