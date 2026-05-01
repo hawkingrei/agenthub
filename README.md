@@ -16,7 +16,6 @@ without introducing a separate control plane.
 Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 [Install AgentHub](#install-agenthub) ·
 [Why AgentHub](#why-agenthub) ·
-[Why Teams And ACP Matter](#why-teams-and-acp-matter) ·
 [Remote Agent Nodes](#remote-agent-nodes) ·
 [Documentation](#documentation) ·
 [Developer Docs](docs/README.md)
@@ -24,14 +23,14 @@ Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 ## Why AgentHub
 
 Most agent tools are optimized for a single terminal session. AgentHub is built
-for the operational side of agent workflows:
+for the operational side of agent workflows.
 
-- Keep agent sessions alive after the browser tab closes
-- Inspect structured ACP timelines instead of raw terminal scrollback
-- Run coordinator/worker Team workflows with shared coordination primitives
-- Route execution to remote Agent Nodes over internal gRPC when one machine is
-  not enough
-- Keep audit history, runtime state, and operator control in one place
+It keeps long-running agents, structured ACP review, Team coordination, remote
+agent nodes, and persistent runtime state in one product surface instead of
+splitting them across disposable chats, terminal tabs, and ad hoc scripts.
+
+In practice, AgentHub sits closer to an AI agent control plane or shared
+workbench than to a thin prompt UI.
 
 ## What You Can Do
 
@@ -112,15 +111,15 @@ workspace instead of a disposable chat box.
 ## Highlights
 
 - `⏳` **Long-lived agent control**
-  - Keep coding agents alive across browser refreshes and disconnects.
+  - Keep coding agents alive across browser refreshes and disconnects
 - `🧾` **Structured ACP timelines**
-  - Inspect plans, tool calls, command output, and replayable history.
+  - Inspect plans, tool calls, command output, and replayable history
 - `👥` **Team workflows**
-  - Coordinate coordinator/worker execution with channels, Kanban, and ACP views.
+  - Coordinate coordinator/worker execution with channels, Kanban, and ACP views
 - `🌐` **Remote agent nodes**
-  - Run agents on other machines while keeping one main control plane.
+  - Run agents on other machines while keeping one main control plane
 - `💾` **Persistent runtime state**
-  - Store session history, operational state, and audit records in SQLite.
+  - Store session history, operational state, and audit records in SQLite
 
 In one product surface, you can:
 
@@ -167,23 +166,6 @@ Core concepts:
   - Start, stop, inspect, and steer the whole Team from one product interface.
 - `🌐` **Remote execution ready**
   - Run Team members on different machines while keeping one shared control plane.
-
-## Why Teams And ACP Matter
-
-Many agent tools optimize for one local chat or terminal session. AgentHub
-optimizes for operational continuity.
-
-AgentHub is useful when you need:
-
-- long-lived AI coding agents
-- structured output instead of terminal-only logs
-- multi-agent Team orchestration
-- recoverable runtime state
-- remote agent execution
-- operator-visible audit history
-
-In practice, that means AgentHub sits closer to a control plane or workbench
-than to a thin prompt UI.
 
 ## Remote Agent Nodes
 
