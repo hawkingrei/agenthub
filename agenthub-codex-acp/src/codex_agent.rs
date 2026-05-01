@@ -20,7 +20,6 @@ use codex_login::auth::{read_codex_api_key_from_env, read_openai_api_key_from_en
 use codex_login::{
     AuthManager, CLIENT_ID, CODEX_API_KEY_ENV_VAR, CodexAuth, OPENAI_API_KEY_ENV_VAR,
 };
-use codex_models_manager::collaboration_mode_presets::CollaborationModesConfig;
 use codex_protocol::{
     ThreadId,
     models::{FunctionCallOutputPayload, ResponseItem},
@@ -65,13 +64,14 @@ const SESSION_TITLE_MAX_GRAPHEMES: usize = 120;
 
 impl CodexAgent {
     /// Create a new `CodexAgent` with the given configuration
-    pub fn new(config: Config) -> Result<Self, Error> {
+    pub async fn new(config: Config) -> Result<Self, Error> {
         let auth_manager = AuthManager::shared(
             config.codex_home.to_path_buf(),
             false,
             config.cli_auth_credentials_store_mode,
             Some(config.chatgpt_base_url.clone()),
-        );
+        )
+        .await;
 
         let client_capabilities: Arc<Mutex<ClientCapabilities>> = Arc::default();
 
@@ -80,10 +80,7 @@ impl CodexAgent {
             &config,
             auth_manager.clone(),
             SessionSource::Unknown,
-            CollaborationModesConfig {
-                default_mode_request_user_input: true,
-            },
-            build_environment_manager(&config)?,
+            build_environment_manager(&config).await?,
             None,
         );
         Ok(Self {
@@ -604,8 +601,6 @@ impl Agent for CodexAgent {
                     .block_until_done()
                     .await
                     .map_err(Error::into_internal_error)?;
-
-                self.auth_manager.reload();
             }
             CodexAuthMethod::CodexApiKey => {
                 let api_key = read_codex_api_key_from_env().ok_or_else(|| {
@@ -631,7 +626,7 @@ impl Agent for CodexAgent {
             }
         }
 
-        self.auth_manager.reload();
+        self.auth_manager.reload().await;
 
         Ok(AuthenticateResponse::new())
     }
@@ -913,7 +908,7 @@ mod tests {
                 name: "actor_send".to_string(),
                 input: "{}".to_string(),
             })],
-            rollout_path: PathBuf::from("/tmp/rollout.jsonl"),
+            rollout_path: Some(PathBuf::from("/tmp/rollout.jsonl")),
         });
 
         let (repaired, repaired_stats) = repair_initial_history(history);

@@ -1,3 +1,0 @@
-package(default_visibility = ["//visibility:public"])
-
-exports_files(["codex_core_node_version.patch"])

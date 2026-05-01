@@ -14,7 +14,7 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
 git_repository(
     name = "codex_src",
-    commit = "230dcadee609fa99d6162fe1107457030e5270a7",
+    commit = "08ad4f5f5abf9c4844d9ccd0e2c6b364d8460d46",
     remote = "https://github.com/openai/codex",
 )
 
@@ -30,12 +30,6 @@ crate.annotation(
     crate = "aws-lc-sys",
     patch_args = ["-p1"],
     patches = ["//third_party/aws_lc_sys:aws_lc_sys_symlink_header_copy.patch"],
-    repositories = ["crate_index"],
-)
-crate.annotation(
-    crate = "codex-core",
-    patch_args = ["-p1"],
-    patches = ["//third_party/codex_core:codex_core_node_version.patch"],
     repositories = ["crate_index"],
 )
 crate.annotation(
