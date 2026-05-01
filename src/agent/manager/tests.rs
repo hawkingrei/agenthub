@@ -387,6 +387,32 @@ fn runtime_start_policy_redirects_coordinator_to_stable_sandbox() {
 }
 
 #[test]
+fn runtime_start_policy_reuses_legacy_leader_coordination_workdir_when_present() {
+    let tmp = std::env::temp_dir().join(format!(
+        "agenthub-coordinator-legacy-policy-{}",
+        Uuid::new_v4()
+    ));
+    let legacy_dir = tmp.join(".agenthub-team-leader/coordinator-1-run-coordinator");
+    std::fs::create_dir_all(&legacy_dir).expect("create legacy coordinator dir");
+    let agent =
+        build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
+    let ctx = AcpActorSkillContext {
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-1".to_string(),
+        default_channel: "default".to_string(),
+        member_role: Some("coordinator".to_string()),
+        member_skills: Vec::new(),
+        contract_version: None,
+        continuity: None,
+    };
+
+    let policy = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
+        .expect("coordinator should reuse legacy coordination workdir");
+    assert_eq!(policy.workdir, legacy_dir.to_string_lossy());
+}
+
+#[test]
 fn runtime_start_policy_allows_worker_use_existing_workdir_for_validation() {
     let tmp = std::env::temp_dir().join(format!("agenthub-worker-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");

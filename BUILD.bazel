@@ -9,7 +9,7 @@ exports_files(
         "skills/team/team-agents-index.SKILL.md",
         "skills/team/team-leader-agents-index.SKILL.md",
         "skills/team/team-worker-agents-index.SKILL.md",
-        "skills/team/team-leader-orchestrator.SKILL.md",
+        "skills/team/team-coordinator-orchestrator.SKILL.md",
         "skills/team/team-worker-executor.SKILL.md",
         "skills/team/team-task-lifecycle.SKILL.md",
         "skills/team/team-deliberation-rules.SKILL.md",

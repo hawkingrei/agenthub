@@ -208,6 +208,12 @@ pub(crate) fn derive_coordinator_runtime_workdir(
         .or(actor_context.team_id.as_deref())
         .map(|value| compact_token(value, "scope", 24))
         .unwrap_or_else(|| "scope".to_string());
+    let legacy_path = Path::new(workdir)
+        .join(".agenthub-team-leader")
+        .join(format!("{actor_token}-{scope_token}"));
+    if legacy_path.exists() {
+        return legacy_path.to_string_lossy().to_string();
+    }
     Path::new(workdir)
         .join(".agenthub-team-coordinator")
         .join(format!("{actor_token}-{scope_token}"))

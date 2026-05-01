@@ -21,7 +21,6 @@ Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 [Documentation](#documentation) ·
 [Developer Docs](docs/README.md)
 
-## Install AgentHub
 ## Why AgentHub
 
 Most agent tools are optimized for a single terminal session. AgentHub is built
@@ -45,6 +44,8 @@ for the operational side of agent workflows:
 - Register remote execution nodes and start agents on those nodes
 - Persist session history and operational records in SQLite
 - Receive completion notifications in the web UI
+
+## Install AgentHub
 
 ### Homebrew
 
@@ -87,7 +88,7 @@ Current release binaries are available for:
 For local source development, contributor setup, repository layout, and common
 commands, see [docs/developer-setup.md](docs/developer-setup.md).
 
-## Why AgentHub
+## Product Overview
 
 AgentHub is a Rust-based control plane for operating AI agents beyond one
 ephemeral terminal tab.
