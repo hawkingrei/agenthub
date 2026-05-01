@@ -3507,6 +3507,10 @@ impl<A: Auth> ThreadActor<A> {
             .iter()
             .find(|preset| mode.0.as_ref() == preset.id)
             .ok_or_else(Error::invalid_params)?;
+        let legacy_sandbox_policy = preset
+            .permission_profile
+            .to_legacy_sandbox_policy(self.config.cwd.as_path())
+            .map_err(|e| Error::internal_error().data(e.to_string()))?;
 
         self.thread
             .submit(
@@ -3515,12 +3519,7 @@ impl<A: Auth> ThreadActor<A> {
                     cwd: None,
                     approval_policy: Some(preset.approval),
                     approvals_reviewer: None,
-                    sandbox_policy: Some(
-                        preset
-                            .permission_profile
-                            .to_legacy_sandbox_policy(self.config.cwd.as_path())
-                            .map_err(|e| Error::internal_error().data(e.to_string()))?,
-                    ),
+                    sandbox_policy: Some(legacy_sandbox_policy.clone()),
                     model: None,
                     effort: None,
                     summary: None,
@@ -3546,11 +3545,7 @@ impl<A: Auth> ThreadActor<A> {
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         self.config.permissions.active_permission_profile = None;
 
-        match preset
-            .permission_profile
-            .to_legacy_sandbox_policy(self.config.cwd.as_path())
-            .map_err(|e| Error::internal_error().data(e.to_string()))?
-        {
+        match legacy_sandbox_policy {
             SandboxPolicy::DangerFullAccess
             | SandboxPolicy::WorkspaceWrite { .. }
             | SandboxPolicy::ExternalSandbox { .. } => {

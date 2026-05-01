@@ -601,8 +601,6 @@ impl Agent for CodexAgent {
                     .block_until_done()
                     .await
                     .map_err(Error::into_internal_error)?;
-
-                self.auth_manager.reload().await;
             }
             CodexAuthMethod::CodexApiKey => {
                 let api_key = read_codex_api_key_from_env().ok_or_else(|| {
