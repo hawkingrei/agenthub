@@ -133,14 +133,17 @@ pub fn adapt_models_manager(models_manager: Arc<dyn ModelsManager>) -> Arc<dyn M
     Arc::new(SharedModelsManagerAdapter(models_manager))
 }
 
+#[async_trait::async_trait]
 pub trait Auth {
-    fn logout(&self) -> Result<bool, Error>;
+    async fn logout(&self) -> Result<bool, Error>;
 }
 
+#[async_trait::async_trait]
 impl Auth for Arc<AuthManager> {
-    fn logout(&self) -> Result<bool, Error> {
+    async fn logout(&self) -> Result<bool, Error> {
         self.as_ref()
             .logout()
+            .await
             .map_err(|e| Error::internal_error().data(e.to_string()))
     }
 }
@@ -1230,7 +1233,8 @@ impl PromptState {
             | EventMsg::CollabResumeEnd(..)
             | EventMsg::CollabCloseBegin(..)
             | EventMsg::CollabCloseEnd(..)
-            | EventMsg::PlanDelta(..) => {}
+            | EventMsg::PlanDelta(..)
+            | EventMsg::ThreadGoalUpdated(..) => {}
             EventMsg::GuardianAssessment(..) => {}
             e @ (EventMsg::McpListToolsResponse(..)
             | EventMsg::ListSkillsResponse(..)
@@ -2994,7 +2998,8 @@ impl<A: Auth> ThreadActor<A> {
             .iter()
             .find(|preset| {
                 &preset.approval == self.config.permissions.approval_policy.get()
-                    && &preset.sandbox == self.config.permissions.sandbox_policy.get()
+                    && &preset.permission_profile
+                        == self.config.permissions.permission_profile.get()
             })
             .or_else(|| {
                 // When the project is untrusted, the above code won't match
@@ -3437,7 +3442,7 @@ impl<A: Auth> ThreadActor<A> {
                     }
                 }
                 "logout" => {
-                    self.auth.logout()?;
+                    self.auth.logout().await?;
                     return Err(Error::auth_required());
                 }
                 _ => {
@@ -3510,7 +3515,12 @@ impl<A: Auth> ThreadActor<A> {
                     cwd: None,
                     approval_policy: Some(preset.approval),
                     approvals_reviewer: None,
-                    sandbox_policy: Some(preset.sandbox.clone()),
+                    sandbox_policy: Some(
+                        preset
+                            .permission_profile
+                            .to_legacy_sandbox_policy(self.config.cwd.as_path())
+                            .map_err(|e| Error::internal_error().data(e.to_string()))?,
+                    ),
                     model: None,
                     effort: None,
                     summary: None,
@@ -3531,12 +3541,16 @@ impl<A: Auth> ThreadActor<A> {
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
         self.config
             .permissions
-            .sandbox_policy
-            .set(preset.sandbox.clone())
+            .permission_profile
+            .set(preset.permission_profile.clone())
             .map_err(|e| Error::from(anyhow::anyhow!(e)))?;
+        self.config.permissions.active_permission_profile = None;
 
-        match preset.sandbox {
-            // Treat this user action as a trusted dir
+        match preset
+            .permission_profile
+            .to_legacy_sandbox_policy(self.config.cwd.as_path())
+            .map_err(|e| Error::internal_error().data(e.to_string()))?
+        {
             SandboxPolicy::DangerFullAccess
             | SandboxPolicy::WorkspaceWrite { .. }
             | SandboxPolicy::ExternalSandbox { .. } => {
@@ -5661,8 +5675,9 @@ mod tests {
 
     struct StubAuth;
 
+    #[async_trait::async_trait]
     impl Auth for StubAuth {
-        fn logout(&self) -> Result<bool, Error> {
+        async fn logout(&self) -> Result<bool, Error> {
             Ok(true)
         }
     }

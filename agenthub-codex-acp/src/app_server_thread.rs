@@ -22,8 +22,8 @@ use codex_app_server_protocol::{
     TurnSteerParams, TurnSteerResponse,
 };
 use codex_arg0::Arg0DispatchPaths;
+use codex_config::{CloudRequirementsLoader, LoaderOverrides};
 use codex_core::config::Config;
-use codex_core::config_loader::{CloudRequirementsLoader, LoaderOverrides};
 use codex_feedback::CodexFeedback;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::{
@@ -605,8 +605,7 @@ impl AppServerCodexThread {
             if let Some(sandbox_policy) = args.sandbox_policy {
                 updated_config
                     .permissions
-                    .sandbox_policy
-                    .set(sandbox_policy)
+                    .set_legacy_sandbox_policy(sandbox_policy, updated_config.cwd.as_path())
                     .map_err(|err| CodexErr::Fatal(err.to_string()))?;
             }
             if let Some(model) = args.model {
@@ -1705,6 +1704,9 @@ impl AppServerCodexThread {
             | ServerNotification::AccountRateLimitsUpdated(_)
             | ServerNotification::AppListUpdated(_)
             | ServerNotification::ExternalAgentConfigImportCompleted(_)
+            | ServerNotification::ThreadGoalUpdated(_)
+            | ServerNotification::ThreadGoalCleared(_)
+            | ServerNotification::RemoteControlStatusChanged(_)
             | ServerNotification::FsChanged(_)
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
@@ -2121,7 +2123,11 @@ fn prepare_submission_start(
                     approval_policy: Some(state.config.permissions.approval_policy.value().into()),
                     approvals_reviewer: Some(state.config.approvals_reviewer.into()),
                     sandbox_policy: Some(
-                        state.config.permissions.sandbox_policy.get().clone().into(),
+                        state
+                            .config
+                            .permissions
+                            .legacy_sandbox_policy(state.config.cwd.as_path())
+                            .into(),
                     ),
                     model: state.config.model.clone(),
                     service_tier: Some(state.config.service_tier),
@@ -2132,7 +2138,7 @@ fn prepare_submission_start(
                     responsesapi_client_metadata: responsesapi_client_metadata.clone(),
                     collaboration_mode: None,
                     environments: None,
-                    permission_profile: None,
+                    permissions: None,
                 }),
             })
         }
@@ -2623,7 +2629,7 @@ async fn start_client(config: &Config) -> Result<InProcessAppServerClient, Error
         cloud_requirements: CloudRequirementsLoader::default(),
         feedback: CodexFeedback::new(),
         log_db: None,
-        environment_manager: build_environment_manager(config)?,
+        environment_manager: build_environment_manager(config).await?,
         config_warnings: Vec::new(),
         session_source: codex_protocol::protocol::SessionSource::Unknown,
         enable_codex_api_key_env: false,
@@ -2724,7 +2730,11 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
         cwd: Some(config.cwd.to_string_lossy().to_string()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
         approvals_reviewer: Some(config.approvals_reviewer.into()),
-        sandbox: sandbox_mode_from_policy(config.permissions.sandbox_policy.get().clone()),
+        sandbox: sandbox_mode_from_policy(
+            config
+                .permissions
+                .legacy_sandbox_policy(config.cwd.as_path()),
+        ),
         config: config_request_overrides_from_config(config),
         ephemeral: Some(config.ephemeral),
         persist_extended_history: true,
@@ -2740,7 +2750,11 @@ fn thread_resume_params_from_config(config: &Config, session_id: &SessionId) -> 
         cwd: Some(config.cwd.to_string_lossy().to_string()),
         approval_policy: Some(config.permissions.approval_policy.value().into()),
         approvals_reviewer: Some(config.approvals_reviewer.into()),
-        sandbox: sandbox_mode_from_policy(config.permissions.sandbox_policy.get().clone()),
+        sandbox: sandbox_mode_from_policy(
+            config
+                .permissions
+                .legacy_sandbox_policy(config.cwd.as_path()),
+        ),
         config: config_request_overrides_from_config(config),
         persist_extended_history: true,
         ..ThreadResumeParams::default()

@@ -34,7 +34,7 @@ mod thread;
 pub static ACP_CLIENT: OnceLock<Arc<AgentSideConnection>> = OnceLock::new();
 const AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED_ENV: &str = "AGENTHUB_CODEX_ACP_MULTI_AGENT_ENABLED";
 
-pub(crate) fn build_environment_manager(
+pub(crate) async fn build_environment_manager(
     config: &Config,
 ) -> Result<Arc<EnvironmentManager>, agent_client_protocol_legacy::Error> {
     let current_exe = std::env::current_exe().map_err(|err| {
@@ -51,9 +51,9 @@ pub(crate) fn build_environment_manager(
             "failed to resolve exec-server runtime paths: {err}"
         ))
     })?;
-    Ok(Arc::new(EnvironmentManager::new(
-        EnvironmentManagerArgs::from_env(runtime_paths),
-    )))
+    Ok(Arc::new(
+        EnvironmentManager::new(EnvironmentManagerArgs::new(runtime_paths)).await,
+    ))
 }
 
 pub(crate) fn spawn_acp_io_task<F>(
@@ -334,17 +334,15 @@ pub async fn run_main(
     }
     normalize_responses_websocket_support(&mut config);
 
-    // Create our Agent implementation with notification channel
-    let agent = Rc::new(codex_agent::CodexAgent::new(config).map_err(|err| {
-        std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
-    })?);
-
     let stdin = tokio::io::stdin().compat();
     let stdout = tokio::io::stdout().compat_write();
 
     // Run the I/O task to handle the actual communication
     LocalSet::new()
         .run_until(async move {
+            let agent = Rc::new(codex_agent::CodexAgent::new(config).await.map_err(|err| {
+                std::io::Error::other(format!("failed to initialize Codex ACP agent: {err}"))
+            })?);
             // Create the ACP connection
             let (client, io_task) = AgentSideConnection::new(agent.clone(), stdout, stdin, |fut| {
                 tokio::task::spawn_local(fut);
