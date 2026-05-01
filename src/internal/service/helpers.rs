@@ -305,7 +305,7 @@ pub(super) async fn ensure_coordinator_team_access(
         return Ok(team);
     }
     Err(Status::permission_denied(
-        "only coordinator may create or update Team tasks",
+        "only coordinator may modify Team resources",
     ))
 }
 

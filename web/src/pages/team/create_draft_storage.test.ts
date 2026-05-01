@@ -221,4 +221,35 @@ describe("team create draft storage", () => {
     ]);
     expect(restored.draft?.teamForgeAgentIds).toEqual(["coordinator-2", "worker-2"]);
   });
+
+  it("loads legacy leader draft fields into coordinator state", () => {
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 1,
+        status: "creating",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+        draft: {
+          newTeamName: "legacy-team",
+          leaderMemberId: "legacy-coordinator",
+          leaderModel: "gpt-legacy",
+          leaderPrompt: "legacy prompt",
+          leaderSkills: ["team-coordinator-orchestrator", ""],
+          leaderCustomSkills: "legacy custom",
+          workers: [],
+          teamForgeAgentIds: ["legacy-coordinator"],
+        },
+      })
+    );
+
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.error).toBeNull();
+    expect(restored.draft?.coordinatorMemberId).toBe("legacy-coordinator");
+    expect(restored.draft?.coordinatorModel).toBe("gpt-legacy");
+    expect(restored.draft?.coordinatorPrompt).toBe("legacy prompt");
+    expect(restored.draft?.coordinatorSkills).toEqual(["team-coordinator-orchestrator"]);
+    expect(restored.draft?.coordinatorCustomSkills).toBe("legacy custom");
+    expect(restored.draft?.teamForgeAgentIds).toEqual(["legacy-coordinator"]);
+  });
 });

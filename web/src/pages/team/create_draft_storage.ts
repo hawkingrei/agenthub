@@ -39,6 +39,22 @@ type PersistedTeamCreateDraft = {
   };
 };
 
+function draftField(
+  draft: Record<string, unknown>,
+  primaryKey: string,
+  legacyKeys: string[] = []
+): unknown {
+  if (primaryKey in draft) {
+    return draft[primaryKey];
+  }
+  for (const legacyKey of legacyKeys) {
+    if (legacyKey in draft) {
+      return draft[legacyKey];
+    }
+  }
+  return undefined;
+}
+
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -126,17 +142,27 @@ function parsePersistedDraft(raw: string): ParsePersistedDraftResult {
             ? Math.floor(candidate.updated_at)
             : Date.now(),
         draft: {
-          newTeamName: asString(draft.newTeamName),
-          newTeamDescription: asString(draft.newTeamDescription),
-          newTeamSpec: asString(draft.newTeamSpec),
-          createTeamStage: normalizeCreateStage(draft.createTeamStage),
-          coordinatorMemberId: asString(draft.coordinatorMemberId),
-          coordinatorModel: asString(draft.coordinatorModel),
-          coordinatorPrompt: asString(draft.coordinatorPrompt),
-          coordinatorSkills: asStringArray(draft.coordinatorSkills),
-          coordinatorCustomSkills: asString(draft.coordinatorCustomSkills),
-          workers: normalizeWorkerDrafts(draft.workers),
-          teamForgeAgentIds: asStringArray(draft.teamForgeAgentIds),
+          newTeamName: asString(draftField(draft, "newTeamName")),
+          newTeamDescription: asString(draftField(draft, "newTeamDescription")),
+          newTeamSpec: asString(draftField(draft, "newTeamSpec")),
+          createTeamStage: normalizeCreateStage(draftField(draft, "createTeamStage")),
+          coordinatorMemberId: asString(
+            draftField(draft, "coordinatorMemberId", ["leaderMemberId"])
+          ),
+          coordinatorModel: asString(
+            draftField(draft, "coordinatorModel", ["leaderModel"])
+          ),
+          coordinatorPrompt: asString(
+            draftField(draft, "coordinatorPrompt", ["leaderPrompt"])
+          ),
+          coordinatorSkills: asStringArray(
+            draftField(draft, "coordinatorSkills", ["leaderSkills"])
+          ),
+          coordinatorCustomSkills: asString(
+            draftField(draft, "coordinatorCustomSkills", ["leaderCustomSkills"])
+          ),
+          workers: normalizeWorkerDrafts(draftField(draft, "workers")),
+          teamForgeAgentIds: asStringArray(draftField(draft, "teamForgeAgentIds")),
         },
       },
       error: null,

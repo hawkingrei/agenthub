@@ -15,13 +15,17 @@ const TEST_PROMPT_DEFAULTS = {
 
 describe("team forge helpers", () => {
   it("builds role-specific default drafts", () => {
-    const leaderDraft = buildTeamMemberProfileDraft("coordinator", undefined, TEST_PROMPT_DEFAULTS);
+    const coordinatorDraft = buildTeamMemberProfileDraft(
+      "coordinator",
+      undefined,
+      TEST_PROMPT_DEFAULTS
+    );
     const workerDraft = buildTeamMemberProfileDraft("worker", undefined, TEST_PROMPT_DEFAULTS);
 
-    expect(leaderDraft.role).toBe("coordinator");
-    expect(leaderDraft.model).toBe("codex");
-    expect(leaderDraft.skills).toEqual([]);
-    expect(leaderDraft.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
+    expect(coordinatorDraft.role).toBe("coordinator");
+    expect(coordinatorDraft.model).toBe("codex");
+    expect(coordinatorDraft.skills).toEqual([]);
+    expect(coordinatorDraft.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
     expect(workerDraft.role).toBe("worker");
     expect(workerDraft.model).toBe("codex");
     expect(workerDraft.skills).toEqual([]);
@@ -84,7 +88,7 @@ describe("team forge helpers", () => {
   });
 
   it("resolves coordinator and worker forge defaults", () => {
-    const leaderDefaults = resolveTeamForgeDefaults({
+    const coordinatorDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
       teamSpec: { members: [] },
       role: "coordinator",
@@ -93,13 +97,13 @@ describe("team forge helpers", () => {
       agentPresetId: "gemini",
       promptDefaults: TEST_PROMPT_DEFAULTS,
     });
-    expect(leaderDefaults.agentName).toBe("alpha-desk-coordinator");
-    expect(leaderDefaults.agentWorkdir).toMatch(
+    expect(coordinatorDefaults.agentName).toBe("alpha-desk-coordinator");
+    expect(coordinatorDefaults.agentWorkdir).toMatch(
       /^~\/\.agenthub\/worktrees\/alpha-desk-coordinator-[a-z0-9]+$/
     );
-    expect(leaderDefaults.worktreeMode).toBe("use_existing");
-    expect(leaderDefaults.draft.role).toBe("coordinator");
-    expect(leaderDefaults.draft.model).toBe("gemini");
+    expect(coordinatorDefaults.worktreeMode).toBe("use_existing");
+    expect(coordinatorDefaults.draft.role).toBe("coordinator");
+    expect(coordinatorDefaults.draft.model).toBe("gemini");
 
     const workerDefaults = resolveTeamForgeDefaults({
       teamName: "Alpha Desk",
