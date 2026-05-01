@@ -12,6 +12,7 @@ mod auth;
 mod cli;
 mod cli_error;
 mod doctor_cli;
+mod init_cli;
 pub use agenthub_config as config;
 pub use agenthub_db as db;
 mod internal;

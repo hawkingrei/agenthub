@@ -69,6 +69,12 @@ brew services start linkerdog/homebrew-tap/agenthub
 
 AgentHub reads config from `~/.agenthub/config.toml`.
 
+To create that file interactively:
+
+```bash
+agenthub init
+```
+
 Minimal example:
 
 ```toml
