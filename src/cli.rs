@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand, error::ErrorKind};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RootCliCommand {
     Serve,
+    Init { args: Vec<String> },
     Doctor { args: Vec<String> },
     Actor { args: Vec<String> },
     LegacyActorMcp,
@@ -19,6 +20,7 @@ struct AgentHubCli {
 
 #[derive(Debug, Subcommand)]
 enum AgentHubSubcommand {
+    Init(PassthroughArgs),
     Doctor(PassthroughArgs),
     Actor(PassthroughArgs),
     #[command(name = "actor-mcp", hide = true)]
@@ -44,6 +46,7 @@ where
     let cli = AgentHubCli::try_parse_from(iter)?;
     Ok(match cli.command {
         None => RootCliCommand::Serve,
+        Some(AgentHubSubcommand::Init(args)) => RootCliCommand::Init { args: args.args },
         Some(AgentHubSubcommand::Doctor(args)) => RootCliCommand::Doctor { args: args.args },
         Some(AgentHubSubcommand::Actor(args)) => RootCliCommand::Actor { args: args.args },
         Some(AgentHubSubcommand::ActorMcp(_)) => RootCliCommand::LegacyActorMcp,
@@ -79,6 +82,17 @@ mod tests {
         assert_eq!(
             parsed,
             RootCliCommand::Doctor {
+                args: vec!["--help".to_string()]
+            }
+        );
+    }
+
+    #[test]
+    fn parse_root_preserves_init_passthrough_args() {
+        let parsed = parse_root_cli_from(["agenthub", "init", "--help"]).expect("parse init");
+        assert_eq!(
+            parsed,
+            RootCliCommand::Init {
                 args: vec!["--help".to_string()]
             }
         );

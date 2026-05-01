@@ -10,6 +10,16 @@ This page lists all available configuration options for AgentHub.
 
 AgentHub reads configuration from `~/.agenthub/config.toml` by default.
 
+If you want a guided first-run setup, run:
+
+```bash
+agenthub init
+```
+
+`agenthub init` currently covers instance role selection (`main` vs `node`) and
+the current `internal_grpc` bootstrap contract. It does not configure
+provider-specific API base URLs or API keys yet.
+
 ## Minimal Configuration
 
 Start with this baseline for single-node usage:

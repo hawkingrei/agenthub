@@ -269,6 +269,9 @@ async fn run_node_server(
 pub async fn run() -> anyhow::Result<()> {
     match crate::cli::parse_root_cli_from_env() {
         Ok(crate::cli::RootCliCommand::Serve) => {}
+        Ok(crate::cli::RootCliCommand::Init { args }) => {
+            return crate::init_cli::run_from_args(&args).await;
+        }
         Ok(crate::cli::RootCliCommand::Doctor { args }) => {
             return crate::doctor_cli::run_from_args(&args).await;
         }

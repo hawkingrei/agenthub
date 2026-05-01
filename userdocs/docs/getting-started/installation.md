@@ -27,6 +27,12 @@ brew services start linkerdog/homebrew-tap/agenthub
 
 AgentHub reads configuration from `~/.agenthub/config.toml`.
 
+To create that file interactively:
+
+```bash
+agenthub init
+```
+
 Minimal example:
 
 ```toml
@@ -59,6 +65,12 @@ npm --prefix web ci
 ### Create A Minimal Config
 
 AgentHub reads configuration from `~/.agenthub/config.toml` by default.
+
+If you want a guided first-run setup instead of hand-writing TOML, run:
+
+```bash
+cargo run -- init
+```
 
 Start with a minimal single-node config:
 
