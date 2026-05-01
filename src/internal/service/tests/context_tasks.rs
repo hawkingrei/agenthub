@@ -6,7 +6,12 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -212,7 +217,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
                 status: None,
                 assigned_member_id: None,
                 clear_assigned_member_id: true,
-                context_json: Some(json!({"owner":"leader"}).to_string()),
+                context_json: Some(json!({"owner":"coordinator"}).to_string()),
                 context_merge_json: None,
             },
             &token,
@@ -224,7 +229,7 @@ async fn internal_grpc_team_context_and_task_controls_are_wire_compatible() {
     let cleared_task: TeamTaskRecord =
         serde_json::from_str(&cleared.task_json).expect("decode cleared task");
     assert_eq!(cleared_task.assigned_member_id, None);
-    assert_eq!(cleared_task.context["owner"], json!("leader"));
+    assert_eq!(cleared_task.context["owner"], json!("coordinator"));
 }
 
 #[tokio::test]
@@ -232,7 +237,12 @@ async fn internal_grpc_team_channel_controls_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -390,7 +400,12 @@ async fn internal_grpc_describe_team_context_reconciles_stale_running_member_ses
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -568,7 +583,7 @@ async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+    let token = issue_token(&authz, InternalRole::Coordinator, Some("planner"), None);
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -603,9 +618,9 @@ async fn internal_grpc_describe_team_context_rejects_invalid_scope_inputs() {
             description: Some("other team".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -679,7 +694,7 @@ async fn internal_grpc_resolve_actor_run_scope_prefers_running_actor_context() {
                 current_run_id: Some("run-runtime-scope".to_string()),
                 actor_id: agent.id.clone(),
                 default_channel: "default".to_string(),
-                member_role: Some("leader".to_string()),
+                member_role: Some("coordinator".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
                 continuity: None,
@@ -770,7 +785,7 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_unverified_requested_team
                 current_run_id: Some("run-runtime-scope".to_string()),
                 actor_id: agent.id.clone(),
                 default_channel: "default".to_string(),
-                member_role: Some("leader".to_string()),
+                member_role: Some("coordinator".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
                 continuity: None,
@@ -843,9 +858,9 @@ async fn internal_grpc_resolve_actor_run_scope_rejects_ambiguous_active_team_run
             description: Some("team to verify ambiguous run scope hints".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),

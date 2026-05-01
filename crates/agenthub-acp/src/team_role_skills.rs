@@ -8,22 +8,22 @@ use crate::AcpActorSkillContext;
 use crate::actor_runtime_skill::build_required_managed_skill;
 
 const TEAM_AGENTS_INDEX_SKILL_NAME: &str = "team-agents-index";
-const TEAM_LEADER_AGENTS_INDEX_SKILL_NAME: &str = "team-leader-agents-index";
+const TEAM_COORDINATOR_AGENTS_INDEX_SKILL_NAME: &str = "team-coordinator-agents-index";
 const TEAM_WORKER_AGENTS_INDEX_SKILL_NAME: &str = "team-worker-agents-index";
-const TEAM_LEADER_SKILL_NAME: &str = "team-leader-orchestrator";
+const TEAM_COORDINATOR_SKILL_NAME: &str = "team-coordinator-orchestrator";
 const TEAM_WORKER_SKILL_NAME: &str = "team-worker-executor";
 const TEAM_ACTOR_MAILBOX_SKILL_NAME: &str = "team-actor-mailbox";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TeamRoleIndexKind {
-    Leader,
+    Coordinator,
     Worker,
 }
 
 impl TeamRoleIndexKind {
     fn managed_kind(self) -> ManagedSkillKind {
         match self {
-            Self::Leader => ManagedSkillKind::TeamLeaderAgentsIndex,
+            Self::Coordinator => ManagedSkillKind::TeamCoordinatorAgentsIndex,
             Self::Worker => ManagedSkillKind::TeamWorkerAgentsIndex,
         }
     }
@@ -43,15 +43,15 @@ fn normalize_member_role(role: Option<&str>) -> Option<&str> {
 pub(super) fn should_attach_team_role_skills(context: Option<&AcpActorSkillContext>) -> bool {
     matches!(
         context.and_then(|item| normalize_member_role(item.member_role.as_deref())),
-        Some("leader" | "worker")
+        Some("coordinator" | "worker")
     )
 }
 
 pub(super) fn is_reserved_team_role_skill(name: &str) -> bool {
     name.eq_ignore_ascii_case(TEAM_AGENTS_INDEX_SKILL_NAME)
-        || name.eq_ignore_ascii_case(TEAM_LEADER_AGENTS_INDEX_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_COORDINATOR_AGENTS_INDEX_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_AGENTS_INDEX_SKILL_NAME)
-        || name.eq_ignore_ascii_case(TEAM_LEADER_SKILL_NAME)
+        || name.eq_ignore_ascii_case(TEAM_COORDINATOR_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_WORKER_SKILL_NAME)
         || name.eq_ignore_ascii_case(TEAM_ACTOR_MAILBOX_SKILL_NAME)
 }
@@ -67,17 +67,17 @@ fn build_team_role_skills_with_home(
     let role = normalize_member_role(context.member_role.as_deref());
     let mut out = Vec::new();
     match role {
-        Some("leader") => {
+        Some("coordinator") => {
             out.push(build_required_managed_skill(
                 ManagedSkillKind::TeamAgentsIndex,
                 home_dir,
             )?);
             out.push(build_role_agents_index_skill(
-                TeamRoleIndexKind::Leader,
+                TeamRoleIndexKind::Coordinator,
                 home_dir,
             )?);
             out.push(build_required_managed_skill(
-                ManagedSkillKind::TeamLeaderOrchestrator,
+                ManagedSkillKind::TeamCoordinatorOrchestrator,
                 home_dir,
             )?);
             out.push(build_required_managed_skill(
@@ -134,12 +134,14 @@ mod tests {
     }
 
     #[test]
-    fn build_team_role_skills_for_leader() {
+    fn build_team_role_skills_for_coordinator() {
         let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
-        let skills =
-            build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
-                .expect("build leader team role skills");
+        let skills = build_team_role_skills_with_home(
+            &context_with_role(Some("coordinator")),
+            Some(home.path()),
+        )
+        .expect("build coordinator team role skills");
         let names = skills
             .iter()
             .map(|item| item.name.as_str())
@@ -148,8 +150,8 @@ mod tests {
             names,
             vec![
                 "team-agents-index",
-                "team-leader-agents-index",
-                "team-leader-orchestrator",
+                "team-coordinator-agents-index",
+                "team-coordinator-orchestrator",
                 "team-actor-mailbox",
             ]
         );
@@ -194,7 +196,7 @@ mod tests {
     #[test]
     fn should_attach_team_role_skills_checks_supported_roles() {
         assert!(should_attach_team_role_skills(Some(&context_with_role(
-            Some("leader")
+            Some("coordinator")
         ))));
         assert!(should_attach_team_role_skills(Some(&context_with_role(
             Some("worker")
@@ -211,9 +213,9 @@ mod tests {
     #[test]
     fn is_reserved_team_role_skill_matches_expected_names() {
         assert!(is_reserved_team_role_skill("team-agents-index"));
-        assert!(is_reserved_team_role_skill("team-leader-agents-index"));
+        assert!(is_reserved_team_role_skill("team-coordinator-agents-index"));
         assert!(is_reserved_team_role_skill("team-worker-agents-index"));
-        assert!(is_reserved_team_role_skill("team-leader-orchestrator"));
+        assert!(is_reserved_team_role_skill("team-coordinator-orchestrator"));
         assert!(is_reserved_team_role_skill("team-worker-executor"));
         assert!(is_reserved_team_role_skill("team-actor-mailbox"));
         assert!(is_reserved_team_role_skill("TEAM-WORKER-EXECUTOR"));
@@ -226,9 +228,10 @@ mod tests {
     fn role_agents_index_skill_uses_expected_names() {
         let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
         install_managed_skills(Some(home.path())).expect("install managed skills");
-        let leader = build_role_agents_index_skill(TeamRoleIndexKind::Leader, Some(home.path()))
-            .expect("build leader role agents index skill");
-        assert_eq!(leader.name, "team-leader-agents-index");
+        let coordinator =
+            build_role_agents_index_skill(TeamRoleIndexKind::Coordinator, Some(home.path()))
+                .expect("build coordinator role agents index skill");
+        assert_eq!(coordinator.name, "team-coordinator-agents-index");
 
         let worker = build_role_agents_index_skill(TeamRoleIndexKind::Worker, Some(home.path()))
             .expect("build worker role agents index skill");
@@ -238,9 +241,11 @@ mod tests {
     #[test]
     fn build_team_role_skills_error_when_managed_skill_not_materialized() {
         let home = TempManagedSkillsHome::new("agenthub-acp-team-role-skill-home");
-        let err =
-            build_team_role_skills_with_home(&context_with_role(Some("leader")), Some(home.path()))
-                .expect_err("missing managed team skills should hard fail");
+        let err = build_team_role_skills_with_home(
+            &context_with_role(Some("coordinator")),
+            Some(home.path()),
+        )
+        .expect_err("missing managed team skills should hard fail");
         assert!(
             err.to_string().contains("is not materialized"),
             "unexpected error: {err}"

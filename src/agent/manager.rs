@@ -83,7 +83,7 @@ const AGENT_STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_SOURCE_MANUAL: &str = "manual";
 const AGENT_SOURCE_TEAM_FORGE: &str = "team_forge";
 const INTERNAL_AGENT_MANAGE_PERMISSION: &str = "agent:manage";
-const TEAM_MEMBER_ROLE_LEADER: &str = "leader";
+const TEAM_MEMBER_ROLE_COORDINATOR: &str = "coordinator";
 const TEAM_MEMBER_ROLE_WORKER: &str = "worker";
 const AGENT_LOOP_MESSAGE_ID_PREFIX: &str = "agent-loop:";
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -194,22 +194,28 @@ pub(crate) fn derive_worker_runtime_root(workdir: &str) -> String {
         .unwrap_or_else(|| workdir.to_string())
 }
 
-pub(crate) fn derive_leader_runtime_workdir(
+pub(crate) fn derive_coordinator_runtime_workdir(
     workdir: &str,
     actor_context: &AcpActorSkillContext,
 ) -> String {
-    // Team leader continuity should survive ordinary runtime restarts, so the derived
+    // Team coordinator continuity should survive ordinary runtime restarts, so the derived
     // coordination workspace is keyed by actor + scope and intentionally excludes the
     // per-launch AgentHub runtime session id.
-    let actor_token = compact_token(&actor_context.actor_id, "leader", 24);
+    let actor_token = compact_token(&actor_context.actor_id, "coordinator", 24);
     let scope_token = actor_context
         .current_run_id
         .as_deref()
         .or(actor_context.team_id.as_deref())
         .map(|value| compact_token(value, "scope", 24))
         .unwrap_or_else(|| "scope".to_string());
-    Path::new(workdir)
+    let legacy_path = Path::new(workdir)
         .join(".agenthub-team-leader")
+        .join(format!("{actor_token}-{scope_token}"));
+    if legacy_path.exists() {
+        return legacy_path.to_string_lossy().to_string();
+    }
+    Path::new(workdir)
+        .join(".agenthub-team-coordinator")
         .join(format!("{actor_token}-{scope_token}"))
         .to_string_lossy()
         .to_string()
@@ -221,7 +227,9 @@ pub(crate) fn derive_team_runtime_workdir(
     worktree_mode: &WorktreeMode,
 ) -> String {
     match actor_context.member_role.as_deref() {
-        Some(TEAM_MEMBER_ROLE_LEADER) => derive_leader_runtime_workdir(workdir, actor_context),
+        Some(TEAM_MEMBER_ROLE_COORDINATOR) => {
+            derive_coordinator_runtime_workdir(workdir, actor_context)
+        }
         Some(TEAM_MEMBER_ROLE_WORKER) if matches!(worktree_mode, WorktreeMode::CreateWorktree) => {
             let actor_token = compact_token(&actor_context.actor_id, "worker", 24);
             let scope_token = actor_context
@@ -260,20 +268,20 @@ fn build_runtime_start_policy(
     };
 
     match role {
-        TEAM_MEMBER_ROLE_LEADER => {
+        TEAM_MEMBER_ROLE_COORDINATOR => {
             if !matches!(policy.worktree_mode, WorktreeMode::UseExisting) {
                 anyhow::bail!(
-                    "team leader policy requires worktree_mode=use_existing (agent_id={})",
+                    "team coordinator policy requires worktree_mode=use_existing (agent_id={})",
                     agent.id
                 );
             }
             let context = actor_context
-                .ok_or_else(|| anyhow::anyhow!("leader role policy requires actor context"))?;
+                .ok_or_else(|| anyhow::anyhow!("coordinator role policy requires actor context"))?;
             policy.workdir =
                 derive_team_runtime_workdir(expanded_workdir, context, &policy.worktree_mode);
             if Path::new(&policy.workdir).exists() && !Path::new(&policy.workdir).is_dir() {
                 anyhow::bail!(
-                    "team leader policy requires directory workdir (agent_id={} workdir={})",
+                    "team coordinator policy requires directory workdir (agent_id={} workdir={})",
                     agent.id,
                     policy.workdir
                 );
@@ -322,7 +330,7 @@ async fn ensure_team_runtime_workspace_layout(
     let Some(role) = actor_context.and_then(|context| context.member_role.as_deref()) else {
         return Ok(());
     };
-    if role != TEAM_MEMBER_ROLE_LEADER && role != TEAM_MEMBER_ROLE_WORKER {
+    if role != TEAM_MEMBER_ROLE_COORDINATOR && role != TEAM_MEMBER_ROLE_WORKER {
         return Ok(());
     }
 
@@ -334,7 +342,7 @@ async fn ensure_team_runtime_workspace_layout(
             }
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            if role != TEAM_MEMBER_ROLE_LEADER {
+            if role != TEAM_MEMBER_ROLE_COORDINATOR {
                 return Ok(());
             }
             tokio::fs::create_dir_all(workdir_path)

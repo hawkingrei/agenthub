@@ -11,8 +11,8 @@ const SKILL_DOC_NAME: &str = "SKILL.md";
 
 const TEAM_AGENTS_INDEX_TEXT: &str =
     include_str!("../../../skills/team/team-agents-index.SKILL.md");
-const TEAM_LEADER_SKILL_TEXT: &str =
-    include_str!("../../../skills/team/team-leader-orchestrator.SKILL.md");
+const TEAM_COORDINATOR_SKILL_TEXT: &str =
+    include_str!("../../../skills/team/team-coordinator-orchestrator.SKILL.md");
 const TEAM_WORKER_SKILL_TEXT: &str =
     include_str!("../../../skills/team/team-worker-executor.SKILL.md");
 const TEAM_DELIBERATION_SKILL_TEXT: &str =
@@ -27,9 +27,9 @@ static MANAGED_SKILL_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManagedSkillKind {
     TeamAgentsIndex,
-    TeamLeaderAgentsIndex,
+    TeamCoordinatorAgentsIndex,
     TeamWorkerAgentsIndex,
-    TeamLeaderOrchestrator,
+    TeamCoordinatorOrchestrator,
     TeamWorkerExecutor,
     TeamTaskLifecycle,
     TeamDeliberationRules,
@@ -40,9 +40,9 @@ pub enum ManagedSkillKind {
 impl ManagedSkillKind {
     pub const ALL: [Self; 9] = [
         Self::TeamAgentsIndex,
-        Self::TeamLeaderAgentsIndex,
+        Self::TeamCoordinatorAgentsIndex,
         Self::TeamWorkerAgentsIndex,
-        Self::TeamLeaderOrchestrator,
+        Self::TeamCoordinatorOrchestrator,
         Self::TeamWorkerExecutor,
         Self::TeamTaskLifecycle,
         Self::TeamDeliberationRules,
@@ -53,9 +53,9 @@ impl ManagedSkillKind {
     fn relative_dir(self) -> &'static str {
         match self {
             Self::TeamAgentsIndex => "team/team-agents-index",
-            Self::TeamLeaderAgentsIndex => "team/team-leader-agents-index",
+            Self::TeamCoordinatorAgentsIndex => "team/team-coordinator-agents-index",
             Self::TeamWorkerAgentsIndex => "team/team-worker-agents-index",
-            Self::TeamLeaderOrchestrator => "team/team-leader-orchestrator",
+            Self::TeamCoordinatorOrchestrator => "team/team-coordinator-orchestrator",
             Self::TeamWorkerExecutor => "team/team-worker-executor",
             Self::TeamTaskLifecycle => "team/team-task-lifecycle",
             Self::TeamDeliberationRules => "team/team-deliberation-rules",
@@ -233,9 +233,9 @@ fn create_temp_skill_file(parent: &Path, target_path: &Path) -> Result<(PathBuf,
 pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
     match kind {
         ManagedSkillKind::TeamAgentsIndex => "team-agents-index",
-        ManagedSkillKind::TeamLeaderAgentsIndex => "team-leader-agents-index",
+        ManagedSkillKind::TeamCoordinatorAgentsIndex => "team-coordinator-agents-index",
         ManagedSkillKind::TeamWorkerAgentsIndex => "team-worker-agents-index",
-        ManagedSkillKind::TeamLeaderOrchestrator => "team-leader-orchestrator",
+        ManagedSkillKind::TeamCoordinatorOrchestrator => "team-coordinator-orchestrator",
         ManagedSkillKind::TeamWorkerExecutor => "team-worker-executor",
         ManagedSkillKind::TeamTaskLifecycle => "team-task-lifecycle",
         ManagedSkillKind::TeamDeliberationRules => "team-deliberation-rules",
@@ -247,9 +247,9 @@ pub fn managed_skill_name(kind: ManagedSkillKind) -> &'static str {
 pub fn managed_skill_contents(kind: ManagedSkillKind) -> String {
     match kind {
         ManagedSkillKind::TeamAgentsIndex => TEAM_AGENTS_INDEX_TEXT.to_string(),
-        ManagedSkillKind::TeamLeaderAgentsIndex => team_role_agents_index_skill_doc(true),
+        ManagedSkillKind::TeamCoordinatorAgentsIndex => team_role_agents_index_skill_doc(true),
         ManagedSkillKind::TeamWorkerAgentsIndex => team_role_agents_index_skill_doc(false),
-        ManagedSkillKind::TeamLeaderOrchestrator => TEAM_LEADER_SKILL_TEXT.to_string(),
+        ManagedSkillKind::TeamCoordinatorOrchestrator => TEAM_COORDINATOR_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamWorkerExecutor => TEAM_WORKER_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamTaskLifecycle => TEAM_TASK_LIFECYCLE_SKILL_TEXT.to_string(),
         ManagedSkillKind::TeamDeliberationRules => TEAM_DELIBERATION_SKILL_TEXT.to_string(),
@@ -258,36 +258,37 @@ pub fn managed_skill_contents(kind: ManagedSkillKind) -> String {
     }
 }
 
-fn team_role_agents_index_skill_doc(is_leader: bool) -> String {
-    let (name, title, role_label, role_core_skill, memory_rule, responsibilities) = if is_leader {
-        (
-            "team-leader-agents-index",
-            "Team Leader AGENTS Index",
-            "leader",
-            "team-leader-orchestrator",
-            "Keep leader durable memory lightweight; empty coordination workspaces normally do not need `.agenthubmemory/`.",
-            [
-                "Maintain leader workspace `AGENTS.md` as the coordination index.",
-                "Keep current phase, transition condition, assignment map, and integration checklist concise.",
-                "Keep human-facing planning decisions in leader index records.",
-                "Keep `team-task-lifecycle` active whenever leader is creating, reviewing, or closing canonical Team tasks.",
-            ],
-        )
-    } else {
-        (
-            "team-worker-agents-index",
-            "Team Worker AGENTS Index",
-            "worker",
-            "team-worker-executor",
-            "Maintain project-local durable memory under `.agenthubmemory/` when operating inside a concrete repository.",
-            [
-                "Maintain worker workspace `AGENTS.md` as the execution index.",
-                "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
-                "Keep leader as the default single-owner update route, but use shared channel directly when important issues need team-wide discussion or visibility.",
-                "Keep `team-task-lifecycle` active whenever worker execution must advance a leader-owned Team task toward review.",
-            ],
-        )
-    };
+fn team_role_agents_index_skill_doc(is_coordinator: bool) -> String {
+    let (name, title, role_label, role_core_skill, memory_rule, responsibilities) =
+        if is_coordinator {
+            (
+                "team-coordinator-agents-index",
+                "Team Coordinator AGENTS Index",
+                "coordinator",
+                "team-coordinator-orchestrator",
+                "Keep coordinator durable memory lightweight; empty coordination workspaces normally do not need `.agenthubmemory/`.",
+                [
+                    "Maintain coordinator workspace `AGENTS.md` as the coordination index.",
+                    "Keep current phase, transition condition, assignment map, and integration checklist concise.",
+                    "Keep human-facing planning decisions in coordinator index records.",
+                    "Keep `team-task-lifecycle` active whenever coordinator is creating, reviewing, or closing canonical Team tasks.",
+                ],
+            )
+        } else {
+            (
+                "team-worker-agents-index",
+                "Team Worker AGENTS Index",
+                "worker",
+                "team-worker-executor",
+                "Maintain project-local durable memory under `.agenthubmemory/` when operating inside a concrete repository.",
+                [
+                    "Maintain worker workspace `AGENTS.md` as the execution index.",
+                    "Keep assignment scope, acceptance criteria, evidence pointers, and blockers concise.",
+                    "Keep coordinator as the default single-owner update route, but use shared channel directly when important issues need team-wide discussion or visibility.",
+                    "Keep `team-task-lifecycle` active whenever worker execution must advance a coordinator-owned Team task toward review.",
+                ],
+            )
+        };
     let responsibilities = responsibilities
         .iter()
         .map(|line| format!("- {line}\n"))
@@ -382,7 +383,7 @@ Protocol rules:
 - In each turn, the first mailbox action should be `actor receive` before planning/coding.
 - Treat `actor receive` as the normal accept-and-consume path for pending mailbox work.
 - Treat `actor inbox` output as a read-only unread snapshot: it includes `pending_count` alongside the fetched messages.
-- Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and leader-authored channel `@member_id` mentions trigger immediate ACP hints.
+- Mailbox nudges are token-efficient by default: only direct `agent -> agent` sends and coordinator-authored channel `@member_id` mentions trigger immediate ACP hints.
 - Other unread mailbox traffic may surface later as one compact unread summary after roughly 3 minutes of ACP output silence; if unread count is `0`, no reminder is sent.
 - Before routing work based on teammate assumptions, inspect `actor team-members`.
 - Treat `actor team-members` as the single Team context snapshot command: it returns runtime summary, roster/card data, per-member `pending_inbox_count`, and optional run overlay.

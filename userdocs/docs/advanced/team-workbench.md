@@ -61,7 +61,7 @@ ways:
 Healthy Team usage usually follows a stable split:
 
 - humans talk in `Channels`, usually `# all`
-- the leader turns agreed work into canonical tasks
+- the coordinator turns agreed work into canonical tasks
 - workers report progress and facts without taking over planning
 - `Kanban` stays the source of truth for task state
 - `Execution Runs` and `Agent ACP` stay available for debugging, not for day-to-day
@@ -75,18 +75,18 @@ usually drifting too close to raw execution details.
 1. Create or select a Team.
 2. Start the Team runtime.
 3. Use `Channels`, usually `# all`, to state the goal and constraints.
-4. Let the leader turn agreed work into canonical Kanban tasks.
+4. Let the coordinator turn agreed work into canonical Kanban tasks.
 5. Track ownership and progress in `Kanban`.
 6. Drop into `Agent ACP`, `Execution Runs`, or `Advanced` only when you need
    execution details or debugging.
 
 ## Mentions And Shared Channels
 
-- No `@mention`: message is team-wide and the leader should respond first.
+- No `@mention`: message is team-wide and the coordinator should respond first.
 - `@member_id`: message is still visible in the shared channel, but it
   prioritizes the mentioned member or members.
 - Workers can contribute direct implementation progress or scoped answers, but
-  planning and final synthesis still converge through the leader.
+  planning and final synthesis still converge through the coordinator.
 
 In practice:
 
@@ -102,10 +102,10 @@ Team Workbench is now task-first:
 - `Kanban` is the durable coordination surface
 - `Channels` (`# all`) provide a separate stable shared lane, not a workspace task you need to
   recover manually from Kanban ordering
-- human requests and clarifications live in `Channels`; leader/runtime turns agreed work into
+- human requests and clarifications live in `Channels`; coordinator/runtime turns agreed work into
   canonical Kanban tasks
 - the normal Team UI and public HTTP surface do not expose direct canonical task creation; requests
-  go through `Channels` and leader/runtime materialize tasks onto `Kanban`
+  go through `Channels` and coordinator/runtime materialize tasks onto `Kanban`
 - tasks can exist without an assigned member yet
 - assignment can happen later as the plan becomes clearer
 - step/run data remains execution telemetry, not the primary ownership model

@@ -45,7 +45,7 @@ type TeamSidebarProps = {
   onRefreshTeams: () => Promise<void> | void;
   onOpenCreateTeam: () => void;
   draftTeamName: string;
-  leaderMemberId: string;
+  coordinatorMemberId: string;
   configuredWorkerCount: number;
   teams: TeamDefinitionRecord[];
   selectedTeam: TeamDefinitionRecord | null;
@@ -220,7 +220,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onRefreshTeams,
     onOpenCreateTeam,
     draftTeamName,
-    leaderMemberId,
+    coordinatorMemberId,
     configuredWorkerCount,
     teams,
     selectedTeam,
@@ -541,7 +541,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
         {showTeamSelector && teamDetailsOpen && (
           <div className={`${TEAM_SIDEBAR_META_GRID_CLASS} mt-3 border-t border-notion-border pt-3`}>
             <span>draft_team={draftTeamName.trim() || "-"}</span>
-            <span>leader={leaderMemberId.trim() || "-"}</span>
+            <span>coordinator={coordinatorMemberId.trim() || "-"}</span>
             <span>workers={configuredWorkerCount}</span>
           </div>
         )}

@@ -1,16 +1,16 @@
 use super::*;
 
 #[test]
-fn resolve_team_leader_member_id_supports_legacy_fallbacks() {
+fn resolve_team_coordinator_member_id_supports_legacy_fallbacks() {
     assert_eq!(
-        super::resolve_team_leader_member_id(&json!({
-            "members":[{"member_id":"planner","role":"leader"}]
+        super::resolve_team_coordinator_member_id(&json!({
+            "members":[{"member_id":"planner","role":"coordinator"}]
         }))
         .expect("resolve from role"),
         "planner"
     );
     assert_eq!(
-        super::resolve_team_leader_member_id(&json!({
+        super::resolve_team_coordinator_member_id(&json!({
             "entrypoint":"planner"
         }))
         .expect("resolve from entrypoint"),
@@ -129,9 +129,9 @@ async fn build_started_reconcile_transition_fixture(
             description: Some(format!("internal {name_suffix} reconcile transition test")),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -186,7 +186,7 @@ async fn build_started_reconcile_transition_fixture(
     let authz = build_authz();
     let (token, _expires_at) = authz
         .issue_access_token(
-            InternalRole::Leader,
+            InternalRole::Coordinator,
             Some("planner"),
             Some(&run.id),
             vec![InternalAction::StepTransition.as_str().to_string()],
@@ -249,9 +249,9 @@ async fn transition_step_continue_advances_reconcile_round_and_keeps_step_workin
             description: Some("internal transition continue test".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -306,7 +306,7 @@ async fn transition_step_continue_advances_reconcile_round_and_keeps_step_workin
     let authz = build_authz();
     let (token, _expires_at) = authz
         .issue_access_token(
-            InternalRole::Leader,
+            InternalRole::Coordinator,
             Some("planner"),
             Some(&run.id),
             vec![InternalAction::StepTransition.as_str().to_string()],
@@ -654,9 +654,9 @@ async fn worker_token_can_continue_own_reconcile_step_but_not_other_members_step
             description: Some("internal worker step transition test".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -784,7 +784,7 @@ async fn worker_token_can_continue_own_reconcile_step_but_not_other_members_step
 }
 
 #[tokio::test]
-async fn leader_transition_step_checks_run_scope_before_mutation() {
+async fn coordinator_transition_step_checks_run_scope_before_mutation() {
     let state = build_test_state_without_seeded_team_member_agents().await;
     let now = chrono::Utc::now().timestamp();
     let workdir =
@@ -827,7 +827,7 @@ async fn leader_transition_step_checks_run_scope_before_mutation() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -893,13 +893,13 @@ async fn leader_transition_step_checks_run_scope_before_mutation() {
     let authz = build_authz();
     let (token, _expires_at) = authz
         .issue_access_token(
-            InternalRole::Leader,
+            InternalRole::Coordinator,
             Some("planner"),
             Some(&other_run.id),
             vec![InternalAction::StepTransition.as_str().to_string()],
             600,
         )
-        .expect("issue mismatched leader token");
+        .expect("issue mismatched coordinator token");
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,

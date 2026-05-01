@@ -47,9 +47,9 @@ pub(super) fn openapi_spec() -> Value {
           },
           "TeamPromptDefaultsResponse": {
             "type": "object",
-            "required": ["leader_prompt", "worker_prompt"],
+            "required": ["coordinator_prompt", "worker_prompt"],
             "properties": {
-              "leader_prompt": { "type": "string" },
+              "coordinator_prompt": { "type": "string" },
               "worker_prompt": { "type": "string" }
             }
           },
@@ -153,7 +153,7 @@ pub(super) fn openapi_spec() -> Value {
             ],
             "properties": {
               "member_id": { "type": "string" },
-              "role": { "type": "string", "enum": ["leader", "worker"] },
+              "role": { "type": "string", "enum": ["coordinator", "worker"] },
               "model": { "type": ["string", "null"] },
               "prompt": { "type": ["string", "null"] },
               "skills": { "type": "array", "items": { "type": "string" } },
@@ -179,7 +179,7 @@ pub(super) fn openapi_spec() -> Value {
             "properties": {
               "run": { "$ref": "#/components/schemas/TeamRunRecord" },
               "team": { "$ref": "#/components/schemas/TeamDefinitionRecord" },
-              "leader_member_id": { "type": ["string", "null"] },
+              "coordinator_member_id": { "type": ["string", "null"] },
               "members": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/TeamMemberSnapshot" }
@@ -358,7 +358,7 @@ pub(super) fn openapi_spec() -> Value {
             "summary": "Get default Team prompts",
             "responses": {
               "200": {
-                "description": "Default leader and worker prompts",
+                "description": "Default coordinator and worker prompts",
                 "content": {
                   "application/json": {
                     "schema": { "$ref": "#/components/schemas/TeamPromptDefaultsResponse" }

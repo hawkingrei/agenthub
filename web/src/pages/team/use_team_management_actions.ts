@@ -15,7 +15,7 @@ import {
   appendTeamMemberToSpec,
   buildTeamMemberDraftFromSpec,
   buildEmptyTeamSpec,
-  buildLeaderForgeDefaultWorkdir,
+  buildCoordinatorForgeDefaultWorkdir,
   formatTeamForgeWorktreeError,
   parseErrorMessage,
   updateTeamMemberProfileInSpec,
@@ -41,7 +41,7 @@ type UseTeamManagementActionsOptions = {
   runs: TeamRunRecord[];
   selectedTeam: TeamDefinitionRecord | null;
   selectedTeamId: string | null;
-  selectedTeamHasLeader: boolean;
+  selectedTeamHasCoordinator: boolean;
   selectedTeamHasConfiguredMembers: boolean;
   teamExecutionBlockedReason: string | null;
   selectedTeamWorkerCount: number;
@@ -111,7 +111,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     runs,
     selectedTeam,
     selectedTeamId,
-    selectedTeamHasLeader,
+    selectedTeamHasCoordinator,
     selectedTeamHasConfiguredMembers,
     teamExecutionBlockedReason,
     selectedTeamWorkerCount,
@@ -231,7 +231,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     if (restoredDraft) {
       patchTeamCreate({
         ...restoredDraft,
-        leaderPrompt: restoredDraft.leaderPrompt || teamPromptDefaults.leader_prompt,
+        coordinatorPrompt: restoredDraft.coordinatorPrompt || teamPromptDefaults.coordinator_prompt,
         workers: backfillEmptyWorkerDraftPrompts(restoredDraft.workers ?? [], teamPromptDefaults),
         showCreateTeamModal: true,
         showForgeAgentForm: false,
@@ -266,7 +266,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setError("Select a team first");
       return;
     }
-    const role = resolveInitialTeamMemberRole(selectedTeamHasLeader);
+    const role = resolveInitialTeamMemberRole(selectedTeamHasCoordinator);
     const defaults = resolveTeamForgeDefaults({
       teamName: selectedTeam.name,
       teamSpec: selectedTeam.spec,
@@ -292,7 +292,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
   }, [
     forgeDefaultWorktreeRoot,
     selectedTeam,
-    selectedTeamHasLeader,
+    selectedTeamHasCoordinator,
     selectedTeamWorkerCount,
     setError,
     setWarning,
@@ -314,7 +314,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       if (!selectedTeam) {
         return;
       }
-      if (nextRole !== "leader" && nextRole !== "worker") {
+      if (nextRole !== "coordinator" && nextRole !== "worker") {
         return;
       }
       const role = nextRole as TeamMemberRole;
@@ -420,17 +420,17 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       return;
     }
 
-    const isLeaderRole = teamMemberDraft.role === "leader";
-    const effectiveWorktreeMode = isLeaderRole ? "use_existing" : forgeAgentWorktreeMode;
-    const effectiveWorktreeRepo = isLeaderRole ? "" : forgeAgentWorktreeRepo.trim();
-    const effectiveWorktreeRef = isLeaderRole ? "" : forgeAgentWorktreeRef.trim();
+    const isCoordinatorRole = teamMemberDraft.role === "coordinator";
+    const effectiveWorktreeMode = isCoordinatorRole ? "use_existing" : forgeAgentWorktreeMode;
+    const effectiveWorktreeRepo = isCoordinatorRole ? "" : forgeAgentWorktreeRepo.trim();
+    const effectiveWorktreeRef = isCoordinatorRole ? "" : forgeAgentWorktreeRef.trim();
     const normalizedRoot =
       normalizeWorkdirInput(forgeDefaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
     const name = forgeAgentName.trim() || "agent";
     const workdirInput = normalizeWorkdirInput(forgeAgentWorkdir);
     const workdir =
-      isLeaderRole && !workdirInput
-        ? buildLeaderForgeDefaultWorkdir(normalizedRoot, name)
+      isCoordinatorRole && !workdirInput
+        ? buildCoordinatorForgeDefaultWorkdir(normalizedRoot, name)
         : workdirInput;
     const workdirPayload =
       effectiveWorktreeMode === "create_worktree" &&

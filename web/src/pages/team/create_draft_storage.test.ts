@@ -32,7 +32,7 @@ function buildState(
     ...createInitialTeamCreateState(),
     showCreateTeamModal: true,
     newTeamName: "alpha",
-    leaderMemberId: "leader-1",
+    coordinatorMemberId: "coordinator-1",
     workers: [
       {
         member_id: "worker-1",
@@ -67,7 +67,7 @@ describe("team create draft storage", () => {
     const restored = loadTeamCreateDraft("wizard");
     expect(restored.error).toBeNull();
     expect(restored.draft?.newTeamName).toBe("alpha");
-    expect(restored.draft?.leaderMemberId).toBe("leader-1");
+    expect(restored.draft?.coordinatorMemberId).toBe("coordinator-1");
     expect(restored.draft?.createTeamStage).toBe(2);
     expect(restored.draft?.workers?.length).toBe(1);
   });
@@ -192,13 +192,13 @@ describe("team create draft storage", () => {
           newTeamDescription: "desc",
           newTeamSpec: "",
           createTeamStage: 2.9,
-          leaderMemberId: "leader-2",
-          leaderModel: "",
-          leaderPrompt: "",
-          leaderSkills: "invalid",
-          leaderCustomSkills: "custom",
+          coordinatorMemberId: "coordinator-2",
+          coordinatorModel: "",
+          coordinatorPrompt: "",
+          coordinatorSkills: "invalid",
+          coordinatorCustomSkills: "custom",
           workers: [{ member_id: "worker-2", skills: ["team-worker-executor", ""] }, null],
-          teamForgeAgentIds: ["leader-2", " ", "worker-2"],
+          teamForgeAgentIds: ["coordinator-2", " ", "worker-2"],
         },
       })
     );
@@ -206,8 +206,8 @@ describe("team create draft storage", () => {
     expect(restored.error).toBeNull();
     expect(restored.draft?.newTeamName).toBe("beta");
     expect(restored.draft?.createTeamStage).toBe(2);
-    expect(restored.draft?.leaderPrompt).toBe(initial.leaderPrompt);
-    expect(restored.draft?.leaderSkills).toEqual(initial.leaderSkills);
+    expect(restored.draft?.coordinatorPrompt).toBe(initial.coordinatorPrompt);
+    expect(restored.draft?.coordinatorSkills).toEqual(initial.coordinatorSkills);
     expect(restored.draft?.newTeamSpec).toBe(initial.newTeamSpec);
     expect(restored.draft?.workers).toEqual([
       {
@@ -219,6 +219,37 @@ describe("team create draft storage", () => {
         custom_skills: "",
       },
     ]);
-    expect(restored.draft?.teamForgeAgentIds).toEqual(["leader-2", "worker-2"]);
+    expect(restored.draft?.teamForgeAgentIds).toEqual(["coordinator-2", "worker-2"]);
+  });
+
+  it("loads legacy leader draft fields into coordinator state", () => {
+    localStorage.setItem(
+      "agenthub_team_create_draft_v1",
+      JSON.stringify({
+        schema_version: 1,
+        status: "creating",
+        entry_mode: "wizard",
+        updated_at: Date.now(),
+        draft: {
+          newTeamName: "legacy-team",
+          leaderMemberId: "legacy-coordinator",
+          leaderModel: "gpt-legacy",
+          leaderPrompt: "legacy prompt",
+          leaderSkills: ["team-coordinator-orchestrator", ""],
+          leaderCustomSkills: "legacy custom",
+          workers: [],
+          teamForgeAgentIds: ["legacy-coordinator"],
+        },
+      })
+    );
+
+    const restored = loadTeamCreateDraft("wizard");
+    expect(restored.error).toBeNull();
+    expect(restored.draft?.coordinatorMemberId).toBe("legacy-coordinator");
+    expect(restored.draft?.coordinatorModel).toBe("gpt-legacy");
+    expect(restored.draft?.coordinatorPrompt).toBe("legacy prompt");
+    expect(restored.draft?.coordinatorSkills).toEqual(["team-coordinator-orchestrator"]);
+    expect(restored.draft?.coordinatorCustomSkills).toBe("legacy custom");
+    expect(restored.draft?.teamForgeAgentIds).toEqual(["legacy-coordinator"]);
   });
 });

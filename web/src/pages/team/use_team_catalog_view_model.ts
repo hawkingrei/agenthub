@@ -187,8 +187,8 @@ export function useTeamCatalogViewModel({
   }, [selectedTeam, teamSpecMembersByTeamId]);
 
   const selectedTeamHasConfiguredMembers = selectedTeamMembers.length > 0;
-  const selectedTeamHasLeader = useMemo(
-    () => selectedTeamMembers.some((member) => member.role === "leader"),
+  const selectedTeamHasCoordinator = useMemo(
+    () => selectedTeamMembers.some((member) => member.role === "coordinator"),
     [selectedTeamMembers]
   );
   const selectedTeamWorkerCount = useMemo(
@@ -210,7 +210,7 @@ export function useTeamCatalogViewModel({
     selectedTeamRuntimeControlTone,
     selectedTeamMembers,
     selectedTeamHasConfiguredMembers,
-    selectedTeamHasLeader,
+    selectedTeamHasCoordinator,
     selectedTeamWorkerCount,
   };
 }

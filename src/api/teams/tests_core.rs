@@ -93,17 +93,17 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
         Json(CreateTeamRequest {
             name: "review-team".to_string(),
             description: Some("team for review".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
     .expect("create team");
     assert_eq!(created.spec["spec_version"], Value::from(1));
-    assert_eq!(created.spec["leader_member_id"], Value::from("planner"));
-    assert_eq!(created.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(created.spec["coordinator_member_id"], Value::from("planner"));
+    assert_eq!(created.spec["entrypoint"], Value::from("coordinator_plan"));
     assert_eq!(
         created.spec["steps"][0]["step_key"],
-        Value::from("leader_plan")
+        Value::from("coordinator_plan")
     );
     assert_eq!(
         created.spec["steps"][0]["member_id"],
@@ -140,7 +140,7 @@ async fn teams_api_create_list_get_and_reject_duplicate_name() {
         Json(CreateTeamRequest {
             name: "review-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -171,7 +171,7 @@ async fn teams_api_allows_creating_team_without_members() {
     assert_eq!(created.spec["spec_version"], Value::from(1));
     assert_eq!(created.spec["members"], json!([]));
     assert!(created.spec.get("entrypoint").is_none());
-    assert!(created.spec.get("leader_member_id").is_none());
+    assert!(created.spec.get("coordinator_member_id").is_none());
     assert!(created.spec.get("steps").is_none());
 
     let Json(runtime) = get_team_runtime(State(state), headers, Path(created.id.clone()))
@@ -215,7 +215,7 @@ async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
                 "members": [
                     {
                         "member_id": "planner",
-                        "role": "leader",
+                        "role": "coordinator",
                     }
                 ],
             }),
@@ -224,8 +224,8 @@ async fn teams_api_update_team_spec_adds_first_member_and_starts_runtime() {
     .await
     .expect("update team spec");
 
-    assert_eq!(updated.spec["leader_member_id"], Value::from("planner"));
-    assert_eq!(updated.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(updated.spec["coordinator_member_id"], Value::from("planner"));
+    assert_eq!(updated.spec["entrypoint"], Value::from("coordinator_plan"));
     assert_eq!(
         updated.spec["steps"][0]["member_id"],
         Value::from("planner")
@@ -254,7 +254,7 @@ async fn teams_api_runtime_reconciles_stale_running_member_sessions() {
                 "members": [
                     {
                         "member_id": "planner",
-                        "role": "leader",
+                        "role": "coordinator",
                     }
                 ],
             }),
@@ -517,7 +517,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             TeamDefinitionConfig {
                 name: "delete-team".to_string(),
                 description: Some("delete target".to_string()),
-                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+                spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
             },
             None,
         )
@@ -572,7 +572,7 @@ async fn teams_api_delete_team_cascades_related_run_data() {
             run_id, from_actor_id, to_actor_id, channel, transport, route_json, payload_json,
             idempotency_key, status, created_at
         )
-        VALUES (?1, 'leader', 'worker', 'default', 'local', NULL, '{}', NULL, 'pending', ?2)
+        VALUES (?1, 'coordinator', 'worker', 'default', 'local', NULL, '{}', NULL, 'pending', ?2)
         "#,
     )
     .bind(&run.id)
@@ -726,7 +726,7 @@ async fn teams_api_create_team_auto_starts_member_runtime() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -758,7 +758,7 @@ async fn teams_api_create_team_auto_starts_member_runtime() {
 }
 
 #[tokio::test]
-async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
+async fn team_member_runtime_startup_supports_coordinator_and_worker_roles() {
     let state = build_test_state().await;
     configure_worker_team_member_agent(&state, "reviewer").await;
 
@@ -771,7 +771,7 @@ async fn team_member_runtime_startup_supports_leader_and_worker_roles() {
                 current_run_id: None,
                 actor_id: "planner".to_string(),
                 default_channel: "default".to_string(),
-                member_role: Some("leader".to_string()),
+                member_role: Some("coordinator".to_string()),
                 member_skills: Vec::new(),
                 contract_version: None,
                 continuity: None,
@@ -820,7 +820,7 @@ async fn teams_api_start_and_stop_team_runtime() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -898,7 +898,7 @@ async fn force_new_session_restarts_member_runtime_with_new_session_id() {
             description: Some("force one member to use a new session".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -943,7 +943,7 @@ async fn force_new_session_restarts_member_runtime_with_new_session_id() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -1000,7 +1000,7 @@ async fn teams_api_start_team_keeps_legacy_worker_use_existing_runtime_when_vali
                 spec: json!({
                     "entrypoint":"planner",
                     "members":[
-                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"planner","role":"coordinator"},
                         {
                             "member_id":worker_id,
                             "role":"worker",
@@ -1059,7 +1059,7 @@ async fn teams_api_start_team_returns_bad_request_for_unrecoverable_worker_runti
                 spec: json!({
                     "entrypoint":"planner",
                     "members":[
-                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"planner","role":"coordinator"},
                         {
                             "member_id":worker_id,
                             "role":"worker",
@@ -1093,7 +1093,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         "team-runtime-startup",
         &TeamMemberSpec {
             member_id: "planner".to_string(),
-            role: "leader".to_string(),
+            role: "coordinator".to_string(),
             model: None,
             description: None,
             prompt: None,
@@ -1106,7 +1106,7 @@ fn team_member_actor_context_match_rejects_mismatched_team_runtime() {
         current_run_id: None,
         actor_id: "planner".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
@@ -1135,12 +1135,12 @@ async fn teams_api_strips_member_skill_configuration_from_team_spec() {
             name: "required-role-skills-team".to_string(),
             description: Some("role skill enforcement".to_string()),
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
                     {
-                        "member_id":"leader-agent",
-                        "role":"leader",
+                        "member_id":"coordinator-agent",
+                        "role":"coordinator",
                         "skills":["planning"]
                     },
                     {
@@ -1182,12 +1182,12 @@ async fn teams_api_ignores_legacy_member_skills_payload_shapes() {
             name: "ignored-legacy-member-skills".to_string(),
             description: Some("legacy skills input should be ignored".to_string()),
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
                     {
-                        "member_id":"leader-agent",
-                        "role":"leader",
+                        "member_id":"coordinator-agent",
+                        "role":"coordinator",
                         "skills":"planning"
                     },
                     {
@@ -1228,12 +1228,12 @@ async fn teams_api_read_paths_strip_legacy_member_skill_configuration() {
                 name: "legacy-skill-read-team".to_string(),
                 description: Some("legacy team spec should be sanitized on read".to_string()),
                 spec: json!({
-                    "entrypoint":"leader-agent",
-                    "leader_member_id":"leader-agent",
+                    "entrypoint":"coordinator-agent",
+                    "coordinator_member_id":"coordinator-agent",
                     "members":[
                         {
-                            "member_id":"leader-agent",
-                            "role":"leader",
+                            "member_id":"coordinator-agent",
+                            "role":"coordinator",
                             "skills":["planning","review"]
                         },
                         {
@@ -1335,10 +1335,10 @@ async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
             name: "role-workflow-prompt-team".to_string(),
             description: Some("role workflow prompt defaults".to_string()),
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
-                    {"member_id":"leader-agent","role":"leader"},
+                    {"member_id":"coordinator-agent","role":"coordinator"},
                     {"member_id":"worker-agent","role":"worker"}
                 ]
             }),
@@ -1353,15 +1353,15 @@ async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
         .and_then(Value::as_array)
         .cloned()
         .expect("members array");
-    let leader_prompt = members
+    let coordinator_prompt = members
         .iter()
-        .find(|member| member.get("member_id").and_then(Value::as_str) == Some("leader-agent"))
+        .find(|member| member.get("member_id").and_then(Value::as_str) == Some("coordinator-agent"))
         .and_then(|member| member.get("prompt"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    assert!(leader_prompt.contains("Do not implement feature code directly."));
-    assert!(leader_prompt.contains("perform targeted technical research"));
-    assert!(leader_prompt.contains("Start from an empty workspace."));
+    assert!(coordinator_prompt.contains("Do not implement feature code directly."));
+    assert!(coordinator_prompt.contains("perform targeted technical research"));
+    assert!(coordinator_prompt.contains("Start from an empty workspace."));
 
     let worker_prompt = members
         .iter()
@@ -1396,9 +1396,9 @@ async fn teams_api_generates_default_steps_for_multi_member_team() {
             name: "default-steps-team".to_string(),
             description: None,
             spec: json!({
-                "entrypoint":"leader-agent",
+                "entrypoint":"coordinator-agent",
                 "members":[
-                    {"member_id":"leader-agent","role":"leader"},
+                    {"member_id":"coordinator-agent","role":"coordinator"},
                     {"member_id":"worker-agent-a","role":"worker"},
                     {"member_id":"worker-agent-b","role":"worker"}
                 ]
@@ -1408,13 +1408,13 @@ async fn teams_api_generates_default_steps_for_multi_member_team() {
     .await
     .expect("create team with generated defaults");
 
-    assert_eq!(created.spec["entrypoint"], Value::from("leader_plan"));
+    assert_eq!(created.spec["entrypoint"], Value::from("coordinator_plan"));
     let steps = created.spec["steps"]
         .as_array()
         .expect("generated steps array");
     assert_eq!(steps.len(), 4);
-    assert_eq!(steps[0]["step_key"], Value::from("leader_plan"));
-    assert_eq!(steps[0]["member_id"], Value::from("leader-agent"));
+    assert_eq!(steps[0]["step_key"], Value::from("coordinator_plan"));
+    assert_eq!(steps[0]["member_id"], Value::from("coordinator-agent"));
     let worker_step_keys = steps
         .iter()
         .filter_map(|step| {
@@ -1429,8 +1429,8 @@ async fn teams_api_generates_default_steps_for_multi_member_team() {
     assert_eq!(worker_step_keys.len(), 2);
     let synth_step = steps
         .iter()
-        .find(|step| step.get("step_key").and_then(Value::as_str) == Some("leader_synthesize"))
-        .expect("leader_synthesize step");
+        .find(|step| step.get("step_key").and_then(Value::as_str) == Some("coordinator_synthesize"))
+        .expect("coordinator_synthesize step");
     let synth_depends = synth_step["depends_on"]
         .as_array()
         .expect("synthesize depends_on");
@@ -1463,10 +1463,10 @@ async fn teams_api_rejects_invalid_spec() {
         json!({"entrypoint":"step-a","members":[{"member_id":"planner"}],"steps":[{"step_key":"step-a","member_id":"planner","depends_on":["step-b"]},{"step_key":"step-b","member_id":"planner","depends_on":["step-a"]}]}),
         json!({"spec_version":"1","entrypoint":"planner","members":[{"member_id":"planner"}]}),
         json!({"spec_version":2,"entrypoint":"planner","members":[{"member_id":"planner"}]}),
-        json!({"entrypoint":"planner","leader_member_id":"missing","members":[{"member_id":"planner"}]}),
+        json!({"entrypoint":"planner","coordinator_member_id":"missing","members":[{"member_id":"planner"}]}),
         json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"captain"}]}),
         json!({"entrypoint":"planner","members":[{"member_id":"planner","skills":["a","a"]}]}),
-        json!({"entrypoint":"planner","leader_member_id":"leader","members":[{"member_id":"planner"},{"member_id":"leader"}]}),
+        json!({"entrypoint":"planner","coordinator_member_id":"coordinator","members":[{"member_id":"planner"},{"member_id":"coordinator"}]}),
     ];
     for (index, spec) in invalid_specs.into_iter().enumerate() {
         let err = create_team(
@@ -1554,7 +1554,7 @@ async fn teams_api_rejects_spec_with_too_many_steps() {
             description: None,
             spec: json!({
                 "entrypoint": "step-0",
-                "members": [{"member_id":"planner","role":"leader"}],
+                "members": [{"member_id":"planner","role":"coordinator"}],
                 "steps": steps,
             }),
         }),
@@ -1581,7 +1581,7 @@ async fn teams_api_internal_errors_are_sanitized() {
         Json(CreateTeamRequest {
             name: "internal-error-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -1620,7 +1620,7 @@ async fn team_runs_api_supports_lifecycle_and_event_pagination() {
         Json(CreateTeamRequest {
             name: "run-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"coordinator"}]}),
         }),
     )
     .await
@@ -1760,7 +1760,7 @@ async fn team_runs_api_supports_manual_context_flush() {
         Json(CreateTeamRequest {
             name: "flush-api-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"coordinator"}]}),
         }),
     )
     .await
@@ -1868,7 +1868,7 @@ async fn team_runs_api_rejects_invalid_context_flush_trigger() {
         Json(CreateTeamRequest {
             name: "flush-trigger-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"leader"}]}),
+            spec: json!({"entrypoint":"executor","members":[{"member_id":"executor","role":"coordinator"}]}),
         }),
     )
     .await
@@ -1913,7 +1913,7 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         Json(CreateTeamRequest {
             name: "runs-list-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -1925,7 +1925,7 @@ async fn team_runs_api_lists_team_runs_with_status_filter_and_cursor() {
         Json(CreateTeamRequest {
             name: "runs-list-other-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -2098,7 +2098,7 @@ async fn team_runs_api_supports_resume_and_restart_strategy() {
         Json(CreateTeamRequest {
             name: "resume-restart-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -2212,7 +2212,7 @@ async fn team_runs_api_enforces_team_owner_access() {
             description: Some("owner enforcement for run endpoints".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -2348,7 +2348,7 @@ async fn team_runs_api_paginates_high_volume_without_duplicates_and_honors_statu
         Json(CreateTeamRequest {
             name: "runs-list-high-volume-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -2490,7 +2490,7 @@ async fn team_run_steps_api_supports_scheduler_lifecycle_bridge() {
         Json(CreateTeamRequest {
             name: "scheduler-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -2738,7 +2738,7 @@ async fn team_run_steps_api_supports_input_required_and_resume() {
         Json(CreateTeamRequest {
             name: "input-required-api-team".to_string(),
             description: None,
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -2957,7 +2957,7 @@ async fn start_team_run_step_requests_reconcile_prompt_for_reconcile_loop_steps(
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -3055,7 +3055,7 @@ async fn team_run_messages_api_supports_actor_mailbox_flow() {
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"},{"member_id":"reviewer","role":"worker"}]
+                "members":[{"member_id":"planner","role":"coordinator"},{"member_id":"reviewer","role":"worker"}]
             }),
         }),
     )
@@ -3281,7 +3281,7 @@ async fn team_run_messages_api_supports_human_actor_list_and_ack_fallback() {
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -3479,7 +3479,7 @@ async fn team_run_messages_api_supports_idempotency_key() {
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"},{"member_id":"reviewer","role":"worker"}]
+                "members":[{"member_id":"planner","role":"coordinator"},{"member_id":"reviewer","role":"worker"}]
             }),
         }),
     )
@@ -3615,7 +3615,7 @@ async fn team_run_messages_api_chat_type_hints_repeat_while_other_types_still_su
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -3842,11 +3842,11 @@ async fn team_run_messages_profile_patch_proposal_updates_team_spec_and_is_idemp
             description: None,
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
                     {
                         "member_id":"planner",
-                        "role":"leader",
+                        "role":"coordinator",
                         "description":"Existing planning lead",
                         "prompt":"Lead with checkpoints.",
                         "skills":["planning"]
@@ -3997,12 +3997,12 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
             name: "actor-profile-patch-run".to_string(),
             description: None,
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
                     {
-                        "member_id":"leader-agent",
-                        "role":"leader",
+                        "member_id":"coordinator-agent",
+                        "role":"coordinator",
                         "description":"Run lead",
                         "prompt":"Lead the run.",
                         "skills":["planning"]
@@ -4038,7 +4038,7 @@ async fn team_run_messages_profile_patch_proposal_updates_run_overrides_and_snap
         headers.clone(),
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
-            from_actor_id: "leader-agent".to_string(),
+            from_actor_id: "coordinator-agent".to_string(),
             from_peer_id: None,
             to_actor_id: "worker-agent".to_string(),
             to_peer_id: None,
@@ -4170,12 +4170,12 @@ async fn team_run_messages_profile_patch_proposal_rejects_skills_add() {
             name: "actor-profile-patch-skill-reject".to_string(),
             description: None,
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
                     {
-                        "member_id":"leader-agent",
-                        "role":"leader",
+                        "member_id":"coordinator-agent",
+                        "role":"coordinator",
                         "description":"Run lead"
                     },
                     {
@@ -4207,7 +4207,7 @@ async fn team_run_messages_profile_patch_proposal_rejects_skills_add() {
         headers,
         Path(run.id),
         Json(SendTeamRunMessageRequest {
-            from_actor_id: "leader-agent".to_string(),
+            from_actor_id: "coordinator-agent".to_string(),
             from_peer_id: None,
             to_actor_id: "worker-agent".to_string(),
             to_peer_id: None,
@@ -4248,12 +4248,12 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
             name: "snapshot-team".to_string(),
             description: Some("team snapshot coverage".to_string()),
             spec: json!({
-                "entrypoint":"leader-agent",
-                "leader_member_id":"leader-agent",
+                "entrypoint":"coordinator-agent",
+                "coordinator_member_id":"coordinator-agent",
                 "members":[
                     {
-                        "member_id":"leader-agent",
-                        "role":"leader",
+                        "member_id":"coordinator-agent",
+                        "role":"coordinator",
                         "description":"Team architect and integration owner",
                         "model":"gpt-5",
                         "prompt":"Lead the plan",
@@ -4292,7 +4292,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         Path(run.id.clone()),
         Json(SubmitTeamRunStepRequest {
             step_key: "plan-step".to_string(),
-            member_id: "leader-agent".to_string(),
+            member_id: "coordinator-agent".to_string(),
             depends_on: Some(vec![]),
             input: Some(json!({"task":"plan"})),
         }),
@@ -4305,7 +4305,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         headers.clone(),
         Path((run.id.clone(), step.id.clone())),
         Json(StartTeamRunStepRequest {
-            runtime_handle_id: Some("session-leader-1".to_string()),
+            runtime_handle_id: Some("session-coordinator-1".to_string()),
         }),
     )
     .await
@@ -4320,8 +4320,8 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9)
         "#,
     )
-    .bind("leader-agent")
-    .bind("leader-agent")
+    .bind("coordinator-agent")
+    .bind("coordinator-agent")
     .bind("/tmp")
     .bind("/usr/bin/env")
     .bind("[]")
@@ -4331,7 +4331,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     .bind(now)
     .execute(&state.db)
     .await
-    .expect("insert leader agent row");
+    .expect("insert coordinator agent row");
 
     sqlx::query(
         r#"
@@ -4360,8 +4360,8 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         VALUES (?1, ?2, ?3, ?4)
         "#,
     )
-    .bind("session-leader-1")
-    .bind("leader-agent")
+    .bind("session-coordinator-1")
+    .bind("coordinator-agent")
     .bind("working")
     .bind(now)
     .execute(&state.db)
@@ -4387,7 +4387,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
         headers.clone(),
         Path(run.id.clone()),
         Json(SendTeamRunMessageRequest {
-            from_actor_id: "leader-agent".to_string(),
+            from_actor_id: "coordinator-agent".to_string(),
             from_peer_id: None,
             to_actor_id: "worker-agent".to_string(),
             to_peer_id: None,
@@ -4415,7 +4415,7 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
 
     assert_eq!(snapshot.run.id, run.id);
     assert_eq!(snapshot.team.id, team.id);
-    assert_eq!(snapshot.leader_member_id.as_deref(), Some("leader-agent"));
+    assert_eq!(snapshot.coordinator_member_id.as_deref(), Some("coordinator-agent"));
     assert_eq!(snapshot.members.len(), 2);
     assert!(snapshot.latest_events.len() >= 3);
     assert_eq!(snapshot.mailbox.pending, 1);
@@ -4423,31 +4423,31 @@ async fn team_run_snapshot_api_returns_member_status_and_mailbox_summary() {
     assert_eq!(snapshot.mailbox.dead_letter, 0);
     assert_eq!(snapshot.mailbox.recent_messages.len(), 1);
 
-    let leader = snapshot
+    let coordinator = snapshot
         .members
         .iter()
-        .find(|member| member.member_id == "leader-agent")
-        .expect("find leader");
-    assert_eq!(leader.role, "leader");
+        .find(|member| member.member_id == "coordinator-agent")
+        .expect("find coordinator");
+    assert_eq!(coordinator.role, "coordinator");
     assert_eq!(
-        leader.description.as_deref(),
+        coordinator.description.as_deref(),
         Some("Team architect and integration owner")
     );
-    assert_eq!(leader.model.as_deref(), Some("gpt-5"));
-    assert_eq!(leader.prompt.as_deref(), Some("Lead the plan"));
+    assert_eq!(coordinator.model.as_deref(), Some("gpt-5"));
+    assert_eq!(coordinator.prompt.as_deref(), Some("Lead the plan"));
     assert_eq!(
-        leader.skills,
-        crate::team::effective_team_member_skills("leader")
+        coordinator.skills,
+        crate::team::effective_team_member_skills("coordinator")
     );
-    assert_eq!(leader.pending_inbox_count, 0);
-    assert_eq!(leader.status, "working");
-    assert_eq!(leader.session_status.as_deref(), Some("working"));
+    assert_eq!(coordinator.pending_inbox_count, 0);
+    assert_eq!(coordinator.status, "working");
+    assert_eq!(coordinator.session_status.as_deref(), Some("working"));
     assert_eq!(
-        leader
+        coordinator
             .latest_step
             .as_ref()
             .and_then(|step| step.runtime_handle_id.as_deref()),
-        Some("session-leader-1")
+        Some("session-coordinator-1")
     );
 
     let worker = snapshot
@@ -4478,7 +4478,7 @@ async fn team_task_api_lists_gets_and_redacts_context() {
         Json(CreateTeamRequest {
             name: "task-api-team".to_string(),
             description: Some("task api coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4555,7 +4555,7 @@ async fn team_task_api_keeps_shared_thread_tasks_without_auto_run() {
         Json(CreateTeamRequest {
             name: "shared-thread-team".to_string(),
             description: Some("shared thread task coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4597,7 +4597,7 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -4634,7 +4634,7 @@ async fn team_task_list_api_can_include_shared_thread_when_requested() {
             context: Some(json!({
                 "bootstrap_kind":"task_workspace"
             })),
-            conversation_mode: Some("to_leader".to_string()),
+            conversation_mode: Some("to_coordinator".to_string()),
             topic: Some("Investigate regression".to_string()),
         },
     )
@@ -4691,7 +4691,7 @@ async fn team_shared_thread_api_returns_not_found_when_missing() {
         Json(CreateTeamRequest {
             name: "shared-thread-missing-team".to_string(),
             description: Some("shared thread missing coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4714,7 +4714,7 @@ async fn team_shared_thread_api_ensures_canonical_thread_and_is_idempotent() {
         Json(CreateTeamRequest {
             name: "shared-thread-ensure-team".to_string(),
             description: Some("shared thread ensure coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4769,7 +4769,7 @@ async fn team_shared_thread_api_prefers_thread_with_latest_conversation_message(
         Json(CreateTeamRequest {
             name: "shared-thread-canonical-team".to_string(),
             description: Some("shared thread canonical coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4870,7 +4870,7 @@ async fn team_thread_reply_api_appends_reply_metadata_for_root_message() {
         Json(CreateTeamRequest {
             name: "thread-reply-team".to_string(),
             description: Some("thread reply coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4932,7 +4932,7 @@ async fn team_channel_api_lists_creates_and_deletes_non_default_channels() {
         Json(CreateTeamRequest {
             name: "team-channel-api-team".to_string(),
             description: Some("channel api coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -4992,7 +4992,7 @@ async fn team_channel_api_maps_duplicates_and_missing_channel_errors() {
         Json(CreateTeamRequest {
             name: "team-channel-api-errors".to_string(),
             description: Some("channel api error coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -5044,7 +5044,7 @@ async fn team_thread_reply_api_maps_missing_channel_and_root_to_not_found() {
         Json(CreateTeamRequest {
             name: "thread-reply-not-found-team".to_string(),
             description: Some("thread reply not found coverage".to_string()),
-            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"leader"}]}),
+            spec: json!({"entrypoint":"planner","members":[{"member_id":"planner","role":"coordinator"}]}),
         }),
     )
     .await
@@ -5102,7 +5102,7 @@ async fn team_thread_reply_api_notifies_existing_thread_participants() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -5217,7 +5217,7 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -5421,7 +5421,7 @@ async fn teams_api_rejects_human_task_status_and_owner_updates() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -5506,7 +5506,7 @@ async fn team_task_api_enforces_team_owner_access_for_existing_tasks() {
             description: Some("owner enforcement".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -5569,7 +5569,7 @@ async fn team_task_messages_api_supports_route_and_redaction() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -5683,22 +5683,22 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     assert_eq!(message.payload["authorization"], json!("[redacted]"));
     assert_eq!(message.payload["nested"]["api_key"], json!("[redacted]"));
 
-    let Json(to_leader_message) = send_team_task_message(
+    let Json(to_coordinator_message) = send_team_task_message(
         State(state.clone()),
         headers.clone(),
         Path((team.id.clone(), created.task.id.clone())),
         Json(SendTeamTaskMessageRequest {
             from_actor_id: Some("worker-1".to_string()),
             to_actor_id: None,
-            route: Some("to_leader".to_string()),
+            route: Some("to_coordinator".to_string()),
             payload: json!({"text":"need clarification"}),
             idempotency_key: None,
         }),
     )
     .await
-    .expect("send to leader message");
-    assert_eq!(to_leader_message.route, "to_leader");
-    assert_eq!(to_leader_message.to_actor_id.as_deref(), Some("planner"));
+    .expect("send to coordinator message");
+    assert_eq!(to_coordinator_message.route, "to_coordinator");
+    assert_eq!(to_coordinator_message.to_actor_id.as_deref(), Some("planner"));
 
     let Json(group_message) = send_team_task_message(
         State(state.clone()),
@@ -5737,10 +5737,10 @@ async fn team_task_messages_api_supports_route_and_redaction() {
     .expect("list messages");
     assert_eq!(messages.len(), 3);
     assert_eq!(messages[0].message_id, message.message_id);
-    assert_eq!(messages[1].message_id, to_leader_message.message_id);
+    assert_eq!(messages[1].message_id, to_coordinator_message.message_id);
     assert_eq!(messages[2].message_id, group_message.message_id);
     assert_eq!(messages[0].route, "to_member");
-    assert_eq!(messages[1].route, "to_leader");
+    assert_eq!(messages[1].route, "to_coordinator");
     assert_eq!(messages[2].route, "group_chat");
 
     let Json(empty_page) = list_team_task_messages(
@@ -5771,7 +5771,7 @@ async fn team_task_messages_api_supports_idempotency_key_and_dedupes_mailbox_for
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -5922,7 +5922,7 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -6111,7 +6111,7 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -6210,7 +6210,7 @@ async fn team_task_messages_api_infers_direct_route_for_single_mention_and_norma
 }
 
 #[tokio::test]
-async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
+async fn team_task_messages_api_infers_to_coordinator_from_single_coordinator_mention() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
@@ -6218,12 +6218,12 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
         State(state.clone()),
         headers.clone(),
         Json(CreateTeamRequest {
-            name: "task-to-leader-default-team".to_string(),
-            description: Some("single leader mention should infer to_leader".to_string()),
+            name: "task-to-coordinator-default-team".to_string(),
+            description: Some("single coordinator mention should infer to_coordinator".to_string()),
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -6237,7 +6237,7 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
         &headers,
         &team.id,
         CreateTeamTaskRequest {
-            title: "Leader inference".to_string(),
+            title: "Coordinator inference".to_string(),
             created_by_actor_id: Some("user".to_string()),
             context: Some(json!({})),
             conversation_mode: Some("group_chat".to_string()),
@@ -6263,9 +6263,9 @@ async fn team_task_messages_api_infers_to_leader_from_single_leader_mention() {
         }),
     )
     .await
-    .expect("send inferred to_leader message");
+    .expect("send inferred to_coordinator message");
 
-    assert_eq!(message.route, "to_leader");
+    assert_eq!(message.route, "to_coordinator");
     assert_eq!(message.to_actor_id.as_deref(), Some("planner"));
 }
 
@@ -6282,7 +6282,7 @@ async fn team_task_messages_api_normalizes_detail_ref_objects_and_caps_summary_l
             description: Some("detail_ref object normalization coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -6359,7 +6359,7 @@ async fn team_task_messages_api_drops_invalid_detail_ref_objects_before_summary_
             description: Some("invalid detail_ref object coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -6425,7 +6425,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-dev","role":"worker"},
                     {"member_id":"qa-review","role":"worker"}
                 ]
@@ -6481,7 +6481,7 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
         Json(SendTeamTaskMessageRequest {
             from_actor_id: Some("worker-dev".to_string()),
             to_actor_id: Some("planner".to_string()),
-            route: Some("to_leader".to_string()),
+            route: Some("to_coordinator".to_string()),
             payload: json!({"text":"working on compile details"}),
             idempotency_key: None,
         }),
@@ -6572,10 +6572,10 @@ async fn team_task_compile_preview_builds_deterministic_role_bound_payload() {
         .iter()
         .find(|item| item.member_id == "planner")
         .expect("find planner assignment");
-    assert_eq!(planner_assignment.role, "leader");
+    assert_eq!(planner_assignment.role, "coordinator");
     assert_eq!(
         planner_assignment.step_keys,
-        vec!["leader_plan".to_string(), "leader_synthesize".to_string(),]
+        vec!["coordinator_plan".to_string(), "coordinator_synthesize".to_string(),]
     );
 
     let dev_assignment = preview_a
@@ -6616,7 +6616,7 @@ async fn team_task_compile_preview_sanitizes_plan_updates() {
             description: Some("task compile sanitize coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )
@@ -6713,7 +6713,7 @@ async fn team_task_compile_preview_prefers_task_execution_plan_steps() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-dev","role":"worker"},
                     {"member_id":"qa-review","role":"worker"}
                 ]
@@ -6822,7 +6822,7 @@ async fn team_task_compile_preview_rejects_invalid_execution_plan_payload() {
             description: Some("invalid execution plan preview coverage".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         }),
     )

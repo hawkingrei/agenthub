@@ -102,8 +102,8 @@ describe("Team management modals", () => {
         <TeamForgeAgentDialog
           open
           draft={{
-            member_id: "leader-1",
-            role: "leader",
+            member_id: "coordinator-1",
+            role: "coordinator",
             description: "Own planning",
             model: "",
             prompt: "Plan and coordinate.",
@@ -114,7 +114,7 @@ describe("Team management modals", () => {
             agent_loop_prompt: "",
           }}
           roleProfile={{
-            profileLabel: "Leader Profile",
+            profileLabel: "Coordinator Profile",
             intro: "Own coordination.",
             focus: "Planning",
             skillsHint: "Defaults are managed for you.",
@@ -122,8 +122,8 @@ describe("Team management modals", () => {
           }}
           roleOptions={[
             {
-              value: "leader",
-              label: "Leader",
+              value: "coordinator",
+              label: "Coordinator",
               description: "Own planning and review.",
               disabled: false,
             },
@@ -134,7 +134,7 @@ describe("Team management modals", () => {
               disabled: false,
             },
           ]}
-          selectedTeamHasLeader={false}
+          selectedTeamHasCoordinator={false}
           onRoleChange={vi.fn()}
           onPatchDraft={vi.fn()}
           chrome={{
@@ -149,7 +149,7 @@ describe("Team management modals", () => {
             agentPresetSummaryLabel: "Model",
             showCommandSummary: false,
             teamStyled: true,
-            agentName: "leader-1",
+            agentName: "coordinator-1",
             setAgentName: vi.fn(),
             agentWorkdir: "/repo",
             setAgentWorkdir: vi.fn(),
@@ -175,11 +175,11 @@ describe("Team management modals", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("Leader Profile");
+    expect(html).toContain("Coordinator Profile");
     expect(html).toContain("Managed automatically");
     expect(html).toContain("What should this agent help with?");
     expect(html).toContain("only asks for a description and workspace settings");
-    expect(html).toContain("Single leader");
+    expect(html).toContain("Single coordinator");
     expect(html).not.toContain("Prompt Scope");
     expect(html).not.toContain("Launch command");
   });

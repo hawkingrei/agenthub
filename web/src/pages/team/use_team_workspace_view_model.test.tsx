@@ -31,12 +31,12 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       name: "Alpha Team",
       description: "team",
       spec: {
-        leader_member_id: "leader-1",
+        coordinator_member_id: "coordinator-1",
         members: [
           {
-            member_id: "leader-1",
-            role: "leader",
-            description: "Leader agent",
+            member_id: "coordinator-1",
+            role: "coordinator",
+            description: "Coordinator agent",
             model: "codex",
             prompt: "lead",
             profile: null,
@@ -74,7 +74,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       team_id: "team-1",
       title: "all",
       status: "in_progress",
-      created_by_actor_id: "leader",
+      created_by_actor_id: "coordinator",
       assigned_member_id: null,
       context: { bootstrap_kind: "shared_thread" },
       created_at: 1,
@@ -87,7 +87,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     runsLoading: false,
     isCompactWorkbench: false,
     teamPromptDefaults: {
-      leader_prompt: "lead",
+      coordinator_prompt: "lead",
       worker_prompt: "work",
     } as HookParams["teamPromptDefaults"],
     teamMemberAgentsById: {},
@@ -235,7 +235,7 @@ describe("useTeamWorkspaceViewModel", () => {
           run_status: "working",
           step_status: "working",
           pending_inbox_count: 1,
-          current_work: "Replying to leader",
+          current_work: "Replying to coordinator",
           role: "worker",
         },
       ] as HookParams["selectedTeamMemberLiveStates"],
@@ -269,7 +269,7 @@ describe("useTeamWorkspaceViewModel", () => {
           run_status: "working",
           step_status: "working",
           pending_inbox_count: 1,
-          current_work: "Replying to leader",
+          current_work: "Replying to coordinator",
           role: "worker",
         },
       ] as HookParams["selectedTeamMemberLiveStates"],
@@ -310,7 +310,7 @@ describe("useTeamWorkspaceViewModel", () => {
       const snapshot = tasksMounted.getSnapshot();
       expect(snapshot?.workspaceTitle).toBe("Kanban");
       expect(snapshot?.workspaceDescription).toBe(
-        "Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in # review."
+        "Canonical Kanban for coordinator-planned, system-managed Team tasks. Human task requests belong in # review."
       );
     } finally {
       tasksMounted.cleanup();
@@ -436,8 +436,8 @@ describe("useTeamWorkspaceViewModel", () => {
         team_id: "team-1",
         title: "Investigate regression",
         status: "in_progress",
-        created_by_actor_id: "leader",
-        assigned_member_id: "leader",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: "coordinator",
         context: {
           bootstrap_kind: "team_channel",
           channel_id: "review",

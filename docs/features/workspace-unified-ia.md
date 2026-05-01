@@ -200,7 +200,7 @@ The unified shell must not flatten Team semantics into generic communication/tas
 Specifically:
 
 - humans still interact with Team intent primarily through conversation
-- leader/runtime still own canonical Team task materialization
+- coordinator/runtime still own canonical Team task materialization
 - `run` and `step` remain execution/debug artifacts instead of the primary collaboration object
 - Team mailbox, actor identity, and run continuity contracts remain unchanged
 

@@ -103,7 +103,7 @@ impl InternalGrpcMailboxClient {
         let access_token = authz
             .issue_node_access_token(NodeCredentialRequest {
                 source_node_id: config.source_node_id.clone(),
-                role: InternalRole::Leader.as_str().to_string(),
+                role: InternalRole::Coordinator.as_str().to_string(),
                 actor_id: None,
                 run_id: None,
                 permissions,

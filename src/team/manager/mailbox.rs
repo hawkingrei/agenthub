@@ -2163,10 +2163,10 @@ mod tests {
     #[test]
     fn validate_direct_mailbox_target_rejects_role_alias() {
         let member_specs = mock_member_specs(&[
-            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "coordinator"),
             ("c319f933-1358-4418-a111-872304052422", "worker"),
         ]);
-        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "leader")
+        let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "coordinator")
             .expect_err("role alias should be rejected");
         assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
         assert!(err.message.contains("not a canonical team member_id"));
@@ -2176,7 +2176,7 @@ mod tests {
     #[test]
     fn validate_direct_mailbox_target_allows_member_id_and_human_mailbox() {
         let member_specs = mock_member_specs(&[
-            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "coordinator"),
             ("c319f933-1358-4418-a111-872304052422", "worker"),
         ]);
         validate_direct_mailbox_target_for_member_specs(
@@ -2193,7 +2193,7 @@ mod tests {
     #[test]
     fn validate_direct_mailbox_target_rejects_empty_human_mailbox_suffix() {
         let member_specs = mock_member_specs(&[
-            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "leader"),
+            ("595d1ae8-fcbd-4111-b5c7-d446a12c044b", "coordinator"),
             ("c319f933-1358-4418-a111-872304052422", "worker"),
         ]);
         let err = validate_direct_mailbox_target_for_member_specs(&member_specs, "user:")
@@ -2208,7 +2208,7 @@ mod tests {
     #[test]
     fn validate_direct_mailbox_target_rejects_ambiguous_role_alias() {
         let member_specs = mock_member_specs(&[
-            ("planner", "leader"),
+            ("planner", "coordinator"),
             ("worker-a", "worker"),
             ("worker-b", "worker"),
         ]);

@@ -244,7 +244,7 @@ impl TeamPermissionReviewDispatcher {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or("leader");
+            .unwrap_or("coordinator");
         let (task_id, _) = self
             .teams
             .ensure_shared_thread_target_for_team(team_id, requester_actor_id)
@@ -359,10 +359,10 @@ fn permission_review_candidate(
 
 fn worker_permission_review_candidates(
     spec: &Value,
-    leader_member_id: &str,
+    coordinator_member_id: &str,
     requester_actor_id: &str,
 ) -> Vec<PermissionReviewCandidate> {
-    collect_subordinate_reviewers(spec, leader_member_id, requester_actor_id)
+    collect_subordinate_reviewers(spec, coordinator_member_id, requester_actor_id)
         .into_iter()
         .map(|actor_id| {
             permission_review_candidate(actor_id, "worker_dispatched", "worker_idle_dispatched")
@@ -376,14 +376,14 @@ fn collect_team_permission_review_candidates(
     requester_role: &str,
 ) -> anyhow::Result<Vec<PermissionReviewCandidate>> {
     let requester_role = requester_role.trim();
-    let leader_member_id = team_leader_member_id(spec)
-        .ok_or_else(|| anyhow::anyhow!("team has no leader configured"))?;
-    let requester_is_leader =
-        requester_actor_id == leader_member_id || requester_role.eq_ignore_ascii_case("leader");
+    let coordinator_member_id = team_coordinator_member_id(spec)
+        .ok_or_else(|| anyhow::anyhow!("team has no coordinator configured"))?;
+    let requester_is_coordinator = requester_actor_id == coordinator_member_id
+        || requester_role.eq_ignore_ascii_case("coordinator");
     let mut candidates =
-        worker_permission_review_candidates(spec, leader_member_id, requester_actor_id);
+        worker_permission_review_candidates(spec, coordinator_member_id, requester_actor_id);
 
-    if requester_is_leader {
+    if requester_is_coordinator {
         if candidates.is_empty() {
             return Err(anyhow::anyhow!(
                 "team has no subordinate reviewer configured"
@@ -392,11 +392,11 @@ fn collect_team_permission_review_candidates(
         return Ok(candidates);
     }
 
-    if leader_member_id != requester_actor_id {
+    if coordinator_member_id != requester_actor_id {
         candidates.push(permission_review_candidate(
-            leader_member_id,
-            "leader_dispatched",
-            "leader_idle_dispatched",
+            coordinator_member_id,
+            "coordinator_dispatched",
+            "coordinator_idle_dispatched",
         ));
     }
     if candidates.is_empty() {
@@ -420,7 +420,7 @@ pub(crate) fn resolve_team_permission_review_target(
     Ok((candidate.actor_id, candidate.dispatch_status))
 }
 
-fn team_leader_member_id(spec: &Value) -> Option<&str> {
+fn team_coordinator_member_id(spec: &Value) -> Option<&str> {
     let spec_obj = spec.as_object()?;
     let members = spec_obj.get("members")?.as_array()?;
     let member_ids = members
@@ -428,7 +428,7 @@ fn team_leader_member_id(spec: &Value) -> Option<&str> {
         .filter_map(member_id_from_spec)
         .collect::<Vec<_>>();
     spec_obj
-        .get("leader_member_id")
+        .get("coordinator_member_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty() && member_ids.contains(value))
@@ -439,7 +439,7 @@ fn team_leader_member_id(spec: &Value) -> Option<&str> {
                     member
                         .get("role")
                         .and_then(Value::as_str)
-                        .is_some_and(|role| role.trim().eq_ignore_ascii_case("leader"))
+                        .is_some_and(|role| role.trim().eq_ignore_ascii_case("coordinator"))
                 })
                 .find_map(member_id_from_spec)
         })
@@ -455,7 +455,7 @@ fn team_leader_member_id(spec: &Value) -> Option<&str> {
 
 fn collect_subordinate_reviewers(
     spec: &Value,
-    leader_member_id: &str,
+    coordinator_member_id: &str,
     requester_actor_id: &str,
 ) -> Vec<String> {
     let Some(members) = spec.get("members").and_then(Value::as_array) else {
@@ -474,7 +474,7 @@ fn collect_subordinate_reviewers(
             Some((member_id, role))
         })
         .filter_map(|(member_id, role)| {
-            if member_id == requester_actor_id || member_id == leader_member_id {
+            if member_id == requester_actor_id || member_id == coordinator_member_id {
                 return None;
             }
             if role.as_deref() == Some("worker") {
@@ -490,7 +490,7 @@ fn collect_subordinate_reviewers(
         .iter()
         .filter_map(|member| {
             let member_id = member_id_from_spec(member)?;
-            if member_id == requester_actor_id || member_id == leader_member_id {
+            if member_id == requester_actor_id || member_id == coordinator_member_id {
                 return None;
             }
             Some(member_id.to_string())
@@ -526,7 +526,7 @@ fn build_permission_review_summary(request: &AcpPermissionReviewRequest) -> Stri
 fn human_review_reason_text(reason: &str) -> &str {
     match reason {
         "review_timeout" => "Agent review timed out",
-        "review_dispatch_failed" | "leader_dispatch_failed" => "Agent review dispatch failed",
+        "review_dispatch_failed" | "coordinator_dispatch_failed" => "Agent review dispatch failed",
         other => other,
     }
 }
@@ -637,12 +637,13 @@ mod tests {
     }
 
     #[test]
-    fn worker_request_skips_leader_even_if_leader_member_role_is_misconfigured_as_worker() {
+    fn worker_request_skips_coordinator_even_if_coordinator_member_role_is_misconfigured_as_worker()
+    {
         let spec = json!({
-            "entrypoint":"leader",
-            "leader_member_id":"leader",
+            "entrypoint":"coordinator",
+            "coordinator_member_id":"coordinator",
             "members":[
-                {"member_id":"leader","role":"worker"},
+                {"member_id":"coordinator","role":"worker"},
                 {"member_id":"reviewer","role":"worker"},
                 {"member_id":"worker","role":"worker"}
             ]
@@ -660,15 +661,15 @@ mod tests {
     fn requester_role_is_trimmed_before_review_target_resolution() {
         let spec = json!({
             "entrypoint":"planner",
-            "leader_member_id":"planner",
+            "coordinator_member_id":"planner",
             "members":[
-                {"member_id":"planner","role":"leader"},
+                {"member_id":"planner","role":"coordinator"},
                 {"member_id":"reviewer","role":"worker"}
             ]
         });
 
         let (reviewer, dispatch_status) =
-            resolve_team_permission_review_target(&spec, "planner", " leader ")
+            resolve_team_permission_review_target(&spec, "planner", " coordinator ")
                 .expect("resolve reviewer");
 
         assert_eq!(reviewer, "reviewer");
@@ -676,12 +677,12 @@ mod tests {
     }
 
     #[test]
-    fn collect_permission_review_candidates_keeps_leader_as_fallback_after_workers() {
+    fn collect_permission_review_candidates_keeps_coordinator_as_fallback_after_workers() {
         let spec = json!({
-            "entrypoint":"leader",
-            "leader_member_id":"leader",
+            "entrypoint":"coordinator",
+            "coordinator_member_id":"coordinator",
             "members":[
-                {"member_id":"leader","role":"leader"},
+                {"member_id":"coordinator","role":"coordinator"},
                 {"member_id":"busy","role":"worker"},
                 {"member_id":"idle","role":"worker"},
                 {"member_id":"worker","role":"worker"}
@@ -705,9 +706,9 @@ mod tests {
                     idle_dispatch_status: "worker_idle_dispatched",
                 },
                 PermissionReviewCandidate {
-                    actor_id: "leader".to_string(),
-                    dispatch_status: "leader_dispatched",
-                    idle_dispatch_status: "leader_idle_dispatched",
+                    actor_id: "coordinator".to_string(),
+                    dispatch_status: "coordinator_dispatched",
+                    idle_dispatch_status: "coordinator_idle_dispatched",
                 },
             ]
         );
@@ -722,10 +723,10 @@ mod tests {
                 name: format!("permission-review-{}", Uuid::new_v4()),
                 description: Some("team permission review dispatch".to_string()),
                 spec: json!({
-                    "entrypoint":"leader",
-                    "leader_member_id":"leader",
+                    "entrypoint":"coordinator",
+                    "coordinator_member_id":"coordinator",
                     "members":[
-                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"coordinator","role":"coordinator"},
                         {"member_id":"reviewer","role":"worker"},
                         {"member_id":"worker","role":"worker"}
                     ]
@@ -931,10 +932,10 @@ mod tests {
                 name: format!("permission-review-idle-first-{}", Uuid::new_v4()),
                 description: Some("idle-first permission review dispatch".to_string()),
                 spec: json!({
-                    "entrypoint":"leader",
-                    "leader_member_id":"leader",
+                    "entrypoint":"coordinator",
+                    "coordinator_member_id":"coordinator",
                     "members":[
-                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"coordinator","role":"coordinator"},
                         {"member_id":"busy","role":"worker"},
                         {"member_id":"idle","role":"worker"},
                         {"member_id":"worker","role":"worker"}
@@ -1126,18 +1127,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatches_leader_permission_to_subordinate_worker() {
+    async fn dispatches_coordinator_permission_to_subordinate_worker() {
         let state = build_test_state().await;
         let team = state
             .teams
             .create_team(TeamDefinitionConfig {
-                name: format!("permission-review-leader-{}", Uuid::new_v4()),
-                description: Some("leader permission review dispatch".to_string()),
+                name: format!("permission-review-coordinator-{}", Uuid::new_v4()),
+                description: Some("coordinator permission review dispatch".to_string()),
                 spec: json!({
-                    "entrypoint":"leader",
-                    "leader_member_id":"leader",
+                    "entrypoint":"coordinator",
+                    "coordinator_member_id":"coordinator",
                     "members":[
-                        {"member_id":"leader","role":"leader"},
+                        {"member_id":"coordinator","role":"coordinator"},
                         {"member_id":"reviewer","role":"worker"},
                         {"member_id":"worker","role":"worker"}
                     ]
@@ -1154,8 +1155,8 @@ mod tests {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 1, 'running', ?7, ?8)
             "#,
         )
-        .bind("leader-agent")
-        .bind("leader-agent")
+        .bind("coordinator-agent")
+        .bind("coordinator-agent")
         .bind("/tmp")
         .bind("agenthub-codex-acp")
         .bind("[]")
@@ -1164,19 +1165,19 @@ mod tests {
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert leader agent");
+        .expect("insert coordinator agent");
         sqlx::query(
             r#"
             INSERT OR IGNORE INTO agent_sessions (id, agent_id, status, started_at, ended_at)
             VALUES (?1, ?2, 'running', ?3, NULL)
             "#,
         )
-        .bind("leader-session")
-        .bind("leader-agent")
+        .bind("coordinator-session")
+        .bind("coordinator-agent")
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert leader session");
+        .expect("insert coordinator session");
         sqlx::query(
             r#"
             INSERT INTO acp_permission_requests (
@@ -1196,14 +1197,14 @@ mod tests {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11)
             "#,
         )
-        .bind("perm-review-leader")
-        .bind("leader-agent")
-        .bind("leader-session")
-        .bind("acp-session-leader")
+        .bind("perm-review-coordinator")
+        .bind("coordinator-agent")
+        .bind("coordinator-session")
+        .bind("acp-session-coordinator")
         .bind(&team.id)
-        .bind("leader")
-        .bind("leader")
-        .bind("tool-call-leader")
+        .bind("coordinator")
+        .bind("coordinator")
+        .bind("tool-call-coordinator")
         .bind(
             json!([
                 {
@@ -1218,7 +1219,7 @@ mod tests {
         .bind(now)
         .execute(&state.db)
         .await
-        .expect("insert leader permission request");
+        .expect("insert coordinator permission request");
 
         let dispatcher = TeamPermissionReviewDispatcher::new(
             state.teams.clone(),
@@ -1229,11 +1230,11 @@ mod tests {
             },
         );
         let request = AcpPermissionReviewRequest {
-            request_id: "perm-review-leader".to_string(),
-            agent_id: "leader-agent".to_string(),
-            agent_session_id: "leader-session".to_string(),
-            acp_session_id: "acp-session-leader".to_string(),
-            tool_call_id: Some("tool-call-leader".to_string()),
+            request_id: "perm-review-coordinator".to_string(),
+            agent_id: "coordinator-agent".to_string(),
+            agent_session_id: "coordinator-session".to_string(),
+            acp_session_id: "acp-session-coordinator".to_string(),
+            tool_call_id: Some("tool-call-coordinator".to_string()),
             options: vec![agenthub_acp::AcpPermissionOption {
                 option_id: "allow".to_string(),
                 name: "Allow once".to_string(),
@@ -1243,19 +1244,19 @@ mod tests {
             current_run_id: None,
             routing: AcpPermissionRoutingMetadata {
                 team_id: Some(team.id.clone()),
-                requester_actor_id: Some("leader".to_string()),
-                requester_role: Some("leader".to_string()),
+                requester_actor_id: Some("coordinator".to_string()),
+                requester_role: Some("coordinator".to_string()),
             },
         };
 
         dispatcher
             .dispatch_review(request)
             .await
-            .expect("dispatch leader permission review");
+            .expect("dispatch coordinator permission review");
 
         let record = state
             .acp_permissions
-            .get("perm-review-leader")
+            .get("perm-review-coordinator")
             .await
             .expect("load permission record")
             .expect("permission record");

@@ -1,6 +1,6 @@
 # Team Shared AGENTS Index
 
-Shared baseline injected to both leader and worker at startup.
+Shared baseline injected to both coordinator and worker at startup.
 This file is index-only; detailed procedures live in skill files.
 Shared routing, mention, human-facing reply, and startup contracts are
 canonical here. Downstream Team skills should reference this file instead of
@@ -10,14 +10,14 @@ restating the same rules.
 
 - Operate as one coordinated team for human goals.
 - Keep routing deterministic through `Mailbox -> ACP upstream -> actor CLI`.
-- Enforce role boundary: leader plans/synthesizes, workers execute/report evidence.
+- Enforce role boundary: coordinator plans/synthesizes, workers execute/report evidence.
 - Keep execution visible with timely progress updates, findings, and reusable experience sharing.
 - Treat token budget as a first-class constraint: keep runtime `AGENTS.md`, active skills, and
   channel/mailbox text as small as possible while preserving correctness.
 
 ## Core Contract
 
-- Participants: `human`, `leader`, `worker`.
+- Participants: `human`, `coordinator`, `worker`.
 - Identity mapping:
   - transport identity: `actor_id`
   - team identity: `member_id`
@@ -26,7 +26,7 @@ restating the same rules.
   - persist each message once in conversation history
   - forward via actor mailbox transport
 - Routing surfaces:
-  - `leader-mailbox`: default route for worker status, blocker escalation, and execution evidence to leader
+  - `coordinator-mailbox`: default route for worker status, blocker escalation, and execution evidence to coordinator
   - `peer-mailbox`: direct single-peer coordination when only one specific teammate needs the update
   - `shared-channel`: team-wide/human-visible status broadcast through `channel_id` (for example `all`)
   - `human-notification`: urgent operator-facing mailbox notification (`to_actor_id = user` / `user:<id>`)
@@ -36,21 +36,21 @@ restating the same rules.
   - `@member_id` inside a channel message does not narrow mailbox fan-out; it annotates mention metadata for receivers
   - direct mailbox sends still use explicit `to_actor_id`
   - mailbox fan-out must translate `to_actor_id` into `@member_id` mention context when a direct message is surfaced back into chat
-  - leader should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
-  - workers should actively mention leader plus impacted peers when reporting blockers, dependency changes, or evidence handoff
+  - coordinator should actively mention owners/reviewers/dependency peers in task dispatch and checkpoint messages
+  - workers should actively mention coordinator plus impacted peers when reporting blockers, dependency changes, or evidence handoff
 - Human-facing reply contract:
   - team conversation replies should render final answer content only
   - do not echo mailbox status, `current_phase`, or transport envelope fields into visible chat text
   - keep structured status/evidence payloads for internal execution coordination only
-  - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for leader relay
-  - leader remains owner of planning decisions and final integrated response
+  - in shared group chat, workers may reply directly with progress, facts, and scoped answers without waiting for coordinator relay
+  - coordinator remains owner of planning decisions and final integrated response
 - Human/task boundary:
   - humans may express goals, questions, feedback, approvals, corrections, or free-form discussion in channels
-  - leader interprets channel input and creates internal Team `task` objects when execution tracking is needed
-  - `agenthub actor team-task-create` is the canonical leader path for Team task creation
-  - `agenthub actor team-task-update` is the canonical leader path for Team task lifecycle changes
+  - coordinator interprets channel input and creates internal Team `task` objects when execution tracking is needed
+  - `agenthub actor team-task-create` is the canonical coordinator path for Team task creation
+  - `agenthub actor team-task-update` is the canonical coordinator path for Team task lifecycle changes
   - `agenthub actor team-tasks` is the canonical path for inspecting the current Team Kanban surface
-  - leader owns canonical task creation and task lifecycle management for the team
+  - coordinator owns canonical task creation and task lifecycle management for the team
   - channels are for communication/review; Kanban is the canonical task-tracking surface
 - Self-maintenance:
   - each agent may update its own role description/prompt/skill profile through `profile_patch_proposal`
@@ -86,12 +86,12 @@ restating the same rules.
 - Non-trivial assignments must be reported when work starts, when meaningful progress happens,
   when blockers appear, and when work completes.
 - Default route: direct mailbox first.
-  - `leader-mailbox` for the leader as the single owner/reviewer of the next action
-  - `peer-mailbox` when exactly one non-leader teammate needs the update
+  - `coordinator-mailbox` for the coordinator as the single owner/reviewer of the next action
+  - `peer-mailbox` when exactly one non-coordinator teammate needs the update
 - Use `peer-mailbox` for routine single-peer clarification, dependency handoff, or review nudges
   that do not need team-wide visibility.
 - Workers may use `shared-channel` directly when important findings, risks, tradeoffs, or
-  discussion-worthy decisions need team-wide review instead of only leader-local visibility.
+  discussion-worthy decisions need team-wide review instead of only coordinator-local visibility.
 - When workers open or continue that shared-channel discussion, they should explicitly `@member_id`
   the relevant other agents whose review, decision, or dependency context is needed.
 - Use `shared-channel` when the update changes shared plans, dependencies, review status, or
@@ -102,8 +102,8 @@ restating the same rules.
   directly through mailbox without first updating channel.
 - When an update needs durable traceability:
   - workers: persist it in the relevant document, TODO, journal, note, or local evidence artifact,
-    then report that evidence to leader;
-  - leader: ensure the canonical Team task or coordination document reflects the latest recorded
+    then report that evidence to coordinator;
+  - coordinator: ensure the canonical Team task or coordination document reflects the latest recorded
     state before using channel messages as the lightweight status broadcast.
 - Channel status messages should actively `@` the relevant agents/people instead of broadcasting
   without ownership context.
@@ -118,7 +118,7 @@ restating the same rules.
   `agenthub` prefix for runtime permission checks.
 - Silent execution is unacceptable for long-running or uncertain work; send a progress or blocker
   update instead of waiting for the final result.
-- Leader owns integrated progress updates to the human/channel and must ensure each active
+- Coordinator owns integrated progress updates to the human/channel and must ensure each active
   assignment has a next checkpoint and fresh evidence.
 - Documents and tasks are the source of truth for execution state; channel updates should summarize
   that recorded state instead of becoming the only copy.
@@ -134,9 +134,9 @@ restating the same rules.
 
 - unified runtime template: `TEAM_AGENTS.md`
 - shared index loader: `team-agents-index`
-- leader index loader: `team-leader-agents-index`
+- coordinator index loader: `team-coordinator-agents-index`
 - worker index loader: `team-worker-agents-index`
-- leader orchestration: `team-leader-orchestrator`
+- coordinator orchestration: `team-coordinator-orchestrator`
 - worker execution: `team-worker-executor`
 - Team task lifecycle: `team-task-lifecycle`
 - deliberation quality gate: `team-deliberation-rules`
@@ -155,7 +155,7 @@ restating the same rules.
     - `.agenthubmemory/TODO.md`
     - `.agenthubmemory/journal/`
     - `.agenthubmemory/note/`
-  - leader usually runs in an empty coordination workspace and may skip `.agenthubmemory`
+  - coordinator usually runs in an empty coordination workspace and may skip `.agenthubmemory`
   - runtime continuity/state files under `.cache/context/` still remain workspace-local
 - Before new mailbox work, check unfinished items:
   - `TODO.md`

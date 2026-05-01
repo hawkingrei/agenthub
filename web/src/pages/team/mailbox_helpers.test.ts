@@ -31,7 +31,7 @@ function buildMessage(
   return {
     message_id: messageId,
     run_id: "run-1",
-    from_actor_id: "leader",
+    from_actor_id: "coordinator",
     from_peer_id: "",
     from_actor_kind: "agent",
     to_actor_id: "worker",
@@ -49,9 +49,9 @@ function buildMessage(
 }
 
 describe("mailbox helpers", () => {
-  it("resolves mailbox chat actors with leader fallback and selection fallback", () => {
-    expect(resolveMailboxChatActors("leader", ["leader", "worker"], "worker")).toEqual({
-      fromActorId: "leader",
+  it("resolves mailbox chat actors with coordinator fallback and selection fallback", () => {
+    expect(resolveMailboxChatActors("coordinator", ["coordinator", "worker"], "worker")).toEqual({
+      fromActorId: "coordinator",
       toActorId: "worker",
       inboxActorId: "worker",
     });
@@ -62,7 +62,7 @@ describe("mailbox helpers", () => {
       inboxActorId: "worker-a",
     });
 
-    expect(resolveMailboxChatActors("leader", [], "worker")).toEqual({
+    expect(resolveMailboxChatActors("coordinator", [], "worker")).toEqual({
       fromActorId: "",
       toActorId: "",
       inboxActorId: "",
@@ -79,11 +79,11 @@ describe("mailbox helpers", () => {
 
   it("selects conversation messages only for the requested actor pair", () => {
     const messages = [
-      buildMessage(1, { from_actor_id: "leader", to_actor_id: "worker" }),
-      buildMessage(2, { from_actor_id: "worker", to_actor_id: "leader" }),
-      buildMessage(3, { from_actor_id: "leader", to_actor_id: "other" }),
+      buildMessage(1, { from_actor_id: "coordinator", to_actor_id: "worker" }),
+      buildMessage(2, { from_actor_id: "worker", to_actor_id: "coordinator" }),
+      buildMessage(3, { from_actor_id: "coordinator", to_actor_id: "other" }),
     ];
-    expect(selectMailboxConversation(messages, "leader", "worker").map((item) => item.message_id)).toEqual([
+    expect(selectMailboxConversation(messages, "coordinator", "worker").map((item) => item.message_id)).toEqual([
       1,
       2,
     ]);
@@ -96,15 +96,15 @@ describe("mailbox helpers", () => {
       text: "hello",
       source: "team_workbench",
     });
-    expect(buildMailboxConversationKey("worker", "leader")).toBe("leader::worker");
-    expect(buildMailboxConversationKey("leader", "   ")).toBe("");
+    expect(buildMailboxConversationKey("worker", "coordinator")).toBe("coordinator::worker");
+    expect(buildMailboxConversationKey("coordinator", "   ")).toBe("");
   });
 
   it("extracts unique <at> mentions that match known team members", () => {
     expect(
       extractMentionedActorIds(
         "please check <at>worker-1</at> and <at>worker-2</at>, cc <at>worker-1</at>",
-        ["leader", "worker-1", "worker-2"]
+        ["coordinator", "worker-1", "worker-2"]
       )
     ).toEqual(["worker-1", "worker-2"]);
     expect(extractMentionedActorIds("plain text", ["worker-1"])).toEqual([]);
@@ -374,24 +374,24 @@ describe("mailbox helpers", () => {
   it("resolves task mailbox route plan for mention and broadcast modes", () => {
     expect(
       resolveTaskMailboxRoutePlan(
-        ["leader", "worker-1", "worker-2"],
+        ["coordinator", "worker-1", "worker-2"],
         ["worker-2", "worker-1", "worker-2", "unknown"],
-        "leader"
+        "coordinator"
       )
     ).toEqual({
-      fromActorId: "leader",
+      fromActorId: "coordinator",
       toActorIds: ["worker-2", "worker-1"],
     });
 
     expect(
       resolveTaskMailboxRoutePlan(
-        ["worker-1", "leader", "worker-2"],
+        ["worker-1", "coordinator", "worker-2"],
         [],
-        "leader"
+        "coordinator"
       )
     ).toEqual({
-      fromActorId: "leader",
-      toActorIds: ["leader", "worker-1", "worker-2"],
+      fromActorId: "coordinator",
+      toActorIds: ["coordinator", "worker-1", "worker-2"],
     });
 
     expect(resolveTaskMailboxRoutePlan(["worker-1"], [], "missing")).toEqual({
@@ -402,22 +402,22 @@ describe("mailbox helpers", () => {
 
   it("resolves max message id and unread counts for peer and self conversations", () => {
     const messages = [
-      buildMessage(10, { from_actor_id: "leader", to_actor_id: "worker" }),
-      buildMessage(11, { from_actor_id: "worker", to_actor_id: "leader" }),
-      buildMessage(12, { from_actor_id: "leader", to_actor_id: "leader" }),
-      buildMessage(13, { from_actor_id: "leader", to_actor_id: "leader" }),
+      buildMessage(10, { from_actor_id: "coordinator", to_actor_id: "worker" }),
+      buildMessage(11, { from_actor_id: "worker", to_actor_id: "coordinator" }),
+      buildMessage(12, { from_actor_id: "coordinator", to_actor_id: "coordinator" }),
+      buildMessage(13, { from_actor_id: "coordinator", to_actor_id: "coordinator" }),
     ];
     expect(resolveConversationMaxMessageId(messages)).toBe(13);
     expect(resolveConversationMaxMessageId([])).toBeNull();
 
-    expect(countUnreadConversationMessages(messages, "leader", "worker", 10)).toBe(1);
-    expect(countUnreadConversationMessages(messages, "leader", "leader", 11)).toBe(2);
+    expect(countUnreadConversationMessages(messages, "coordinator", "worker", 10)).toBe(1);
+    expect(countUnreadConversationMessages(messages, "coordinator", "coordinator", 11)).toBe(2);
     expect(countUnreadConversationMessages(messages, "", "worker", 0)).toBe(0);
   });
 
   it("returns expected payload templates for all known keys and default branch", () => {
     const keys = [
-      "leader_task_assignment",
+      "coordinator_task_assignment",
       "clarification_request",
       "clarification_response",
       "worker_done",

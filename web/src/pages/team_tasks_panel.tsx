@@ -411,7 +411,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
                 {selectedTask.title}
               </h4>
               <p className="mt-2 text-[14px] leading-relaxed text-notion-text-muted">
-                Task board summary. The leader and Team runtime manage lifecycle.
+                Task board summary. The coordinator and Team runtime manage lifecycle.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -673,7 +673,7 @@ function TeamTasksPanelImpl(props: TeamTasksPanelProps) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-[220px] flex-1 rounded-md border border-notion-border bg-notion-sidebar/30 px-4 py-3 text-[14px] text-notion-text-muted italic">
           Kanban is the canonical Team task surface. Human requests and clarifications should go
-          through <strong className="text-notion-text">{channelLabel}</strong>; leader planning
+          through <strong className="text-notion-text">{channelLabel}</strong>; coordinator planning
           and Team runtime create and advance tasks here.
         </div>
         <ActionButton tone="secondary" size="md" onClick={() => onOpenConversation()}>

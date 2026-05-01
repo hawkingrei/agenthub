@@ -23,7 +23,7 @@ type TeamPageModalsProps = {
   teamMemberDraft: TeamMemberProfileDraft | null;
   teamMemberRoleProfile: TeamMemberRoleProfile | null;
   teamMemberRoleOptions: TeamMemberRoleOption[];
-  selectedTeamHasLeader: boolean;
+  selectedTeamHasCoordinator: boolean;
   handleTeamMemberRoleChange: (value: string) => void;
   patchTeamMemberDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
   forgeModalProps: Omit<CreateAgentModalProps, "children" | "onClose">;
@@ -52,7 +52,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
   teamMemberDraft,
   teamMemberRoleProfile,
   teamMemberRoleOptions,
-  selectedTeamHasLeader,
+  selectedTeamHasCoordinator,
   handleTeamMemberRoleChange,
   patchTeamMemberDraft,
   forgeModalProps,
@@ -84,7 +84,7 @@ export const TeamPageModals = React.memo(function TeamPageModals({
         draft={teamMemberDraft}
         roleProfile={teamMemberRoleProfile}
         roleOptions={teamMemberRoleOptions}
-        selectedTeamHasLeader={selectedTeamHasLeader}
+        selectedTeamHasCoordinator={selectedTeamHasCoordinator}
         onRoleChange={handleTeamMemberRoleChange}
         onPatchDraft={patchTeamMemberDraft}
         chrome={forgeChrome}

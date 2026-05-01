@@ -83,7 +83,7 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
         </p>
         <div className={OVERVIEW_PLAYBOOK_GRID_CLASS}>
           <section className={OVERVIEW_PLAYBOOK_CARD_CLASS}>
-            <p className={OVERVIEW_PLAYBOOK_TITLE_CLASS}>Leader startup</p>
+            <p className={OVERVIEW_PLAYBOOK_TITLE_CLASS}>Coordinator startup</p>
             <ol className={OVERVIEW_PLAYBOOK_LIST_CLASS}>
               <li>Scan workspace TODO files for unfinished planning.</li>
               <li>Resume existing plan or start from zero with human sync.</li>
@@ -96,8 +96,8 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
             <ol className={OVERVIEW_PLAYBOOK_LIST_CLASS}>
               <li>Scan workspace TODO files for unfinished execution.</li>
               <li>Finish unfinished items first, then accept inbox work.</li>
-              <li>If idle, request next task from leader.</li>
-              <li>Send evidence to leader; keep planning with leader.</li>
+              <li>If idle, request next task from coordinator.</li>
+              <li>Send evidence to coordinator; keep planning with coordinator.</li>
             </ol>
           </section>
         </div>
@@ -109,10 +109,10 @@ function TeamOverviewPanelImpl(props: TeamOverviewPanelProps) {
         <>
           <KeyValueList className={`teams-overview-meta ${OVERVIEW_META_CLASS}`}>
             <KeyValueItem
-              label="Leader"
+              label="Coordinator"
               value={
                 <StatusPill className="mono border-notion-accent/20 text-notion-accent">
-                  {snapshot.leader_member_id ?? "-"}
+                  {snapshot.coordinator_member_id ?? "-"}
                 </StatusPill>
               }
             />

@@ -7616,12 +7616,12 @@ mod tests {
     {
         let managed_home = TempManagedSkillsHome::new();
         let trusted_root = managed_home.trusted_root();
-        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamLeaderOrchestrator);
+        let skill_path = managed_home.skill_path(ManagedSkillKind::TeamCoordinatorOrchestrator);
         let relative_to_home = skill_path
             .strip_prefix(managed_home.home.as_path())
             .expect("skill path should live under temp home");
         let skill_block = format!(
-            "<skill>\n<name>team-leader-orchestrator</name>\n<path>{}</path>\nLegacy relative managed path.\n</skill>",
+            "<skill>\n<name>team-coordinator-orchestrator</name>\n<path>{}</path>\nLegacy relative managed path.\n</skill>",
             relative_to_home.display()
         );
         let items = build_prompt_items_with_trusted_root(
@@ -7632,7 +7632,7 @@ mod tests {
         assert_eq!(
             items,
             vec![UserInput::Skill {
-                name: "team-leader-orchestrator".to_string(),
+                name: "team-coordinator-orchestrator".to_string(),
                 path: skill_path,
             }]
         );

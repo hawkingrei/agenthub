@@ -151,7 +151,7 @@ describe("useTeamActions", () => {
       runsHasMore: true,
       runsBeforeCreatedAt: 111,
       selectedStepId: "step-1",
-      inboxActorId: "leader-1",
+      inboxActorId: "coordinator-1",
       inboxLimit: "50",
       inboxAfterId: "10",
       inboxIncludeDelivered: false,

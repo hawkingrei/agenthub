@@ -79,9 +79,9 @@ describe("AgentNodesWorkbench", () => {
           name: "Papers We Love",
           description: null,
           spec: {
-            leader_member_id: "agent-remote-1",
+            coordinator_member_id: "agent-remote-1",
             members: [
-              { member_id: "agent-remote-1", role: "leader" },
+              { member_id: "agent-remote-1", role: "coordinator" },
               { member_id: "worker-2", role: "worker" },
             ],
           },
@@ -113,11 +113,11 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("1 team");
     expect(html).toContain("1 member");
     expect(html).toContain("1 active");
-    expect(html).toContain("Leaders");
+    expect(html).toContain("Coordinators");
     expect(html).toContain("Workers");
     expect(html).toContain("Member Runtime Drill-down");
     expect(html).toContain("1 agent · 1 team");
-    expect(html).toContain("Worker A · leader");
+    expect(html).toContain("Worker A · coordinator");
     expect(html).toContain("Working");
     expect(html).toContain("Worktree: Existing workdir");
     expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');

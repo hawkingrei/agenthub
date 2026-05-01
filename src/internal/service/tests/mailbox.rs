@@ -113,7 +113,7 @@ async fn internal_grpc_mailbox_send_list_ack_are_wire_compatible() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+    let token = issue_token(&authz, InternalRole::Coordinator, None, Some(&run.id));
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -253,7 +253,7 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
         .await
         .expect("ensure shared thread target");
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+    let token = issue_token(&authz, InternalRole::Coordinator, None, Some(&run.id));
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -330,7 +330,7 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, None, Some(&run.id));
+    let token = issue_token(&authz, InternalRole::Coordinator, None, Some(&run.id));
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -382,7 +382,7 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
 async fn ack_actor_message_rejects_non_positive_message_id() {
     let state = build_test_state().await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, None, None);
+    let token = issue_token(&authz, InternalRole::Coordinator, None, None);
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,

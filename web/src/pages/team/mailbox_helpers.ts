@@ -3,7 +3,7 @@ import { renderTeamMarkdownCached } from "./team_markdown";
 import { escapeTeamHtml } from "./team_text_helpers";
 
 export type MailboxTemplateKey =
-  | "leader_task_assignment"
+  | "coordinator_task_assignment"
   | "clarification_request"
   | "clarification_response"
   | "worker_done"
@@ -104,7 +104,7 @@ function normalizeActorIds(actorIds: string[]): string[] {
 }
 
 export function resolveMailboxChatActors(
-  leaderMemberId: string | null | undefined,
+  coordinatorMemberId: string | null | undefined,
   memberIds: string[],
   selectedMemberId: string
 ): TeamMailboxChatActors {
@@ -115,16 +115,16 @@ export function resolveMailboxChatActors(
       inboxActorId: "",
     };
   }
-  const normalizedLeaderId = (leaderMemberId ?? "").trim();
-  const leaderId = normalizedLeaderId && memberIds.includes(normalizedLeaderId)
-    ? normalizedLeaderId
+  const normalizedCoordinatorId = (coordinatorMemberId ?? "").trim();
+  const coordinatorId = normalizedCoordinatorId && memberIds.includes(normalizedCoordinatorId)
+    ? normalizedCoordinatorId
     : memberIds[0] ?? "";
   const normalizedSelectedId = selectedMemberId.trim();
   const targetId = normalizedSelectedId && memberIds.includes(normalizedSelectedId)
     ? normalizedSelectedId
     : memberIds[0] ?? "";
   return {
-    fromActorId: leaderId,
+    fromActorId: coordinatorId,
     toActorId: targetId,
     inboxActorId: targetId,
   };
@@ -292,7 +292,7 @@ export function canonicalizeMentionDraft(
 export function resolveTaskMailboxRoutePlan(
   memberIds: string[],
   mentionActorIds: string[],
-  leaderMemberId?: string | null
+  coordinatorMemberId?: string | null
 ): TaskMailboxRoutePlan {
   const normalizedMembers = normalizeActorIds(memberIds);
   if (normalizedMembers.length === 0) {
@@ -306,10 +306,10 @@ export function resolveTaskMailboxRoutePlan(
   const normalizedMentions = normalizeActorIds(mentionActorIds).filter((actorId) =>
     memberSet.has(actorId)
   );
-  const normalizedLeaderId = (leaderMemberId ?? "").trim();
+  const normalizedCoordinatorId = (coordinatorMemberId ?? "").trim();
   const fromActorId =
-    normalizedLeaderId && memberSet.has(normalizedLeaderId)
-      ? normalizedLeaderId
+    normalizedCoordinatorId && memberSet.has(normalizedCoordinatorId)
+      ? normalizedCoordinatorId
       : (normalizedMembers[0] ?? "");
 
   if (!fromActorId) {
@@ -682,9 +682,9 @@ export function countUnreadConversationMessages(
 
 export function buildMailboxPayloadTemplate(template: MailboxTemplateKey): unknown {
   switch (template) {
-    case "leader_task_assignment":
+    case "coordinator_task_assignment":
       return {
-        type: "leader_task_assignment",
+        type: "coordinator_task_assignment",
         task: "Implement the requested change in a focused scope.",
         acceptance: "All listed checks pass and artifacts are updated.",
         deadline: "asap",

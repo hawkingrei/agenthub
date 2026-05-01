@@ -1092,8 +1092,8 @@ mod tests {
                 name: "sse-team-auth".to_string(),
                 description: Some("team conversation sse auth".to_string()),
                 spec: serde_json::json!({
-                    "entrypoint":"leader_plan",
-                    "members":[{"member_id":"leader"}]
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
                 }),
             })
             .await
@@ -1130,8 +1130,8 @@ mod tests {
                 name: "sse-team-run-auth".to_string(),
                 description: Some("team run context sse auth".to_string()),
                 spec: serde_json::json!({
-                    "entrypoint":"leader_plan",
-                    "members":[{"member_id":"leader"}]
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
                 }),
             })
             .await
@@ -1195,8 +1195,8 @@ mod tests {
                 name: "sse-team-ok".to_string(),
                 description: Some("team conversation sse ok".to_string()),
                 spec: serde_json::json!({
-                    "entrypoint":"leader_plan",
-                    "members":[{"member_id":"leader"}]
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
                 }),
             })
             .await
@@ -1234,8 +1234,8 @@ mod tests {
                 name: "sse-team-internal".to_string(),
                 description: Some("team conversation sse internal error".to_string()),
                 spec: serde_json::json!({
-                    "entrypoint":"leader_plan",
-                    "members":[{"member_id":"leader"}]
+                    "entrypoint":"coordinator_plan",
+                    "members":[{"member_id":"coordinator"}]
                 }),
             })
             .await

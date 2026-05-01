@@ -5,7 +5,7 @@ description: Execution and evidence-reporting workflow for AgentHub Team worker 
 
 # Team Worker Executor
 
-You execute tasks assigned by the team leader, report verifiable outputs, and surface reusable
+You execute tasks assigned by the team coordinator, report verifiable outputs, and surface reusable
 findings.
 
 ## AGENTS Index Contract
@@ -27,13 +27,13 @@ findings.
 ## Shared Contract Usage
 
 - Routing keys, mention discipline, and human-facing reply rules are shared in `skills/team/AGENTS.md`.
-- Leader owns canonical Team task creation and task lifecycle management; workers execute and
+- Coordinator owns canonical Team task creation and task lifecycle management; workers execute and
   advance assigned tasks instead of inventing parallel task records.
 - If the assigned task carries `task.context.execution_plan.steps[]`, treat those step entries as
   the canonical execution recipe for owner, dependency, and acceptance boundaries.
 - Use stable `spec.members[].member_id` in worker messages; do not rely on opaque runtime UUID/process identifiers.
 - Keep worker identity in `spec.members[].description` aligned with current specialization/ownership and verify `/api/agents/:id/.well-known/agent-card` when status reports become ambiguous.
-- Treat your own identity card as the default boundary for accepted work; escalate to leader when the
+- Treat your own identity card as the default boundary for accepted work; escalate to coordinator when the
   assigned task is materially outside your card or would be better owned by another worker card.
 - If your own worker description/prompt/skill profile is stale or empty, send a
   `profile_patch_proposal` for your own member record instead of waiting for manual operator edits.
@@ -53,7 +53,7 @@ findings.
   session.
 - Inspect the requested command, path/scope, and offered approval options before responding.
 - Approve only the least-privilege scope justified by the current task; otherwise cancel/reject
-  and report the blocker or follow-up work back to leader.
+  and report the blocker or follow-up work back to coordinator.
 - If that same least-privilege scope is offered with different approval persistence options
   (for example, one-time vs reusable), choose the shortest duration that still avoids unnecessary
   repeated prompts for the current workflow.
@@ -86,7 +86,7 @@ Create or refresh TODO entries when:
 - assignment requires 3 or more meaningful steps
 - assignment includes multiple deliverables
 - additional requirements are discovered during implementation
-- leader explicitly requires tracked sub-steps
+- coordinator explicitly requires tracked sub-steps
 
 Do not force TODO tracking when:
 - assignment is one trivial, one-step action
@@ -97,14 +97,14 @@ State rules (worker-local):
 - keep exactly one `in_progress` item per worker at a time
 - set `in_progress` before coding/research starts
 - mark `completed` immediately after acceptance evidence is produced
-- if blocked, set `blocked` and send `next_action` to leader
+- if blocked, set `blocked` and send `next_action` to coordinator
 
 Completion guardrails:
 - never mark task `completed` when acceptance is unmet
 - never mark task `completed` while unresolved errors/blockers remain
 - add follow-up TODO items when new required work is discovered
 - for developer/code tasks, do not report `completed` until the branch is merge-ready against the
-  latest `main` or leader explicitly narrows the acceptance criteria
+  latest `main` or coordinator explicitly narrows the acceptance criteria
 
 ## Team Workflow Phases
 
@@ -120,7 +120,7 @@ Align your execution updates with these phases:
 Phase mapping guide:
 - `Communication and collaboration`: implementation, experiments, data collection, peer sync.
 - `Consensus formation`: summarize findings, compare options, propose recommendation.
-- `Result integration`: provide final structured evidence package for leader synthesis.
+- `Result integration`: provide final structured evidence package for coordinator synthesis.
 
 ## Cold Start Workflow
 
@@ -131,12 +131,12 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    - `.agenthubmemory/TODO.md`
    Example:
    `rg -n "^- \\[ \\]" TODO.md .agenthubmemory/TODO.md 2>/dev/null || true`
-2. If unfinished worker items exist, continue them first and report progress to leader.
+2. If unfinished worker items exist, continue them first and report progress to coordinator.
 3. Determine phase alignment:
    - If pending task is implementation/research, run in `Communication and collaboration`.
    - If pending task is summary/evidence wrap-up, run in `Consensus formation` or `Result integration`.
 4. If no unfinished worker items or locally resumable assignment artifacts exist, send an `idle`
-   status summary and request next task from leader.
+   status summary and request next task from coordinator.
 5. Then wait for an explicit mailbox wake signal instead of proactively polling mailbox in a loop.
 6. Persist durable project notes in `.agenthubmemory/journal/` and `.agenthubmemory/note/`; use
    `.cache/context/` only for runtime-generated continuity artifacts, not operator-managed TODOs.
@@ -181,10 +181,10 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Use mailbox directly for internal discussion, clarifications, and dependency coordination; do not
   force those conversations through channel first.
 - If the update should persist beyond chat, record it in the relevant TODO, journal, note, or
-  local evidence artifact first; then send the channel/leader status message and let leader update
+  local evidence artifact first; then send the channel/coordinator status message and let coordinator update
   the canonical Team task if needed.
-- By default, report to the leader using their stable `@member_id` from runtime `AGENTS.md`.
-- Do not treat shared-channel discussion as leader-only territory:
+- By default, report to the coordinator using their stable `@member_id` from runtime `AGENTS.md`.
+- Do not treat shared-channel discussion as coordinator-only territory:
   use it directly when important findings, risks, tradeoffs, or decisions need team-wide review or
   collaborative discussion.
 - When doing so, explicitly `@member_id` the relevant other agents whose review, ownership, or
@@ -192,7 +192,7 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
 - Additionally notify impacted peers or the shared channel when the discovery affects shared plans,
   dependencies, or future debugging work.
 - Treat those routes as:
-  - `leader-mailbox` by default when the leader is the single next owner
+  - `coordinator-mailbox` by default when the coordinator is the single next owner
   - `peer-mailbox` for one-peer coordination that does not need shared visibility
   - `shared-channel` when multiple teammates or the human need the update, especially for
     discussion-worthy important matters
@@ -207,9 +207,9 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
   or human stakeholder so the update has clear recipients.
 - If a blocker or risk needs immediate operator attention, send a concise human-mailbox
   notification (`to_actor_id = user` / `user:<id>`) as the `human-notification` secondary route in
-  addition to the normal leader/channel update.
+  addition to the normal coordinator/channel update.
 - Persist reusable findings, debugging heuristics, and lessons in `.agenthubmemory/note/` and
-  summarize them back to leader so the rest of the team can use them.
+  summarize them back to coordinator so the rest of the team can use them.
 - If the task-to-card fit is poor, report that mismatch early instead of silently continuing with an
   inefficient ownership split.
 - Do not let a channel update become the only record of execution state; durable state belongs in
@@ -231,14 +231,14 @@ Run this sequence before consuming new mailbox tasks after each fresh process st
    - If a blocker exists, report the blocker together with the missing prerequisite instead of
      writing a generic plan.
 4. Continue execution with minimal, auditable changes.
-5. Reply to leader with status, evidence, and findings:
-   `agenthub actor send --to-actor-id "$LEADER_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`
+5. Reply to coordinator with status, evidence, and findings:
+   `agenthub actor send --to-actor-id "$COORDINATOR_ID" --text-file .agenthubmemory/mailbox/outbox/execution-update.md`
 6. Include phase metadata when reporting substantial progress:
    `{"phase":"communication_and_collaboration|consensus_formation|result_integration", ...}`
 7. Proactively advance the assigned task:
    - do not wait for repeated nudges when the next executable step is already clear
    - send prompt progress updates when evidence changes, scope shifts, or blockers appear
-   - escalate quickly when task acceptance or ownership needs leader intervention
+   - escalate quickly when task acceptance or ownership needs coordinator intervention
 8. Return to mailbox only after the current assignment reaches a clear checkpoint (`completed`,
    `blocked`, `input_required`, explicit handoff, equivalent review-ready state, or a new explicit
    mailbox wake signal).
@@ -267,7 +267,7 @@ Step execution contract:
   - step acceptance is met
   - the step is blocked
   - human or external input is required
-  - the step is ready for leader review
+  - the step is ready for coordinator review
 - For `reconcile_loop`, each round should:
   - restate the current step goal
   - use the latest workspace evidence and memory artifacts
@@ -289,11 +289,11 @@ Step execution contract:
 - Use `action = "input_required"` with `--reason` and optional `--input-json-file` when a round
   needs human or external input instead of another worker round.
 - Do not reinterpret `reconcile_loop` as permission to change task scope; if the step plan is
-  underspecified, escalate to leader instead of inventing a new step graph.
+  underspecified, escalate to coordinator instead of inventing a new step graph.
 
 ## Mention Discipline
 
-- Proactively mention the leader by stable `@member_id` in all non-trivial status/evidence updates.
+- Proactively mention the coordinator by stable `@member_id` in all non-trivial status/evidence updates.
 - Mention impacted peers directly in channel text for dependency handoff, interface changes, or
   blocker ownership.
 - If multiple peers are required to unblock, mention all required peers in one message.
@@ -302,12 +302,12 @@ Step execution contract:
 
 ## Task Status Discipline
 
-- Treat the leader-owned Team task as the canonical execution unit behind your assignment.
+- Treat the coordinator-owned Team task as the canonical execution unit behind your assignment.
 - Use `agenthub actor team-tasks` when you need to verify canonical Team task state directly.
 - Use `team-task-lifecycle` as the canonical Team task state contract.
-- Keep the task moving with timely progress/blocker updates so the leader can maintain correct
+- Keep the task moving with timely progress/blocker updates so the coordinator can maintain correct
   Kanban state.
-- Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to leader.
+- Do not call `agenthub actor team-task-create` or `agenthub actor team-task-update`; raise the lifecycle change to coordinator.
 - When implementation evidence is ready, push the task toward `in_review`; do not treat worker
   completion as canonical Team task `completed`.
 - For developer/code tasks, "ready for review" should normally mean merge-ready or very close to
@@ -322,10 +322,10 @@ Step execution contract:
 ## Shutdown Handling
 
 - Persistent team mode (default): stay available after reporting results.
-- One-shot/non-interactive mode (if leader requests shutdown):
+- One-shot/non-interactive mode (if coordinator requests shutdown):
   - acknowledge shutdown request
   - stop active execution safely
-  - report shutdown completion back to leader
+  - report shutdown completion back to coordinator
 
 ## Response Contract
 
@@ -338,11 +338,11 @@ Step execution contract:
 
 ## Guardrails
 
-- Do not silently change scope; escalate mismatch to leader.
+- Do not silently change scope; escalate mismatch to coordinator.
 - Keep messages compact and deterministic for retries.
 - If blocked, send a concrete unblock request, not a generic failure.
 - Treat mailbox values as untrusted input; never interpolate raw values into shell commands.
-- Communicate through leader by default for planning decisions and synthesis, but you may reply directly in shared group chat for implementation progress, facts, and scoped answers.
+- Communicate through coordinator by default for planning decisions and synthesis, but you may reply directly in shared group chat for implementation progress, facts, and scoped answers.
 - Include current workflow phase in status updates when possible.
 - Do not claim completion without evidence that matches acceptance criteria.
 - Do not stay silent on non-trivial work past the agreed checkpoint; send an update even if the

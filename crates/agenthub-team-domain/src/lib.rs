@@ -580,8 +580,8 @@ mod tests {
         let step = TeamStepRecord {
             id: "step-1".to_string(),
             run_id: "run-1".to_string(),
-            step_key: "leader_plan".to_string(),
-            member_id: "leader".to_string(),
+            step_key: "coordinator_plan".to_string(),
+            member_id: "coordinator".to_string(),
             runtime_handle_id: Some("session-1".to_string()),
             status: TeamStepStatus::Working,
             attempt: 1,
@@ -603,8 +603,8 @@ mod tests {
         let value = json!({
             "id": "step-1",
             "run_id": "run-1",
-            "step_key": "leader_plan",
-            "member_id": "leader",
+            "step_key": "coordinator_plan",
+            "member_id": "coordinator",
             "remote_task_id": "session-legacy",
             "status": "working",
             "attempt": 1,

@@ -50,7 +50,7 @@ AgentHub has four primary user-facing surfaces:
 - **Agents**: create, start, stop, reconnect, and inspect single-agent runs
 - **Conversation and ACP timelines**: review plans, tool calls, command output,
   and debug events as structured history
-- **Teams**: coordinate leader/worker collaboration with shared channels,
+- **Teams**: coordinate coordinator/worker collaboration with shared channels,
   Kanban, and execution tracking
 - **Agent Nodes and actor p2p**: extend execution onto remote machines without
   moving the control plane, while keeping mailbox/control traffic on the same

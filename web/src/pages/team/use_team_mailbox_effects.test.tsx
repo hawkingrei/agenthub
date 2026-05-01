@@ -35,10 +35,10 @@ function makeSnapshot(memberIds: string[]): TeamRunSnapshotRecord {
       created_at: 1,
       updated_at: 1,
     },
-    leader_member_id: memberIds[0] ?? null,
+    coordinator_member_id: memberIds[0] ?? null,
     members: memberIds.map((memberId) => ({
       member_id: memberId,
-      role: memberId === memberIds[0] ? "leader" : "worker",
+      role: memberId === memberIds[0] ? "coordinator" : "worker",
       model: null,
       prompt: null,
       skills: [],
@@ -129,7 +129,7 @@ describe("useTeamMailboxEffects", () => {
     const params = createParams({
       snapshot: null,
       tab: "agent_acp",
-      selectedMemberId: "leader-agent",
+      selectedMemberId: "coordinator-agent",
     });
 
     act(() => {
@@ -145,7 +145,7 @@ describe("useTeamMailboxEffects", () => {
 
   it("uses snapshot member fallback when selected member is invalid", async () => {
     const params = createParams({
-      snapshot: makeSnapshot(["leader-1", "worker-1"]),
+      snapshot: makeSnapshot(["coordinator-1", "worker-1"]),
       selectedMemberId: "missing-member",
       tab: "mailbox",
     });
@@ -157,7 +157,7 @@ describe("useTeamMailboxEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.setSelectedMemberId).toHaveBeenCalledWith("leader-1");
+    expect(params.setSelectedMemberId).toHaveBeenCalledWith("coordinator-1");
   });
 
   it("loads inbox with trimmed actor id and reports inbox fetch errors", async () => {

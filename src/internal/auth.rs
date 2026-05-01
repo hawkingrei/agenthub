@@ -42,7 +42,7 @@ pub struct InternalAccessClaims {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InternalRole {
-    Leader,
+    Coordinator,
     Worker,
     Orchestrator,
 }
@@ -50,7 +50,7 @@ pub enum InternalRole {
 impl InternalRole {
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim() {
-            "leader" => Some(Self::Leader),
+            "coordinator" => Some(Self::Coordinator),
             "worker" => Some(Self::Worker),
             "orchestrator" => Some(Self::Orchestrator),
             _ => None,
@@ -59,7 +59,7 @@ impl InternalRole {
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Leader => "leader",
+            Self::Coordinator => "coordinator",
             Self::Worker => "worker",
             Self::Orchestrator => "orchestrator",
         }
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn deny_missing_permission() {
         let key = HS256Key::from_bytes(TEST_SECRET.as_bytes());
-        let token = build_token(&key, "leader", None, None, vec!["team:message:send"]);
+        let token = build_token(&key, "coordinator", None, None, vec!["team:message:send"]);
         let authz = InternalAuthz::new(InternalAuthzConfig {
             shared_secret: TEST_SECRET.to_string(),
             expected_issuer: Some("agenthub".to_string()),
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn reject_audience_mismatch() {
         let key = HS256Key::from_bytes(TEST_SECRET.as_bytes());
-        let token = build_token(&key, "leader", None, None, vec!["*"]);
+        let token = build_token(&key, "coordinator", None, None, vec!["*"]);
         let authz = InternalAuthz::new(InternalAuthzConfig {
             shared_secret: TEST_SECRET.to_string(),
             expected_issuer: Some("agenthub".to_string()),
@@ -516,7 +516,7 @@ mod tests {
         let issued = authz
             .issue_node_access_token(NodeCredentialRequest {
                 source_node_id: "node-a".to_string(),
-                role: InternalRole::Leader.as_str().to_string(),
+                role: InternalRole::Coordinator.as_str().to_string(),
                 actor_id: None,
                 run_id: None,
                 permissions: vec![InternalAction::AgentManage.as_str().to_string()],
@@ -547,7 +547,7 @@ mod tests {
         let issued = authz
             .issue_node_access_token(NodeCredentialRequest {
                 source_node_id: "node-a".to_string(),
-                role: InternalRole::Leader.as_str().to_string(),
+                role: InternalRole::Coordinator.as_str().to_string(),
                 actor_id: None,
                 run_id: None,
                 permissions: vec![InternalAction::AgentManage.as_str().to_string()],

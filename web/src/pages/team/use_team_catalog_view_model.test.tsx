@@ -63,9 +63,9 @@ describe("useTeamCatalogViewModel", () => {
           name: "Alpha Team",
           description: "Mission alpha",
           spec: {
-            leader_member_id: "leader-1",
+            coordinator_member_id: "coordinator-1",
             members: [
-              { member_id: "leader-1", role: "leader" },
+              { member_id: "coordinator-1", role: "coordinator" },
               { member_id: "worker-1", role: "worker" },
             ],
             steps: [],
@@ -76,8 +76,8 @@ describe("useTeamCatalogViewModel", () => {
       ] as HookParams["teams"],
       agents: [
         {
-          id: "leader-1",
-          name: "Leader One",
+          id: "coordinator-1",
+          name: "Coordinator One",
           workdir: "/repo",
           command: "codex",
           args: [],
@@ -125,9 +125,9 @@ describe("useTeamCatalogViewModel", () => {
         name: "Alpha Team",
         description: "Mission alpha",
         spec: {
-          leader_member_id: "leader-1",
+          coordinator_member_id: "coordinator-1",
           members: [
-            { member_id: "leader-1", role: "leader" },
+            { member_id: "coordinator-1", role: "coordinator" },
             { member_id: "worker-1", role: "worker" },
           ],
           steps: [],
@@ -142,7 +142,7 @@ describe("useTeamCatalogViewModel", () => {
     const mounted = await mountHook(params);
     try {
       const snapshot = mounted.getSnapshot();
-      expect(snapshot?.teamSpecMemberIds).toEqual(["leader-1", "worker-1"]);
+      expect(snapshot?.teamSpecMemberIds).toEqual(["coordinator-1", "worker-1"]);
       expect(snapshot?.selectorTeamItems).toEqual([
         expect.objectContaining({
           id: "team-1",
@@ -152,7 +152,7 @@ describe("useTeamCatalogViewModel", () => {
         }),
       ]);
       expect(snapshot?.selectedTeamHasConfiguredMembers).toBe(true);
-      expect(snapshot?.selectedTeamHasLeader).toBe(true);
+      expect(snapshot?.selectedTeamHasCoordinator).toBe(true);
       expect(snapshot?.selectedTeamWorkerCount).toBe(1);
       expect(snapshot?.selectedTeamRuntimeStatus.label).toBe("team running");
       expect(snapshot?.selectedTeamRuntimeControlTone).toEqual({
@@ -205,11 +205,11 @@ describe("useTeamCatalogViewModel", () => {
           created_at: 1,
           updated_at: 1,
         },
-        leader_member_id: "leader-1",
+        coordinator_member_id: "coordinator-1",
         members: [
           {
-            member_id: "leader-1",
-            role: "leader",
+            member_id: "coordinator-1",
+            role: "coordinator",
             model: null,
             prompt: null,
             skills: [],
@@ -245,7 +245,7 @@ describe("useTeamCatalogViewModel", () => {
       expect(snapshot?.selectedTeamSnapshotMembers).toBeUndefined();
       expect(snapshot?.selectedTeamMemberLiveStates).toEqual([]);
       expect(snapshot?.selectedTeamHasConfiguredMembers).toBe(false);
-      expect(snapshot?.selectedTeamHasLeader).toBe(false);
+      expect(snapshot?.selectedTeamHasCoordinator).toBe(false);
       expect(snapshot?.selectedTeamWorkerCount).toBe(0);
       expect(snapshot?.selectedTeamRuntimeStatus.status).toBe("stopped");
       expect(snapshot?.selectedTeamRuntimeControlTone).toEqual({

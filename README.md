@@ -21,6 +21,30 @@ Quick links: [Docs Site](https://doc.agenthub.hawkingrei.com/) ·
 [Documentation](#documentation) ·
 [Developer Docs](docs/README.md)
 
+## Why AgentHub
+
+Most agent tools are optimized for a single terminal session. AgentHub is built
+for the operational side of agent workflows:
+
+- Keep agent sessions alive after the browser tab closes
+- Inspect structured ACP timelines instead of raw terminal scrollback
+- Run coordinator/worker Team workflows with shared coordination primitives
+- Route execution to remote Agent Nodes over internal gRPC when one machine is
+  not enough
+- Keep audit history, runtime state, and operator control in one place
+
+## What You Can Do
+
+- Create, start, stop, reconnect, and delete agents
+- View ACP events such as messages, plans, tool calls, command output, and
+  debug streams
+- Run multi-agent Team workflows with coordinator/worker coordination
+- Install AgentHub as an app-like PWA shell while still picking up fresh web
+  deploys on refresh
+- Register remote execution nodes and start agents on those nodes
+- Persist session history and operational records in SQLite
+- Receive completion notifications in the web UI
+
 ## Install AgentHub
 
 ### Homebrew
@@ -64,7 +88,7 @@ Current release binaries are available for:
 For local source development, contributor setup, repository layout, and common
 commands, see [docs/developer-setup.md](docs/developer-setup.md).
 
-## Why AgentHub
+## Product Overview
 
 AgentHub is a Rust-based control plane for operating AI agents beyond one
 ephemeral terminal tab.
@@ -75,7 +99,7 @@ It combines:
 - an embedded React web UI
 - ACP-based structured output rendering
 - SQLite-backed persistence
-- Team leader/worker orchestration
+- Team coordinator/worker orchestration
 - optional remote execution over internal gRPC
 
 The main design goal is simple: keep AI agents observable, controllable, and
@@ -92,7 +116,7 @@ workspace instead of a disposable chat box.
 - `🧾` **Structured ACP timelines**
   - Inspect plans, tool calls, command output, and replayable history.
 - `👥` **Team workflows**
-  - Coordinate leader/worker execution with channels, Kanban, and ACP views.
+  - Coordinate coordinator/worker execution with channels, Kanban, and ACP views.
 - `🌐` **Remote agent nodes**
   - Run agents on other machines while keeping one main control plane.
 - `💾` **Persistent runtime state**
@@ -110,7 +134,7 @@ In one product surface, you can:
 
 ### Multi-Agent Team Workflows
 
-AgentHub includes a Team workbench for leader/worker coordination.
+AgentHub includes a Team workbench for coordinator/worker coordination.
 
 Core concepts:
 
@@ -216,7 +240,7 @@ For the current contract, see
 AgentHub is a strong fit for:
 
 - engineers running long-lived coding agents
-- teams experimenting with leader/worker multi-agent workflows
+- teams experimenting with coordinator/worker multi-agent workflows
 - operators who need structured runtime visibility
 - organizations that want self-hosted agent control instead of opaque hosted sessions
 - users who need one control plane across local and remote execution targets

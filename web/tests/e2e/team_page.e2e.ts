@@ -41,17 +41,17 @@ test("team debug run ops compiles task preview and applies payload to create-run
       deadline: "2026-03-08",
       step_template: [
         {
-          step_key: "leader_plan",
+          step_key: "coordinator_plan",
           member_id: "planner",
-          role: "leader",
+          role: "coordinator",
           depends_on: [],
         },
       ],
       role_assignments: [
         {
           member_id: "planner",
-          role: "leader",
-          step_keys: ["leader_plan"],
+          role: "coordinator",
+          step_keys: ["coordinator_plan"],
         },
       ],
       source_message_id: 12,
@@ -64,9 +64,9 @@ test("team debug run ops compiles task preview and applies payload to create-run
     name: "Compile Team",
     description: "compile preview e2e",
     spec: {
-      leader_member_id: "planner",
-      members: [{ member_id: "planner", role: "leader", model: "codex" }],
-      steps: [{ step_key: "leader_plan" }],
+      coordinator_member_id: "planner",
+      members: [{ member_id: "planner", role: "coordinator", model: "codex" }],
+      steps: [{ step_key: "coordinator_plan" }],
     },
     created_at: teamCreatedAt,
     updated_at: teamCreatedAt,
@@ -128,45 +128,45 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
         task_id: "task-chat-1",
         conversation_id: "conversation-chat-1",
         task_list: [
-          "Negotiate scope with leader",
+          "Negotiate scope with coordinator",
           "Worker implements endpoint",
-          "Leader synthesizes final deliverable",
+          "Coordinator synthesizes final deliverable",
         ],
       },
     },
     plan: {
       task_list: [
-        "Negotiate scope with leader",
+        "Negotiate scope with coordinator",
         "Worker implements endpoint",
-        "Leader synthesizes final deliverable",
+        "Coordinator synthesizes final deliverable",
       ],
       acceptance_criteria: ["Endpoint implemented", "Final summary delivered"],
       deadline: "2026-03-12",
       step_template: [
         {
-          step_key: "leader_plan",
-          member_id: "agent-leader-1",
-          role: "leader",
+          step_key: "coordinator_plan",
+          member_id: "agent-coordinator-1",
+          role: "coordinator",
           depends_on: [],
         },
         {
           step_key: "worker_execute",
           member_id: "agent-worker-1",
           role: "worker",
-          depends_on: ["leader_plan"],
+          depends_on: ["coordinator_plan"],
         },
         {
-          step_key: "leader_synthesize",
-          member_id: "agent-leader-1",
-          role: "leader",
+          step_key: "coordinator_synthesize",
+          member_id: "agent-coordinator-1",
+          role: "coordinator",
           depends_on: ["worker_execute"],
         },
       ],
       role_assignments: [
         {
-          member_id: "agent-leader-1",
-          role: "leader",
-          step_keys: ["leader_plan", "leader_synthesize"],
+          member_id: "agent-coordinator-1",
+          role: "coordinator",
+          step_keys: ["coordinator_plan", "coordinator_synthesize"],
         },
         {
           member_id: "agent-worker-1",
@@ -183,15 +183,15 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     name: "Chat First Team",
     description: "chat-first e2e flow",
     spec: {
-      leader_member_id: "agent-leader-1",
+      coordinator_member_id: "agent-coordinator-1",
       members: [
-        { member_id: "agent-leader-1", role: "leader", model: "codex" },
+        { member_id: "agent-coordinator-1", role: "coordinator", model: "codex" },
         { member_id: "agent-worker-1", role: "worker", model: "gemini" },
       ],
       steps: [
-        { step_key: "leader_plan" },
+        { step_key: "coordinator_plan" },
         { step_key: "worker_execute" },
-        { step_key: "leader_synthesize" },
+        { step_key: "coordinator_synthesize" },
       ],
     },
     created_at: teamCreatedAt,
@@ -210,7 +210,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     {
       message_id: 1,
       run_id: runId,
-      from_actor_id: "agent-leader-1",
+      from_actor_id: "agent-coordinator-1",
       to_actor_id: "agent-worker-1",
       channel: "default",
       transport: "local",
@@ -227,7 +227,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
       message_id: 2,
       run_id: runId,
       from_actor_id: "agent-worker-1",
-      to_actor_id: "agent-leader-1",
+      to_actor_id: "agent-coordinator-1",
       channel: "default",
       transport: "local",
       route: null,
@@ -258,8 +258,8 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     {
       event_id: 202,
       run_id: runId,
-      step_id: "step-leader-synthesize",
-      event_type: "leader_synthesized",
+      step_id: "step-coordinator-synthesize",
+      event_type: "coordinator_synthesized",
       ts: runCreatedAt + 20,
       payload: {
         final_deliverable: "Final deliverable prepared and returned to user.",
@@ -274,26 +274,26 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
     return {
       run: activeRun,
       team: fixture.teams.find((team) => team.id === teamId),
-      leader_member_id: "agent-leader-1",
+      coordinator_member_id: "agent-coordinator-1",
       members: [
         {
-          member_id: "agent-leader-1",
-          role: "leader",
+          member_id: "agent-coordinator-1",
+          role: "coordinator",
           model: "codex",
-          prompt: "leader prompt",
-          skills: ["agenthub-actor-runtime", "team-leader-orchestrator"],
+          prompt: "coordinator prompt",
+          skills: ["agenthub-actor-runtime", "team-coordinator-orchestrator"],
           pending_inbox_count: messages.filter(
             (message) =>
-              message.to_actor_id === "agent-leader-1" &&
+              message.to_actor_id === "agent-coordinator-1" &&
               message.status === "pending"
           ).length,
           status: "working",
           latest_step: {
-            id: "step-leader-synthesize",
+            id: "step-coordinator-synthesize",
             run_id: runId,
-            step_key: "leader_synthesize",
-            member_id: "agent-leader-1",
-            remote_task_id: "task-leader-1",
+            step_key: "coordinator_synthesize",
+            member_id: "agent-coordinator-1",
+            remote_task_id: "task-coordinator-1",
             status: "working",
             attempt: 1,
             depends_on: ["worker_execute"],
@@ -325,7 +325,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
             remote_task_id: "task-worker-1",
             status: "completed",
             attempt: 1,
-            depends_on: ["leader_plan"],
+            depends_on: ["coordinator_plan"],
             input: {},
             output: { summary: "done" },
             error_text: null,
@@ -533,7 +533,7 @@ test("team chat-first path compiles preview, creates run, and captures worker pl
 
   await page.getByRole("button", { name: "Compile Preview", exact: true }).click();
   await expect(page.getByText("conversation-chat-1", { exact: true })).toBeVisible();
-  await expect(page.getByText("Negotiate scope with leader")).toBeVisible();
+  await expect(page.getByText("Negotiate scope with coordinator")).toBeVisible();
 
   await page.getByRole("button", { name: "Create Run from Preview" }).click();
   await openMainTeamAction(page, "Execution Runs");
@@ -655,7 +655,7 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
       jsonResponse({
         run: activeRun,
         team,
-        leader_member_id: team?.spec.leader_member_id ?? "tool-leader",
+        coordinator_member_id: team?.spec.coordinator_member_id ?? "tool-coordinator",
         members: [],
         steps: [],
         latest_events: [],
@@ -685,27 +685,27 @@ testLocalLlm("team conversation-first integration supports virtual team tiny-too
 
   const virtualToolSpec = {
     spec_version: 1,
-    entrypoint: "leader_plan",
-    leader_member_id: "tool-leader",
+    entrypoint: "coordinator_plan",
+    coordinator_member_id: "tool-coordinator",
     members: [
-      { member_id: "tool-leader", role: "leader", model: "codex" },
+      { member_id: "tool-coordinator", role: "coordinator", model: "codex" },
       { member_id: "tool-worker", role: "worker", model: "gemini" },
     ],
     steps: [
-      { step_key: "leader_plan", member_id: "tool-leader", depends_on: [] },
-      { step_key: "worker_build_tool", member_id: "tool-worker", depends_on: ["leader_plan"] },
+      { step_key: "coordinator_plan", member_id: "tool-coordinator", depends_on: [] },
+      { step_key: "worker_build_tool", member_id: "tool-worker", depends_on: ["coordinator_plan"] },
       {
-        step_key: "leader_synthesize",
-        member_id: "tool-leader",
+        step_key: "coordinator_synthesize",
+        member_id: "tool-coordinator",
         depends_on: ["worker_build_tool"],
       },
     ],
   };
   fixture.agents.push(
     {
-      id: "tool-leader",
-      name: "tool-leader",
-      workdir: "/workspace/tool-leader",
+      id: "tool-coordinator",
+      name: "tool-coordinator",
+      workdir: "/workspace/tool-coordinator",
       command: "agenthub-codex-acp",
       args: [],
       worktree_mode: "use_existing",
@@ -782,13 +782,13 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     name: "Team Mailbox",
     description: "mailbox im test",
     spec: {
-      leader_member_id: "agent-leader-1",
+      coordinator_member_id: "agent-coordinator-1",
       members: [
-        { member_id: "agent-leader-1", role: "leader", model: "codex" },
+        { member_id: "agent-coordinator-1", role: "coordinator", model: "codex" },
         { member_id: "agent-worker-1", role: "worker", model: "gemini" },
         { member_id: "agent-worker-2", role: "worker", model: "kimi" },
       ],
-      steps: [{ step_key: "leader_plan" }],
+      steps: [{ step_key: "coordinator_plan" }],
     },
     created_at: teamCreatedAt,
     updated_at: teamCreatedAt,
@@ -812,8 +812,8 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     messages.push({
       message_id: index,
       run_id: runId,
-      from_actor_id: fromWorker ? "agent-worker-1" : "agent-leader-1",
-      to_actor_id: fromWorker ? "agent-leader-1" : "agent-worker-1",
+      from_actor_id: fromWorker ? "agent-worker-1" : "agent-coordinator-1",
+      to_actor_id: fromWorker ? "agent-coordinator-1" : "agent-worker-1",
       channel: "default",
       transport: "local",
       route: null,
@@ -830,7 +830,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     message_id: 80,
     run_id: runId,
     from_actor_id: "agent-worker-2",
-    to_actor_id: "agent-leader-1",
+    to_actor_id: "agent-coordinator-1",
     channel: "default",
     transport: "local",
     route: null,
@@ -856,15 +856,15 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   const buildSnapshot = () => ({
     run: runRecord,
     team: fixture.teams.find((team) => team.id === teamId),
-    leader_member_id: "agent-leader-1",
+    coordinator_member_id: "agent-coordinator-1",
     members: [
       {
-        member_id: "agent-leader-1",
-        role: "leader",
+        member_id: "agent-coordinator-1",
+        role: "coordinator",
         model: "codex",
-        prompt: "leader",
-        skills: ["agenthub-actor-runtime", "team-leader-orchestrator"],
-        pending_inbox_count: computePendingInboxCount("agent-leader-1"),
+        prompt: "coordinator",
+        skills: ["agenthub-actor-runtime", "team-coordinator-orchestrator"],
+        pending_inbox_count: computePendingInboxCount("agent-coordinator-1"),
         status: "working",
         latest_step: null,
         session_status: "working",
@@ -1066,7 +1066,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .locator(".teams-chat-members .team-item", { hasText: "Worker Agent (worker)" })
     .click();
   await expect(page.locator(".teams-chat-head")).toContainText(
-    "Leader Agent → Worker Agent"
+    "Coordinator Agent → Worker Agent"
   );
   await page.getByRole("button", { name: "Jump to bottom" }).click();
   await expect(page.locator(".teams-chat-head")).toContainText("auto_follow=on");
@@ -1084,7 +1084,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
     .locator(".teams-chat-members .team-item", { hasText: "Worker Agent Two (worker)" })
     .click();
   await expect(page.locator(".teams-chat-head")).toContainText(
-    "Leader Agent → Worker Agent Two"
+    "Coordinator Agent → Worker Agent Two"
   );
 
   const eventsBeforePolling = counters.events;
@@ -1100,7 +1100,7 @@ test("team mailbox IM mode supports conversation focus, unread, auto-follow and 
   await expect(page.getByRole("heading", { name: "Send Message (JSON)" })).toBeVisible();
 
   const advancedPanel = page.locator(".teams-message-advanced .teams-message-panel").first();
-  await advancedPanel.getByPlaceholder("from_actor_id").fill("agent-leader-1");
+  await advancedPanel.getByPlaceholder("from_actor_id").fill("agent-coordinator-1");
   await advancedPanel.getByPlaceholder("to_actor_id").fill("agent-worker-2");
   await advancedPanel
     .getByPlaceholder("payload JSON")
@@ -1124,9 +1124,9 @@ test("team list supports deleting selected team", async ({ page }) => {
       name: "Team Delete A",
       description: "first team",
       spec: {
-        leader_member_id: "agent-leader-1",
-        members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
-        steps: [{ step_key: "leader_plan" }],
+        coordinator_member_id: "agent-coordinator-1",
+        members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+        steps: [{ step_key: "coordinator_plan" }],
       },
       created_at: fixture.now,
       updated_at: fixture.now,
@@ -1136,9 +1136,9 @@ test("team list supports deleting selected team", async ({ page }) => {
       name: "Team Delete B",
       description: "second team",
       spec: {
-        leader_member_id: "agent-worker-1",
-        members: [{ member_id: "agent-worker-1", role: "leader", model: "gemini" }],
-        steps: [{ step_key: "leader_plan" }],
+        coordinator_member_id: "agent-worker-1",
+        members: [{ member_id: "agent-worker-1", role: "coordinator", model: "gemini" }],
+        steps: [{ step_key: "coordinator_plan" }],
       },
       created_at: fixture.now + 1,
       updated_at: fixture.now + 1,
@@ -1184,9 +1184,9 @@ test("team run list resets filters on team switch and uses before_created_at cur
       name: "Team A",
       description: "first team",
       spec: {
-        leader_member_id: "agent-leader-1",
-        members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
-        steps: [{ step_key: "leader_plan" }],
+        coordinator_member_id: "agent-coordinator-1",
+        members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+        steps: [{ step_key: "coordinator_plan" }],
       },
       created_at: fixture.now,
       updated_at: fixture.now,
@@ -1196,9 +1196,9 @@ test("team run list resets filters on team switch and uses before_created_at cur
       name: "Team B",
       description: "second team",
       spec: {
-        leader_member_id: "agent-worker-1",
-        members: [{ member_id: "agent-worker-1", role: "leader", model: "gemini" }],
-        steps: [{ step_key: "leader_plan" }],
+        coordinator_member_id: "agent-worker-1",
+        members: [{ member_id: "agent-worker-1", role: "coordinator", model: "gemini" }],
+        steps: [{ step_key: "coordinator_plan" }],
       },
       created_at: fixture.now + 1,
       updated_at: fixture.now + 1,

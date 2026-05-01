@@ -8,12 +8,12 @@ exact contract between these surfaces: which data belongs in runtime continuity,
 in durable project memory, which files act as stable indexes, and how prompt assembly should point
 to filesystem-backed detail instead of replaying it inline.
 
-Without one stable contract, leader and worker prompts, runtime continuity code, role skills, and
+Without one stable contract, coordinator and worker prompts, runtime continuity code, role skills, and
 Team docs can each describe memory ownership slightly differently.
 
 ## Scope
 
-- Workspace-local memory ownership for Team leader and worker sessions.
+- Workspace-local memory ownership for Team coordinator and worker sessions.
 - The v1 boundary between `.cache/context/` and `.agenthubmemory/`.
 - Stable index files, append-only records, and run-scoped artifacts.
 - Prompt-tail interaction with file-backed memory.
@@ -40,7 +40,7 @@ AgentHub Team runtime uses two distinct filesystem memory surfaces:
   - Agent-authored durable project memory.
   - Stores longer-lived task ledgers, execution journals, reusable notes, and project-facing
     follow-up material.
-  - Exists primarily for workers operating inside a concrete repository; leader coordination
+  - Exists primarily for workers operating inside a concrete repository; coordinator coordination
     workspaces usually do not need it.
 
 ### 2) Ownership Model
@@ -147,7 +147,7 @@ File ownership rules:
   - Temporary research/output staging that is useful beyond one turn but not yet promoted into a
     durable note.
 
-Leader workspaces may omit `.agenthubmemory/` entirely when they stay as empty coordination
+Coordinator workspaces may omit `.agenthubmemory/` entirely when they stay as empty coordination
 workspaces.
 
 ### 3) Tiering And Promotion Contract
@@ -188,7 +188,7 @@ The same rule applies to worker project memory:
 
 ### 5) Role-Specific Rules
 
-- Leader
+- Coordinator
   - Default workspace is an empty coordination workspace.
   - Uses workspace-root `AGENTS.md` and `TODO.md` for coordination indexes, plus `.cache/context/`
     for runtime continuity, append-only trails, and pointer-backed run artifacts.

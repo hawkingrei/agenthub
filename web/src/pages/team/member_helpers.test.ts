@@ -8,16 +8,16 @@ import {
 } from "./member_helpers";
 
 const TEST_PROMPT_DEFAULTS = {
-  leader_prompt: "leader-default-prompt",
+  coordinator_prompt: "coordinator-default-prompt",
   worker_prompt: "worker-default-prompt",
 };
 
 describe("team member helper prompt defaults", () => {
   it("starts with empty prompt defaults until the API payload arrives", () => {
     const initial = createInitialTeamDraftState();
-    expect(initial.leaderPrompt).toBe("");
+    expect(initial.coordinatorPrompt).toBe("");
     expect(EMPTY_TEAM_PROMPT_DEFAULTS).toEqual({
-      leader_prompt: "",
+      coordinator_prompt: "",
       worker_prompt: "",
     });
   });
@@ -26,13 +26,13 @@ describe("team member helper prompt defaults", () => {
     const initial = createInitialTeamDraftState(TEST_PROMPT_DEFAULTS);
     const worker = buildDefaultWorkerDraft("worker-1", TEST_PROMPT_DEFAULTS);
 
-    expect(initial.leaderPrompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
+    expect(initial.coordinatorPrompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
     expect(worker.prompt).toBe(TEST_PROMPT_DEFAULTS.worker_prompt);
   });
 
   it("resolves prompt text by role", () => {
-    expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "leader")).toBe(
-      TEST_PROMPT_DEFAULTS.leader_prompt
+    expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "coordinator")).toBe(
+      TEST_PROMPT_DEFAULTS.coordinator_prompt
     );
     expect(resolveTeamPromptForRole(TEST_PROMPT_DEFAULTS, "worker")).toBe(
       TEST_PROMPT_DEFAULTS.worker_prompt

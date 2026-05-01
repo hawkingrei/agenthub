@@ -29,12 +29,12 @@ test("team runtime controls update shared runtime badge", async ({ page }) => {
     name: "runtime controls team",
     description: "runtime badge coverage",
     spec: {
-      leader_member_id: "agent-leader-1",
+      coordinator_member_id: "agent-coordinator-1",
       members: [
-        { member_id: "agent-leader-1", role: "leader", description: "lead" },
+        { member_id: "agent-coordinator-1", role: "coordinator", description: "lead" },
         { member_id: "agent-worker-1", role: "worker", description: "worker" },
       ],
-      steps: [{ step_key: "leader_plan" }, { step_key: "worker_exec" }],
+      steps: [{ step_key: "coordinator_plan" }, { step_key: "worker_exec" }],
     },
     created_at: fixture.now + 20,
     updated_at: fixture.now + 20,
@@ -87,12 +87,12 @@ test("team member setup adds the first agent and appends more agents through spe
   await gotoTeams(page);
   await createTeamFromModal(page, {
     name: teamName,
-    goal: "Create team first, then configure leader and worker profiles.",
+    goal: "Create team first, then configure coordinator and worker profiles.",
   });
 
   await createTeamMemberFromModal(page, {
     teamName,
-    workdir: "/workspace/member-setup-leader",
+    workdir: "/workspace/member-setup-coordinator",
     model: "codex",
     identity: "Principal planner and reviewer",
   });
@@ -108,21 +108,21 @@ test("team member setup adds the first agent and appends more agents through spe
 
   const updates = fixture.getUpdateSpecPayloads();
   expect(updates).toHaveLength(2);
-  expect(updates[0]?.payload.spec.leader_member_id).toBe("agent-forge-4");
-  expect(updates[0]?.payload.spec.members.map((member) => member.role)).toEqual(["leader"]);
+  expect(updates[0]?.payload.spec.coordinator_member_id).toBe("agent-forge-4");
+  expect(updates[0]?.payload.spec.members.map((member) => member.role)).toEqual(["coordinator"]);
   expect(updates[1]?.payload.spec.members.map((member) => member.role)).toEqual([
-    "leader",
+    "coordinator",
     "worker",
   ]);
-  const [leaderMember, workerMember] = updates[1]?.payload.spec.members ?? [];
-  expect(leaderMember?.model).toBe("codex");
-  expect(leaderMember?.skills).toBeUndefined();
+  const [coordinatorMember, workerMember] = updates[1]?.payload.spec.members ?? [];
+  expect(coordinatorMember?.model).toBe("codex");
+  expect(coordinatorMember?.skills).toBeUndefined();
   expect(workerMember?.model).toBe("gemini");
   expect(workerMember?.skills).toBeUndefined();
   expect(updates[1]?.payload.spec.steps?.map((step) => step.step_key)).toEqual([
-    "leader_plan",
+    "coordinator_plan",
     "worker_1_agent_forge_5",
-    "leader_synthesize",
+    "coordinator_synthesize",
   ]);
 });
 
@@ -148,19 +148,19 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
-  const longLeaderId = `agent-leader-${"x".repeat(72)}`;
+  const longCoordinatorId = `agent-coordinator-${"x".repeat(72)}`;
   const longWorkerId = `agent-worker-${"y".repeat(72)}`;
   fixture.teams.push({
     id: "team-mobile",
     name: "Team Mobile",
     description: "mobile layout regression guard",
     spec: {
-      leader_member_id: longLeaderId,
+      coordinator_member_id: longCoordinatorId,
       members: [
-        { member_id: longLeaderId, role: "leader", model: "codex" },
+        { member_id: longCoordinatorId, role: "coordinator", model: "codex" },
         { member_id: longWorkerId, role: "worker", model: "gemini" },
       ],
-      steps: [{ step_key: "leader_plan" }],
+      steps: [{ step_key: "coordinator_plan" }],
     },
     created_at: fixture.now,
     updated_at: fixture.now,
@@ -200,7 +200,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   page,
 }) => {
   const fixture = await mockTeamPageApis(page);
-  const longLeaderId = `leader-${"l".repeat(96)}`;
+  const longCoordinatorId = `coordinator-${"l".repeat(96)}`;
   const longWorkerId1 = `worker-a-${"w".repeat(88)}`;
   const longWorkerId2 = `worker-b-${"z".repeat(88)}`;
   const longPrompt = `prompt-${"p".repeat(420)}`;
@@ -210,13 +210,13 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
     name: "Team Desktop",
     description: "desktop overlap regression guard",
     spec: {
-      leader_member_id: longLeaderId,
+      coordinator_member_id: longCoordinatorId,
       members: [
         {
-          member_id: longLeaderId,
-          role: "leader",
+          member_id: longCoordinatorId,
+          role: "coordinator",
           model: "codex",
-          skills: ["agenthub-actor-runtime", "team-leader-orchestrator", `mcp-${"m".repeat(52)}`],
+          skills: ["agenthub-actor-runtime", "team-coordinator-orchestrator", `mcp-${"m".repeat(52)}`],
         },
         {
           member_id: longWorkerId1,
@@ -231,7 +231,7 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
           skills: ["agenthub-actor-runtime", "team-worker-executor", `mcp-${"b".repeat(52)}`],
         },
       ],
-      steps: [{ step_key: "leader_plan" }],
+      steps: [{ step_key: "coordinator_plan" }],
     },
     created_at: fixture.now,
     updated_at: fixture.now,
@@ -283,21 +283,21 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
         jsonResponse({
           run: runRecord,
           team: fixture.teams.find((team) => team.id === teamId),
-          leader_member_id: longLeaderId,
+          coordinator_member_id: longCoordinatorId,
           members: [
             {
-              member_id: longLeaderId,
-              role: "leader",
+              member_id: longCoordinatorId,
+              role: "coordinator",
               model: "codex",
               prompt: longPrompt,
-              skills: ["agenthub-actor-runtime", "team-leader-orchestrator", `mcp-${"m".repeat(52)}`],
+              skills: ["agenthub-actor-runtime", "team-coordinator-orchestrator", `mcp-${"m".repeat(52)}`],
               pending_inbox_count: 0,
               status: "working",
               latest_step: {
-                id: "step-leader",
+                id: "step-coordinator",
                 run_id: runId,
-                step_key: "leader_plan",
-                member_id: longLeaderId,
+                step_key: "coordinator_plan",
+                member_id: longCoordinatorId,
                 remote_task_id: `remote-${"r".repeat(64)}`,
                 status: "working",
                 attempt: 1,
@@ -386,11 +386,11 @@ test("team page desktop keeps long metadata blocks non-overlapping", async ({
   expect(overviewLayout.docOverflow).toBeLessThanOrEqual(1);
   expect(overviewLayout.overflowing).toEqual([]);
 
-  await selectAgentFromSidebar(page, longLeaderId);
+  await selectAgentFromSidebar(page, longCoordinatorId);
   await openAdvancedView(page, "Member Console");
   const memberConsoleCard = page.locator('[data-team-panel="member-console"]');
   await expect(memberConsoleCard).toBeVisible();
-  await memberConsoleCard.locator("select").first().selectOption(longLeaderId);
+  await memberConsoleCard.locator("select").first().selectOption(longCoordinatorId);
   await expect(memberConsoleCard).toContainText("mcp_skills");
   await memberConsoleCard.locator("summary", { hasText: "prompt" }).click();
 
@@ -439,15 +439,15 @@ test("team setup keeps add agent wording after the first member binds", async ({
   await gotoTeams(page);
   await createTeamFromModal(page, {
     name: teamName,
-    goal: "Bind leader in-place before worker setup.",
+    goal: "Bind coordinator in-place before worker setup.",
   });
   await expectAddAgentEntryVisible(page, teamName);
   await expect(page.getByText("No agents have joined this team yet.")).toBeVisible();
 
   await createTeamMemberFromModal(page, {
     teamName,
-    workdir: "/workspace/forge-leader",
-    identity: "Leader bound in-place",
+    workdir: "/workspace/forge-coordinator",
+    identity: "Coordinator bound in-place",
   });
 
   await openTeamFromSelector(page, teamName);
@@ -498,9 +498,9 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
         {
           id: `${run.id}-step-1`,
           run_id: run.id,
-          step_key: "leader_plan",
-          member_id: "quant-leader",
-          remote_task_id: "task-leader-plan",
+          step_key: "coordinator_plan",
+          member_id: "quant-coordinator",
+          remote_task_id: "task-coordinator-plan",
           status: "working",
           attempt: 1,
           depends_on: [],
@@ -518,7 +518,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
           remote_task_id: null,
           status: "submitted",
           attempt: 1,
-          depends_on: ["leader_plan"],
+          depends_on: ["coordinator_plan"],
           input: {},
           output: null,
           error_text: null,
@@ -533,7 +533,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
           remote_task_id: null,
           status: "submitted",
           attempt: 1,
-          depends_on: ["leader_plan"],
+          depends_on: ["coordinator_plan"],
           input: {},
           output: null,
           error_text: null,
@@ -647,7 +647,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
         jsonResponse({
           run,
           team,
-          leader_member_id: team.spec.leader_member_id,
+          coordinator_member_id: team.spec.coordinator_member_id,
           members,
           steps: runStepsById.get(run.id) ?? [],
           latest_events: runEventsById.get(run.id) ?? [],
@@ -664,15 +664,15 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
 
   const quantSpec = {
     spec_version: 1,
-    entrypoint: "leader_plan",
-    leader_member_id: "quant-leader",
+    entrypoint: "coordinator_plan",
+    coordinator_member_id: "quant-coordinator",
     members: [
       {
-        member_id: "quant-leader",
-        role: "leader",
+        member_id: "quant-coordinator",
+        role: "coordinator",
         model: "codex",
         prompt: "Own run-level planning, risk budget, and compute/resource control.",
-        skills: ["agenthub-actor-runtime", "team-leader-orchestrator"],
+        skills: ["agenthub-actor-runtime", "team-coordinator-orchestrator"],
       },
       {
         member_id: "portfolio-worker",
@@ -690,20 +690,20 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
       },
     ],
     steps: [
-      { step_key: "leader_plan", member_id: "quant-leader", depends_on: [] },
+      { step_key: "coordinator_plan", member_id: "quant-coordinator", depends_on: [] },
       {
         step_key: "worker_portfolio_optimize",
         member_id: "portfolio-worker",
-        depends_on: ["leader_plan"],
+        depends_on: ["coordinator_plan"],
       },
       {
         step_key: "worker_crypto_algo_trade",
         member_id: "crypto-worker",
-        depends_on: ["leader_plan"],
+        depends_on: ["coordinator_plan"],
       },
       {
-        step_key: "leader_synthesize",
-        member_id: "quant-leader",
+        step_key: "coordinator_synthesize",
+        member_id: "quant-coordinator",
         depends_on: ["worker_portfolio_optimize", "worker_crypto_algo_trade"],
       },
     ],
@@ -712,13 +712,13 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
   await gotoTeams(page);
   await createTeamFromModal(page, {
     name: "quant-alpha-desk",
-    goal: "leader manages resources; workers optimize portfolio + crypto trading",
+    goal: "coordinator manages resources; workers optimize portfolio + crypto trading",
   });
   fixture.agents.push(
     {
-      id: "quant-leader",
-      name: "quant-leader",
-      workdir: "/workspace/quant-leader",
+      id: "quant-coordinator",
+      name: "quant-coordinator",
+      workdir: "/workspace/quant-coordinator",
       command: "agenthub-codex-acp",
       args: [],
       worktree_mode: "use_existing",
@@ -791,7 +791,7 @@ test("team quant workflow creates team and launches run", async ({ page }) => {
     "working"
   );
   await openAdvancedView(page, "Overview");
-  await expect(page.locator(".team-member-row", { hasText: "quant-leader" })).toBeVisible();
+  await expect(page.locator(".team-member-row", { hasText: "quant-coordinator" })).toBeVisible();
   await expect(
     page.locator(".team-member-row", { hasText: "portfolio-worker" })
   ).toBeVisible();

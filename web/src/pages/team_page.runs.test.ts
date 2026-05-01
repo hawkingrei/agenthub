@@ -146,12 +146,12 @@ describe("team run list helpers", () => {
     expect(fullList.map((event) => event.event_id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
-  it("builds mailbox templates for leader assignment and clarification", () => {
-    const assignment = buildMailboxPayloadTemplate("leader_task_assignment") as {
+  it("builds mailbox templates for coordinator assignment and clarification", () => {
+    const assignment = buildMailboxPayloadTemplate("coordinator_task_assignment") as {
       type: string;
       task: string;
     };
-    expect(assignment.type).toBe("leader_task_assignment");
+    expect(assignment.type).toBe("coordinator_task_assignment");
     expect(assignment.task.length).toBeGreaterThan(0);
 
     const clarification = buildMailboxPayloadTemplate("clarification_request") as {
@@ -182,11 +182,11 @@ describe("team run list helpers", () => {
     expect(blocked.next_action.length).toBeGreaterThan(0);
   });
 
-  it("resolves chat actors from leader and selected member", () => {
+  it("resolves chat actors from coordinator and selected member", () => {
     expect(
-      resolveMailboxChatActors("leader-agent", ["leader-agent", "worker-agent"], "worker-agent")
+      resolveMailboxChatActors("coordinator-agent", ["coordinator-agent", "worker-agent"], "worker-agent")
     ).toEqual({
-      fromActorId: "leader-agent",
+      fromActorId: "coordinator-agent",
       toActorId: "worker-agent",
       inboxActorId: "worker-agent",
     });
@@ -201,17 +201,17 @@ describe("team run list helpers", () => {
   it("merges mailbox messages with dedupe by message id", () => {
     const merged = mergeMailboxMessages(
       [
-        buildMailboxMessage(1, "leader-agent", "worker-agent", {
+        buildMailboxMessage(1, "coordinator-agent", "worker-agent", {
           type: "chat_message",
           text: "task",
         }),
       ],
       [
-        buildMailboxMessage(1, "leader-agent", "worker-agent", {
+        buildMailboxMessage(1, "coordinator-agent", "worker-agent", {
           type: "chat_message",
           text: "task-updated",
         }),
-        buildMailboxMessage(2, "worker-agent", "leader-agent", {
+        buildMailboxMessage(2, "worker-agent", "coordinator-agent", {
           type: "chat_message",
           text: "done",
         }),
@@ -226,11 +226,11 @@ describe("team run list helpers", () => {
   it("selects mailbox conversation in both directions", () => {
     const conversation = selectMailboxConversation(
       [
-        buildMailboxMessage(1, "leader-agent", "worker-agent", "a"),
-        buildMailboxMessage(2, "worker-agent", "leader-agent", "b"),
-        buildMailboxMessage(3, "leader-agent", "worker-2", "c"),
+        buildMailboxMessage(1, "coordinator-agent", "worker-agent", "a"),
+        buildMailboxMessage(2, "worker-agent", "coordinator-agent", "b"),
+        buildMailboxMessage(3, "coordinator-agent", "worker-2", "c"),
       ],
-      "leader-agent",
+      "coordinator-agent",
       "worker-agent"
     );
     expect(conversation.map((message) => message.message_id)).toEqual([1, 2]);
@@ -245,13 +245,13 @@ describe("team run list helpers", () => {
   });
 
   it("builds stable mailbox conversation key", () => {
-    expect(buildMailboxConversationKey("leader-agent", "worker-agent")).toBe(
-      "leader-agent::worker-agent"
+    expect(buildMailboxConversationKey("coordinator-agent", "worker-agent")).toBe(
+      "coordinator-agent::worker-agent"
     );
-    expect(buildMailboxConversationKey("worker-agent", "leader-agent")).toBe(
-      "leader-agent::worker-agent"
+    expect(buildMailboxConversationKey("worker-agent", "coordinator-agent")).toBe(
+      "coordinator-agent::worker-agent"
     );
-    expect(buildMailboxConversationKey("leader-agent", "")).toBe("");
+    expect(buildMailboxConversationKey("coordinator-agent", "")).toBe("");
   });
 
   it("resolves conversation max message id", () => {
@@ -267,19 +267,19 @@ describe("team run list helpers", () => {
   it("counts unread messages after seen watermark", () => {
     const unread = countUnreadConversationMessages(
       [
-        buildMailboxMessage(1, "leader-agent", "worker-agent", {}),
-        buildMailboxMessage(2, "worker-agent", "leader-agent", {}),
-        buildMailboxMessage(3, "leader-agent", "worker-2", {}),
+        buildMailboxMessage(1, "coordinator-agent", "worker-agent", {}),
+        buildMailboxMessage(2, "worker-agent", "coordinator-agent", {}),
+        buildMailboxMessage(3, "coordinator-agent", "worker-2", {}),
       ],
-      "leader-agent",
+      "coordinator-agent",
       "worker-agent",
       1
     );
     expect(unread).toBe(1);
     expect(
       countUnreadConversationMessages(
-        [buildMailboxMessage(2, "leader-agent", "worker-agent", {})],
-        "leader-agent",
+        [buildMailboxMessage(2, "coordinator-agent", "worker-agent", {})],
+        "coordinator-agent",
         "worker-agent",
         2
       )
@@ -289,10 +289,10 @@ describe("team run list helpers", () => {
   it("counts unread as inbound-only for the active actor side", () => {
     const unread = countUnreadConversationMessages(
       [
-        buildMailboxMessage(10, "leader-agent", "worker-agent", {}),
-        buildMailboxMessage(11, "worker-agent", "leader-agent", {}),
+        buildMailboxMessage(10, "coordinator-agent", "worker-agent", {}),
+        buildMailboxMessage(11, "worker-agent", "coordinator-agent", {}),
       ],
-      "leader-agent",
+      "coordinator-agent",
       "worker-agent",
       0
     );
@@ -302,7 +302,7 @@ describe("team run list helpers", () => {
   it("parses team spec members with dedupe and invalid-entry filtering", () => {
     const members = parseTeamSpecMembers({
       members: [
-        { member_id: "leader-agent", role: "leader" },
+        { member_id: "coordinator-agent", role: "coordinator" },
         { member_id: "worker-agent", role: "worker" },
         { member_id: "worker-agent", role: "worker" },
         { member_id: "  " },
@@ -311,7 +311,7 @@ describe("team run list helpers", () => {
       ],
     });
     expect(members).toEqual([
-      { member_id: "leader-agent", role: "leader" },
+      { member_id: "coordinator-agent", role: "coordinator" },
       { member_id: "worker-agent", role: "worker" },
     ]);
   });
@@ -320,18 +320,18 @@ describe("team run list helpers", () => {
     const statuses = resolveTeamMemberAgentStatuses(
       {
         members: [
-          { member_id: "leader-agent", role: "leader" },
+          { member_id: "coordinator-agent", role: "coordinator" },
           { member_id: "worker-agent", role: "worker" },
           { member_id: "missing-agent", role: "worker" },
         ],
       },
-      [buildAgent("leader-agent", "running"), buildAgent("worker-agent", "stopped")]
+      [buildAgent("coordinator-agent", "running"), buildAgent("worker-agent", "stopped")]
     );
     expect(statuses).toEqual([
       {
-        member_id: "leader-agent",
-        role: "leader",
-        agent_name: "leader-agent",
+        member_id: "coordinator-agent",
+        role: "coordinator",
+        agent_name: "coordinator-agent",
         status: "running",
         missing_agent: false,
       },
@@ -355,20 +355,20 @@ describe("team run list helpers", () => {
     const statuses = resolveTeamMemberAgentStatuses(
       {
         members: [
-          { member_id: "leader-agent", role: "leader" },
+          { member_id: "coordinator-agent", role: "coordinator" },
           { member_id: "worker-hidden", role: "worker" },
         ],
       },
-      [buildAgent("leader-agent", "running")],
+      [buildAgent("coordinator-agent", "running")],
       {
         "worker-hidden": buildAgent("worker-hidden", "created"),
       }
     );
     expect(statuses).toEqual([
       {
-        member_id: "leader-agent",
-        role: "leader",
-        agent_name: "leader-agent",
+        member_id: "coordinator-agent",
+        role: "coordinator",
+        agent_name: "coordinator-agent",
         status: "running",
         missing_agent: false,
       },
@@ -386,25 +386,25 @@ describe("team run list helpers", () => {
     const statuses = resolveTeamMemberAgentStatuses(
       {
         members: [
-          { member_id: "leader-agent", role: "leader" },
+          { member_id: "coordinator-agent", role: "coordinator" },
           { member_id: "worker-agent", role: "worker" },
         ],
       },
-      [buildAgent("leader-agent", "stopped"), buildAgent("worker-agent", "stopped")],
+      [buildAgent("coordinator-agent", "stopped"), buildAgent("worker-agent", "stopped")],
       undefined,
       [
         {
-          member_id: "leader-agent",
-          display_name: "leader-agent",
-          role: "leader",
+          member_id: "coordinator-agent",
+          display_name: "coordinator-agent",
+          role: "coordinator",
           description: null,
           agent_status: "running",
-          session_id: "session-leader",
+          session_id: "session-coordinator",
           session_status: "running",
           card: {
-            card_id: "card-leader",
+            card_id: "card-coordinator",
             schema_version: "1",
-            description: "leader",
+            description: "coordinator",
             capability_tags: [],
           },
         },
@@ -428,9 +428,9 @@ describe("team run list helpers", () => {
 
     expect(statuses).toEqual([
       {
-        member_id: "leader-agent",
-        role: "leader",
-        agent_name: "leader-agent",
+        member_id: "coordinator-agent",
+        role: "coordinator",
+        agent_name: "coordinator-agent",
         status: "running",
         missing_agent: false,
       },
@@ -447,8 +447,8 @@ describe("team run list helpers", () => {
   it("summarizes active/inactive/missing team member counts", () => {
     const summary = summarizeTeamMemberAgentStatuses([
       {
-        member_id: "leader-agent",
-        role: "leader",
+        member_id: "coordinator-agent",
+        role: "coordinator",
         status: "running",
         missing_agent: false,
       },
@@ -533,8 +533,8 @@ describe("team run list helpers", () => {
   it("maps lifecycle tone to active, inactive, and missing", () => {
     expect(
       resolveTeamMemberLifecycleTone({
-        member_id: "leader-agent",
-        role: "leader",
+        member_id: "coordinator-agent",
+        role: "coordinator",
         status: "running",
         missing_agent: false,
       })
@@ -557,7 +557,7 @@ describe("team run list helpers", () => {
     ).toBe("missing");
   });
 
-  it("builds live states with leader first and snapshot run info", () => {
+  it("builds live states with coordinator first and snapshot run info", () => {
     const liveStates = buildTeamMemberLiveStates(
       [
         {
@@ -568,9 +568,9 @@ describe("team run list helpers", () => {
           missing_agent: false,
         },
         {
-          member_id: "leader-agent",
-          role: "leader",
-          agent_name: "leader-agent",
+          member_id: "coordinator-agent",
+          role: "coordinator",
+          agent_name: "coordinator-agent",
           status: "running",
           missing_agent: false,
         },
@@ -583,8 +583,8 @@ describe("team run list helpers", () => {
       ],
       [
         {
-          member_id: "leader-agent",
-          role: "leader",
+          member_id: "coordinator-agent",
+          role: "coordinator",
           model: null,
           prompt: null,
           skills: [],
@@ -621,7 +621,7 @@ describe("team run list helpers", () => {
       ]
     );
     expect(liveStates.map((member) => member.member_id)).toEqual([
-      "leader-agent",
+      "coordinator-agent",
       "worker-agent-1",
       "worker-agent-2",
     ]);
@@ -640,7 +640,7 @@ describe("team run list helpers", () => {
       normalizeSkillSelection(
         ["agenthub-actor-runtime", "unknown-skill", "team-worker-executor"],
         "",
-        ["team-leader-orchestrator"]
+        ["team-coordinator-orchestrator"]
       )
     ).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
     expect(normalizeSkillSelection(["unknown-skill"], "", ["team-worker-executor"])).toEqual([
@@ -685,11 +685,11 @@ describe("team run list helpers", () => {
     const unchanged = toggleSkillSelection(removed, "custom-skill");
     expect(unchanged).toEqual(["agenthub-actor-runtime", "team-worker-executor"]);
     const keptRoleSkill = toggleSkillSelection(
-      ["agenthub-actor-runtime", "team-leader-orchestrator"],
-      "team-leader-orchestrator",
-      ["agenthub-actor-runtime", "team-leader-orchestrator"]
+      ["agenthub-actor-runtime", "team-coordinator-orchestrator"],
+      "team-coordinator-orchestrator",
+      ["agenthub-actor-runtime", "team-coordinator-orchestrator"]
     );
-    expect(keptRoleSkill).toEqual(["agenthub-actor-runtime", "team-leader-orchestrator"]);
+    expect(keptRoleSkill).toEqual(["agenthub-actor-runtime", "team-coordinator-orchestrator"]);
   });
 
   it("assigns newly created worker agent to first empty slot or appends", () => {
@@ -741,11 +741,11 @@ describe("team run list helpers", () => {
 
   it("creates initial team draft with empty forge candidate pool", () => {
     const draft = createInitialTeamDraftState();
-    expect(draft.leaderMemberId).toBe("");
+    expect(draft.coordinatorMemberId).toBe("");
     expect(draft.workers).toEqual([]);
     expect(draft.teamForgeAgentIds).toEqual([]);
     expect(draft.useSpecOverride).toBe(false);
     expect(draft.newTeamSpec).toBe("{}");
-    expect(draft.leaderSkills).toContain("agenthub-actor-runtime");
+    expect(draft.coordinatorSkills).toContain("agenthub-actor-runtime");
   });
 });

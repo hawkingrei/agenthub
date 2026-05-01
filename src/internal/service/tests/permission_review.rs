@@ -5,7 +5,7 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+    let token = issue_token(&authz, InternalRole::Coordinator, Some("planner"), None);
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,
@@ -123,19 +123,19 @@ async fn internal_grpc_permission_review_respond_updates_pending_request() {
 }
 
 #[tokio::test]
-async fn internal_grpc_permission_review_respond_accepts_legacy_team_leader_fallback() {
+async fn internal_grpc_permission_review_respond_accepts_legacy_team_coordinator_fallback() {
     let fixture = setup_permission_review_fixture_with_spec(
-        "legacy-leader-fallback",
-        "validate legacy leader fallback",
+        "legacy-coordinator-fallback",
+        "validate legacy coordinator fallback",
         json!({
             "entrypoint":"planner",
-            "leader_member_id":"planner",
+            "coordinator_member_id":"planner",
             "members":[
-                {"member_id":"planner","role":"leader"},
+                {"member_id":"planner","role":"coordinator"},
                 {"member_id":"reviewer","role":"worker"}
             ]
         }),
-        InternalRole::Leader,
+        InternalRole::Coordinator,
         "planner",
     )
     .await;
@@ -143,7 +143,7 @@ async fn internal_grpc_permission_review_respond_accepts_legacy_team_leader_fall
         &fixture.state,
         &fixture.run,
         PermissionReviewSeed {
-            request_id: "perm-legacy-leader-1",
+            request_id: "perm-legacy-coordinator-1",
             agent_id: "legacy-worker-agent",
             session_id: "legacy-worker-session",
             acp_session_id: "acp-session-legacy-1",
@@ -163,7 +163,7 @@ async fn internal_grpc_permission_review_respond_accepts_legacy_team_leader_fall
             RespondPermissionReviewRequest {
                 team_id: fixture.run.team_id.clone(),
                 actor_id: "planner".to_string(),
-                permission_id: "perm-legacy-leader-1".to_string(),
+                permission_id: "perm-legacy-coordinator-1".to_string(),
                 option_id: "allow".to_string(),
                 outcome: String::new(),
             },
@@ -186,9 +186,9 @@ async fn internal_grpc_permission_review_respond_accepts_legacy_team_peer_worker
         "validate legacy peer worker fallback",
         json!({
             "entrypoint":"planner",
-            "leader_member_id":"planner",
+            "coordinator_member_id":"planner",
             "members":[
-                {"member_id":"planner","role":"leader"},
+                {"member_id":"planner","role":"coordinator"},
                 {"member_id":"requester","role":"worker"},
                 {"member_id":"reviewer","role":"worker"}
             ]
@@ -244,7 +244,7 @@ async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolu
         "validate legacy reviewer resolution errors",
         json!({
             "entrypoint":"reviewer",
-            "leader_member_id":"reviewer",
+            "coordinator_member_id":"reviewer",
             "members":[
                 {"member_id":"reviewer","role":"worker"}
             ]
@@ -262,7 +262,7 @@ async fn internal_grpc_permission_review_respond_surfaces_legacy_reviewer_resolu
             session_id: "legacy-resolution-error-session",
             acp_session_id: "acp-session-legacy-resolution-error-1",
             requester_actor_id: "removed-planner",
-            requester_role: "leader",
+            requester_role: "coordinator",
             review_target_actor_id: None,
             tool_call_id: "tool-call-legacy-resolution-error-1",
             status: "pending",
@@ -309,7 +309,7 @@ async fn internal_grpc_permission_review_respond_reports_timeout_before_reviewer
             session_id: "timeout-worker-session",
             acp_session_id: "acp-session-timeout-1",
             requester_actor_id: "planner",
-            requester_role: "leader",
+            requester_role: "coordinator",
             review_target_actor_id: None,
             tool_call_id: "tool-call-timeout-1",
             status: "timeout",
@@ -356,7 +356,7 @@ async fn internal_grpc_permission_review_respond_reports_persisted_reviewer_for_
             session_id: "resolved-worker-session",
             acp_session_id: "acp-session-resolved-1",
             requester_actor_id: "planner",
-            requester_role: "leader",
+            requester_role: "coordinator",
             review_target_actor_id: None,
             tool_call_id: "tool-call-resolved-1",
             status: "responded",
@@ -412,7 +412,7 @@ async fn internal_grpc_permission_review_respond_keeps_pending_reviewer_guard() 
             session_id: "pending-worker-session",
             acp_session_id: "acp-session-pending-1",
             requester_actor_id: "planner",
-            requester_role: "leader",
+            requester_role: "coordinator",
             review_target_actor_id: Some("reviewer"),
             tool_call_id: "tool-call-pending-1",
             status: "pending",
@@ -450,7 +450,7 @@ async fn internal_grpc_permission_review_respond_rejects_conflicting_outcome_fie
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), None);
+    let token = issue_token(&authz, InternalRole::Coordinator, Some("planner"), None);
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,

@@ -30,11 +30,11 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     token: "token-1",
     defaultWorktreeRoot: "~/.agenthub/worktrees",
     showCreateTeamModal: false,
-    leaderMemberId: "",
+    coordinatorMemberId: "",
     teamForgeAgents: [],
     busy: null,
     setForgeDefaultWorktreeRoot: vi.fn(),
-    setLeaderMemberId: vi.fn(),
+    setCoordinatorMemberId: vi.fn(),
     setShowCreateTeamModal: vi.fn(),
     setCreateTeamStage: vi.fn(),
     ...overrides,
@@ -99,11 +99,11 @@ describe("useTeamCreateModalEffects", () => {
     );
   });
 
-  it("sets leader fallback and handles escape close only when allowed", async () => {
+  it("sets coordinator fallback and handles escape close only when allowed", async () => {
     const params = createParams({
       showCreateTeamModal: true,
-      leaderMemberId: "missing-leader",
-      teamForgeAgents: [makeAgent("leader-1"), makeAgent("worker-1")],
+      coordinatorMemberId: "missing-coordinator",
+      teamForgeAgents: [makeAgent("coordinator-1"), makeAgent("worker-1")],
       busy: null,
     });
     vi.spyOn(api, "getRuntimeDefaults").mockResolvedValue({
@@ -117,7 +117,7 @@ describe("useTeamCreateModalEffects", () => {
       await Promise.resolve();
     });
 
-    expect(params.setLeaderMemberId).toHaveBeenCalledWith("leader-1");
+    expect(params.setCoordinatorMemberId).toHaveBeenCalledWith("coordinator-1");
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -129,8 +129,8 @@ describe("useTeamCreateModalEffects", () => {
   it("ignores escape close while create-team is busy", async () => {
     const params = createParams({
       showCreateTeamModal: true,
-      leaderMemberId: "leader-1",
-      teamForgeAgents: [makeAgent("leader-1")],
+      coordinatorMemberId: "coordinator-1",
+      teamForgeAgents: [makeAgent("coordinator-1")],
       busy: "create-team",
     });
     vi.spyOn(api, "getRuntimeDefaults").mockResolvedValue({
