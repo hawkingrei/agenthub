@@ -23,7 +23,7 @@ pub(crate) enum ActorMailboxPriorityClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActorMailboxImmediateHintReason {
     DirectAgentMessage,
-    LeaderChannelMention,
+    CoordinatorChannelMention,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,7 +282,7 @@ async fn resolve_actor_mailbox_priority_plan(
                 immediate_hint: None,
             });
         };
-        if !role.eq_ignore_ascii_case("leader") {
+        if !role.eq_ignore_ascii_case("coordinator") {
             return Ok(ActorMailboxPriorityPlan {
                 priority_class: ActorMailboxPriorityClass::General,
                 immediate_hint: None,
@@ -300,7 +300,7 @@ async fn resolve_actor_mailbox_priority_plan(
                 priority_class: ActorMailboxPriorityClass::Urgent,
                 immediate_hint: Some(ActorMailboxImmediateHintPlan {
                     target_actor_ids: mention_targets,
-                    reason: ActorMailboxImmediateHintReason::LeaderChannelMention,
+                    reason: ActorMailboxImmediateHintReason::CoordinatorChannelMention,
                 }),
             }
         });
@@ -341,7 +341,9 @@ pub(crate) fn build_actor_mailbox_immediate_hint_prompt(
 ) -> String {
     let headline = match reason {
         ActorMailboxImmediateHintReason::DirectAgentMessage => "Direct mailbox message pending",
-        ActorMailboxImmediateHintReason::LeaderChannelMention => "Leader mentioned you in channel",
+        ActorMailboxImmediateHintReason::CoordinatorChannelMention => {
+            "Coordinator mentioned you in channel"
+        }
     };
     format!("{headline} for run '{run_id}'. Use agenthub actor inbox --run-id \"{run_id}\".")
 }

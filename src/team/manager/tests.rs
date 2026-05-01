@@ -569,7 +569,7 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
         .create_team(TeamDefinitionConfig {
             name: "task-team".to_string(),
             description: Some("team for task persistence".to_string()),
-            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -599,7 +599,7 @@ async fn task_and_conversation_messages_are_persisted_with_redaction() {
     let message = manager
         .append_task_conversation_message(
             &task.id,
-            "leader",
+            "coordinator",
             Some("worker-1"),
             "to_member",
             json!({
@@ -644,7 +644,7 @@ async fn append_task_conversation_message_emits_stream_event() {
         .create_team(TeamDefinitionConfig {
             name: "task-event-team".to_string(),
             description: Some("team for conversation stream events".to_string()),
-            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -692,7 +692,7 @@ async fn append_task_conversation_message_honors_idempotency_key() {
         .create_team(TeamDefinitionConfig {
             name: "task-idempotency-team".to_string(),
             description: Some("team for task message idempotency".to_string()),
-            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -784,7 +784,7 @@ async fn append_task_conversation_message_propagates_non_idempotency_insert_fail
         .create_team(TeamDefinitionConfig {
             name: "task-idempotency-insert-failure-team".to_string(),
             description: Some("team for task message insert failure".to_string()),
-            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -845,7 +845,7 @@ async fn task_status_updates_are_persisted() {
         .create_team(TeamDefinitionConfig {
             name: "task-status-team".to_string(),
             description: Some("team for task status updates".to_string()),
-            spec: json!({"entrypoint":"leader_plan","members":[{"member_id":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator_plan","members":[{"member_id":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -888,9 +888,9 @@ async fn task_assignment_updates_are_persisted() {
             name: "task-assignment-team".to_string(),
             description: Some("team for task assignment updates".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -939,9 +939,9 @@ async fn task_partial_updates_preserve_unpatched_fields() {
             name: "task-partial-update-team".to_string(),
             description: Some("team for task patch semantics".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -999,7 +999,7 @@ async fn task_context_patches_support_merge_and_replace() {
         .create_team(TeamDefinitionConfig {
             name: "task-context-patch-team".to_string(),
             description: Some("team for task context patching".to_string()),
-            spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator","members":[{"member_id":"coordinator","role":"coordinator"}]}),
         })
         .await
         .expect("create team");
@@ -1008,7 +1008,7 @@ async fn task_context_patches_support_merge_and_replace() {
         .create_task(
             &team.id,
             "Patch task context",
-            "leader",
+            "coordinator",
             json!({"repo":"agenthub","nested":{"issue":128}}),
             "group_chat",
             Some("patch"),
@@ -1038,12 +1038,14 @@ async fn task_context_patches_support_merge_and_replace() {
             &task.id,
             Some(TeamTaskStatus::InReview),
             TeamTaskAssignmentUpdate::Unchanged,
-            Some(TeamTaskContextPatch::Replace(json!({"owner":"leader"}))),
+            Some(TeamTaskContextPatch::Replace(
+                json!({"owner":"coordinator"}),
+            )),
         )
         .await
         .expect("replace task context");
     assert_eq!(replaced.status, TeamTaskStatus::InReview);
-    assert_eq!(replaced.context, json!({"owner":"leader"}));
+    assert_eq!(replaced.context, json!({"owner":"coordinator"}));
 }
 
 #[tokio::test]
@@ -1056,9 +1058,9 @@ async fn create_task_rejects_invalid_reconcile_loop_execution_plan() {
             name: "invalid-execution-plan-team".to_string(),
             description: Some("team for invalid execution plan coverage".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -1070,7 +1072,7 @@ async fn create_task_rejects_invalid_reconcile_loop_execution_plan() {
         .create_task(
             &team.id,
             "Invalid execution plan",
-            "leader",
+            "coordinator",
             json!({
                 "execution_plan": {
                     "steps": [{
@@ -1106,9 +1108,9 @@ async fn update_task_context_rejects_execution_plan_with_unknown_member() {
             name: "unknown-member-execution-plan-team".to_string(),
             description: Some("team for execution plan member validation".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -1120,7 +1122,7 @@ async fn update_task_context_rejects_execution_plan_with_unknown_member() {
         .create_task(
             &team.id,
             "Execution plan patch",
-            "leader",
+            "coordinator",
             json!({"repo":"agenthub"}),
             "group_chat",
             Some("patch"),
@@ -1162,9 +1164,9 @@ async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
             name: "task-query-team".to_string(),
             description: Some("team for task query filtering".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"},
                     {"member_id":"worker-2","role":"worker"}
                 ]
@@ -1176,8 +1178,8 @@ async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
     let (task_a, _) = manager
         .create_task(
             &team.id,
-            "Leader task",
-            "leader",
+            "Coordinator task",
+            "coordinator",
             json!({"source":"ui"}),
             "group_chat",
             Some("kanban"),
@@ -1188,7 +1190,7 @@ async fn list_tasks_with_query_filters_by_run_topic_and_owner() {
         .create_task(
             &team.id,
             "Worker task",
-            "leader",
+            "coordinator",
             json!({"source":"ui"}),
             "group_chat",
             Some("runtime"),
@@ -1360,9 +1362,9 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
             name: "input-step-template-run-team".to_string(),
             description: Some("team with run input step template".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -1377,14 +1379,14 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
             json!({
                 "step_template": [
                     {
-                        "step_key":"leader-plan",
-                        "member_id":"leader",
+                        "step_key":"coordinator-plan",
+                        "member_id":"coordinator",
                         "execution":{"mode":"single_pass"}
                     },
                     {
                         "step_key":"worker-implement",
                         "member_id":"worker-1",
-                        "depends_on":["leader-plan"],
+                        "depends_on":["coordinator-plan"],
                         "goal":"finish the patch",
                         "acceptance":["tests pass"],
                         "execution":{"mode":"reconcile_loop","max_rounds":5}
@@ -1400,13 +1402,13 @@ async fn create_run_materializes_input_step_template_into_run_steps() {
         .await
         .expect("list materialized steps");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0].step_key, "leader-plan");
-    assert_eq!(steps[0].member_id, "leader");
+    assert_eq!(steps[0].step_key, "coordinator-plan");
+    assert_eq!(steps[0].member_id, "coordinator");
     assert!(steps[0].depends_on.is_empty());
     assert_eq!(steps[0].input, None);
     assert_eq!(steps[1].step_key, "worker-implement");
     assert_eq!(steps[1].member_id, "worker-1");
-    assert_eq!(steps[1].depends_on, vec!["leader-plan".to_string()]);
+    assert_eq!(steps[1].depends_on, vec!["coordinator-plan".to_string()]);
     assert_eq!(
         steps[1].input,
         Some(json!({
@@ -1430,9 +1432,9 @@ async fn create_run_materializes_linked_task_execution_plan_when_input_has_no_st
             name: "linked-task-execution-plan-run-team".to_string(),
             description: Some("team with linked task execution plan".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -1444,19 +1446,19 @@ async fn create_run_materializes_linked_task_execution_plan_when_input_has_no_st
         .create_task(
             &team.id,
             "Execution-plan task",
-            "leader",
+            "coordinator",
             json!({
                 "execution_plan": {
                     "steps": [
                         {
-                            "step_key":"leader-plan",
-                            "member_id":"leader",
+                            "step_key":"coordinator-plan",
+                            "member_id":"coordinator",
                             "execution":{"mode":"single_pass"}
                         },
                         {
                             "step_key":"worker-implement",
                             "member_id":"worker-1",
-                            "depends_on":["leader-plan"],
+                            "depends_on":["coordinator-plan"],
                             "goal":"finish implementation",
                             "acceptance":["tests pass","review notes addressed"],
                             "execution":{"mode":"reconcile_loop","max_rounds":4}
@@ -1481,9 +1483,9 @@ async fn create_run_materializes_linked_task_execution_plan_when_input_has_no_st
 
     let steps = manager.list_steps(&run.id).await.expect("list steps");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0].step_key, "leader-plan");
+    assert_eq!(steps[0].step_key, "coordinator-plan");
     assert_eq!(steps[1].step_key, "worker-implement");
-    assert_eq!(steps[1].depends_on, vec!["leader-plan".to_string()]);
+    assert_eq!(steps[1].depends_on, vec!["coordinator-plan".to_string()]);
     assert_eq!(
         steps[1].input,
         Some(json!({
@@ -1507,9 +1509,9 @@ async fn create_run_rejects_invalid_input_step_template_member_scope() {
             name: "invalid-step-template-run-team".to_string(),
             description: Some("team with invalid run input step template".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -1549,7 +1551,7 @@ async fn create_run_hides_cross_team_linked_task_lookup_details() {
         .create_team(TeamDefinitionConfig {
             name: "run-team-a".to_string(),
             description: Some("requesting team".to_string()),
-            spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator","members":[{"member_id":"coordinator","role":"coordinator"}]}),
         })
         .await
         .expect("create team a");
@@ -1557,7 +1559,7 @@ async fn create_run_hides_cross_team_linked_task_lookup_details() {
         .create_team(TeamDefinitionConfig {
             name: "run-team-b".to_string(),
             description: Some("foreign team".to_string()),
-            spec: json!({"entrypoint":"leader","members":[{"member_id":"leader","role":"leader"}]}),
+            spec: json!({"entrypoint":"coordinator","members":[{"member_id":"coordinator","role":"coordinator"}]}),
         })
         .await
         .expect("create team b");
@@ -1566,7 +1568,7 @@ async fn create_run_hides_cross_team_linked_task_lookup_details() {
         .create_task(
             &team_b.id,
             "Foreign task",
-            "leader",
+            "coordinator",
             json!({"source":"foreign"}),
             "group_chat",
             Some("foreign-task"),
@@ -1609,9 +1611,9 @@ async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensiti
                 "verify shared thread filtering remains case-insensitive".to_string(),
             ),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -1623,7 +1625,7 @@ async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensiti
         .create_task(
             &team.id,
             "Normal task",
-            "leader",
+            "coordinator",
             json!({"topic":"visible"}),
             "group_chat",
             Some("visible"),
@@ -1634,7 +1636,7 @@ async fn list_tasks_with_query_hides_shared_thread_bootstrap_kind_case_insensiti
         .create_task(
             &team.id,
             "Shared thread",
-            "leader",
+            "coordinator",
             json!({"bootstrap_kind":"Shared_Thread"}),
             "group_chat",
             Some("shared"),
@@ -1664,9 +1666,9 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
             name: "team-channel-create".to_string(),
             description: Some("verify channel bootstrap records".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -1675,14 +1677,14 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
         .expect("create team");
 
     let channel = manager
-        .create_channel(&team.id, "review", Some("Review queue"), "leader")
+        .create_channel(&team.id, "review", Some("Review queue"), "coordinator")
         .await
         .expect("create review channel");
     assert_eq!(channel.team_id, team.id);
     assert_eq!(channel.channel_id, "review");
     assert_ne!(channel.conversation_id, "review");
     assert_eq!(channel.description.as_deref(), Some("Review queue"));
-    assert_eq!(channel.created_by_actor_id, "leader");
+    assert_eq!(channel.created_by_actor_id, "coordinator");
 
     let conversation = sqlx::query(
         r#"
@@ -1703,7 +1705,7 @@ async fn create_team_channel_creates_bootstrap_conversation_and_hides_it_from_ta
     let context_json: Value = serde_json::from_str(&conversation.get::<String, _>("context_json"))
         .expect("parse context");
     assert_eq!(context_json["bootstrap_kind"], "team_channel");
-    assert_eq!(context_json["bootstrap_source"], "leader_created");
+    assert_eq!(context_json["bootstrap_source"], "coordinator_created");
     assert_eq!(context_json["channel_id"], "review");
     assert_eq!(context_json["description"], "Review queue");
 
@@ -1731,19 +1733,19 @@ async fn list_team_channels_returns_non_default_channels_in_creation_order() {
             name: "team-channel-list".to_string(),
             description: Some("verify channel listing".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team");
 
     manager
-        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel");
     manager
-        .create_channel(&team.id, "research", Some("Research lane"), "leader")
+        .create_channel(&team.id, "research", Some("Research lane"), "coordinator")
         .await
         .expect("create research channel");
 
@@ -1767,15 +1769,15 @@ async fn list_team_channels_ignores_bootstrap_rows_with_blank_channel_id() {
             name: "team-channel-invalid".to_string(),
             description: Some("ignore invalid bootstrap rows".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team");
 
     manager
-        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel");
 
@@ -1800,7 +1802,7 @@ async fn list_team_channels_ignores_bootstrap_rows_with_blank_channel_id() {
     .bind(&task_id)
     .bind(&team.id)
     .bind("invalid-bootstrap")
-    .bind("leader")
+    .bind("coordinator")
     .bind(
         json!({
             "bootstrap_kind": "team_channel",
@@ -1852,8 +1854,8 @@ async fn create_team_channel_allows_same_channel_id_in_different_teams() {
             name: "team-channel-a".to_string(),
             description: Some("team a".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
@@ -1863,19 +1865,19 @@ async fn create_team_channel_allows_same_channel_id_in_different_teams() {
             name: "team-channel-b".to_string(),
             description: Some("team b".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team b");
 
     let review_a = manager
-        .create_channel(&team_a.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team_a.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel for team a");
     let review_b = manager
-        .create_channel(&team_b.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team_b.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel for team b");
 
@@ -1905,21 +1907,26 @@ async fn create_team_channel_canonicalizes_case_and_rejects_same_team_duplicates
             name: "team-channel-case".to_string(),
             description: Some("verify channel canonicalization".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team");
 
     let channel = manager
-        .create_channel(&team.id, " Review ", Some("Review lane"), "leader")
+        .create_channel(&team.id, " Review ", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel");
     assert_eq!(channel.channel_id, "review");
 
     let duplicate = manager
-        .create_channel(&team.id, "REVIEW", Some("Duplicate review lane"), "leader")
+        .create_channel(
+            &team.id,
+            "REVIEW",
+            Some("Duplicate review lane"),
+            "coordinator",
+        )
         .await
         .expect_err("duplicate review channel should fail");
     assert!(
@@ -1938,8 +1945,8 @@ async fn create_team_channel_rejects_empty_creator_actor_id() {
             name: "team-channel-empty-creator".to_string(),
             description: Some("verify creator validation".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
@@ -1961,9 +1968,9 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
             name: "team-channel-delete".to_string(),
             description: Some("verify channel deletion cleanup".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -1982,7 +1989,7 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
     );
 
     let channel = manager
-        .create_channel(&team.id, "research", Some("Research lane"), "leader")
+        .create_channel(&team.id, "research", Some("Research lane"), "coordinator")
         .await
         .expect("create research channel");
 
@@ -1990,7 +1997,7 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
         &db,
         &channel.conversation_id,
         &channel.task_id,
-        "leader",
+        "coordinator",
         json!({"text":"Investigate issue"}),
     )
     .await;
@@ -1999,7 +2006,7 @@ async fn delete_team_channel_cleans_bootstrap_rows_and_rejects_all() {
         INSERT INTO team_channel_message_replicas (
             authority_message_id, run_id, team_id, conversation_id, task_id, channel_id, from_actor_id, source_node_id, payload_json, stored_at
         )
-        VALUES (?1, 'run-1', ?2, ?3, ?4, ?5, 'leader', 'main', '{"text":"Investigate issue"}', ?6)
+        VALUES (?1, 'run-1', ?2, ?3, ?4, ?5, 'coordinator', 'main', '{"text":"Investigate issue"}', ?6)
         "#,
     )
     .bind(root_message_id)
@@ -2061,15 +2068,15 @@ async fn delete_team_channel_returns_canonical_channel_id() {
             name: "team-delete-case".to_string(),
             description: Some("verify delete canonicalization".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team");
 
     manager
-        .create_channel(&team.id, "Review", Some("Review lane"), "leader")
+        .create_channel(&team.id, "Review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel");
     let deleted = manager
@@ -2089,8 +2096,8 @@ async fn delete_team_channel_does_not_touch_other_team_same_channel_id() {
             name: "team-delete-a".to_string(),
             description: Some("team a".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
@@ -2100,19 +2107,19 @@ async fn delete_team_channel_does_not_touch_other_team_same_channel_id() {
             name: "team-delete-b".to_string(),
             description: Some("team b".to_string()),
             spec: json!({
-                "entrypoint":"leader",
-                "members":[{"member_id":"leader","role":"leader"}]
+                "entrypoint":"coordinator",
+                "members":[{"member_id":"coordinator","role":"coordinator"}]
             }),
         })
         .await
         .expect("create team b");
 
     let review_a = manager
-        .create_channel(&team_a.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team_a.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel for team a");
     let review_b = manager
-        .create_channel(&team_b.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team_b.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel for team b");
 
@@ -2154,9 +2161,9 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
             name: "team-open-thread".to_string(),
             description: Some("verify open thread routes".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -2168,7 +2175,7 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
         .create_task(
             &team.id,
             "all",
-            "leader",
+            "coordinator",
             json!({"bootstrap_kind":"shared_thread"}),
             "group_chat",
             Some("all"),
@@ -2181,7 +2188,7 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
         &db,
         &shared_conversation_id,
         &shared_task_id,
-        "leader",
+        "coordinator",
         json!({"text":"Shared update"}),
     )
     .await;
@@ -2197,14 +2204,14 @@ async fn open_team_thread_supports_shared_and_custom_channels() {
     assert_eq!(shared_thread.thread_id, shared_root_message_id.to_string());
 
     let channel = manager
-        .create_channel(&team.id, "review", Some("Review lane"), "leader")
+        .create_channel(&team.id, "review", Some("Review lane"), "coordinator")
         .await
         .expect("create review channel");
     let review_root_message_id = insert_team_conversation_message(
         &db,
         &channel.conversation_id,
         &channel.task_id,
-        "leader",
+        "coordinator",
         json!({"text":"Please review"}),
     )
     .await;
@@ -2261,9 +2268,9 @@ async fn list_tasks_with_query_keeps_tasks_without_conversation_rows() {
             name: "task-query-left-join".to_string(),
             description: Some("list tasks should not require conversation rows".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader"},
+                    {"member_id":"coordinator","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -2275,7 +2282,7 @@ async fn list_tasks_with_query_keeps_tasks_without_conversation_rows() {
         .create_task(
             &team.id,
             "Legacy orphan task",
-            "leader",
+            "coordinator",
             json!({"source":"legacy"}),
             "group_chat",
             Some("legacy"),
@@ -2292,7 +2299,7 @@ async fn list_tasks_with_query_keeps_tasks_without_conversation_rows() {
         .create_task(
             &team.id,
             "Topic task",
-            "leader",
+            "coordinator",
             json!({"source":"ui"}),
             "group_chat",
             Some("topic-a"),
@@ -3331,7 +3338,7 @@ async fn complete_step_keeps_success_when_runtime_state_snapshot_write_fails() {
 }
 
 #[tokio::test]
-async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context_artifact() {
+async fn complete_step_offloads_large_output_to_coordinator_runtime_workspace_context_artifact() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
 
@@ -3339,8 +3346,9 @@ async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context
         .duration_since(UNIX_EPOCH)
         .expect("time after epoch")
         .as_nanos();
-    let workspace =
-        std::env::temp_dir().join(format!("agenthub-leader-context-artifact-{unique_suffix}"));
+    let workspace = std::env::temp_dir().join(format!(
+        "agenthub-coordinator-context-artifact-{unique_suffix}"
+    ));
     std::fs::create_dir_all(&workspace).expect("create workspace directory");
     let workspace_text = workspace.to_string_lossy().to_string();
     sqlx::query(
@@ -3367,11 +3375,11 @@ async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context
 
     let team = manager
         .create_team(TeamDefinitionConfig {
-            name: "leader-artifact-team".to_string(),
-            description: Some("team with leader continuity output".to_string()),
+            name: "coordinator-artifact-team".to_string(),
+            description: Some("team with coordinator continuity output".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "members":[{"member_id":"planner","role":"leader"}]
+                "members":[{"member_id":"planner","role":"coordinator"}]
             }),
         })
         .await
@@ -3429,7 +3437,7 @@ async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context
             current_run_id: None,
             actor_id: "planner".to_string(),
             default_channel: DEFAULT_ACTOR_CHANNEL.to_string(),
-            member_role: Some("leader".to_string()),
+            member_role: Some("coordinator".to_string()),
             member_skills: Vec::new(),
             contract_version: None,
             continuity: None,
@@ -3442,7 +3450,7 @@ async fn complete_step_offloads_large_output_to_leader_runtime_workspace_context
         .to_string();
     assert!(
         artifact_path.starts_with(&expected_prefix),
-        "artifact path should be under derived leader runtime workspace: {artifact_path}"
+        "artifact path should be under derived coordinator runtime workspace: {artifact_path}"
     );
 
     let _ = std::fs::remove_dir_all(workspace);
@@ -3819,7 +3827,7 @@ async fn reconcile_loop_step_tracks_round_state_and_events() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -3976,7 +3984,7 @@ async fn reconcile_loop_step_tracks_round_state_and_events() {
 }
 
 #[tokio::test]
-async fn continue_step_advances_reconcile_round_without_leader_resume() {
+async fn continue_step_advances_reconcile_round_without_coordinator_resume() {
     let db = setup_test_db().await;
     let manager = TeamManager::new(db.clone());
 
@@ -3987,7 +3995,7 @@ async fn continue_step_advances_reconcile_round_without_leader_resume() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -4119,7 +4127,7 @@ async fn continue_step_rejects_reconcile_loop_after_max_rounds() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker-1","role":"worker"}
                 ]
             }),
@@ -4220,7 +4228,7 @@ async fn continue_step_persists_reconcile_round_result_artifact() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -4391,7 +4399,7 @@ async fn input_required_persists_reconcile_round_result_artifact() {
             spec: json!({
                 "entrypoint":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"worker","role":"worker"}
                 ]
             }),
@@ -7409,9 +7417,9 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
             name: "describe-run-members-team".to_string(),
             description: Some("team to verify run member roster".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"coordinator","role":"coordinator","description":"Lead planner"},
                     {"member_id":"worker","role":"worker","description":"Implements changes"}
                 ]
             }),
@@ -7422,16 +7430,16 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
         .create_run(&team.id, Some("ctx-team-members"), json!({"prompt":"go"}))
         .await
         .expect("create run");
-    let leader_step = manager
-        .submit_step(&run.id, "leader_plan", "leader", Vec::new(), None)
+    let coordinator_step = manager
+        .submit_step(&run.id, "coordinator_plan", "coordinator", Vec::new(), None)
         .await
-        .expect("submit leader step");
+        .expect("submit coordinator step");
     let worker_step = manager
         .submit_step(
             &run.id,
             "worker_exec",
             "worker",
-            vec!["leader_plan".to_string()],
+            vec!["coordinator_plan".to_string()],
             None,
         )
         .await
@@ -7445,9 +7453,9 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
         "#,
     )
-    .bind("leader")
-    .bind("Leader Agent")
-    .bind("/tmp/leader")
+    .bind("coordinator")
+    .bind("Coordinator Agent")
+    .bind("/tmp/coordinator")
     .bind("codex")
     .bind("[]")
     .bind("use_existing")
@@ -7457,7 +7465,7 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
     .bind(1_i64)
     .execute(&db)
     .await
-    .expect("insert leader agent");
+    .expect("insert coordinator agent");
 
     sqlx::query(
         r#"
@@ -7487,18 +7495,18 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
         VALUES (?1, ?2, ?3, ?4, NULL)
         "#,
     )
-    .bind("session-leader")
-    .bind("leader")
+    .bind("session-coordinator")
+    .bind("coordinator")
     .bind("running")
     .bind(10_i64)
     .execute(&db)
     .await
-    .expect("insert leader session");
+    .expect("insert coordinator session");
 
     manager
-        .start_step(&leader_step.id, Some("session-leader"))
+        .start_step(&coordinator_step.id, Some("session-coordinator"))
         .await
-        .expect("start leader step");
+        .expect("start coordinator step");
 
     sqlx::query(
         r#"
@@ -7523,23 +7531,29 @@ async fn describe_run_members_returns_live_roster_and_session_state() {
     assert_eq!(roster.run_id, run.id);
     assert_eq!(roster.members.len(), 2);
 
-    let leader = &roster.members[0];
-    assert_eq!(leader.member_id, "leader");
-    assert_eq!(leader.display_name, "Leader Agent");
-    assert_eq!(leader.role, "leader");
-    assert_eq!(leader.description.as_deref(), Some("Lead planner"));
-    assert_eq!(leader.agent_status.as_deref(), Some("running"));
-    assert_eq!(leader.session_id.as_deref(), Some("session-leader"));
-    assert_eq!(leader.session_status.as_deref(), Some("running"));
-    assert_eq!(leader.card.description, "Lead planner");
-    assert_eq!(leader.steps.len(), 1);
-    assert_eq!(leader.steps[0].step_id, leader_step.id);
-    assert_eq!(leader.steps[0].status, TeamStepStatus::Working);
+    let coordinator = &roster.members[0];
+    assert_eq!(coordinator.member_id, "coordinator");
+    assert_eq!(coordinator.display_name, "Coordinator Agent");
+    assert_eq!(coordinator.role, "coordinator");
+    assert_eq!(coordinator.description.as_deref(), Some("Lead planner"));
+    assert_eq!(coordinator.agent_status.as_deref(), Some("running"));
     assert_eq!(
-        leader.steps[0].session_id.as_deref(),
-        Some("session-leader")
+        coordinator.session_id.as_deref(),
+        Some("session-coordinator")
     );
-    assert_eq!(leader.steps[0].session_status.as_deref(), Some("running"));
+    assert_eq!(coordinator.session_status.as_deref(), Some("running"));
+    assert_eq!(coordinator.card.description, "Lead planner");
+    assert_eq!(coordinator.steps.len(), 1);
+    assert_eq!(coordinator.steps[0].step_id, coordinator_step.id);
+    assert_eq!(coordinator.steps[0].status, TeamStepStatus::Working);
+    assert_eq!(
+        coordinator.steps[0].session_id.as_deref(),
+        Some("session-coordinator")
+    );
+    assert_eq!(
+        coordinator.steps[0].session_status.as_deref(),
+        Some("running")
+    );
 
     let worker = &roster.members[1];
     assert_eq!(worker.member_id, "worker");
@@ -7566,9 +7580,9 @@ async fn describe_team_runtime_returns_member_runtime_status() {
             name: "describe-team-runtime".to_string(),
             description: Some("team to verify runtime status".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"coordinator","role":"coordinator","description":"Lead planner"},
                     {"member_id":"worker","role":"worker","description":"Implements changes"}
                 ]
             }),
@@ -7584,9 +7598,9 @@ async fn describe_team_runtime_returns_member_runtime_status() {
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
         "#,
     )
-    .bind("leader")
-    .bind("Leader Agent")
-    .bind("/tmp/leader")
+    .bind("coordinator")
+    .bind("Coordinator Agent")
+    .bind("/tmp/coordinator")
     .bind("codex")
     .bind("[]")
     .bind("use_existing")
@@ -7596,7 +7610,7 @@ async fn describe_team_runtime_returns_member_runtime_status() {
     .bind(1_i64)
     .execute(&db)
     .await
-    .expect("insert leader agent");
+    .expect("insert coordinator agent");
 
     sqlx::query(
         r#"
@@ -7626,13 +7640,13 @@ async fn describe_team_runtime_returns_member_runtime_status() {
         VALUES (?1, ?2, ?3, ?4, NULL)
         "#,
     )
-    .bind("session-leader")
-    .bind("leader")
+    .bind("session-coordinator")
+    .bind("coordinator")
     .bind("running")
     .bind(10_i64)
     .execute(&db)
     .await
-    .expect("insert leader session");
+    .expect("insert coordinator session");
 
     let runtime = manager
         .describe_team_runtime(&team.id)
@@ -7644,12 +7658,15 @@ async fn describe_team_runtime_returns_member_runtime_status() {
     assert_eq!(runtime.status, crate::team::TeamRuntimeStatus::Degraded);
     assert_eq!(runtime.members.len(), 2);
 
-    let leader = &runtime.members[0];
-    assert_eq!(leader.member_id, "leader");
-    assert_eq!(leader.display_name, "Leader Agent");
-    assert_eq!(leader.session_id.as_deref(), Some("session-leader"));
-    assert_eq!(leader.session_status.as_deref(), Some("running"));
-    assert_eq!(leader.card.description, "Lead planner");
+    let coordinator = &runtime.members[0];
+    assert_eq!(coordinator.member_id, "coordinator");
+    assert_eq!(coordinator.display_name, "Coordinator Agent");
+    assert_eq!(
+        coordinator.session_id.as_deref(),
+        Some("session-coordinator")
+    );
+    assert_eq!(coordinator.session_status.as_deref(), Some("running"));
+    assert_eq!(coordinator.card.description, "Lead planner");
 
     let worker = &runtime.members[1];
     assert_eq!(worker.member_id, "worker");
@@ -7669,9 +7686,9 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
             name: "describe-team-context".to_string(),
             description: Some("team to verify merged context view".to_string()),
             spec: json!({
-                "entrypoint":"leader",
+                "entrypoint":"coordinator",
                 "members":[
-                    {"member_id":"leader","role":"leader","description":"Lead planner"},
+                    {"member_id":"coordinator","role":"coordinator","description":"Lead planner"},
                     {"member_id":"worker","role":"worker","description":"Implements changes"}
                 ]
             }),
@@ -7682,10 +7699,10 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         .create_run(&team.id, Some("ctx-team-context"), json!({"prompt":"go"}))
         .await
         .expect("create run");
-    let leader_step = manager
-        .submit_step(&run.id, "leader_plan", "leader", Vec::new(), None)
+    let coordinator_step = manager
+        .submit_step(&run.id, "coordinator_plan", "coordinator", Vec::new(), None)
         .await
-        .expect("submit leader step");
+        .expect("submit coordinator step");
 
     sqlx::query(
         r#"
@@ -7695,9 +7712,9 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, 0, ?7, ?8, ?9, ?10)
         "#,
     )
-    .bind("leader")
-    .bind("Leader Agent")
-    .bind("/tmp/leader")
+    .bind("coordinator")
+    .bind("Coordinator Agent")
+    .bind("/tmp/coordinator")
     .bind("codex")
     .bind("[]")
     .bind("use_existing")
@@ -7707,7 +7724,7 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
     .bind(1_i64)
     .execute(&db)
     .await
-    .expect("insert leader agent");
+    .expect("insert coordinator agent");
 
     sqlx::query(
         r#"
@@ -7715,23 +7732,23 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         VALUES (?1, ?2, ?3, ?4, NULL)
         "#,
     )
-    .bind("session-leader")
-    .bind("leader")
+    .bind("session-coordinator")
+    .bind("coordinator")
     .bind("running")
     .bind(10_i64)
     .execute(&db)
     .await
-    .expect("insert leader session");
+    .expect("insert coordinator session");
 
     manager
-        .start_step(&leader_step.id, Some("session-leader"))
+        .start_step(&coordinator_step.id, Some("session-coordinator"))
         .await
-        .expect("start leader step");
+        .expect("start coordinator step");
 
     manager
         .send_actor_message(SendActorMessageInput {
             run_id: &run.id,
-            from_actor_id: "leader",
+            from_actor_id: "coordinator",
             from_peer_id: ACTOR_MAIN_PEER_ID,
             to_actor_id: "worker",
             to_peer_id: ACTOR_MAIN_PEER_ID,
@@ -7764,7 +7781,7 @@ async fn describe_team_context_merges_runtime_summary_and_optional_run_overlay()
         Some(run.id.as_str())
     );
     assert_eq!(team_context.members.len(), 2);
-    assert_eq!(team_context.members[0].display_name, "Leader Agent");
+    assert_eq!(team_context.members[0].display_name, "Coordinator Agent");
     assert_eq!(team_context.members[0].pending_inbox_count, 0);
     assert_eq!(team_context.members[0].steps.len(), 1);
     assert_eq!(team_context.members[1].pending_inbox_count, 1);

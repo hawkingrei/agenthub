@@ -461,10 +461,10 @@ team_spec = {
         "spec_version": 1,
         "entrypoint": {"type": "task"},
         "members": [
-            {"member_id": "leader", "description": "Tech lead", "skills": ["planning"]},
+            {"member_id": "coordinator", "description": "Tech lead", "skills": ["planning"]},
             {"member_id": "developer", "description": "Developer", "skills": ["coding"]}
         ],
-        "leader_member_id": "leader"
+        "coordinator_member_id": "coordinator"
     }
 }
 
@@ -479,12 +479,12 @@ async def send_command_to_team(client: AgentHubClient, run_id: str, command: str
     
     # Get team members
     members = await client.get(f"/api/teams/runs/{run_id}/members")
-    leader_id = members["leader"]["actor_id"]
+    coordinator_id = members["coordinator"]["actor_id"]
     
-    # Send message to leader
+    # Send message to coordinator
     await client.post("/api/actor/mailbox/send", {
         "from_actor_id": "automation-bot",
-        "to_actor_id": leader_id,
+        "to_actor_id": coordinator_id,
         "run_id": run_id,
         "payload": {
             "type": "command",

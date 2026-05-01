@@ -76,11 +76,11 @@ describe("team state reducers", () => {
     const patched = reduceTeamMailboxState(DEFAULT_TEAM_MAILBOX_STATE, {
       type: "patch",
       patch: {
-        msgFromActorId: "leader",
+        msgFromActorId: "coordinator",
         msgToActorId: "worker",
       },
     });
-    expect(patched.msgFromActorId).toBe("leader");
+    expect(patched.msgFromActorId).toBe("coordinator");
     expect(patched.msgToActorId).toBe("worker");
 
     const noKey = reduceTeamMailboxState(DEFAULT_TEAM_MAILBOX_STATE, {
@@ -92,14 +92,14 @@ describe("team state reducers", () => {
 
     const marked = reduceTeamMailboxState(DEFAULT_TEAM_MAILBOX_STATE, {
       type: "mark_conversation_seen",
-      key: "leader::worker",
+      key: "coordinator::worker",
       messageId: 10,
     });
-    expect(marked.chatSeenByConversation["leader::worker"]).toBe(10);
+    expect(marked.chatSeenByConversation["coordinator::worker"]).toBe(10);
 
     const stale = reduceTeamMailboxState(marked, {
       type: "mark_conversation_seen",
-      key: "leader::worker",
+      key: "coordinator::worker",
       messageId: 9,
     });
     expect(stale).toBe(marked);
@@ -153,9 +153,9 @@ describe("team state defaults and constants", () => {
     expect(initial.forgeAgentPresetId).toBe("codex");
     expect(initial.forgeAgentWorktreeMode).toBe("use_existing");
     expect(initial.forgeAgentCodeMode).toBe(true);
-    expect(initial.leaderPrompt).toBe("");
-    expect(initial.leaderSkills).toEqual(
-      expect.arrayContaining(["agenthub-actor-runtime", "team-leader-orchestrator"])
+    expect(initial.coordinatorPrompt).toBe("");
+    expect(initial.coordinatorSkills).toEqual(
+      expect.arrayContaining(["agenthub-actor-runtime", "team-coordinator-orchestrator"])
     );
   });
 
@@ -179,7 +179,7 @@ describe("team state defaults and constants", () => {
 
     expect(CREATE_TEAM_STAGE_TITLES).toEqual([
       "Mission Brief",
-      "Leader Forge",
+      "Coordinator Forge",
       "Recruit Workers",
       "Launch Team",
     ]);

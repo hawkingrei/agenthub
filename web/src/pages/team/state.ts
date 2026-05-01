@@ -42,7 +42,7 @@ export function tabRequiresActiveRun(tab: TeamTab): boolean {
   return !TEAM_TABS_WITHOUT_ACTIVE_RUN.has(tab);
 }
 export type CreateTeamStage = 0 | 1 | 2 | 3;
-export type TeamForgeRoleTag = "leader" | "worker";
+export type TeamForgeRoleTag = "coordinator" | "worker";
 
 export type TeamRunBrowserState = {
   statusFilter: TeamRunStatusFilter;
@@ -165,7 +165,7 @@ export const DEFAULT_TEAM_MAILBOX_STATE: TeamMailboxState = {
   msgChannel: "default",
   msgTransport: "local",
   msgRoute: "",
-  msgTemplate: "leader_task_assignment",
+  msgTemplate: "coordinator_task_assignment",
   msgPayload: "{}",
   msgIdempotencyKey: "",
   chatDraft: "",
@@ -183,7 +183,7 @@ export const MAILBOX_TEMPLATE_OPTIONS: Array<{
   value: MailboxTemplateKey;
   label: string;
 }> = [
-  { value: "leader_task_assignment", label: "Leader Task Assignment" },
+  { value: "coordinator_task_assignment", label: "Coordinator Task Assignment" },
   { value: "clarification_request", label: "Clarification Request" },
   { value: "clarification_response", label: "Clarification Response" },
   { value: "worker_done", label: "Worker Done Status" },
@@ -206,7 +206,7 @@ export const TEAM_RUN_STATUS_FILTER_OPTIONS: Array<{
 
 export const CREATE_TEAM_STAGE_TITLES = [
   "Mission Brief",
-  "Leader Forge",
+  "Coordinator Forge",
   "Recruit Workers",
   "Launch Team",
 ] as const;

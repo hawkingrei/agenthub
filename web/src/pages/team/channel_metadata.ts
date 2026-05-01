@@ -36,5 +36,5 @@ export function buildTeamChannelItems(
 }
 
 export function describeTeamKanban(channelLabel: string): string {
-  return `Canonical Kanban for leader-planned, system-managed Team tasks. Human task requests belong in ${channelLabel}.`;
+  return `Canonical Kanban for coordinator-planned, system-managed Team tasks. Human task requests belong in ${channelLabel}.`;
 }

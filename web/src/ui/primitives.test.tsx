@@ -79,14 +79,14 @@ describe("ui primitives", () => {
     );
     const pillHtml = renderHtml(
       <StatusPill className="border-notion-border bg-white text-notion-text-muted">
-        Leader
+        Coordinator
       </StatusPill>
     );
     expect(iconHtml).toContain("bg-notion-accent-bg text-notion-accent");
     expect(iconHtml).toContain("h-7 w-7");
     expect(pillHtml).toContain("rounded-full border px-2 py-0.5");
     expect(pillHtml).toContain("border-notion-border bg-white text-notion-text-muted");
-    expect(pillHtml).toContain("Leader");
+    expect(pillHtml).toContain("Coordinator");
   });
 
   it("renders selectable list items with active state", () => {
@@ -109,7 +109,7 @@ describe("ui primitives", () => {
     );
     const keyValueHtml = renderHtml(
       <KeyValueList>
-        <KeyValueItem label="role" value="leader" data-testid="role-row" />
+        <KeyValueItem label="role" value="coordinator" data-testid="role-row" />
       </KeyValueList>
     );
     expect(emptyHtml).toContain("border-dashed border-notion-border");
@@ -127,7 +127,7 @@ describe("ui primitives", () => {
       "min-w-0 break-words text-[12px] leading-relaxed text-notion-text"
     );
     expect(keyValueHtml).toContain("role");
-    expect(keyValueHtml).toContain("leader");
+    expect(keyValueHtml).toContain("coordinator");
     expect(keyValueHtml).toContain('data-testid="role-row"');
   });
 
@@ -152,7 +152,7 @@ describe("ui primitives", () => {
       <KeyValueList className="text-[11px] text-brand-primary">
         <KeyValueItem
           label="route"
-          value="to_leader"
+          value="to_coordinator"
           labelClassName="text-brand-primary/70"
           valueClassName="mono text-brand-primary"
         />
@@ -215,7 +215,7 @@ describe("ui primitives", () => {
     );
     const dashedHtml = renderHtml(
       <Badge tone="dashed" shape="pill">
-        Leader Agent
+        Coordinator Agent
       </Badge>
     );
 

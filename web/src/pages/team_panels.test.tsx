@@ -201,7 +201,7 @@ function renderTeamSidebar(
           onRefreshTeams={() => {}}
           onOpenCreateTeam={() => {}}
           draftTeamName=""
-          leaderMemberId="leader-agent"
+          coordinatorMemberId="coordinator-agent"
           configuredWorkerCount={1}
           teams={[teamOne]}
           selectedTeam={teamOne}
@@ -280,7 +280,7 @@ function buildStep(overrides: Partial<TeamStepRecord> = {}): TeamStepRecord {
     id: "step-1",
     run_id: "run-1",
     step_key: "plan",
-    member_id: "leader-agent",
+    member_id: "coordinator-agent",
     runtime_handle_id: null,
     remote_task_id: null,
     status: "working",
@@ -313,7 +313,7 @@ function buildMailboxMessage(
   return {
     message_id: messageId,
     run_id: "run-1",
-    from_actor_id: "leader-agent",
+    from_actor_id: "coordinator-agent",
     from_peer_id: "",
     from_actor_kind: "agent",
     to_actor_id: "worker-agent",
@@ -339,8 +339,8 @@ function buildTaskMessage(
     conversation_id: "conv-1",
     task_id: "task-1",
     from_actor_id: "user:u-1",
-    to_actor_id: "leader-agent",
-    route: "to_leader",
+    to_actor_id: "coordinator-agent",
+    route: "to_coordinator",
     payload: { type: "chat_message", text: `plan-${messageId}` },
     created_at: 1_700_000_100 + messageId,
     ...overrides,
@@ -379,11 +379,11 @@ function buildPanelTask(
 
 function buildMemberSnapshot(overrides: Partial<TeamMemberSnapshot> = {}): TeamMemberSnapshot {
   return {
-    member_id: "leader-agent",
-    role: "leader",
+    member_id: "coordinator-agent",
+    role: "coordinator",
     model: "gpt-5",
     prompt: "plan",
-    skills: ["team-leader-orchestrator"],
+    skills: ["team-coordinator-orchestrator"],
     pending_inbox_count: 1,
     status: "working",
     latest_step: buildStep(),
@@ -396,7 +396,7 @@ function buildSnapshot(overrides: Partial<TeamRunSnapshotRecord> = {}): TeamRunS
   return {
     run: buildRun(),
     team: buildTeam(),
-    leader_member_id: "leader-agent",
+    coordinator_member_id: "coordinator-agent",
     members: [
       buildMemberSnapshot(),
       buildMemberSnapshot({
@@ -434,9 +434,9 @@ function buildMemberLiveState(
   }> = {}
 ) {
   return {
-    member_id: "leader-agent",
-    role: "leader",
-    agent_name: "Leader Agent",
+    member_id: "coordinator-agent",
+    role: "coordinator",
+    agent_name: "Coordinator Agent",
     lifecycle_status: "running",
     lifecycle_tone: "active" as const,
     run_status: "working",
@@ -485,7 +485,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={onRefreshTeams}
             onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={2}
             teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
@@ -521,7 +521,7 @@ describe("team panels interactions", () => {
               }),
             ]}
             memberTargetNodeById={{
-              "leader-agent": "main",
+              "coordinator-agent": "main",
               "worker-agent": "node-east",
             }}
             focusedAgentMemberId="worker-agent"
@@ -536,7 +536,7 @@ describe("team panels interactions", () => {
     });
 
     expect(container.querySelector('[data-team-surface="sidebar"]')).not.toBeNull();
-    expect(container.querySelector('[data-avatar-seed="Leader Agent::leader-agent"]')).not.toBeNull();
+    expect(container.querySelector('[data-avatar-seed="Coordinator Agent::coordinator-agent"]')).not.toBeNull();
     expect(container.querySelector('[data-avatar-seed="Worker Agent::worker-agent"]')).not.toBeNull();
     clickElement(findButtonByAriaLabel(container, "Refresh teams"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open team actions"));
@@ -556,7 +556,7 @@ describe("team panels interactions", () => {
     );
     clickElement(findInteractiveByText(document.body, "Show Team Details"));
     expect(container.textContent).toContain("draft_team=alpha");
-    expect(container.textContent).toContain("leader=leader-agent");
+    expect(container.textContent).toContain("coordinator=coordinator-agent");
     expect(container.textContent).toContain("workers=2");
     clickElement(findButtonByText(container, "Team Two"));
     expect(container.querySelector("input[aria-label='Search teams']")).not.toBeNull();
@@ -592,14 +592,14 @@ describe("team panels interactions", () => {
     expect(
       Boolean(channelButton.compareDocumentPosition(kanbanButton) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
-    expect(container.textContent).toContain("Leader Agent");
+    expect(container.textContent).toContain("Coordinator Agent");
     expect(container.textContent).toContain("Worker Agent");
     expect(container.textContent).toContain("planning handoff");
     expect(container.textContent).toContain("collecting evidence");
     expect(container.textContent).toContain("Machine main");
     expect(container.textContent).toContain("Machine node-east");
     expect(container.textContent).toContain("Working");
-    expect(container.textContent).not.toContain("id leader-agent");
+    expect(container.textContent).not.toContain("id coordinator-agent");
     expect(container.textContent).not.toContain("id worker-agent");
     expect(container.textContent).not.toContain("Console");
 
@@ -612,7 +612,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={onRefreshTeams}
             onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={2}
             teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
@@ -676,7 +676,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={onRefreshTeams}
             onOpenCreateTeam={onOpenCreateTeam}
             draftTeamName="alpha"
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={2}
             teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
@@ -734,7 +734,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={() => {}}
             onOpenCreateTeam={() => {}}
             draftTeamName=""
-            leaderMemberId=""
+            coordinatorMemberId=""
             configuredWorkerCount={0}
             teams={[buildTeam()]}
             selectedTeam={null}
@@ -769,7 +769,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={() => {}}
             onOpenCreateTeam={noTeamsCreate}
             draftTeamName=""
-            leaderMemberId=""
+            coordinatorMemberId=""
             configuredWorkerCount={0}
             teams={[]}
             selectedTeam={null}
@@ -810,7 +810,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={vi.fn()}
             onOpenCreateTeam={vi.fn()}
             draftTeamName="alpha"
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={1}
             teams={[team]}
             selectedTeam={team}
@@ -971,7 +971,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={() => {}}
             onOpenCreateTeam={() => {}}
             draftTeamName=""
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={2}
             teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
@@ -1047,7 +1047,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={() => {}}
             onOpenCreateTeam={() => {}}
             draftTeamName=""
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={1}
             teams={[teamOne, teamTwo]}
             selectedTeam={teamOne}
@@ -1061,8 +1061,8 @@ describe("team panels interactions", () => {
             selectedTeamHasConfiguredMembers={true}
             teamMemberSummaryByTeamId={new Map()}
             memberLiveStates={[buildMemberLiveState()]}
-            memberTargetNodeById={{ "leader-agent": "main" }}
-            focusedAgentMemberId="leader-agent"
+            memberTargetNodeById={{ "coordinator-agent": "main" }}
+            focusedAgentMemberId="coordinator-agent"
             currentMachineId="main"
             tab="conversation"
             onSelectTeam={onSelectTeam}
@@ -1224,7 +1224,7 @@ describe("team panels interactions", () => {
             onRefreshTeams={() => {}}
             onOpenCreateTeam={() => {}}
             draftTeamName=""
-            leaderMemberId="leader-agent"
+            coordinatorMemberId="coordinator-agent"
             configuredWorkerCount={1}
             teams={[buildTeam()]}
             selectedTeam={buildTeam({ name: "Detail Team" })}
@@ -1880,10 +1880,10 @@ describe("team panels interactions", () => {
             snapshot={buildSnapshot()}
             snapshotLoading={false}
             onRefreshSnapshot={onRefreshSnapshot}
-            selectedMemberId="leader-agent"
+            selectedMemberId="coordinator-agent"
             onOpenMailboxForMember={onOpenMailboxForMember}
             memberTargetNodeById={{
-              "leader-agent": "main",
+              "coordinator-agent": "main",
               "worker-agent": "node-east",
             }}
           />
@@ -1897,7 +1897,7 @@ describe("team panels interactions", () => {
     expect(onRefreshSnapshot).toHaveBeenCalledTimes(1);
     expect(onOpenMailboxForMember).toHaveBeenCalledWith("worker-agent");
     expect(container.textContent).toContain("Cold Start Playbook");
-    expect(container.textContent).toContain("Leader startup");
+    expect(container.textContent).toContain("Coordinator startup");
     expect(container.textContent).toContain("Worker startup");
     expect(container.querySelector(".teams-overview-meta")).not.toBeNull();
     expect(container.querySelector(".teams-member-list")).not.toBeNull();
@@ -2201,17 +2201,17 @@ describe("team panels interactions", () => {
           messages={[
             buildTaskMessage(1),
             buildTaskMessage(2, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
-              payload: { type: "chat_message", text: "leader reply visible in all" },
+              payload: { type: "chat_message", text: "coordinator reply visible in all" },
             }),
           ]}
           memberLiveStates={[
             {
-              member_id: "leader-agent",
-              role: "leader",
-              agent_name: "Leader Agent",
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              agent_name: "Coordinator Agent",
               lifecycle_status: "running",
               lifecycle_tone: "active",
               run_status: "working",
@@ -2297,7 +2297,7 @@ describe("team panels interactions", () => {
         onSendMessage={vi.fn()}
         messages={[
           buildTaskMessage(1, {
-            from_actor_id: "leader-agent",
+            from_actor_id: "coordinator-agent",
             to_actor_id: null,
             route: "group_chat",
             payload: { type: "chat_message", text: "Channel root message stays visible." },
@@ -2338,7 +2338,7 @@ describe("team panels interactions", () => {
         onSendMessage={vi.fn()}
         messages={[
           buildTaskMessage(1, {
-            from_actor_id: "leader-agent",
+            from_actor_id: "coordinator-agent",
             to_actor_id: null,
             route: "group_chat",
             payload: { type: "chat_message", text: "Keep the composer docked." },
@@ -2588,19 +2588,19 @@ describe("team panels interactions", () => {
               payload: { type: "chat_message", text: "hello team" },
             }),
             buildTaskMessage(2, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
-              payload: { type: "chat_message", text: "leader reply visible in all" },
+              payload: { type: "chat_message", text: "coordinator reply visible in all" },
             }),
           ]}
-          seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
+          seenByMessageId={{ 1: ["coordinator-agent", "worker-agent"] }}
           humanActorId="user"
           memberLiveStates={[
             {
-              member_id: "leader-agent",
-              role: "leader",
-              agent_name: "LeaderAgent",
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              agent_name: "CoordinatorAgent",
               lifecycle_status: "working",
               lifecycle_tone: "active",
               run_status: "working",
@@ -2609,7 +2609,7 @@ describe("team panels interactions", () => {
               current_work: "reviewing shared thread",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -2618,10 +2618,10 @@ describe("team panels interactions", () => {
     );
 
     expect(container.textContent).toContain("hello team");
-    expect(container.textContent).toContain("leader reply visible in all");
+    expect(container.textContent).toContain("coordinator reply visible in all");
     expect(container.textContent).not.toContain("Pending delivery");
     expect(container.textContent).toContain("You");
-    expect(container.textContent).toContain("LeaderAgent");
+    expect(container.textContent).toContain("CoordinatorAgent");
     const progressbars = Array.from(container.querySelectorAll('[role="progressbar"]'));
     expect(progressbars).toHaveLength(1);
     expect(progressbars[0]?.getAttribute("aria-valuenow")).toBe("2");
@@ -2646,7 +2646,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "chat_message", text: "queued update" },
@@ -2656,9 +2656,9 @@ describe("team panels interactions", () => {
           humanActorId="user"
           memberLiveStates={[
             {
-              member_id: "leader-agent",
-              role: "leader",
-              agent_name: "LeaderAgent",
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              agent_name: "CoordinatorAgent",
               lifecycle_status: "working",
               lifecycle_tone: "active",
               run_status: "working",
@@ -2667,7 +2667,7 @@ describe("team panels interactions", () => {
               current_work: "broadcasting update",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -2696,9 +2696,9 @@ describe("team panels interactions", () => {
         humanActorId="user"
         memberLiveStates={[
           buildMemberLiveState({
-            member_id: "leader-agent",
-            role: "leader",
-            agent_name: "Leader Agent",
+            member_id: "coordinator-agent",
+            role: "coordinator",
+            agent_name: "Coordinator Agent",
             current_work: "replying in thread",
           }),
           buildMemberLiveState({
@@ -2714,7 +2714,7 @@ describe("team panels interactions", () => {
             current_work: "waiting for inbox",
           }),
         ]}
-        memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
+        memberIds={["coordinator-agent", "worker-agent", "reviewer-agent"]}
         conversationTitle="worker-thread"
         isChannelConversation={false}
         messagesLoading={true}
@@ -2741,7 +2741,7 @@ describe("team panels interactions", () => {
         onSendMessage={vi.fn()}
         messages={[
           buildTaskMessage(41, {
-            from_actor_id: "leader-agent",
+            from_actor_id: "coordinator-agent",
             to_actor_id: null,
             route: "group_chat",
             payload: { type: "chat_message", text: "partial read state" },
@@ -2751,9 +2751,9 @@ describe("team panels interactions", () => {
         humanActorId="user"
         memberLiveStates={[
           buildMemberLiveState({
-            member_id: "leader-agent",
-            role: "leader",
-            agent_name: "Leader Agent",
+            member_id: "coordinator-agent",
+            role: "coordinator",
+            agent_name: "Coordinator Agent",
           }),
           buildMemberLiveState({
             member_id: "worker-agent",
@@ -2766,7 +2766,7 @@ describe("team panels interactions", () => {
             agent_name: "Reviewer Agent",
           }),
         ]}
-        memberIds={["leader-agent", "worker-agent", "reviewer-agent"]}
+        memberIds={["coordinator-agent", "worker-agent", "reviewer-agent"]}
         messagesLoading={false}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -2867,7 +2867,7 @@ describe("team panels interactions", () => {
               current_work: "waiting for review",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -2952,7 +2952,7 @@ describe("team panels interactions", () => {
               current_work: "waiting for review",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -3050,7 +3050,7 @@ describe("team panels interactions", () => {
               current_work: "waiting for review",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -3163,7 +3163,7 @@ describe("team panels interactions", () => {
               current_work: "waiting for review",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -3291,7 +3291,7 @@ describe("team panels interactions", () => {
               current_work: "waiting for review",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -3325,19 +3325,19 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "chat_message", text: "progress update" },
             }),
           ]}
-          seenByMessageId={{ 1: ["leader-agent", "worker-agent"] }}
+          seenByMessageId={{ 1: ["coordinator-agent", "worker-agent"] }}
           humanActorId="user"
           memberLiveStates={[
             {
-              member_id: "leader-agent",
-              role: "leader",
-              agent_name: "LeaderAgent",
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              agent_name: "CoordinatorAgent",
               lifecycle_status: "working",
               lifecycle_tone: "active",
               run_status: "working",
@@ -3346,7 +3346,7 @@ describe("team panels interactions", () => {
               current_work: "broadcasting update",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -3373,7 +3373,7 @@ describe("team panels interactions", () => {
         onSendMessage={vi.fn()}
         messages={[
           buildTaskMessage(7, {
-            from_actor_id: "leader-agent",
+            from_actor_id: "coordinator-agent",
             to_actor_id: "worker-agent",
             route: "to_member",
             payload: { type: "chat_message", text: "please verify the runtime output" },
@@ -3383,9 +3383,9 @@ describe("team panels interactions", () => {
         humanActorId="user"
         memberLiveStates={[
           {
-            member_id: "leader-agent",
-            role: "leader",
-            agent_name: "LeaderAgent",
+            member_id: "coordinator-agent",
+            role: "coordinator",
+            agent_name: "CoordinatorAgent",
             lifecycle_status: "working",
             lifecycle_tone: "active",
             run_status: "working",
@@ -3394,7 +3394,7 @@ describe("team panels interactions", () => {
             current_work: "triaging worker evidence",
           },
         ]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         messagesLoading={false}
         busy={null}
         formatTs={(ts) => `ts-${String(ts)}`}
@@ -3409,7 +3409,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("seq");
     expect(container.textContent).toContain("7");
     expect(container.textContent).toContain("from");
-    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("coordinator-agent");
     expect(container.textContent).toContain("to");
     expect(container.textContent).toContain("worker-agent");
     expect(container.textContent).toContain("route");
@@ -3441,7 +3441,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3477,7 +3477,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3527,7 +3527,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3565,7 +3565,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3622,7 +3622,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3666,7 +3666,7 @@ describe("team panels interactions", () => {
         seenByMessageId={{}}
         humanActorId="user:u-1"
         memberLiveStates={[buildMemberLiveState()]}
-        memberIds={["leader-agent", "worker-agent"]}
+        memberIds={["coordinator-agent", "worker-agent"]}
         conversationTitle="Shared thread"
         isChannelConversation={true}
         messagesLoading={false}
@@ -3723,7 +3723,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(41, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               route: "group_chat",
               payload: { type: "chat_message", text: "source message" },
             }),
@@ -3731,7 +3731,7 @@ describe("team panels interactions", () => {
           seenByMessageId={{}}
           humanActorId="user:u-1"
           memberLiveStates={[buildMemberLiveState()]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           conversationTitle="Shared thread"
           isChannelConversation={true}
           messagesLoading={false}
@@ -3775,7 +3775,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={Array.from({ length: 26 }, (_, index) =>
             buildTaskMessage(index + 1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               route: "group_chat",
               payload: { type: "chat_message", text: `source ${index + 1}` },
             })
@@ -3783,7 +3783,7 @@ describe("team panels interactions", () => {
           seenByMessageId={{}}
           humanActorId="user:u-1"
           memberLiveStates={[buildMemberLiveState()]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           conversationTitle="Shared thread"
           isChannelConversation={true}
           messagesLoading={false}
@@ -3865,7 +3865,7 @@ describe("team panels interactions", () => {
             onSendMessage={vi.fn()}
             messages={Array.from({ length: totalMessages - 1 }, (_, index) =>
               buildTaskMessage(index + 1, {
-                from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
+                from_actor_id: index === 0 ? "user:u-1" : "coordinator-agent",
                 to_actor_id: null,
                 route: "group_chat",
                 payload: { type: "chat_message", text: `message ${index + 1}` },
@@ -3873,7 +3873,7 @@ describe("team panels interactions", () => {
             )}
             humanActorId="user"
             memberLiveStates={[]}
-            memberIds={["leader-agent"]}
+            memberIds={["coordinator-agent"]}
             messagesLoading={false}
             busy={null}
             formatTs={(ts) => `ts-${String(ts)}`}
@@ -3917,7 +3917,7 @@ describe("team panels interactions", () => {
                     ? "user:u-1"
                     : index === totalMessages - 1
                       ? "worker-agent"
-                      : "leader-agent",
+                      : "coordinator-agent",
                 to_actor_id: null,
                 route: "group_chat",
                 payload: { type: "chat_message", text: `message ${index + 1}` },
@@ -3925,7 +3925,7 @@ describe("team panels interactions", () => {
             )}
             humanActorId="user"
             memberLiveStates={[]}
-            memberIds={["leader-agent", "worker-agent"]}
+            memberIds={["coordinator-agent", "worker-agent"]}
             messagesLoading={false}
             busy={null}
             formatTs={(ts) => `ts-${String(ts)}`}
@@ -3989,7 +3989,7 @@ describe("team panels interactions", () => {
             onSendMessage={vi.fn()}
             messages={Array.from({ length: 213 }, (_, index) =>
               buildTaskMessage(index + 1, {
-                from_actor_id: index === 0 ? "user:u-1" : "leader-agent",
+                from_actor_id: index === 0 ? "user:u-1" : "coordinator-agent",
                 to_actor_id: null,
                 route: "group_chat",
                 payload: { type: "chat_message", text: `message ${index + 1}` },
@@ -3997,7 +3997,7 @@ describe("team panels interactions", () => {
             )}
             humanActorId="user"
             memberLiveStates={[]}
-            memberIds={["leader-agent"]}
+            memberIds={["coordinator-agent"]}
             messagesLoading={false}
             busy={null}
             formatTs={(ts) => `ts-${String(ts)}`}
@@ -4066,7 +4066,7 @@ describe("team panels interactions", () => {
               payload: { type: "chat_message", text: "Need status update." },
             }),
             buildTaskMessage(2, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "chat_message", text: "Working on it." },
@@ -4074,7 +4074,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4107,7 +4107,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: {
@@ -4124,7 +4124,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4166,7 +4166,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: {
@@ -4177,7 +4177,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4212,7 +4212,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(1, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: { type: "chat_message", text: "Existing shared-thread message" },
@@ -4220,7 +4220,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={true}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4246,7 +4246,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(11, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload:
@@ -4255,7 +4255,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4288,7 +4288,7 @@ describe("team panels interactions", () => {
               payload: {
                 type: "task_note",
                 kind: "comment",
-                text: "@leader idle update:\n\n- mailbox pending_count: 0\n\nAwaiting next task.",
+                text: "@coordinator idle update:\n\n- mailbox pending_count: 0\n\nAwaiting next task.",
               },
             }),
           ]}
@@ -4361,7 +4361,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(12, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: {
@@ -4385,7 +4385,7 @@ describe("team panels interactions", () => {
           ]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4414,7 +4414,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(13, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: null,
               route: "group_chat",
               payload: {
@@ -4428,7 +4428,7 @@ describe("team panels interactions", () => {
             "595d1ae8-fcbd-4111-b5c7-d446a12c044b": "tidb-fuzz-bugfix-team-worker-1",
           }}
           memberLiveStates={[]}
-          memberIds={["leader-agent", "595d1ae8-fcbd-4111-b5c7-d446a12c044b"]}
+          memberIds={["coordinator-agent", "595d1ae8-fcbd-4111-b5c7-d446a12c044b"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4478,7 +4478,7 @@ describe("team panels interactions", () => {
           onSendMessage={vi.fn()}
           messages={[
             buildTaskMessage(7, {
-              from_actor_id: "leader-agent",
+              from_actor_id: "coordinator-agent",
               to_actor_id: "worker-agent",
               route: "to_member",
               payload: { type: "chat_message", text: "debug details" },
@@ -4487,9 +4487,9 @@ describe("team panels interactions", () => {
           humanActorId="user"
           memberLiveStates={[
             {
-              member_id: "leader-agent",
-              role: "leader",
-              agent_name: "LeaderAgent",
+              member_id: "coordinator-agent",
+              role: "coordinator",
+              agent_name: "CoordinatorAgent",
               lifecycle_status: "working",
               lifecycle_tone: "active",
               run_status: "working",
@@ -4498,7 +4498,7 @@ describe("team panels interactions", () => {
               current_work: "reviewing worker progress",
             },
           ]}
-          memberIds={["leader-agent", "worker-agent"]}
+          memberIds={["coordinator-agent", "worker-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4509,7 +4509,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Details"));
     expect(container.textContent).toContain("source");
     expect(container.textContent).toContain("from");
-    expect(container.textContent).toContain("leader-agent");
+    expect(container.textContent).toContain("coordinator-agent");
     expect(container.textContent).toContain("to");
     expect(container.textContent).toContain("worker-agent");
     expect(container.textContent).toContain("route");
@@ -4535,7 +4535,7 @@ describe("team panels interactions", () => {
           messages={[]}
           humanActorId="user"
           memberLiveStates={[]}
-          memberIds={["leader-agent"]}
+          memberIds={["coordinator-agent"]}
           messagesLoading={false}
           busy={null}
           formatTs={(ts) => `ts-${String(ts)}`}
@@ -4574,7 +4574,7 @@ describe("team panels interactions", () => {
                 status: "in_progress",
                 assigned_member_id: "worker-1",
                 context: {
-                  owner: "leader",
+                  owner: "coordinator",
                   bootstrap_kind: "team_channel",
                   channel_id: "review",
                 },
@@ -4629,8 +4629,8 @@ describe("team panels interactions", () => {
                 step_template: [
                   {
                     step_key: "review",
-                    member_id: "leader-agent",
-                    role: "leader",
+                    member_id: "coordinator-agent",
+                    role: "coordinator",
                     depends_on: [],
                   },
                   {
@@ -4642,8 +4642,8 @@ describe("team panels interactions", () => {
                 ],
                 role_assignments: [
                   {
-                    member_id: "leader-agent",
-                    role: "leader",
+                    member_id: "coordinator-agent",
+                    role: "coordinator",
                     step_keys: ["review"],
                   },
                   {
@@ -5183,7 +5183,7 @@ describe("team panels interactions", () => {
                     buildPanelTask("task-progress", {
                       title: "Prepare rollout",
                       status: "in_progress",
-                      context: { owner: "leader" },
+                      context: { owner: "coordinator" },
                     }),
                   ]
                 : [buildPanelTask("task-open", { title: "Investigate bug", status: "open" })]
@@ -5445,7 +5445,7 @@ describe("team panels interactions", () => {
         onSendMessage={vi.fn()}
         messages={[
           buildTaskMessage(21, {
-            from_actor_id: "leader-agent",
+            from_actor_id: "coordinator-agent",
             payload: { type: "chat_message", text: "latest message" },
           }),
         ]}
@@ -6002,14 +6002,14 @@ describe("team panels interactions", () => {
     const toPrettyJson = vi.fn((value: unknown) => JSON.stringify(value));
 
     const pendingMessage = buildMailboxMessage(1);
-    const pendingForLeaderMessage = buildMailboxMessage(3, {
+    const pendingForCoordinatorMessage = buildMailboxMessage(3, {
       from_actor_id: "worker-agent",
-      to_actor_id: "leader-agent",
-      payload: { type: "chat_message", text: "pending-to-leader" },
+      to_actor_id: "coordinator-agent",
+      payload: { type: "chat_message", text: "pending-to-coordinator" },
     });
     const deliveredMessage = buildMailboxMessage(2, {
       from_actor_id: "worker-agent",
-      to_actor_id: "leader-agent",
+      to_actor_id: "coordinator-agent",
       status: "delivered",
       payload: { type: "status_update", done: true },
       delivered_at: 1_700_000_200,
@@ -6023,7 +6023,7 @@ describe("team panels interactions", () => {
             snapshot={buildSnapshot()}
             humanActorId="user"
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
               user: "You",
             }}
@@ -6031,7 +6031,7 @@ describe("team panels interactions", () => {
             unreadByMemberId={{ "worker-agent": 2, user: 1 }}
             onSelectMember={onSelectMember}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6039,7 +6039,7 @@ describe("team panels interactions", () => {
             chatMessagesRef={React.createRef<HTMLUListElement>()}
             onConversationScroll={onConversationScroll}
             onJumpToBottom={onJumpToBottom}
-            conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
+            conversationMessages={[pendingMessage, pendingForCoordinatorMessage, deliveredMessage]}
             toPrettyJson={toPrettyJson}
             formatTs={(ts) => `ts-${String(ts)}`}
             busy={null}
@@ -6048,7 +6048,7 @@ describe("team panels interactions", () => {
             chatDraft="draft"
             onChatDraftChange={onChatDraftChange}
             onSendChatMessage={onSendChatMessage}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={onMsgFromActorIdChange}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={onMsgToActorIdChange}
@@ -6059,10 +6059,10 @@ describe("team panels interactions", () => {
             msgRoute="{}"
             onMsgRouteChange={onMsgRouteChange}
             mailboxTemplateOptions={[
-              { value: "leader_task_assignment", label: "Leader Assignment" },
+              { value: "coordinator_task_assignment", label: "Coordinator Assignment" },
               { value: "worker_done", label: "Worker Done" },
             ]}
-            msgTemplate="leader_task_assignment"
+            msgTemplate="coordinator_task_assignment"
             onMsgTemplateChange={onMsgTemplateChange}
             onApplyMessageTemplate={onApplyMessageTemplate}
             msgPayload="{}"
@@ -6123,7 +6123,7 @@ describe("team panels interactions", () => {
     clickElement(findButtonByText(container, "Send Chat"));
     clickElement(findButtonByText(container, "You (human)"));
 
-    expect(onSelectMember).toHaveBeenCalledWith("leader-agent");
+    expect(onSelectMember).toHaveBeenCalledWith("coordinator-agent");
     expect(onSelectMember).toHaveBeenCalledWith("user");
     expect(onConversationScroll).toHaveBeenCalledTimes(1);
     expect(onJumpToBottom).toHaveBeenCalledTimes(1);
@@ -6132,7 +6132,7 @@ describe("team panels interactions", () => {
     expect(onChatDraftChange).toHaveBeenCalledWith("hello worker");
     expect(onSendChatMessage).toHaveBeenCalledTimes(2);
     expect(toPrettyJson).toHaveBeenCalledWith({ type: "status_update", done: true });
-    expect(container.textContent).toContain("Leader Agent → Worker Agent");
+    expect(container.textContent).toContain("Coordinator Agent → Worker Agent");
     expect(container.textContent).toContain("Worker Agent (worker)");
     expect(
       required(container.querySelector(".teams-chat-head"), "mailbox header missing").textContent
@@ -6156,14 +6156,14 @@ describe("team panels interactions", () => {
             mode="advanced_only"
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{ "worker-agent": 2 }}
             onSelectMember={onSelectMember}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6171,7 +6171,7 @@ describe("team panels interactions", () => {
             chatMessagesRef={React.createRef<HTMLUListElement>()}
             onConversationScroll={onConversationScroll}
             onJumpToBottom={onJumpToBottom}
-            conversationMessages={[pendingMessage, pendingForLeaderMessage, deliveredMessage]}
+            conversationMessages={[pendingMessage, pendingForCoordinatorMessage, deliveredMessage]}
             toPrettyJson={toPrettyJson}
             formatTs={(ts) => `ts-${String(ts)}`}
             busy={null}
@@ -6180,7 +6180,7 @@ describe("team panels interactions", () => {
             chatDraft="draft"
             onChatDraftChange={onChatDraftChange}
             onSendChatMessage={onSendChatMessage}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={onMsgFromActorIdChange}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={onMsgToActorIdChange}
@@ -6191,10 +6191,10 @@ describe("team panels interactions", () => {
             msgRoute="{}"
             onMsgRouteChange={onMsgRouteChange}
             mailboxTemplateOptions={[
-              { value: "leader_task_assignment", label: "Leader Assignment" },
+              { value: "coordinator_task_assignment", label: "Coordinator Assignment" },
               { value: "worker_done", label: "Worker Done" },
             ]}
-            msgTemplate="leader_task_assignment"
+            msgTemplate="coordinator_task_assignment"
             onMsgTemplateChange={onMsgTemplateChange}
             onApplyMessageTemplate={onApplyMessageTemplate}
             msgPayload="{}"
@@ -6218,7 +6218,7 @@ describe("team panels interactions", () => {
 
     changeInputValue(
       required(container.querySelector('input[placeholder="from_actor_id"]') as HTMLInputElement | null, "from_actor_id missing"),
-      "leader-2"
+      "coordinator-2"
     );
     changeInputValue(
       required(container.querySelector('input[placeholder="to_actor_id"]') as HTMLInputElement | null, "to_actor_id missing"),
@@ -6280,7 +6280,7 @@ describe("team panels interactions", () => {
     );
     clickElement(findButtonByAriaLabel(container, "Refresh read-only inbox"));
 
-    expect(onMsgFromActorIdChange).toHaveBeenCalledWith("leader-2");
+    expect(onMsgFromActorIdChange).toHaveBeenCalledWith("coordinator-2");
     expect(onMsgToActorIdChange).toHaveBeenCalledWith("worker-2");
     expect(onMsgChannelChange).toHaveBeenCalledWith("alerts");
     expect(onMsgTransportChange).toHaveBeenCalledWith("remote");
@@ -6328,8 +6328,8 @@ describe("team panels interactions", () => {
             onMsgTransportChange={() => {}}
             msgRoute=""
             onMsgRouteChange={() => {}}
-            mailboxTemplateOptions={[{ value: "leader_task_assignment", label: "Leader Assignment" }]}
-            msgTemplate="leader_task_assignment"
+            mailboxTemplateOptions={[{ value: "coordinator_task_assignment", label: "Coordinator Assignment" }]}
+            msgTemplate="coordinator_task_assignment"
             onMsgTemplateChange={() => {}}
             onApplyMessageTemplate={() => {}}
             msgPayload="{}"
@@ -6365,14 +6365,14 @@ describe("team panels interactions", () => {
             developerMode={true}
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{ "worker-agent": 1 }}
             onSelectMember={() => {}}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6389,7 +6389,7 @@ describe("team panels interactions", () => {
             chatDraft=""
             onChatDraftChange={() => {}}
             onSendChatMessage={() => {}}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={() => {}}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={() => {}}
@@ -6435,14 +6435,14 @@ describe("team panels interactions", () => {
             mode="advanced_only"
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{}}
             onSelectMember={() => {}}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6459,7 +6459,7 @@ describe("team panels interactions", () => {
             chatDraft=""
             onChatDraftChange={() => {}}
             onSendChatMessage={() => {}}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={() => {}}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={() => {}}
@@ -6505,14 +6505,14 @@ describe("team panels interactions", () => {
             developerMode={true}
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{}}
             onSelectMember={vi.fn()}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6523,7 +6523,7 @@ describe("team panels interactions", () => {
             conversationMessages={[
               buildMailboxMessage(30, {
                 from_actor_id: "worker-agent",
-                to_actor_id: "leader-agent",
+                to_actor_id: "coordinator-agent",
                 status: "delivered",
                 payload:
                   '{"type":"chat_message","text":"mailbox string payload text","source":"team_workbench"}',
@@ -6536,7 +6536,7 @@ describe("team panels interactions", () => {
             chatDraft=""
             onChatDraftChange={vi.fn()}
             onSendChatMessage={vi.fn()}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={vi.fn()}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={vi.fn()}
@@ -6571,7 +6571,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("mailbox string payload text");
     expect(container.textContent).not.toContain('{"type":"chat_message"');
-    expect(container.textContent).toContain("Worker Agent → Leader Agent");
+    expect(container.textContent).toContain("Worker Agent → Coordinator Agent");
     expect(toPrettyJson).not.toHaveBeenCalled();
   });
 
@@ -6585,14 +6585,14 @@ describe("team panels interactions", () => {
             developerMode={true}
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{}}
             onSelectMember={vi.fn()}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6603,7 +6603,7 @@ describe("team panels interactions", () => {
             conversationMessages={[
               buildMailboxMessage(31, {
                 from_actor_id: "worker-agent",
-                to_actor_id: "leader-agent",
+                to_actor_id: "coordinator-agent",
                 status: "delivered",
                 payload: "line one\n\n- line two",
               }),
@@ -6615,7 +6615,7 @@ describe("team panels interactions", () => {
             chatDraft=""
             onChatDraftChange={vi.fn()}
             onSendChatMessage={vi.fn()}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={vi.fn()}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={vi.fn()}
@@ -6663,13 +6663,13 @@ describe("team panels interactions", () => {
             snapshot={buildSnapshot()}
             humanActorId="user"
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
             }}
             selectedMemberId="user"
             unreadByMemberId={{ user: 1 }}
             onSelectMember={vi.fn()}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "user:root",
               inboxActorId: "user:root",
             }}
@@ -6679,7 +6679,7 @@ describe("team panels interactions", () => {
             onJumpToBottom={vi.fn()}
             conversationMessages={[
               buildMailboxMessage(31, {
-                from_actor_id: "leader-agent",
+                from_actor_id: "coordinator-agent",
                 to_actor_id: "user:root",
                 status: "delivered",
                 payload: { type: "chat_message", text: "hello" },
@@ -6725,7 +6725,7 @@ describe("team panels interactions", () => {
       );
     });
 
-    expect(container.textContent).toContain("Leader Agent → You");
+    expect(container.textContent).toContain("Coordinator Agent → You");
   });
 
   it("TeamMailboxPanel hides raw mailbox tools when developer mode is off", () => {
@@ -6737,14 +6737,14 @@ describe("team panels interactions", () => {
             mode="advanced_only"
             snapshot={buildSnapshot()}
             displayNameByActorId={{
-              "leader-agent": "Leader Agent",
+              "coordinator-agent": "Coordinator Agent",
               "worker-agent": "Worker Agent",
             }}
             selectedMemberId="worker-agent"
             unreadByMemberId={{}}
             onSelectMember={vi.fn()}
             chatActors={{
-              fromActorId: "leader-agent",
+              fromActorId: "coordinator-agent",
               toActorId: "worker-agent",
               inboxActorId: "worker-agent",
             }}
@@ -6760,7 +6760,7 @@ describe("team panels interactions", () => {
             chatDraft=""
             onChatDraftChange={vi.fn()}
             onSendChatMessage={vi.fn()}
-            msgFromActorId="leader-agent"
+            msgFromActorId="coordinator-agent"
             onMsgFromActorIdChange={vi.fn()}
             msgToActorId="worker-agent"
             onMsgToActorIdChange={vi.fn()}

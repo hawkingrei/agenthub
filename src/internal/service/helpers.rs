@@ -189,8 +189,8 @@ pub(super) async fn maybe_notify_actor_new_mailbox_message_type(
     let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
     let reason_label = match plan.reason {
         crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
-        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention => {
-            "leader_channel_mention"
+        crate::team::ActorMailboxImmediateHintReason::CoordinatorChannelMention => {
+            "coordinator_channel_mention"
         }
     };
     let mut sent_targets = Vec::new();
@@ -293,19 +293,19 @@ pub(super) async fn ensure_team_member_access(
     ))
 }
 
-pub(super) async fn ensure_leader_team_access(
+pub(super) async fn ensure_coordinator_team_access(
     manager: &TeamManager,
     team_id: &str,
     actor_id: &str,
 ) -> Result<crate::team::TeamDefinitionRecord, Status> {
     ensure_team_member_access(manager, team_id, actor_id).await?;
     let team = manager.get_team(team_id).await.map_err(map_manager_error)?;
-    let leader_member_id = resolve_team_leader_member_id(&team.spec)?;
-    if actor_id == leader_member_id {
+    let coordinator_member_id = resolve_team_coordinator_member_id(&team.spec)?;
+    if actor_id == coordinator_member_id {
         return Ok(team);
     }
     Err(Status::permission_denied(
-        "only leader may create or update Team tasks",
+        "only coordinator may create or update Team tasks",
     ))
 }
 
@@ -467,14 +467,14 @@ pub(super) fn map_actor_service_status(err: ActorServiceError) -> Status {
     }
 }
 
-pub(super) fn resolve_team_leader_member_id(spec: &Value) -> Result<String, Status> {
-    if let Some(leader_member_id) = spec
-        .get("leader_member_id")
+pub(super) fn resolve_team_coordinator_member_id(spec: &Value) -> Result<String, Status> {
+    if let Some(coordinator_member_id) = spec
+        .get("coordinator_member_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        return Ok(leader_member_id.to_string());
+        return Ok(coordinator_member_id.to_string());
     }
 
     if let Some(members) = spec.get("members").and_then(Value::as_array) {
@@ -484,7 +484,7 @@ pub(super) fn resolve_team_leader_member_id(spec: &Value) -> Result<String, Stat
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
-            if let Some("leader") = role
+            if let Some("coordinator") = role
                 && let Some(member_id) = member
                     .get("member_id")
                     .and_then(Value::as_str)
@@ -506,7 +506,7 @@ pub(super) fn resolve_team_leader_member_id(spec: &Value) -> Result<String, Stat
     }
 
     Err(Status::failed_precondition(
-        "team spec does not define a leader (leader_member_id, members[].role == 'leader', or entrypoint)",
+        "team spec does not define a coordinator (coordinator_member_id, members[].role == 'coordinator', or entrypoint)",
     ))
 }
 
@@ -539,7 +539,7 @@ pub(super) fn normalize_permission(raw: &str) -> Option<String> {
 
 pub(super) fn default_permissions_for_role(role: InternalRole) -> Vec<String> {
     match role {
-        InternalRole::Leader => vec![
+        InternalRole::Coordinator => vec![
             InternalAction::MessageSend.as_str().to_string(),
             InternalAction::InboxList.as_str().to_string(),
             InternalAction::MessageAck.as_str().to_string(),

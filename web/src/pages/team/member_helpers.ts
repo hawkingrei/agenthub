@@ -2,11 +2,11 @@ import type { TeamPromptDefaultsRecord } from "../../api";
 import { AgentRecord, TeamRunSnapshotRecord, TeamRuntimeMemberRecord } from "../../api";
 import { isAgentActiveStatus } from "../../agent_ws";
 
-export const DEFAULT_TEAM_LEADER_SKILLS = [
+export const DEFAULT_TEAM_COORDINATOR_SKILLS = [
   "agenthub-actor-runtime",
   "team-agents-index",
-  "team-leader-agents-index",
-  "team-leader-orchestrator",
+  "team-coordinator-agents-index",
+  "team-coordinator-orchestrator",
   "team-actor-mailbox",
 ];
 
@@ -18,11 +18,11 @@ export const DEFAULT_TEAM_WORKER_SKILLS = [
   "team-actor-mailbox",
 ];
 
-export const REQUIRED_TEAM_LEADER_SKILLS = [
+export const REQUIRED_TEAM_COORDINATOR_SKILLS = [
   "agenthub-actor-runtime",
   "team-agents-index",
-  "team-leader-agents-index",
-  "team-leader-orchestrator",
+  "team-coordinator-agents-index",
+  "team-coordinator-orchestrator",
   "team-actor-mailbox",
 ];
 
@@ -39,7 +39,7 @@ const OPTIONAL_TEAM_SKILLS = ["team-deliberation-rules"];
 
 export const TEAM_SKILL_OPTIONS = [
   ...new Set([
-    ...DEFAULT_TEAM_LEADER_SKILLS,
+    ...DEFAULT_TEAM_COORDINATOR_SKILLS,
     ...DEFAULT_TEAM_WORKER_SKILLS,
     ...OPTIONAL_TEAM_SKILLS,
   ]),
@@ -87,11 +87,11 @@ export type TeamMemberLiveState = {
 };
 
 export type TeamCreateDraftState = {
-  leaderMemberId: string;
-  leaderModel: string;
-  leaderPrompt: string;
-  leaderSkills: string[];
-  leaderCustomSkills: string;
+  coordinatorMemberId: string;
+  coordinatorModel: string;
+  coordinatorPrompt: string;
+  coordinatorSkills: string[];
+  coordinatorCustomSkills: string;
   workers: WorkerDraft[];
   useSpecOverride: boolean;
   newTeamSpec: string;
@@ -99,7 +99,7 @@ export type TeamCreateDraftState = {
 };
 
 export const EMPTY_TEAM_PROMPT_DEFAULTS: TeamPromptDefaultsRecord = {
-  leader_prompt: "",
+  coordinator_prompt: "",
   worker_prompt: "",
 };
 
@@ -107,7 +107,7 @@ export function resolveTeamPromptForRole(
   promptDefaults: TeamPromptDefaultsRecord,
   role: string
 ): string {
-  return role === "leader" ? promptDefaults.leader_prompt : promptDefaults.worker_prompt;
+  return role === "coordinator" ? promptDefaults.coordinator_prompt : promptDefaults.worker_prompt;
 }
 
 export function selectTeamForgeAgents(
@@ -127,11 +127,11 @@ export function createInitialTeamDraftState(
   promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): TeamCreateDraftState {
   return {
-    leaderMemberId: "",
-    leaderModel: "",
-    leaderPrompt: promptDefaults.leader_prompt,
-    leaderSkills: [...DEFAULT_TEAM_LEADER_SKILLS],
-    leaderCustomSkills: "",
+    coordinatorMemberId: "",
+    coordinatorModel: "",
+    coordinatorPrompt: promptDefaults.coordinator_prompt,
+    coordinatorSkills: [...DEFAULT_TEAM_COORDINATOR_SKILLS],
+    coordinatorCustomSkills: "",
     workers: [],
     useSpecOverride: false,
     newTeamSpec: "{}",
@@ -313,7 +313,7 @@ export function summarizeTeamMemberAgentStatuses(
 
 function resolveTeamRoleWeight(role: string): number {
   const normalized = role.trim().toLowerCase();
-  if (normalized === "leader") return 0;
+  if (normalized === "coordinator") return 0;
   if (normalized === "worker") return 1;
   return 2;
 }

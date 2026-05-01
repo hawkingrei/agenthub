@@ -152,7 +152,7 @@ describe("api request headers", () => {
             message_id: 77,
             conversation_id: "conversation-1",
             task_id: "task-1",
-            from_actor_id: "leader",
+            from_actor_id: "coordinator",
             to_actor_id: null,
             route: "team_thread_reply",
             payload: { type: "chat_message", text: "Thread reply" },

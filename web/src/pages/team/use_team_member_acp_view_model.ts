@@ -252,8 +252,8 @@ export function useTeamMemberAcpViewModel({
       selectedMemberSnapshot?.role?.trim() ||
       ""
     ).toLowerCase();
-    if (normalizedRole === "leader") {
-      return "Leader agent";
+    if (normalizedRole === "coordinator") {
+      return "Coordinator agent";
     }
     if (normalizedRole === "worker") {
       return "Worker agent";

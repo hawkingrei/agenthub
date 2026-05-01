@@ -94,7 +94,7 @@ Team definition missing members array.
 {
   "spec": {
     "members": [
-      {"member_id": "leader", "description": "...", "skills": []}
+      {"member_id": "coordinator", "description": "...", "skills": []}
     ],
     "entrypoint": {...}
   }
@@ -109,9 +109,9 @@ Team requires at least one member.
 
 Each member needs a unique identifier.
 
-#### `spec.leader_member_id must reference a defined member`
+#### `spec.coordinator_member_id must reference a defined member`
 
-Leader ID must match one of the defined `member_id` values.
+Coordinator ID must match one of the defined `member_id` values.
 
 #### `spec.steps[].depends_on entries must be non-empty strings`
 
@@ -223,13 +223,13 @@ Dependency references must be valid step keys.
 
 **Cause**: Invalid routing - workers can't review their own requests.
 
-**Solution**: Route to leader or another member.
+**Solution**: Route to coordinator or another member.
 
-#### `route=to_leader requires a leader member in spec.members`
+#### `route=to_coordinator requires a coordinator member in spec.members`
 
-**Cause**: Team spec missing leader definition.
+**Cause**: Team spec missing coordinator definition.
 
-**Solution**: Define a leader member and set `leader_member_id`.
+**Solution**: Define a coordinator member and set `coordinator_member_id`.
 
 ### Message Routing Errors
 
@@ -237,7 +237,7 @@ Dependency references must be valid step keys.
 
 **Cause**: Direct member routing requires target member ID.
 
-#### `route must be one of: broadcast, to_leader, to_member`
+#### `route must be one of: broadcast, to_coordinator, to_member`
 
 **Cause**: Invalid route type specified.
 

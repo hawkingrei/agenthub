@@ -261,9 +261,9 @@ fn build_agent_start_plan_requires_idle_session_for_new_actor_context() {
     let actor_context = AcpActorSkillContext {
         team_id: Some("team-1".to_string()),
         current_run_id: Some("run-1".to_string()),
-        actor_id: "leader-1".to_string(),
+        actor_id: "coordinator-1".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
@@ -347,25 +347,25 @@ fn build_agent_record_for_policy(
 }
 
 #[test]
-fn runtime_start_policy_redirects_leader_to_stable_sandbox() {
-    let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
+fn runtime_start_policy_redirects_coordinator_to_stable_sandbox() {
+    let tmp = std::env::temp_dir().join(format!("agenthub-coordinator-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     std::fs::write(tmp.join("README.md"), "busy").expect("write temp marker");
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
-        team_id: Some("team-leader".to_string()),
-        current_run_id: Some("run-leader".to_string()),
-        actor_id: "leader-1".to_string(),
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-1".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
     };
 
     let policy = build_runtime_start_policy(&agent, Some(&ctx), &agent.workdir, None, None)
-        .expect("leader should derive a stable coordination workdir");
+        .expect("coordinator should derive a stable coordination workdir");
     assert!(
         policy.workdir.starts_with(&agent.workdir),
         "workdir={} base={}",
@@ -375,13 +375,13 @@ fn runtime_start_policy_redirects_leader_to_stable_sandbox() {
     assert!(
         policy
             .workdir
-            .contains(".agenthub-team-leader/leader-1-run-leader"),
+            .contains(".agenthub-team-coordinator/coordinator-1-run-coordinator"),
         "workdir={}",
         policy.workdir
     );
     assert!(
-        !policy.workdir.contains("session-leader"),
-        "leader sandbox should not depend on launch session id: workdir={}",
+        !policy.workdir.contains("session-coordinator"),
+        "coordinator sandbox should not depend on launch session id: workdir={}",
         policy.workdir
     );
 }
@@ -452,17 +452,17 @@ fn runtime_start_policy_assigns_worker_run_isolated_worktree_and_branch() {
 }
 
 #[test]
-fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
-    let tmp = std::env::temp_dir().join(format!("agenthub-leader-policy-{}", Uuid::new_v4()));
+fn runtime_start_policy_reuses_coordinator_workspace_across_launch_ids() {
+    let tmp = std::env::temp_dir().join(format!("agenthub-coordinator-policy-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     let agent =
         build_agent_record_for_policy(WorktreeMode::UseExisting, &tmp.to_string_lossy(), None);
     let ctx = AcpActorSkillContext {
-        team_id: Some("team-leader".to_string()),
-        current_run_id: Some("run-leader".to_string()),
-        actor_id: "leader-1".to_string(),
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-1".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
@@ -473,30 +473,31 @@ fn runtime_start_policy_reuses_leader_workspace_across_launch_ids() {
         Some(&ctx),
         &agent.workdir,
         None,
-        Some("session-leader-1"),
+        Some("session-coordinator-1"),
     )
-    .expect("first leader launch policy");
+    .expect("first coordinator launch policy");
     let second = build_runtime_start_policy(
         &agent,
         Some(&ctx),
         &agent.workdir,
         None,
-        Some("session-leader-2"),
+        Some("session-coordinator-2"),
     )
-    .expect("second leader launch policy");
+    .expect("second coordinator launch policy");
     assert_eq!(first.workdir, second.workdir);
 }
 
 #[tokio::test]
-async fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
-    let path = std::env::temp_dir().join(format!("agenthub-leader-workdir-{}", Uuid::new_v4()));
+async fn ensure_team_runtime_workspace_layout_creates_missing_coordinator_dir() {
+    let path =
+        std::env::temp_dir().join(format!("agenthub-coordinator-workdir-{}", Uuid::new_v4()));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        team_id: Some("team-leader".to_string()),
-        current_run_id: Some("run-leader".to_string()),
-        actor_id: "leader-1".to_string(),
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-1".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
@@ -505,16 +506,16 @@ async fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
     assert!(!path.exists(), "temp path should not exist before test");
     ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
         .await
-        .expect("create leader runtime workspace");
-    assert!(path.exists(), "leader workdir should be created");
-    assert!(path.is_dir(), "leader workdir should be a directory");
+        .expect("create coordinator runtime workspace");
+    assert!(path.exists(), "coordinator workdir should be created");
+    assert!(path.is_dir(), "coordinator workdir should be a directory");
     assert!(
         path.join(".cache/context/run").is_dir(),
-        "leader context run dir should exist"
+        "coordinator context run dir should exist"
     );
     assert!(
         path.join(".cache/context/memory").is_dir(),
-        "leader context memory dir should exist"
+        "coordinator context memory dir should exist"
     );
     for relative_path in [
         ".cache/context/state.md",
@@ -528,7 +529,7 @@ async fn ensure_team_runtime_workspace_layout_creates_missing_leader_dir() {
     ] {
         assert!(
             path.join(relative_path).is_file(),
-            "leader context file should exist: {relative_path}"
+            "coordinator context file should exist: {relative_path}"
         );
     }
 }
@@ -564,7 +565,10 @@ async fn ensure_team_runtime_workspace_layout_initializes_worker_context_in_exis
 
 #[tokio::test]
 async fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
-    let path = std::env::temp_dir().join(format!("agenthub-non-leader-workdir-{}", Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!(
+        "agenthub-non-coordinator-workdir-{}",
+        Uuid::new_v4()
+    ));
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
         team_id: Some("team-worker".to_string()),
@@ -589,18 +593,18 @@ async fn ensure_team_runtime_workspace_layout_ignores_non_team_context() {
 
 #[tokio::test]
 async fn ensure_team_runtime_workspace_layout_reports_creation_error() {
-    let root = std::env::temp_dir().join(format!("agenthub-leader-file-{}", Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("agenthub-coordinator-file-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).expect("create temp root");
     let file_path = root.join("not-a-dir");
     std::fs::write(&file_path, "marker").expect("create temp file");
     let impossible_dir = file_path.join("child");
     let workdir = impossible_dir.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        team_id: Some("team-leader".to_string()),
-        current_run_id: Some("run-leader".to_string()),
-        actor_id: "leader-2".to_string(),
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-2".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,
@@ -608,7 +612,7 @@ async fn ensure_team_runtime_workspace_layout_reports_creation_error() {
 
     let err = ensure_team_runtime_workspace_layout(Some(&ctx), &workdir)
         .await
-        .expect_err("invalid leader path should fail directory creation");
+        .expect_err("invalid coordinator path should fail directory creation");
     assert!(
         err.to_string()
             .contains("failed to stat team runtime workdir"),
@@ -619,18 +623,18 @@ async fn ensure_team_runtime_workspace_layout_reports_creation_error() {
 #[tokio::test]
 async fn ensure_team_runtime_workspace_layout_reports_non_file_context_entries() {
     let path = std::env::temp_dir().join(format!(
-        "agenthub-leader-workdir-conflict-{}",
+        "agenthub-coordinator-workdir-conflict-{}",
         Uuid::new_v4()
     ));
     let conflicting_file = path.join(".cache/context/state.md");
     std::fs::create_dir_all(&conflicting_file).expect("create conflicting directory");
     let workdir = path.to_string_lossy().to_string();
     let ctx = AcpActorSkillContext {
-        team_id: Some("team-leader".to_string()),
-        current_run_id: Some("run-leader".to_string()),
-        actor_id: "leader-3".to_string(),
+        team_id: Some("team-coordinator".to_string()),
+        current_run_id: Some("run-coordinator".to_string()),
+        actor_id: "coordinator-3".to_string(),
         default_channel: "default".to_string(),
-        member_role: Some("leader".to_string()),
+        member_role: Some("coordinator".to_string()),
         member_skills: Vec::new(),
         contract_version: None,
         continuity: None,

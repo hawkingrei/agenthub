@@ -75,7 +75,7 @@ It combines:
 - an embedded React web UI
 - ACP-based structured output rendering
 - SQLite-backed persistence
-- Team leader/worker orchestration
+- Team coordinator/worker orchestration
 - optional remote execution over internal gRPC
 
 The main design goal is simple: keep AI agents observable, controllable, and
@@ -92,7 +92,7 @@ workspace instead of a disposable chat box.
 - `🧾` **Structured ACP timelines**
   - Inspect plans, tool calls, command output, and replayable history.
 - `👥` **Team workflows**
-  - Coordinate leader/worker execution with channels, Kanban, and ACP views.
+  - Coordinate coordinator/worker execution with channels, Kanban, and ACP views.
 - `🌐` **Remote agent nodes**
   - Run agents on other machines while keeping one main control plane.
 - `💾` **Persistent runtime state**
@@ -110,7 +110,7 @@ In one product surface, you can:
 
 ### Multi-Agent Team Workflows
 
-AgentHub includes a Team workbench for leader/worker coordination.
+AgentHub includes a Team workbench for coordinator/worker coordination.
 
 Core concepts:
 
@@ -216,7 +216,7 @@ For the current contract, see
 AgentHub is a strong fit for:
 
 - engineers running long-lived coding agents
-- teams experimenting with leader/worker multi-agent workflows
+- teams experimenting with coordinator/worker multi-agent workflows
 - operators who need structured runtime visibility
 - organizations that want self-hosted agent control instead of opaque hosted sessions
 - users who need one control plane across local and remote execution targets

@@ -385,7 +385,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
+        let _team = ensure_coordinator_team_access(&self.deps.teams, team_id, actor_id).await?;
 
         let title = required_field(&payload.title, "title")?;
         let status = parse_team_task_status(required_field(&payload.status, "status")?)?;
@@ -436,7 +436,8 @@ impl TeamInternalControl for TeamInternalControlService {
             actor_id,
         )
         .await?;
-        let team = ensure_leader_team_access(&self.deps.teams, &context.team_id, actor_id).await?;
+        let team =
+            ensure_coordinator_team_access(&self.deps.teams, &context.team_id, actor_id).await?;
 
         let task_id = required_field(&payload.task_id, "task_id")?;
         let existing = self
@@ -562,7 +563,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
+        let _team = ensure_coordinator_team_access(&self.deps.teams, team_id, actor_id).await?;
         let channel_id = required_field(&payload.channel_id, "channel_id")?;
         let channel = self
             .deps
@@ -594,7 +595,7 @@ impl TeamInternalControl for TeamInternalControlService {
         let actor_id = required_field(&payload.actor_id, "actor_id")?;
         self.authz
             .ensure_worker_actor(&principal, actor_id, "actor_id")?;
-        let _team = ensure_leader_team_access(&self.deps.teams, team_id, actor_id).await?;
+        let _team = ensure_coordinator_team_access(&self.deps.teams, team_id, actor_id).await?;
         let channel_id = required_field(&payload.channel_id, "channel_id")?;
         let channel = self
             .deps
@@ -1111,8 +1112,9 @@ impl TeamInternalControl for TeamInternalControlService {
 
         let node_id = required_field(&payload.node_id, "node_id")?;
         let role_raw = required_field(&payload.role, "role")?;
-        let role = InternalRole::parse(role_raw)
-            .ok_or_else(|| Status::invalid_argument("unsupported role, expected leader/worker"))?;
+        let role = InternalRole::parse(role_raw).ok_or_else(|| {
+            Status::invalid_argument("unsupported role, expected coordinator/worker")
+        })?;
         if role == InternalRole::Orchestrator {
             return Err(Status::invalid_argument(
                 "role 'orchestrator' is reserved and cannot be issued via bootstrap",

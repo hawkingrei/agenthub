@@ -8,11 +8,11 @@ type UseTeamCreateModalEffectsParams = {
   token: string;
   defaultWorktreeRoot: string;
   showCreateTeamModal: boolean;
-  leaderMemberId: string;
+  coordinatorMemberId: string;
   teamForgeAgents: AgentRecord[];
   busy: string | null;
   setForgeDefaultWorktreeRoot: (value: string) => void;
-  setLeaderMemberId: (value: string) => void;
+  setCoordinatorMemberId: (value: string) => void;
   setShowCreateTeamModal: (value: boolean) => void;
   setCreateTeamStage: (value: CreateTeamStage) => void;
 };
@@ -21,11 +21,11 @@ export function useTeamCreateModalEffects({
   token,
   defaultWorktreeRoot,
   showCreateTeamModal,
-  leaderMemberId,
+  coordinatorMemberId,
   teamForgeAgents,
   busy,
   setForgeDefaultWorktreeRoot,
-  setLeaderMemberId,
+  setCoordinatorMemberId,
   setShowCreateTeamModal,
   setCreateTeamStage,
 }: UseTeamCreateModalEffectsParams) {
@@ -48,12 +48,12 @@ export function useTeamCreateModalEffects({
 
   useEffect(() => {
     if (!showCreateTeamModal) return;
-    if (leaderMemberId && teamForgeAgents.some((agent) => agent.id === leaderMemberId)) {
+    if (coordinatorMemberId && teamForgeAgents.some((agent) => agent.id === coordinatorMemberId)) {
       return;
     }
-    const fallbackLeaderId = teamForgeAgents[0]?.id ?? "";
-    setLeaderMemberId(fallbackLeaderId);
-  }, [leaderMemberId, setLeaderMemberId, showCreateTeamModal, teamForgeAgents]);
+    const fallbackCoordinatorId = teamForgeAgents[0]?.id ?? "";
+    setCoordinatorMemberId(fallbackCoordinatorId);
+  }, [coordinatorMemberId, setCoordinatorMemberId, showCreateTeamModal, teamForgeAgents]);
 
   useEffect(() => {
     if (!showCreateTeamModal) return;

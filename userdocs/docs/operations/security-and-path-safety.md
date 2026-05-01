@@ -172,7 +172,7 @@ Require root privileges:
 
 Teams have their own permission model:
 
-- **Leader**: Planning, task assignment, final approval
+- **Coordinator**: Planning, task assignment, final approval
 - **Worker**: Implementation, status updates
 - **Human operators**: Conversation, oversight
 

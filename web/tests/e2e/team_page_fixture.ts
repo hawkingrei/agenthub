@@ -37,7 +37,7 @@ export type TeamSpecStep = {
 export type TeamSpecPayload = {
   spec_version?: number;
   entrypoint?: string;
-  leader_member_id?: string;
+  coordinator_member_id?: string;
   members: TeamSpecMember[];
   steps?: TeamSpecStep[];
 };
@@ -102,7 +102,7 @@ export type TeamConversationMessageRecord = {
   task_id: string;
   from_actor_id: string;
   to_actor_id: string | null;
-  route: "to_leader" | "to_member" | "group_chat";
+  route: "to_coordinator" | "to_member" | "group_chat";
   payload: unknown;
   created_at: number;
 };
@@ -173,9 +173,9 @@ export async function mockTeamPageApis(
   };
   const agents: E2eAgentRecord[] = [
     {
-      id: "agent-leader-1",
-      name: "Leader Agent",
-      workdir: "/workspace/leader",
+      id: "agent-coordinator-1",
+      name: "Coordinator Agent",
+      workdir: "/workspace/coordinator",
       command: "agenthub-codex-acp",
       args: [],
       worktree_mode: "use_existing",
@@ -301,37 +301,37 @@ export async function mockTeamPageApis(
         name: run.team_id,
         description: null,
         spec: {
-          leader_member_id: "agent-leader-1",
-          members: [{ member_id: "agent-leader-1", role: "leader", model: "codex" }],
-          steps: [{ step_key: "leader_plan" }],
+          coordinator_member_id: "agent-coordinator-1",
+          members: [{ member_id: "agent-coordinator-1", role: "coordinator", model: "codex" }],
+          steps: [{ step_key: "coordinator_plan" }],
         },
         created_at: now,
         updated_at: now,
       };
     const teamMembers = Array.isArray(team.spec.members) ? team.spec.members : [];
-    const leaderMemberId = team.spec.leader_member_id ?? teamMembers[0]?.member_id ?? "agent-leader-1";
+    const coordinatorMemberId = team.spec.coordinator_member_id ?? teamMembers[0]?.member_id ?? "agent-coordinator-1";
     const members =
       teamMembers.length > 0
         ? teamMembers.map((member) => {
             const matchedAgent = agents.find((agent) => agent.id === member.member_id);
-            const isLeader = member.member_id === leaderMemberId;
+            const isCoordinator = member.member_id === coordinatorMemberId;
             return {
               member_id: member.member_id,
-              role: member.role ?? (isLeader ? "leader" : "worker"),
+              role: member.role ?? (isCoordinator ? "coordinator" : "worker"),
               model: member.model ?? null,
               description: member.description ?? null,
               prompt: null,
               skills: [],
               pending_inbox_count: 0,
-              status: isLeader ? run.status : "submitted",
+              status: isCoordinator ? run.status : "submitted",
               latest_step: null,
               session_status: matchedAgent?.status ?? "idle",
             };
           })
         : [
             {
-              member_id: leaderMemberId,
-              role: "leader",
+              member_id: coordinatorMemberId,
+              role: "coordinator",
               model: "codex",
               description: null,
               prompt: null,
@@ -346,7 +346,7 @@ export async function mockTeamPageApis(
     return {
       run,
       team,
-      leader_member_id: leaderMemberId,
+      coordinator_member_id: coordinatorMemberId,
       members,
       steps: [],
       latest_events: [],
@@ -637,7 +637,7 @@ export async function mockTeamPageApis(
         title?: string;
         created_by_actor_id?: string;
         topic?: string;
-        conversation_mode?: "to_leader" | "to_member" | "group_chat";
+        conversation_mode?: "to_coordinator" | "to_member" | "group_chat";
       };
       const current = ensureTasks(teamId);
       const nextIndex = (taskCounterByTeamId.get(teamId) ?? current.length) + 1;
@@ -652,7 +652,7 @@ export async function mockTeamPageApis(
         created_by_actor_id: payload.created_by_actor_id ?? `user:${auth.userId}`,
         context: {
           topic: payload.topic ?? null,
-          conversation_mode: payload.conversation_mode ?? "to_leader",
+          conversation_mode: payload.conversation_mode ?? "to_coordinator",
         },
         created_at: createdAt,
         updated_at: createdAt,
@@ -691,7 +691,7 @@ export async function mockTeamPageApis(
         const payload = request.postDataJSON() as {
           from_actor_id?: string;
           to_actor_id?: string | null;
-          route?: "to_leader" | "to_member" | "group_chat";
+          route?: "to_coordinator" | "to_member" | "group_chat";
           payload?: unknown;
         };
         const nextMessageId =
@@ -705,8 +705,8 @@ export async function mockTeamPageApis(
           from_actor_id: payload.from_actor_id ?? `user:${auth.userId}`,
           to_actor_id:
             payload.to_actor_id ??
-            (payload.route === "to_member" ? "agent-worker-1" : "agent-leader-1"),
-          route: payload.route ?? "to_leader",
+            (payload.route === "to_member" ? "agent-worker-1" : "agent-coordinator-1"),
+          route: payload.route ?? "to_coordinator",
           payload: payload.payload ?? { type: "chat_message", text: "" },
           created_at: now + 200 + nextMessageId,
         };
@@ -740,10 +740,10 @@ export async function mockTeamPageApis(
         return;
       }
       const team = teams.find((item) => item.id === teamId);
-      const leaderMemberId = team?.spec.leader_member_id ?? "agent-leader-1";
+      const coordinatorMemberId = team?.spec.coordinator_member_id ?? "agent-coordinator-1";
       const workerMemberId =
         team?.spec.members.find((member) => member.role === "worker")?.member_id ??
-        leaderMemberId;
+        coordinatorMemberId;
       const messageList = taskMessagesById.get(taskId) ?? [];
       const latestMessageId = messageList.length > 0 ? messageList[messageList.length - 1]?.message_id ?? 0 : 0;
       await route.fulfill(
@@ -778,29 +778,29 @@ export async function mockTeamPageApis(
             deadline: "2026-03-20",
             step_template: [
               {
-                step_key: "leader_plan",
-                member_id: leaderMemberId,
-                role: "leader",
+                step_key: "coordinator_plan",
+                member_id: coordinatorMemberId,
+                role: "coordinator",
                 depends_on: [],
               },
               {
                 step_key: "worker_build_tool",
                 member_id: workerMemberId,
                 role: "worker",
-                depends_on: ["leader_plan"],
+                depends_on: ["coordinator_plan"],
               },
               {
-                step_key: "leader_synthesize",
-                member_id: leaderMemberId,
-                role: "leader",
+                step_key: "coordinator_synthesize",
+                member_id: coordinatorMemberId,
+                role: "coordinator",
                 depends_on: ["worker_build_tool"],
               },
             ],
             role_assignments: [
               {
-                member_id: leaderMemberId,
-                role: "leader",
-                step_keys: ["leader_plan", "leader_synthesize"],
+                member_id: coordinatorMemberId,
+                role: "coordinator",
+                step_keys: ["coordinator_plan", "coordinator_synthesize"],
               },
               {
                 member_id: workerMemberId,
@@ -900,9 +900,9 @@ export async function mockTeamPageApis(
         from_actor_id: payload.from_actor_id ?? `user:${auth.userId}`,
         from_actor_kind:
           (payload.from_actor_id ?? "").startsWith("user:") ? "human" : "agent",
-        to_actor_id: payload.to_actor_id ?? "agent-leader-1",
+        to_actor_id: payload.to_actor_id ?? "agent-coordinator-1",
         to_actor_kind:
-          (payload.to_actor_id ?? "agent-leader-1").startsWith("user:")
+          (payload.to_actor_id ?? "agent-coordinator-1").startsWith("user:")
             ? "human"
             : "agent",
         channel: payload.channel ?? "default",

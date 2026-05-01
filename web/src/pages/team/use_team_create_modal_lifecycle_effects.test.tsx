@@ -19,12 +19,12 @@ type HookProps = {
   token: string;
   busy: string | null;
   showCreateTeamModal: boolean;
-  leaderMemberId: string;
+  coordinatorMemberId: string;
   teamForgeAgents: AgentRecord[];
   parseError: (err: unknown) => string;
   setError: (next: string | null) => void;
   setForgeDefaultWorktreeRoot: (next: string) => void;
-  setLeaderMemberId: (next: string) => void;
+  setCoordinatorMemberId: (next: string) => void;
   setShowCreateTeamModal: (next: boolean) => void;
   setCreateTeamStage: (next: CreateTeamStage) => void;
 };
@@ -78,12 +78,12 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       token: "",
       busy: null,
       showCreateTeamModal: false,
-      leaderMemberId: "",
+      coordinatorMemberId: "",
       teamForgeAgents: [],
       parseError: vi.fn(() => "runtime defaults failed"),
       setError: vi.fn(),
       setForgeDefaultWorktreeRoot,
-      setLeaderMemberId: vi.fn(),
+      setCoordinatorMemberId: vi.fn(),
       setShowCreateTeamModal: vi.fn(),
       setCreateTeamStage: vi.fn(),
     };
@@ -107,12 +107,12 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       token: "token-123",
       busy: null,
       showCreateTeamModal: false,
-      leaderMemberId: "",
+      coordinatorMemberId: "",
       teamForgeAgents: [],
       parseError: vi.fn(() => "runtime defaults failed"),
       setError: vi.fn(),
       setForgeDefaultWorktreeRoot,
-      setLeaderMemberId: vi.fn(),
+      setCoordinatorMemberId: vi.fn(),
       setShowCreateTeamModal: vi.fn(),
       setCreateTeamStage: vi.fn(),
     };
@@ -135,12 +135,12 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       token: "token-123",
       busy: null,
       showCreateTeamModal: true,
-      leaderMemberId: "",
+      coordinatorMemberId: "",
       teamForgeAgents: [],
       parseError,
       setError,
       setForgeDefaultWorktreeRoot: vi.fn(),
-      setLeaderMemberId: vi.fn(),
+      setCoordinatorMemberId: vi.fn(),
       setShowCreateTeamModal: vi.fn(),
       setCreateTeamStage: vi.fn(),
     };
@@ -157,25 +157,25 @@ describe("useTeamCreateModalLifecycleEffects", () => {
     }
   });
 
-  it("falls back leader member id to the first forge agent when modal is open", async () => {
-    const setLeaderMemberId = vi.fn();
+  it("falls back coordinator member id to the first forge agent when modal is open", async () => {
+    const setCoordinatorMemberId = vi.fn();
     const props: HookProps = {
       token: "",
       busy: null,
       showCreateTeamModal: true,
-      leaderMemberId: "",
-      teamForgeAgents: [makeAgent("leader-a"), makeAgent("worker-b")],
+      coordinatorMemberId: "",
+      teamForgeAgents: [makeAgent("coordinator-a"), makeAgent("worker-b")],
       parseError: vi.fn(() => "runtime defaults failed"),
       setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
-      setLeaderMemberId,
+      setCoordinatorMemberId,
       setShowCreateTeamModal: vi.fn(),
       setCreateTeamStage: vi.fn(),
     };
 
     const { root, container } = await mountHarness(props);
     try {
-      expect(setLeaderMemberId).toHaveBeenCalledWith("leader-a");
+      expect(setCoordinatorMemberId).toHaveBeenCalledWith("coordinator-a");
     } finally {
       cleanupHarness(root, container);
     }
@@ -188,12 +188,12 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       token: "",
       busy: null,
       showCreateTeamModal: true,
-      leaderMemberId: "",
+      coordinatorMemberId: "",
       teamForgeAgents: [],
       parseError: vi.fn(() => "runtime defaults failed"),
       setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
-      setLeaderMemberId: vi.fn(),
+      setCoordinatorMemberId: vi.fn(),
       setShowCreateTeamModal,
       setCreateTeamStage,
     };
@@ -218,12 +218,12 @@ describe("useTeamCreateModalLifecycleEffects", () => {
       token: "",
       busy: "create-team",
       showCreateTeamModal: true,
-      leaderMemberId: "",
+      coordinatorMemberId: "",
       teamForgeAgents: [],
       parseError: vi.fn(() => "runtime defaults failed"),
       setError: vi.fn(),
       setForgeDefaultWorktreeRoot: vi.fn(),
-      setLeaderMemberId: vi.fn(),
+      setCoordinatorMemberId: vi.fn(),
       setShowCreateTeamModal,
       setCreateTeamStage,
     };

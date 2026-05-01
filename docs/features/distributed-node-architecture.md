@@ -13,7 +13,7 @@ The architecture therefore needs a phased plan that keeps today's encrypted gRPC
 
 - define a phased architecture for `agenthub` and `agent node` communication
 - define the control plane, membership plane, data plane, and audit plane boundaries
-- define how `leader -> 100+ team members` broadcast should fan out through nodes
+- define how `coordinator -> 100+ team members` broadcast should fan out through nodes
 - define when gossip is required and what it is allowed to carry
 - define the migration path from a cluster-wide shared key to zero-trust per-node identity
 - define validation targets for phase 1, scale-out, and security hardening
@@ -120,7 +120,7 @@ Exit Criteria:
 
 Goal:
 
-- make `leader -> 100+ team members` practical without `100+` cross-node unicasts
+- make `coordinator -> 100+ team members` practical without `100+` cross-node unicasts
 
 Deliverables:
 
@@ -219,7 +219,7 @@ Exit Criteria:
 
 ### Broadcast Model For 100+ Team Members
 
-The leader should not emit one remote mailbox send per member.
+The coordinator should not emit one remote mailbox send per member.
 
 Recommended flow:
 
@@ -256,7 +256,7 @@ Disallowed uses:
 The phased design should stabilize these protocol objects early:
 
 - `BroadcastIntent`
-  - one logical broadcast initiated by leader/control plane
+  - one logical broadcast initiated by coordinator/control plane
 - `NodeBroadcastEnvelope`
   - one node-scoped delivery unit containing audience or audience filters for a single target node
 - `NodeBroadcastAck`

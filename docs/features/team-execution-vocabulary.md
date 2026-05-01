@@ -46,7 +46,7 @@ AgentHub Team execution should be read as five distinct layers:
 `round` sits beside these layers, not inside them:
 
 - `round`
-  - A planning or coordination cycle used by leader/worker reasoning.
+  - A planning or coordination cycle used by coordinator/worker reasoning.
   - Useful for prompt/memory organization, but not the primary execution-tracking surface for
     operators.
 
@@ -172,7 +172,7 @@ Naming rule:
 
 Definition:
 
-- A `round` is a coordination/planning cycle, usually in leader/worker reasoning, not the durable
+- A `round` is a coordination/planning cycle, usually in coordinator/worker reasoning, not the durable
   execution ledger.
 
 Typical usage:

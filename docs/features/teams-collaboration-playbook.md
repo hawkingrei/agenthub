@@ -3,7 +3,7 @@
 ## Problem
 
 AgentHub already has Team role contracts, Actor mailbox contracts, and backend run lifecycle rules.
-What is still easy to drift is the operational layer: how leader/worker collaboration should run
+What is still easy to drift is the operational layer: how coordinator/worker collaboration should run
 across cold start, human interaction, delegation, recovery, and long-horizon context management.
 This document defines that operational baseline.
 
@@ -36,7 +36,7 @@ A Team exists to combine heterogeneous model strengths for one complex goal.
 
 Minimum composition:
 
-- exactly one `leader`
+- exactly one coordinator (`coordinator` role id for runtime compatibility)
 - one or more `worker` members
 
 Operational collaboration follows six phases:
@@ -51,10 +51,10 @@ Operational collaboration follows six phases:
 ### 2) Canonical Entities And Identity Mapping
 
 - `team`: collaboration boundary and ownership scope.
-- `member`: stable role identity in Team spec (`leader` or `worker`).
+- `member`: stable role identity in Team spec (`coordinator` or `worker`).
 - `agent`: runtime process bound to one member.
 - `actor`: message identity used by mailbox protocol.
-- `task`: leader-defined internal work item and the primary ownership unit.
+- `task`: coordinator-defined internal work item and the primary ownership unit.
 - `run`: optional execution partition / timeline boundary linked to a task attempt.
 - `step`: legacy run-local execution artifact kept for debug and compatibility, not the main
   ownership surface.
@@ -68,7 +68,7 @@ Human/Task boundary:
 
 - humans do not create internal `task` objects directly;
 - humans provide goals/constraints through conversation;
-- leader transforms conversation intent into executable internal tasks.
+- coordinator transforms conversation intent into executable internal tasks.
 
 Identity conventions:
 
@@ -92,20 +92,20 @@ Start semantics:
 
 - service restart must not implicitly start teams;
 - execution starts only after explicit `Start Team`;
-- leader enters planning/coordination round before delegation.
+- coordinator enters planning/coordination round before delegation.
 
 ### 4) Cold-Start Workflow
 
-Leader cold-start:
+Coordinator cold-start:
 
 1. load shared Team AGENTS index (injected builtin `team-agents-index`) and workspace `AGENTS.md` pointer state
-2. load leader-specific AGENTS index (injected builtin `team-leader-agents-index`)
+2. load coordinator-specific AGENTS index (injected builtin `team-coordinator-agents-index`)
 3. inspect unfinished items in `TODO.md`
 4. detect whether an existing plan can be resumed
 5. if no resumable plan exists, create a new planning round
 6. when a new concrete request is already actionable, execute the first planning or investigation
    step in the same turn instead of replying with intent-only narration
-7. after a leader-owned lane becomes active, keep working from current evidence until the lane
+7. after a coordinator-owned lane becomes active, keep working from current evidence until the lane
    reaches a clear checkpoint instead of re-polling mailbox for the next step by default
 
 Worker cold-start:
@@ -118,7 +118,7 @@ Worker cold-start:
    assignments; otherwise send an idle summary/request and then wait for an explicit mailbox wake
    signal instead of proactive polling
 5. when a new concrete assignment is already actionable, execute the first inspection or implementation step in the same turn instead of replying with intent-only narration
-6. report status/evidence back to leader
+6. report status/evidence back to coordinator
 7. once an assignment is accepted, keep executing that lane until completion, blocker, input wait,
    or explicit handoff before polling mailbox again by default
 
@@ -142,8 +142,8 @@ AGENTS injection matrix:
   - `team-agents-index` -> `skills/team/AGENTS.md`
 - unified runtime template:
   - `skills/team/TEAM_AGENTS.md`
-- leader role profile:
-  - `team-leader-agents-index` (leader skill set only)
+- coordinator role profile:
+  - `team-coordinator-agents-index` (coordinator skill set only)
 - worker role profile:
   - `team-worker-agents-index` (worker skill set only)
 
@@ -153,15 +153,15 @@ Context-size rule:
 
 ### 5) Delegation And Communication Model
 
-- Leader is default human-facing speaker.
-- Worker-to-human direct output is exception path and must include rationale.
+- Coordinator is the default human-facing planner and synthesizer.
+- Worker-to-human direct output is allowed when the worker is the natural factual owner, the most relevant execution participant, or the fastest source of the answer.
 - Workers may initiate or join Team channel discussion directly when important matters need
   multi-party visibility, review, or coordination.
 - When a human question is specifically about one worker's own execution lane, blocker, or factual
   context, that directly involved worker may answer in the relevant Team channel immediately instead of only
-  relaying the explanation to leader.
-- Leader still owns making sure the original human question receives a visible answer; if a worker
-  only answered to the leader or in mailbox, leader should turn that into a channel reply or synthesis
+  relaying the explanation to coordinator.
+- Coordinator still owns making sure the original human question receives a visible answer; if a worker
+  only answered to the coordinator or in mailbox, coordinator should turn that into a channel reply or synthesis
   update rather than silently absorbing it.
 - Human requests are collected as planning input, not direct task records.
 - Team backend no longer depends on a background step-orchestrator worker to advance routine task
@@ -189,7 +189,7 @@ Team channel discussion rules:
   - scoped facts, progress, and evidence that benefit shared visibility
 - When a human-authored Team channel message is relevant to the team's work, a short visible acknowledgement should appear quickly:
   - if a worker is the natural owner of the context, the worker should acknowledge first;
-  - otherwise, the leader should provide the acknowledgement when recent Team channel history does not already contain one;
+  - otherwise, the coordinator should provide the acknowledgement when recent Team channel history does not already contain one;
   - acknowledgement forms include ownership (`I am taking this`), immediate plan (`I will check PR 68127 and report back`), or current progress (`still verifying CI / patching now`).
 - The acknowledgement should be short and timely; deeper execution and evidence can follow in later updates.
 - Workers should `@member_id` the relevant owner, reviewer, dependency peer, or other impacted
@@ -197,10 +197,10 @@ Team channel discussion rules:
 - In human-authored Team channel markdown, keep those mentions as raw stable `@member_id`
   tokens in the text body; frontend rendering should resolve the ids into agent display names
   instead of rewriting the source markdown contract.
-- Leader still owns planning decisions, assignment changes, and final integrated human-facing
+- Coordinator still owns planning decisions, assignment changes, and final integrated human-facing
   synthesis.
 - Worker Team channel discussion should invite collaboration and decision input, not override
-  leader-owned decisions.
+  coordinator-owned decisions.
 
 ### 5.1) Worker Action-First Rule
 
@@ -213,6 +213,8 @@ Policy:
   the next executable step is already clear.
 - If a worker describes the next step, it should execute that step in the same turn unless blocked
   by missing permissions, missing inputs, or runtime failure.
+- If the work remains clearly within the assigned lane, the worker should continue proactively
+  instead of waiting for coordinator micro-approval after every small step.
 - First-turn execution artifacts may include:
   - opening and summarizing the assigned issue/PR from direct inspection
   - searching the relevant code path
@@ -225,23 +227,27 @@ Operational consequence:
 
 - Team prompts and worker skills may still require concise status reporting, but reporting must not
   substitute for the first actionable step when the task is already executable.
+- Worker initiative must remain dialogue-rich:
+  - report progress when evidence materially changes
+  - surface blockers early
+  - send concise decision/rationale updates when local execution choices affect team coordination
 - Mailbox remains the authoritative coordination path, but it should not be used as the default
   source of "what next?" while an accepted worker lane is still executable.
 - New worker work should normally start from an explicit mailbox wake signal, not from proactive
   polling.
 
-### 5.2) Leader Action-First Rule
+### 5.2) Coordinator Action-First Rule
 
-Leader coordination should also prefer immediate planning evidence over safe intent narration when
+Coordinator coordination should also prefer immediate planning evidence over safe intent narration when
 the request is already concrete and no blocker exists.
 
 Policy:
 
-- A leader must not stop at `task received`, `scope confirmed`, or `I will investigate/plan next`
+- A coordinator must not stop at `task received`, `scope confirmed`, or `I will investigate/plan next`
   when the next planning step is already clear.
-- If a leader describes the next step, it should execute that step in the same turn unless blocked
+- If a coordinator describes the next step, it should execute that step in the same turn unless blocked
   by missing permissions, missing inputs, or runtime failure.
-- First-turn leader artifacts may include:
+- First-turn coordinator artifacts may include:
   - opening and summarizing the assigned issue/PR from direct inspection
   - searching the relevant code path or reading the suspect file/module
   - writing the first ordered plan or task split into coordination artifacts
@@ -252,12 +258,12 @@ Policy:
 
 Operational consequence:
 
-- Team prompts and leader skills may still require concise human-facing status reporting, but
+- Team prompts and coordinator skills may still require concise human-facing status reporting, but
   reporting must not substitute for the first actionable planning step when the request is already
   executable.
-- Mailbox remains authoritative for coordination, but the leader should not keep re-polling it to
+- Mailbox remains authoritative for coordination, but the coordinator should not keep re-polling it to
   choose the next move while the current coordination lane still has a clear executable path.
-- New leader coordination work should normally start from an explicit mailbox wake signal, not
+- New coordinator coordination work should normally start from an explicit mailbox wake signal, not
   from proactive polling.
 
 ### 5.3) CLI-First Enforcement Profile
@@ -370,9 +376,9 @@ Kind projections:
 - Human-facing Team page is conversation-first.
 - Internal task/run/step machinery is debug/operator detail and should not dominate primary flow.
 - `Start Team` is exposed as operator action; low-level controls remain in debug surfaces.
-- Human operations should target goals/constraints; internal task creation remains leader-owned.
+- Human operations should target goals/constraints; internal task creation remains coordinator-owned.
 - The public Team HTTP surface does not expose direct canonical task creation; task materialization
-  stays on leader/runtime control paths.
+  stays on coordinator/runtime control paths.
 - Conversation message APIs should require `conversation_id` and support mention-only routing without requiring explicit `run_id`.
 
 ### 3) Error Surface Contract
@@ -385,7 +391,7 @@ Kind projections:
 
 - Each member writes only to its own workspace-local `.cache/context`.
 - Cross-member sharing uses mailbox/event pointers, not direct filesystem writes.
-- Leader workspace should prefer coordination artifacts over feature-code edits.
+- Coordinator workspace should prefer coordination artifacts over feature-code edits.
 
 ### 5) Event Stream Contract
 
@@ -398,7 +404,7 @@ Kind projections:
 
 - process validation:
   - create team (`creating` -> `running`/`failed`) with explicit error visibility
-  - manual team start and leader-first planning confirmation
+  - manual team start and coordinator-first planning confirmation
   - full delegation cycle (`assign -> execute -> evidence -> integrate`)
 - status/recovery validation:
   - verify member health propagation to Team status (`running|degraded|failed`)

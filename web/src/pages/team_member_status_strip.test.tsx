@@ -97,8 +97,8 @@ describe("TeamMemberStatusStrip", () => {
         <TeamMemberStatusStrip
           members={[
             buildMember({
-              member_id: "leader-1",
-              role: "leader",
+              member_id: "coordinator-1",
+              role: "coordinator",
               lifecycle_status: "running",
               run_status: "working",
               step_status: "working",
@@ -145,10 +145,10 @@ describe("TeamMemberStatusStrip", () => {
     expect(html).toContain("stopped=2");
     expect(html).toContain("missing=1");
     expect(html).toContain("unknown=1");
-    expect(html).toContain("leader-1");
+    expect(html).toContain("coordinator-1");
     expect(html).toContain("worker-4");
     expect(html).toContain("role");
-    expect(html).toContain("leader");
+    expect(html).toContain("coordinator");
     expect(html).toContain("agent");
     expect(html).toMatch(/>-\s*</);
     expect(html).toContain("work:working");

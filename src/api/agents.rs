@@ -1224,7 +1224,7 @@ mod tests {
         let spec = json!({
             "spec_version": 1,
             "members": [
-                {"member_id": "leader", "role": "leader", "description": "Lead architect"},
+                {"member_id": "coordinator", "role": "coordinator", "description": "Lead architect"},
                 {"member_id": "worker-a", "role": "worker", "description": "Primary implementer"},
                 {"member_id": "worker-b", "role": "worker"}
             ]
@@ -1318,7 +1318,7 @@ mod tests {
                 team_id: Some("team-7".to_string()),
                 run_id: Some("run-7".to_string()),
                 actor_id: "planner".to_string(),
-                member_role: Some("leader".to_string()),
+                member_role: Some("coordinator".to_string()),
                 channel: Some("coordination".to_string()),
             }),
         }))
@@ -1327,7 +1327,7 @@ mod tests {
         assert_eq!(context.team_id.as_deref(), Some("team-7"));
         assert_eq!(context.current_run_id.as_deref(), Some("run-7"));
         assert_eq!(context.actor_id, "planner");
-        assert_eq!(context.member_role.as_deref(), Some("leader"));
+        assert_eq!(context.member_role.as_deref(), Some("coordinator"));
         assert_eq!(context.default_channel, "coordination");
     }
 
@@ -3184,9 +3184,9 @@ mod tests {
 
         let team_spec = json!({
             "spec_version": 1,
-            "entrypoint": "leader-main",
+            "entrypoint": "coordinator-main",
             "members": [
-                {"member_id": "leader-main", "role": "leader"},
+                {"member_id": "coordinator-main", "role": "coordinator"},
                 {
                     "member_id": agent_id,
                     "role": "worker",
@@ -3194,7 +3194,7 @@ mod tests {
                 }
             ],
             "steps": [
-                {"step_key": "leader_plan", "member_id": "leader-main", "depends_on": []}
+                {"step_key": "coordinator_plan", "member_id": "coordinator-main", "depends_on": []}
             ]
         });
         sqlx::query(
@@ -3290,18 +3290,18 @@ mod tests {
         .bind(
             json!({
                 "spec_version": 1,
-                "leader_member_id": "leader",
-                "entrypoint": "leader_plan",
+                "coordinator_member_id": "coordinator",
+                "entrypoint": "coordinator_plan",
                 "members": [
-                    {"member_id": "leader", "role": "leader"},
+                    {"member_id": "coordinator", "role": "coordinator"},
                     {"member_id": "worker-1", "role": "worker"}
                 ],
                 "steps": [
-                    {"step_key": "leader_plan", "member_id": "leader", "depends_on": []},
-                    {"step_key": worker_step_key, "member_id": "worker-1", "depends_on": ["leader_plan"]},
+                    {"step_key": "coordinator_plan", "member_id": "coordinator", "depends_on": []},
+                    {"step_key": worker_step_key, "member_id": "worker-1", "depends_on": ["coordinator_plan"]},
                     {
-                        "step_key": "leader_synthesize",
-                        "member_id": "leader",
+                        "step_key": "coordinator_synthesize",
+                        "member_id": "coordinator",
                         "depends_on": [worker_step_key]
                     }
                 ]
@@ -3338,7 +3338,7 @@ mod tests {
             .as_array()
             .expect("updated team members");
         assert_eq!(members.len(), 1);
-        assert_eq!(members[0]["member_id"], Value::from("leader"));
+        assert_eq!(members[0]["member_id"], Value::from("coordinator"));
 
         let steps = updated_spec["steps"]
             .as_array()
@@ -3351,8 +3351,8 @@ mod tests {
         );
         let synth = steps
             .iter()
-            .find(|step| step["step_key"].as_str() == Some("leader_synthesize"))
-            .expect("leader synth step");
+            .find(|step| step["step_key"].as_str() == Some("coordinator_synthesize"))
+            .expect("coordinator synth step");
         assert_eq!(synth["depends_on"], json!([]));
     }
 
@@ -3376,22 +3376,22 @@ mod tests {
         .bind(
             json!({
                 "spec_version": 1,
-                "leader_member_id": "missing-leader",
-                "entrypoint": "leader_plan",
+                "coordinator_member_id": "missing-coordinator",
+                "entrypoint": "coordinator_plan",
                 "members": [
-                    {"member_id": "missing-leader", "role": "leader"},
+                    {"member_id": "missing-coordinator", "role": "coordinator"},
                     {"member_id": "worker-1", "role": "worker"}
                 ],
                 "steps": [
-                    {"step_key": "leader_plan", "member_id": "missing-leader", "depends_on": []},
+                    {"step_key": "coordinator_plan", "member_id": "missing-coordinator", "depends_on": []},
                     {
                         "step_key": "worker_1_worker_1",
                         "member_id": "worker-1",
-                        "depends_on": ["leader_plan"]
+                        "depends_on": ["coordinator_plan"]
                     },
                     {
-                        "step_key": "leader_synthesize",
-                        "member_id": "missing-leader",
+                        "step_key": "coordinator_synthesize",
+                        "member_id": "missing-coordinator",
                         "depends_on": ["worker_1_worker_1"]
                     }
                 ]

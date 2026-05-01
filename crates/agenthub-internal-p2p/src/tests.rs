@@ -124,7 +124,7 @@ fn node_scoped_broadcast_planner_groups_members_by_target_node() {
         .plan_node_broadcast(
             &BroadcastIntent {
                 cluster_id: "cluster-a".to_string(),
-                source_node_id: "leader-node".to_string(),
+                source_node_id: "coordinator-node".to_string(),
                 broadcast_id: "broadcast-1".to_string(),
                 correlation_id: Some("corr-1".to_string()),
                 scope: vec!["node:p2p".to_string()],

@@ -72,7 +72,7 @@ function makeSnapshot(teamId: string): TeamRunSnapshotRecord {
       created_at: 1,
       updated_at: 1,
     },
-    leader_member_id: "leader",
+    coordinator_member_id: "coordinator",
     members: [],
     steps: [],
     latest_events: [],
@@ -297,7 +297,7 @@ describe("useTeamRunLifecycleEffects", () => {
   it("polls only snapshot for the mailbox tab", async () => {
     const params = createParams({
       tab: "mailbox",
-      chatInboxActorId: "leader-actor",
+      chatInboxActorId: "coordinator-actor",
       loadInbox: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -331,7 +331,7 @@ describe("useTeamRunLifecycleEffects", () => {
     vi.stubGlobal("EventSource", MockEventSource);
     const params = createParams({
       tab: "mailbox",
-      chatInboxActorId: "leader-actor",
+      chatInboxActorId: "coordinator-actor",
       loadInbox: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -445,7 +445,7 @@ describe("useTeamRunLifecycleEffects", () => {
     const params = createParams({
       tab: "mailbox",
       snapshot: makeSnapshot("team-1"),
-      chatInboxActorId: "leader-actor",
+      chatInboxActorId: "coordinator-actor",
       loadInbox: vi.fn().mockResolvedValue(undefined),
     });
 

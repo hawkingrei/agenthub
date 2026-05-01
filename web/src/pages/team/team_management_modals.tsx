@@ -1,6 +1,6 @@
 import React from "react";
 import { Alert, SegmentedControl, Switch, TextInput, Textarea } from "@mantine/core";
-import { DEFAULT_TEAM_LEADER_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
+import { DEFAULT_TEAM_COORDINATOR_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 import type {
   TeamMemberRoleOption,
@@ -329,8 +329,8 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
                 as the effective runtime contract.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {(draft.role === "leader"
-                  ? DEFAULT_TEAM_LEADER_SKILLS
+                {(draft.role === "coordinator"
+                  ? DEFAULT_TEAM_COORDINATOR_SKILLS
                   : DEFAULT_TEAM_WORKER_SKILLS
                 ).map((skill) => (
                   <span
@@ -393,7 +393,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
   draft,
   roleProfile,
   roleOptions,
-  selectedTeamHasLeader,
+  selectedTeamHasCoordinator,
   onRoleChange,
   onPatchDraft,
   chrome,
@@ -403,7 +403,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
   draft: TeamMemberProfileDraft | null;
   roleProfile: TeamMemberRoleProfile | null;
   roleOptions: TeamMemberRoleOption[];
-  selectedTeamHasLeader: boolean;
+  selectedTeamHasCoordinator: boolean;
   onRoleChange: (value: string) => void;
   onPatchDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
   chrome: TeamModalChrome;
@@ -433,13 +433,13 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
             <div className="min-w-0">
               <p className={chrome.infoStripLabelClassName}>Role Selection</p>
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
-                {selectedTeamHasLeader
-                  ? "This team already has a leader. New agents join as workers."
-                  : "Start with the leader. Worker unlocks after the first leader exists."}
+                {selectedTeamHasCoordinator
+                  ? "This team already has a coordinator. New agents join as workers."
+                  : "Start with the coordinator. Worker unlocks after the first coordinator exists."}
               </p>
             </div>
             <span className={chrome.badgeClassName}>
-              {draft.role === "leader" ? "Single leader" : "Execution role"}
+              {draft.role === "coordinator" ? "Single coordinator" : "Execution role"}
             </span>
           </div>
           <SegmentedControl

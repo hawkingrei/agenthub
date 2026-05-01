@@ -9,7 +9,7 @@ Use this skill whenever Team work must be represented as canonical Kanban tasks.
 
 This skill defines:
 
-- when leader should create a Team task
+- when coordinator should create a Team task
 - which role may advance each task state
 - how execution evidence maps into `open / in_progress / waiting / in_review / completed / canceled`
 - how worker-local TODO state stays aligned with canonical Team task state
@@ -37,13 +37,13 @@ State meaning:
 
 ## Ownership Contract
 
-- Leader owns canonical Team task creation and lifecycle management.
+- Coordinator owns canonical Team task creation and lifecycle management.
 - Humans may ask for work in free-form conversation; they do not need to phrase requests as tasks.
 - Workers do not invent parallel Team task records.
-- Workers should proactively surface missing-task situations to leader when execution clearly needs
+- Workers should proactively surface missing-task situations to coordinator when execution clearly needs
   Kanban visibility or explicit ownership.
 
-## When Leader Should Create A Task
+## When Coordinator Should Create A Task
 
 Create a Team task when at least one of these is true:
 
@@ -59,9 +59,9 @@ Do not force task creation for:
 - pure clarification with no execution work
 - transient coordination that does not need history or review
 
-## Leader Task Operations
+## Coordinator Task Operations
 
-Leader may:
+Coordinator may:
 
 - use `agenthub actor team-task-create` to create canonical Team tasks
 - use `agenthub actor team-tasks` to verify the task is actually present in Kanban after creation
@@ -78,7 +78,7 @@ Leader may:
 - use `agenthub actor team-task-update --task-id <task_id> --status canceled` to move any unfinished task to `canceled`
 - use `agenthub actor team-task-update --task-id <task_id> --status open` to reopen `completed|canceled -> open` when follow-up is required
 
-Leader review rules:
+Coordinator review rules:
 
 - do not move a task directly from `in_progress` to `completed` without explicit review/acceptance
 - use `in_review` as the default landing state after successful worker execution
@@ -89,9 +89,9 @@ Leader review rules:
 
 Workers should:
 
-- treat the leader-owned Team task as the canonical execution record
+- treat the coordinator-owned Team task as the canonical execution record
 - use `agenthub actor team-tasks` when they need to confirm canonical Team task state directly
-- keep leader informed when work should move from `open` to `in_progress`
+- keep coordinator informed when work should move from `open` to `in_progress`
 - report evidence as soon as implementation/research materially changes
 - ask or signal for `in_review` when acceptance evidence is ready
 - never claim the canonical Team task is `completed` on their own authority
@@ -111,7 +111,7 @@ Use this mapping unless a stronger product rule overrides it:
 - blocked on human/external action -> `waiting`
 - later check finds no meaningful update -> stay `waiting`
 - linked run succeeds and evidence is ready -> `in_review`
-- leader/human review approves -> `completed`
+- coordinator/human review approves -> `completed`
 - review requests changes -> `in_progress`
 - work intentionally stopped -> `canceled`
 
@@ -132,7 +132,7 @@ Before moving a task to `completed`, confirm:
 
 ## TODO Alignment
 
-- Leader TODO tracks coordination/planning work, not a second copy of Team Kanban.
+- Coordinator TODO tracks coordination/planning work, not a second copy of Team Kanban.
 - Worker TODO tracks local execution steps and durable project memory.
 - If Team task state and local TODO state diverge, reconcile using mailbox evidence first.
 - Keep one authoritative Team task per outcome; compact stale duplicates.

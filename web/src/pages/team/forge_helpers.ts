@@ -3,7 +3,7 @@ import {
   type AgentPresetId,
 } from "../../agent_presets";
 import {
-  buildLeaderForgeDefaultWorkdir,
+  buildCoordinatorForgeDefaultWorkdir,
   type TeamMemberProfileDraft,
 } from "./create_helpers";
 import type { TeamPromptDefaultsRecord } from "../../api";
@@ -71,7 +71,7 @@ function resolveTeamForgeWorkerWorkdir(teamSpec: unknown): string {
     }
     const role = typeof member.role === "string" ? member.role.trim().toLowerCase() : "";
     const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
-    if (role === "leader" && runtimeWorkdir) {
+    if (role === "coordinator" && runtimeWorkdir) {
       return runtimeWorkdir;
     }
   }
@@ -112,7 +112,7 @@ function resolveTeamForgeWorktreeRepo(teamSpec: unknown): string {
     }
     const role = typeof member.role === "string" ? member.role.trim().toLowerCase() : "";
     const runtimeWorkdir = readRuntimePath(member.runtime, "workdir");
-    if (role === "leader" && runtimeWorkdir) {
+    if (role === "coordinator" && runtimeWorkdir) {
       return runtimeWorkdir;
     }
   }
@@ -159,41 +159,41 @@ export function buildTeamAgentNameToken(raw: string): string {
   return normalized || "team";
 }
 
-export function resolveInitialTeamMemberRole(hasLeader: boolean): TeamMemberRole {
-  return hasLeader ? "worker" : "leader";
+export function resolveInitialTeamMemberRole(hasCoordinator: boolean): TeamMemberRole {
+  return hasCoordinator ? "worker" : "coordinator";
 }
 
-export function resolveTeamMemberRoleOptions(hasLeader: boolean): TeamMemberRoleOption[] {
+export function resolveTeamMemberRoleOptions(hasCoordinator: boolean): TeamMemberRoleOption[] {
   return [
     {
-      value: "leader",
-      label: "Leader",
-      description: hasLeader
+      value: "coordinator",
+      label: "Coordinator",
+      description: hasCoordinator
         ? "Already assigned for this team."
         : "Own planning, review, and final synthesis.",
-      disabled: hasLeader,
+      disabled: hasCoordinator,
     },
     {
       value: "worker",
       label: "Worker",
-      description: hasLeader
+      description: hasCoordinator
         ? "Deliver execution, evidence, and implementation."
-        : "Unlock after the first leader exists.",
-      disabled: !hasLeader,
+        : "Unlock after the first coordinator exists.",
+      disabled: !hasCoordinator,
     },
   ];
 }
 
 export function resolveTeamMemberRoleProfile(role: TeamMemberRole): TeamMemberRoleProfile {
-  if (role === "leader") {
+  if (role === "coordinator") {
     return {
-      profileLabel: "Leader Profile",
+      profileLabel: "Coordinator Profile",
       intro: "Add the planning agent that owns delegation, review, and final synthesis.",
       focus: "Own planning, review, and final synthesis.",
       skillsHint:
         "Role skills and system instructions are injected automatically.",
       promptHint:
-        "Describe what this leader should own for the team.",
+        "Describe what this coordinator should own for the team.",
     };
   }
   return {
@@ -218,8 +218,8 @@ export function resolveTeamForgeDefaults({
 }: ResolveTeamForgeDefaultsArgs): TeamForgeDefaults {
   const prefix = buildTeamAgentNameToken(teamName);
   const agentName =
-    role === "leader"
-      ? `${prefix}-leader`
+    role === "coordinator"
+      ? `${prefix}-coordinator`
       : `${prefix}-worker-${Math.max(1, workerCount + 1)}`;
   const normalizedRoot =
     normalizeWorkdirInput(defaultWorktreeRoot) || DEFAULT_WORKTREE_ROOT;
@@ -228,8 +228,8 @@ export function resolveTeamForgeDefaults({
     draft: buildTeamMemberProfileDraft(role, agentPresetId, promptDefaults),
     agentName,
     agentWorkdir:
-      role === "leader"
-        ? buildLeaderForgeDefaultWorkdir(normalizedRoot, agentName)
+      role === "coordinator"
+        ? buildCoordinatorForgeDefaultWorkdir(normalizedRoot, agentName)
         : resolveWorkdirForModalOpen(
             resolveTeamForgeWorkerWorkdir(teamSpec),
             "use_existing",

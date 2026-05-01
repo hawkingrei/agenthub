@@ -29,11 +29,11 @@ type PersistedTeamCreateDraft = {
     newTeamDescription: string;
     newTeamSpec: string;
     createTeamStage: number;
-    leaderMemberId: string;
-    leaderModel: string;
-    leaderPrompt: string;
-    leaderSkills: string[];
-    leaderCustomSkills: string;
+    coordinatorMemberId: string;
+    coordinatorModel: string;
+    coordinatorPrompt: string;
+    coordinatorSkills: string[];
+    coordinatorCustomSkills: string;
     workers: WorkerDraft[];
     teamForgeAgentIds: string[];
   };
@@ -130,11 +130,11 @@ function parsePersistedDraft(raw: string): ParsePersistedDraftResult {
           newTeamDescription: asString(draft.newTeamDescription),
           newTeamSpec: asString(draft.newTeamSpec),
           createTeamStage: normalizeCreateStage(draft.createTeamStage),
-          leaderMemberId: asString(draft.leaderMemberId),
-          leaderModel: asString(draft.leaderModel),
-          leaderPrompt: asString(draft.leaderPrompt),
-          leaderSkills: asStringArray(draft.leaderSkills),
-          leaderCustomSkills: asString(draft.leaderCustomSkills),
+          coordinatorMemberId: asString(draft.coordinatorMemberId),
+          coordinatorModel: asString(draft.coordinatorModel),
+          coordinatorPrompt: asString(draft.coordinatorPrompt),
+          coordinatorSkills: asStringArray(draft.coordinatorSkills),
+          coordinatorCustomSkills: asString(draft.coordinatorCustomSkills),
           workers: normalizeWorkerDrafts(draft.workers),
           teamForgeAgentIds: asStringArray(draft.teamForgeAgentIds),
         },
@@ -170,14 +170,14 @@ export function loadTeamCreateDraft(
       useSpecOverride: parsed.value.entry_mode === "manual_spec",
       newTeamSpec: parsed.value.draft.newTeamSpec || initial.newTeamSpec,
       createTeamStage: clampCreateTeamStage(parsed.value.draft.createTeamStage),
-      leaderMemberId: parsed.value.draft.leaderMemberId,
-      leaderModel: parsed.value.draft.leaderModel,
-      leaderPrompt: parsed.value.draft.leaderPrompt || initial.leaderPrompt,
-      leaderSkills:
-        parsed.value.draft.leaderSkills.length > 0
-          ? parsed.value.draft.leaderSkills
-          : [...initial.leaderSkills],
-      leaderCustomSkills: parsed.value.draft.leaderCustomSkills,
+      coordinatorMemberId: parsed.value.draft.coordinatorMemberId,
+      coordinatorModel: parsed.value.draft.coordinatorModel,
+      coordinatorPrompt: parsed.value.draft.coordinatorPrompt || initial.coordinatorPrompt,
+      coordinatorSkills:
+        parsed.value.draft.coordinatorSkills.length > 0
+          ? parsed.value.draft.coordinatorSkills
+          : [...initial.coordinatorSkills],
+      coordinatorCustomSkills: parsed.value.draft.coordinatorCustomSkills,
       workers: parsed.value.draft.workers,
       teamForgeAgentIds: parsed.value.draft.teamForgeAgentIds,
     },
@@ -198,11 +198,11 @@ export function persistTeamCreateDraft(state: TeamCreateState): string | null {
       newTeamDescription: state.newTeamDescription,
       newTeamSpec: state.newTeamSpec,
       createTeamStage: state.createTeamStage,
-      leaderMemberId: state.leaderMemberId,
-      leaderModel: state.leaderModel,
-      leaderPrompt: state.leaderPrompt,
-      leaderSkills: state.leaderSkills,
-      leaderCustomSkills: state.leaderCustomSkills,
+      coordinatorMemberId: state.coordinatorMemberId,
+      coordinatorModel: state.coordinatorModel,
+      coordinatorPrompt: state.coordinatorPrompt,
+      coordinatorSkills: state.coordinatorSkills,
+      coordinatorCustomSkills: state.coordinatorCustomSkills,
       workers: state.workers,
       teamForgeAgentIds: state.teamForgeAgentIds,
     },

@@ -485,7 +485,7 @@ mod tests {
         agenthub_team_actor::ActorMessageRecord {
             message_id,
             run_id: "run-1".to_string(),
-            from_actor_id: "leader".to_string(),
+            from_actor_id: "coordinator".to_string(),
             from_peer_id: ACTOR_MAIN_PEER_ID.to_string(),
             from_actor_kind: agenthub_team_actor::ActorIdentityKind::Agent,
             to_actor_id: "worker".to_string(),
@@ -1087,7 +1087,7 @@ mod tests {
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-send-scope");
             std::env::remove_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV);
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
         let args = vec![
             "send".to_string(),
@@ -1150,7 +1150,7 @@ mod tests {
         let args = vec![
             "send".to_string(),
             "--from-agent-id".to_string(),
-            "leader-agent".to_string(),
+            "coordinator-agent".to_string(),
             "--to-agent-id".to_string(),
             "worker-agent".to_string(),
             "--text".to_string(),
@@ -1165,7 +1165,7 @@ mod tests {
                 payload_source,
                 ..
             } => {
-                assert_eq!(from_actor_id, "leader-agent");
+                assert_eq!(from_actor_id, "coordinator-agent");
                 assert_eq!(to_actor_id.as_deref(), Some("worker-agent"));
                 assert!(channel_id.is_none());
                 assert_eq!(payload_source, ActorSendPayloadSource::Text);
@@ -1186,7 +1186,7 @@ mod tests {
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-env");
             std::env::remove_var(ACTOR_RUNTIME_ACTOR_ID_ENV);
-            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "leader-agent");
+            std::env::set_var(ACTOR_RUNTIME_AGENT_ID_ENV, "coordinator-agent");
         }
         let args = vec![
             "send".to_string(),
@@ -1214,7 +1214,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-markdown");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let markdown = "## Review\n\n- keep markdown\n- keep spacing\n";
@@ -1250,7 +1250,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-text-file");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let markdown = "## Review\n\n- keep markdown\n- keep spacing\n";
@@ -1287,7 +1287,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-conflict");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1323,7 +1323,7 @@ mod tests {
                 ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
                 "run-send-text-file-conflict",
             );
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let path = write_temp_actor_cli_test_file("actor-send-inline-conflict", "hello from file");
@@ -1355,7 +1355,7 @@ mod tests {
                 ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
                 "run-send-payload-file-conflict",
             );
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let path =
@@ -1391,7 +1391,7 @@ mod tests {
                 ACTOR_RUNTIME_CURRENT_RUN_ID_ENV,
                 "run-send-payload-file-invalid-json",
             );
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let path = write_temp_actor_cli_test_file("actor-send-payload-invalid", "{not-json");
@@ -1418,7 +1418,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-payload");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1448,7 +1448,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-payload-file");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let path = write_temp_actor_cli_test_file(
@@ -1482,7 +1482,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-channel");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1518,7 +1518,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-aliases");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
 
         let direct_args = vec![
@@ -1716,7 +1716,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-send-conflict-target");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1822,7 +1822,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-kanban");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1837,7 +1837,7 @@ mod tests {
             ActorCommand::TeamTasks { query, actor_id } => {
                 assert_eq!(query.team_id.as_deref(), Some("team-kanban"));
                 assert!(query.run_id.is_none());
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(query.status, Some(TeamTaskStatus::Waiting));
                 assert!(query.include_shared_thread);
             }
@@ -1857,7 +1857,7 @@ mod tests {
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env-ignored");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-env-ignored");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-run-query");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-run-query");
         }
         let args = vec![
             "team-tasks".to_string(),
@@ -1879,7 +1879,7 @@ mod tests {
                 assert_eq!(query.task_id.as_deref(), Some("task-7"));
                 assert_eq!(query.assigned_member_id.as_deref(), Some("worker-2"));
                 assert_eq!(query.topic.as_deref(), Some("kanban"));
-                assert_eq!(actor_id, "leader-run-query");
+                assert_eq!(actor_id, "coordinator-run-query");
             }
             _ => panic!("expected team-tasks command"),
         }
@@ -1896,7 +1896,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -1920,7 +1920,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(team_id, "team-create");
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(title, "Investigate relay drift");
                 assert_eq!(status, TeamTaskStatus::InProgress);
                 assert_eq!(context["area"], "relay");
@@ -1944,7 +1944,7 @@ mod tests {
         std::fs::write(&temp_path, r#"{"area":"file"}"#).expect("write temp context");
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-create-file");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
         let args = vec![
             "team-task-create".to_string(),
@@ -1975,7 +1975,7 @@ mod tests {
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-show-ignored");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-show-ignored");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-show");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-show");
         }
         let args = vec![
             "team-task-show".to_string(),
@@ -1998,7 +1998,7 @@ mod tests {
             } => {
                 assert!(team_id.is_none());
                 assert_eq!(run_id.as_deref(), Some("run-7"));
-                assert_eq!(actor_id, "leader-show");
+                assert_eq!(actor_id, "coordinator-show");
                 assert_eq!(task_id, "task-7");
                 assert_eq!(message_limit, 5);
             }
@@ -2017,7 +2017,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -2041,7 +2041,7 @@ mod tests {
                 context_merge,
             } => {
                 assert_eq!(team_id, "team-update");
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(task_ids, vec!["task-1".to_string()]);
                 assert!(status.is_none());
                 assert_eq!(assigned_member_id.as_deref(), Some("worker-1"));
@@ -2063,7 +2063,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
         let args = vec![
             "team-task-update".to_string(),
@@ -2106,7 +2106,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-update-file");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
         let temp = write_temp_actor_cli_test_file("team-task-merge", r#"{"repo":"tidb"}"#);
         let args = vec![
@@ -2159,7 +2159,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--task-id".to_string(),
             "   ".to_string(),
             "--status".to_string(),
@@ -2179,7 +2179,7 @@ mod tests {
         unsafe {
             std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-note");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-note");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-note");
         }
         let args = vec![
             "team-task-note".to_string(),
@@ -2204,7 +2204,7 @@ mod tests {
             } => {
                 assert!(team_id.is_none());
                 assert_eq!(run_id.as_deref(), Some("run-note"));
-                assert_eq!(actor_id, "leader-note");
+                assert_eq!(actor_id, "coordinator-note");
                 assert_eq!(task_id.as_deref(), Some("task-note-1"));
                 assert!(!shared_thread);
                 assert_eq!(kind.as_str(), "result");
@@ -2224,7 +2224,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-shared");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-shared");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-shared");
         }
         let args = vec![
             "team-task-note".to_string(),
@@ -2247,7 +2247,7 @@ mod tests {
             } => {
                 assert_eq!(team_id.as_deref(), Some("team-shared"));
                 assert!(run_id.is_none());
-                assert_eq!(actor_id, "leader-shared");
+                assert_eq!(actor_id, "coordinator-shared");
                 assert!(task_id.is_none());
                 assert!(shared_thread);
             }
@@ -2264,7 +2264,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--shared-thread".to_string(),
             "--task-id".to_string(),
             "task-1".to_string(),
@@ -2286,7 +2286,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--text".to_string(),
             "missing target".to_string(),
         ];
@@ -2305,7 +2305,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-thread");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-thread");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-thread");
         }
         let args = vec![
             "team-thread-open".to_string(),
@@ -2324,7 +2324,7 @@ mod tests {
             } => {
                 assert_eq!(team_id.as_deref(), Some("team-thread"));
                 assert!(run_id.is_none());
-                assert_eq!(actor_id, "leader-thread");
+                assert_eq!(actor_id, "coordinator-thread");
                 assert_eq!(channel_id, "all");
                 assert_eq!(root_message_id, 42);
             }
@@ -2341,7 +2341,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-thread");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader-thread");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-thread");
         }
         let args = vec![
             "team-thread-reply".to_string(),
@@ -2363,7 +2363,7 @@ mod tests {
             } => {
                 assert_eq!(team_id.as_deref(), Some("team-thread"));
                 assert!(run_id.is_none());
-                assert_eq!(actor_id, "leader-thread");
+                assert_eq!(actor_id, "coordinator-thread");
                 assert_eq!(channel_id, "all");
                 assert_eq!(root_message_id, 42);
                 assert_eq!(text, "I agree");
@@ -2382,7 +2382,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--shared".to_string(),
             "--root-message-id".to_string(),
             "42".to_string(),
@@ -2402,7 +2402,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(team_id.as_deref(), Some("team-1"));
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(channel_id, "all");
                 assert_eq!(root_message_id, 42);
                 assert_eq!(text, "I agree");
@@ -2418,7 +2418,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--channel-id".to_string(),
             "review".to_string(),
             "--description".to_string(),
@@ -2434,7 +2434,7 @@ mod tests {
                 description,
             } => {
                 assert_eq!(team_id, "team-1");
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(channel_id, "review");
                 assert_eq!(description.as_deref(), Some("Review lane"));
             }
@@ -2449,7 +2449,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--channel-id".to_string(),
             "review".to_string(),
         ];
@@ -2462,7 +2462,7 @@ mod tests {
                 channel_id,
             } => {
                 assert_eq!(team_id, "team-1");
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(channel_id, "review");
             }
             other => panic!("expected team-channel-delete command, got {other:?}"),
@@ -2476,7 +2476,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--root-message-id".to_string(),
             "0".to_string(),
         ];
@@ -2663,7 +2663,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "Investigate bug".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
                 created_at: 1,
@@ -2674,7 +2674,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
                 created_at: 2,
@@ -2692,7 +2692,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
                 created_at: 3,
@@ -2703,7 +2703,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
                 created_at: 2,
@@ -2714,7 +2714,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "random".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
                 created_at: 4,
@@ -2734,7 +2734,7 @@ mod tests {
             team_id: "team-1".to_string(),
             title: "Investigate bug".to_string(),
             status: TeamTaskStatus::Open,
-            created_by_actor_id: "leader".to_string(),
+            created_by_actor_id: "coordinator".to_string(),
             assigned_member_id: None,
             context: serde_json::json!({}),
             created_at: 1,
@@ -2758,7 +2758,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "all".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({}),
                 created_at: 1,
@@ -2769,7 +2769,7 @@ mod tests {
                 team_id: "team-1".to_string(),
                 title: "random".to_string(),
                 status: TeamTaskStatus::Open,
-                created_by_actor_id: "leader".to_string(),
+                created_by_actor_id: "coordinator".to_string(),
                 assigned_member_id: None,
                 context: serde_json::json!({"bootstrap_kind":"shared_thread"}),
                 created_at: 2,
@@ -2792,7 +2792,7 @@ mod tests {
             "--team-id".to_string(),
             "team-1".to_string(),
             "--actor-id".to_string(),
-            "leader".to_string(),
+            "coordinator".to_string(),
             "--task-id".to_string(),
             "task-1".to_string(),
             "--context-json-file".to_string(),
@@ -2814,7 +2814,7 @@ mod tests {
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-ack-empty");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
         }
         let args = vec!["ack".to_string()];
         let err = parse_actor_command(&args, &mut ActorOutputMode::Default)
@@ -2883,7 +2883,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -2911,7 +2911,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let args = vec![
@@ -2934,7 +2934,7 @@ mod tests {
                 outcome,
             } => {
                 assert_eq!(team_id, "team-review");
-                assert_eq!(actor_id, "leader");
+                assert_eq!(actor_id, "coordinator");
                 assert_eq!(permission_ids, vec!["perm-1", "perm-2"]);
                 assert_eq!(option_id.as_deref(), Some("allow"));
                 assert_eq!(outcome, None);
@@ -2954,7 +2954,7 @@ mod tests {
         let prev_agent = std::env::var(ACTOR_RUNTIME_AGENT_ID_ENV).ok();
         unsafe {
             std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-review");
-            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "leader");
+            std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator");
             std::env::remove_var(ACTOR_RUNTIME_AGENT_ID_ENV);
         }
         let err = parse_actor_command(
@@ -3083,14 +3083,14 @@ mod tests {
                         topic: None,
                         include_shared_thread: true,
                     },
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                 },
                 ActorOutputPreference::ToonPreferred,
             ),
             (
                 ActorCommand::TeamTaskCreate {
                     team_id: "team-1".to_string(),
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     title: "Create task".to_string(),
                     status: TeamTaskStatus::Open,
                     topic: None,
@@ -3102,7 +3102,7 @@ mod tests {
                 ActorCommand::TeamTaskShow {
                     team_id: Some("team-1".to_string()),
                     run_id: None,
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     task_id: "task-1".to_string(),
                     message_limit: 10,
                 },
@@ -3111,7 +3111,7 @@ mod tests {
             (
                 ActorCommand::TeamTaskUpdate {
                     team_id: "team-1".to_string(),
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     task_ids: vec!["task-1".to_string()],
                     status: Some(TeamTaskStatus::InProgress),
                     assigned_member_id: None,
@@ -3125,7 +3125,7 @@ mod tests {
                 ActorCommand::TeamTaskNote {
                     team_id: Some("team-1".to_string()),
                     run_id: None,
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     task_id: Some("task-1".to_string()),
                     shared_thread: false,
                     kind: TeamTaskNoteKind::Comment,
@@ -3193,7 +3193,7 @@ mod tests {
             (
                 ActorCommand::Send {
                     run_id: Some("run-1".to_string()),
-                    from_actor_id: "leader".to_string(),
+                    from_actor_id: "coordinator".to_string(),
                     to_actor_id: Some("worker".to_string()),
                     channel_id: None,
                     channel: "default".to_string(),
@@ -3207,7 +3207,7 @@ mod tests {
             ),
             (
                 ActorCommand::TimeTriggerSet {
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     delay_seconds: 60,
                     message: "follow up".to_string(),
                 },
@@ -3215,14 +3215,14 @@ mod tests {
             ),
             (
                 ActorCommand::TimeTriggerList {
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     limit: 5,
                 },
                 ActorOutputPreference::ToonPreferred,
             ),
             (
                 ActorCommand::TimeTriggerCancel {
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     trigger_id: "trigger-1".to_string(),
                 },
                 ActorOutputPreference::ToonPreferred,
@@ -3230,7 +3230,7 @@ mod tests {
             (
                 ActorCommand::PermissionReviewRespond {
                     team_id: "team-1".to_string(),
-                    actor_id: "leader".to_string(),
+                    actor_id: "coordinator".to_string(),
                     permission_ids: vec!["perm-1".to_string()],
                     option_id: Some("allow".to_string()),
                     outcome: None,

@@ -5,7 +5,7 @@ description: Shared Team startup index and routing contract for AgentHub Team se
 
 # Team AGENTS Index
 
-Use this skill as the shared Team-level startup index for both leader and worker roles.
+Use this skill as the shared Team-level startup index for both coordinator and worker roles.
 
 Primary references:
 
@@ -17,11 +17,11 @@ Primary references:
 - Load canonical Team terms and boundaries before role-specific procedures.
 - Enforce human/task boundary:
   - humans may speak in free-form conversation, not only goal/constraint form
-  - leader interprets conversation input and compiles internal Team tasks
-  - leader owns canonical Team task creation/management
+  - coordinator interprets conversation input and compiles internal Team tasks
+  - coordinator owns canonical Team task creation/management
   - Kanban is the canonical Team task surface; channels remain communication/review lanes
 - Enforce shared routing vocabulary from `skills/team/AGENTS.md`:
-  - `leader-mailbox`
+  - `coordinator-mailbox`
   - `peer-mailbox`
   - `shared-channel`
   - `human-notification`
@@ -37,9 +37,9 @@ Primary references:
 
 ## Routing
 
-- Leader AGENTS index: `team-leader-agents-index`
+- Coordinator AGENTS index: `team-coordinator-agents-index`
 - Worker AGENTS index: `team-worker-agents-index`
-- Leader orchestration: `team-leader-orchestrator`
+- Coordinator orchestration: `team-coordinator-orchestrator`
 - Worker execution: `team-worker-executor`
 - Team task lifecycle: `team-task-lifecycle`
 - Deliberation quality gate: `team-deliberation-rules`
@@ -51,12 +51,12 @@ Primary references:
 ## Startup Checklist
 
 1. Read `skills/team/AGENTS.md` shared index.
-2. Resolve member role (`leader|worker`) and fill one unified runtime template.
+2. Resolve member role (`coordinator|worker`) and fill one unified runtime template.
 3. Initialize or refresh workspace `AGENTS.md`:
    - use `skills/team/TEAM_AGENTS.md`
    - set `role` and `Active Skills` to role-minimal set only
 4. Load role-specific skill set based on current phase:
-   - leader -> `team-leader-orchestrator` (+ optional `team-deliberation-rules`)
+   - coordinator -> `team-coordinator-orchestrator` (+ optional `team-deliberation-rules`)
    - worker -> `team-worker-executor` (+ optional `team-deliberation-rules`)
 5. Load `team-task-lifecycle` whenever canonical Team task creation, review, or status transitions
    are part of the current work.

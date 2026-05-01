@@ -60,12 +60,12 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       name: "Alpha Team",
       description: "team",
       spec: {
-        leader_member_id: "leader-1",
+        coordinator_member_id: "coordinator-1",
         members: [
           {
-            member_id: "leader-1",
-            role: "leader",
-            description: "Leader",
+            member_id: "coordinator-1",
+            role: "coordinator",
+            description: "Coordinator",
             model: "codex",
             prompt: "lead",
             profile: null,
@@ -78,7 +78,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
       updated_at: 1,
     } as HookParams["selectedTeam"],
     selectedTeamId: "team-1",
-    selectedTeamHasLeader: true,
+    selectedTeamHasCoordinator: true,
     selectedTeamHasConfiguredMembers: true,
     teamExecutionBlockedReason: null,
     selectedTeamWorkerCount: 0,
@@ -91,11 +91,11 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     teamMemberDraft: null,
     teamMemberEditDraft: null,
     teamMemberRoleOptions: [
-      { value: "leader", label: "Leader", description: "Lead the team", disabled: false },
+      { value: "coordinator", label: "Coordinator", description: "Lead the team", disabled: false },
       { value: "worker", label: "Worker", description: "Implement tasks", disabled: false },
     ],
     teamPromptDefaults: {
-      leader_prompt: "lead",
+      coordinator_prompt: "lead",
       worker_prompt: "work",
     } as HookParams["teamPromptDefaults"],
     forgeDefaultWorktreeRoot: "/tmp/worktrees",
@@ -188,11 +188,11 @@ describe("useTeamManagementActions", () => {
         newTeamDescription: "restored",
         newTeamSpec: "{}",
         createTeamStage: 1,
-        leaderMemberId: "",
-        leaderModel: "",
-        leaderPrompt: "",
-        leaderSkills: [],
-        leaderCustomSkills: "",
+        coordinatorMemberId: "",
+        coordinatorModel: "",
+        coordinatorPrompt: "",
+        coordinatorSkills: [],
+        coordinatorCustomSkills: "",
         workers: [
           {
             member_id: "worker-1",
@@ -231,21 +231,21 @@ describe("useTeamManagementActions", () => {
   it("blocks starting team runtime when members are not configured", async () => {
     const params = createParams({
       selectedTeamHasConfiguredMembers: false,
-      teamExecutionBlockedReason: "Add a leader first",
+      teamExecutionBlockedReason: "Add a coordinator first",
     });
     const mounted = await mountHook(params);
     try {
       await act(async () => {
         await mounted.getSnapshot()?.onStartTeamRuntime();
       });
-      expect(params.setError).toHaveBeenCalledWith("Add a leader first");
+      expect(params.setError).toHaveBeenCalledWith("Add a coordinator first");
       expect(mockedApi.startTeam).not.toHaveBeenCalled();
     } finally {
       mounted.cleanup();
     }
   });
 
-  it("opens forge modal with leader-aware defaults and starts runtime optimistically", async () => {
+  it("opens forge modal with coordinator-aware defaults and starts runtime optimistically", async () => {
     mockedApi.startTeam.mockResolvedValueOnce({
       status: "running",
       members: [{ action: "started" }],
@@ -260,11 +260,11 @@ describe("useTeamManagementActions", () => {
     } as never);
 
     const params = createParams({
-      selectedTeamHasLeader: false,
+      selectedTeamHasCoordinator: false,
       selectedTeamMemberStatuses: [
         {
-          member_id: "leader-1",
-          role: "leader",
+          member_id: "coordinator-1",
+          role: "coordinator",
           status: "running",
           missing_agent: false,
         },
