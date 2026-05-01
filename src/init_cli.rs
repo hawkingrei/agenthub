@@ -1,11 +1,12 @@
 use std::{
     fs,
     io::{self, BufRead, IsTerminal, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Context;
 use clap::{CommandFactory, Parser, error::ErrorKind};
+use toml::{Value, map::Map};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitCommand {
@@ -67,7 +68,7 @@ fn render_init_help_result() -> anyhow::Result<String> {
 }
 
 fn parse_init_args(args: &[String]) -> anyhow::Result<InitCommand> {
-    if matches!(args, [arg] if arg.trim() == "help") {
+    if matches!(args, [arg] if arg.trim().eq_ignore_ascii_case("help")) {
         return Ok(InitCommand::Help);
     }
 
@@ -77,6 +78,18 @@ fn parse_init_args(args: &[String]) -> anyhow::Result<InitCommand> {
         Err(err) if err.kind() == ErrorKind::DisplayHelp => Ok(InitCommand::Help),
         Err(err) => Err(err.into()),
     }
+}
+
+fn read_prompt_input<R>(reader: &mut R) -> anyhow::Result<String>
+where
+    R: BufRead,
+{
+    let mut line = String::new();
+    let bytes = reader.read_line(&mut line).context("read init input")?;
+    if bytes == 0 {
+        anyhow::bail!("input closed before init completed");
+    }
+    Ok(line)
 }
 
 fn prompt_line<R, W>(
@@ -95,8 +108,7 @@ where
     }
     writer.flush()?;
 
-    let mut line = String::new();
-    reader.read_line(&mut line).context("read init input")?;
+    let line = read_prompt_input(reader)?;
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return Ok(default.unwrap_or_default().to_string());
@@ -138,8 +150,7 @@ where
         write!(writer, "{} {}: ", label, suffix)?;
         writer.flush()?;
 
-        let mut line = String::new();
-        reader.read_line(&mut line).context("read init input")?;
+        let line = read_prompt_input(reader)?;
         let trimmed = line.trim().to_ascii_lowercase();
         if trimmed.is_empty() {
             return Ok(default);
@@ -167,6 +178,24 @@ where
     }
 }
 
+fn prompt_security_mode<R, W>(reader: &mut R, writer: &mut W) -> anyhow::Result<String>
+where
+    R: BufRead,
+    W: Write,
+{
+    loop {
+        let mode =
+            prompt_required_line(reader, writer, "internal_grpc.security.mode", Some("tls"))?;
+        match mode.trim().to_ascii_lowercase().as_str() {
+            "disabled" | "tls" | "mtls" => return Ok(mode.trim().to_ascii_lowercase()),
+            _ => writeln!(
+                writer,
+                "Security mode must be one of `disabled`, `tls`, or `mtls`."
+            )?,
+        }
+    }
+}
+
 fn prompt_internal_grpc<R, W>(
     reader: &mut R,
     writer: &mut W,
@@ -187,14 +216,14 @@ where
         return Ok(None);
     }
 
-    let listen = prompt_required_line(
-        reader,
-        writer,
-        "internal_grpc.listen",
-        Some("127.0.0.1:50051"),
-    )?;
-    let security_mode =
-        prompt_required_line(reader, writer, "internal_grpc.security.mode", Some("tls"))?;
+    let default_listen = if required {
+        "0.0.0.0:50051"
+    } else {
+        "127.0.0.1:50051"
+    };
+    let listen =
+        prompt_required_line(reader, writer, "internal_grpc.listen", Some(default_listen))?;
+    let security_mode = prompt_security_mode(reader, writer)?;
     let cert_dir = prompt_required_line(
         reader,
         writer,
@@ -252,12 +281,17 @@ where
         None
     };
     let node_id = if role == InitRole::Node {
-        Some(prompt_required_line(
-            reader,
-            writer,
-            "server.node_id",
-            None,
-        )?)
+        Some(loop {
+            let node_id = prompt_required_line(reader, writer, "server.node_id", None)?;
+            if node_id.trim() == "main" {
+                writeln!(
+                    writer,
+                    "`server.node_id` must not be `main` when `server.role = \"node\"`."
+                )?;
+                continue;
+            }
+            break node_id;
+        })
     } else {
         None
     };
@@ -270,74 +304,72 @@ where
     })
 }
 
-fn toml_escape(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
-}
+fn render_init_config(answers: &InitAnswers) -> anyhow::Result<String> {
+    let mut root = Map::new();
 
-fn render_init_config(answers: &InitAnswers) -> String {
-    let mut lines = Vec::new();
-
-    lines.push("[server]".to_string());
-    lines.push(format!("role = \"{}\"", answers.role.as_str()));
+    let mut server = Map::new();
+    server.insert(
+        "role".to_string(),
+        Value::String(answers.role.as_str().to_string()),
+    );
     if let Some(listen) = &answers.listen {
-        lines.push(format!("listen = \"{}\"", toml_escape(listen)));
+        server.insert("listen".to_string(), Value::String(listen.clone()));
     }
     if let Some(node_id) = &answers.node_id {
-        lines.push(format!("node_id = \"{}\"", toml_escape(node_id)));
+        server.insert("node_id".to_string(), Value::String(node_id.clone()));
     }
+    root.insert("server".to_string(), Value::Table(server));
 
     if let Some(internal_grpc) = &answers.internal_grpc {
-        lines.push(String::new());
-        lines.push("[internal_grpc]".to_string());
-        lines.push(format!("enabled = {}", internal_grpc.enabled));
-        lines.push(format!(
-            "listen = \"{}\"",
-            toml_escape(&internal_grpc.listen)
-        ));
+        let mut security = Map::new();
+        security.insert(
+            "mode".to_string(),
+            Value::String(internal_grpc.security_mode.clone()),
+        );
+        security.insert(
+            "cert_dir".to_string(),
+            Value::String(internal_grpc.cert_dir.clone()),
+        );
 
-        lines.push(String::new());
-        lines.push("[internal_grpc.security]".to_string());
-        lines.push(format!(
-            "mode = \"{}\"",
-            toml_escape(&internal_grpc.security_mode)
-        ));
-        lines.push(format!(
-            "cert_dir = \"{}\"",
-            toml_escape(&internal_grpc.cert_dir)
-        ));
+        let mut auth = Map::new();
+        auth.insert(
+            "shared_secret".to_string(),
+            Value::String(internal_grpc.shared_secret.clone()),
+        );
+        auth.insert(
+            "issuer".to_string(),
+            Value::String(internal_grpc.issuer.clone()),
+        );
+        auth.insert(
+            "audience".to_string(),
+            Value::String(internal_grpc.audience.clone()),
+        );
 
-        lines.push(String::new());
-        lines.push("[internal_grpc.auth]".to_string());
-        lines.push(format!(
-            "shared_secret = \"{}\"",
-            toml_escape(&internal_grpc.shared_secret)
-        ));
-        lines.push(format!(
-            "issuer = \"{}\"",
-            toml_escape(&internal_grpc.issuer)
-        ));
-        lines.push(format!(
-            "audience = \"{}\"",
-            toml_escape(&internal_grpc.audience)
-        ));
+        let mut bootstrap = Map::new();
+        bootstrap.insert(
+            "token".to_string(),
+            Value::String(internal_grpc.bootstrap_token.clone()),
+        );
 
-        lines.push(String::new());
-        lines.push("[internal_grpc.bootstrap]".to_string());
-        lines.push(format!(
-            "token = \"{}\"",
-            toml_escape(&internal_grpc.bootstrap_token)
-        ));
+        let mut internal_grpc_table = Map::new();
+        internal_grpc_table.insert("enabled".to_string(), Value::Boolean(internal_grpc.enabled));
+        internal_grpc_table.insert(
+            "listen".to_string(),
+            Value::String(internal_grpc.listen.clone()),
+        );
+        internal_grpc_table.insert("security".to_string(), Value::Table(security));
+        internal_grpc_table.insert("auth".to_string(), Value::Table(auth));
+        internal_grpc_table.insert("bootstrap".to_string(), Value::Table(bootstrap));
+        root.insert(
+            "internal_grpc".to_string(),
+            Value::Table(internal_grpc_table),
+        );
     }
 
-    lines.push(String::new());
-    lines.join("\n")
+    toml::to_string_pretty(&Value::Table(root)).context("serialize init config")
 }
 
-fn maybe_confirm_overwrite<R, W>(
-    reader: &mut R,
-    writer: &mut W,
-    path: &PathBuf,
-) -> anyhow::Result<()>
+fn maybe_confirm_overwrite<R, W>(reader: &mut R, writer: &mut W, path: &Path) -> anyhow::Result<()>
 where
     R: BufRead,
     W: Write,
@@ -360,7 +392,25 @@ fn write_config_file(path: &PathBuf, content: &str) -> anyhow::Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("create config directory {}", parent.display()))?;
     }
-    fs::write(path, content).with_context(|| format!("write config file {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .with_context(|| format!("write config file {}", path.display()))?;
+        file.write_all(content.as_bytes())
+            .with_context(|| format!("write config file {}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(path, content)
+            .with_context(|| format!("write config file {}", path.display()))?;
+    }
     Ok(())
 }
 
@@ -408,7 +458,7 @@ where
             let path = agenthub_config::config_path();
             maybe_confirm_overwrite(reader, writer, &path)?;
             let answers = collect_init_answers(reader, writer)?;
-            let content = render_init_config(&answers);
+            let content = render_init_config(&answers)?;
             write_config_file(&path, &content)?;
             print_post_init_notes(writer, &answers)?;
         }
@@ -471,7 +521,8 @@ mod tests {
             listen: Some("127.0.0.1:8080".to_string()),
             node_id: None,
             internal_grpc: None,
-        });
+        })
+        .expect("render config");
         assert!(config.contains("role = \"main\""));
         assert!(config.contains("listen = \"127.0.0.1:8080\""));
         assert!(!config.contains("node_id"));
@@ -494,7 +545,8 @@ mod tests {
                 audience: "agenthub-internal".to_string(),
                 bootstrap_token: "token".to_string(),
             }),
-        });
+        })
+        .expect("render config");
         assert!(config.contains("role = \"node\""));
         assert!(config.contains("node_id = \"node-east\""));
         assert!(config.contains("[internal_grpc]"));
@@ -532,6 +584,30 @@ mod tests {
             .expect("node mode should require internal grpc");
         assert_eq!(internal_grpc.listen, "0.0.0.0:50051");
         assert_eq!(internal_grpc.bootstrap_token, "bootstrap-token");
+    }
+
+    #[test]
+    fn collect_init_answers_reprompts_invalid_node_id_and_security_mode() {
+        let input = b"node\nmain\nnode-east\n0.0.0.0:50051\nbogus\nmtls\n~/.agenthub/internal-grpc\nshared-secret\nagenthub\nagenthub-internal\nbootstrap-token\n";
+        let mut reader = Cursor::new(&input[..]);
+        let mut output = Vec::new();
+        let answers = collect_init_answers(&mut reader, &mut output).expect("collect answers");
+        assert_eq!(answers.node_id.as_deref(), Some("node-east"));
+        let text = String::from_utf8(output).expect("utf8");
+        assert!(text.contains("must not be `main`"));
+        assert!(text.contains("Security mode must be one of"));
+    }
+
+    #[test]
+    fn collect_init_answers_errors_on_eof() {
+        let input = b"main\n";
+        let mut reader = Cursor::new(&input[..]);
+        let mut output = Vec::new();
+        let err = collect_init_answers(&mut reader, &mut output).expect_err("should fail");
+        assert!(
+            err.to_string()
+                .contains("input closed before init completed")
+        );
     }
 
     #[test]
