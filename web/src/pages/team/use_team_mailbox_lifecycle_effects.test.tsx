@@ -35,10 +35,10 @@ function makeSnapshot(memberIds: string[]): TeamRunSnapshotRecord {
       created_at: 1,
       updated_at: 1,
     },
-    leader_member_id: memberIds[0] ?? null,
+    coordinator_member_id: memberIds[0] ?? null,
     members: memberIds.map((memberId) => ({
       member_id: memberId,
-      role: memberId === memberIds[0] ? "leader" : "worker",
+      role: memberId === memberIds[0] ? "coordinator" : "worker",
       model: null,
       prompt: null,
       skills: [],
@@ -60,7 +60,7 @@ function makeSnapshot(memberIds: string[]): TeamRunSnapshotRecord {
 
 function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
-    snapshot: makeSnapshot(["leader-1", "worker-1"]),
+    snapshot: makeSnapshot(["coordinator-1", "worker-1"]),
     selectedMemberId: "worker-1",
     mailboxActorIds: [],
     activeRunIdForSelectedTeam: "run-1",

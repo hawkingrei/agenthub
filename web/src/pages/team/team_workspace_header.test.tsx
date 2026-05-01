@@ -145,13 +145,13 @@ describe("TeamWorkspaceHeader", () => {
       selectedAgentSpecDraft: {
         ...baseAgentSpecDraft,
         description: "   ",
-        role: "leader",
+        role: "coordinator",
         agent_loop_enabled: true,
         agent_loop_idle_seconds: "15",
       },
       selectedAgentStatusView: {
         ...baseAgentStatusView,
-        role: "leader",
+        role: "coordinator",
         currentWork: "Reviewing the latest rollout before handoff.",
       },
     });

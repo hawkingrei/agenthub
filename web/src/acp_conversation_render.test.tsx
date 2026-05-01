@@ -1144,8 +1144,8 @@ describe("AcpConversation rendering", () => {
         kind: "agent_thinking",
         text: [
           "<skill>",
-          "<name>team-leader-orchestrator</name>",
-          "<path>/tmp/team-leader-orchestrator.SKILL.md</path>",
+          "<name>team-coordinator-orchestrator</name>",
+          "<path>/tmp/team-coordinator-orchestrator.SKILL.md</path>",
           "</skill>",
         ].join("\n"),
         live: false,
@@ -1156,11 +1156,11 @@ describe("AcpConversation rendering", () => {
     expect(html).toContain("<strong>Skill</strong>");
     expect(html).toContain("Name:");
     expect(html).toContain(
-      '<code class="md-inline-code">team-leader-orchestrator</code>'
+      '<code class="md-inline-code">team-coordinator-orchestrator</code>'
     );
     expect(html).toContain("Path:");
     expect(html).toContain(
-      '<code class="md-inline-code">/tmp/team-leader-orchestrator.SKILL.md</code>'
+      '<code class="md-inline-code">/tmp/team-coordinator-orchestrator.SKILL.md</code>'
     );
   });
 

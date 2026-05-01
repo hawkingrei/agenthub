@@ -228,7 +228,7 @@ export {
   selectMailboxConversation,
 } from "./team/mailbox_helpers";
 export {
-  DEFAULT_TEAM_LEADER_SKILLS,
+  DEFAULT_TEAM_COORDINATOR_SKILLS,
   DEFAULT_TEAM_WORKER_SKILLS,
   assignCreatedWorkerToDraft,
   buildDefaultWorkerDraft,
@@ -1293,7 +1293,7 @@ export function TeamPage(props: TeamPageProps) {
     selectedTeamRuntimeControlTone,
     selectedTeamMembers,
     selectedTeamHasConfiguredMembers,
-    selectedTeamHasLeader,
+    selectedTeamHasCoordinator,
     selectedTeamWorkerCount,
   } = useTeamCatalogViewModel({
     teams,
@@ -1318,8 +1318,8 @@ export function TeamPage(props: TeamPageProps) {
     [busy, selectedTeamHasConfiguredMembers, selectedTeamRuntimeStatus.status]
   );
   const teamMemberRoleOptions = useMemo(
-    () => resolveTeamMemberRoleOptions(selectedTeamHasLeader),
-    [selectedTeamHasLeader]
+    () => resolveTeamMemberRoleOptions(selectedTeamHasCoordinator),
+    [selectedTeamHasCoordinator]
   );
   const teamMemberRoleProfile = useMemo(
     () => (teamMemberDraft ? resolveTeamMemberRoleProfile(teamMemberDraft.role) : null),
@@ -1368,7 +1368,7 @@ export function TeamPage(props: TeamPageProps) {
       return;
     }
     const defaultMailboxMemberId =
-      snapshot.members.find((member) => member.member_id !== snapshot.leader_member_id)
+      snapshot.members.find((member) => member.member_id !== snapshot.coordinator_member_id)
         ?.member_id ??
       snapshot.members[0]?.member_id ??
       "";
@@ -1591,11 +1591,11 @@ export function TeamPage(props: TeamPageProps) {
   const chatActors = useMemo(
     () =>
       resolveMailboxChatActors(
-        snapshot?.leader_member_id,
+        snapshot?.coordinator_member_id,
         chatMemberIds,
         selectedMemberId
       ),
-    [chatMemberIds, selectedMemberId, snapshot?.leader_member_id]
+    [chatMemberIds, selectedMemberId, snapshot?.coordinator_member_id]
   );
   const mergedMailboxMessages = useMemo(
     () => mergeMailboxMessages(snapshot?.mailbox.recent_messages ?? [], inbox),
@@ -1625,7 +1625,7 @@ export function TeamPage(props: TeamPageProps) {
     const counts: Record<string, number> = {};
     for (const actorId of chatMemberIds) {
       const actors = resolveMailboxChatActors(
-        snapshot.leader_member_id,
+        snapshot.coordinator_member_id,
         chatMemberIds,
         actorId
       );
@@ -1654,7 +1654,7 @@ export function TeamPage(props: TeamPageProps) {
     patchTeamCreate({
       newTeamName: initial.newTeamName,
       newTeamDescription: initial.newTeamDescription,
-      leaderPrompt: teamPromptDefaults.leader_prompt,
+      coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
       showForgeAgentForm: initial.showForgeAgentForm,
       forgeAgentName: initial.forgeAgentName,
       forgeAgentWorkdir: initial.forgeAgentWorkdir,
@@ -1667,7 +1667,7 @@ export function TeamPage(props: TeamPageProps) {
       forgeAgentBusy: initial.forgeAgentBusy,
     });
     setTeamMemberDraft(null);
-  }, [patchTeamCreate, teamPromptDefaults.leader_prompt]);
+  }, [patchTeamCreate, teamPromptDefaults.coordinator_prompt]);
 
   useEffect(() => {
     if (!props.token) {
@@ -1732,18 +1732,18 @@ export function TeamPage(props: TeamPageProps) {
   }, [props.token, setError, showCreateTeamModal, showForgeAgentForm]);
 
   useEffect(() => {
-    if (!showCreateTeamModal || teamCreateState.leaderPrompt.trim()) {
+    if (!showCreateTeamModal || teamCreateState.coordinatorPrompt.trim()) {
       return;
     }
-    if (!teamPromptDefaults.leader_prompt.trim()) {
+    if (!teamPromptDefaults.coordinator_prompt.trim()) {
       return;
     }
-    patchTeamCreate({ leaderPrompt: teamPromptDefaults.leader_prompt });
+    patchTeamCreate({ coordinatorPrompt: teamPromptDefaults.coordinator_prompt });
   }, [
     patchTeamCreate,
     showCreateTeamModal,
-    teamCreateState.leaderPrompt,
-    teamPromptDefaults.leader_prompt,
+    teamCreateState.coordinatorPrompt,
+    teamPromptDefaults.coordinator_prompt,
   ]);
 
   useEffect(() => {
@@ -2795,7 +2795,7 @@ export function TeamPage(props: TeamPageProps) {
     runs,
     selectedTeam,
     selectedTeamId,
-    selectedTeamHasLeader,
+    selectedTeamHasCoordinator,
     selectedTeamHasConfiguredMembers,
     teamExecutionBlockedReason,
     selectedTeamWorkerCount,
@@ -3798,7 +3798,7 @@ export function TeamPage(props: TeamPageProps) {
       codeMode: forgeAgentCodeMode,
       setCodeMode: setForgeAgentCodeMode,
       worktreeError: forgeAgentWorktreeError,
-      showWorktreeAdvancedOptions: teamMemberDraft?.role !== "leader",
+      showWorktreeAdvancedOptions: teamMemberDraft?.role !== "coordinator",
       createBusy: forgeAgentBusy,
       workdirPlaceholder: forgeDefaultWorktreeRoot,
       withinPortal: true,
@@ -3920,8 +3920,8 @@ export function TeamPage(props: TeamPageProps) {
             onRefreshTeams={refreshTeams}
             onOpenCreateTeam={openCreateTeamModal}
             draftTeamName={newTeamName}
-            leaderMemberId={
-              selectedTeamMembers.find((member) => member.role === "leader")?.member_id ?? ""
+            coordinatorMemberId={
+              selectedTeamMembers.find((member) => member.role === "coordinator")?.member_id ?? ""
             }
             configuredWorkerCount={selectedTeamWorkerCount}
             teams={teams}
@@ -4093,7 +4093,7 @@ export function TeamPage(props: TeamPageProps) {
             teamMemberDraft={teamMemberDraft}
             teamMemberRoleProfile={teamMemberRoleProfile}
             teamMemberRoleOptions={teamMemberRoleOptions}
-            selectedTeamHasLeader={selectedTeamHasLeader}
+            selectedTeamHasCoordinator={selectedTeamHasCoordinator}
             handleTeamMemberRoleChange={handleTeamMemberRoleChange}
             patchTeamMemberDraft={patchTeamMemberDraft}
             forgeModalProps={forgeModalProps}

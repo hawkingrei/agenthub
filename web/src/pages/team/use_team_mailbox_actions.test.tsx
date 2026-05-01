@@ -40,10 +40,10 @@ function createBaseOptions(
     token: "token-1",
     tab: "mailbox",
     activeRunIdForSelectedTeam: "run-1",
-    chatFromActorId: "leader-1",
+    chatFromActorId: "coordinator-1",
     chatToActorId: "worker-1",
     chatDraft: "hello worker",
-    msgFromActorId: "leader-1",
+    msgFromActorId: "coordinator-1",
     msgToActorId: "worker-1",
     msgChannel: "default",
     msgTransport: "local",
@@ -75,7 +75,7 @@ function createBaseOptions(
           created_at: 1,
           updated_at: 1,
         },
-        leader_member_id: "leader-1",
+        coordinator_member_id: "coordinator-1",
         members: [],
         steps: [],
         latest_events: [],
@@ -117,7 +117,7 @@ function buildMessage(overrides: Partial<TeamActorMessageRecord> = {}): TeamActo
   return {
     message_id: 10,
     run_id: "run-1",
-    from_actor_id: "leader-1",
+    from_actor_id: "coordinator-1",
     from_peer_id: "",
     from_actor_kind: "agent",
     to_actor_id: "worker-2",
@@ -156,7 +156,7 @@ describe("useTeamMailboxActions", () => {
       });
 
       expect(mockedApi.sendTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", {
-        from_actor_id: "leader-1",
+        from_actor_id: "coordinator-1",
         to_actor_id: "worker-1",
         channel: "default",
         transport: "local",
@@ -194,7 +194,7 @@ describe("useTeamMailboxActions", () => {
       });
 
       expect(mockedApi.sendTeamRunMessage).toHaveBeenCalledWith("token-1", "run-1", {
-        from_actor_id: "leader-1",
+        from_actor_id: "coordinator-1",
         to_actor_id: "worker-1",
         channel: "default",
         transport: "local",

@@ -53,7 +53,7 @@ async fn issue_node_credential_returns_phase0_metadata() {
     );
     let mut request = Request::new(IssueNodeCredentialRequest {
         node_id: "node-a".to_string(),
-        role: "leader".to_string(),
+        role: "coordinator".to_string(),
         actor_id: String::new(),
         run_id: String::new(),
         permissions: vec![InternalAction::AgentManage.as_str().to_string()],
@@ -114,7 +114,7 @@ async fn issue_node_credential_rejects_bootstrap_token_mismatch() {
     );
     let mut request = Request::new(IssueNodeCredentialRequest {
         node_id: "node-a".to_string(),
-        role: "leader".to_string(),
+        role: "coordinator".to_string(),
         actor_id: String::new(),
         run_id: String::new(),
         permissions: vec![InternalAction::AgentManage.as_str().to_string()],

@@ -37,11 +37,11 @@ async fn teams_router_http_contract() {
     assert_eq!(prompt_defaults_resp.status(), StatusCode::OK);
     let prompt_defaults = decode_json_body(prompt_defaults_resp).await;
     assert!(
-        prompt_defaults["leader_prompt"]
+        prompt_defaults["coordinator_prompt"]
             .as_str()
             .is_some_and(|value| value.contains("Inspect inbox regularly")),
-        "unexpected leader prompt contract: {}",
-        prompt_defaults["leader_prompt"]
+        "unexpected coordinator prompt contract: {}",
+        prompt_defaults["coordinator_prompt"]
     );
     assert!(
         prompt_defaults["worker_prompt"]
@@ -73,7 +73,7 @@ async fn teams_router_http_contract() {
     assert_eq!(
         empty_team
             .get("spec")
-            .and_then(|spec| spec.get("leader_member_id")),
+            .and_then(|spec| spec.get("coordinator_member_id")),
         None
     );
     assert_eq!(empty_team.get("spec").and_then(|spec| spec.get("steps")), None);
@@ -90,7 +90,7 @@ async fn teams_router_http_contract() {
                 "spec": {
                     "entrypoint":"planner",
                     "members":[
-                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"planner","role":"coordinator"},
                         {"member_id":"worker-1","role":"worker"}
                     ]
                 }
@@ -136,7 +136,7 @@ async fn teams_router_http_contract() {
                 "spec": {
                     "entrypoint":"planner",
                     "members":[
-                        {"member_id":"planner","role":"leader"},
+                        {"member_id":"planner","role":"coordinator"},
                         {"member_id":"worker-1","role":"worker"}
                     ]
                 }
@@ -351,7 +351,7 @@ async fn teams_router_http_contract() {
         Value::from("[redacted]")
     );
 
-    let send_to_leader_resp = app
+    let send_to_coordinator_resp = app
         .clone()
         .oneshot(build_json_request(
             Method::POST,
@@ -359,15 +359,15 @@ async fn teams_router_http_contract() {
             Some(&token),
             Some(json!({
                 "from_actor_id": "worker-1",
-                "route": "to_leader",
+                "route": "to_coordinator",
                 "payload": {"text":"need decision"}
             })),
         ))
         .await
-        .expect("send to leader via router");
-    assert_eq!(send_to_leader_resp.status(), StatusCode::OK);
-    let to_leader_message = decode_json_body(send_to_leader_resp).await;
-    assert_eq!(to_leader_message["to_actor_id"], Value::from("planner"));
+        .expect("send to coordinator via router");
+    assert_eq!(send_to_coordinator_resp.status(), StatusCode::OK);
+    let to_coordinator_message = decode_json_body(send_to_coordinator_resp).await;
+    assert_eq!(to_coordinator_message["to_actor_id"], Value::from("planner"));
 
     let list_task_messages_resp = app
         .clone()
@@ -1273,7 +1273,7 @@ async fn teams_router_delete_team_cleans_member_session_dependents_without_500()
                 "description": "delete fk regression",
                 "spec": {
                     "entrypoint":"planner",
-                    "members":[{"member_id":"planner","role":"leader"}]
+                    "members":[{"member_id":"planner","role":"coordinator"}]
                 }
             })),
         ))
@@ -1335,7 +1335,7 @@ async fn teams_router_resume_restart_strategy_survives_state_reopen() {
                 "description": "verify run resume/restart across state reopen",
                 "spec": {
                     "entrypoint":"planner",
-                    "members":[{"member_id":"planner","role":"leader"}]
+                    "members":[{"member_id":"planner","role":"coordinator"}]
                 }
             })),
         ))

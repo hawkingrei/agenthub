@@ -89,7 +89,7 @@ Multi-channel contract:
 - a Team may expose multiple channels in addition to `# all`
 - every non-default channel should have a short, explicit work-scoping description
 - channels should narrow context, not duplicate Kanban/task ownership
-- non-default channels may be created explicitly by the Team leader or a human operator
+- non-default channels may be created explicitly by the Team coordinator or a human operator
 - non-default channels may also be archived or deleted explicitly when the work lane is no longer
   needed
 
@@ -168,6 +168,54 @@ Important constraint:
 - a later `Threads` or `Recent threads` view, if introduced, should be an index of active thread
   contexts rather than a new creation surface
 
+#### 4.1) Summary Versus Full Context
+
+Channel and thread should deliberately split summary from full context.
+
+Required product meaning:
+
+- the parent `channel` message is the summary entrypoint for one issue, request, review point, or
+  task-oriented discussion
+- the `thread` rooted at that message is the full context container for that specific topic
+
+This means:
+
+- the channel timeline should stay scannable and low-noise
+- the thread should carry the deeper context:
+  - detailed background
+  - longer explanations
+  - progress updates
+  - logs, references, and follow-up discussion
+
+Product goal:
+
+- avoid turning the main channel into one long high-volume context dump
+- let humans and agents discover that a topic exists from the channel summary first
+- let only the interested or relevant participants open the thread and read the full context
+
+#### 4.2) Agent Relevance And Context Budget
+
+Threads should help AgentHub avoid unnecessary shared-channel context explosions.
+
+Required behavioral direction:
+
+- agents should not need to ingest the entire recent channel history by default in order to handle
+  one focused issue
+- a channel root message should be sufficient to advertise that a more detailed context exists
+- agents that are explicitly mentioned, own the work, or otherwise judge the topic as relevant may
+  then open the thread and read the full discussion
+
+This preserves two useful properties at the same time:
+
+- broad shared visibility in the parent channel
+- bounded deep context in the thread
+
+Important product consequence:
+
+- thread is not just a UI nesting affordance
+- thread is part of the Team context-management model
+- it should reduce unnecessary context fan-in for both humans and agents
+
 ### 5) Actor Capability Contract
 
 `Open thread` should not remain only a front-end affordance.
@@ -184,7 +232,7 @@ Recommended capability surface:
     - optional `description`
   - behavior:
     - creates a non-default Team communication lane
-    - reserved for Team leader and human operator flows by default
+    - reserved for Team coordinator and human operator flows by default
 - `team_channel_update`
   - input:
     - `team_id`
@@ -233,7 +281,7 @@ Recommended capability surface:
 
 Important constraints:
 
-- `team_channel_create` / `team_channel_delete` should default to leader + human operator authority
+- `team_channel_create` / `team_channel_delete` should default to coordinator + human operator authority
 - worker actors should not create or delete Team channels unless a later policy explicitly grants it
 - thread open must be anchored to an existing channel message
 - agent actor must not create detached empty threads without a `root_message_id`
@@ -271,7 +319,7 @@ Core product goal:
 
 - let a human mark one outgoing conversation message as "task-oriented intent"
 - keep that intent close to the composer instead of hiding it in Kanban-only workflows
-- preserve the existing Team rule that leader planning/runtime decide whether and how a canonical
+- preserve the existing Team rule that coordinator planning/runtime decide whether and how a canonical
   Team `task` should be materialized
 
 Recommended direction:
@@ -282,7 +330,7 @@ Recommended direction:
 - this affordance should live next to the message composer, not as a thick page-level toolbar
 - resulting behavior should still flow through Team planning/runtime materialization before becoming
   a canonical Team `task`
-- non-default channels may shape the draft/request context, but must not bypass leader/runtime
+- non-default channels may shape the draft/request context, but must not bypass coordinator/runtime
   canonicalization
 
 Product interpretation:
@@ -327,7 +375,7 @@ Armed state:
 - after the user activates the affordance, the composer enters a lightweight `task request` mode
 - show a thin context strip above or inside the composer, for example:
   - `Task request`
-  - `Send as a task-oriented request for leader planning`
+  - `Send as a task-oriented request for coordinator planning`
 - keep the main text area unchanged
 - allow the user to cancel the mode before sending
 
@@ -368,7 +416,7 @@ Required semantic properties:
 
 - the message remains part of the selected channel/thread conversation history
 - the message is clearly distinguishable to Team planning/runtime as a task-oriented request
-- Team leader/runtime may later:
+- Team coordinator/runtime may later:
   - materialize a canonical Team task
   - ignore the request
   - ask for clarification
@@ -400,7 +448,7 @@ Kanban remains the canonical task surface.
 Still true after this affordance ships:
 
 - Kanban is where canonical tasks live
-- leader planning/runtime own materialization into Kanban
+- coordinator planning/runtime own materialization into Kanban
 - composer-level task intent is an upstream signal, not a replacement for Kanban
 
 This means:
@@ -436,7 +484,7 @@ Phase 5A:
 
 Phase 5B:
 
-- surface clearer follow-up feedback when leader/runtime later materialize a task from that request
+- surface clearer follow-up feedback when coordinator/runtime later materialize a task from that request
 - optionally show a compact linkage from the request message to the resulting canonical task
 
 Phase 5C:
@@ -451,7 +499,7 @@ This design must preserve the existing Team operating model.
 Still true after rollout:
 
 - human intent enters through conversation
-- leader/runtime own canonical task materialization
+- coordinator/runtime own canonical task materialization
 - `Kanban` remains the canonical Team task lane
 - `Execution Runs` remains the canonical execution-history/debug lane
 - `run` and `step` remain execution/debug artifacts, not communication objects

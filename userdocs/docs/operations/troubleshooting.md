@@ -214,7 +214,7 @@ handshake / startup errors.
 
 1. Check Team spec is valid JSON
 2. Verify all `member_id` references are valid
-3. Ensure `leader_member_id` references existing member
+3. Ensure `coordinator_member_id` references existing member
 4. Check `entrypoint` is defined
 
 **Common Errors**:
@@ -222,7 +222,7 @@ handshake / startup errors.
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `spec.members must be an array` | Invalid spec format | Ensure members is JSON array |
-| `spec.leader_member_id must reference a defined member` | Leader not in members list | Add leader to members or fix reference |
+| `spec.coordinator_member_id must reference a defined member` | Coordinator not in members list | Add coordinator to members or fix reference |
 | `step already exists for run` | Duplicate step key | Use unique step keys |
 
 ### Permission Review Not Routing
@@ -231,11 +231,11 @@ handshake / startup errors.
 
 **Solutions**:
 
-- Check Team has leader defined
+- Check Team has coordinator defined
 - Verify `requester_role` is set correctly
 - Ensure `agenthub actor ...` commands work:
   ```bash
-  agenthub actor team-members --actor-id <leader_actor_id>
+  agenthub actor team-members --actor-id <coordinator_actor_id>
   ```
 
 ### Team Messages Not Delivered

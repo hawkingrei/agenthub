@@ -15,7 +15,7 @@ use super::super::proto::agenthub::internal::v1::{
     TransitionStepRequest, UpdateTeamTaskRequest,
 };
 pub(super) use super::super::tls::InternalGrpcSecurityMode;
-pub(super) use super::resolve_team_leader_member_id;
+pub(super) use super::resolve_team_coordinator_member_id;
 use super::{BOOTSTRAP_TOKEN_HEADER, TeamInternalControlService, map_actor_service_status};
 use crate::agent::AgentTimeTriggerRecord;
 use crate::api::team_tests::{
@@ -76,9 +76,9 @@ async fn create_team_run(state: &crate::state::AppState) -> crate::team::TeamRun
             description: Some("internal grpc mailbox test team".to_string()),
             spec: json!({
                 "entrypoint":"planner",
-                "leader_member_id":"planner",
+                "coordinator_member_id":"planner",
                 "members":[
-                    {"member_id":"planner","role":"leader"},
+                    {"member_id":"planner","role":"coordinator"},
                     {"member_id":"reviewer","role":"worker"}
                 ]
             }),
@@ -99,9 +99,9 @@ async fn create_team_run(state: &crate::state::AppState) -> crate::team::TeamRun
 fn default_permission_review_team_spec() -> Value {
     json!({
         "entrypoint":"planner",
-        "leader_member_id":"planner",
+        "coordinator_member_id":"planner",
         "members":[
-            {"member_id":"planner","role":"leader"},
+            {"member_id":"planner","role":"coordinator"},
             {"member_id":"reviewer","role":"worker"},
             {"member_id":"observer","role":"worker"}
         ]

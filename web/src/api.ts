@@ -212,7 +212,7 @@ export type RuntimeDefaults = {
 };
 
 export type TeamPromptDefaultsRecord = {
-  leader_prompt: string;
+  coordinator_prompt: string;
   worker_prompt: string;
 };
 
@@ -281,7 +281,7 @@ export type TeamConversationRecord = {
   id: string;
   team_id: string;
   task_id: string;
-  mode: "to_leader" | "to_member" | "group_chat";
+  mode: "to_coordinator" | "to_member" | "group_chat";
   topic?: string | null;
   created_at: number;
   updated_at: number;
@@ -293,7 +293,7 @@ export type TeamConversationMessageRecord = {
   task_id: string;
   from_actor_id: string;
   to_actor_id?: string | null;
-  route: "to_leader" | "to_member" | "group_chat" | "team_thread_reply";
+  route: "to_coordinator" | "to_member" | "group_chat" | "team_thread_reply";
   payload: unknown;
   created_at: number;
 };
@@ -397,7 +397,7 @@ export type TeamMailboxSnapshot = {
 export type TeamRunSnapshotRecord = {
   run: TeamRunRecord;
   team: TeamDefinitionRecord;
-  leader_member_id?: string | null;
+  coordinator_member_id?: string | null;
   members: TeamMemberSnapshot[];
   steps: TeamStepRecord[];
   latest_events: TeamRunEventRecord[];
@@ -883,7 +883,7 @@ export const api = {
     payload: {
       from_actor_id?: string;
       to_actor_id?: string;
-      route?: "to_leader" | "to_member" | "group_chat";
+      route?: "to_coordinator" | "to_member" | "group_chat";
       payload: unknown;
       idempotency_key?: string;
     }

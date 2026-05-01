@@ -103,7 +103,7 @@ function buildAgentEvent(
 function buildAgent(overrides: Partial<AgentRecord> = {}): AgentRecord {
   return {
     id: "agent-1",
-    name: "Leader Agent",
+    name: "Coordinator Agent",
     workdir: "/tmp",
     command: "agenthub-codex-acp",
     args: [],
@@ -125,7 +125,7 @@ function buildMailboxMessage(
   return {
     message_id: messageId,
     run_id: "run-1",
-    from_actor_id: "leader-agent",
+    from_actor_id: "coordinator-agent",
     from_peer_id: "",
     from_actor_kind: "agent",
     to_actor_id: "worker-agent",
@@ -155,7 +155,7 @@ function buildConversationMessage(
     message_id: messageId,
     conversation_id: "conv-1",
     task_id: "task-1",
-    from_actor_id: "leader-agent",
+    from_actor_id: "coordinator-agent",
     to_actor_id: null,
     route: "group_chat",
     payload: {
@@ -207,15 +207,15 @@ function buildRuntime(
     status: "running",
     members: [
       {
-        member_id: "leader-agent",
-        display_name: "Leader Agent",
-        role: "leader",
+        member_id: "coordinator-agent",
+        display_name: "Coordinator Agent",
+        role: "coordinator",
         description: "lead",
         agent_status: "running",
-        session_id: "session-leader",
+        session_id: "session-coordinator",
         session_status: "running",
         card: {
-          card_id: "card-leader",
+          card_id: "card-coordinator",
           schema_version: "1",
           description: "lead",
           capability_tags: [],
@@ -245,9 +245,9 @@ function buildMemberLiveState(
   overrides: Partial<TeamMemberLiveState> = {}
 ): TeamMemberLiveState {
   return {
-    member_id: "leader-agent",
-    role: "leader",
-    agent_name: "Leader Agent",
+    member_id: "coordinator-agent",
+    role: "coordinator",
+    agent_name: "Coordinator Agent",
     lifecycle_status: "running",
     lifecycle_tone: "active",
     run_status: "working",
@@ -262,9 +262,9 @@ function buildMemberStatus(
   overrides: Partial<TeamMemberAgentStatus> = {}
 ): TeamMemberAgentStatus {
   return {
-    member_id: "leader-agent",
-    role: "leader",
-    agent_name: "Leader Agent",
+    member_id: "coordinator-agent",
+    role: "coordinator",
+    agent_name: "Coordinator Agent",
     status: "stopped",
     missing_agent: false,
     ...overrides,
@@ -401,7 +401,7 @@ describe("team page helpers", () => {
     expect(
       shouldClearSelectedTeamMember({
         selectedMemberId: "worker-1",
-        memberIds: ["leader-1", "worker-2"],
+        memberIds: ["coordinator-1", "worker-2"],
       })
     ).toBe(true);
   });
@@ -436,7 +436,7 @@ describe("team page helpers", () => {
         selectedMemberId: "",
         focusedAgentMemberId: "worker-1",
         routeSelectedMemberId: "worker-2",
-        knownMemberIds: ["leader-1", "worker-2"],
+        knownMemberIds: ["coordinator-1", "worker-2"],
       })
     ).toBe("worker-2");
   });
@@ -552,7 +552,7 @@ describe("team page helpers", () => {
       buildAgent({ args: ["--model", "gpt-5.1"], command: "gemini" })
     );
     expect(modelFromArgs).toContain("gpt-5.1");
-    expect(modelFromArgs).toContain("Leader Agent");
+    expect(modelFromArgs).toContain("Coordinator Agent");
     expect(modelFromArgs).toContain("agent-1");
 
     const fallback = buildAgentLabel(
@@ -661,7 +661,7 @@ describe("team page helpers", () => {
     const explicitTask = buildTask("task-work", 120, 140, {
       title: "Investigate regression",
       status: "in_progress",
-      context: { owner: "leader" },
+      context: { owner: "coordinator" },
     });
     const sharedRun = buildRun("run-shared", 10, "working");
     const explicitRun = buildRun("run-explicit", 20, "working");
@@ -710,7 +710,7 @@ describe("team page helpers", () => {
     const explicitTask = buildTask("task-work", 120, 140, {
       title: "Investigate regression",
       status: "in_progress",
-      context: { owner: "leader" },
+      context: { owner: "coordinator" },
     });
     const channelTask = buildTask("task-review", 110, 130, {
       title: "review",
@@ -759,7 +759,7 @@ describe("team page helpers", () => {
     const explicitTask = buildTask("task-work", 120, 140, {
       title: "Investigate regression",
       status: "in_progress",
-      context: { owner: "leader" },
+      context: { owner: "coordinator" },
     });
     const sharedTask = buildTask("task-all", 100, 120, {
       title: DEFAULT_TEAM_THREAD_TITLE,
@@ -856,12 +856,12 @@ describe("team page helpers", () => {
     expect(
       resolveTaskConversationMemberIds(
         [
-          { member_id: "leader-agent" },
+          { member_id: "coordinator-agent" },
           { member_id: "worker-agent" },
         ],
         [{ member_id: "stale-run-member" }]
       )
-    ).toEqual(["leader-agent", "worker-agent"]);
+    ).toEqual(["coordinator-agent", "worker-agent"]);
     expect(
       resolveTaskConversationMemberIds(null, [{ member_id: "snapshot-only-member" }])
     ).toEqual(["snapshot-only-member"]);
@@ -952,7 +952,7 @@ describe("team page helpers", () => {
       resolveTeamRuntimeStatus(buildMemberSummary({ active: 0, inactive: 3, missing: 0, total: 3 }), {
         status: "running",
         members: [
-          { member_id: "leader", session_id: "session-leader" },
+          { member_id: "coordinator", session_id: "session-coordinator" },
           { member_id: "worker-1", session_id: "session-worker-1" },
           { member_id: "worker-2", session_id: "session-worker-2" },
         ],
@@ -1002,7 +1002,7 @@ describe("team page helpers", () => {
 
   it("clears cached runtime session ids when stop-team optimistic update applies", () => {
     const control: TeamRuntimeControlResponse["members"] = [
-      { member_id: "leader-agent", session_id: "session-leader", action: "stopped" },
+      { member_id: "coordinator-agent", session_id: "session-coordinator", action: "stopped" },
       { member_id: "worker-agent", session_id: "session-worker", action: "stopped" },
     ];
     const updated = updateCachedTeamRuntimeStatus(
@@ -1020,7 +1020,7 @@ describe("team page helpers", () => {
 
   it("synthesizes optimistic runtime members when start-team has no cached runtime yet", () => {
     const control: TeamRuntimeControlResponse["members"] = [
-      { member_id: "leader-agent", session_id: "session-leader", action: "started" },
+      { member_id: "coordinator-agent", session_id: "session-coordinator", action: "started" },
       { member_id: "worker-agent", session_id: "session-worker", action: "started" },
     ];
     const updated = updateCachedTeamRuntimeStatus(
@@ -1042,13 +1042,13 @@ describe("team page helpers", () => {
     expect(updated?.status).toBe("running");
     expect(updated?.members).toHaveLength(2);
     expect(updated?.members.map((member) => member.member_id)).toEqual([
-      "leader-agent",
+      "coordinator-agent",
       "worker-agent",
     ]);
     expect(updated?.members.every((member) => member.session_status === "running")).toBe(true);
     expect(updated?.members.every((member) => member.agent_status === "running")).toBe(true);
     expect(updated?.members.map((member) => member.session_id)).toEqual([
-      "session-leader",
+      "session-coordinator",
       "session-worker",
     ]);
   });
@@ -1067,21 +1067,21 @@ describe("team page helpers", () => {
   it("prefers agent display names when resolving focused agent labels", () => {
     expect(
       resolveSelectedAgentWorkspaceLabel(
-        "leader-agent",
-        buildMemberLiveState({ agent_name: "Leader Agent" }),
+        "coordinator-agent",
+        buildMemberLiveState({ agent_name: "Coordinator Agent" }),
         "Fallback Agent"
       )
-    ).toBe("Leader Agent");
+    ).toBe("Coordinator Agent");
     expect(
-      resolveSelectedAgentWorkspaceLabel("leader-agent", null, "Fallback Agent")
+      resolveSelectedAgentWorkspaceLabel("coordinator-agent", null, "Fallback Agent")
     ).toBe("Fallback Agent");
-    expect(resolveSelectedAgentWorkspaceLabel("leader-agent", null, null)).toBe("leader-agent");
+    expect(resolveSelectedAgentWorkspaceLabel("coordinator-agent", null, null)).toBe("coordinator-agent");
     expect(resolveSelectedAgentWorkspaceLabel("   ", null, null)).toBe("Agent");
   });
 
   it("summarizes focused agent lifecycle, work, inbox, and current work", () => {
     expect(resolveAgentWorkspaceStatusView(buildMemberLiveState())).toEqual({
-      role: "leader",
+      role: "coordinator",
       lifecycle: "working",
       work: "working",
       inbox: "2",

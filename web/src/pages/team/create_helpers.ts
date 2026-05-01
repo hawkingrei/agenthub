@@ -1,6 +1,6 @@
 import type { AgentRecord, TeamPromptDefaultsRecord } from "../../api";
 import {
-  DEFAULT_TEAM_LEADER_SKILLS,
+  DEFAULT_TEAM_COORDINATOR_SKILLS,
   DEFAULT_TEAM_WORKER_SKILLS,
   EMPTY_TEAM_PROMPT_DEFAULTS,
   resolveTeamPromptForRole,
@@ -8,7 +8,7 @@ import {
 } from "./member_helpers";
 import { DEFAULT_WORKTREE_ROOT, type CreateTeamStage } from "./state";
 
-const DEFAULT_TEAM_PLAN_STEP_KEY = "leader_plan";
+const DEFAULT_TEAM_PLAN_STEP_KEY = "coordinator_plan";
 const MIN_AGENT_LOOP_IDLE_SECONDS = 10;
 const MAX_AGENT_LOOP_IDLE_SECONDS = 86_400;
 
@@ -20,7 +20,7 @@ type TeamStepDraft = {
 
 export type TeamMemberProfileDraft = {
   member_id: string;
-  role: "leader" | "worker";
+  role: "coordinator" | "worker";
   description: string;
   model: string;
   prompt: string;
@@ -39,14 +39,14 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 }
 
 export function buildTeamSpecFromForm(
-  leaderMemberId: string,
-  leaderModel: string,
-  leaderPrompt: string,
+  coordinatorMemberId: string,
+  coordinatorModel: string,
+  coordinatorPrompt: string,
   workers: WorkerDraft[],
   teamForgeAgents: AgentRecord[],
   promptDefaults: TeamPromptDefaultsRecord = EMPTY_TEAM_PROMPT_DEFAULTS
 ): unknown {
-  const leaderId = leaderMemberId.trim();
+  const coordinatorId = coordinatorMemberId.trim();
   const forgeAgentById = new Map(teamForgeAgents.map((agent) => [agent.id, agent]));
   const normalizedWorkers = workers
     .map((worker) => ({
@@ -57,17 +57,17 @@ export function buildTeamSpecFromForm(
     }))
     .filter((worker) => worker.member_id.length > 0);
   const steps = buildDefaultWorkflowSteps(
-    leaderId,
+    coordinatorId,
     normalizedWorkers.map((worker) => worker.member_id)
   );
 
   const members = [
     {
-      member_id: leaderId,
-      role: "leader",
-      model: leaderModel.trim() || undefined,
-      prompt: leaderPrompt.trim() || promptDefaults.leader_prompt,
-      runtime: buildMemberRuntimeHint(forgeAgentById.get(leaderId)),
+      member_id: coordinatorId,
+      role: "coordinator",
+      model: coordinatorModel.trim() || undefined,
+      prompt: coordinatorPrompt.trim() || promptDefaults.coordinator_prompt,
+      runtime: buildMemberRuntimeHint(forgeAgentById.get(coordinatorId)),
     },
     ...normalizedWorkers.map((worker) => ({
       member_id: worker.member_id,
@@ -81,8 +81,8 @@ export function buildTeamSpecFromForm(
 
   return {
     spec_version: 1,
-    entrypoint: steps[0]?.step_key ?? leaderId,
-    leader_member_id: leaderId,
+    entrypoint: steps[0]?.step_key ?? coordinatorId,
+    coordinator_member_id: coordinatorId,
     members,
     steps,
   };
@@ -115,7 +115,7 @@ export function teamSpecHasConfiguredMembers(spec: unknown): boolean {
   return collectTeamSpecMemberIds(spec).length > 0;
 }
 
-export function teamSpecHasLeader(spec: unknown): boolean {
+export function teamSpecHasCoordinator(spec: unknown): boolean {
   const specObj = asObjectRecord(spec);
   if (!specObj) {
     return false;
@@ -126,7 +126,7 @@ export function teamSpecHasLeader(spec: unknown): boolean {
     if (!memberObj) {
       return false;
     }
-    return readMemberRole(memberObj) === "leader";
+    return readMemberRole(memberObj) === "coordinator";
   });
 }
 
@@ -140,7 +140,7 @@ export function appendTeamMemberToSpec(
   if (!memberId) {
     throw new Error("Member id is required");
   }
-  const role = draft.role === "leader" ? "leader" : "worker";
+  const role = draft.role === "coordinator" ? "coordinator" : "worker";
   const nextSpec = cloneSpecObject(spec);
   const existingMembers = Array.isArray(nextSpec.members)
     ? nextSpec.members
@@ -150,11 +150,13 @@ export function appendTeamMemberToSpec(
   if (existingMembers.some((member) => readMemberId(member) === memberId)) {
     throw new Error(`Team already includes member ${memberId}`);
   }
-  const leaderId = existingMembers.find((member) => readMemberRole(member) === "leader");
-  if (role === "leader" && leaderId) {
-    throw new Error("Team already has a leader");
+  const coordinatorMember = existingMembers.find(
+    (member) => readMemberRole(member) === "coordinator"
+  );
+  if (role === "coordinator" && coordinatorMember) {
+    throw new Error("Team already has a coordinator");
   }
-  if (role === "worker" && !leaderId) {
+  if (role === "worker" && !coordinatorMember) {
     throw new Error("Create the first agent before adding more agents");
   }
 
@@ -170,22 +172,22 @@ export function appendTeamMemberToSpec(
     runtime: buildMemberRuntimeHint(agent),
   });
 
-  const resolvedLeaderId =
-    role === "leader"
+  const resolvedCoordinatorId =
+    role === "coordinator"
       ? memberId
-      : existingMembers.find((member) => readMemberRole(member) === "leader")?.member_id;
-  if (typeof resolvedLeaderId !== "string" || !resolvedLeaderId.trim()) {
-    throw new Error("Team leader is required");
+      : existingMembers.find((member) => readMemberRole(member) === "coordinator")?.member_id;
+  if (typeof resolvedCoordinatorId !== "string" || !resolvedCoordinatorId.trim()) {
+    throw new Error("Team coordinator is required");
   }
-  const normalizedLeaderId = resolvedLeaderId.trim();
+  const normalizedCoordinatorId = resolvedCoordinatorId.trim();
   const workerMemberIds = existingMembers
     .map((member) => readMemberId(member))
-    .filter((candidate) => candidate.length > 0 && candidate !== normalizedLeaderId);
+    .filter((candidate) => candidate.length > 0 && candidate !== normalizedCoordinatorId);
 
   nextSpec.spec_version = 1;
   nextSpec.members = existingMembers;
-  nextSpec.leader_member_id = normalizedLeaderId;
-  nextSpec.steps = buildDefaultWorkflowSteps(normalizedLeaderId, workerMemberIds);
+  nextSpec.coordinator_member_id = normalizedCoordinatorId;
+  nextSpec.steps = buildDefaultWorkflowSteps(normalizedCoordinatorId, workerMemberIds);
   nextSpec.entrypoint = DEFAULT_TEAM_PLAN_STEP_KEY;
   return nextSpec;
 }
@@ -253,7 +255,7 @@ export function buildTeamMemberDraftFromSpec(
   if (!member) {
     return null;
   }
-  const role = readMemberRole(member) === "leader" ? "leader" : "worker";
+  const role = readMemberRole(member) === "coordinator" ? "coordinator" : "worker";
   return {
     member_id: normalizedMemberId,
     role,
@@ -262,8 +264,8 @@ export function buildTeamMemberDraftFromSpec(
     prompt:
       readOptionalStringField(member, "prompt") || resolveTeamPromptForRole(promptDefaults, role),
     skills:
-      role === "leader"
-        ? [...DEFAULT_TEAM_LEADER_SKILLS]
+      role === "coordinator"
+        ? [...DEFAULT_TEAM_COORDINATOR_SKILLS]
         : [...DEFAULT_TEAM_WORKER_SKILLS],
     custom_skills: "",
     agent_loop_enabled: agent?.agent_loop_enabled ?? readRuntimeLoopEnabled(member),
@@ -295,7 +297,7 @@ export function updateTeamMemberProfileInSpec(
     throw new Error(`Team does not include member ${memberId}`);
   }
   const existing = existingMembers[memberIndex];
-  const role = readMemberRole(existing) === "leader" ? "leader" : "worker";
+  const role = readMemberRole(existing) === "coordinator" ? "coordinator" : "worker";
   const prompt =
     draft.prompt.trim() || resolveTeamPromptForRole(promptDefaults, role);
   const loopIdleRaw = draft.agent_loop_idle_seconds.trim();
@@ -346,15 +348,15 @@ function buildMemberRuntimeHint(agent: AgentRecord | undefined): Record<string, 
 }
 
 function buildDefaultWorkflowSteps(
-  leaderMemberId: string,
+  coordinatorMemberId: string,
   workerMemberIds: string[]
 ): TeamStepDraft[] {
-  if (!leaderMemberId.trim()) {
+  if (!coordinatorMemberId.trim()) {
     return [];
   }
   const planningStep: TeamStepDraft = {
-    step_key: "leader_plan",
-    member_id: leaderMemberId,
+    step_key: "coordinator_plan",
+    member_id: coordinatorMemberId,
     depends_on: [],
   };
   if (workerMemberIds.length === 0) {
@@ -366,8 +368,8 @@ function buildDefaultWorkflowSteps(
     depends_on: [planningStep.step_key],
   }));
   const synthesizeStep: TeamStepDraft = {
-    step_key: "leader_synthesize",
-    member_id: leaderMemberId,
+    step_key: "coordinator_synthesize",
+    member_id: coordinatorMemberId,
     depends_on: workerSteps.map((step) => step.step_key),
   };
   return [planningStep, ...workerSteps, synthesizeStep];
@@ -401,7 +403,7 @@ export function parseErrorMessage(err: unknown): string {
   return String(err);
 }
 
-export function buildLeaderForgeDefaultWorkdir(
+export function buildCoordinatorForgeDefaultWorkdir(
   defaultRoot: string,
   agentName: string,
   seed: number = Date.now()
@@ -413,7 +415,7 @@ export function buildLeaderForgeDefaultWorkdir(
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const nameToken = normalizedName || "leader";
+  const nameToken = normalizedName || "coordinator";
   const seedToken = Math.max(0, Math.floor(seed)).toString(36);
   return `${root}/${nameToken}-${seedToken}`;
 }

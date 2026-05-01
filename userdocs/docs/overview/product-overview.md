@@ -15,7 +15,7 @@ AgentHub is not just a prompt box for one terminal session. It combines:
 - long-lived agent runtimes
 - a web control surface for start, stop, reconnect, and review
 - structured ACP output rendering
-- optional Team workflows with leader and worker roles
+- optional Team workflows with coordinator and worker roles
 - optional remote execution nodes for multi-machine rollout
 
 The important shift is that AgentHub treats the browser as a control surface,

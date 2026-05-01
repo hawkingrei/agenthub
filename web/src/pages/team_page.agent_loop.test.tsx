@@ -19,7 +19,7 @@ const {
 } = vi.hoisted(() => ({
   getRuntimeDefaults: vi.fn().mockResolvedValue({ default_worktree_root: "/tmp/worktrees" }),
   getTeamPromptDefaults: vi.fn().mockResolvedValue({
-    leader_prompt: "leader-default-prompt",
+    coordinator_prompt: "coordinator-default-prompt",
     worker_prompt: "worker-default-prompt",
   }),
   getTeamRuntime: vi.fn().mockResolvedValue({
@@ -355,8 +355,8 @@ describe("TeamPage agent loop profile flow", () => {
       description: "Mission",
       spec: {
         spec_version: 1,
-        leader_member_id: "leader",
-        entrypoint: "leader_plan",
+        coordinator_member_id: "coordinator",
+        entrypoint: "coordinator_plan",
         steps: [],
         members: [
           {
@@ -403,7 +403,7 @@ describe("TeamPage agent loop profile flow", () => {
         team_id: "team-1",
         title: "all",
         status: "in_progress",
-        created_by_actor_id: "leader",
+        created_by_actor_id: "coordinator",
         assigned_member_id: null,
         context: { bootstrap_kind: "shared_thread" },
         created_at: 1,

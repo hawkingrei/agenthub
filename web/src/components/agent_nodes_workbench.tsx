@@ -243,9 +243,9 @@ export function AgentNodesWorkbench({
     (sum, team) => sum + team.activeAgentCount,
     0
   );
-  const selectedNodeLeaderCount = selectedNodeTeams.reduce(
+  const selectedNodeCoordinatorCount = selectedNodeTeams.reduce(
     (sum, team) =>
-      sum + team.matchedMembers.filter((member) => member.role === "leader").length,
+      sum + team.matchedMembers.filter((member) => member.role === "coordinator").length,
     0
   );
   const selectedNodeWorkerCount = selectedNodeTeams.reduce(
@@ -566,8 +566,10 @@ export function AgentNodesWorkbench({
                 <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeamMemberCount}</div>
               </div>
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
-                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Leaders</div>
-                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeLeaderCount}</div>
+                <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Coordinators</div>
+                <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
+                  {selectedNodeCoordinatorCount}
+                </div>
               </div>
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Workers</div>
@@ -620,9 +622,9 @@ export function AgentNodesWorkbench({
                         </div>
                       </div>
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
-                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Leaders</div>
+                        <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Coordinators</div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>
-                          {team.matchedMembers.filter((member) => member.role === "leader").length}
+                          {team.matchedMembers.filter((member) => member.role === "coordinator").length}
                         </div>
                       </div>
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>

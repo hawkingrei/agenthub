@@ -51,7 +51,7 @@ describe("TeamThreadPane", () => {
         <TeamThreadPane
           channelLabel="# all"
           rootMessageId={42}
-          rootAuthorLabel="leader"
+          rootAuthorLabel="coordinator"
           rootCreatedAt={1713480000000}
           rootText="Investigate the regression in a focused thread."
           replies={[
@@ -78,14 +78,14 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("1 reply");
     expect(html).toContain("Focused replies stay anchored to the source message.");
     expect(html).toContain("Source");
-    expect(html).toContain("From leader · #42");
+    expect(html).toContain("From coordinator · #42");
     expect(html).toContain("Investigate the regression in a focused thread.");
     expect(html).toContain("View in channel");
     expect(html).toContain("Close thread");
     expect(html).toContain("Original");
     expect(html).toContain("Replies");
-    expect(html).toContain("leader");
-    expect(html).toContain('data-avatar-seed="leader::leader"');
+    expect(html).toContain("coordinator");
+    expect(html).toContain('data-avatar-seed="coordinator::coordinator"');
     expect(html).toContain("#42");
     expect(html).toContain("Investigate the regression in a focused thread.");
     expect(html).toContain("Replies");
@@ -169,7 +169,7 @@ describe("TeamThreadPane", () => {
         <TeamThreadPane
           channelLabel="# review"
           rootMessageId={88}
-          rootAuthorLabel="leader"
+          rootAuthorLabel="coordinator"
           rootCreatedAt={1713480000000}
           rootText={longRootText}
           replies={[]}
@@ -184,7 +184,7 @@ describe("TeamThreadPane", () => {
       </MantineProvider>
     );
 
-    expect(html).toContain("From leader · #88");
+    expect(html).toContain("From coordinator · #88");
     expect(html).toContain("Replies");
     expect(html).toContain(
       "This is a long source message that should stay fully visible in the original root bubble while the compact source str..."
@@ -232,7 +232,7 @@ describe("TeamThreadPane", () => {
           <TeamThreadPane
             channelLabel="# review"
             rootMessageId={88}
-            rootAuthorLabel="leader"
+            rootAuthorLabel="coordinator"
             rootCreatedAt={1713480000000}
             rootText="Discuss here."
             replies={[]}
@@ -278,7 +278,7 @@ describe("TeamThreadPane", () => {
           <TeamThreadPane
             channelLabel="# review"
             rootMessageId={88}
-            rootAuthorLabel="leader"
+            rootAuthorLabel="coordinator"
             rootCreatedAt={1713480000000}
             rootText="Discuss here."
             replies={[]}
@@ -319,7 +319,7 @@ describe("TeamThreadPane", () => {
           <TeamThreadPane
             channelLabel="# review"
             rootMessageId={88}
-            rootAuthorLabel="leader"
+            rootAuthorLabel="coordinator"
             rootCreatedAt={1713480000000}
             rootText="Discuss here."
             replies={[]}
@@ -366,7 +366,7 @@ describe("TeamThreadPane", () => {
           <TeamThreadPane
             channelLabel="# review"
             rootMessageId={88}
-            rootAuthorLabel="leader"
+            rootAuthorLabel="coordinator"
             rootCreatedAt={1713480000000}
             rootText="Discuss here."
             replies={[]}
@@ -412,7 +412,7 @@ describe("TeamThreadPane", () => {
           <TeamThreadPane
             channelLabel="# review"
             rootMessageId={88}
-            rootAuthorLabel="leader"
+            rootAuthorLabel="coordinator"
             rootCreatedAt={1713480000000}
             rootText="Discuss here."
             replies={[]}

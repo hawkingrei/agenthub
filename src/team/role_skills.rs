@@ -1,8 +1,8 @@
-const LEADER_ROLE_SYSTEM_SKILLS: [&str; 5] = [
+const COORDINATOR_ROLE_SYSTEM_SKILLS: [&str; 5] = [
     "agenthub-actor-runtime",
     "team-agents-index",
-    "team-leader-agents-index",
-    "team-leader-orchestrator",
+    "team-coordinator-agents-index",
+    "team-coordinator-orchestrator",
     "team-actor-mailbox",
 ];
 
@@ -15,8 +15,8 @@ const WORKER_ROLE_SYSTEM_SKILLS: [&str; 5] = [
 ];
 
 pub fn mandatory_team_role_skills(role: &str) -> &'static [&'static str] {
-    if role == "leader" {
-        LEADER_ROLE_SYSTEM_SKILLS.as_slice()
+    if role == "coordinator" {
+        COORDINATOR_ROLE_SYSTEM_SKILLS.as_slice()
     } else {
         WORKER_ROLE_SYSTEM_SKILLS.as_slice()
     }

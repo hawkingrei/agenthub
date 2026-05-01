@@ -11,7 +11,7 @@ Usage:
   scripts/setup_team_skills.sh [--use-repo-skill-paths]
 
 Description:
-  Add Team leader/worker/deliberation skill files into AgentHub skills.json.
+  Add Team coordinator/worker/deliberation skill files into AgentHub skills.json.
   By default, copies Team skill files into ~/.agenthub/worktrees/team-skills so
   resulting paths are inside the default safe_paths allow-list.
   Existing skills are preserved and duplicates are removed.
@@ -112,26 +112,26 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-leader_skill="${repo_root}/skills/team/team-leader-orchestrator.SKILL.md"
+coordinator_skill="${repo_root}/skills/team/team-coordinator-orchestrator.SKILL.md"
 worker_skill="${repo_root}/skills/team/team-worker-executor.SKILL.md"
 deliberation_skill="${repo_root}/skills/team/team-deliberation-rules.SKILL.md"
 
-for skill_path in "${leader_skill}" "${worker_skill}" "${deliberation_skill}"; do
+for skill_path in "${coordinator_skill}" "${worker_skill}" "${deliberation_skill}"; do
   if [[ ! -f "${skill_path}" ]]; then
     echo "error: missing skill file: ${skill_path}" >&2
     exit 1
   fi
 done
 
-target_leader="${leader_skill}"
+target_coordinator="${coordinator_skill}"
 target_worker="${worker_skill}"
 target_deliberation="${deliberation_skill}"
 if [[ "${use_repo_skill_paths}" -eq 0 ]]; then
   mkdir -p "${install_dir}"
-  target_leader="${install_dir}/team-leader-orchestrator.SKILL.md"
+  target_coordinator="${install_dir}/team-coordinator-orchestrator.SKILL.md"
   target_worker="${install_dir}/team-worker-executor.SKILL.md"
   target_deliberation="${install_dir}/team-deliberation-rules.SKILL.md"
-  cp "${leader_skill}" "${target_leader}"
+  cp "${coordinator_skill}" "${target_coordinator}"
   cp "${worker_skill}" "${target_worker}"
   cp "${deliberation_skill}" "${target_deliberation}"
 fi
@@ -150,12 +150,12 @@ cleanup() {
 trap cleanup EXIT
 
 jq \
-  --arg leader "${target_leader}" \
+  --arg coordinator "${target_coordinator}" \
   --arg worker "${target_worker}" \
   --arg deliberation "${target_deliberation}" \
   '
     .skills = (
-      ((.skills | if type == "array" then . else [] end) + [$leader, $worker, $deliberation])
+      ((.skills | if type == "array" then . else [] end) + [$coordinator, $worker, $deliberation])
       | reduce .[] as $entry (
           {items: [], seen: {}};
           (
@@ -183,7 +183,7 @@ tmp_file=""
 
 echo "updated skills config: ${skills_file}"
 echo "added team skills:"
-echo "  - ${target_leader}"
+echo "  - ${target_coordinator}"
 echo "  - ${target_worker}"
 echo "  - ${target_deliberation}"
 if [[ "${use_repo_skill_paths}" -eq 0 ]]; then

@@ -6,7 +6,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 ## Agent Profile
 
 - member_id:
-- role: `leader|worker`
+- role: `coordinator|worker`
 - current phase: `team formation|task analysis|role assignment|communication and collaboration|consensus formation|result integration`
 - transition condition:
 
@@ -27,7 +27,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
   - `team-agents-index`
   - `team-actor-mailbox`
 - role core (pick one):
-  - leader: `team-leader-orchestrator`
+  - coordinator: `team-coordinator-orchestrator`
   - worker: `team-worker-executor`
 - optional (load only when needed):
   - `team-task-lifecycle`
@@ -36,7 +36,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 ## Shared Contracts
 
 - Shared routing, mention, and human-facing reply rules live in `skills/team/AGENTS.md`.
-- Leader-specific execution policy lives in `team-leader-orchestrator`.
+- Coordinator-specific execution policy lives in `team-coordinator-orchestrator`.
 - Worker-specific execution policy lives in `team-worker-executor`.
 - Mailbox transport and payload details live in `team-actor-mailbox`.
 - Canonical Team task creation/state rules live in `team-task-lifecycle`.
@@ -61,7 +61,7 @@ Keep runtime `AGENTS.md` minimal and role-scoped to control context size.
 - status: `pending|in_progress|completed|blocked`
 - latest update:
 - latest finding:
-- primary route: `leader-mailbox|peer-mailbox|shared-channel` (`direct mailbox first` unless the update needs shared visibility)
+- primary route: `coordinator-mailbox|peer-mailbox|shared-channel` (`direct mailbox first` unless the update needs shared visibility)
 - secondary route: `none|human-notification`
 - next checkpoint:
 - overdue action:

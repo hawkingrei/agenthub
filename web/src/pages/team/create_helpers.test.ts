@@ -6,7 +6,7 @@ import {
   buildTeamMemberDraftFromSpec,
   buildTeamForgeCleanupWarning,
   buildEmptyTeamSpec,
-  buildLeaderForgeDefaultWorkdir,
+  buildCoordinatorForgeDefaultWorkdir,
   buildTeamSpecFromForm,
   clampCreateTeamStage,
   cleanupUnusedTeamForgeAgents,
@@ -18,13 +18,13 @@ import {
   parseRequiredJson,
   resolveUnusedTeamForgeAgentIds,
   teamSpecHasConfiguredMembers,
-  teamSpecHasLeader,
+  teamSpecHasCoordinator,
   updateTeamMemberProfileInSpec,
 } from "./create_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
 
 const TEST_PROMPT_DEFAULTS = {
-  leader_prompt: "leader-default-prompt",
+  coordinator_prompt: "coordinator-default-prompt",
   worker_prompt: "worker-default-prompt",
 };
 
@@ -78,7 +78,7 @@ function buildProfileDraft(
 describe("team create helpers", () => {
   it("builds default team spec from form fields with normalized members and steps", () => {
     const spec = buildTeamSpecFromForm(
-      "leader-main",
+      "coordinator-main",
       "gpt-5",
       "Lead the mission",
       [
@@ -92,7 +92,7 @@ describe("team create helpers", () => {
         buildWorker({ member_id: "   " }),
       ],
       [
-        buildForgeAgent({ id: "leader-main", workdir: "/tmp/leader-main" }),
+        buildForgeAgent({ id: "coordinator-main", workdir: "/tmp/coordinator-main" }),
         buildForgeAgent({
           id: "worker alpha",
           name: "worker-alpha",
@@ -107,7 +107,7 @@ describe("team create helpers", () => {
     ) as {
       spec_version: number;
       entrypoint: string;
-      leader_member_id: string;
+      coordinator_member_id: string;
       members: Array<{
         member_id: string;
         role: string;
@@ -125,10 +125,10 @@ describe("team create helpers", () => {
     };
 
     expect(spec.spec_version).toBe(1);
-    expect(spec.entrypoint).toBe("leader_plan");
-    expect(spec.leader_member_id).toBe("leader-main");
+    expect(spec.entrypoint).toBe("coordinator_plan");
+    expect(spec.coordinator_member_id).toBe("coordinator-main");
     expect(spec.members.map((member) => member.member_id)).toEqual([
-      "leader-main",
+      "coordinator-main",
       "worker alpha",
     ]);
     expect(spec.members[0]?.skills).toBeUndefined();
@@ -136,9 +136,9 @@ describe("team create helpers", () => {
     expect(spec.members[1]?.description).toBe("query optimizer specialist");
     expect(spec.members[1]?.skills).toBeUndefined();
     expect(spec.members[0]?.runtime).toEqual({
-      name: "leader-main-name",
+      name: "coordinator-main-name",
       target_node_id: null,
-      workdir: "/tmp/leader-main",
+      workdir: "/tmp/coordinator-main",
       worktree_mode: "use_existing",
       worktree_repo: null,
       worktree_ref: null,
@@ -161,18 +161,18 @@ describe("team create helpers", () => {
     });
     expect(spec.steps).toEqual([
       {
-        step_key: "leader_plan",
-        member_id: "leader-main",
+        step_key: "coordinator_plan",
+        member_id: "coordinator-main",
         depends_on: [],
       },
       {
         step_key: "worker_1_worker_alpha",
         member_id: "worker alpha",
-        depends_on: ["leader_plan"],
+        depends_on: ["coordinator_plan"],
       },
       {
-        step_key: "leader_synthesize",
-        member_id: "leader-main",
+        step_key: "coordinator_synthesize",
+        member_id: "coordinator-main",
         depends_on: ["worker_1_worker_alpha"],
       },
     ]);
@@ -180,31 +180,31 @@ describe("team create helpers", () => {
 
   it("falls back to single planning step when no workers are provided", () => {
     const spec = buildTeamSpecFromForm(
-      "leader-only",
+      "coordinator-only",
       "",
       "",
       [],
-      [buildForgeAgent({ id: "leader-only" })],
+      [buildForgeAgent({ id: "coordinator-only" })],
       TEST_PROMPT_DEFAULTS
     ) as {
       entrypoint: string;
       members: Array<{ member_id: string; prompt: string; runtime?: Record<string, unknown> }>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
-    expect(spec.entrypoint).toBe("leader_plan");
+    expect(spec.entrypoint).toBe("coordinator_plan");
     expect(spec.steps).toEqual([
       {
-        step_key: "leader_plan",
-        member_id: "leader-only",
+        step_key: "coordinator_plan",
+        member_id: "coordinator-only",
         depends_on: [],
       },
     ]);
-    expect(spec.members[0]?.member_id).toBe("leader-only");
-    expect(spec.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
+    expect(spec.members[0]?.member_id).toBe("coordinator-only");
+    expect(spec.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
     expect(spec.members[0]?.runtime).toEqual({
-      name: "leader-only-name",
+      name: "coordinator-only-name",
       target_node_id: null,
-      workdir: "/tmp/leader-only",
+      workdir: "/tmp/coordinator-only",
       worktree_mode: "use_existing",
       worktree_repo: null,
       worktree_ref: null,
@@ -222,14 +222,14 @@ describe("team create helpers", () => {
       members: [],
     });
     expect(teamSpecHasConfiguredMembers(spec)).toBe(false);
-    expect(teamSpecHasLeader(spec)).toBe(false);
+    expect(teamSpecHasCoordinator(spec)).toBe(false);
   });
 
-  it("appends leader and worker profiles into a team spec with derived workflow", () => {
-    const leaderAgent = buildForgeAgent({
-      id: "leader-1",
-      name: "leader-1-name",
-      workdir: "/tmp/leader-1",
+  it("appends coordinator and worker profiles into a team spec with derived workflow", () => {
+    const coordinatorAgent = buildForgeAgent({
+      id: "coordinator-1",
+      name: "coordinator-1-name",
+      workdir: "/tmp/coordinator-1",
       code_mode: true,
     });
     const workerAgent = buildForgeAgent({
@@ -241,39 +241,39 @@ describe("team create helpers", () => {
       worktree_ref: "main",
       code_mode: true,
     });
-    const withLeader = appendTeamMemberToSpec(
+    const withCoordinator = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      leaderAgent,
+      coordinatorAgent,
       TEST_PROMPT_DEFAULTS
     ) as {
-      leader_member_id: string;
+      coordinator_member_id: string;
       entrypoint: string;
       members: Array<Record<string, unknown>>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
-    expect(teamSpecHasConfiguredMembers(withLeader)).toBe(true);
-    expect(teamSpecHasLeader(withLeader)).toBe(true);
-    expect(withLeader.leader_member_id).toBe("leader-1");
-    expect(withLeader.entrypoint).toBe("leader_plan");
-    expect(withLeader.members).toHaveLength(1);
-    expect(withLeader.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
-    expect(withLeader.steps).toEqual([
+    expect(teamSpecHasConfiguredMembers(withCoordinator)).toBe(true);
+    expect(teamSpecHasCoordinator(withCoordinator)).toBe(true);
+    expect(withCoordinator.coordinator_member_id).toBe("coordinator-1");
+    expect(withCoordinator.entrypoint).toBe("coordinator_plan");
+    expect(withCoordinator.members).toHaveLength(1);
+    expect(withCoordinator.members[0]?.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
+    expect(withCoordinator.steps).toEqual([
       {
-        step_key: "leader_plan",
-        member_id: "leader-1",
+        step_key: "coordinator_plan",
+        member_id: "coordinator-1",
         depends_on: [],
       },
     ]);
 
     const withWorker = appendTeamMemberToSpec(
-      withLeader,
+      withCoordinator,
       buildProfileDraft({
         member_id: "worker-1",
         role: "worker",
@@ -285,33 +285,33 @@ describe("team create helpers", () => {
       workerAgent,
       TEST_PROMPT_DEFAULTS
     ) as {
-      leader_member_id: string;
+      coordinator_member_id: string;
       members: Array<Record<string, unknown>>;
       steps: Array<{ step_key: string; member_id: string; depends_on: string[] }>;
     };
-    expect(withWorker.leader_member_id).toBe("leader-1");
+    expect(withWorker.coordinator_member_id).toBe("coordinator-1");
     expect(withWorker.members).toHaveLength(2);
     expect(withWorker.members[1]?.prompt).toBe("Execute with evidence");
     expect(withWorker.steps).toEqual([
       {
-        step_key: "leader_plan",
-        member_id: "leader-1",
+        step_key: "coordinator_plan",
+        member_id: "coordinator-1",
         depends_on: [],
       },
       {
         step_key: "worker_1_worker_1",
         member_id: "worker-1",
-        depends_on: ["leader_plan"],
+        depends_on: ["coordinator_plan"],
       },
       {
-        step_key: "leader_synthesize",
-        member_id: "leader-1",
+        step_key: "coordinator_synthesize",
+        member_id: "coordinator-1",
         depends_on: ["worker_1_worker_1"],
       },
     ]);
   });
 
-  it("rejects worker-first and duplicate leader append operations", () => {
+  it("rejects worker-first and duplicate coordinator append operations", () => {
     expect(() =>
       appendTeamMemberToSpec(
         buildEmptyTeamSpec(),
@@ -324,51 +324,51 @@ describe("team create helpers", () => {
       )
     ).toThrow("Create the first agent before adding more agents");
 
-    const withLeader = appendTeamMemberToSpec(
+    const withCoordinator = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
       }),
-      buildForgeAgent({ id: "leader-1" }),
+      buildForgeAgent({ id: "coordinator-1" }),
       TEST_PROMPT_DEFAULTS
     );
     expect(() =>
       appendTeamMemberToSpec(
-        withLeader,
+        withCoordinator,
         buildProfileDraft({
-          member_id: "leader-2",
-          role: "leader",
+          member_id: "coordinator-2",
+          role: "coordinator",
         }),
-        buildForgeAgent({ id: "leader-2" }),
+        buildForgeAgent({ id: "coordinator-2" }),
         TEST_PROMPT_DEFAULTS
       )
-    ).toThrow("Team already has a leader");
+    ).toThrow("Team already has a coordinator");
   });
 
   it("builds editable member draft from spec and preserves role defaults", () => {
     const spec = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      buildForgeAgent({ id: "leader-1" })
+      buildForgeAgent({ id: "coordinator-1" })
     );
-    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1", undefined, TEST_PROMPT_DEFAULTS);
+    const draft = buildTeamMemberDraftFromSpec(spec, "coordinator-1", undefined, TEST_PROMPT_DEFAULTS);
     expect(draft).toMatchObject({
-      member_id: "leader-1",
-      role: "leader",
+      member_id: "coordinator-1",
+      role: "coordinator",
       description: "Team architect",
       model: "codex",
       custom_skills: "",
     });
-    expect(draft?.prompt).toBe(TEST_PROMPT_DEFAULTS.leader_prompt);
+    expect(draft?.prompt).toBe(TEST_PROMPT_DEFAULTS.coordinator_prompt);
     expect(draft?.skills).toEqual(
-      expect.arrayContaining(["agenthub-actor-runtime", "team-leader-orchestrator"])
+      expect.arrayContaining(["agenthub-actor-runtime", "team-coordinator-orchestrator"])
     );
   });
 
@@ -376,13 +376,13 @@ describe("team create helpers", () => {
     const spec = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      buildForgeAgent({ id: "leader-1" })
+      buildForgeAgent({ id: "coordinator-1" })
     ) as { members: Array<Record<string, unknown>> };
     spec.members[0] = {
       ...spec.members[0],
@@ -394,7 +394,7 @@ describe("team create helpers", () => {
       },
     };
 
-    const draft = buildTeamMemberDraftFromSpec(spec, "leader-1", undefined, TEST_PROMPT_DEFAULTS);
+    const draft = buildTeamMemberDraftFromSpec(spec, "coordinator-1", undefined, TEST_PROMPT_DEFAULTS);
     expect(draft?.agent_loop_idle_seconds).toBe("");
   });
 
@@ -402,17 +402,17 @@ describe("team create helpers", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
+      buildForgeAgent({ id: "coordinator-1", workdir: "/tmp/coordinator-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {
-      member_id: "leader-1",
-      role: "leader",
+      member_id: "coordinator-1",
+      role: "coordinator",
       description: "Review owner",
       model: "gpt-5.4",
       prompt: "Coordinate review and final synthesis.",
@@ -424,16 +424,16 @@ describe("team create helpers", () => {
     }) as { members: Array<Record<string, unknown>> };
     expect(updated.members).toHaveLength(1);
     expect(updated.members[0]).toMatchObject({
-      member_id: "leader-1",
-      role: "leader",
+      member_id: "coordinator-1",
+      role: "coordinator",
       description: "Review owner",
       model: "gpt-5.4",
       prompt: "Coordinate review and final synthesis.",
     });
     expect(updated.members[0]?.skills).toBeUndefined();
     expect(updated.members[0]?.runtime).toEqual({
-      name: "leader-1-name",
-      workdir: "/tmp/leader-1",
+      name: "coordinator-1-name",
+      workdir: "/tmp/coordinator-1",
       target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
@@ -449,17 +449,17 @@ describe("team create helpers", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
+      buildForgeAgent({ id: "coordinator-1", workdir: "/tmp/coordinator-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {
-      member_id: "leader-1",
-      role: "leader",
+      member_id: "coordinator-1",
+      role: "coordinator",
       description: "Review owner",
       model: "gpt-5.4",
       prompt: "Coordinate review and final synthesis.",
@@ -471,8 +471,8 @@ describe("team create helpers", () => {
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
-      name: "leader-1-name",
-      workdir: "/tmp/leader-1",
+      name: "coordinator-1-name",
+      workdir: "/tmp/coordinator-1",
       target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
@@ -488,17 +488,17 @@ describe("team create helpers", () => {
     const original = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),
       buildProfileDraft({
-        member_id: "leader-1",
-        role: "leader",
+        member_id: "coordinator-1",
+        role: "coordinator",
         description: "Team architect",
         model: "codex",
         skills: ["team-deliberation-rules"],
       }),
-      buildForgeAgent({ id: "leader-1", workdir: "/tmp/leader-1", code_mode: true })
+      buildForgeAgent({ id: "coordinator-1", workdir: "/tmp/coordinator-1", code_mode: true })
     );
     const updated = updateTeamMemberProfileInSpec(original, {
-      member_id: "leader-1",
-      role: "leader",
+      member_id: "coordinator-1",
+      role: "coordinator",
       description: "Review owner",
       model: "gpt-5.4",
       prompt: "Coordinate review and final synthesis.",
@@ -510,8 +510,8 @@ describe("team create helpers", () => {
     }) as { members: Array<Record<string, unknown>> };
 
     expect(updated.members[0]?.runtime).toEqual({
-      name: "leader-1-name",
-      workdir: "/tmp/leader-1",
+      name: "coordinator-1-name",
+      workdir: "/tmp/coordinator-1",
       target_node_id: null,
       worktree_mode: "use_existing",
       worktree_repo: null,
@@ -593,7 +593,7 @@ describe("team create helpers", () => {
     expect(
       collectTeamSpecMemberIds({
         members: [
-          { member_id: "leader-gemini" },
+          { member_id: "coordinator-gemini" },
           { member_id: "worker-1" },
           { member_id: "worker-1" },
           { member_id: "  " },
@@ -601,36 +601,36 @@ describe("team create helpers", () => {
           null,
         ],
       })
-    ).toEqual(["leader-gemini", "worker-1"]);
+    ).toEqual(["coordinator-gemini", "worker-1"]);
     expect(collectTeamSpecMemberIds({ members: "invalid" })).toEqual([]);
     expect(collectTeamSpecMemberIds(null)).toEqual([]);
   });
 
   it("resolves unused forged agents by subtracting selected member ids", () => {
     const stale = resolveUnusedTeamForgeAgentIds(
-      ["leader-codex", "leader-gemini", "worker-1", "worker-1", "", "  "],
+      ["coordinator-codex", "coordinator-gemini", "worker-1", "worker-1", "", "  "],
       {
-        members: [{ member_id: "leader-gemini" }, { member_id: "worker-1" }],
+        members: [{ member_id: "coordinator-gemini" }, { member_id: "worker-1" }],
       }
     );
-    expect(stale).toEqual(["leader-codex"]);
+    expect(stale).toEqual(["coordinator-codex"]);
     expect(resolveUnusedTeamForgeAgentIds(["a", "a", "b"], { invalid: true })).toEqual([
       "a",
       "b",
     ]);
   });
 
-  it("builds leader forge default workdir under .agenthub root", () => {
+  it("builds coordinator forge default workdir under .agenthub root", () => {
     expect(
-      buildLeaderForgeDefaultWorkdir(
+      buildCoordinatorForgeDefaultWorkdir(
         "~/.agenthub/worktrees",
-        "My Leader Agent",
+        "My Coordinator Agent",
         1_706_000_000_000
       )
-    ).toBe("~/.agenthub/worktrees/my-leader-agent-lrq4coow");
+    ).toBe("~/.agenthub/worktrees/my-coordinator-agent-lrq4coow");
 
-    expect(buildLeaderForgeDefaultWorkdir("", "###", 10)).toBe(
-      "~/.agenthub/worktrees/leader-a"
+    expect(buildCoordinatorForgeDefaultWorkdir("", "###", 10)).toBe(
+      "~/.agenthub/worktrees/coordinator-a"
     );
   });
 
@@ -642,11 +642,11 @@ describe("team create helpers", () => {
     });
     const result = await cleanupUnusedTeamForgeAgents(
       "token-1",
-      ["leader-1", "worker-2", "leader-1", " ", ""],
+      ["coordinator-1", "worker-2", "coordinator-1", " ", ""],
       deleteAgent
     );
     expect(deleteAgent).toHaveBeenCalledTimes(2);
-    expect(result.deletedForgeAgentIds).toEqual(["leader-1"]);
+    expect(result.deletedForgeAgentIds).toEqual(["coordinator-1"]);
     expect(result.cleanupErrors).toEqual(["worker-2: permission denied"]);
   });
 

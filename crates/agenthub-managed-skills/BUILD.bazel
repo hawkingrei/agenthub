@@ -9,7 +9,7 @@ rust_library(
     crate_name = "agenthub_managed_skills",
     compile_data = [
         "//:skills/team/team-agents-index.SKILL.md",
-        "//:skills/team/team-leader-orchestrator.SKILL.md",
+        "//:skills/team/team-coordinator-orchestrator.SKILL.md",
         "//:skills/team/team-worker-executor.SKILL.md",
         "//:skills/team/team-task-lifecycle.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",
@@ -26,7 +26,7 @@ rust_test(
     crate = ":agenthub_managed_skills",
     compile_data = [
         "//:skills/team/team-agents-index.SKILL.md",
-        "//:skills/team/team-leader-orchestrator.SKILL.md",
+        "//:skills/team/team-coordinator-orchestrator.SKILL.md",
         "//:skills/team/team-worker-executor.SKILL.md",
         "//:skills/team/team-task-lifecycle.SKILL.md",
         "//:skills/team/team-deliberation-rules.SKILL.md",

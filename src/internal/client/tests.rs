@@ -43,7 +43,7 @@ fn build_authz() -> InternalAuthz {
 
 fn issue_token(authz: &InternalAuthz, run_id: Option<&str>, permissions: Vec<String>) -> String {
     let (token, _expires_at) = authz
-        .issue_access_token(InternalRole::Leader, None, run_id, permissions, 600)
+        .issue_access_token(InternalRole::Coordinator, None, run_id, permissions, 600)
         .expect("issue internal token");
     token
 }
@@ -665,7 +665,7 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
     let team_id = format!("team-{}", Uuid::new_v4());
     let team_name = format!("grpc-direct-send-team-{}", Uuid::new_v4());
     let run_id = format!("run-{}", Uuid::new_v4());
-    let leader_member_id = "595d1ae8-fcbd-4111-b5c7-d446a12c044b";
+    let coordinator_member_id = "595d1ae8-fcbd-4111-b5c7-d446a12c044b";
     let worker_member_id = "c319f933-1358-4418-a111-872304052422";
     seed_team_run_with_spec(
         &state,
@@ -673,9 +673,9 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
         &team_name,
         &run_id,
         &json!({
-            "entrypoint": leader_member_id,
+            "entrypoint": coordinator_member_id,
             "members": [
-                {"member_id": leader_member_id, "role": "leader"},
+                {"member_id": coordinator_member_id, "role": "coordinator"},
                 {"member_id": worker_member_id, "role": "worker"}
             ]
         }),
@@ -702,7 +702,7 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
             run_id: run_id.clone(),
             from_actor_id: worker_member_id.to_string(),
             from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
-            to_actor_id: Some("leader".to_string()),
+            to_actor_id: Some("coordinator".to_string()),
             channel_id: None,
             to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
             channel: Some("coordination".to_string()),
@@ -719,7 +719,7 @@ async fn grpc_actor_send_rejects_role_alias_target_on_server() {
 
     assert_eq!(err.code, ActorServiceErrorCode::BadRequest);
     assert!(err.message.contains("not a canonical team member_id"));
-    assert!(err.message.contains(leader_member_id));
+    assert!(err.message.contains(coordinator_member_id));
 
     server.handle.abort();
 }

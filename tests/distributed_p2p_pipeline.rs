@@ -31,7 +31,7 @@ use internal_proto::{AckActorMessageRequest, ListActorInboxRequest};
 
 const TEST_INTERNAL_ISSUER: &str = "agenthub";
 const TEST_INTERNAL_AUDIENCE: &str = "agenthub-internal";
-const TEST_INTERNAL_ROLE: &str = "leader";
+const TEST_INTERNAL_ROLE: &str = "coordinator";
 const TEST_LOG_ROOT: &str = "target/p2p-pipeline-logs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -18,14 +18,14 @@ If agents can bypass MCP mailbox tools, routing and replay contracts become prob
 
 - messages may skip `run_id` partitioning;
 - ack/evidence chain may be incomplete;
-- leader/worker workflow can drift from Team contracts.
+- coordinator/worker workflow can drift from Team contracts.
 
 We need a stronger enforcement model so Team sessions stay on the canonical coordination path by default, not best effort.
 
 ## Scope
 
 - Team-session coordination enforcement model (`required`, fail-fast, fallback policy).
-- Startup and turn-loop workflow contract for leader/worker agents.
+- Startup and turn-loop workflow contract for coordinator/worker agents.
 - Allowed-action policy for mailbox communication.
 - Observability and validation requirements for enforcement rollout.
 
@@ -151,7 +151,7 @@ Policy semantics:
 
 For Team role sessions:
 
-1. attach role skills from role profile (`leader|worker`).
+1. attach role skills from role profile (`coordinator|worker`).
 2. attach actor runtime skill.
 3. verify mailbox MCP server exists in effective MCP list.
 4. if check fails:
@@ -166,7 +166,7 @@ For non-Team sessions:
 
 ```text
 Input: session request, role profile, effective MCP config, effective skills
-If role in {leader, worker} and session_mode == Team:
+If role in {coordinator, worker} and session_mode == Team:
   1) Load shared + role skill profile.
   2) Resolve effective MCP servers/capabilities.
   3) Verify mailbox MCP server exists.
@@ -343,8 +343,8 @@ Context memory expectations:
 ## Validation Matrix
 
 1. Runtime startup checks
-- Team leader/worker session fails if mailbox MCP missing.
-- Team leader/worker session fails if required mailbox tool is missing.
+- Team coordinator/worker session fails if mailbox MCP missing.
+- Team coordinator/worker session fails if required mailbox tool is missing.
 - non-Team session still starts without mailbox MCP.
 
 2. Workflow checks

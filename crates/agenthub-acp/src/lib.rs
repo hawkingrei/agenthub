@@ -2352,7 +2352,7 @@ Fallback to the user-level review contract.
             current_run_id: Some("run-42".to_string()),
             actor_id: "planner".to_string(),
             default_channel: "coordination".to_string(),
-            member_role: Some("leader".to_string()),
+            member_role: Some("coordinator".to_string()),
             member_skills: Vec::new(),
             contract_version: Some("v1".to_string()),
             continuity: Some(AcpActorContinuityEnvelope {
@@ -2544,7 +2544,7 @@ Fallback to the user-level review contract.
                 &request_id,
                 RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("allow")),
                 Some("allow".to_string()),
-                Some("leader".to_string()),
+                Some("coordinator".to_string()),
             )
             .await
             .expect("first respond");
@@ -2570,7 +2570,7 @@ Fallback to the user-level review contract.
         .expect("reload permission request");
         assert_eq!(row.get::<String, _>("status"), "responded");
         assert_eq!(row.get::<String, _>("selected_option_id"), "allow");
-        assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "leader");
+        assert_eq!(row.get::<String, _>("reviewed_by_actor_id"), "coordinator");
     }
 
     #[test]

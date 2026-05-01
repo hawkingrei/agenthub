@@ -8,7 +8,7 @@ heavy:
 
 - users should not need to know `run_id`;
 - chat flow should support `@member` routing naturally;
-- leader/worker should see a shared live timeline without weakening mailbox guarantees.
+- coordinator/worker should see a shared live timeline without weakening mailbox guarantees.
 
 We need a conversation-first event-bus contract that preserves execution correctness.
 
@@ -68,7 +68,7 @@ We need a conversation-first event-bus contract that preserves execution correct
 Canonical mapping:
 
 - `conversation_id` (UUIDv7): human-facing long-lived context.
-- `task_id` (UUIDv7): leader-defined internal work item under a conversation.
+- `task_id` (UUIDv7): coordinator-defined internal work item under a conversation.
 - `run_id` (UUIDv7): one concrete execution instance generated when execution starts.
 
 Lifecycle relation:
@@ -127,7 +127,7 @@ Definition:
 Usage:
 
 - one request-intent chain shares one `correlation_id`, for example:
-  - leader assignment -> worker progress -> worker result -> leader synthesis.
+  - coordinator assignment -> worker progress -> worker result -> coordinator synthesis.
 
 Constraints:
 

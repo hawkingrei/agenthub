@@ -2,7 +2,7 @@
 
 ## Problem
 
-AgentHub Team capabilities (leader/worker roles, actor mailbox, conversation/run/step model,
+AgentHub Team capabilities (coordinator/worker roles, actor mailbox, conversation/run/step model,
 context continuity) were documented across many timeline notes. Without a unified spec,
 terminology and operating expectations drift.
 
@@ -34,21 +34,21 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   discussion; human messages do not automatically become Team `task` records.
 
 2. Task ownership layer
-- Leader/System interprets shared conversation input and turns agreed execution work into internal
+- Coordinator/System interprets shared conversation input and turns agreed execution work into internal
   `task` records.
 - A `task` is the primary agent-facing work object.
 - `task.assigned_member_id` is the canonical owner slot.
-- Canonical execution tasks must not stay unassigned; if a task is materialized onto Kanban, leader
+- Canonical execution tasks must not stay unassigned; if a task is materialized onto Kanban, coordinator
   must choose a concrete owner explicitly instead of relying on implicit scheduling or leaving the
   task owner empty.
 - Explicit ownership changes happen through canonical task updates (`assigned_member_id` assign /
   unassign), not implicit runtime scheduling.
 - Human-facing UI / HTTP APIs may display canonical task status and ownership, but they do not
   mutate those fields directly.
-- Canonical task creation and lifecycle management belong to leader planning, not direct human task
+- Canonical task creation and lifecycle management belong to coordinator planning, not direct human task
   authoring.
 - The normal public Team HTTP surface intentionally exposes task reads, not direct canonical task
-  creation; leader/runtime task creation flows through internal actor controls instead of
+  creation; coordinator/runtime task creation flows through internal actor controls instead of
   `POST /api/teams/:id/tasks`.
 
 3. Execution telemetry layer
@@ -61,12 +61,13 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 
 ### 2) Role Model
 
-- Leader: architecture/planning/review/synthesis owner.
-- Worker: implementation executor, evidence producer.
+- Coordinator (`coordinator` role id for runtime compatibility): architecture/planning/review/synthesis owner.
+- Worker: implementation executor, evidence producer, and proactive execution owner inside assigned lanes.
 - Messages without `@mention` target the whole team conversation.
-- Speaking policy in shared conversation is leader-first: leader should respond first.
-- Worker should speak only when one of these holds: correction of leader error, critical supplement, new finding/evidence, or explicit `@mention`.
-- Worker can talk with human directly in the shared team conversation when explicitly mentioned (or when context requires direct clarification), while execution ownership still converges through leader.
+- Shared conversation is coordinator-oriented, not worker-silent:
+  - coordinator remains responsible for planning, delegation, and final synthesis
+  - worker should speak directly when they are the natural factual owner, have a concrete progress update, or can answer the question faster from first-hand execution context
+- Worker initiative is encouraged once work is clearly assigned and actionable, but execution should still stay in active dialogue with the coordinator instead of becoming disconnected parallel work.
 
 ### 3) Six-Phase Collaboration Workflow
 
@@ -83,14 +84,14 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - `Conversation` (`all`) is the human-facing lane and remains available without an active run.
   - Human goals/constraints and `@member` coordination requests are authored here.
   - Channels are communication/review lanes, not the canonical task lane.
-  - Conversation is a single shared group stream across human, leader, and workers (not per-member isolated chats).
-  - Default routing: messages without `@mention` are team-wide with leader-first response priority.
-  - Messages with `@member_id` can target one or multiple members and relax worker speaking guardrails.
+  - Conversation is a single shared group stream across human, coordinator, and workers (not per-member isolated chats).
+  - Default routing: messages without `@mention` are team-wide with coordinator-oriented response priority.
+  - Messages with `@member_id` can target one or multiple members and further relax worker speaking guardrails.
   - Realtime carrier should use event bus; authoritative persistence remains in `main` DB with outbox relay.
 - Execution lane:
   - `Kanban` is the primary task lane.
   - Human operators do not create canonical Team tasks from `Kanban`; they use `Conversation`
-    (`all`) to request work or clarify constraints, then leader planning / Team runtime materialize
+    (`all`) to request work or clarify constraints, then coordinator planning / Team runtime materialize
     tasks onto the board.
   - `Runs` is the execution-history/debug lane for explicit run browsing, `Start Team`, and
     active-run selection.
@@ -105,9 +106,9 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
 
 ### 5) Cold-Start Workflow
 
-- Inject shared Team AGENTS index (`team-agents-index`) to both leader and worker at startup.
+- Inject shared Team AGENTS index (`team-agents-index`) to both coordinator and worker at startup.
 - Inject role-specific AGENTS index:
-  - leader: `team-leader-agents-index`
+  - coordinator: `team-coordinator-agents-index`
   - worker: `team-worker-agents-index`
 - Read `AGENTS.md` as index.
 - Check unfinished items in `TODO.md`; workers in concrete project workspaces should also check `.agenthubmemory/TODO.md`.
@@ -115,7 +116,7 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - `.agenthubmemory/TODO.md` for the durable task ledger
   - `.agenthubmemory/journal/` for chronological work logs
   - `.agenthubmemory/note/` for reusable lessons and heuristics
-- Leader usually starts from an empty coordination workspace and can skip `.agenthubmemory/`.
+- Coordinator usually starts from an empty coordination workspace and can skip `.agenthubmemory/`.
 - Project workdirs are stable workspace identities; ordinary restarts must not move an agent to a
   new project directory just because AgentHub generated a new runtime launch id.
 - AgentHub runtime launch ids and ACP provider continuity ids are separate:
@@ -123,11 +124,11 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - `agent_persistent_sessions.session_id` tracks resumable provider continuity
   - `Force New Session` clears the provider continuity id on purpose; ordinary restart should not
 - Team skills are system-managed from role, not configured per member:
-  - leader effective system skills:
+  - coordinator effective system skills:
     - `agenthub-actor-runtime`
     - `team-agents-index`
-    - `team-leader-agents-index`
-    - `team-leader-orchestrator`
+    - `team-coordinator-agents-index`
+    - `team-coordinator-orchestrator`
     - `team-actor-mailbox`
   - worker effective system skills:
     - `agenthub-actor-runtime`
@@ -161,10 +162,10 @@ Canonical execution vocabulary (`task`, `attempt`, `run`, `step`, `round`):
   - enabling/disabling or updating loop settings must not block normal Team profile/task flows
 - Team ACP permission review is mailbox-first:
   - worker-originated ACP permission requests should prefer a non-requester agent reviewer first;
-    if another worker is available, route there before falling back to leader
+    if another worker is available, route there before falling back to coordinator
   - when multiple non-requester agent reviewers are available, permission review should prefer an
     idle reviewer (no recent non-user ACP output) before interrupting an actively producing agent
-  - leader-originated ACP permission requests route to an automatically selected subordinate worker reviewer
+  - coordinator-originated ACP permission requests route to an automatically selected subordinate worker reviewer
   - requester must never review its own request; only the current automatically assigned reviewer should see the approval action
   - approval/rejection should be treated as ACP-side review control flow rather than normal peer mailbox work
   - if agent review is unavailable or times out, the system posts a human-review request into
@@ -189,14 +190,14 @@ MCP enforcement baseline:
   - injected skill: `team-agents-index`
 - Unified runtime template for both roles:
   - file template: `skills/team/TEAM_AGENTS.md`
-- Leader runtime index:
-  - injected skill: `team-leader-agents-index` (apply leader skill profile)
+- Coordinator runtime index:
+  - injected skill: `team-coordinator-agents-index` (apply coordinator skill profile)
 - Worker runtime index:
   - injected skill: `team-worker-agents-index` (apply worker skill profile)
 
 Constraint:
 
-- leader and worker share one template but keep different role-focused active skill sets.
+- coordinator and worker share one template but keep different role-focused active skill sets.
 - runtime `AGENTS.md` should include only phase-required skills to control context size.
 - role-bound system skills come from runtime injection / managed skill install, not from
   `spec.members[].skills`.
@@ -247,7 +248,7 @@ For the full execution vocabulary and boundary rules, see
 - `.cache/context/` remains runtime continuity/state storage; it is not the main long-lived project
   notebook.
 - Cross-member sharing goes through Team channels (events/mailbox/pointers), not direct filesystem writes.
-- Leader workspace should remain an empty coordination workspace by default.
+- Coordinator workspace should remain an empty coordination workspace by default.
 - The canonical file/directory contract for `.cache/context/` and `.agenthubmemory/` lives in
   [team-workspace-memory-contract.md](./team-workspace-memory-contract.md).
 
@@ -260,14 +261,14 @@ For the full execution vocabulary and boundary rules, see
   archive; operators should use ACP / Runs / other debug lanes for deeper
   history.
 - `Kanban` is task-first and should show task state plus linked run history/summary.
-- Leader owns canonical Team task creation and lifecycle management; workers advance assigned work
+- Coordinator owns canonical Team task creation and lifecycle management; workers advance assigned work
   and report progress/blockers promptly so task state remains current.
 - Human clients may read Team task state from `Kanban`, but canonical task `status` and
   `assigned_member_id` changes remain agent/runtime controls.
 - Public Team HTTP clients also do not create canonical tasks directly; they request work in
-  `Conversation` and let leader/runtime materialize Kanban tasks.
+  `Conversation` and let coordinator/runtime materialize Kanban tasks.
 - `task.assigned_member_id` is the long-lived ownership field, but empty ownership is valid until
-  leader assigns a member explicitly.
+  coordinator assigns a member explicitly.
 - Channels are free-form communication/review lanes; agents should use timed triggers only for
   deferred follow-up and reminders, not as a substitute for canonical Team task tracking in
   `Kanban`.
@@ -284,8 +285,8 @@ For the full execution vocabulary and boundary rules, see
 - If legacy data contains multiple shared-thread tasks, backend canonicalization should prefer the
   thread with the newest persisted conversation message; when no shared-thread messages exist yet,
   it should fall back to the oldest created shared-thread record for stability.
-- Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> leader`,
-  `leader -> subordinate worker`), prefer an idle reviewer first when more than one agent candidate
+- Team ACP permission review requests should auto-route to a non-requester reviewer (`worker -> coordinator`,
+  `coordinator -> subordinate worker`), prefer an idle reviewer first when more than one agent candidate
   is available, and fall back to human review in `Conversation` (`all`) when agent review cannot
   complete.
 - `Runs` tab is the only primary entry for run selection/start.
@@ -306,7 +307,7 @@ For the full execution vocabulary and boundary rules, see
 - Human-facing conversation remains group-visible even when `@mention` is used.
 - `@mention` controls response priority and coordination scope, not message visibility.
 - When one specific teammate owns the next action, Team coordination should default to
-  `to_member` / `to_leader` direct mailbox delivery instead of `group_chat`.
+  `to_member` / `to_coordinator` direct mailbox delivery instead of `group_chat`.
 - `group_chat` should be reserved for human-visible progress, shared checkpoints, and genuinely
   multi-recipient coordination.
 - Large evidence handoffs should be summary-first: send the concise summary in the mailbox/chat

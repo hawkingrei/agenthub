@@ -34,13 +34,13 @@ describe("DeterministicAvatar", () => {
   it("renders a deterministic object avatar shell", () => {
     const html = renderToStaticMarkup(
       <DeterministicAvatar
-        name="Leader"
-        stableId="leader-agent"
+        name="Coordinator"
+        stableId="coordinator-agent"
         className="h-7 w-7 border border-black/8"
       />
     );
 
-    expect(html).toContain('data-avatar-seed="Leader::leader-agent"');
+    expect(html).toContain('data-avatar-seed="Coordinator::coordinator-agent"');
     expect(html).toContain('data-avatar-variant="');
     expect(html).toContain('class="inline-flex shrink-0 overflow-hidden rounded-full h-7 w-7 border border-black/8"');
     expect(html).toContain("grid-template-columns:repeat(8, 1fr)");
@@ -48,7 +48,7 @@ describe("DeterministicAvatar", () => {
   });
 
   it("keeps every row horizontally symmetric", () => {
-    const model = renderDeterministicAvatarModel("Leader", "leader-agent");
+    const model = renderDeterministicAvatarModel("Coordinator", "coordinator-agent");
     for (let row = 0; row < 8; row += 1) {
       for (let col = 0; col < 4; col += 1) {
         const left = model.cells[row * 8 + col];

@@ -5,7 +5,12 @@ async fn internal_grpc_describe_team_context_defaults_to_scoped_run() {
     let state = build_test_state().await;
     let run = create_team_run(&state).await;
     let authz = build_authz();
-    let token = issue_token(&authz, InternalRole::Leader, Some("planner"), Some(&run.id));
+    let token = issue_token(
+        &authz,
+        InternalRole::Coordinator,
+        Some("planner"),
+        Some(&run.id),
+    );
     let service = TeamInternalControlService::new(
         control_deps(&state),
         authz,

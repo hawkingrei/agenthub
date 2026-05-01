@@ -14,7 +14,7 @@ use agenthub_team_actor::{
     canonical_json, parse_actor_transport,
 };
 use agenthub_team_prompts::{
-    DEFAULT_TEAM_LEADER_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
+    DEFAULT_TEAM_COORDINATOR_PROMPT, DEFAULT_TEAM_WORKER_PROMPT, default_team_prompt_for_role,
 };
 use axum::{
     Json, Router,
@@ -47,18 +47,18 @@ use crate::team::{
 const TEAM_SPEC_VERSION_V1: i64 = 1;
 const SQLITE_CONSTRAINT_UNIQUE_CODE: &str = "2067";
 const MAX_TEAM_SPEC_STEPS: usize = 2048;
-const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "leader_plan";
-const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "leader_synthesize";
+const DEFAULT_TEAM_PLAN_STEP_KEY: &str = "coordinator_plan";
+const DEFAULT_TEAM_SYNTH_STEP_KEY: &str = "coordinator_synthesize";
 #[cfg(test)]
-const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
-const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_leader", "to_member", "group_chat"];
+const TEAM_CONVERSATION_MODE_VALUES: [&str; 3] = ["to_coordinator", "to_member", "group_chat"];
+const TEAM_CONVERSATION_ROUTE_VALUES: [&str; 3] = ["to_coordinator", "to_member", "group_chat"];
 const TEAM_SPECIAL_USER_ACTOR_ALIAS: &str = "user";
 const TEAM_SPECIAL_USER_ACTOR_PREFIX: &str = "user:";
 const TEAM_SHARED_THREAD_BOOTSTRAP_KIND: &str = "shared_thread";
 const TEAM_TASK_COMPILE_VERSION: i64 = 1;
 const TEAM_TASK_COMPILE_MESSAGE_LIMIT: i64 = 500;
 const DEFAULT_TEAM_TASK_ACCEPTANCE_CRITERION: &str =
-    "All assigned steps complete and leader synthesis is delivered.";
+    "All assigned steps complete and coordinator synthesis is delivered.";
 const TEAM_TASK_COMPILE_MAX_LIST_ITEMS: usize = 32;
 const TEAM_MESSAGE_SUMMARY_MAX_CHARS: usize = 240;
 const TEAM_MEMORY_FLUSH_TRIGGER_VALUES: [&str; 3] = ["manual", "soft_threshold", "hard_error"];
@@ -332,7 +332,7 @@ pub struct AckTeamRunMessageRequest {
 pub struct TeamRunSnapshotResponse {
     pub run: TeamRunRecord,
     pub team: TeamDefinitionRecord,
-    pub leader_member_id: Option<String>,
+    pub coordinator_member_id: Option<String>,
     pub members: Vec<TeamMemberSnapshot>,
     pub steps: Vec<TeamStepRecord>,
     pub latest_events: Vec<TeamRunEventRecord>,
@@ -414,7 +414,7 @@ pub type TeamRuntimeControlResponse = crate::team::TeamRuntimeControlRecord;
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct TeamPromptDefaultsResponse {
-    pub leader_prompt: String,
+    pub coordinator_prompt: String,
     pub worker_prompt: String,
 }
 
@@ -504,7 +504,7 @@ async fn get_team_prompt_defaults(
 ) -> Result<Json<TeamPromptDefaultsResponse>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     Ok(Json(TeamPromptDefaultsResponse {
-        leader_prompt: DEFAULT_TEAM_LEADER_PROMPT.to_string(),
+        coordinator_prompt: DEFAULT_TEAM_COORDINATOR_PROMPT.to_string(),
         worker_prompt: DEFAULT_TEAM_WORKER_PROMPT.to_string(),
     }))
 }
@@ -1220,7 +1220,7 @@ async fn get_team_run_snapshot(
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let coordinator_member_id = parse_spec_coordinator_member_id(spec_obj, &member_specs)?;
 
     let steps = state
         .teams
@@ -1274,8 +1274,8 @@ async fn get_team_run_snapshot(
             .as_ref()
             .map(|step| step_status_to_str(&step.status).to_string())
             .unwrap_or_else(|| "idle".to_string());
-        let role = if leader_member_id.as_deref() == Some(member.member_id.as_str()) {
-            "leader"
+        let role = if coordinator_member_id.as_deref() == Some(member.member_id.as_str()) {
+            "coordinator"
         } else {
             member.role.as_str()
         };
@@ -1315,7 +1315,7 @@ async fn get_team_run_snapshot(
     Ok(Json(TeamRunSnapshotResponse {
         run,
         team,
-        leader_member_id,
+        coordinator_member_id,
         members,
         steps,
         latest_events,
@@ -1648,8 +1648,8 @@ async fn maybe_notify_actor_new_mailbox_message_type(
     let prompt = build_actor_mailbox_immediate_hint_prompt(run_id, plan.reason);
     let reason_label = match plan.reason {
         crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage => "direct_agent_message",
-        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention => {
-            "leader_channel_mention"
+        crate::team::ActorMailboxImmediateHintReason::CoordinatorChannelMention => {
+            "coordinator_channel_mention"
         }
     };
     let mut sent_targets = Vec::new();
@@ -1708,8 +1708,8 @@ fn build_actor_mailbox_immediate_hint_prompt_for_test(
     run_id: &str,
     reason: &'static str,
 ) -> String {
-    let reason = if reason == "leader_channel_mention" {
-        crate::team::ActorMailboxImmediateHintReason::LeaderChannelMention
+    let reason = if reason == "coordinator_channel_mention" {
+        crate::team::ActorMailboxImmediateHintReason::CoordinatorChannelMention
     } else {
         crate::team::ActorMailboxImmediateHintReason::DirectAgentMessage
     };
@@ -2322,16 +2322,16 @@ fn infer_task_message_route(
         return normalize_conversation_route(requested_route);
     }
     if let Some(to_actor_id) = to_actor_id.map(str::trim).filter(|value| !value.is_empty()) {
-        if actor_scope.leader_member_id.as_deref() == Some(to_actor_id) {
-            return Ok("to_leader".to_string());
+        if actor_scope.coordinator_member_id.as_deref() == Some(to_actor_id) {
+            return Ok("to_coordinator".to_string());
         }
         return Ok("to_member".to_string());
     }
     let Some(target_actor_id) = infer_single_task_message_target(actor_scope, payload) else {
         return Ok("group_chat".to_string());
     };
-    if actor_scope.leader_member_id.as_deref() == Some(target_actor_id.as_str()) {
-        return Ok("to_leader".to_string());
+    if actor_scope.coordinator_member_id.as_deref() == Some(target_actor_id.as_str()) {
+        return Ok("to_coordinator".to_string());
     }
     Ok("to_member".to_string())
 }
@@ -2558,7 +2558,7 @@ struct TaskActorScope {
     user_actor_id: String,
     member_ids: HashSet<String>,
     member_order: Vec<String>,
-    leader_member_id: Option<String>,
+    coordinator_member_id: Option<String>,
 }
 
 fn parse_task_actor_scope(
@@ -2577,12 +2577,12 @@ fn parse_task_actor_scope(
         .iter()
         .map(|member| member.member_id.clone())
         .collect::<HashSet<_>>();
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let coordinator_member_id = parse_spec_coordinator_member_id(spec_obj, &member_specs)?;
     Ok(TaskActorScope {
         user_actor_id: canonical_user_actor_id(user),
         member_ids,
         member_order,
-        leader_member_id,
+        coordinator_member_id,
     })
 }
 
@@ -2629,16 +2629,22 @@ fn resolve_task_message_target(
             }
             Ok(Some(to_actor_id))
         }
-        "to_leader" => {
-            let leader_member_id = actor_scope.leader_member_id.as_deref().ok_or_else(|| {
-                ApiError::bad_request("route=to_leader requires a leader member in spec.members")
-            })?;
+        "to_coordinator" => {
+            let coordinator_member_id =
+                actor_scope
+                    .coordinator_member_id
+                    .as_deref()
+                    .ok_or_else(|| {
+                        ApiError::bad_request(
+                            "route=to_coordinator requires a coordinator member in spec.members",
+                        )
+                    })?;
             match to_actor_id {
-                None => Ok(Some(leader_member_id.to_string())),
+                None => Ok(Some(coordinator_member_id.to_string())),
                 Some(to_actor_id) => {
-                    if to_actor_id != leader_member_id {
+                    if to_actor_id != coordinator_member_id {
                         return Err(ApiError::bad_request(
-                            "to_actor_id must equal leader member_id when route=to_leader",
+                            "to_actor_id must equal coordinator member_id when route=to_coordinator",
                         ));
                     }
                     Ok(Some(to_actor_id))
@@ -2976,13 +2982,13 @@ fn is_team_run_status_active(status: &TeamRunStatus) -> bool {
 }
 
 fn resolve_task_mailbox_sender(actor_scope: &TaskActorScope) -> Option<String> {
-    let leader_member_id = actor_scope
-        .leader_member_id
+    let coordinator_member_id = actor_scope
+        .coordinator_member_id
         .as_deref()
         .filter(|member_id| actor_scope.member_ids.contains(*member_id))
         .map(str::to_string);
-    if leader_member_id.is_some() {
-        return leader_member_id;
+    if coordinator_member_id.is_some() {
+        return coordinator_member_id;
     }
     actor_scope.member_order.first().cloned()
 }
@@ -3006,7 +3012,7 @@ fn resolve_task_mailbox_recipient_ids(
             }
             (recipient_ids, "broadcast")
         }
-        "to_member" | "to_leader" => to_actor_id
+        "to_member" | "to_coordinator" => to_actor_id
             .map(|target| (vec![target.to_string()], "direct"))
             .unwrap_or_else(|| (Vec::new(), "direct")),
         _ => (Vec::new(), "broadcast"),
@@ -3170,17 +3176,17 @@ fn compile_task_run_preview_response(
         .as_object()
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let coordinator_member_id = parse_spec_coordinator_member_id(spec_obj, &member_specs)?;
     let execution_plan = parse_task_execution_plan(&task.context)
         .map_err(|_| ApiError::bad_request("task context contains an invalid execution_plan"))?;
     let step_template = if let Some(plan) = execution_plan.as_ref() {
         compile_task_step_template_from_execution_plan(
             plan,
             &member_specs,
-            leader_member_id.as_deref(),
+            coordinator_member_id.as_deref(),
         )?
     } else {
-        compile_task_step_template(spec_obj, &member_specs, leader_member_id.as_deref())?
+        compile_task_step_template(spec_obj, &member_specs, coordinator_member_id.as_deref())?
     };
     let mut extraction = extract_task_compile_extraction(&task.context);
     for message in messages {
@@ -3197,8 +3203,11 @@ fn compile_task_run_preview_response(
             .push(DEFAULT_TEAM_TASK_ACCEPTANCE_CRITERION.to_string());
     }
 
-    let role_assignments =
-        build_task_role_assignments(&step_template, &member_specs, leader_member_id.as_deref());
+    let role_assignments = build_task_role_assignments(
+        &step_template,
+        &member_specs,
+        coordinator_member_id.as_deref(),
+    );
     let task_list = extraction.task_list.clone();
     let acceptance_criteria = extraction.acceptance_criteria.clone();
     let deadline = extraction.deadline.clone();
@@ -3262,11 +3271,12 @@ fn ensure_team_execution_ready(spec: &Value) -> Result<(), ApiError> {
 fn compile_task_step_template(
     spec_obj: &serde_json::Map<String, Value>,
     member_specs: &[TeamMemberSpec],
-    leader_member_id: Option<&str>,
+    coordinator_member_id: Option<&str>,
 ) -> Result<Vec<TeamCompiledStepTemplate>, ApiError> {
-    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs)
-        .map(str::to_string)
-        .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
+    let coordinator_member_id =
+        resolve_effective_coordinator_member_id(coordinator_member_id, member_specs)
+            .map(str::to_string)
+            .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
 
     let member_role_by_id = member_specs
         .iter()
@@ -3276,7 +3286,7 @@ fn compile_task_step_template(
                 resolve_compiled_member_role(
                     member.member_id.as_str(),
                     member.role.as_str(),
-                    leader_member_id.as_str(),
+                    coordinator_member_id.as_str(),
                 ),
             )
         })
@@ -3289,10 +3299,11 @@ fn compile_task_step_template(
         let worker_member_ids = member_specs
             .iter()
             .map(|member| member.member_id.as_str())
-            .filter(|member_id| *member_id != leader_member_id.as_str())
+            .filter(|member_id| *member_id != coordinator_member_id.as_str())
             .map(str::to_string)
             .collect::<Vec<_>>();
-        generated_steps = build_default_team_steps(leader_member_id.as_str(), &worker_member_ids);
+        generated_steps =
+            build_default_team_steps(coordinator_member_id.as_str(), &worker_member_ids);
         generated_steps.as_slice()
     };
 
@@ -3333,11 +3344,12 @@ fn compile_task_step_template(
 fn compile_task_step_template_from_execution_plan(
     plan: &TeamTaskExecutionPlan,
     member_specs: &[TeamMemberSpec],
-    leader_member_id: Option<&str>,
+    coordinator_member_id: Option<&str>,
 ) -> Result<Vec<TeamCompiledStepTemplate>, ApiError> {
-    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs)
-        .map(str::to_string)
-        .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
+    let coordinator_member_id =
+        resolve_effective_coordinator_member_id(coordinator_member_id, member_specs)
+            .map(str::to_string)
+            .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
 
     let member_role_by_id = member_specs
         .iter()
@@ -3347,7 +3359,7 @@ fn compile_task_step_template_from_execution_plan(
                 resolve_compiled_member_role(
                     member.member_id.as_str(),
                     member.role.as_str(),
-                    leader_member_id.as_str(),
+                    coordinator_member_id.as_str(),
                 ),
             )
         })
@@ -3392,24 +3404,24 @@ fn compile_task_step_template_from_execution_plan(
 fn resolve_compiled_member_role(
     member_id: &str,
     base_role: &str,
-    leader_member_id: &str,
+    coordinator_member_id: &str,
 ) -> String {
-    if member_id == leader_member_id {
-        "leader".to_string()
+    if member_id == coordinator_member_id {
+        "coordinator".to_string()
     } else {
         base_role.to_string()
     }
 }
 
-fn resolve_effective_leader_member_id<'a>(
-    leader_member_id: Option<&'a str>,
+fn resolve_effective_coordinator_member_id<'a>(
+    coordinator_member_id: Option<&'a str>,
     member_specs: &'a [TeamMemberSpec],
 ) -> Option<&'a str> {
-    leader_member_id
+    coordinator_member_id
         .or_else(|| {
             member_specs
                 .iter()
-                .find(|member| member.role == "leader")
+                .find(|member| member.role == "coordinator")
                 .map(|member| member.member_id.as_str())
         })
         .or_else(|| member_specs.first().map(|member| member.member_id.as_str()))
@@ -3537,9 +3549,10 @@ fn parse_compile_optional_text_patch(
 fn build_task_role_assignments(
     step_template: &[TeamCompiledStepTemplate],
     member_specs: &[TeamMemberSpec],
-    leader_member_id: Option<&str>,
+    coordinator_member_id: Option<&str>,
 ) -> Vec<TeamCompiledRoleAssignment> {
-    let leader_member_id = resolve_effective_leader_member_id(leader_member_id, member_specs);
+    let coordinator_member_id =
+        resolve_effective_coordinator_member_id(coordinator_member_id, member_specs);
     let mut step_keys_by_member: HashMap<&str, Vec<String>> = HashMap::new();
     for step in step_template {
         step_keys_by_member
@@ -3551,8 +3564,8 @@ fn build_task_role_assignments(
         .iter()
         .map(|member| TeamCompiledRoleAssignment {
             member_id: member.member_id.clone(),
-            role: if leader_member_id == Some(member.member_id.as_str()) {
-                "leader".to_string()
+            role: if coordinator_member_id == Some(member.member_id.as_str()) {
+                "coordinator".to_string()
             } else {
                 member.role.clone()
             },
@@ -3647,7 +3660,7 @@ fn is_valid_compile_deadline(value: &str) -> bool {
 
 fn role_sort_order(role: &str) -> i32 {
     match role {
-        "leader" => 0,
+        "coordinator" => 0,
         "worker" => 1,
         _ => 2,
     }
@@ -3887,23 +3900,23 @@ fn prune_deleted_member_from_team_spec(
         return Ok(Some(next));
     }
 
-    let previous_leader_id = parse_spec_leader_member_id(spec_map, &current_members)?;
-    let leader_changed = previous_leader_id.as_deref() == Some(member_id);
-    let next_leader_id = resolve_pruned_team_leader_id(spec_obj, &remaining_members)?;
+    let previous_coordinator_id = parse_spec_coordinator_member_id(spec_map, &current_members)?;
+    let coordinator_changed = previous_coordinator_id.as_deref() == Some(member_id);
+    let next_coordinator_id = resolve_pruned_team_coordinator_id(spec_obj, &remaining_members)?;
 
-    if leader_changed {
-        promote_pruned_team_leader(spec_obj, next_leader_id.as_str())?;
+    if coordinator_changed {
+        promote_pruned_team_coordinator(spec_obj, next_coordinator_id.as_str())?;
     }
     spec_obj.insert(
-        "leader_member_id".to_string(),
-        Value::String(next_leader_id.clone()),
+        "coordinator_member_id".to_string(),
+        Value::String(next_coordinator_id.clone()),
     );
 
     let remaining_member_ids = remaining_members
         .iter()
         .map(|member| member.member_id.clone())
         .collect::<HashSet<_>>();
-    let mut regenerate_default_steps = leader_changed;
+    let mut regenerate_default_steps = coordinator_changed;
     let current_entrypoint = spec_obj
         .get("entrypoint")
         .and_then(Value::as_str)
@@ -3962,7 +3975,7 @@ fn prune_deleted_member_from_team_spec(
 
     if regenerate_default_steps {
         spec_obj.remove("steps");
-        spec_obj.insert("entrypoint".to_string(), Value::String(next_leader_id));
+        spec_obj.insert("entrypoint".to_string(), Value::String(next_coordinator_id));
     }
 
     normalize_team_spec(&mut next)?;
@@ -3970,7 +3983,7 @@ fn prune_deleted_member_from_team_spec(
     Ok(Some(next))
 }
 
-fn resolve_pruned_team_leader_id(
+fn resolve_pruned_team_coordinator_id(
     spec_obj: &Map<String, Value>,
     remaining_members: &[TeamMemberSpec],
 ) -> Result<String, ApiError> {
@@ -3979,18 +3992,18 @@ fn resolve_pruned_team_leader_id(
         .map(|member| member.member_id.as_str())
         .collect::<HashSet<_>>();
     if let Some(explicit) = spec_obj
-        .get("leader_member_id")
+        .get("coordinator_member_id")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| remaining_member_ids.contains(value))
     {
         return Ok(explicit.to_string());
     }
-    if let Some(role_leader) = remaining_members
+    if let Some(role_coordinator) = remaining_members
         .iter()
-        .find(|member| member.role == "leader")
+        .find(|member| member.role == "coordinator")
     {
-        return Ok(role_leader.member_id.clone());
+        return Ok(role_coordinator.member_id.clone());
     }
     remaining_members
         .first()
@@ -3998,9 +4011,9 @@ fn resolve_pruned_team_leader_id(
         .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))
 }
 
-fn promote_pruned_team_leader(
+fn promote_pruned_team_coordinator(
     spec_obj: &mut Map<String, Value>,
-    leader_member_id: &str,
+    coordinator_member_id: &str,
 ) -> Result<(), ApiError> {
     let members = spec_obj
         .get_mut("members")
@@ -4017,8 +4030,8 @@ fn promote_pruned_team_leader(
         else {
             continue;
         };
-        let next_role = if current_member_id == leader_member_id {
-            "leader"
+        let next_role = if current_member_id == coordinator_member_id {
+            "coordinator"
         } else {
             "worker"
         };
@@ -4032,7 +4045,7 @@ fn inject_team_spec_defaults(
 ) -> Result<(), ApiError> {
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
     if member_specs.is_empty() {
-        spec_obj.remove("leader_member_id");
+        spec_obj.remove("coordinator_member_id");
         spec_obj.remove("entrypoint");
         spec_obj.remove("steps");
         return Ok(());
@@ -4045,13 +4058,13 @@ fn inject_team_spec_defaults(
         .iter()
         .map(|member| member.member_id.as_str())
         .collect::<HashSet<_>>();
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
-    if let Some(leader_id) = leader_member_id.as_deref()
-        && !spec_obj.contains_key("leader_member_id")
+    let coordinator_member_id = parse_spec_coordinator_member_id(spec_obj, &member_specs)?;
+    if let Some(coordinator_id) = coordinator_member_id.as_deref()
+        && !spec_obj.contains_key("coordinator_member_id")
     {
         spec_obj.insert(
-            "leader_member_id".to_string(),
-            Value::String(leader_id.to_string()),
+            "coordinator_member_id".to_string(),
+            Value::String(coordinator_id.to_string()),
         );
     }
 
@@ -4087,25 +4100,26 @@ fn inject_team_spec_defaults(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let leader_matches_entrypoint = match (leader_member_id.as_deref(), entrypoint_member_id) {
-        (Some(leader), Some(entrypoint)) => leader == entrypoint,
-        _ => true,
-    };
+    let coordinator_matches_entrypoint =
+        match (coordinator_member_id.as_deref(), entrypoint_member_id) {
+            (Some(coordinator), Some(entrypoint)) => coordinator == entrypoint,
+            _ => true,
+        };
     let should_generate_steps = spec_obj.get("steps").is_none()
         && entrypoint_member_id.is_some_and(|entrypoint| member_ids.contains(entrypoint))
-        && leader_matches_entrypoint;
+        && coordinator_matches_entrypoint;
 
     if should_generate_steps {
-        let leader_id = leader_member_id
+        let coordinator_id = coordinator_member_id
             .or_else(|| entrypoint_member_id.map(str::to_string))
             .or_else(|| member_specs.first().map(|member| member.member_id.clone()))
             .ok_or_else(|| ApiError::bad_request("spec.members must not be empty"))?;
         let worker_member_ids = member_specs
             .iter()
             .map(|member| member.member_id.clone())
-            .filter(|member_id| member_id != &leader_id)
+            .filter(|member_id| member_id != &coordinator_id)
             .collect::<Vec<_>>();
-        let steps = build_default_team_steps(&leader_id, &worker_member_ids);
+        let steps = build_default_team_steps(&coordinator_id, &worker_member_ids);
         spec_obj.insert("steps".to_string(), Value::Array(steps));
         spec_obj.insert(
             "entrypoint".to_string(),
@@ -4124,11 +4138,14 @@ fn is_missing_or_null(value: Option<&Value>) -> bool {
     }
 }
 
-fn build_default_team_steps(leader_member_id: &str, worker_member_ids: &[String]) -> Vec<Value> {
+fn build_default_team_steps(
+    coordinator_member_id: &str,
+    worker_member_ids: &[String],
+) -> Vec<Value> {
     let mut steps = Vec::with_capacity(worker_member_ids.len() + 2);
     steps.push(serde_json::json!({
         "step_key": DEFAULT_TEAM_PLAN_STEP_KEY,
-        "member_id": leader_member_id,
+        "member_id": coordinator_member_id,
         "depends_on": [],
     }));
     if worker_member_ids.is_empty() {
@@ -4151,7 +4168,7 @@ fn build_default_team_steps(leader_member_id: &str, worker_member_ids: &[String]
     }
     steps.push(serde_json::json!({
         "step_key": DEFAULT_TEAM_SYNTH_STEP_KEY,
-        "member_id": leader_member_id,
+        "member_id": coordinator_member_id,
         "depends_on": worker_step_keys,
     }));
     steps
@@ -4185,7 +4202,7 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         .ok_or_else(|| ApiError::bad_request("spec must be an object"))?;
     let _ = parse_team_spec_version(spec_obj.get("spec_version"))?;
     let member_specs = parse_member_specs(spec_obj.get("members"))?;
-    let leader_member_id = parse_spec_leader_member_id(spec_obj, &member_specs)?;
+    let coordinator_member_id = parse_spec_coordinator_member_id(spec_obj, &member_specs)?;
     let entrypoint = spec_obj
         .get("entrypoint")
         .and_then(Value::as_str)
@@ -4193,9 +4210,9 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         .filter(|value| !value.is_empty());
 
     if member_specs.is_empty() {
-        if leader_member_id.is_some() {
+        if coordinator_member_id.is_some() {
             return Err(ApiError::bad_request(
-                "spec.leader_member_id must be omitted until spec.members is configured",
+                "spec.coordinator_member_id must be omitted until spec.members is configured",
             ));
         }
         if entrypoint.is_some() {
@@ -4224,11 +4241,11 @@ fn validate_team_spec(spec: &Value) -> Result<(), ApiError> {
         return Err(ApiError::bad_request(
             "spec.entrypoint must reference spec.members[].member_id when spec.steps is omitted",
         ));
-    } else if let Some(leader_id) = leader_member_id.as_deref()
-        && entrypoint != leader_id
+    } else if let Some(coordinator_id) = coordinator_member_id.as_deref()
+        && entrypoint != coordinator_id
     {
         return Err(ApiError::bad_request(
-            "spec.entrypoint must equal leader_member_id when spec.steps is omitted",
+            "spec.entrypoint must equal coordinator_member_id when spec.steps is omitted",
         ));
     }
 
@@ -4334,25 +4351,25 @@ fn parse_optional_member_text(
 fn parse_required_member_role(value: Option<&Value>) -> Result<String, ApiError> {
     let Some(value) = value else {
         return Err(ApiError::bad_request(
-            "spec.members[].role is required and must be 'leader' or 'worker'",
+            "spec.members[].role is required and must be 'coordinator' or 'worker'",
         ));
     };
     let raw = value
         .as_str()
         .ok_or_else(|| {
             ApiError::bad_request(
-                "spec.members[].role is required and must be 'leader' or 'worker'",
+                "spec.members[].role is required and must be 'coordinator' or 'worker'",
             )
         })?
         .trim();
     if raw.is_empty() {
         return Err(ApiError::bad_request(
-            "spec.members[].role is required and must be 'leader' or 'worker'",
+            "spec.members[].role is required and must be 'coordinator' or 'worker'",
         ));
     }
-    if raw != "leader" && raw != "worker" {
+    if raw != "coordinator" && raw != "worker" {
         return Err(ApiError::bad_request(
-            "spec.members[].role is required and must be 'leader' or 'worker'",
+            "spec.members[].role is required and must be 'coordinator' or 'worker'",
         ));
     }
     Ok(raw.to_string())
@@ -4375,7 +4392,7 @@ fn parse_optional_member_description(value: Option<&Value>) -> Result<Option<Str
     Ok(Some(trimmed.to_string()))
 }
 
-fn parse_spec_leader_member_id(
+fn parse_spec_coordinator_member_id(
     spec_obj: &serde_json::Map<String, Value>,
     member_specs: &[TeamMemberSpec],
 ) -> Result<Option<String>, ApiError> {
@@ -4383,51 +4400,51 @@ fn parse_spec_leader_member_id(
         .iter()
         .map(|member| member.member_id.as_str())
         .collect::<HashSet<_>>();
-    let explicit_leader = match spec_obj.get("leader_member_id") {
+    let explicit_coordinator = match spec_obj.get("coordinator_member_id") {
         None => None,
         Some(value) => {
-            let leader = value
+            let coordinator = value
                 .as_str()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| {
-                    ApiError::bad_request("spec.leader_member_id must be a non-empty string")
+                    ApiError::bad_request("spec.coordinator_member_id must be a non-empty string")
                 })?;
-            if !member_ids.contains(leader) {
+            if !member_ids.contains(coordinator) {
                 return Err(ApiError::bad_request(
-                    "spec.leader_member_id must reference spec.members[].member_id",
+                    "spec.coordinator_member_id must reference spec.members[].member_id",
                 ));
             }
-            Some(leader.to_string())
+            Some(coordinator.to_string())
         }
     };
 
-    let member_role_leaders = member_specs
+    let member_role_coordinators = member_specs
         .iter()
         .filter_map(|member| match member.role.as_str() {
-            "leader" => Some(member.member_id.as_str()),
+            "coordinator" => Some(member.member_id.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>();
-    if member_role_leaders.len() > 1 {
+    if member_role_coordinators.len() > 1 {
         return Err(ApiError::bad_request(
-            "spec.members[].role may include at most one 'leader'",
+            "spec.members[].role may include at most one 'coordinator'",
         ));
     }
 
-    if let Some(explicit) = explicit_leader.as_deref() {
-        if let Some(role_leader) = member_role_leaders.first()
-            && explicit != *role_leader
+    if let Some(explicit) = explicit_coordinator.as_deref() {
+        if let Some(role_coordinator) = member_role_coordinators.first()
+            && explicit != *role_coordinator
         {
             return Err(ApiError::bad_request(
-                "spec.leader_member_id must match spec.members[].role='leader'",
+                "spec.coordinator_member_id must match spec.members[].role='coordinator'",
             ));
         }
         return Ok(Some(explicit.to_string()));
     }
 
-    if let Some(role_leader) = member_role_leaders.first() {
-        return Ok(Some((*role_leader).to_string()));
+    if let Some(role_coordinator) = member_role_coordinators.first() {
+        return Ok(Some((*role_coordinator).to_string()));
     }
 
     let entrypoint_member = spec_obj

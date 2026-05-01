@@ -195,7 +195,7 @@ describe("useTeamRunEffects", () => {
       activeRunId: "run-a",
       eventsAutoRefresh: true,
       tab: "mailbox",
-      chatInboxActorId: "  leader-actor  ",
+      chatInboxActorId: "  coordinator-actor  ",
     });
 
     act(() => {
@@ -223,6 +223,6 @@ describe("useTeamRunEffects", () => {
     expect(params.refreshRun).toHaveBeenCalledTimes(refreshRunBase);
     expect(params.refreshEvents).toHaveBeenCalledTimes(refreshEventsBase);
     expect(params.refreshSnapshot).toHaveBeenCalledTimes(refreshSnapshotBase + 1);
-    expect(params.loadInbox).toHaveBeenCalledWith("leader-actor");
+    expect(params.loadInbox).toHaveBeenCalledWith("coordinator-actor");
   });
 });

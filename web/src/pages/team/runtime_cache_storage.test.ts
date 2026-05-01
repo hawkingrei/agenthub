@@ -46,7 +46,7 @@ function buildConversationMessage(messageId: number): TeamConversationMessageRec
     message_id: messageId,
     conversation_id: "task-all",
     task_id: "task-all",
-    from_actor_id: "leader",
+    from_actor_id: "coordinator",
     to_actor_id: "worker",
     route: "group_chat",
     payload: { type: "chat_message", text: `msg-${messageId}` },
@@ -58,7 +58,7 @@ function buildMailboxMessage(messageId: number): TeamActorMessageRecord {
   return {
     message_id: messageId,
     run_id: "run-1",
-    from_actor_id: "leader",
+    from_actor_id: "coordinator",
     from_peer_id: "",
     from_actor_kind: "agent",
     to_actor_id: "worker",

@@ -133,7 +133,7 @@ Identity-kind projection (for UX/policy):
 
 ### 4) Team Integration Contract
 
-- Team leader/worker coordination should route through Actor mailbox in run scope.
+- Team coordinator/worker coordination should route through Actor mailbox in run scope.
 - Team run/step state updates must not bypass actor delivery evidence for cross-actor communication.
 - Human actor is a first-class actor kind and should be represented explicitly.
 - Human mailbox delivery (`to_actor_id = user` / `user:<id>`) is the notification path for urgent
@@ -168,7 +168,7 @@ Required visibility:
   - `general`: the default class for ordinary mailbox traffic; it must not eagerly interrupt active
     ACP work.
   - `urgent`: immediate ACP nudges are reserved for direct `agent -> agent` mailbox sends and
-    leader-authored channel messages that explicitly `@member_id` mention recipients.
+    coordinator-authored channel messages that explicitly `@member_id` mention recipients.
   - `permission_review`: ACP permission-review requests should first look for an idle reviewer
     (defined by no recent non-user ACP output) before falling back to the normal non-self reviewer
     order; once routed, the selected reviewer still receives an immediate mailbox hint.
