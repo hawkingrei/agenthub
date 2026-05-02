@@ -108,9 +108,15 @@ function formatWorktreeModeLabel(
 }
 
 type NodeRuntimeSummary = {
+  status: "connected" | "degraded" | "offline";
   label: string;
   tone: "subtle" | "outline";
   hint: string;
+};
+
+type NodeDetectedRuntime = {
+  label: string;
+  available: boolean;
 };
 
 const NODE_LAST_SEEN_RECENT_WINDOW_SECONDS = 10 * 60;
@@ -121,6 +127,7 @@ export function deriveNodeRuntimeSummary(
 ): NodeRuntimeSummary {
   if (node.is_main) {
     return {
+      status: "connected",
       label: "Connected",
       tone: "subtle",
       hint: "Local control plane node. This is the only node whose connectivity is directly implied by the current process.",
@@ -133,29 +140,75 @@ export function deriveNodeRuntimeSummary(
     );
     if (ageSeconds <= NODE_LAST_SEEN_RECENT_WINDOW_SECONDS) {
       return {
-        label: "Recently Seen",
+        status: "connected",
+        label: "Connected",
         tone: "subtle",
         hint: `This node most recently bootstrapped ${formatNodeTimestamp(node.last_seen_at)}.`,
       };
     }
     return {
-      label: "Seen Earlier",
+      status: "degraded",
+      label: "Degraded",
       tone: "outline",
-      hint: `The latest bootstrap credential issuance was recorded ${formatNodeTimestamp(node.last_seen_at)}.`,
+      hint: `The latest bootstrap credential issuance was recorded ${formatNodeTimestamp(node.last_seen_at)}, so the node identity is known but not recently refreshed.`,
     };
   }
   if (agents.some((agent) => isAgentActiveStatus(agent.status))) {
     return {
-      label: "Agent Activity Detected",
+      status: "degraded",
+      label: "Degraded",
       tone: "subtle",
       hint: "At least one attached agent is currently active. This is an indirect runtime signal, not a node heartbeat.",
     };
   }
   return {
-    label: "Unverified",
+    status: "offline",
+    label: "Offline",
     tone: "outline",
     hint: "AgentHub currently has registry metadata for this node, but no direct heartbeat or last-seen signal.",
   };
+}
+
+export function deriveDetectedNodeRuntimes(
+  node: AgentNodeRecord,
+  agents: AgentRecord[]
+): NodeDetectedRuntime[] {
+  const observed = new Set<string>();
+  if (node.is_main) {
+    observed.add("AgentHub Control Plane");
+  }
+  for (const agent of agents) {
+    const command = (agent.command ?? "").trim().toLowerCase();
+    if (command.includes("codex") || agent.code_mode) {
+      observed.add("Codex CLI");
+    }
+    if (command.includes("gemini")) {
+      observed.add("Gemini CLI");
+    }
+    if (command.includes("agenthub")) {
+      observed.add("AgentHub Runtime");
+    }
+  }
+  const orderedLabels = [
+    "AgentHub Control Plane",
+    "AgentHub Runtime",
+    "Codex CLI",
+    "Gemini CLI",
+  ] as const;
+  const tags: NodeDetectedRuntime[] = [];
+  for (const label of orderedLabels) {
+    if (observed.has(label)) {
+      tags.push({ label, available: true });
+      continue;
+    }
+    if (label === "Codex CLI" || label === "Gemini CLI") {
+      tags.push({
+        label: `${label} (not detected)`,
+        available: false,
+      });
+    }
+  }
+  return tags;
 }
 
 function escapeShellValue(value: string): string {
@@ -264,6 +317,10 @@ export function AgentNodeDetailCard({
 }: AgentNodeDetailCardProps) {
   const connectCommand = buildNodeConnectCommandSpec({ node, bootstrap: nodeJoinBootstrap });
   const runtimeSummary = deriveNodeRuntimeSummary(node, agents);
+  const detectedRuntimes = React.useMemo(
+    () => deriveDetectedNodeRuntimes(node, agents),
+    [node, agents]
+  );
   const infoItems = React.useMemo(
     () =>
       node.is_main
@@ -297,9 +354,10 @@ export function AgentNodeDetailCard({
   const [copyError, setCopyError] = React.useState<string | null>(null);
   const resetCopiedTimeoutRef = React.useRef<number | null>(null);
   const connectTone =
-    node.is_main || connectCommand?.hasBootstrapToken
+    runtimeSummary.status === "connected" && (node.is_main || connectCommand?.hasBootstrapToken)
       ? "border-ui-border/80 bg-white/72"
       : "border-amber-300 bg-amber-50/70";
+  const showConnectFirst = runtimeSummary.status !== "connected";
 
   React.useEffect(() => {
     return () => {
@@ -376,7 +434,7 @@ export function AgentNodeDetailCard({
       </div>
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <div className={MACHINE_DETAIL_SECTION_CLASS}>
+        <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${showConnectFirst ? "xl:order-2" : ""}`}>
           <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
             <div>
               <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
@@ -398,16 +456,36 @@ export function AgentNodeDetailCard({
               />
             ))}
           </KeyValueList>
+          <div className="mt-3 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
+            <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              Detected Runtimes
+            </Text>
+            <Text size="xs" c="dimmed" mt={4}>
+              Derived from current attached agents and known operator-facing runtime surfaces.
+            </Text>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {detectedRuntimes.map((runtime) => (
+                <Badge
+                  key={runtime.label}
+                  tone={runtime.available ? "subtle" : "outline"}
+                >
+                  {runtime.label}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone}`}>
+        <div
+          className={`${MACHINE_DETAIL_SECTION_CLASS} ${connectTone} ${showConnectFirst ? "xl:order-1" : ""}`}
+        >
           <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
             <div>
               <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
-                Connect
+                Connect Command
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
-                Bootstrap this node from the control plane, or inspect the canonical connect
+                Bootstrap this node from the control plane, or inspect the canonical reconnect
                 contract if you need to wire it into longer-lived infra.
               </Text>
             </div>

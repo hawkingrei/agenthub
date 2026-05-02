@@ -98,6 +98,10 @@ Detected runtimes should render as compact capability tags, including unavailabl
 
 This is more useful than hiding runtime support behind raw config text.
 
+For the first rollout slice, it is acceptable to derive these tags from attached-agent runtime
+signals plus known operator-facing runtime surfaces, as long as the UI does not overclaim that the
+values came from a direct host probe.
+
 ### 4) Connect Command
 
 This section is required.

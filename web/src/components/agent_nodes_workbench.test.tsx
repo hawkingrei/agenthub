@@ -92,11 +92,14 @@ describe("AgentNodesWorkbench", () => {
     });
 
     expect(html).toContain("Node Detail");
-    expect(html).toContain("Connect");
     expect(html).toContain("Connect Command");
     expect(html).toContain("Connect Config");
-    expect(html).toContain("Agent Activity Detected");
+    expect(html).toContain("Degraded");
     expect(html).toContain("indirect runtime signal");
+    expect(html).toContain("Detected Runtimes");
+    expect(html).toContain("AgentHub Runtime");
+    expect(html).toContain("Codex CLI (not detected)");
+    expect(html).toContain("Gemini CLI (not detected)");
     expect(html).toContain("bootstrap-token");
     expect(html).toContain("Copy");
     expect(html).toContain("node_id=node-east");
@@ -154,7 +157,7 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("&lt;bootstrap-token-from-main-control-plane&gt;");
     expect(html).toContain("needs: bootstrap token");
     expect(html).toContain("explicit token placeholder");
-    expect(html).toContain("Unverified");
+    expect(html).toContain("Offline");
   });
 
   it("prefers persisted last_seen_at over indirect agent activity hints", () => {
@@ -180,10 +183,10 @@ describe("AgentNodesWorkbench", () => {
       ],
     });
 
-    expect(html).toContain("Recently Seen");
+    expect(html).toContain("Connected");
     expect(html).toContain("Last seen");
     expect(html).toContain("lightweight node last-seen signal");
-    expect(html).not.toContain("Agent Activity Detected");
+    expect(html).not.toContain("indirect runtime signal");
   });
 
   it("uses fallback member agents when the root agents list hides team members", () => {

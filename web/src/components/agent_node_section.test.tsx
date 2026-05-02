@@ -197,6 +197,7 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Machines");
     expect(html).toContain("Info");
     expect(html).toContain("Connect Command");
+    expect(html).toContain("Detected Runtimes");
     expect(html).toContain("~/.agenthub/worktrees/node-east");
     expect(html).toContain("Agents on this node (0)");
     expect(html).toContain("Node ID");
@@ -204,6 +205,7 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Default worktree root");
     expect(html).toContain("No agents on this node");
     expect(html).toContain("Save");
+    expect(html).toContain("Offline");
   });
 
   it("marks the selected node chooser button with aria-pressed", () => {
@@ -297,7 +299,10 @@ describe("AgentNodeSection", () => {
     expect(html).toContain("Remote execution routes through encrypted gRPC (node-east.internal).");
     expect(html).toContain("2 attached agents");
     expect(html).toContain("Agents on this node (2)");
-    expect(html).toContain("running");
+    expect(html).toContain("Degraded");
+    expect(html).toContain("Detected Runtimes");
+    expect(html).toContain("AgentHub Runtime");
+    expect(html).toContain("Codex CLI (not detected)");
   });
 
   it("falls back to the main node chooser and truncates long agent lists", () => {

@@ -20,10 +20,11 @@ import {
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
-  isAgentsWorkbenchRoute,
+  isWorkspaceWorkbenchRoute,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceLens,
   resolveWorkspaceNodeId,
+  resolveWorkspaceNodeRoute,
   buildWorkspacePath,
   type WorkspaceLens,
 } from "./app_route_selection";
@@ -125,6 +126,7 @@ export {
 export {
   isAgentsWorkbenchRoute,
   isTeamsRoute,
+  isWorkspaceWorkbenchRoute,
   resolveAppRouteKind,
   resolveWorkspaceAgentRoute,
   resolvePostAuthRedirectTarget,
@@ -187,7 +189,7 @@ export function App() {
     pathname: location.pathname,
     search: location.search,
   }));
-  const isAgentsRoute = isAgentsWorkbenchRoute(routeLocation.pathname);
+  const isAgentsRoute = isWorkspaceWorkbenchRoute(routeLocation.pathname);
   const isAdminRoute = routeLocation.pathname.startsWith("/admin");
 
   const {
@@ -414,15 +416,25 @@ export function App() {
     () => resolveWorkspaceAgentRoute(routeLocation.pathname),
     [routeLocation.pathname]
   );
+  const workspaceNodeRoute = useMemo(
+    () => resolveWorkspaceNodeRoute(routeLocation.pathname, routeLocation.search),
+    [routeLocation.pathname, routeLocation.search]
+  );
   const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
   const activeWorkspaceLens = useMemo(
-    () => resolveWorkspaceLens(routeLocation.search) ?? "channels",
-    [routeLocation.search]
+    () =>
+      workspaceNodeRoute
+        ? "nodes"
+        : (resolveWorkspaceLens(routeLocation.search) ?? "channels"),
+    [routeLocation.search, workspaceNodeRoute]
   );
   const selectedWorkspaceNodeId = useMemo(
-    () => resolveWorkspaceNodeId(routeLocation.search) ?? "main",
-    [routeLocation.search]
+    () =>
+      workspaceNodeRoute?.nodeId ??
+      resolveWorkspaceNodeId(routeLocation.search),
+    [routeLocation.search, workspaceNodeRoute]
   );
+  const effectiveSelectedWorkspaceNodeId = selectedWorkspaceNodeId ?? "main";
 
   const workspaceLensItems = useMemo(
     () =>
@@ -1244,7 +1256,7 @@ export function App() {
           agents={agents}
           teams={teams}
           teamMemberAgentsById={teamMemberAgentsById}
-          selectedNodeId={selectedWorkspaceNodeId}
+          selectedNodeId={effectiveSelectedWorkspaceNodeId}
           nodeJoinBootstrap={agentNodeJoinBootstrap}
           nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
           nodeJoinBootstrapError={agentNodeJoinBootstrapError}
