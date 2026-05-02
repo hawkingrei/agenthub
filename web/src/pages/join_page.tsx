@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, parseApiErrorMessage } from "../api";
+import { api, stringifyApiError } from "../api";
 import { ErrorBanner } from "../error_banner";
 import { ensurePushSubscription } from "../push";
 import {
@@ -67,7 +67,7 @@ export function JoinPage({ onComplete }: { onComplete: (auth: AuthState) => void
       onComplete(next);
       location.href = "/";
     } catch (err) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   };
 

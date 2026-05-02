@@ -509,6 +509,10 @@ export function parseApiErrorMessage(err: unknown): string | null {
   return null;
 }
 
+export function stringifyApiError(err: unknown): string {
+  return parseApiErrorMessage(err) ?? String(err);
+}
+
 export function getApiErrorStatus(err: unknown): number | null {
   if (!err || typeof err !== "object") {
     return null;

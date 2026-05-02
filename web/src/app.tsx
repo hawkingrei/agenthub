@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   api,
   parseApiErrorMessage,
+  stringifyApiError,
 } from "./api";
 import {
   AGENT_NOT_RUNNING_ERROR,
@@ -545,7 +546,7 @@ export function App() {
         outcome: optionId ? undefined : "cancelled",
       });
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     } finally {
       setPermissionBusy(null);
     }

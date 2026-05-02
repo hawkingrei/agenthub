@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { AuthState } from "./types";
 import { getLocalStorageItemSafe, removeLocalStorageItemSafe, setLocalStorageItemSafe } from "./storage/safe_storage";
-import { api, parseApiErrorMessage } from "./api";
+import { api, stringifyApiError } from "./api";
 import { ensurePushSubscription } from "./push";
 import { loginCredentialToJson, publicKeyCredentialCreationOptionsFromJson, publicKeyCredentialRequestOptionsFromJson, registerCredentialToJson } from "./webauthn";
 
@@ -63,7 +63,7 @@ export function useAppAuth() {
       setAuth(next);
       await ensurePushSubscription(next.token);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     } finally {
       setAuthBusy(null);
     }
@@ -120,7 +120,7 @@ export function useAppAuth() {
       setAuth(next);
       await ensurePushSubscription(next.token);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     } finally {
       setAuthBusy(null);
     }

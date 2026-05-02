@@ -8,6 +8,7 @@ use axum::{
 use crate::agent::{AgentNodeConfig, AgentNodeJoinBootstrapInfo, AgentNodeRecord, AgentNodeUpdate};
 use crate::api::authz::require_root;
 use crate::api::error::ApiError;
+use crate::api::ok_response;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -115,7 +116,7 @@ async fn delete_agent_node(
         .delete_agent_node(&node_id)
         .await
         .map_err(|err| map_agent_node_error(err, "agent node not found"))?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 #[cfg(test)]

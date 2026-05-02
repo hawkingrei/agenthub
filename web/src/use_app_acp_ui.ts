@@ -3,7 +3,7 @@ import { resolveActiveAcpView } from "./app_agents_helpers";
 import { isAgentActiveStatus } from "./agent_ws";
 import { loadDeveloperModePreference, persistDeveloperModePreference } from "./ui/developer_mode";
 import { formatAgentModelLabel } from "./agent_presets";
-import { api, AgentRecord, parseApiErrorMessage } from "./api";
+import { api, AgentRecord, stringifyApiError } from "./api";
 import { createAnsiRenderer } from "./app_utils";
 import type { OutputLine } from "./output_cache";
 
@@ -71,71 +71,51 @@ export function useAppAcpUi(
   const hasInProgressToolCall = acpView.toolCalls.some((call) => call.status === "in_progress");
   const canInterruptAcpRun = canControlAcp && (acpView.runStatus?.status === "running" || hasInProgressToolCall);
 
-  const onAcpSetMode = useCallback(async (requestedModeId: string) => {
+  const runAcpAction = useCallback(async (action: () => Promise<unknown>) => {
     if (!token || !activeAgent) return;
+    setError(null);
+    try {
+      await action();
+    } catch (err: unknown) {
+      setError(stringifyApiError(err));
+    }
+  }, [token, activeAgent, setError]);
+
+  const onAcpSetMode = useCallback(async (requestedModeId: string) => {
     const modeId = requestedModeId.trim();
     if (!modeId) {
       setError("mode id is required");
       return;
     }
-    setError(null);
-    try {
-      await api.setAcpMode(token, activeAgent, modeId);
-    } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
-    }
-  }, [token, activeAgent, setError]);
+    await runAcpAction(() => api.setAcpMode(token!, activeAgent!, modeId));
+  }, [runAcpAction]);
 
   const onAcpSetModel = useCallback(async (requestedModelId: string) => {
-    if (!token || !activeAgent) return;
     const modelId = requestedModelId.trim();
     if (!modelId) {
       setError("model id is required");
       return;
     }
-    setError(null);
-    try {
-      await api.setAcpModel(token, activeAgent, modelId);
-    } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
-    }
-  }, [token, activeAgent, setError]);
+    await runAcpAction(() => api.setAcpModel(token!, activeAgent!, modelId));
+  }, [runAcpAction]);
 
   const onAcpSetConfig = useCallback(async () => {
-    if (!token || !activeAgent) return;
     const trimmedId = acpConfigId.trim();
     const trimmedValue = acpConfigValue.trim();
     if (!trimmedId || !trimmedValue) {
       setError("config id and value are required");
       return;
     }
-    setError(null);
-    try {
-      await api.setAcpConfig(token, activeAgent, trimmedId, trimmedValue);
-    } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
-    }
-  }, [token, activeAgent, acpConfigId, acpConfigValue, setError]);
+    await runAcpAction(() => api.setAcpConfig(token!, activeAgent!, trimmedId, trimmedValue));
+  }, [runAcpAction, acpConfigId, acpConfigValue]);
 
   const onAcpCancel = useCallback(async () => {
-    if (!token || !activeAgent) return;
-    setError(null);
-    try {
-      await api.cancelAcp(token, activeAgent);
-    } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
-    }
-  }, [token, activeAgent, setError]);
+    await runAcpAction(() => api.cancelAcp(token!, activeAgent!));
+  }, [runAcpAction]);
 
   const onAcpClearSession = useCallback(async () => {
-    if (!token || !activeAgent) return;
-    setError(null);
-    try {
-      await api.clearAcpSession(token, activeAgent);
-    } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
-    }
-  }, [token, activeAgent, setError]);
+    await runAcpAction(() => api.clearAcpSession(token!, activeAgent!));
+  }, [runAcpAction]);
 
   return {
     acpTab,

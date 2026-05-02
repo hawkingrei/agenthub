@@ -10,8 +10,9 @@ use rand::Rng;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::api::authz::require_user;
+use crate::api::authz::require_root;
 use crate::api::error::ApiError;
+use crate::api::{extract_ip, extract_ua, ok_response};
 use crate::path_utils::expand_tilde;
 use crate::state::AppState;
 
@@ -71,10 +72,7 @@ async fn list_safe_paths(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<SafePath>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let _user = require_root(&headers, &state).await?;
     let rows = sqlx::query("SELECT path, created_at FROM safe_paths ORDER BY id ASC")
         .fetch_all(&state.db)
         .await?;
@@ -93,10 +91,7 @@ async fn add_safe_path(
     headers: HeaderMap,
     Json(payload): Json<AddSafePathRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let user = require_root(&headers, &state).await?;
     let now = Utc::now().timestamp();
     let path = expand_tilde(payload.path.trim());
     sqlx::query(
@@ -121,7 +116,7 @@ async fn add_safe_path(
             extract_ua(&headers).as_deref(),
         )
         .await;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn delete_safe_path(
@@ -129,10 +124,7 @@ async fn delete_safe_path(
     headers: HeaderMap,
     Json(payload): Json<AddSafePathRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let user = require_root(&headers, &state).await?;
     sqlx::query("DELETE FROM safe_paths WHERE path = ?1")
         .bind(expand_tilde(payload.path.trim()))
         .execute(&state.db)
@@ -149,31 +141,14 @@ async fn delete_safe_path(
             extract_ua(&headers).as_deref(),
         )
         .await;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
-}
-
-fn extract_ip(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-}
-
-fn extract_ua(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("user-agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
+    Ok(ok_response())
 }
 
 async fn list_devices(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<DeviceRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let _user = require_root(&headers, &state).await?;
     let rows = sqlx::query(
         r#"
         SELECT id, user_id, name, user_agent, status, created_at, last_login_at
@@ -203,10 +178,7 @@ async fn revoke_device(
     headers: HeaderMap,
     Path(device_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let user = require_root(&headers, &state).await?;
     let now = Utc::now().timestamp();
     let row = sqlx::query(
         r#"
@@ -245,135 +217,63 @@ async fn revoke_device(
         let _ = state
             .auth
             .record_audit(
+                Some(&user.id),
                 Some(uid),
-                Some(&device_id),
                 "device_revoked",
-                None,
-                None,
-                None,
+                Some(&format!("device_id={}", device_id)),
+                extract_ip(&headers).as_deref(),
+                extract_ua(&headers).as_deref(),
             )
             .await;
     }
 
-    Ok(Json(serde_json::json!({ "status": "ok" })))
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct AuditQuery {
-    pub limit: Option<i64>,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct AuditRecord {
-    pub id: i64,
-    pub user_id: Option<String>,
-    pub device_id: Option<String>,
-    pub event: String,
-    pub ip: Option<String>,
-    pub user_agent: Option<String>,
-    pub detail: Option<String>,
-    pub ts: i64,
+    Ok(ok_response())
 }
 
 async fn list_audits(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<AuditQuery>,
-) -> Result<Json<Vec<AuditRecord>>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
-    let limit = query.limit.unwrap_or(100).clamp(1, 1000);
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(50);
     let rows = sqlx::query(
         r#"
-        SELECT id, user_id, device_id, event, ip, user_agent, detail, ts
-        FROM login_audit
-        ORDER BY ts DESC
+        SELECT id, user_id, target_user_id, action, detail, ip, user_agent, created_at
+        FROM audit_log
+        ORDER BY created_at DESC
         LIMIT ?1
         "#,
     )
     .bind(limit)
     .fetch_all(&state.db)
     .await?;
-
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
-        items.push(AuditRecord {
-            id: row.get("id"),
-            user_id: row.get("user_id"),
-            device_id: row.get("device_id"),
-            event: row.get("event"),
-            ip: row.get("ip"),
-            user_agent: row.get("user_agent"),
-            detail: row.get("detail"),
-            ts: row.get("ts"),
-        });
+        let ip: Option<String> = row.get("ip");
+        let ua: Option<String> = row.get("user_agent");
+        items.push(serde_json::json!({
+            "id": row.get::<String, _>("id"),
+            "user_id": row.get::<Option<String>, _>("user_id"),
+            "target_user_id": row.get::<Option<String>, _>("target_user_id"),
+            "action": row.get::<String, _>("action"),
+            "detail": row.get::<Option<String>, _>("detail"),
+            "ip": ip,
+            "user_agent": ua,
+            "created_at": row.get::<i64, _>("created_at"),
+        }));
     }
     Ok(Json(items))
-}
-
-async fn join_start(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<JoinStartResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
-
-    let token = Uuid::new_v4().to_string();
-    let pin = generate_pin();
-    let pin_hash = hash_pin(&pin)?;
-    let now = Utc::now().timestamp();
-    let expires_at = now + 600;
-
-    sqlx::query(
-        r#"
-        INSERT INTO join_challenges (token, pin_hash, expires_at, created_at)
-        VALUES (?1, ?2, ?3, ?4)
-        "#,
-    )
-    .bind(&token)
-    .bind(pin_hash)
-    .bind(expires_at)
-    .bind(now)
-    .execute(&state.db)
-    .await?;
-
-    Ok(Json(JoinStartResponse {
-        token,
-        pin,
-        expires_at,
-    }))
-}
-
-fn generate_pin() -> String {
-    let mut bytes = [0u8; 4];
-    rand::rng().fill_bytes(&mut bytes);
-    let num = u32::from_le_bytes(bytes) % 1_000_000;
-    format!("{:06}", num)
-}
-
-fn hash_pin(pin: &str) -> anyhow::Result<String> {
-    let salt =
-        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(pin.as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?
-        .to_string();
-    Ok(hash)
 }
 
 async fn get_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AdminSettingsResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let _user = require_root(&headers, &state).await?;
     let passkey_enabled = state.auth.is_passkey_enabled().await?;
     Ok(Json(AdminSettingsResponse { passkey_enabled }))
 }
@@ -383,24 +283,59 @@ async fn set_passkey_enabled(
     headers: HeaderMap,
     Json(payload): Json<SetPasskeyEnabledRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
-    state.auth.set_passkey_enabled(payload.enabled).await?;
+    let _user = require_root(&headers, &state).await?;
+    let passkey_enabled = payload.enabled;
+    state.auth.set_passkey_enabled(passkey_enabled).await?;
+    Ok(ok_response())
+}
 
-    let detail = format!("enabled={}", payload.enabled);
-    let _ = state
-        .auth
-        .record_audit(
-            Some(&user.id),
-            None,
-            "passkey_config_updated",
-            Some(&detail),
-            extract_ip(&headers).as_deref(),
-            extract_ua(&headers).as_deref(),
-        )
-        .await;
+async fn join_start(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<JoinStartResponse>, ApiError> {
+    let _user = require_root(&headers, &state).await?;
+    let pin: String = rand::rng()
+        .sample_iter(&rand::distr::Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect();
+    let pin_hash = {
+        let salt = argon2::password_hash::SaltString::generate(&mut rand::rng());
+        Argon2::default()
+            .hash_password(pin.as_bytes(), &salt)
+            .map_err(|e| ApiError::bad_request(&format!("pin hashing failed: {e}")))?
+            .to_string()
+    };
+    let expires_at = Utc::now().timestamp() + 3600;
+    sqlx::query(
+        r#"
+        INSERT INTO join_pins (pin_hash, created_by, expires_at)
+        VALUES (?1, ?2, ?3)
+        "#,
+    )
+    .bind(&pin_hash)
+    .bind(&_user.id)
+    .bind(expires_at)
+    .execute(&state.db)
+    .await?;
 
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    let token = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO join_tokens (token, pin_hash, created_by, expires_at, used)
+        VALUES (?1, ?2, ?3, ?4, 0)
+        "#,
+    )
+    .bind(&token)
+    .bind(&pin_hash)
+    .bind(&_user.id)
+    .bind(expires_at)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(JoinStartResponse {
+        token,
+        pin,
+        expires_at,
+    }))
 }

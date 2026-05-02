@@ -85,6 +85,10 @@ impl ApiError {
     }
 }
 
+pub fn ok_response() -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

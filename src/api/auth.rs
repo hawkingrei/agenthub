@@ -2,6 +2,7 @@ use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::{extract_ip, extract_ua};
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -404,18 +405,4 @@ async fn login_register_finish(
         token,
         role: user.role,
     }))
-}
-
-fn extract_ip(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-}
-
-fn extract_ua(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("user-agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
 }
