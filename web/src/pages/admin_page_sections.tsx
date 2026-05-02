@@ -27,7 +27,7 @@ import type {
 } from "./admin_page";
 
 export function AdminSafePathsSection({
-  safePaths,
+  safePaths: section,
 }: {
   safePaths: AdminSafePathsSectionProps;
 }) {
@@ -38,14 +38,14 @@ export function AdminSafePathsSection({
         <input
           className={ADMIN_INPUT_CLASS}
           placeholder="Add safe path"
-          value={safePaths.safePathInput}
-          onChange={(e) => safePaths.setSafePathInput(e.target.value)}
+          value={section.safePathInput}
+          onChange={(e) => section.setSafePathInput(e.target.value)}
         />
         <ActionButton
           className={ADMIN_PRIMARY_BUTTON_CLASS}
           tone="primary"
           size="md"
-          onClick={safePaths.onAddSafePath}
+          onClick={section.onAddSafePath}
         >
           Add Path
         </ActionButton>
@@ -55,12 +55,12 @@ export function AdminSafePathsSection({
           <input
             type="checkbox"
             checked={
-              safePaths.safePaths.length > 0 &&
-              safePaths.safePaths.every((path) =>
-                safePaths.selectedSafePaths.has(path.path)
+              section.safePaths.length > 0 &&
+              section.safePaths.every((path) =>
+                section.selectedSafePaths.has(path.path)
               )
             }
-            onChange={safePaths.onToggleAllSafePaths}
+            onChange={section.onToggleAllSafePaths}
           />
           Select All
         </label>
@@ -68,19 +68,19 @@ export function AdminSafePathsSection({
           className={ADMIN_DANGER_BUTTON_CLASS}
           tone="danger"
           size="md"
-          onClick={safePaths.onDeleteSelectedSafePaths}
+          onClick={section.onDeleteSelectedSafePaths}
         >
           Delete Selected
         </ActionButton>
       </div>
       <ul className={ADMIN_LIST_CLASS}>
-        {safePaths.safePaths.map((path) => (
+        {section.safePaths.map((path) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={path.path}>
             <label className="checkbox inline-flex items-center">
               <input
                 type="checkbox"
-                checked={safePaths.selectedSafePaths.has(path.path)}
-                onChange={() => safePaths.onToggleSafePath(path.path)}
+                checked={section.selectedSafePaths.has(path.path)}
+                onChange={() => section.onToggleSafePath(path.path)}
               />
             </label>
             <span className="mono flex-1 text-sm text-slate-800">{path.path}</span>
@@ -88,7 +88,7 @@ export function AdminSafePathsSection({
               className={ADMIN_DANGER_BUTTON_CLASS}
               tone="danger"
               size="md"
-              onClick={() => safePaths.onDeleteSafePath(path.path)}
+              onClick={() => section.onDeleteSafePath(path.path)}
             >
               Delete
             </ActionButton>
@@ -100,7 +100,7 @@ export function AdminSafePathsSection({
 }
 
 export function AdminJoinSection({
-  join,
+  join: section,
   joinLinkCopyState,
   onCopyJoinLink,
 }: {
@@ -115,13 +115,13 @@ export function AdminJoinSection({
         Use the token/link below on the destination browser. QR onboarding is no longer
         required.
       </p>
-      {join.joinUrl ? (
+      {section.joinUrl ? (
         <div className="flex flex-wrap items-center gap-2">
           <a
             className={`${ADMIN_MUTED_TEXT_CLASS} break-all underline underline-offset-2`}
-            href={join.joinUrl}
+            href={section.joinUrl}
           >
-            Join link: {join.joinUrl}
+            Join link: {section.joinUrl}
           </a>
           <ActionButton tone="secondary" size="sm" onClick={onCopyJoinLink}>
             {joinLinkCopyState === "copied"
@@ -132,38 +132,38 @@ export function AdminJoinSection({
           </ActionButton>
         </div>
       ) : null}
-      {join.joinToken ? (
-        <p className={ADMIN_MUTED_TEXT_CLASS}>Token: {join.joinToken}</p>
+      {section.joinToken ? (
+        <p className={ADMIN_MUTED_TEXT_CLASS}>Token: {section.joinToken}</p>
       ) : null}
-      {join.joinPin ? <p className={ADMIN_MUTED_TEXT_CLASS}>PIN: {join.joinPin}</p> : null}
+      {section.joinPin ? <p className={ADMIN_MUTED_TEXT_CLASS}>PIN: {section.joinPin}</p> : null}
     </div>
   );
 }
 
 export function AdminVapidSection({
-  vapid,
+  vapid: section,
 }: {
   vapid: AdminVapidSectionProps;
 }) {
   return (
     <div className={ADMIN_CARD_CLASS}>
       <h3 className={ADMIN_CARD_TITLE_CLASS}>VAPID Keys</h3>
-      {vapid.vapidInfo ? (
+      {section.vapidInfo ? (
         <div className={ADMIN_KV_LIST_CLASS}>
           <div className={ADMIN_KV_ROW_CLASS}>
             <span className={ADMIN_LABEL_CLASS}>Subject</span>
-            <span className={ADMIN_VALUE_CLASS}>{vapid.vapidInfo.subject}</span>
+            <span className={ADMIN_VALUE_CLASS}>{section.vapidInfo.subject}</span>
           </div>
           <div className={ADMIN_KV_ROW_CLASS}>
             <span className={ADMIN_LABEL_CLASS}>Public Key</span>
             <span className={`${ADMIN_VALUE_CLASS} mono`}>
-              {vapid.vapidInfo.public_key}
+              {section.vapidInfo.public_key}
             </span>
           </div>
           <div className={ADMIN_KV_ROW_CLASS}>
             <span className={ADMIN_LABEL_CLASS}>Keys Path</span>
             <span className={`${ADMIN_VALUE_CLASS} mono`}>
-              {vapid.vapidInfo.keys_path}
+              {section.vapidInfo.keys_path}
             </span>
           </div>
         </div>
@@ -175,7 +175,7 @@ export function AdminVapidSection({
           className={ADMIN_SECONDARY_BUTTON_CLASS}
           tone="secondary"
           size="md"
-          onClick={vapid.onRotateVapid}
+          onClick={section.onRotateVapid}
         >
           Rotate Keys
         </ActionButton>
@@ -219,7 +219,7 @@ function AdminToggleField({
 }
 
 export function AdminDevicesSection({
-  devices,
+  devices: section,
 }: {
   devices: AdminDevicesSectionProps;
 }) {
@@ -227,7 +227,7 @@ export function AdminDevicesSection({
     <div className={ADMIN_CARD_CLASS}>
       <h3 className={ADMIN_CARD_TITLE_CLASS}>Devices</h3>
       <ul className={ADMIN_LIST_CLASS}>
-        {devices.devices.map((device) => (
+        {section.devices.map((device) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={device.id}>
             <span className="text-sm text-slate-800">
               {device.name} - {device.status}
@@ -237,7 +237,7 @@ export function AdminDevicesSection({
                 className={ADMIN_DANGER_BUTTON_CLASS}
                 tone="danger"
                 size="md"
-                onClick={() => devices.onRevokeDevice(device.id)}
+                onClick={() => section.onRevokeDevice(device.id)}
               >
                 Revoke
               </ActionButton>
@@ -250,7 +250,7 @@ export function AdminDevicesSection({
 }
 
 export function AdminAuditsSection({
-  audits,
+  audits: section,
 }: {
   audits: AdminAuditsSectionProps;
 }) {
@@ -258,7 +258,7 @@ export function AdminAuditsSection({
     <div className={ADMIN_CARD_CLASS}>
       <h3 className={ADMIN_CARD_TITLE_CLASS}>Login Audits</h3>
       <ul className={ADMIN_LIST_CLASS}>
-        {audits.audits.map((audit) => (
+        {section.audits.map((audit) => (
           <li className={ADMIN_LIST_ITEM_CLASS} key={audit.id}>
             <span className={ADMIN_MUTED_TEXT_CLASS}>
               {new Date(audit.ts * 1000).toLocaleString()} - {` ${audit.event}`}
@@ -271,7 +271,7 @@ export function AdminAuditsSection({
 }
 
 export function AdminUiSection({
-  ui,
+  ui: section,
 }: {
   ui: AdminUiSectionProps;
 }) {
@@ -280,8 +280,8 @@ export function AdminUiSection({
       <h3 className={ADMIN_CARD_TITLE_CLASS}>UI Settings</h3>
       <div className="flex flex-col gap-3">
         <AdminToggleField
-          checked={ui.developerMode}
-          onChange={ui.onDeveloperModeChange}
+          checked={section.developerMode}
+          onChange={section.onDeveloperModeChange}
           label="Developer Mode"
           description="Applies to this browser only. Affects Agents and Teams."
         />
@@ -294,7 +294,7 @@ export function AdminUiSection({
 }
 
 export function AdminSystemSection({
-  system,
+  system: section,
 }: {
   system: AdminSystemSectionProps;
 }) {
@@ -303,12 +303,12 @@ export function AdminSystemSection({
       <h3 className={ADMIN_CARD_TITLE_CLASS}>System Configuration</h3>
       <div className="flex flex-col gap-3">
         <AdminToggleField
-          checked={system.passkeyEnabled ?? false}
-          disabled={system.passkeyEnabled === null}
-          onChange={system.onPasskeyEnabledChange}
+          checked={section.passkeyEnabled ?? false}
+          disabled={section.passkeyEnabled === null}
+          onChange={section.onPasskeyEnabledChange}
           label="Enable Passkey"
           description={
-            system.passkeyEnabled === null
+            section.passkeyEnabled === null
               ? "Loading configuration..."
               : "Global setting. When disabled, only password login/registration is allowed."
           }

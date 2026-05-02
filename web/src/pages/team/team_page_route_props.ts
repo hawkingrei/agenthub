@@ -1,43 +1,26 @@
-import type { TeamSidebar } from "../team_sidebar";
+import type { ComponentProps } from "react";
+import { TeamSidebar } from "../team_sidebar";
 import type {
-  TeamWorkbenchContent,
   TeamWorkbenchContentProps,
 } from "./team_workbench_content";
-import type { TeamWorkspaceHeader } from "./team_workspace_header";
-import type { TeamRunPanel } from "../team_run_panel";
-import type { TeamPageModals } from "./team_page_modals";
+import { TeamWorkbenchContent } from "./team_workbench_content";
+import { TeamWorkspaceHeader } from "./team_workspace_header";
+import { TeamRunPanel } from "../team_run_panel";
+import { TeamPageModals } from "./team_page_modals";
 
 export function buildTeamSidebarProps(
-  props: React.ComponentProps<typeof TeamSidebar>
-): React.ComponentProps<typeof TeamSidebar> {
+  props: ComponentProps<typeof TeamSidebar>
+): ComponentProps<typeof TeamSidebar> {
   return props;
 }
 
 export function buildTeamWorkbenchContentProps(
-  props: React.ComponentProps<typeof TeamWorkbenchContent>
-): React.ComponentProps<typeof TeamWorkbenchContent> {
+  props: ComponentProps<typeof TeamWorkbenchContent>
+): ComponentProps<typeof TeamWorkbenchContent> {
   return props;
 }
 
-export function buildTeamWorkbenchBodyProps(
-  props: Pick<
-    TeamWorkbenchContentProps,
-    | "conversationPanel"
-    | "threadPane"
-    | "tasksPanel"
-    | "agentAcpPanel"
-    | "overviewPanelProps"
-    | "eventsPanelProps"
-    | "stepsPanelProps"
-    | "mailboxHasActiveRun"
-    | "mailboxEmptyTitle"
-    | "mailboxEmptyBody"
-    | "onGoToRuns"
-    | "mailboxPanelProps"
-    | "memberConsolePanelProps"
-    | "debugPanel"
-  >
-): Pick<
+export type TeamWorkbenchBodyProps = Pick<
   TeamWorkbenchContentProps,
   | "conversationPanel"
   | "threadPane"
@@ -53,24 +36,28 @@ export function buildTeamWorkbenchBodyProps(
   | "mailboxPanelProps"
   | "memberConsolePanelProps"
   | "debugPanel"
-> {
+>;
+
+export function buildTeamWorkbenchBodyProps(
+  props: TeamWorkbenchBodyProps
+): TeamWorkbenchBodyProps {
   return props;
 }
 
 export function buildTeamWorkspaceHeaderProps(
-  props: React.ComponentProps<typeof TeamWorkspaceHeader>
-): React.ComponentProps<typeof TeamWorkspaceHeader> {
+  props: ComponentProps<typeof TeamWorkspaceHeader>
+): ComponentProps<typeof TeamWorkspaceHeader> {
   return props;
 }
 
 export function buildTeamRunsPanelProps(
-  props: React.ComponentProps<typeof TeamRunPanel>
-): React.ComponentProps<typeof TeamRunPanel> {
+  props: ComponentProps<typeof TeamRunPanel>
+): ComponentProps<typeof TeamRunPanel> {
   return props;
 }
 
 export function buildTeamPageModalsProps(
-  props: React.ComponentProps<typeof TeamPageModals>
-): React.ComponentProps<typeof TeamPageModals> {
+  props: ComponentProps<typeof TeamPageModals>
+): ComponentProps<typeof TeamPageModals> {
   return props;
 }
