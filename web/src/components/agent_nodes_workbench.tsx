@@ -309,52 +309,58 @@ export function AgentNodesWorkbench({
           </Text>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-          <div className="xl:sticky xl:top-4 xl:self-start">
-          <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-3 shadow-sm">
-            <Stack gap="xs">
-              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                Nodes
-              </Text>
-              <Text size="xs" c="dimmed">
-                Global machine roster
-              </Text>
-              {availableNodes.map((node) => {
-                const nodeAgents = agentsByNodeId.get(node.id) ?? [];
-                const nodeTeams = teamUsageByNodeId.get(node.id) ?? [];
-                const isSelected = node.id === selectedNode.id;
-                return (
-                  <SelectableListItem
-                    key={node.id}
-                    aria-pressed={isSelected}
-                    active={isSelected}
-                    className={[
-                      NODE_ROSTER_ITEM_CLASS,
-                      isSelected ? NODE_ROSTER_ITEM_ACTIVE_CLASS : "",
-                    ].join(" ")}
-                    onClick={() => onSelectNode(node.id)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Text size="sm" fw={600}>
-                            {node.name}
+        <div
+          className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]"
+          data-node-detail-layout="true"
+        >
+          <div className="lg:sticky lg:top-4 lg:self-start">
+            <div
+              className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-3 shadow-sm"
+              data-node-roster="true"
+            >
+              <Stack gap="xs">
+                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                  Nodes
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Global machine roster
+                </Text>
+                {availableNodes.map((node) => {
+                  const nodeAgents = agentsByNodeId.get(node.id) ?? [];
+                  const nodeTeams = teamUsageByNodeId.get(node.id) ?? [];
+                  const isSelected = node.id === selectedNode.id;
+                  return (
+                    <SelectableListItem
+                      key={node.id}
+                      aria-pressed={isSelected}
+                      active={isSelected}
+                      className={[
+                        NODE_ROSTER_ITEM_CLASS,
+                        isSelected ? NODE_ROSTER_ITEM_ACTIVE_CLASS : "",
+                      ].join(" ")}
+                      onClick={() => onSelectNode(node.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Text size="sm" fw={600}>
+                              {node.name}
+                            </Text>
+                            <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
+                              {resolveNodeRoleLabel(node)}
+                            </Badge>
+                          </div>
+                          <Text size="xs" c="dimmed" mt={4}>
+                            {nodeAgents.length} agent{nodeAgents.length === 1 ? "" : "s"} ·{" "}
+                            {nodeTeams.length} team{nodeTeams.length === 1 ? "" : "s"}
                           </Text>
-                          <Badge tone={node.is_main ? "subtle" : "outline"} className="uppercase">
-                            {resolveNodeRoleLabel(node)}
-                          </Badge>
                         </div>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          {nodeAgents.length} agent{nodeAgents.length === 1 ? "" : "s"} ·{" "}
-                          {nodeTeams.length} team{nodeTeams.length === 1 ? "" : "s"}
-                        </Text>
                       </div>
-                    </div>
-                  </SelectableListItem>
-                );
-              })}
-            </Stack>
-          </div>
+                    </SelectableListItem>
+                  );
+                })}
+              </Stack>
+            </div>
           </div>
 
           <div className="min-w-0 space-y-4">
@@ -377,7 +383,7 @@ export function AgentNodesWorkbench({
                 </Text>
               </div>
             ) : (
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                 <div className={SECTION_CARD_CLASS}>
                   <Stack gap="sm">
                     <div>
@@ -557,7 +563,10 @@ export function AgentNodesWorkbench({
               Because nodes are global resources, this section shows which teams currently land
               members on the selected node rather than treating node usage as team-local state.
             </Text>
-            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            <div
+              className="mt-3 grid gap-2 min-[420px]:grid-cols-2 sm:grid-cols-4"
+              data-node-team-summary-metrics="true"
+            >
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Teams</div>
                 <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeams.length}</div>
@@ -615,7 +624,7 @@ export function AgentNodesWorkbench({
                         </a>
                       </Text>
                     </div>
-                    <div className="grid min-w-[190px] flex-1 gap-2 sm:max-w-[280px] sm:grid-cols-3">
+                    <div className="grid min-w-0 w-full gap-2 min-[420px]:grid-cols-2 sm:max-w-[280px] sm:grid-cols-3">
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                         <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>

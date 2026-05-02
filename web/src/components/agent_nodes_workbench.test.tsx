@@ -133,6 +133,9 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("This node still has 1 attached agent.");
     expect(html).toContain("Delete Node");
     expect(html).toContain("disabled");
+    expect(html).toContain("lg:grid-cols-[240px_minmax(0,1fr)]");
+    expect(html).toContain("min-[420px]:grid-cols-2 sm:grid-cols-4");
+    expect(html).toContain("min-w-0 w-full gap-2 min-[420px]:grid-cols-2");
   });
 
   it("keeps the local main node danger zone read only", () => {

@@ -67,65 +67,41 @@ export const WorkspaceShellHeader = React.memo(
 
     return (
       <header className={className} ref={ref}>
-        <div className="flex min-w-0 flex-1 items-center gap-3 max-md:w-full max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2">
-          <div className="flex min-w-0 shrink-0 items-center gap-2">
-            {showSidebarToggle ? (
-              <IconButton
-                className={headerIconButtonClassName}
-                onClick={onToggleSidebar ?? undefined}
-                title={sidebarToggleLabel ?? undefined}
-                aria-label={sidebarToggleLabel ?? undefined}
-              >
-                <i
-                  className={sidebarCollapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset"}
-                  aria-hidden="true"
-                />
-              </IconButton>
-            ) : null}
-            {(title || subtitle) && (
-              <div className="flex min-w-0 items-baseline gap-1.5">
-                {title ? (
-                  <h1 className="truncate text-[14px] font-semibold tracking-tight text-black/85">
-                    {title}
-                  </h1>
-                ) : null}
-                {subtitle ? (
-                  <p className="truncate text-[12px] font-medium text-black/45">{subtitle}</p>
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          {lensItems.length > 0 && onSelectLens ? (
-            <div
-              className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} min-w-0 overflow-x-auto max-md:order-3 max-md:basis-full md:ml-2 md:flex-1`}
+        <div
+          className="flex min-w-0 flex-1 items-center gap-3"
+          data-workspace-shell-primary="true"
+        >
+          {showSidebarToggle ? (
+            <IconButton
+              className={headerIconButtonClassName}
+              onClick={onToggleSidebar ?? undefined}
+              title={sidebarToggleLabel ?? undefined}
+              aria-label={sidebarToggleLabel ?? undefined}
             >
-              {lensItems.map((item) => (
-                <ActionButton
-                  key={item.value}
-                  type="button"
-                  tone={item.active ? "secondary" : "ghost"}
-                  size="sm"
-                  className={
-                    item.active
-                      ? WORKSPACE_SHELL_LENS_BUTTON_ACTIVE_CLASS
-                      : WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS
-                  }
-                  onClick={() => onSelectLens(item.value)}
-                  onMouseEnter={item.onPrefetch}
-                  onFocus={item.onPrefetch}
-                  disabled={item.disabled}
-                  aria-pressed={item.active}
-                  title={item.title}
-                >
-                  {item.label}
-                </ActionButton>
-              ))}
-            </div>
+              <i
+                className={sidebarCollapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset"}
+                aria-hidden="true"
+              />
+            </IconButton>
           ) : null}
+          {(title || subtitle) && (
+            <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+              {title ? (
+                <h1 className="truncate text-[14px] font-semibold tracking-tight text-black/85">
+                  {title}
+                </h1>
+              ) : null}
+              {subtitle ? (
+                <p className="truncate text-[12px] font-medium text-black/45">{subtitle}</p>
+              ) : null}
+            </div>
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-3">
+        <div
+          className="flex shrink-0 items-center justify-end gap-3 max-md:order-2 max-md:w-full max-md:justify-between max-md:gap-2 md:order-3"
+          data-workspace-shell-actions="true"
+        >
           {connectionBadge && headerStatusClassName ? (
             <WorkbenchConnectionBadge
               badge={connectionBadge}
@@ -142,6 +118,35 @@ export const WorkspaceShellHeader = React.memo(
             buttonClassName={menuButtonClassName}
           />
         </div>
+
+        {lensItems.length > 0 && onSelectLens ? (
+          <div
+            className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} min-w-0 overflow-x-auto max-md:order-3 max-md:basis-full md:order-2 md:ml-2 md:flex-1`}
+            data-workspace-shell-lenses="true"
+          >
+            {lensItems.map((item) => (
+              <ActionButton
+                key={item.value}
+                type="button"
+                tone={item.active ? "secondary" : "ghost"}
+                size="sm"
+                className={
+                  item.active
+                    ? WORKSPACE_SHELL_LENS_BUTTON_ACTIVE_CLASS
+                    : WORKSPACE_SHELL_LENS_BUTTON_IDLE_CLASS
+                }
+                onClick={() => onSelectLens(item.value)}
+                onMouseEnter={item.onPrefetch}
+                onFocus={item.onPrefetch}
+                disabled={item.disabled}
+                aria-pressed={item.active}
+                title={item.title}
+              >
+                {item.label}
+              </ActionButton>
+            ))}
+          </div>
+        ) : null}
       </header>
     );
   })
