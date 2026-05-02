@@ -13,6 +13,7 @@ const {
   getAdminSettingsMock,
   joinStartAdminMock,
   parseApiErrorMessageMock,
+  stringifyApiErrorMock,
 } = vi.hoisted(() => ({
   authStatusMock: vi.fn(),
   listSafePathsMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   getAdminSettingsMock: vi.fn(),
   joinStartAdminMock: vi.fn(),
   parseApiErrorMessageMock: vi.fn<(error: unknown) => string | null>(() => null),
+  stringifyApiErrorMock: vi.fn<(error: unknown) => string>(() => "error"),
 }));
 
 vi.mock("./api", () => ({
@@ -40,6 +42,7 @@ vi.mock("./api", () => ({
     rotateVapid: vi.fn(),
   },
   parseApiErrorMessage: parseApiErrorMessageMock,
+  stringifyApiError: stringifyApiErrorMock,
 }));
 
 type UseAppAdminResult = ReturnType<typeof useAppAdmin>;
@@ -79,6 +82,7 @@ describe("useAppAdmin", () => {
     getAdminSettingsMock.mockReset();
     joinStartAdminMock.mockReset();
     parseApiErrorMessageMock.mockReset();
+    stringifyApiErrorMock.mockReset();
 
     authStatusMock.mockResolvedValue({
       root_initialized: true,
@@ -90,6 +94,9 @@ describe("useAppAdmin", () => {
     getVapidInfoMock.mockResolvedValue(null);
     getAdminSettingsMock.mockResolvedValue({ passkey_enabled: false });
     parseApiErrorMessageMock.mockReturnValue(null);
+    stringifyApiErrorMock.mockImplementation(
+      (error) => parseApiErrorMessageMock(error) ?? String(error)
+    );
   });
 
   afterEach(() => {
@@ -146,6 +153,7 @@ describe("useAppAdmin", () => {
       })
       .mockRejectedValueOnce(error);
     parseApiErrorMessageMock.mockReturnValue("unable to create join token");
+    stringifyApiErrorMock.mockReturnValue("unable to create join token");
 
     await act(async () => {
       root.render(

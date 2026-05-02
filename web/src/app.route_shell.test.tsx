@@ -48,6 +48,7 @@ vi.mock("./api", () => ({
     getAdminSettings: getAdminSettingsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
+  stringifyApiError: vi.fn((error: unknown) => String(error)),
 }));
 
 vi.mock("./components/agents_route_shell", () => ({
