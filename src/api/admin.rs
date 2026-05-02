@@ -218,7 +218,7 @@ async fn revoke_device(
             .auth
             .record_audit(
                 Some(&user.id),
-                Some(uid),
+                Some(&device_id),
                 "device_revoked",
                 Some(&format!("device_id={}", device_id)),
                 extract_ip(&headers).as_deref(),
@@ -230,21 +230,35 @@ async fn revoke_device(
     Ok(ok_response())
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct AuditQuery {
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AuditRecord {
+    pub id: i64,
+    pub user_id: Option<String>,
+    pub device_id: Option<String>,
+    pub event: String,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub detail: Option<String>,
+    pub ts: i64,
+}
+
 async fn list_audits(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<Vec<AuditRecord>>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    let limit = params
-        .get("limit")
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(50);
+    let limit = query.limit.unwrap_or(100).clamp(1, 1000);
     let rows = sqlx::query(
         r#"
-        SELECT id, user_id, target_user_id, action, detail, ip, user_agent, created_at
-        FROM audit_log
-        ORDER BY created_at DESC
+        SELECT id, user_id, device_id, event, ip, user_agent, detail, ts
+        FROM login_audit
+        ORDER BY ts DESC
         LIMIT ?1
         "#,
     )
@@ -253,18 +267,16 @@ async fn list_audits(
     .await?;
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
-        let ip: Option<String> = row.get("ip");
-        let ua: Option<String> = row.get("user_agent");
-        items.push(serde_json::json!({
-            "id": row.get::<String, _>("id"),
-            "user_id": row.get::<Option<String>, _>("user_id"),
-            "target_user_id": row.get::<Option<String>, _>("target_user_id"),
-            "action": row.get::<String, _>("action"),
-            "detail": row.get::<Option<String>, _>("detail"),
-            "ip": ip,
-            "user_agent": ua,
-            "created_at": row.get::<i64, _>("created_at"),
-        }));
+        items.push(AuditRecord {
+            id: row.get("id"),
+            user_id: row.get("user_id"),
+            device_id: row.get("device_id"),
+            event: row.get("event"),
+            ip: row.get("ip"),
+            user_agent: row.get("user_agent"),
+            detail: row.get("detail"),
+            ts: row.get("ts"),
+        });
     }
     Ok(Json(items))
 }
@@ -283,9 +295,21 @@ async fn set_passkey_enabled(
     headers: HeaderMap,
     Json(payload): Json<SetPasskeyEnabledRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let user = require_root(&headers, &state).await?;
     let passkey_enabled = payload.enabled;
     state.auth.set_passkey_enabled(passkey_enabled).await?;
+    let detail = format!("enabled={passkey_enabled}");
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "passkey_config_updated",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
     Ok(ok_response())
 }
 
@@ -294,42 +318,22 @@ async fn join_start(
     headers: HeaderMap,
 ) -> Result<Json<JoinStartResponse>, ApiError> {
     let _user = require_root(&headers, &state).await?;
-    let pin: String = rand::rng()
-        .sample_iter(&rand::distr::Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect();
-    let pin_hash = {
-        let salt = argon2::password_hash::SaltString::generate(&mut rand::rng());
-        Argon2::default()
-            .hash_password(pin.as_bytes(), &salt)
-            .map_err(|e| ApiError::bad_request(&format!("pin hashing failed: {e}")))?
-            .to_string()
-    };
-    let expires_at = Utc::now().timestamp() + 3600;
-    sqlx::query(
-        r#"
-        INSERT INTO join_pins (pin_hash, created_by, expires_at)
-        VALUES (?1, ?2, ?3)
-        "#,
-    )
-    .bind(&pin_hash)
-    .bind(&_user.id)
-    .bind(expires_at)
-    .execute(&state.db)
-    .await?;
-
     let token = Uuid::new_v4().to_string();
+    let pin = generate_pin();
+    let pin_hash = hash_pin(&pin)?;
+    let now = Utc::now().timestamp();
+    let expires_at = now + 600;
+
     sqlx::query(
         r#"
-        INSERT INTO join_tokens (token, pin_hash, created_by, expires_at, used)
-        VALUES (?1, ?2, ?3, ?4, 0)
+        INSERT INTO join_challenges (token, pin_hash, expires_at, created_at)
+        VALUES (?1, ?2, ?3, ?4)
         "#,
     )
     .bind(&token)
     .bind(&pin_hash)
-    .bind(&_user.id)
     .bind(expires_at)
+    .bind(now)
     .execute(&state.db)
     .await?;
 
@@ -338,4 +342,22 @@ async fn join_start(
         pin,
         expires_at,
     }))
+}
+
+fn generate_pin() -> String {
+    let mut bytes = [0u8; 4];
+    rand::rng().fill_bytes(&mut bytes);
+    let num = u32::from_le_bytes(bytes) % 1_000_000;
+    format!("{num:06}")
+}
+
+fn hash_pin(pin: &str) -> anyhow::Result<String> {
+    let salt =
+        argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let argon2 = Argon2::default();
+    let hash = argon2
+        .hash_password(pin.as_bytes(), &salt)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?
+        .to_string();
+    Ok(hash)
 }
