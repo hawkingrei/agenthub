@@ -2177,7 +2177,7 @@ mod tests {
         let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();
         let prev_actor = std::env::var(ACTOR_RUNTIME_ACTOR_ID_ENV).ok();
         unsafe {
-            std::env::remove_var(ACTOR_RUNTIME_TEAM_ID_ENV);
+            std::env::set_var(ACTOR_RUNTIME_TEAM_ID_ENV, "team-env-ignored-for-run-note");
             std::env::set_var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV, "run-note");
             std::env::set_var(ACTOR_RUNTIME_ACTOR_ID_ENV, "coordinator-note");
         }
