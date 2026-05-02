@@ -73,6 +73,13 @@ describe("WorkspaceShellHeader", () => {
     expect(html).toContain("max-md:basis-full");
   });
 
+  it("moves the status and menu actions onto their own mobile row", () => {
+    const html = renderHeader();
+    expect(html).toContain("max-md:order-2");
+    expect(html).toContain("max-md:w-full");
+    expect(html).toContain("max-md:justify-between");
+  });
+
   it("omits optional chrome branches when props are absent", () => {
     const html = renderHeader({
       subtitle: null,

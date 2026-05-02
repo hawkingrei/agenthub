@@ -309,8 +309,8 @@ export function AgentNodesWorkbench({
           </Text>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-          <div className="xl:sticky xl:top-4 xl:self-start">
+        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="lg:sticky lg:top-4 lg:self-start">
           <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-3 shadow-sm">
             <Stack gap="xs">
               <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
@@ -377,7 +377,7 @@ export function AgentNodesWorkbench({
                 </Text>
               </div>
             ) : (
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                 <div className={SECTION_CARD_CLASS}>
                   <Stack gap="sm">
                     <div>
@@ -557,7 +557,7 @@ export function AgentNodesWorkbench({
               Because nodes are global resources, this section shows which teams currently land
               members on the selected node rather than treating node usage as team-local state.
             </Text>
-            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            <div className="mt-3 grid gap-2 min-[420px]:grid-cols-2 sm:grid-cols-4">
               <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                 <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Teams</div>
                 <div className={NODE_TEAM_METRIC_VALUE_CLASS}>{selectedNodeTeams.length}</div>
@@ -615,7 +615,7 @@ export function AgentNodesWorkbench({
                         </a>
                       </Text>
                     </div>
-                    <div className="grid min-w-[190px] flex-1 gap-2 sm:max-w-[280px] sm:grid-cols-3">
+                    <div className="grid min-w-0 w-full gap-2 min-[420px]:grid-cols-2 sm:max-w-[280px] sm:grid-cols-3">
                       <div className={NODE_TEAM_METRIC_ITEM_CLASS}>
                         <div className={NODE_TEAM_METRIC_LABEL_CLASS}>Members</div>
                         <div className={NODE_TEAM_METRIC_VALUE_CLASS}>

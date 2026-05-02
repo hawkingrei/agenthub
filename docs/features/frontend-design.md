@@ -80,8 +80,14 @@ state labels, and panel behaviors diverged.
 ### 5) Accessibility And Mobile Guardrails
 
 - Keep high-frequency controls reachable on narrow viewports.
+- Workspace shell header should split into distinct mobile lanes:
+  - title / sidebar toggle lane
+  - status / menu action lane
+  - lens bar lane
 - Preserve keyboard/touch parity for input, send, interrupt, and jump-to-bottom actions.
 - Avoid overflow clipping in Team/ACP panels and message lists.
+- Node and Team detail surfaces should avoid fixed-width secondary metric blocks that force
+  horizontal squeeze on narrow screens.
 
 ### 5.1) Small-Screen Product Contract
 
@@ -177,6 +183,7 @@ Expected validation style:
 - focused narrow-screen / mobile integration coverage for Team, Agents, and Nodes critical flows
 - Chrome DevTools MCP regression checks for desktop and narrow-screen layouts after significant UI
   changes
+- `pnpm -C web exec vitest run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
 
 ## Operational Notes
 
@@ -228,3 +235,5 @@ Expected validation style:
 - `docs/journal/2026-02-24-team-task-human-conversation-ui.md`
 - `docs/journal/2026-02-23-team-top-member-status-strip.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
+- `docs/journal/2026-05-02-workspace-mobile-shell-hardening.md`
+- `docs/journal/2026-05-02-workspace-mobile-shell-hardening.md`
