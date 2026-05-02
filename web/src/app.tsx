@@ -40,18 +40,12 @@ import {
   buildCreateAgentModalProps,
   buildPermissionModalProps,
 } from "./components/agents_route_modal_props";
-import { AgentsRootPage } from "./components/agents_root_page";
-import { AgentNodesWorkbench } from "./components/agent_nodes_workbench";
 import {
-  buildAgentsPanelProps,
   buildAgentsWorkbenchProps,
+  buildAgentsPanelProps,
   buildOutputHeaderProps,
 } from "./components/agents_route_shell_props";
 import { buildStandardWorkspaceLensItems } from "./components/workspace_lens_items";
-import {
-  WorkspaceMachinesUnavailablePlaceholder,
-  WorkspaceSearchLensPlaceholder,
-} from "./components/workspace_lens_placeholder";
 import {
   getLocalStorageItemSafe,
   setLocalStorageItemSafe,
@@ -67,7 +61,9 @@ import {
 } from "./ui/tailwind_classes";
 import { parseSendInputSessionMismatch } from "./app_utils";
 import { resolveDefaultWorktreeRootForTargetNode } from "./worktree_defaults";
-import { WorkspacePanelLoadingFallback } from "./components/workspace_panel_loading_fallback";
+import { AdminRouteContainer } from "./routes/admin_route_container";
+import { AgentsRouteContainer } from "./routes/agents_route_container";
+import { RouteFallback } from "./routes/route_fallback";
 
 import { useAppAuth } from "./use_app_auth";
 import { useAppAgents } from "./use_app_agents";
@@ -136,11 +132,6 @@ export {
   shouldRedirectTeamsToLogin,
 } from "./app_route_selection";
 
-const LazyAdminPage = React.lazy(async () => {
-  const module = (await import("./pages/admin_page")) as typeof import("./pages/admin_page");
-  return { default: module.AdminPage };
-});
-
 const LazyJoinPage = React.lazy(async () => {
   const module = (await import("./pages/join_page")) as typeof import("./pages/join_page");
   return { default: module.JoinPage };
@@ -165,17 +156,7 @@ function PostLoginRedirect({ target }: { target: string }): null {
   return null;
 }
 
-export function RouteFallback({ label }: { label: string }) {
-  return (
-    <div className="mx-auto flex min-h-[40vh] w-full max-w-3xl items-center justify-center px-6 py-10">
-      <WorkspacePanelLoadingFallback
-        title={label}
-        body="AgentHub is loading this workspace route."
-        className="w-full max-w-md"
-      />
-    </div>
-  );
-}
+export { RouteFallback } from "./routes/route_fallback";
 
 function AuthGateCard({ title, message }: { title: string; message: string }) {
   return (
@@ -912,22 +893,6 @@ export function App() {
       activeAgentModelLabel,
     ]
   );
-  const routeOutputHeaderProps = useMemo(
-    () =>
-      activeWorkspaceLens === "nodes"
-        ? buildOutputHeaderProps({
-            activeAgent: null,
-            activeSessionId: null,
-            developerMode,
-            hasAcp: false,
-            thinkingStartTs: null,
-            runStatus: null,
-            modelLabel: null,
-          })
-        : outputHeaderProps,
-    [activeWorkspaceLens, developerMode, outputHeaderProps]
-  );
-
   const workbenchProps = useMemo(
     () =>
       buildAgentsWorkbenchProps({
@@ -1019,64 +984,22 @@ export function App() {
       terminalShowJump,
     ]
   );
-  const routeWorkbenchProps = activeWorkspaceLens === "nodes" ? null : workbenchProps;
-  const showRouteOutputHeader = activeWorkspaceLens !== "nodes";
-
   const canManageNodes = canManageAgentNodes(auth);
-  const rootWorkbenchNode = useMemo(
-    () =>
-      activeWorkspaceLens === "nodes"
-        ? canManageNodes
-          ? (
-            <AgentNodesWorkbench
-              nodes={agentNodes}
-              agents={agents}
-              teams={teams}
-              teamMemberAgentsById={teamMemberAgentsById}
-              selectedNodeId={selectedWorkspaceNodeId}
-              nodeJoinBootstrap={agentNodeJoinBootstrap}
-              nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
-              nodeJoinBootstrapError={agentNodeJoinBootstrapError}
-              updatingNodeIds={updatingAgentNodeIds}
-              deletingNodeIds={deletingAgentNodeIds}
-              onSelectNode={(nodeId) => navigateWorkbenchRoute(buildWorkspaceNodePath(nodeId))}
-              onOpenAgent={(agentId) => {
-                setActiveAgent(agentId);
-                setActiveSessionId(agentSessions[agentId] ?? null);
-                setAgentsCollapsed(true);
-                navigateWorkbenchRoute(buildWorkspacePath(agentId, "channels"));
-              }}
-              onCreateAgent={openCreateAgentModal}
-              onUpdateNode={onUpdateAgentNode}
-              onDeleteNode={onDeleteAgentNode}
-            />
-          )
-          : (
-            <WorkspaceMachinesUnavailablePlaceholder className="m-6 text-center" />
-          )
-        : activeWorkspaceLens === "search"
-          ? (
-            <WorkspaceSearchLensPlaceholder className="m-4" />
-          )
-        : null,
+
+  const handleSelectWorkspaceNode = useCallback(
+    (nodeId: string) => navigateWorkbenchRoute(buildWorkspaceNodePath(nodeId)),
+    [navigateWorkbenchRoute]
+  );
+  const handleOpenNodeAgent = useCallback(
+    (agentId: string) => {
+      setActiveAgent(agentId);
+      setActiveSessionId(agentSessions[agentId] ?? null);
+      setAgentsCollapsed(true);
+      navigateWorkbenchRoute(buildWorkspacePath(agentId, "channels"));
+    },
     [
-      canManageNodes,
-      activeWorkspaceLens,
-      agentNodes,
-      agents,
-      teams,
-      teamMemberAgentsById,
-      selectedWorkspaceNodeId,
-      agentNodeJoinBootstrap,
-      agentNodeJoinBootstrapLoading,
-      agentNodeJoinBootstrapError,
-      updatingAgentNodeIds,
-      deletingAgentNodeIds,
-      navigateWorkbenchRoute,
       agentSessions,
-      openCreateAgentModal,
-      onUpdateAgentNode,
-      onDeleteAgentNode,
+      navigateWorkbenchRoute,
       setActiveAgent,
       setActiveSessionId,
       setAgentsCollapsed,
@@ -1229,37 +1152,34 @@ export function App() {
       return <ForbiddenRoute />;
     case "admin":
       return (
-        <div className="app bg-white" ref={appRootRef}>
-          <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
-            <LazyAdminPage
-              auth={auth!}
-              error={normalizedError}
-              setError={setError}
-              safePaths={safePaths}
-              selectedSafePaths={selectedSafePaths}
-              onToggleSafePath={onToggleSafePath}
-              onToggleAllSafePaths={onToggleAllSafePaths}
-              onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
-              devices={devices}
-              audits={audits}
-              vapidInfo={vapidInfo}
-              onRotateVapid={onRotateVapid}
-              onAddSafePath={onAddSafePath}
-              onDeleteSafePath={onDeleteSafePath}
-              onRevokeDevice={onRevokeDevice}
-              onCreateJoin={onCreateJoin}
-              joinUrl={joinUrl}
-              joinToken={joinToken}
-              joinPin={joinPin}
-              safePathInput={safePathInput}
-              setSafePathInput={setSafePathInput}
-              developerMode={developerMode}
-              onDeveloperModeChange={setDeveloperMode}
-              passkeyEnabled={passkeyEnabled}
-              onPasskeyEnabledChange={onPasskeyEnabledChange}
-            />
-          </Suspense>
-        </div>
+        <AdminRouteContainer
+          appRootRef={appRootRef}
+          auth={auth!}
+          error={normalizedError}
+          setError={setError}
+          safePaths={safePaths}
+          selectedSafePaths={selectedSafePaths}
+          onToggleSafePath={onToggleSafePath}
+          onToggleAllSafePaths={onToggleAllSafePaths}
+          onDeleteSelectedSafePaths={onDeleteSelectedSafePaths}
+          devices={devices}
+          audits={audits}
+          vapidInfo={vapidInfo}
+          onRotateVapid={onRotateVapid}
+          onAddSafePath={onAddSafePath}
+          onDeleteSafePath={onDeleteSafePath}
+          onRevokeDevice={onRevokeDevice}
+          onCreateJoin={onCreateJoin}
+          joinUrl={joinUrl}
+          joinToken={joinToken}
+          joinPin={joinPin}
+          safePathInput={safePathInput}
+          setSafePathInput={setSafePathInput}
+          developerMode={developerMode}
+          onDeveloperModeChange={setDeveloperMode}
+          passkeyEnabled={passkeyEnabled}
+          onPasskeyEnabledChange={onPasskeyEnabledChange}
+        />
       );
     case "teams-auth-redirect":
       return <AuthRedirect />;
@@ -1284,46 +1204,58 @@ export function App() {
     case "post-auth-redirect":
       return <PostLoginRedirect target={postAuthRedirectTarget!} />;
     case "workspace":
-      break;
+      return (
+        <AgentsRouteContainer
+          activeWorkspaceLens={activeWorkspaceLens}
+          appRootRef={appRootRef}
+          appHeaderRef={appHeaderRef}
+          auth={auth}
+          normalizedError={normalizedError}
+          onClearError={() => setError(null)}
+          authBusy={authBusy}
+          rootInitialized={rootInitialized}
+          username={username}
+          password={password}
+          displayName={displayName}
+          setUsername={setUsername}
+          setPassword={setPassword}
+          setDisplayName={setDisplayName}
+          onLogin={onLogin}
+          onRegister={onRegister}
+          agentsCollapsed={agentsCollapsed}
+          onCollapseAgents={handleCollapseAgents}
+          onExpandAgents={handleExpandAgents}
+          connectionBadge={connectionBadge}
+          onLogout={onLogout}
+          navigateWorkbenchRoute={navigateWorkbenchRoute}
+          workspaceRef={workspaceRef}
+          workspaceStyle={workspaceStyle}
+          onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
+          agentsPanelProps={agentsPanelProps}
+          outputHeaderProps={outputHeaderProps}
+          workbenchProps={workbenchProps}
+          showCreateAgent={showCreateAgent}
+          createAgentModalProps={createAgentModalProps}
+          agentNodeSectionProps={agentNodeSectionProps}
+          permissionModalProps={permissionModalProps}
+          lensItems={workspaceLensItems}
+          onSelectLens={onSelectWorkspaceLens}
+          nodes={agentNodes}
+          agents={agents}
+          teams={teams}
+          teamMemberAgentsById={teamMemberAgentsById}
+          selectedNodeId={selectedWorkspaceNodeId}
+          nodeJoinBootstrap={agentNodeJoinBootstrap}
+          nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
+          nodeJoinBootstrapError={agentNodeJoinBootstrapError}
+          updatingNodeIds={updatingAgentNodeIds}
+          deletingNodeIds={deletingAgentNodeIds}
+          onSelectNode={handleSelectWorkspaceNode}
+          onOpenNodeAgent={handleOpenNodeAgent}
+          onCreateAgent={openCreateAgentModal}
+          onUpdateNode={onUpdateAgentNode}
+          onDeleteNode={onDeleteAgentNode}
+        />
+      );
   }
-
-  return (
-    <AgentsRootPage
-      appRootRef={appRootRef}
-      appHeaderRef={appHeaderRef}
-      auth={auth}
-      normalizedError={normalizedError}
-      onClearError={() => setError(null)}
-      authBusy={authBusy}
-      rootInitialized={rootInitialized}
-      username={username}
-      password={password}
-      displayName={displayName}
-      setUsername={setUsername}
-      setPassword={setPassword}
-      setDisplayName={setDisplayName}
-      onLogin={onLogin}
-      onRegister={onRegister}
-      agentsCollapsed={agentsCollapsed}
-      onCollapseAgents={handleCollapseAgents}
-      onExpandAgents={handleExpandAgents}
-      connectionBadge={connectionBadge}
-      onLogout={onLogout}
-      navigateWorkbenchRoute={navigateWorkbenchRoute}
-      workspaceRef={workspaceRef}
-      workspaceStyle={workspaceStyle}
-      onAgentsSplitterPointerDown={handleAgentsSplitterPointerDown}
-      agentsPanelProps={agentsPanelProps}
-      outputHeaderProps={routeOutputHeaderProps}
-      showOutputHeader={showRouteOutputHeader}
-      workbenchProps={routeWorkbenchProps}
-      rootWorkbenchNode={rootWorkbenchNode}
-      showCreateAgent={showCreateAgent}
-      createAgentModalProps={createAgentModalProps}
-      agentNodeSectionProps={agentNodeSectionProps}
-      permissionModalProps={permissionModalProps}
-      lensItems={workspaceLensItems}
-      onSelectLens={onSelectWorkspaceLens}
-    />
-  );
 }

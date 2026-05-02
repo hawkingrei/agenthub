@@ -66,6 +66,14 @@ import {
   TeamWorkbenchContent,
 } from "./team/team_workbench_content";
 import {
+  buildTeamPageModalsProps,
+  buildTeamWorkbenchBodyProps,
+  buildTeamSidebarProps,
+  buildTeamRunsPanelProps,
+  buildTeamWorkbenchContentProps,
+  buildTeamWorkspaceHeaderProps,
+} from "./team/team_page_route_props";
+import {
   loadTeamConversationRuntimeCache,
   loadTeamMailboxInboxRuntimeCache,
   loadTeamMemberAcpRuntimeCache,
@@ -3826,6 +3834,190 @@ export function TeamPage(props: TeamPageProps) {
       teamMemberDraft?.role,
     ]
   );
+
+  const sidebarProps = buildTeamSidebarProps({
+    showTeamSelector: false,
+    isRoot: props.auth.role === "root",
+    developerMode: props.developerMode,
+    busy,
+    onRefreshTeams: refreshTeams,
+    onOpenCreateTeam: openCreateTeamModal,
+    draftTeamName: newTeamName,
+    coordinatorMemberId:
+      selectedTeamMembers.find((member) => member.role === "coordinator")?.member_id ?? "",
+    configuredWorkerCount: selectedTeamWorkerCount,
+    teams,
+    selectedTeam,
+    selectedTeamId: effectiveSelectedTeamId,
+    selectedTeamRuntimeStatus,
+    selectedTeamHasConfiguredMembers,
+    teamMemberSummaryByTeamId,
+    memberLiveStates: selectedTeamMemberLiveStates,
+    memberTargetNodeById,
+    channelItems,
+    selectedChannelId: routeChannelId,
+    focusedAgentMemberId,
+    tab,
+    onSelectTeam: onSelectSidebarTeam,
+    onBackToSelector: navigateToTeamSelector,
+    onSelectChannel: onSelectSidebarChannel,
+    onCreateChannel: onCreateSidebarChannel,
+    onDeleteChannel: onDeleteSidebarChannel,
+    creatingChannel: busy === "create-team-channel",
+    deletingChannelId,
+    onSelectKanban: onSelectKanbanSubject,
+    onSelectAgentTab: onSelectAgentWorkspace,
+    onOpenTeamMemberForge: openTeamMemberForgeModal,
+    onStartTeamRuntime: onStartTeamRuntime,
+    onStopTeamRuntime: onStopTeamRuntime,
+    onOpenMachines: () => navigateToPath(buildWorkspaceNodePath()),
+    currentMachineId: focusedMemberTargetNodeId,
+    onOpenCurrentMachine: focusedMemberTargetNodeId
+      ? () => navigateToPath(buildWorkspaceNodePath(focusedMemberTargetNodeId))
+      : null,
+  });
+
+  const workbenchContentProps = buildTeamWorkbenchContentProps({
+        showTeamBootstrapLoading,
+        showTeamUnavailable,
+        onBackToSelector: navigateToTeamSelector,
+        selectedTeam,
+        isAgentWorkspace,
+        teamSectionCardClassName,
+        teamSectionTitleClassName,
+        teamSectionBodyTextClassName,
+        panelSecondaryButtonClassName,
+        teamWorkbenchWorkspaceShellClassName,
+        workspaceHeaderProps: buildTeamWorkspaceHeaderProps({
+          workspaceEyebrow,
+          showDedicatedWorkspaceHeading,
+          workspaceTitle,
+          workspaceDescription,
+          isAgentWorkspace,
+          selectedAgentLabel,
+          selectedAgentWorkspaceMemberId,
+          selectedAgentStatusView,
+          selectedAgentSpecDraft,
+          selectedAgentControlState,
+          showWorkspaceRuntimeBadge,
+          selectedTeamRuntimeStatusLabel: selectedTeamRuntimeStatus.label,
+          selectedTeamRuntimeOnline: selectedTeamRuntimeStatus.online,
+          selectedTeamRuntimeTotal: selectedTeamRuntimeStatus.total,
+          selectedTeamRuntimeControlTone,
+          workspaceAdvancedTabItems,
+          isAdvancedWorkspace,
+          showRunActionsInAdvanced,
+          activeRunStatus: activeRunForSelectedTeam?.status ?? null,
+          canResumeActiveRun,
+          canRestartActiveRun,
+          developerMode: props.developerMode,
+          workspaceDetailsOpen,
+          workspaceDetailItems,
+          workspaceNoticeText,
+          workspaceNoticeDotClassName,
+          workflowTabItems: TEAM_WORKFLOW_TAB_ITEMS,
+          tab,
+          busy,
+          chrome: {
+            mutedButtonClassName: teamWorkbenchMutedButtonClassName,
+            headerActionButtonClassName: teamWorkbenchHeaderActionButtonClassName,
+            toolbarClassName: workspaceToolbarClassName,
+            toolbarButtonActiveClassName: workspaceToolbarButtonActiveClassName,
+            toolbarButtonIdleClassName: workspaceToolbarButtonIdleClassName,
+            noticeClassName: workspaceNoticeClassName,
+            noticeTextClassName: workspaceNoticeTextClassName,
+            runMetaItemClassName: teamRunMetaItemClassName,
+          },
+          onTabChange: setTab,
+          onToggleWorkspaceDetails: () =>
+            setWorkspaceDetailsOpen((current) => !current),
+          onRefreshActiveRun,
+          onCancelRun,
+          onResumeRun,
+          onRestartRun,
+          onOpenTeamMemberEditModal: openTeamMemberEditModal,
+          onStartSelectedTeamAgent,
+          onStopSelectedTeamAgent,
+          onDeleteSelectedTeamAgent,
+        }),
+        selectedTeamHasConfiguredMembers,
+        selectedTeamDescription: selectedTeam?.description,
+        teamMemberForgeLabel,
+        onOpenTeamMemberForge: openTeamMemberForgeModal,
+        tab,
+        runsPanelProps: buildTeamRunsPanelProps({
+          selectedTeam: selectedTeam!,
+          developerMode: props.developerMode,
+          busy,
+          onDeleteTeam,
+          onStartRun: onCreateRun,
+          canStartRun: selectedTeamHasConfiguredMembers,
+          runBlockedReason: teamExecutionBlockedReason,
+          runStatusFilter,
+          runStatusFilterOptions: TEAM_RUN_STATUS_FILTER_OPTIONS,
+          onRunStatusFilterChange,
+          onRefreshRuns,
+          runsLoading,
+          visibleRuns,
+          activeRunId: activeRunIdForSelectedTeam,
+          onActiveRunChange: setActiveRunId,
+          isActiveRunHiddenByFilter,
+          activeRun: activeRunForSelectedTeam,
+          totalLoadedRunsForTeam,
+          runsHasMore,
+          selectedTeamId: effectiveSelectedTeamId,
+          onLoadMoreRuns,
+        }),
+        showRunContextLoading,
+        showNoActiveRunNotice,
+        activeWorkspaceLens,
+        ...buildTeamWorkbenchBodyProps({
+          conversationPanel,
+          threadPane,
+          tasksPanel,
+          agentAcpPanel,
+          overviewPanelProps,
+          eventsPanelProps,
+          stepsPanelProps,
+          mailboxHasActiveRun: Boolean(activeRunForSelectedTeam),
+          mailboxEmptyTitle: isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox",
+          mailboxEmptyBody: isAgentWorkspace
+            ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
+            : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations.",
+          onGoToRuns: () => setTab("runs"),
+          mailboxPanelProps,
+          memberConsolePanelProps,
+          debugPanel,
+        }),
+      });
+  const teamPageModalsProps = buildTeamPageModalsProps({
+    showCreateTeamModal,
+    showForgeAgentForm,
+    showTeamMemberEditModal,
+    busy,
+    newTeamName,
+    newTeamDescription,
+    onTeamNameChange: setNewTeamName,
+    onTeamDescriptionChange: setNewTeamDescription,
+    onCreateTeam,
+    closeCreateTeamModal,
+    teamMemberDraft,
+    teamMemberRoleProfile,
+    teamMemberRoleOptions,
+    selectedTeamHasCoordinator,
+    handleTeamMemberRoleChange,
+    patchTeamMemberDraft,
+    forgeModalProps,
+    closeTeamMemberForgeModal,
+    selectedAgentLabel,
+    teamMemberEditDraft,
+    patchTeamMemberEditDraft,
+    closeTeamMemberEditModal,
+    onSaveTeamMemberProfile,
+    createChrome: modalChrome,
+    forgeChrome: modalChrome,
+    editChrome: modalChrome,
+  });
   const hasOpenTeamModal = showCreateTeamModal || showForgeAgentForm || showTeamMemberEditModal;
   const normalizedTeamPageError = useMemo(() => {
     if (!error) {
@@ -3911,202 +4103,14 @@ export function TeamPage(props: TeamPageProps) {
         }
         detailLayoutClassName={detailLayoutClassName}
         showSidebarPane={showSidebarPane}
-        sidebarPane={
-          <TeamSidebar
-            showTeamSelector={false}
-            isRoot={props.auth.role === "root"}
-            developerMode={props.developerMode}
-            busy={busy}
-            onRefreshTeams={refreshTeams}
-            onOpenCreateTeam={openCreateTeamModal}
-            draftTeamName={newTeamName}
-            coordinatorMemberId={
-              selectedTeamMembers.find((member) => member.role === "coordinator")?.member_id ?? ""
-            }
-            configuredWorkerCount={selectedTeamWorkerCount}
-            teams={teams}
-            selectedTeam={selectedTeam}
-            selectedTeamId={effectiveSelectedTeamId}
-            selectedTeamRuntimeStatus={selectedTeamRuntimeStatus}
-            selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
-            teamMemberSummaryByTeamId={teamMemberSummaryByTeamId}
-            memberLiveStates={selectedTeamMemberLiveStates}
-            memberTargetNodeById={memberTargetNodeById}
-            channelItems={channelItems}
-            selectedChannelId={routeChannelId}
-            focusedAgentMemberId={focusedAgentMemberId}
-            tab={tab}
-            onSelectTeam={onSelectSidebarTeam}
-            onBackToSelector={navigateToTeamSelector}
-            onSelectChannel={onSelectSidebarChannel}
-            onCreateChannel={onCreateSidebarChannel}
-            onDeleteChannel={onDeleteSidebarChannel}
-            creatingChannel={busy === "create-team-channel"}
-            deletingChannelId={deletingChannelId}
-            onSelectKanban={onSelectKanbanSubject}
-            onSelectAgentTab={onSelectAgentWorkspace}
-            onOpenTeamMemberForge={openTeamMemberForgeModal}
-            onStartTeamRuntime={onStartTeamRuntime}
-            onStopTeamRuntime={onStopTeamRuntime}
-            onOpenMachines={() => navigateToPath(buildWorkspaceNodePath())}
-            currentMachineId={focusedMemberTargetNodeId}
-            onOpenCurrentMachine={
-              focusedMemberTargetNodeId
-                ? () => navigateToPath(buildWorkspaceNodePath(focusedMemberTargetNodeId))
-                : null
-            }
-          />
-        }
+        sidebarPane={<TeamSidebar {...sidebarProps} />}
         showWorkbenchPane={showWorkbenchPane}
-        workbenchPane={
-          <TeamWorkbenchContent
-            showTeamBootstrapLoading={showTeamBootstrapLoading}
-            showTeamUnavailable={showTeamUnavailable}
-            onBackToSelector={navigateToTeamSelector}
-            selectedTeam={selectedTeam}
-            isAgentWorkspace={isAgentWorkspace}
-            teamSectionCardClassName={teamSectionCardClassName}
-            teamSectionTitleClassName={teamSectionTitleClassName}
-            teamSectionBodyTextClassName={teamSectionBodyTextClassName}
-            panelSecondaryButtonClassName={panelSecondaryButtonClassName}
-            teamWorkbenchWorkspaceShellClassName={teamWorkbenchWorkspaceShellClassName}
-            workspaceHeaderProps={{
-              workspaceEyebrow,
-              showDedicatedWorkspaceHeading,
-              workspaceTitle,
-              workspaceDescription,
-              isAgentWorkspace,
-              selectedAgentLabel,
-              selectedAgentWorkspaceMemberId,
-              selectedAgentStatusView,
-              selectedAgentSpecDraft,
-              selectedAgentControlState,
-              showWorkspaceRuntimeBadge,
-              selectedTeamRuntimeStatusLabel: selectedTeamRuntimeStatus.label,
-              selectedTeamRuntimeOnline: selectedTeamRuntimeStatus.online,
-              selectedTeamRuntimeTotal: selectedTeamRuntimeStatus.total,
-              selectedTeamRuntimeControlTone,
-              workspaceAdvancedTabItems,
-              isAdvancedWorkspace,
-              showRunActionsInAdvanced,
-              activeRunStatus: activeRunForSelectedTeam?.status ?? null,
-              canResumeActiveRun,
-              canRestartActiveRun,
-              developerMode: props.developerMode,
-              workspaceDetailsOpen,
-              workspaceDetailItems,
-              workspaceNoticeText,
-              workspaceNoticeDotClassName,
-              workflowTabItems: TEAM_WORKFLOW_TAB_ITEMS,
-              tab,
-              busy,
-              chrome: {
-                mutedButtonClassName: teamWorkbenchMutedButtonClassName,
-                headerActionButtonClassName: teamWorkbenchHeaderActionButtonClassName,
-                toolbarClassName: workspaceToolbarClassName,
-                toolbarButtonActiveClassName: workspaceToolbarButtonActiveClassName,
-                toolbarButtonIdleClassName: workspaceToolbarButtonIdleClassName,
-                noticeClassName: workspaceNoticeClassName,
-                noticeTextClassName: workspaceNoticeTextClassName,
-                runMetaItemClassName: teamRunMetaItemClassName,
-              },
-              onTabChange: setTab,
-              onToggleWorkspaceDetails: () =>
-                setWorkspaceDetailsOpen((current) => !current),
-              onRefreshActiveRun,
-              onCancelRun,
-              onResumeRun,
-              onRestartRun,
-              onOpenTeamMemberEditModal: openTeamMemberEditModal,
-              onStartSelectedTeamAgent,
-              onStopSelectedTeamAgent,
-              onDeleteSelectedTeamAgent,
-            }}
-            selectedTeamHasConfiguredMembers={selectedTeamHasConfiguredMembers}
-            selectedTeamDescription={selectedTeam?.description}
-            teamMemberForgeLabel={teamMemberForgeLabel}
-            onOpenTeamMemberForge={openTeamMemberForgeModal}
-            tab={tab}
-            runsPanelProps={{
-              selectedTeam: selectedTeam!,
-              developerMode: props.developerMode,
-              busy,
-              onDeleteTeam,
-              onStartRun: onCreateRun,
-              canStartRun: selectedTeamHasConfiguredMembers,
-              runBlockedReason: teamExecutionBlockedReason,
-              runStatusFilter,
-              runStatusFilterOptions: TEAM_RUN_STATUS_FILTER_OPTIONS,
-              onRunStatusFilterChange,
-              onRefreshRuns,
-              runsLoading,
-              visibleRuns,
-              activeRunId: activeRunIdForSelectedTeam,
-              onActiveRunChange: setActiveRunId,
-              isActiveRunHiddenByFilter,
-              activeRun: activeRunForSelectedTeam,
-              totalLoadedRunsForTeam,
-              runsHasMore,
-              selectedTeamId: effectiveSelectedTeamId,
-              onLoadMoreRuns,
-            }}
-            showRunContextLoading={showRunContextLoading}
-            showNoActiveRunNotice={showNoActiveRunNotice}
-            activeWorkspaceLens={activeWorkspaceLens}
-            conversationPanel={conversationPanel}
-            threadPane={threadPane}
-            tasksPanel={tasksPanel}
-            agentAcpPanel={agentAcpPanel}
-            overviewPanelProps={overviewPanelProps}
-            eventsPanelProps={eventsPanelProps}
-            stepsPanelProps={stepsPanelProps}
-            mailboxHasActiveRun={Boolean(activeRunForSelectedTeam)}
-            mailboxEmptyTitle={
-              isAgentWorkspace ? selectedAgentLabel : "Execution Mailbox"
-            }
-            mailboxEmptyBody={
-              isAgentWorkspace
-                ? "This agent is selected, but there is no active execution run context for its direct thread yet. Use Execution Runs to inspect execution history or wait for the next task."
-                : "Execution mailbox is run-scoped. Start or select a run to inspect delivery and direct member conversations."
-            }
-            onGoToRuns={() => setTab("runs")}
-            mailboxPanelProps={mailboxPanelProps}
-            memberConsolePanelProps={memberConsolePanelProps}
-            debugPanel={debugPanel}
-          />
-        }
+        workbenchPane={<TeamWorkbenchContent {...workbenchContentProps} />}
       />
 
       {hasOpenTeamModal && (
         <Suspense fallback={null}>
-          <LazyTeamPageModals
-            showCreateTeamModal={showCreateTeamModal}
-            showForgeAgentForm={showForgeAgentForm}
-            showTeamMemberEditModal={showTeamMemberEditModal}
-            busy={busy}
-            newTeamName={newTeamName}
-            newTeamDescription={newTeamDescription}
-            onTeamNameChange={setNewTeamName}
-            onTeamDescriptionChange={setNewTeamDescription}
-            onCreateTeam={onCreateTeam}
-            closeCreateTeamModal={closeCreateTeamModal}
-            teamMemberDraft={teamMemberDraft}
-            teamMemberRoleProfile={teamMemberRoleProfile}
-            teamMemberRoleOptions={teamMemberRoleOptions}
-            selectedTeamHasCoordinator={selectedTeamHasCoordinator}
-            handleTeamMemberRoleChange={handleTeamMemberRoleChange}
-            patchTeamMemberDraft={patchTeamMemberDraft}
-            forgeModalProps={forgeModalProps}
-            closeTeamMemberForgeModal={closeTeamMemberForgeModal}
-            selectedAgentLabel={selectedAgentLabel}
-            teamMemberEditDraft={teamMemberEditDraft}
-            patchTeamMemberEditDraft={patchTeamMemberEditDraft}
-            closeTeamMemberEditModal={closeTeamMemberEditModal}
-            onSaveTeamMemberProfile={onSaveTeamMemberProfile}
-            createChrome={modalChrome}
-            forgeChrome={modalChrome}
-            editChrome={modalChrome}
-          />
+          <LazyTeamPageModals {...teamPageModalsProps} />
         </Suspense>
       )}
     </div>

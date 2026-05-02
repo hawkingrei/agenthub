@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
-import { AdminPage } from "./admin_page";
+import { AdminPage, type AdminPageProps } from "./admin_page";
 import type { AuthState } from "../types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,6 +35,53 @@ const rootAuth: AuthState = {
   username: "root",
   role: "root",
 };
+
+function createAdminPageProps(
+  overrides: Partial<AdminPageProps> = {}
+): AdminPageProps {
+  return {
+    auth: rootAuth,
+    error: null,
+    setError: () => {},
+    safePaths: {
+      safePaths: [],
+      selectedSafePaths: new Set<string>(),
+      safePathInput: "",
+      setSafePathInput: () => {},
+      onAddSafePath: () => {},
+      onToggleSafePath: () => {},
+      onToggleAllSafePaths: () => {},
+      onDeleteSelectedSafePaths: () => {},
+      onDeleteSafePath: () => {},
+    },
+    devices: {
+      devices: [],
+      onRevokeDevice: () => {},
+    },
+    audits: {
+      audits: [],
+    },
+    join: {
+      onCreateJoin: () => {},
+      joinUrl: null,
+      joinToken: null,
+      joinPin: null,
+    },
+    vapid: {
+      vapidInfo: null,
+      onRotateVapid: () => {},
+    },
+    ui: {
+      developerMode: false,
+      onDeveloperModeChange: () => {},
+    },
+    system: {
+      passkeyEnabled: false,
+      onPasskeyEnabledChange: () => {},
+    },
+    ...overrides,
+  };
+}
 
 describe("AdminPage", () => {
   let container: HTMLDivElement;
@@ -78,31 +125,12 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={rootAuth}
-            error={null}
-            setError={() => {}}
-            safePaths={[]}
-            selectedSafePaths={new Set<string>()}
-            onToggleSafePath={() => {}}
-            onToggleAllSafePaths={() => {}}
-            onDeleteSelectedSafePaths={() => {}}
-            devices={[]}
-            audits={[]}
-            vapidInfo={null}
-            onRotateVapid={() => {}}
-            onAddSafePath={() => {}}
-            onDeleteSafePath={() => {}}
-            onRevokeDevice={() => {}}
-            onCreateJoin={() => {}}
-            joinUrl={null}
-            joinToken={null}
-            joinPin={null}
-            safePathInput=""
-            setSafePathInput={() => {}}
-            developerMode={false}
-            onDeveloperModeChange={onDeveloperModeChange}
-            passkeyEnabled={false}
-            onPasskeyEnabledChange={() => {}}
+            {...createAdminPageProps({
+              ui: {
+                developerMode: false,
+                onDeveloperModeChange,
+              },
+            })}
           />
         </MantineProvider>
       );
@@ -139,31 +167,12 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={rootAuth}
-            error={null}
-            setError={() => {}}
-            safePaths={[]}
-            selectedSafePaths={new Set<string>()}
-            onToggleSafePath={() => {}}
-            onToggleAllSafePaths={() => {}}
-            onDeleteSelectedSafePaths={() => {}}
-            devices={[]}
-            audits={[]}
-            vapidInfo={null}
-            onRotateVapid={() => {}}
-            onAddSafePath={() => {}}
-            onDeleteSafePath={() => {}}
-            onRevokeDevice={() => {}}
-            onCreateJoin={() => {}}
-            joinUrl={null}
-            joinToken={null}
-            joinPin={null}
-            safePathInput=""
-            setSafePathInput={() => {}}
-            developerMode={false}
-            onDeveloperModeChange={() => {}}
-            passkeyEnabled={null}
-            onPasskeyEnabledChange={onPasskeyEnabledChange}
+            {...createAdminPageProps({
+              system: {
+                passkeyEnabled: null,
+                onPasskeyEnabledChange,
+              },
+            })}
           />
         </MantineProvider>
       );
@@ -193,31 +202,12 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={rootAuth}
-            error={null}
-            setError={() => {}}
-            safePaths={[]}
-            selectedSafePaths={new Set<string>()}
-            onToggleSafePath={() => {}}
-            onToggleAllSafePaths={() => {}}
-            onDeleteSelectedSafePaths={() => {}}
-            devices={[]}
-            audits={[]}
-            vapidInfo={null}
-            onRotateVapid={() => {}}
-            onAddSafePath={() => {}}
-            onDeleteSafePath={() => {}}
-            onRevokeDevice={() => {}}
-            onCreateJoin={() => {}}
-            joinUrl={null}
-            joinToken={null}
-            joinPin={null}
-            safePathInput=""
-            setSafePathInput={() => {}}
-            developerMode={false}
-            onDeveloperModeChange={() => {}}
-            passkeyEnabled={false}
-            onPasskeyEnabledChange={onPasskeyEnabledChange}
+            {...createAdminPageProps({
+              system: {
+                passkeyEnabled: false,
+                onPasskeyEnabledChange,
+              },
+            })}
           />
         </MantineProvider>
       );
@@ -236,31 +226,14 @@ describe("AdminPage", () => {
       root.render(
         <MantineProvider>
           <AdminPage
-            auth={rootAuth}
-            error={null}
-            setError={() => {}}
-            safePaths={[]}
-            selectedSafePaths={new Set<string>()}
-            onToggleSafePath={() => {}}
-            onToggleAllSafePaths={() => {}}
-            onDeleteSelectedSafePaths={() => {}}
-            devices={[]}
-            audits={[]}
-            vapidInfo={null}
-            onRotateVapid={() => {}}
-            onAddSafePath={() => {}}
-            onDeleteSafePath={() => {}}
-            onRevokeDevice={() => {}}
-            onCreateJoin={() => {}}
-            joinUrl="https://agenthub.example.com/join?token=abc"
-            joinToken="abc"
-            joinPin="123456"
-            safePathInput=""
-            setSafePathInput={() => {}}
-            developerMode={false}
-            onDeveloperModeChange={() => {}}
-            passkeyEnabled={false}
-            onPasskeyEnabledChange={() => {}}
+            {...createAdminPageProps({
+              join: {
+                onCreateJoin: () => {},
+                joinUrl: "https://agenthub.example.com/join?token=abc",
+                joinToken: "abc",
+                joinPin: "123456",
+              },
+            })}
           />
         </MantineProvider>
       );

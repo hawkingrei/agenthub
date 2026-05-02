@@ -9,7 +9,7 @@ import type { TeamMemberProfileDraft } from "./create_helpers";
 import type { TeamMemberRoleOption, TeamMemberRoleProfile } from "./forge_helpers";
 import type { CreateAgentModalProps } from "../../components/create_agent_modal";
 
-type TeamPageModalsProps = {
+export type TeamPageModalsProps = {
   showCreateTeamModal: boolean;
   showForgeAgentForm: boolean;
   showTeamMemberEditModal: boolean;

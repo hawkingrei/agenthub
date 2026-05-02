@@ -87,7 +87,7 @@ export function TeamPanelLoadingFallback() {
   return <WorkspacePanelLoadingFallback />;
 }
 
-type TeamWorkbenchContentProps = {
+export type TeamWorkbenchContentProps = {
   showTeamBootstrapLoading: boolean;
   showTeamUnavailable: boolean;
   onBackToSelector: () => void;
