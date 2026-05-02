@@ -86,11 +86,16 @@ Files are categorized below by migration priority. The goal is to move Tailwind 
 
 ## Recommended Migration Order
 
-1. ✅ Extract the 5 repeated anti-patterns into `tailwind_classes.ts`. (Done)
-2. ✅ Migrate `agent_nodes_workbench.tsx`. (Done)
-3. Migrate `team_task_panel.tsx` — largest file, most classes. (~3h)
-4. Migrate `team_setup_panel.tsx` and `team_page_shell.tsx`. (~2h)
-5. ✅ Clean up `app.tsx` slate-* colors. (Done; auth_pages.tsx remains)
-6. Remaining Tier 2 files. (~3h)
+1. ✅ Extract the highest-value repeated section primitives into `tailwind_classes.ts`.
+   - `SECTION_CARD_CLASS`
+   - `SECTION_HEADER_CLASS`
+2. ✅ Migrate `agent_nodes_workbench.tsx` to the new shared section primitives.
+3. ✅ Clean up the remaining `text-slate-*` auth copy in `app.tsx` and `auth_pages.tsx`.
+4. Migrate `team_task_panel.tsx` — largest file, most classes. (~3h)
+5. Migrate `team_setup_panel.tsx` and `team_page_shell.tsx`. (~2h)
+6. Extract the next repeated layout/padding patterns such as:
+   - `flex h-full min-h-0 flex-col overflow-auto`
+   - `px-4 py-2 sm:px-6`
+7. Finish the remaining Tier 2 files. (~3h)
 
 Total estimated remaining effort: ~8h.
