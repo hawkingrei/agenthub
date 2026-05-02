@@ -239,4 +239,3 @@ Expected validation style:
 - `docs/journal/2026-02-23-team-top-member-status-strip.md`
 - `docs/journal/2026-02-25-team-runs-tab-and-tab-routing-refactor.md`
 - `docs/journal/2026-05-02-workspace-mobile-shell-hardening.md`
-- `docs/journal/2026-05-02-workspace-mobile-shell-hardening.md`

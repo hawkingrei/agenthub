@@ -106,7 +106,10 @@ test("node detail keeps mobile detail surfaces stacked without horizontal overfl
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/workspace/nodes/${remoteNodeId}`, { waitUntil: "domcontentloaded" });
+  await page.goto("/workspace", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Open workbench menu", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Nodes", exact: true }).click();
+  await page.getByRole("button", { name: /Node East/ }).click();
 
   await expect(page.getByText("Node Detail", { exact: true })).toBeVisible();
   await expect(page.getByText("Detected Runtimes", { exact: true })).toBeVisible();

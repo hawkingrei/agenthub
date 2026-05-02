@@ -68,9 +68,9 @@ describe("WorkspaceShellHeader", () => {
 
   it("gives the lens bar a dedicated mobile row so tabs do not crowd the title lane", () => {
     const html = renderHeader();
-    expect(html).toContain("max-md:flex-wrap");
     expect(html).toContain("max-md:order-3");
     expect(html).toContain("max-md:basis-full");
+    expect(html).toContain("md:order-2");
   });
 
   it("moves the status and menu actions onto their own mobile row", () => {
