@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseApiErrorMessage } from "./api";
+import { parseApiErrorMessage, stringifyApiError } from "./api";
 
 describe("parseApiErrorMessage", () => {
   it("extracts error field from Error JSON message", () => {
@@ -34,5 +34,17 @@ describe("parseApiErrorMessage", () => {
     expect(parseApiErrorMessage(new Error(""))).toBeNull();
     expect(parseApiErrorMessage(null)).toBeNull();
     expect(parseApiErrorMessage(undefined)).toBeNull();
+  });
+});
+
+describe("stringifyApiError", () => {
+  it("prefers normalized API error text when available", () => {
+    expect(stringifyApiError(new Error("{\"error\":\"user not found\"}"))).toBe(
+      "user not found"
+    );
+  });
+
+  it("falls back to String(err) when parsing returns null", () => {
+    expect(stringifyApiError({ detail: "x" })).toBe("[object Object]");
   });
 });
