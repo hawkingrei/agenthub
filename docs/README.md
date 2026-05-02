@@ -17,6 +17,13 @@ implementation-facing.
 - Feature spec standard:
   - [features/README.md](features/README.md)
 
+## Repo-Local Documentation Skills
+
+- Journal writing and review:
+  - `.agents/skills/agenthub-docs-journal/SKILL.md`
+- Canonical feature spec writing and review:
+  - `.agents/skills/agenthub-docs-spec/SKILL.md`
+
 ## Documentation Surfaces
 
 - `docs/features/`
@@ -85,6 +92,8 @@ Use this checklist for every non-trivial change:
   - Key decisions
   - Validation
   - Follow-ups
+- Prefer the repo-local journal skill for structure and compaction rules:
+  - `.agents/skills/agenthub-docs-journal/SKILL.md`
 
 ## Compaction Rules
 
@@ -95,6 +104,8 @@ Use this checklist for every non-trivial change:
   journal note.
 - When documentation-only journals stop carrying distinct decisions, merge them
   into a background journal and remove the stale micro-journals.
+- Prefer the repo-local feature spec skill when extracting stable conclusions:
+  - `.agents/skills/agenthub-docs-spec/SKILL.md`
 
 ## TODO Hygiene
 

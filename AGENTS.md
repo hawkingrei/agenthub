@@ -50,4 +50,6 @@ AgentHub is a single-binary control plane for long-lived AI agents.
 - Stable design belongs in `docs/features/`.
 - Implementation checkpoints belong in `docs/journal/`.
 - Follow-up verification belongs in `docs/todo.md`.
+- Use `.agents/skills/agenthub-docs-spec/SKILL.md` when creating or revising canonical feature specs under `docs/features/`.
+- Use `.agents/skills/agenthub-docs-journal/SKILL.md` when creating or revising dated rollout notes under `docs/journal/`.
 - Frontend changes should use Chrome DevTools MCP for before/after validation.
