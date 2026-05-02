@@ -99,7 +99,7 @@ export const WorkspaceShellHeader = React.memo(
         </div>
 
         <div
-          className="flex shrink-0 items-center justify-end gap-3 max-md:order-2 max-md:w-full max-md:justify-between max-md:gap-2"
+          className="flex shrink-0 items-center justify-end gap-3 max-md:order-2 max-md:w-full max-md:justify-between max-md:gap-2 md:order-3"
           data-workspace-shell-actions="true"
         >
           {connectionBadge && headerStatusClassName ? (

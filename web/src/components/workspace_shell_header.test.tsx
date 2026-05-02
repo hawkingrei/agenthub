@@ -78,6 +78,7 @@ describe("WorkspaceShellHeader", () => {
     expect(html).toContain("max-md:order-2");
     expect(html).toContain("max-md:w-full");
     expect(html).toContain("max-md:justify-between");
+    expect(html).toContain("md:order-3");
   });
 
   it("omits optional chrome branches when props are absent", () => {

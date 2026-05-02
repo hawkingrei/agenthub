@@ -186,7 +186,7 @@ Expected validation style:
 - Chrome DevTools MCP regression checks for desktop and narrow-screen layouts after significant UI
   changes
 - `pnpm -C web exec vitest run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
-- `pnpm -C web exec playwright test tests/e2e/team_page_mobile.e2e.ts --project=chromium`
+- `cd web && PLAYWRIGHT_MOBILE_ONLY=1 npx playwright test tests/e2e/team_page_mobile.e2e.ts --project chromium`
 
 ## Operational Notes
 

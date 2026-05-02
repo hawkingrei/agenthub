@@ -43,7 +43,7 @@ It does not yet:
 ## Validation
 
 - `cd web && npm exec vitest -- run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
-- `cd web && npm exec playwright test tests/e2e/team_page_mobile.e2e.ts --project=chromium`
+- `cd web && PLAYWRIGHT_MOBILE_ONLY=1 npx playwright test tests/e2e/team_page_mobile.e2e.ts --project chromium`
 - `cd web && npm exec tsc -- --noEmit`
 - `cd web && npm run lint`
 - Chrome DevTools MCP baseline:
