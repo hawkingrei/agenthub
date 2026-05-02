@@ -1,10 +1,8 @@
 import { expect, test } from "./coverage";
 import {
   expectTeamRuntimeBadge,
-  gotoTeams,
   mockTeamPageApis,
   openMainTeamAction,
-  openTeamFromSelector,
 } from "./team_page_helpers";
 
 test("team page keeps single-column proportions on mobile viewport", async ({
@@ -30,8 +28,7 @@ test("team page keeps single-column proportions on mobile viewport", async ({
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await gotoTeams(page);
-  await openTeamFromSelector(page, "Team Mobile");
+  await page.goto("/workspace/teams/team-mobile", { waitUntil: "domcontentloaded" });
   await openMainTeamAction(page, "Execution Runs");
 
   await expect(page.locator(".teams-main").getByText("Team Mobile", { exact: true })).toBeVisible();
@@ -106,10 +103,7 @@ test("node detail keeps mobile detail surfaces stacked without horizontal overfl
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/workspace", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Open workbench menu", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Nodes", exact: true }).click();
-  await page.getByRole("button", { name: /Node East/ }).click();
+  await page.goto(`/workspace/nodes/${remoteNodeId}`, { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("Node Detail", { exact: true })).toBeVisible();
   await expect(page.getByText("Detected Runtimes", { exact: true })).toBeVisible();
