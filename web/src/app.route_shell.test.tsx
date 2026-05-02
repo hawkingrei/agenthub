@@ -424,4 +424,63 @@ describe("App route shell wiring", () => {
 
     expect(lastCall?.showOutputHeader).toBe(false);
   });
+
+  it("keeps the canonical nodes list route while defaulting the detail panel to the main node", async () => {
+    globalThis.localStorage.setItem(
+      "agenthub_auth",
+      JSON.stringify({
+        token: "token-root",
+        userId: "user-1",
+        username: "root",
+        role: "root",
+      })
+    );
+    listAgentNodesMock.mockResolvedValue([
+      {
+        id: "main",
+        name: "Main Node",
+        grpc_target: null,
+        tls_server_name: null,
+        default_worktree_root: null,
+        last_seen_at: null,
+        is_main: true,
+        created_at: 0,
+        updated_at: 0,
+      },
+      {
+        id: "node-east",
+        name: "Node East",
+        grpc_target: "https://node-east.internal:50051",
+        tls_server_name: "node-east.internal",
+        default_worktree_root: "~/.agenthub/worktrees/node-east",
+        last_seen_at: null,
+        is_main: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    window.history.replaceState({}, "", "/workspace/nodes");
+
+    act(() => {
+      renderApp(root);
+    });
+    await flushRenderFrames(10);
+
+    expect(window.location.pathname).toBe("/workspace/nodes");
+
+    const lastCall = agentsRouteShellPropsMock.mock.calls[
+      agentsRouteShellPropsMock.mock.calls.length - 1
+    ]?.[0] as
+      | {
+          rootWorkbenchNode: React.ReactNode;
+        }
+      | undefined;
+
+    expect(lastCall?.rootWorkbenchNode).toBeTruthy();
+    const rootWorkbenchHtml = renderToStaticMarkup(
+      <MantineProvider>{lastCall?.rootWorkbenchNode}</MantineProvider>
+    );
+    expect(rootWorkbenchHtml).toContain("Main Node");
+    expect(rootWorkbenchHtml).toContain("Connected");
+  });
 });

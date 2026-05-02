@@ -196,7 +196,7 @@ export function isWorkspaceRootRoute(pathname: string): boolean {
   return pathname === "/" || pathname === "/workspace" || pathname === "/workspace/";
 }
 
-export function isAgentsWorkbenchRoute(pathname: string): boolean {
+export function isWorkspaceWorkbenchRoute(pathname: string): boolean {
   return (
     isWorkspaceRootRoute(pathname) ||
     pathname.startsWith("/workspace/agents/") ||
@@ -204,6 +204,10 @@ export function isAgentsWorkbenchRoute(pathname: string): boolean {
     pathname === "/workspace/nodes/" ||
     pathname.startsWith("/workspace/nodes/")
   );
+}
+
+export function isAgentsWorkbenchRoute(pathname: string): boolean {
+  return isWorkspaceWorkbenchRoute(pathname);
 }
 
 export function resolveTeamRoute(pathname: string): TeamRouteState | null {

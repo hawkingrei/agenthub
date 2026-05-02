@@ -178,7 +178,7 @@ export function deriveDetectedNodeRuntimes(
     observed.add("AgentHub Control Plane");
   }
   for (const agent of agents) {
-    const command = agent.command.trim().toLowerCase();
+    const command = (agent.command ?? "").trim().toLowerCase();
     if (command.includes("codex") || agent.code_mode) {
       observed.add("Codex CLI");
     }
@@ -189,12 +189,19 @@ export function deriveDetectedNodeRuntimes(
       observed.add("AgentHub Runtime");
     }
   }
-  const tags: NodeDetectedRuntime[] = Array.from(observed).map((label) => ({
-    label,
-    available: true,
-  }));
-  for (const label of ["Codex CLI", "Gemini CLI"]) {
-    if (!observed.has(label)) {
+  const orderedLabels = [
+    "AgentHub Control Plane",
+    "AgentHub Runtime",
+    "Codex CLI",
+    "Gemini CLI",
+  ] as const;
+  const tags: NodeDetectedRuntime[] = [];
+  for (const label of orderedLabels) {
+    if (observed.has(label)) {
+      tags.push({ label, available: true });
+      continue;
+    }
+    if (label === "Codex CLI" || label === "Gemini CLI") {
       tags.push({
         label: `${label} (not detected)`,
         available: false,

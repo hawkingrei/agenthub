@@ -7,6 +7,8 @@ import {
   buildTeamWorkspacePath,
   buildWorkspaceNodePath,
   buildWorkspacePath,
+  isAgentsWorkbenchRoute,
+  isWorkspaceWorkbenchRoute,
   isTeamMemberRouteTab,
   navigateToPath,
   resolveAppRouteKind,
@@ -211,6 +213,17 @@ describe("app route selection", () => {
       nodeId: null,
     });
     expect(resolveWorkspaceNodeRoute("/workspace/agents/agent-1", "")).toBeNull();
+  });
+
+  it("treats both agents and nodes pages as workspace workbench routes", () => {
+    expect(isWorkspaceWorkbenchRoute("/workspace")).toBe(true);
+    expect(isWorkspaceWorkbenchRoute("/workspace/agents/agent-1")).toBe(true);
+    expect(isWorkspaceWorkbenchRoute("/workspace/nodes")).toBe(true);
+    expect(isWorkspaceWorkbenchRoute("/workspace/nodes/node-east")).toBe(true);
+    expect(isWorkspaceWorkbenchRoute("/workspace/teams/team-1")).toBe(false);
+
+    expect(isAgentsWorkbenchRoute("/workspace/agents/agent-1")).toBe(true);
+    expect(isAgentsWorkbenchRoute("/workspace/nodes/node-east")).toBe(true);
   });
 
   it("does not duplicate history entries when navigating to the current path", () => {

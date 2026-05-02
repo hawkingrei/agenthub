@@ -93,7 +93,6 @@ describe("AgentNodesWorkbench", () => {
 
     expect(html).toContain("Node Detail");
     expect(html).toContain("Connect Command");
-    expect(html).toContain("Connect Command");
     expect(html).toContain("Connect Config");
     expect(html).toContain("Degraded");
     expect(html).toContain("indirect runtime signal");

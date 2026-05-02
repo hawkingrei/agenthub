@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import type { AgentNodeRecord, AgentRecord } from "../api";
+import { deriveDetectedNodeRuntimes } from "./agent_node_detail_shared";
+
+const remoteNode: AgentNodeRecord = {
+  id: "node-east",
+  name: "Node East",
+  grpc_target: "https://node-east.internal:50051",
+  tls_server_name: "node-east.internal",
+  default_worktree_root: "~/.agenthub/worktrees/node-east",
+  last_seen_at: null,
+  is_main: false,
+  created_at: 1,
+  updated_at: 1,
+};
+
+function agent(overrides: Partial<AgentRecord>): AgentRecord {
+  return {
+    id: "agent-1",
+    name: "Worker A",
+    command: "agenthub codex",
+    args: [],
+    workdir: "/tmp/worker-a",
+    status: "running",
+    target_node_id: "node-east",
+    worktree_mode: "use_existing",
+    code_mode: false,
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  };
+}
+
+describe("deriveDetectedNodeRuntimes", () => {
+  it("returns runtime tags in a stable product order", () => {
+    const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
+      agent({ command: "gemini" }),
+      agent({ id: "agent-2", command: "agenthub codex" }),
+    ]);
+
+    expect(runtimes).toEqual([
+      { label: "AgentHub Runtime", available: true },
+      { label: "Codex CLI", available: true },
+      { label: "Gemini CLI", available: true },
+    ]);
+  });
+
+  it("tolerates missing commands and keeps unavailable runtime markers", () => {
+    const runtimes = deriveDetectedNodeRuntimes(remoteNode, [
+      agent({ command: undefined as unknown as string }),
+    ]);
+
+    expect(runtimes).toEqual([
+      { label: "Codex CLI (not detected)", available: false },
+      { label: "Gemini CLI (not detected)", available: false },
+    ]);
+  });
+});

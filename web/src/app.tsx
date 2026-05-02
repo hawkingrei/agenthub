@@ -20,7 +20,7 @@ import {
   resolveAppRouteKind,
   resolvePostAuthRedirectTarget,
   resolveTeamRoute,
-  isAgentsWorkbenchRoute,
+  isWorkspaceWorkbenchRoute,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceLens,
   resolveWorkspaceNodeId,
@@ -126,6 +126,7 @@ export {
 export {
   isAgentsWorkbenchRoute,
   isTeamsRoute,
+  isWorkspaceWorkbenchRoute,
   resolveAppRouteKind,
   resolveWorkspaceAgentRoute,
   resolvePostAuthRedirectTarget,
@@ -188,7 +189,7 @@ export function App() {
     pathname: location.pathname,
     search: location.search,
   }));
-  const isAgentsRoute = isAgentsWorkbenchRoute(routeLocation.pathname);
+  const isAgentsRoute = isWorkspaceWorkbenchRoute(routeLocation.pathname);
   const isAdminRoute = routeLocation.pathname.startsWith("/admin");
 
   const {
@@ -430,10 +431,10 @@ export function App() {
   const selectedWorkspaceNodeId = useMemo(
     () =>
       workspaceNodeRoute?.nodeId ??
-      resolveWorkspaceNodeId(routeLocation.search) ??
-      "main",
+      resolveWorkspaceNodeId(routeLocation.search),
     [routeLocation.search, workspaceNodeRoute]
   );
+  const effectiveSelectedWorkspaceNodeId = selectedWorkspaceNodeId ?? "main";
 
   const workspaceLensItems = useMemo(
     () =>
@@ -1255,7 +1256,7 @@ export function App() {
           agents={agents}
           teams={teams}
           teamMemberAgentsById={teamMemberAgentsById}
-          selectedNodeId={selectedWorkspaceNodeId}
+          selectedNodeId={effectiveSelectedWorkspaceNodeId}
           nodeJoinBootstrap={agentNodeJoinBootstrap}
           nodeJoinBootstrapLoading={agentNodeJoinBootstrapLoading}
           nodeJoinBootstrapError={agentNodeJoinBootstrapError}
