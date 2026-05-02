@@ -6,7 +6,7 @@ import {
   DeviceRecord, 
   AuditRecord, 
   VapidInfo, 
-  parseApiErrorMessage 
+  stringifyApiError 
 } from "./api";
 
 export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
@@ -60,7 +60,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       await api.setPasskeyEnabled(token, enabled);
       setPasskeyEnabled(enabled);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token, auth?.role]);
 
@@ -74,7 +74,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setSafePaths(list);
       setSafePathInput("");
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token, safePathInput]);
 
@@ -85,7 +85,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const list = await api.listSafePaths(token);
       setSafePaths(list);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 
@@ -98,7 +98,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const items = await api.listAudits(token);
       setAudits(items);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 
@@ -109,7 +109,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       const info = await api.getVapidInfo(token);
       setVapidInfo(info);
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 
@@ -124,7 +124,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setJoinPin(null);
       setJoinToken(null);
       setJoinUrl(null);
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 
@@ -157,7 +157,7 @@ export function useAppAdmin(auth: AuthState | null, isAdminRoute: boolean) {
       setSafePaths(list);
       setSelectedSafePaths(new Set());
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token, selectedSafePaths]);
 

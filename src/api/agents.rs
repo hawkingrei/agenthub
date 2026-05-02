@@ -18,6 +18,7 @@ use crate::agent::{
 };
 use crate::api::authz::require_user;
 use crate::api::error::ApiError;
+use crate::api::ok_response;
 use crate::api::teams::prune_deleted_agent_from_team_specs;
 use crate::state::AppState;
 use crate::team::effective_team_member_skills;
@@ -358,7 +359,7 @@ async fn stop_agent(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     state.agents.stop_agent(&agent_id).await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn delete_agent(
@@ -376,7 +377,7 @@ async fn delete_agent(
             "delete_agent completed after best-effort team spec prune failed"
         );
     }
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn send_input(
@@ -412,7 +413,7 @@ async fn send_input(
             return Err(err.into());
         }
     }
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn create_agent_time_trigger(
@@ -469,7 +470,7 @@ async fn cancel_agent_time_trigger(
     if !canceled {
         return Err(ApiError::not_found("agent time trigger not found"));
     }
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn list_events(
@@ -509,7 +510,7 @@ async fn set_code_mode(
         .agents
         .set_code_mode(&agent_id, payload.code_mode)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn set_agent_loop(
@@ -548,7 +549,7 @@ async fn set_agent_loop(
             prompt.as_deref(),
         )
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn clear_acp_session(
@@ -583,7 +584,7 @@ async fn clear_acp_session(
         .agents
         .clear_persistent_session(&agent_id, &provider)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn set_acp_mode(
@@ -597,7 +598,7 @@ async fn set_acp_mode(
         .agents
         .set_acp_mode(&agent_id, &payload.mode_id)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn set_acp_model(
@@ -611,7 +612,7 @@ async fn set_acp_model(
         .agents
         .set_acp_model(&agent_id, &payload.model_id)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn set_acp_config(
@@ -625,7 +626,7 @@ async fn set_acp_config(
         .agents
         .set_acp_config(&agent_id, &payload.config_id, &payload.value)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn cancel_acp(
@@ -635,7 +636,7 @@ async fn cancel_acp(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let _user = require_user(&headers, &state).await?;
     state.agents.cancel_acp(&agent_id).await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn list_permissions(

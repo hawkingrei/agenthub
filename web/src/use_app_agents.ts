@@ -5,7 +5,7 @@ import {
   AgentRecord,
   AgentNodeRecord,
   TeamDefinitionRecord,
-  parseApiErrorMessage,
+  stringifyApiError,
 } from "./api";
 import { AuthState } from "./types";
 import { 
@@ -92,7 +92,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
         return items;
       } catch (err: unknown) {
         if (!silent) {
-          setError(parseApiErrorMessage(err) ?? String(err));
+          setError(stringifyApiError(err));
         }
         return null;
       }
@@ -113,7 +113,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
         return items;
       } catch (err: unknown) {
         if (!silent) {
-          setError(parseApiErrorMessage(err) ?? String(err));
+          setError(stringifyApiError(err));
         }
         return null;
       }
@@ -134,7 +134,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
         return items;
       } catch (err: unknown) {
         if (!silent) {
-          setError(parseApiErrorMessage(err) ?? String(err));
+          setError(stringifyApiError(err));
         }
         return null;
       }
@@ -162,7 +162,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
         return info;
       } catch (err: unknown) {
         const message =
-          `Agent Node Join Bootstrap: ${parseApiErrorMessage(err) ?? String(err)}`;
+          `Agent Node Join Bootstrap: ${stringifyApiError(err)}`;
         setAgentNodeJoinBootstrap(null);
         setAgentNodeJoinBootstrapError(message);
         if (!silent) {
@@ -399,7 +399,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       setNodeTlsServerNameInput("");
       setNodeDefaultWorktreeRootInput("");
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     } finally {
       setCreateAgentNodeBusy(false);
     }
@@ -435,7 +435,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
           applyTargetNodeSelection(nodeId, nextNodes);
         }
       } catch (err: unknown) {
-        setError(parseApiErrorMessage(err) ?? String(err));
+        setError(stringifyApiError(err));
       } finally {
         setUpdatingAgentNodeIds((prev) => {
           if (!prev[nodeId]) return prev;
@@ -461,7 +461,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
           applyTargetNodeSelection("main", nextNodes);
         }
       } catch (err: unknown) {
-        setError(parseApiErrorMessage(err) ?? String(err));
+        setError(stringifyApiError(err));
       } finally {
         setDeletingAgentNodeIds((prev) => {
           if (!prev[nodeId]) return prev;
@@ -536,7 +536,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       );
       return agent;
     } catch (err: unknown) {
-      const msg = formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err);
+      const msg = formatWorktreeError(err) ?? stringifyApiError(err);
       if (msg.includes("worktree")) {
         setWorktreeError(msg);
       } else {
@@ -571,7 +571,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       await refreshAgents();
       return res;
     } catch (err: unknown) {
-      const message = formatWorktreeError(err) ?? parseApiErrorMessage(err) ?? String(err);
+      const message = formatWorktreeError(err) ?? stringifyApiError(err);
       if (message.toLowerCase().includes("agent already running")) {
         await refreshAgents();
         return null;
@@ -596,7 +596,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       await api.stopAgent(token, id);
       await refreshAgents();
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token, refreshAgents]);
 
@@ -607,7 +607,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
       await api.deleteAgent(token, id);
       setAgents((prev) => prev.filter((agent) => agent.id !== id));
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 
@@ -622,7 +622,7 @@ export function useAppAgents(auth: AuthState | null, isAgentsRoute: boolean) {
         )
       );
     } catch (err: unknown) {
-      setError(parseApiErrorMessage(err) ?? String(err));
+      setError(stringifyApiError(err));
     }
   }, [token]);
 

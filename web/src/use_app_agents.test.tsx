@@ -31,6 +31,7 @@ vi.mock("./api", () => ({
     getRuntimeDefaults: getRuntimeDefaultsMock,
   },
   parseApiErrorMessage: vi.fn(() => null),
+  stringifyApiError: vi.fn((error: unknown) => String(error)),
 }));
 
 type UseAppAgentsResult = ReturnType<typeof useAppAgents>;

@@ -50,9 +50,10 @@ use super::{
     list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
     list_team_runs, list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
-    reply_team_thread, require_user, restart_team_run, resume_team_run, resume_team_run_step,
-    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
-    start_team_run_step, stop_team, submit_team_run_step, update_team_spec, update_team_task,
+    normalize_team_spec, reply_team_thread, require_user, restart_team_run, resume_team_run,
+    resume_team_run_step, send_team_run_message, send_team_task_message,
+    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
+    submit_team_run_step, update_team_spec, update_team_task, validate_team_spec,
 };
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
@@ -291,6 +292,38 @@ async fn init_test_schema(db: &SqlitePool) {
     .execute(db)
     .await
     .expect("create auth_sessions");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE join_challenges (
+            token TEXT PRIMARY KEY,
+            pin_hash TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create join_challenges");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE login_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            device_id TEXT,
+            event TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            detail TEXT,
+            ts INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create login_audit");
 
     sqlx::query(
         r#"

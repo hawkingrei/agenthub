@@ -1386,30 +1386,19 @@ async fn teams_api_delete_team_returns_not_found_when_missing() {
 
 #[tokio::test]
 async fn teams_api_generates_default_steps_for_multi_member_team() {
-    let state = build_test_state().await;
-    let headers = auth_headers(&state).await;
+    let mut spec = json!({
+        "entrypoint":"coordinator-agent",
+        "members":[
+            {"member_id":"coordinator-agent","role":"coordinator"},
+            {"member_id":"worker-agent-a","role":"worker"},
+            {"member_id":"worker-agent-b","role":"worker"}
+        ]
+    });
+    normalize_team_spec(&mut spec).expect("normalize team spec with generated defaults");
+    validate_team_spec(&spec).expect("validate generated default steps");
 
-    let Json(created) = create_team(
-        State(state),
-        headers,
-        Json(CreateTeamRequest {
-            name: "default-steps-team".to_string(),
-            description: None,
-            spec: json!({
-                "entrypoint":"coordinator-agent",
-                "members":[
-                    {"member_id":"coordinator-agent","role":"coordinator"},
-                    {"member_id":"worker-agent-a","role":"worker"},
-                    {"member_id":"worker-agent-b","role":"worker"}
-                ]
-            }),
-        }),
-    )
-    .await
-    .expect("create team with generated defaults");
-
-    assert_eq!(created.spec["entrypoint"], Value::from("coordinator_plan"));
-    let steps = created.spec["steps"]
+    assert_eq!(spec["entrypoint"], Value::from("coordinator_plan"));
+    let steps = spec["steps"]
         .as_array()
         .expect("generated steps array");
     assert_eq!(steps.len(), 4);

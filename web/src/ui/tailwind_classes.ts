@@ -740,3 +740,8 @@ export const TEAM_WORKBENCH_INFO_STRIP_LABEL_CLASS =
 
 export const TEAM_WORKBENCH_INFO_STRIP_VALUE_CLASS =
   "mt-1 text-[13px] leading-relaxed text-notion-text";
+
+/* Shared cross-panel primitives */
+export const SECTION_HEADER_CLASS = "uppercase tracking-[0.08em]";
+export const SECTION_CARD_CLASS =
+  "rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4";

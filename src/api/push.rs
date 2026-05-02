@@ -5,8 +5,9 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::api::authz::require_user;
+use crate::api::authz::{require_root, require_user};
 use crate::api::error::ApiError;
+use crate::api::ok_response;
 use crate::push::PushSubscription;
 use crate::state::AppState;
 
@@ -41,9 +42,11 @@ async fn subscribe(
     headers: HeaderMap,
     Json(payload): Json<PushSubscription>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // subscribe is open to any authenticated user (not just root),
+    // because device users also need push notifications.
     let user = require_user(&headers, &state).await?;
     state.push.save_subscription(&user.id, payload).await?;
-    Ok(Json(serde_json::json!({ "status": "ok" })))
+    Ok(ok_response())
 }
 
 async fn vapid_public(State(state): State<AppState>) -> Result<Json<VapidPublicKey>, ApiError> {
@@ -55,10 +58,7 @@ async fn vapid_info(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<VapidInfo>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let _user = require_root(&headers, &state).await?;
     Ok(Json(VapidInfo {
         public_key: state.push.public_key(),
         subject: state.push.subject().to_string(),
@@ -70,10 +70,7 @@ async fn vapid_rotate(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<VapidRotateResponse>, ApiError> {
-    let user = require_user(&headers, &state).await?;
-    if user.role != "root" {
-        return Err(ApiError::unauthorized("root required"));
-    }
+    let _user = require_root(&headers, &state).await?;
     let public_key = state.push.rotate_keys()?;
     Ok(Json(VapidRotateResponse { public_key }))
 }

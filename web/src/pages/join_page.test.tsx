@@ -34,6 +34,22 @@ vi.mock("../api", () => ({
     }
     return null;
   },
+  stringifyApiError: (err: unknown) => {
+    if (err instanceof Error && err.message.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(err.message) as { error?: string };
+        if (typeof parsed.error === "string" && parsed.error) {
+          return parsed.error;
+        }
+      } catch {
+        return err.message;
+      }
+    }
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return String(err);
+  },
 }));
 
 vi.mock("../push", () => ({
