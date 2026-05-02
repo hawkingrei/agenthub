@@ -132,7 +132,11 @@ The create flow should enforce:
 - exactly one coordinator
 - coordinator must be one of the selected members
 - selected members must have stable `member_id` inputs for Team spec generation
-- launching should fail early if the resulting Team would have zero members or no coordinator
+- mission details must be present before launch:
+  - Team name
+  - mission / description
+- launching should fail early if the resulting Team would have zero members, no coordinator, or
+  missing mission details
 
 ### 7) UI Simplification Rules
 
