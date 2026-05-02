@@ -216,6 +216,33 @@ Important product consequence:
 - thread is part of the Team context-management model
 - it should reduce unnecessary context fan-in for both humans and agents
 
+#### 4.3) Prompt And Agent Behavior Contract
+
+The channel/thread split should be reflected explicitly in Team prompt and behavior guidance.
+
+Required direction:
+
+- coordinator and worker prompts should describe the channel root message as the summary entrypoint
+- prompts should describe the thread as the place for the full context
+- agents should learn that long background, logs, evidence, and detailed follow-up belong in the
+  thread instead of being pasted into the main channel by default
+
+Expected agent behavior:
+
+- when posting a new topic in a channel, keep the root message summary-first
+- when deeper context is needed, continue inside the thread
+- when an agent is mentioned or otherwise judges the topic relevant, it should open the thread
+  before assuming the root message contains the complete working context
+- thread replies should be preferred for topic-specific back-and-forth so the main channel remains
+  scannable
+
+This is not only a UX rule.
+
+It is part of the Team context-budget contract:
+
+- channel = broad visibility
+- thread = bounded deep context
+
 ### 5) Actor Capability Contract
 
 `Open thread` should not remain only a front-end affordance.
@@ -555,6 +582,8 @@ Explicit anti-goals:
 - route-level tests for `channel` and `thread` query/deep-link behavior
 - Team shell tests for `channel-only` vs `channel + thread` layouts
 - conversation tests for opening and closing the right thread pane
+- focused tests or prompt-contract checks proving summary-first root messages and thread-first deep
+  context guidance stay encoded in the Team behavior surface
 - actor command / capability tests for thread-open anchored to `root_message_id`
 - channel-directory tests for `# all` plus descriptive non-default channels
 - regression tests confirming `Kanban` and `Execution Runs` stay canonical for task/run ownership

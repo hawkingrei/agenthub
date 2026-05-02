@@ -83,6 +83,60 @@ state labels, and panel behaviors diverged.
 - Preserve keyboard/touch parity for input, send, interrupt, and jump-to-bottom actions.
 - Avoid overflow clipping in Team/ACP panels and message lists.
 
+### 5.1) Small-Screen Product Contract
+
+Small-screen support is a first-class product requirement, not a later visual cleanup pass.
+
+Required behavior on narrow screens:
+
+- Team, Agents, and Nodes surfaces must stay operable without depending on a permanently visible
+  desktop rail.
+- Primary actions should remain one or two taps away:
+  - Team:
+    - `Conversation`
+    - `Kanban`
+    - current `thread`
+  - Agents:
+    - runtime output
+    - send/input controls
+    - active debug/ACP tab
+  - Nodes:
+    - node list
+    - selected node detail
+    - `Connect Command`
+- The product should prefer explicit pane switching or compact stacked sections over accidental
+  horizontal overflow.
+- Small-screen layouts should stay content-first:
+  - do not add extra chrome just to explain mobile mode
+  - do not hide the primary workflow behind overflow menus when a dedicated compact switch is
+    possible
+
+Required design direction:
+
+- one dominant active pane at a time
+- compact headers
+- clear back/switch affordances between rail and content
+- thread/detail panes should degrade into intentional compact states rather than turning into one
+  very long page
+
+### 5.2) Small-Screen Integration Test Contract
+
+Small-screen support should not rely only on ad-hoc browser checks.
+
+Required automated coverage:
+
+- focused component/smoke tests for narrow-screen shell state and primary pane switching
+- browser-level integration coverage for at least the highest-risk compact flows:
+  - Team `Conversation <-> Kanban <-> thread`
+  - Agents primary workbench flow
+  - Nodes list/detail flow
+
+Expected validation style:
+
+- desktop-oriented render tests are not enough
+- when a layout or navigation rule exists only for compact screens, it should have at least one
+  explicit narrow-screen test or E2E assertion that proves the intended path still works
+
 ## Contracts
 
 ### 1) Styling Contract
@@ -120,6 +174,9 @@ state labels, and panel behaviors diverged.
 - `pnpm -C web run build`
 - `pnpm -C web exec vitest run src/pages/team_panels.test.tsx src/pages/team_page.runs.test.ts src/pages/team/state.test.ts`
 - `pnpm -C web exec vitest run src/pages/team_member_status_strip.test.tsx`
+- focused narrow-screen / mobile integration coverage for Team, Agents, and Nodes critical flows
+- Chrome DevTools MCP regression checks for desktop and narrow-screen layouts after significant UI
+  changes
 
 ## Operational Notes
 
@@ -130,6 +187,8 @@ state labels, and panel behaviors diverged.
 
 - Long-tail legacy selectors may still appear in edge pages.
 - Some mobile layouts can regress under new content density unless guarded by viewport tests.
+- Compact-screen polish can drift if desktop-first refactors land without corresponding small-screen
+  test evidence.
 
 ## Next Milestones
 
