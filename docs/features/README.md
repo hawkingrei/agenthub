@@ -3,6 +3,11 @@
 This directory stores stable, domain-oriented technical specifications.
 Chronological implementation records are stored in `docs/journal/`.
 
+For repo-local writing rules, also use:
+
+- `.agents/skills/agenthub-docs-spec/SKILL.md`
+- `.agents/skills/agenthub-docs-journal/SKILL.md`
+
 ## Goal
 
 Keep a small set of durable feature docs as the source of truth for:
