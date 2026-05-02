@@ -4,7 +4,10 @@
 
 - tightened the shared workspace header so mobile layouts place status/menu actions on their own row
 - reduced narrow-screen squeeze in the node detail surface by removing one fixed-width team metric block and by making key metric grids switch earlier to 2-up layouts
-- added focused regression coverage for workspace header, nodes detail, and compact Team detail routes
+- added focused regression coverage for workspace header, nodes detail, compact Team detail routes,
+  and browser-level mobile shell flows
+- split the compact browser regression path into a dedicated mobile Playwright suite/pipeline instead
+  of keeping it buried inside the broader Web E2E batch
 
 ## Background
 
@@ -24,7 +27,6 @@ This slice only hardens the shared shell and the nodes detail page.
 It does not yet:
 
 - redesign the full Team mobile information architecture
-- add browser-level device emulation coverage
 - change Team or Agent runtime behavior
 
 ## Key Decisions
@@ -35,10 +37,13 @@ It does not yet:
   without adding another page-specific layout system
 - prefer earlier 2-column metric transitions and `min-w-0` layouts over adding more custom mobile
   CSS
+- keep compact browser coverage isolated in its own Playwright file so mobile-only regressions are
+  triaged as a separate CI signal
 
 ## Validation
 
 - `cd web && npm exec vitest -- run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
+- `cd web && npm exec playwright test tests/e2e/team_page_mobile.e2e.ts --project=chromium`
 - `cd web && npm exec tsc -- --noEmit`
 - `cd web && npm run lint`
 - Chrome DevTools MCP baseline:
@@ -48,9 +53,9 @@ It does not yet:
 
 ## Follow-Ups
 
-- add explicit browser-driven small-screen verification for the node detail route after the next
-  deploy
 - continue the `P0+` mobile-first backlog with Team thread/channel split-view behavior on narrow
   screens
 - revisit Agents route chrome next so standalone agent object pages follow the same mobile lane
   rules as Team and Nodes
+- add CI evidence for the new standalone mobile E2E workflow on both `push` and `pull_request`
+  before closing the broader mobile backlog item

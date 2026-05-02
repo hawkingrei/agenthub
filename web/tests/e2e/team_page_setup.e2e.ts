@@ -144,58 +144,6 @@ test("team create modal only captures mission metadata and points member setup t
   await expect(dialog.getByText("Add agents afterward")).toBeVisible();
 });
 
-test("team page keeps single-column proportions on mobile viewport", async ({
-  page,
-}) => {
-  const fixture = await mockTeamPageApis(page);
-  const longCoordinatorId = `agent-coordinator-${"x".repeat(72)}`;
-  const longWorkerId = `agent-worker-${"y".repeat(72)}`;
-  fixture.teams.push({
-    id: "team-mobile",
-    name: "Team Mobile",
-    description: "mobile layout regression guard",
-    spec: {
-      coordinator_member_id: longCoordinatorId,
-      members: [
-        { member_id: longCoordinatorId, role: "coordinator", model: "codex" },
-        { member_id: longWorkerId, role: "worker", model: "gemini" },
-      ],
-      steps: [{ step_key: "coordinator_plan" }],
-    },
-    created_at: fixture.now,
-    updated_at: fixture.now,
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await gotoTeams(page);
-  await openTeamFromSelector(page, "Team Mobile");
-  await openMainTeamAction(page, "Execution Runs");
-
-  await expect(page.locator(".teams-main").getByText("Team Mobile", { exact: true })).toBeVisible();
-
-  const layoutColumns = await page.locator(".teams-layout").evaluate((element) => {
-    return window.getComputedStyle(element).gridTemplateColumns;
-  });
-  expect(layoutColumns.trim().split(/\s+/).length).toBe(1);
-
-  const { runFilterWidth, runFilterParentWidth } = await page
-    .getByLabel("Run status filter")
-    .first()
-    .evaluate((select) => {
-      const parent = select.parentElement;
-      return {
-        runFilterWidth: select.getBoundingClientRect().width,
-        runFilterParentWidth: parent?.getBoundingClientRect().width ?? 0,
-      };
-    });
-  expect(runFilterWidth).toBeGreaterThan(runFilterParentWidth * 0.7);
-
-  const horizontalOverflow = await page.evaluate(() => {
-    return document.documentElement.scrollWidth - document.documentElement.clientWidth;
-  });
-  expect(horizontalOverflow).toBeLessThanOrEqual(1);
-});
-
 test("team page desktop keeps long metadata blocks non-overlapping", async ({
   page,
 }) => {

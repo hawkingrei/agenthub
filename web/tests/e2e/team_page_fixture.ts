@@ -11,6 +11,7 @@ export type E2eAgentRecord = {
   workdir: string;
   command: string;
   args: string[];
+  target_node_id?: string | null;
   worktree_mode: "use_existing" | "create_worktree" | "reuse_worktree";
   worktree_repo?: string | null;
   worktree_ref?: string | null;
@@ -18,6 +19,28 @@ export type E2eAgentRecord = {
   status: string;
   created_at: number;
   updated_at: number;
+};
+
+export type E2eAgentNodeRecord = {
+  id: string;
+  name: string;
+  grpc_target?: string | null;
+  tls_server_name?: string | null;
+  default_worktree_root?: string | null;
+  last_seen_at?: number | null;
+  is_main: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+export type E2eAgentNodeJoinBootstrapInfo = {
+  enabled: boolean;
+  bootstrap_token?: string | null;
+  grpc_listen_addr?: string | null;
+  security_mode?: string | null;
+  cert_dir?: string | null;
+  issuer?: string | null;
+  audience?: string | null;
 };
 
 export type TeamSpecMember = {
@@ -125,6 +148,8 @@ export type TeamPageFixture = {
   now: number;
   auth: StoredAuthState;
   agents: E2eAgentRecord[];
+  nodes: E2eAgentNodeRecord[];
+  nodeJoinBootstrap: E2eAgentNodeJoinBootstrapInfo;
   teams: TeamDefinitionRecord[];
   getCreatePayload: () => CreateTeamPayload | null;
   getUpdateSpecPayloads: () => Array<{ teamId: string; payload: UpdateTeamSpecPayload }>;
@@ -215,6 +240,28 @@ export async function mockTeamPageApis(
       updated_at: now,
     },
   ];
+  const nodes: E2eAgentNodeRecord[] = [
+    {
+      id: "main",
+      name: "Main Node",
+      grpc_target: null,
+      tls_server_name: null,
+      default_worktree_root: null,
+      last_seen_at: now,
+      is_main: true,
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  const nodeJoinBootstrap: E2eAgentNodeJoinBootstrapInfo = {
+    enabled: true,
+    bootstrap_token: "bootstrap-token-e2e",
+    grpc_listen_addr: "0.0.0.0:50051",
+    security_mode: "tls",
+    cert_dir: "/etc/agenthub/internal-grpc",
+    issuer: "agenthub",
+    audience: "agenthub-internal",
+  };
   const teams: TeamDefinitionRecord[] = [];
   const teamRuntimeStateById = new Map<string, MockTeamRuntimeState>();
   const tasksByTeamId = new Map<string, TeamTaskRecord[]>();
@@ -407,6 +454,22 @@ export async function mockTeamPageApis(
 
   await page.route("**/api/auth/status", async (route) => {
     await route.fulfill(jsonResponse({ root_initialized: true }));
+  });
+
+  await page.route("**/api/agent_nodes/bootstrap", async (route, request) => {
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(nodeJoinBootstrap));
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/agent_nodes", async (route, request) => {
+    if (request.method() === "GET") {
+      await route.fulfill(jsonResponse(nodes));
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/agents", async (route, request) => {
@@ -950,6 +1013,8 @@ export async function mockTeamPageApis(
     now,
     auth,
     agents,
+    nodes,
+    nodeJoinBootstrap,
     teams,
     getCreatePayload: () => createTeamPayload,
     getUpdateSpecPayloads: () => updateSpecPayloads,

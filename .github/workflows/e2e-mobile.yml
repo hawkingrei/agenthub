@@ -1,0 +1,38 @@
+name: Web E2E Mobile
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  e2e-mobile:
+    name: Web E2E Mobile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci --legacy-peer-deps
+        working-directory: web
+      - name: Install Playwright Browsers
+        run: npx --yes playwright install --with-deps chromium
+        working-directory: web
+      - name: E2E Mobile
+        run: npm run e2e:coverage:mobile
+        working-directory: web
+      - name: Upload E2E mobile coverage reports to Codecov
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: web/coverage/e2e/lcov.info
+          flags: web-e2e-mobile
+          name: web-e2e-mobile-coverage
+          fail_ci_if_error: true

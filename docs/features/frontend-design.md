@@ -132,6 +132,8 @@ Small-screen support should not rely only on ad-hoc browser checks.
 Required automated coverage:
 
 - focused component/smoke tests for narrow-screen shell state and primary pane switching
+- one dedicated browser pipeline for mobile/small-screen regressions so compact-only breakage is
+  visible without being buried in the broader desktop-oriented E2E suite
 - browser-level integration coverage for at least the highest-risk compact flows:
   - Team `Conversation <-> Kanban <-> thread`
   - Agents primary workbench flow
@@ -184,6 +186,7 @@ Expected validation style:
 - Chrome DevTools MCP regression checks for desktop and narrow-screen layouts after significant UI
   changes
 - `pnpm -C web exec vitest run src/components/workspace_shell_header.test.tsx src/components/agent_nodes_workbench.test.tsx src/pages/team_page.smoke.test.tsx`
+- `pnpm -C web exec playwright test tests/e2e/team_page_mobile.e2e.ts --project=chromium`
 
 ## Operational Notes
 

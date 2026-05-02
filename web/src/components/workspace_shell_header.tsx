@@ -67,7 +67,10 @@ export const WorkspaceShellHeader = React.memo(
 
     return (
       <header className={className} ref={ref}>
-        <div className="flex min-w-0 flex-1 items-center gap-3 max-md:w-full max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2">
+        <div
+          className="flex min-w-0 flex-1 items-center gap-3 max-md:w-full max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2"
+          data-workspace-shell-primary="true"
+        >
           <div className="flex min-w-0 shrink-0 items-center gap-2">
             {showSidebarToggle ? (
               <IconButton
@@ -99,6 +102,7 @@ export const WorkspaceShellHeader = React.memo(
           {lensItems.length > 0 && onSelectLens ? (
             <div
               className={`${WORKSPACE_SHELL_LENS_BAR_CLASS} min-w-0 overflow-x-auto max-md:order-3 max-md:basis-full md:ml-2 md:flex-1`}
+              data-workspace-shell-lenses="true"
             >
               {lensItems.map((item) => (
                 <ActionButton
@@ -125,7 +129,10 @@ export const WorkspaceShellHeader = React.memo(
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-3 max-md:order-2 max-md:w-full max-md:justify-between max-md:gap-2">
+        <div
+          className="flex shrink-0 items-center justify-end gap-3 max-md:order-2 max-md:w-full max-md:justify-between max-md:gap-2"
+          data-workspace-shell-actions="true"
+        >
           {connectionBadge && headerStatusClassName ? (
             <WorkbenchConnectionBadge
               badge={connectionBadge}
