@@ -20,6 +20,7 @@ import {
   resolveNodeRoleLabel,
 } from "./agent_node_detail_shared";
 import { validateAgentNodeUpdateDraft } from "./agent_node_validation";
+import { SECTION_CARD_CLASS, SECTION_HEADER_CLASS } from "../ui/tailwind_classes";
 
 const NODE_ROSTER_ITEM_CLASS =
   "w-full rounded-xl border-2 border-transparent bg-white/70 px-2.5 py-2.5 shadow-none hover:border-black hover:bg-white";
@@ -312,7 +313,7 @@ export function AgentNodesWorkbench({
           <div className="xl:sticky xl:top-4 xl:self-start">
           <div className="rounded-2xl border border-ui-border bg-ui-surface-soft/70 p-3 shadow-sm">
             <Stack gap="xs">
-              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                 Nodes
               </Text>
               <Text size="xs" c="dimmed">
@@ -367,8 +368,8 @@ export function AgentNodesWorkbench({
               onCreateAgent={onCreateAgent}
             />
             {selectedNode.is_main ? (
-              <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
-                <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              <div className={SECTION_CARD_CLASS}>
+                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                   Danger Zone
                 </Text>
                 <Text size="sm" c="dimmed" mt={8}>
@@ -377,10 +378,10 @@ export function AgentNodesWorkbench({
               </div>
             ) : (
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-                <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
+                <div className={SECTION_CARD_CLASS}>
                   <Stack gap="sm">
                     <div>
-                      <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                         Settings
                       </Text>
                       <Text size="sm" c="dimmed" mt={6}>
@@ -491,7 +492,7 @@ export function AgentNodesWorkbench({
                 <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
                   <Stack gap="sm">
                     <div>
-                      <Text size="xs" fw={700} c="red" className="uppercase tracking-[0.08em]">
+                      <Text size="xs" fw={700} c="red" className={SECTION_HEADER_CLASS}>
                         Danger Zone
                       </Text>
                       <Text size="sm" c="dimmed" mt={6}>
@@ -522,7 +523,7 @@ export function AgentNodesWorkbench({
           </div>
         </div>
 
-        <div className="rounded-xl border border-ui-border/80 bg-white/72 px-4 py-4">
+        <div className={SECTION_CARD_CLASS}>
           <div className={NODE_TEAM_SUMMARY_CARD_CLASS}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -531,7 +532,7 @@ export function AgentNodesWorkbench({
                     <i className="bi bi-diagram-3 text-[13px]" aria-hidden="true" />
                   </div>
                   <div>
-                    <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                    <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                       Teams Using This Node
                     </Text>
                     <Text size="sm" fw={600} mt={2}>
@@ -637,7 +638,7 @@ export function AgentNodesWorkbench({
                   </div>
                   <div className="mt-3 border-t border-ui-border/60 pt-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                         Member Runtime Drill-down
                       </Text>
                       <Text size="xs" c="dimmed">

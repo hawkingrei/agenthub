@@ -13,6 +13,7 @@ import {
   KeyValueItem,
   KeyValueList,
 } from "../ui/primitives";
+import { SECTION_HEADER_CLASS } from "../ui/tailwind_classes";
 
 export const MACHINE_DETAIL_SECTION_CLASS =
   "rounded-xl border border-ui-border/80 bg-white/72 px-3 py-3";
@@ -437,7 +438,7 @@ export function AgentNodeDetailCard({
         <div className={`${MACHINE_DETAIL_SECTION_CLASS} ${showConnectFirst ? "xl:order-2" : ""}`}>
           <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
             <div>
-              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                 Info
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
@@ -457,7 +458,7 @@ export function AgentNodeDetailCard({
             ))}
           </KeyValueList>
           <div className="mt-3 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
-            <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+            <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
               Detected Runtimes
             </Text>
             <Text size="xs" c="dimmed" mt={4}>
@@ -481,7 +482,7 @@ export function AgentNodeDetailCard({
         >
           <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
             <div>
-              <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+              <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                 Connect Command
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
@@ -505,7 +506,7 @@ export function AgentNodeDetailCard({
               </Alert>
             ) : connectCommand ? (
               <Stack gap="xs">
-                <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                   Connect Command
                 </Text>
                 <Text size="sm" c="dimmed">
@@ -545,7 +546,7 @@ export function AgentNodeDetailCard({
                   </Text>
                 ) : null}
                 <div className="mt-2 rounded-lg border border-ui-border/80 bg-white/80 px-3 py-3">
-                  <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+                  <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                     Connect Config
                   </Text>
                   <KeyValueList className="mt-3 grid gap-2">
@@ -574,7 +575,7 @@ export function AgentNodeDetailCard({
       <div className={MACHINE_DETAIL_SECTION_CLASS}>
         <div className={MACHINE_DETAIL_SECTION_HEADER_CLASS}>
           <div className="min-w-0 flex-1">
-            <Text size="xs" fw={700} c="dimmed" className="uppercase tracking-[0.08em]">
+            <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
               Agents on this node ({agents.length})
             </Text>
             <Text size="xs" c="dimmed" mt={4}>
