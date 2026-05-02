@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::api::authz::require_root;
+use crate::api::authz::{require_root, require_user};
 use crate::api::error::ApiError;
 use crate::api::ok_response;
 use crate::push::PushSubscription;
@@ -42,7 +42,9 @@ async fn subscribe(
     headers: HeaderMap,
     Json(payload): Json<PushSubscription>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = require_root(&headers, &state).await?;
+    // subscribe is open to any authenticated user (not just root),
+    // because device users also need push notifications.
+    let user = require_user(&headers, &state).await?;
     state.push.save_subscription(&user.id, payload).await?;
     Ok(ok_response())
 }
