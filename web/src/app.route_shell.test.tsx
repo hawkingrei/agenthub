@@ -330,7 +330,7 @@ describe("App route shell wiring", () => {
     );
   });
 
-  it("renders a non-empty root workbench node when the machines lens is unsupported", async () => {
+  it("renders a non-empty root workbench node when the nodes lens is unsupported", async () => {
     globalThis.localStorage.setItem(
       "agenthub_auth",
       JSON.stringify({
@@ -340,7 +340,7 @@ describe("App route shell wiring", () => {
         role: "user",
       })
     );
-    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+    window.history.replaceState({}, "", "/workspace/nodes/node-east");
 
     act(() => {
       renderApp(root);
@@ -397,7 +397,7 @@ describe("App route shell wiring", () => {
     expect(rootWorkbenchHtml).toContain("data-workspace-lens-placeholder=\"search\"");
   });
 
-  it("omits the agent output header when the machines lens is active", async () => {
+  it("omits the agent output header when the nodes lens is active", async () => {
     globalThis.localStorage.setItem(
       "agenthub_auth",
       JSON.stringify({
@@ -407,7 +407,7 @@ describe("App route shell wiring", () => {
         role: "root",
       })
     );
-    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+    window.history.replaceState({}, "", "/workspace/nodes/node-east");
 
     act(() => {
       renderApp(root);

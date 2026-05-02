@@ -24,6 +24,7 @@ import {
   resolveWorkspaceAgentRoute,
   resolveWorkspaceLens,
   resolveWorkspaceNodeId,
+  resolveWorkspaceNodeRoute,
   buildWorkspacePath,
   type WorkspaceLens,
 } from "./app_route_selection";
@@ -414,14 +415,24 @@ export function App() {
     () => resolveWorkspaceAgentRoute(routeLocation.pathname),
     [routeLocation.pathname]
   );
+  const workspaceNodeRoute = useMemo(
+    () => resolveWorkspaceNodeRoute(routeLocation.pathname, routeLocation.search),
+    [routeLocation.pathname, routeLocation.search]
+  );
   const routeAgentId = workspaceAgentRoute?.mode === "agent" ? workspaceAgentRoute.agentId : null;
   const activeWorkspaceLens = useMemo(
-    () => resolveWorkspaceLens(routeLocation.search) ?? "channels",
-    [routeLocation.search]
+    () =>
+      workspaceNodeRoute
+        ? "nodes"
+        : (resolveWorkspaceLens(routeLocation.search) ?? "channels"),
+    [routeLocation.search, workspaceNodeRoute]
   );
   const selectedWorkspaceNodeId = useMemo(
-    () => resolveWorkspaceNodeId(routeLocation.search) ?? "main",
-    [routeLocation.search]
+    () =>
+      workspaceNodeRoute?.nodeId ??
+      resolveWorkspaceNodeId(routeLocation.search) ??
+      "main",
+    [routeLocation.search, workspaceNodeRoute]
   );
 
   const workspaceLensItems = useMemo(

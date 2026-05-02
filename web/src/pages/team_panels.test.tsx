@@ -1904,7 +1904,7 @@ describe("team panels interactions", () => {
     expect(container.innerHTML).toContain("min-w-0 flex-1 break-words whitespace-normal");
     expect(container.textContent).toContain("Machine main");
     expect(container.textContent).toContain("Machine node-east");
-    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
+    expect(container.innerHTML).toContain("/workspace/nodes/node-east");
 
     act(() => {
       root.render(
@@ -2010,7 +2010,7 @@ describe("team panels interactions", () => {
 
     expect(container.textContent).toContain("attached_node");
     expect(container.textContent).toContain("node-east");
-    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
+    expect(container.innerHTML).toContain("/workspace/nodes/node-east");
     clickElement(findButtonByText(container, "Load Older"));
     expect(container.textContent).toContain("Selected member has no associated session yet.");
 
@@ -5338,7 +5338,7 @@ describe("team panels interactions", () => {
     expect(container.textContent).toContain("worker");
     expect(container.textContent).toContain("Active thread has no events yet");
     expect(container.textContent).toContain("Details");
-    expect(container.innerHTML).toContain("/workspace?lens=nodes&amp;node=node-east");
+    expect(container.innerHTML).toContain("/workspace/nodes/node-east");
     expect(container.textContent).not.toContain("member");
     expect(container.textContent).not.toContain("session");
     expect(container.textContent).not.toContain("role=worker");

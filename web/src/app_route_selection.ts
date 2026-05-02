@@ -16,6 +16,16 @@ export type WorkspaceAgentRouteState =
       agentId: string;
     };
 
+export type WorkspaceNodeRouteState =
+  | {
+      mode: "list";
+      nodeId: null;
+    }
+  | {
+      mode: "detail";
+      nodeId: string;
+    };
+
 export type TeamRouteState =
   | {
       mode: "selector";
@@ -83,12 +93,11 @@ export function resolveWorkspaceNodeId(search: string): string | null {
 }
 
 export function buildWorkspaceNodePath(nodeId?: string | null): string {
-  const params = new URLSearchParams();
-  params.set("lens", "nodes");
-  if (nodeId?.trim()) {
-    params.set("node", nodeId.trim());
+  const normalizedNodeId = nodeId?.trim() ?? "";
+  if (!normalizedNodeId) {
+    return "/workspace/nodes";
   }
-  return `/workspace?${params.toString()}`;
+  return `/workspace/nodes/${encodeURIComponent(normalizedNodeId)}`;
 }
 
 export function buildTeamDetailPath(teamId?: string | null): string {
@@ -188,7 +197,13 @@ export function isWorkspaceRootRoute(pathname: string): boolean {
 }
 
 export function isAgentsWorkbenchRoute(pathname: string): boolean {
-  return isWorkspaceRootRoute(pathname) || pathname.startsWith("/workspace/agents/");
+  return (
+    isWorkspaceRootRoute(pathname) ||
+    pathname.startsWith("/workspace/agents/") ||
+    pathname === "/workspace/nodes" ||
+    pathname === "/workspace/nodes/" ||
+    pathname.startsWith("/workspace/nodes/")
+  );
 }
 
 export function resolveTeamRoute(pathname: string): TeamRouteState | null {
@@ -241,6 +256,38 @@ export function resolveWorkspaceAgentRoute(pathname: string): WorkspaceAgentRout
       agentId: rawAgentId,
     };
   }
+}
+
+export function resolveWorkspaceNodeRoute(pathname: string, search: string): WorkspaceNodeRouteState | null {
+  if (pathname === "/workspace/nodes" || pathname === "/workspace/nodes/") {
+    return { mode: "list", nodeId: null };
+  }
+  if (pathname.startsWith("/workspace/nodes/")) {
+    const suffix = pathname.slice("/workspace/nodes/".length);
+    const [rawNodeId] = suffix.split("/");
+    if (!rawNodeId) {
+      return { mode: "list", nodeId: null };
+    }
+    try {
+      return {
+        mode: "detail",
+        nodeId: decodeURIComponent(rawNodeId),
+      };
+    } catch {
+      return {
+        mode: "detail",
+        nodeId: rawNodeId,
+      };
+    }
+  }
+  const legacyNodeId = resolveWorkspaceNodeId(search);
+  const legacyLens = resolveWorkspaceLens(search);
+  if (isWorkspaceRootRoute(pathname) && legacyLens === "nodes") {
+    return legacyNodeId
+      ? { mode: "detail", nodeId: legacyNodeId }
+      : { mode: "list", nodeId: null };
+  }
+  return null;
 }
 
 export function shouldRedirectTeamsToLogin(

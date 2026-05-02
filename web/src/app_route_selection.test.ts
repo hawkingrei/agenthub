@@ -17,6 +17,7 @@ import {
   resolveWorkspaceLens,
   resolveWorkspaceAgentRoute,
   resolveWorkspaceNodeId,
+  resolveWorkspaceNodeRoute,
   shouldHandleInAppLinkClick,
   shouldRedirectTeamsToLogin,
   type RouteLocationState,
@@ -121,7 +122,8 @@ describe("app route selection", () => {
     ).toBe("/workspace/teams/team-1?lens=members&task=task-9&member=worker-1&tab=thread");
     expect(resolveWorkspaceNodeId("?lens=nodes&node=node-east")).toBe("node-east");
     expect(resolveWorkspaceNodeId("?lens=nodes")).toBeNull();
-    expect(buildWorkspaceNodePath("node-east")).toBe("/workspace?lens=nodes&node=node-east");
+    expect(buildWorkspaceNodePath("node-east")).toBe("/workspace/nodes/node-east");
+    expect(buildWorkspaceNodePath()).toBe("/workspace/nodes");
     expect(resolveTeamSelectedTaskId("?task=task-9")).toBe("task-9");
     expect(resolveTeamSelectedTaskId("?task=%20task-9%20")).toBe("task-9");
     expect(resolveTeamSelectedTaskId("")).toBe("");
@@ -179,19 +181,46 @@ describe("app route selection", () => {
     expect(resolveAppRouteKind(location("/workspace/agents/agent-1"), null, null, null)).toBe(
       "workspace"
     );
+    expect(resolveAppRouteKind(location("/workspace/nodes/node-east"), null, null, null)).toBe(
+      "workspace"
+    );
     expect(resolveAppRouteKind(location("/workspace/teams/team-1"), rootAuth, "token-1", null)).toBe(
       "teams"
     );
   });
 
+  it("resolves canonical and legacy workspace node routes", () => {
+    expect(resolveWorkspaceNodeRoute("/workspace/nodes", "")).toEqual({
+      mode: "list",
+      nodeId: null,
+    });
+    expect(resolveWorkspaceNodeRoute("/workspace/nodes/node-east", "")).toEqual({
+      mode: "detail",
+      nodeId: "node-east",
+    });
+    expect(resolveWorkspaceNodeRoute("/workspace/nodes/node%2Feast", "")).toEqual({
+      mode: "detail",
+      nodeId: "node/east",
+    });
+    expect(resolveWorkspaceNodeRoute("/workspace", "?lens=nodes&node=node-east")).toEqual({
+      mode: "detail",
+      nodeId: "node-east",
+    });
+    expect(resolveWorkspaceNodeRoute("/workspace", "?lens=nodes")).toEqual({
+      mode: "list",
+      nodeId: null,
+    });
+    expect(resolveWorkspaceNodeRoute("/workspace/agents/agent-1", "")).toBeNull();
+  });
+
   it("does not duplicate history entries when navigating to the current path", () => {
-    window.history.replaceState({}, "", "/workspace?lens=nodes&node=node-east");
+    window.history.replaceState({}, "", "/workspace/nodes/node-east");
     const pushStateSpy = vi.spyOn(window.history, "pushState");
 
-    navigateToPath("/workspace?lens=nodes&node=node-east");
+    navigateToPath("/workspace/nodes/node-east");
     expect(pushStateSpy).not.toHaveBeenCalled();
 
-    navigateToPath("/workspace?lens=nodes&node=node-west");
+    navigateToPath("/workspace/nodes/node-west");
     expect(pushStateSpy).toHaveBeenCalledOnce();
   });
 
