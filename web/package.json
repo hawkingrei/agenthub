@@ -12,8 +12,8 @@
     "test:smoke": "vitest run src/pages/team_page.smoke.test.tsx",
     "test:coverage": "npm run test:coverage:core && npm run test:smoke",
     "e2e": "playwright test",
-    "e2e:coverage": "PLAYWRIGHT_E2E_COVERAGE=1 playwright test --test-ignore tests/e2e/team_page_mobile.e2e.ts",
-    "e2e:coverage:mobile": "PLAYWRIGHT_E2E_COVERAGE=1 playwright test tests/e2e/team_page_mobile.e2e.ts",
+    "e2e:coverage": "PLAYWRIGHT_E2E_COVERAGE=1 playwright test",
+    "e2e:coverage:mobile": "PLAYWRIGHT_E2E_COVERAGE=1 PLAYWRIGHT_MOBILE_ONLY=1 playwright test",
     "e2e:llm-local": "PLAYWRIGHT_LOCAL_LLM_E2E=1 playwright test -g \"\\[local-llm\\]\"",
     "preview": "vite preview"
   },

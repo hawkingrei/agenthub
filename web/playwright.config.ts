@@ -8,6 +8,7 @@ const disableWebServer = process.env.PLAYWRIGHT_NO_WEBSERVER === "1";
 const minimalRuntime = process.env.PLAYWRIGHT_MINIMAL_RUNTIME === "1";
 const enableSystemChrome = process.env.PLAYWRIGHT_SYSTEM_CHROME === "1";
 const enableE2eCoverage = process.env.PLAYWRIGHT_E2E_COVERAGE === "1";
+const mobileOnly = process.env.PLAYWRIGHT_MOBILE_ONLY === "1";
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const webServer = disableWebServer
@@ -21,7 +22,8 @@ const webServer = disableWebServer
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: "**/*.e2e.ts",
+  testMatch: mobileOnly ? "**/team_page_mobile.e2e.ts" : "**/*.e2e.ts",
+  testIgnore: mobileOnly ? undefined : ["**/team_page_mobile.e2e.ts"],
   timeout: 30_000,
   expect: {
     timeout: 5_000,
