@@ -317,7 +317,7 @@ async fn join_start(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<JoinStartResponse>, ApiError> {
-    let _user = require_root(&headers, &state).await?;
+    let user = require_root(&headers, &state).await?;
     let token = Uuid::new_v4().to_string();
     let pin = generate_pin();
     let pin_hash = hash_pin(&pin)?;
@@ -336,6 +336,19 @@ async fn join_start(
     .bind(now)
     .execute(&state.db)
     .await?;
+
+    let detail = format!("expires_at={expires_at}");
+    let _ = state
+        .auth
+        .record_audit(
+            Some(&user.id),
+            None,
+            "join_challenge_created",
+            Some(&detail),
+            extract_ip(&headers).as_deref(),
+            extract_ua(&headers).as_deref(),
+        )
+        .await;
 
     Ok(Json(JoinStartResponse {
         token,
@@ -360,4 +373,63 @@ fn hash_pin(pin: &str) -> anyhow::Result<String> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?
         .to_string();
     Ok(hash)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode, header};
+    use sqlx::Row;
+    use tower::util::ServiceExt;
+
+    use crate::api::teams::tests::{build_test_state, create_auth_token};
+
+    fn build_request(token: Option<&str>) -> Request<Body> {
+        let mut builder = Request::builder().method(Method::POST).uri("/join/start");
+        if let Some(token) = token {
+            builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        builder.body(Body::empty()).expect("build request")
+    }
+
+    #[tokio::test]
+    async fn join_start_records_audit_entry() {
+        let state = build_test_state().await;
+        let token = create_auth_token(&state).await;
+        let app = super::router(state.clone());
+
+        let response = app
+            .oneshot(build_request(Some(&token)))
+            .await
+            .expect("execute request");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let challenge_count: i64 = sqlx::query("SELECT COUNT(*) AS count FROM join_challenges")
+            .fetch_one(&state.db)
+            .await
+            .expect("count join challenges")
+            .get("count");
+        assert_eq!(challenge_count, 1);
+
+        let row = sqlx::query(
+            r#"
+            SELECT event, detail
+            FROM login_audit
+            WHERE event = 'join_challenge_created'
+            ORDER BY ts DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&state.db)
+        .await
+        .expect("fetch join audit");
+        let event: String = row.get("event");
+        let detail: Option<String> = row.get("detail");
+        assert_eq!(event, "join_challenge_created");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.starts_with("expires_at="))
+        );
+    }
 }

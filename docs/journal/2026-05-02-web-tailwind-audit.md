@@ -1,15 +1,46 @@
 # Web Tailwind ClassName Audit
 
-## Date
-
-2026-05-02
-
 ## Summary
 
-Total `className="..."` occurrences across `web/src/`: ~269 across all .tsx/.ts files.
+This checkpoint records the current Tailwind/className migration state across `web/src/`.
 
-Files are categorized below by migration priority. The goal is to move Tailwind strings into
-`web/src/ui/tailwind_classes.ts` constants or `web/src/ui/primitives.tsx` component wrappers.
+- total `className="..."` occurrences across `web/src/`: about `~269`
+- current migration goal: move repeated Tailwind strings into
+  `web/src/ui/tailwind_classes.ts` constants or `web/src/ui/primitives.tsx`
+  wrappers
+- current remaining estimate after the latest primitive/constant pass: about
+  `~8h`
+
+## Background
+
+The repo already moved part of the Team/workspace chrome onto shared primitives,
+but repeated inline Tailwind strings still drift across Team-heavy panels and
+workspace shells. This audit exists to keep the next cleanup passes pointed at
+the largest remaining offenders instead of letting ad-hoc class extraction
+happen file by file.
+
+## Scope
+
+This audit covers `web/src/` TS/TSX source files only.
+
+It is meant to capture:
+
+- migration priority by file
+- repeated Tailwind anti-patterns worth extracting
+- the recommended next migration order
+
+It is not a canonical frontend design spec and does not replace
+`docs/features/frontend-design.md`.
+
+## Key Decisions
+
+- treat repeated section-shell and header-shell literals as the first
+  extraction target
+- record the post-change state, not the pre-migration snapshot
+- keep `auth_pages.tsx` and the auth gate copy marked as resolved for the
+  `text-slate-*` cleanup
+- leave partially migrated files explicitly marked as partial instead of
+  overstating them as complete
 
 ## Audit by File
 
@@ -97,5 +128,26 @@ Files are categorized below by migration priority. The goal is to move Tailwind 
    - `flex h-full min-h-0 flex-col overflow-auto`
    - `px-4 py-2 sm:px-6`
 7. Finish the remaining Tier 2 files. (~3h)
+
+## Validation
+
+- reviewed current `web/src/` className surfaces after the latest primitive and
+  token extraction pass
+- updated the audit to reflect the post-change state of:
+  - `agent_nodes_workbench.tsx`
+  - `agent_node_detail_shared.tsx`
+  - `app.tsx`
+  - `auth_pages.tsx`
+- aligned the remaining-effort wording with `docs/todo.md`
+
+## Follow-Ups
+
+- migrate `team_task_panel.tsx` next because it remains the largest single
+  inline-Tailwind offender
+- extract the next shared layout roots:
+  - `flex h-full min-h-0 flex-col overflow-auto`
+  - `px-4 py-2 sm:px-6`
+- keep `docs/todo.md` pointing at the current remaining estimate instead of
+  duplicating stale audit prose
 
 Total estimated remaining effort: ~8h.

@@ -295,6 +295,38 @@ async fn init_test_schema(db: &SqlitePool) {
 
     sqlx::query(
         r#"
+        CREATE TABLE join_challenges (
+            token TEXT PRIMARY KEY,
+            pin_hash TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create join_challenges");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE login_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            device_id TEXT,
+            event TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            detail TEXT,
+            ts INTEGER NOT NULL
+        );
+        "#,
+    )
+    .execute(db)
+    .await
+    .expect("create login_audit");
+
+    sqlx::query(
+        r#"
         CREATE TABLE devices (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
