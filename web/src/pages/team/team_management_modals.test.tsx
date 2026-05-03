@@ -61,6 +61,29 @@ describe("Team management modals", () => {
     expect(html).toContain("disabled");
   });
 
+  it("renders the create-team dialog with first-agent coordinator guidance once named", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamCreateDialog
+          open
+          busy={null}
+          teamName="growth-hive"
+          teamDescription=""
+          onTeamNameChange={vi.fn()}
+          onTeamDescriptionChange={vi.fn()}
+          onCreateTeam={vi.fn()}
+          onClose={vi.fn()}
+          chrome={chrome}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("with the first added agent becoming the coordinator by default");
+    expect(html).toContain(
+      "After the team is created, add the first agent as coordinator. More agents can be added after that."
+    );
+  });
+
   it("renders the edit-member dialog with current profile values", () => {
     const html = renderToStaticMarkup(
       <MantineProvider>
@@ -179,8 +202,96 @@ describe("Team management modals", () => {
     expect(html).toContain("Managed automatically");
     expect(html).toContain("What should this agent help with?");
     expect(html).toContain("only asks for a description and workspace settings");
-    expect(html).toContain("Single coordinator");
+    expect(html).toContain("First agent = coordinator");
+    expect(html).toContain("The first agent you add becomes the coordinator. Worker unlocks after that.");
+    expect(html).toContain("The first agent added to a Team becomes the coordinator.");
     expect(html).not.toContain("Prompt Scope");
     expect(html).not.toContain("Launch command");
+  });
+
+  it("renders the forge-agent dialog with worker guidance once a coordinator exists", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamForgeAgentDialog
+          open
+          draft={{
+            member_id: "worker-2",
+            role: "worker",
+            description: "Handle implementation follow-up",
+            model: "",
+            prompt: "Execute scoped tasks.",
+            skills: [],
+            custom_skills: "",
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: "",
+            agent_loop_prompt: "",
+          }}
+          roleProfile={{
+            profileLabel: "Worker Profile",
+            intro: "Execute scoped tasks.",
+            focus: "Implementation",
+            skillsHint: "Defaults are managed for you.",
+            promptHint: "Describe what this worker should deliver.",
+          }}
+          roleOptions={[
+            {
+              value: "coordinator",
+              label: "Coordinator",
+              description: "Own planning and review.",
+              disabled: true,
+            },
+            {
+              value: "worker",
+              label: "Worker",
+              description: "Execute scoped tasks.",
+              disabled: false,
+            },
+          ]}
+          selectedTeamHasCoordinator
+          onRoleChange={vi.fn()}
+          onPatchDraft={vi.fn()}
+          chrome={{
+            ...chrome,
+            setupChecklistClassName: "checklist",
+            infoStripGridClassName: "info-grid",
+          }}
+          modalProps={{
+            title: "Add Worker Agent",
+            confirmLabel: "Create Worker Agent",
+            agentPresetLabel: "Runtime",
+            agentPresetSummaryLabel: "Model",
+            showCommandSummary: false,
+            teamStyled: true,
+            agentName: "worker-2",
+            setAgentName: vi.fn(),
+            agentWorkdir: "/repo",
+            setAgentWorkdir: vi.fn(),
+            agentPresetId: "codex",
+            setAgentPresetId: vi.fn(),
+            worktreeMode: "use_existing",
+            setWorktreeMode: vi.fn(),
+            worktreeRepo: "",
+            setWorktreeRepo: vi.fn(),
+            worktreeRef: "",
+            setWorktreeRef: vi.fn(),
+            codeMode: true,
+            setCodeMode: vi.fn(),
+            worktreeError: null,
+            showWorktreeAdvancedOptions: false,
+            createBusy: false,
+            workdirPlaceholder: "~/.agenthub/worktrees",
+            withinPortal: true,
+            onCreateAgent: vi.fn(),
+            onClose: vi.fn(),
+          }}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Worker Profile");
+    expect(html).toContain("Execution role");
+    expect(html).toContain("This team already has a coordinator. New agents join as workers.");
+    expect(html).not.toContain("Coordinator default");
+    expect(html).not.toContain("First agent = coordinator");
   });
 });

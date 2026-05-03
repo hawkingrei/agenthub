@@ -1342,7 +1342,9 @@ export function TeamPage(props: TeamPageProps) {
     }
     return null;
   }, [selectedTeam, selectedTeamHasConfiguredMembers]);
-  const teamMemberForgeLabel = "Add Agent";
+  const teamMemberForgeLabel = selectedTeamHasCoordinator
+    ? "Add Worker Agent"
+    : "Add First Coordinator Agent";
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -3781,8 +3783,10 @@ export function TeamPage(props: TeamPageProps) {
   );
   const forgeModalProps = useMemo(
     () => ({
-      title: "Add Agent",
-      confirmLabel: "Create Agent",
+      title: selectedTeamHasCoordinator ? "Add Worker Agent" : "Add First Coordinator Agent",
+      confirmLabel: selectedTeamHasCoordinator
+        ? "Create Worker Agent"
+        : "Create Coordinator Agent",
       agentPresetLabel: "Runtime",
       agentPresetSummaryLabel: "Preset",
       commandSummaryLabel: "Launch command",
@@ -3831,6 +3835,7 @@ export function TeamPage(props: TeamPageProps) {
       setForgeAgentWorkdir,
       setForgeAgentWorktreeRef,
       setForgeAgentWorktreeRepo,
+      selectedTeamHasCoordinator,
       teamMemberDraft?.role,
     ]
   );
@@ -3868,6 +3873,7 @@ export function TeamPage(props: TeamPageProps) {
     onSelectKanban: onSelectKanbanSubject,
     onSelectAgentTab: onSelectAgentWorkspace,
     onOpenTeamMemberForge: openTeamMemberForgeModal,
+    teamMemberForgeLabel,
     onStartTeamRuntime: onStartTeamRuntime,
     onStopTeamRuntime: onStopTeamRuntime,
     onOpenMachines: () => navigateToPath(buildWorkspaceNodePath()),

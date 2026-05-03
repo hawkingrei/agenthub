@@ -1072,6 +1072,7 @@ describe("team panels interactions", () => {
             onOpenMachines={onOpenMachines}
             onOpenCurrentMachine={onOpenCurrentMachine}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
+            teamMemberForgeLabel="Add Worker Agent"
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
           />
@@ -1090,8 +1091,8 @@ describe("team panels interactions", () => {
     await waitForCondition(() => document.body.textContent?.includes("Current Machine (main)") ?? false);
     clickElement(findInteractiveByText(document.body, "Current Machine (main)"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
-    await waitForCondition(() => document.body.textContent?.includes("Add Agent") ?? false);
-    clickElement(findInteractiveByText(document.body, "Add Agent"));
+    await waitForCondition(() => document.body.textContent?.includes("Add Worker Agent") ?? false);
+    clickElement(findInteractiveByText(document.body, "Add Worker Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Stop Team"));

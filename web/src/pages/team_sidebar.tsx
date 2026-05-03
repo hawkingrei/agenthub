@@ -77,6 +77,7 @@ type TeamSidebarProps = {
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
+  teamMemberForgeLabel?: string;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
   onOpenMachines?: () => void;
@@ -243,6 +244,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
+    teamMemberForgeLabel = "Add Agent",
     onStartTeamRuntime,
     onStopTeamRuntime,
     onOpenMachines,
@@ -428,7 +430,7 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             leftSection={<i className="bi bi-person-plus" aria-hidden="true" />}
                             onClick={onOpenTeamMemberForge}
                           >
-                            Add Agent
+                            {teamMemberForgeLabel}
                           </Menu.Item>
                         )}
                         {onStartTeamRuntime && selectedTeamRuntimeStatus && (

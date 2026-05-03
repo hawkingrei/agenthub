@@ -1,0 +1,42 @@
+# Team Create First-Agent Coordinator
+
+## Summary
+
+Narrowed the Team create contract so `Create Team` stays mission-first and the coordinator is
+established when the first agent is added, not during the initial create modal itself.
+
+## Background
+
+The earlier Team create spec had drifted toward forcing coordinator selection during Team
+creation. That no longer matched the intended product path. The runtime and add-agent behavior
+already expect the first added Team agent to be the coordinator, but the spec and UI copy still
+overemphasized coordinator choice during Team shell creation.
+
+## Scope
+
+- update the canonical Team create spec
+- align the active TODO wording
+- make the create/add-agent UI explicitly state that the first agent becomes coordinator
+- lock the regression boundary with focused web tests
+
+## Key Decisions
+
+- `Create Team` remains a mission-only Team shell flow
+- the first added agent becomes coordinator by default
+- worker creation remains blocked until a coordinator already exists
+- the add-agent surface should explain this contract directly instead of implying a later role
+  cleanup step
+
+## Validation
+
+```bash
+cd web && npm exec vitest -- run src/pages/team/team_management_modals.test.tsx src/pages/team/create_helpers.test.ts
+cd web && npm exec tsc -- --noEmit
+```
+
+## Follow-Ups
+
+- keep simplifying the add-agent surface so it reads as participant setup rather than forge-stage
+  ceremony
+- add browser-level Team create coverage once the current coordinator-first create-shell wording is
+  fully reflected in the main Team flow

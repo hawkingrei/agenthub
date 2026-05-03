@@ -126,7 +126,7 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
             </h3>
             <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
               Team creation only stores the workspace identity and goal. Add agents afterward,
-              each with their own role profile, skills, and prompt.
+              with the first added agent becoming the coordinator by default.
             </p>
           </div>
         </div>
@@ -153,7 +153,7 @@ export const TeamCreateDialog = React.memo(function TeamCreateDialog({
 
           <TeamCreateNote tone={teamName.trim() ? "info" : "warning"}>
             {teamName.trim()
-              ? "After the team is created, add the first agent. More agents can be added after the first agent exists."
+              ? "After the team is created, add the first agent as coordinator. More agents can be added after that."
               : "Team name is required before the team can be created."}
           </TeamCreateNote>
         </div>
@@ -435,11 +435,15 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                 {selectedTeamHasCoordinator
                   ? "This team already has a coordinator. New agents join as workers."
-                  : "Start with the coordinator. Worker unlocks after the first coordinator exists."}
+                  : "The first agent you add becomes the coordinator. Worker unlocks after that."}
               </p>
             </div>
             <span className={chrome.badgeClassName}>
-              {draft.role === "coordinator" ? "Single coordinator" : "Execution role"}
+              {draft.role === "coordinator"
+                ? selectedTeamHasCoordinator
+                  ? "Single coordinator"
+                  : "First agent = coordinator"
+                : "Execution role"}
             </span>
           </div>
           <SegmentedControl
@@ -500,6 +504,18 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
           selected role. The default Add Agent flow only asks for a description and workspace
           settings.
         </Alert>
+        {!selectedTeamHasCoordinator ? (
+          <Alert
+            className="mt-3"
+            radius="md"
+            color="blue"
+            variant="light"
+            title="Coordinator default"
+          >
+            The first agent added to a Team becomes the coordinator. Add workers after this first
+            agent exists.
+          </Alert>
+        ) : null}
       </SurfaceCard>
     </CreateAgentModal>
   );
