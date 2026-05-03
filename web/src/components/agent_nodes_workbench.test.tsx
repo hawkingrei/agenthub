@@ -56,7 +56,7 @@ const renderWorkbench = (overrides?: Partial<ComponentProps<typeof AgentNodesWor
   );
 
 describe("AgentNodesWorkbench", () => {
-  it("renders settings and danger zone on remote node detail", () => {
+  it("renders name, settings, and danger zone on remote node detail", () => {
     const html = renderWorkbench({
       agents: [
         {
@@ -108,6 +108,8 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("internal_grpc.bootstrap.token");
     expect(html).toContain("Runtime signal");
     expect(html).toContain("Registry evidence");
+    expect(html).toContain("Name");
+    expect(html).toContain("Save Name");
     expect(html).toContain("Settings");
     expect(html).toContain("Save Settings");
     expect(html).toContain("Teams Using This Node");
@@ -122,6 +124,7 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("1 agent · 1 team");
     expect(html).toContain("Worker A · coordinator");
     expect(html).toContain("Working");
+    expect(html).toContain("AgentHub Runtime");
     expect(html).toContain("Worktree: Existing workdir");
     expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');
     expect(
@@ -145,8 +148,11 @@ describe("AgentNodesWorkbench", () => {
 
     expect(html).toContain("Main Node");
     expect(html).toContain("Connected");
+    expect(html).toContain("Name");
     expect(html).toContain("Danger Zone");
+    expect(html).toContain("read only");
     expect(html).toContain("cannot be deleted");
+    expect(html).not.toContain("Save Name");
     expect(html).not.toContain("Save Settings");
   });
 
@@ -228,5 +234,43 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("1 team");
     expect(html).toContain("1 member");
     expect(html).toContain("tidb-fuzz-bugfix-team-worker-1 · worker");
+  });
+
+  it("shows explicit runtime/provider badges for attached agents", () => {
+    const html = renderWorkbench({
+      agents: [
+        {
+          id: "agent-gemini-1",
+          name: "Gemini Worker",
+          command: "gemini --model gemini-pro",
+          args: [],
+          workdir: "/tmp/gemini-worker",
+          status: "idle",
+          target_node_id: "node-east",
+          worktree_mode: "create_worktree",
+          code_mode: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-custom-1",
+          name: "Custom Worker",
+          command: "python worker.py",
+          args: [],
+          workdir: "/tmp/custom-worker",
+          status: "stopped",
+          target_node_id: "node-east",
+          worktree_mode: "reuse_worktree",
+          code_mode: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+    });
+
+    expect(html).toContain("Gemini Worker");
+    expect(html).toContain("Gemini CLI");
+    expect(html).toContain("Custom Worker");
+    expect(html).toContain("Custom Runtime");
   });
 });

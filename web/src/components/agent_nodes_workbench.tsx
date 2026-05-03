@@ -284,6 +284,45 @@ export function AgentNodesWorkbench({
     });
   }, [availableNodes]);
 
+  const handleSaveNodeName = React.useCallback(
+    (nodeId: string, nextName: string) => {
+      const node = availableNodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        return;
+      }
+      onUpdateNode?.(nodeId, {
+        name: nextName.trim(),
+        grpc_target: node.grpc_target?.trim() ?? "",
+        tls_server_name: node.tls_server_name?.trim() || null,
+        default_worktree_root: node.default_worktree_root?.trim() || null,
+      });
+    },
+    [availableNodes, onUpdateNode]
+  );
+
+  const handleSaveNodeSettings = React.useCallback(
+    (
+      nodeId: string,
+      draft: {
+        grpcTarget: string;
+        tlsServerName: string;
+        defaultWorktreeRoot: string;
+      }
+    ) => {
+      const node = availableNodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        return;
+      }
+      onUpdateNode?.(nodeId, {
+        name: node.name.trim(),
+        grpc_target: draft.grpcTarget.trim(),
+        tls_server_name: draft.tlsServerName.trim() || null,
+        default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
+      });
+    },
+    [availableNodes, onUpdateNode]
+  );
+
   if (!selectedNode) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-auto bg-white px-4 py-4 sm:px-6">
@@ -374,25 +413,106 @@ export function AgentNodesWorkbench({
               onCreateAgent={onCreateAgent}
             />
             {selectedNode.is_main ? (
-              <div className={SECTION_CARD_CLASS}>
-                <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                  Danger Zone
-                </Text>
-                <Text size="sm" c="dimmed" mt={8}>
-                  The local control-plane node cannot be deleted or re-pointed from this surface.
-                </Text>
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <>
                 <div className={SECTION_CARD_CLASS}>
+                  <Stack gap="sm">
+                    <div>
+                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                        Name
+                      </Text>
+                      <Text size="sm" c="dimmed" mt={6}>
+                        Canonical display name for the local control-plane node.
+                      </Text>
+                    </div>
+                    <div className="rounded-xl border border-ui-border/75 bg-white/80 px-3 py-3">
+                      <Text size="sm" fw={600}>
+                        {selectedNode.name}
+                      </Text>
+                      <Text size="xs" c="dimmed" mt={6}>
+                        The local control-plane node name is currently read only from this surface.
+                      </Text>
+                    </div>
+                  </Stack>
+                </div>
+                <div className={SECTION_CARD_CLASS}>
+                  <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                    Danger Zone
+                  </Text>
+                  <Text size="sm" c="dimmed" mt={8}>
+                    The local control-plane node cannot be deleted or re-pointed from this surface.
+                  </Text>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className={SECTION_CARD_CLASS}>
+                  <Stack gap="sm">
+                    <div>
+                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                        Name
+                      </Text>
+                      <Text size="sm" c="dimmed" mt={6}>
+                        Keep the node display name visible and editable as a first-class object field.
+                      </Text>
+                    </div>
+                    {(() => {
+                      const draft = editDrafts[selectedNode.id] ?? {
+                        name: selectedNode.name,
+                        grpcTarget: selectedNode.grpc_target ?? "",
+                        tlsServerName: selectedNode.tls_server_name ?? "",
+                        defaultWorktreeRoot: selectedNode.default_worktree_root ?? "",
+                      };
+                      const nameError = draft.name.trim() ? null : "Node name is required.";
+                      return (
+                        <>
+                          <TextInput
+                            label="Node name"
+                            value={draft.name}
+                            onChange={(event) =>
+                              setEditDrafts((prev) => ({
+                                ...prev,
+                                [selectedNode.id]: {
+                                  ...draft,
+                                  name: event.currentTarget.value,
+                                },
+                              }))
+                            }
+                          />
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <Text size="xs" c={nameError ? "red" : "dimmed"}>
+                              {nameError ??
+                                "This is the canonical operator-facing name shown in global node rosters and detail pages."}
+                            </Text>
+                            <Button
+                              variant="light"
+                              size="xs"
+                              loading={Boolean(updatingNodeIds[selectedNode.id])}
+                              disabled={
+                                Boolean(updatingNodeIds[selectedNode.id]) || nameError !== null
+                              }
+                              onClick={() =>
+                                handleSaveNodeName(selectedNode.id, draft.name)
+                              }
+                            >
+                              Save Name
+                            </Button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </Stack>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                  <div className={SECTION_CARD_CLASS}>
                   <Stack gap="sm">
                     <div>
                       <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
                         Settings
                       </Text>
                       <Text size="sm" c="dimmed" mt={6}>
-                        Update routing and default worktree behavior for this node from the canonical
-                        detail page.
+                        Update routing and default worktree behavior for this node without mixing in
+                        the object name field.
                       </Text>
                     </div>
                     {(() => {
@@ -408,34 +528,19 @@ export function AgentNodesWorkbench({
                       });
                       return (
                         <>
-                          <div className="grid gap-3 lg:grid-cols-2">
-                            <TextInput
-                              label="Node name"
-                              value={draft.name}
-                              onChange={(event) =>
-                                setEditDrafts((prev) => ({
-                                  ...prev,
-                                  [selectedNode.id]: {
-                                    ...draft,
-                                    name: event.currentTarget.value,
-                                  },
-                                }))
-                              }
-                            />
-                            <TextInput
-                              label="gRPC target"
-                              value={draft.grpcTarget}
-                              onChange={(event) =>
-                                setEditDrafts((prev) => ({
-                                  ...prev,
-                                  [selectedNode.id]: {
-                                    ...draft,
-                                    grpcTarget: event.currentTarget.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
+                          <TextInput
+                            label="gRPC target"
+                            value={draft.grpcTarget}
+                            onChange={(event) =>
+                              setEditDrafts((prev) => ({
+                                ...prev,
+                                [selectedNode.id]: {
+                                  ...draft,
+                                  grpcTarget: event.currentTarget.value,
+                                },
+                              }))
+                            }
+                          />
                           <div className="grid gap-3 lg:grid-cols-2">
                             <TextInput
                               label="TLS server name"
@@ -478,11 +583,10 @@ export function AgentNodesWorkbench({
                                 Boolean(updatingNodeIds[selectedNode.id]) || updateError !== null
                               }
                               onClick={() =>
-                                onUpdateNode?.(selectedNode.id, {
-                                  name: draft.name.trim(),
-                                  grpc_target: draft.grpcTarget.trim(),
-                                  tls_server_name: draft.tlsServerName.trim() || null,
-                                  default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
+                                handleSaveNodeSettings(selectedNode.id, {
+                                  grpcTarget: draft.grpcTarget,
+                                  tlsServerName: draft.tlsServerName,
+                                  defaultWorktreeRoot: draft.defaultWorktreeRoot,
                                 })
                               }
                             >
@@ -524,6 +628,7 @@ export function AgentNodesWorkbench({
                     </Button>
                   </Stack>
                 </div>
+              </div>
               </div>
             )}
           </div>
