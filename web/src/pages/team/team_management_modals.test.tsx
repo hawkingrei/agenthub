@@ -309,4 +309,58 @@ describe("Team management modals", () => {
     expect(html).toContain("Copy semantics");
     expect(html).toContain("Copy into Team");
   });
+
+  it("renders the copy-existing-agent dialog as a semantic list with selection state", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamCopyExistingAgentDialog
+          open
+          busy={false}
+          selectedTeamHasCoordinator
+          candidateAgents={[
+            {
+              id: "agent-source-1",
+              name: "Source Agent",
+              workdir: "/repo/source",
+              command: "agenthub-codex-acp",
+              args: [],
+              worktree_mode: "reuse_worktree",
+              worktree_repo: "git@example.com/repo.git",
+              worktree_ref: "main",
+              code_mode: true,
+              status: "stopped",
+              created_at: 1,
+              updated_at: 1,
+            },
+          ]}
+          onCopy={vi.fn()}
+          onClose={vi.fn()}
+          chrome={chrome}
+        />
+      </MantineProvider>
+    );
+    expect(html).toContain('aria-label="Existing agents"');
+    expect(html).toContain("<ul");
+    expect(html).toContain("<li");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("new Team-owned worker agent");
+  });
+
+  it("renders the copy-existing-agent empty-filter fallback", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamCopyExistingAgentDialog
+          open
+          busy={false}
+          selectedTeamHasCoordinator={false}
+          candidateAgents={[]}
+          onCopy={vi.fn()}
+          onClose={vi.fn()}
+          chrome={chrome}
+        />
+      </MantineProvider>
+    );
+    expect(html).toContain("No matching agents");
+    expect(html).toContain("No existing agents match this filter. Create a new Team-owned agent instead.");
+  });
 });

@@ -486,4 +486,94 @@ describe("useTeamManagementActions", () => {
       mounted.cleanup();
     }
   });
+
+  it("copies the first adopted agent as a coordinator with fresh workspace ownership", async () => {
+    mockedApi.createAgent.mockResolvedValueOnce({
+      id: "agent-copy-2",
+      name: "source-agent",
+      workdir: "/repo/source",
+      command: "agenthub-codex-acp",
+      args: [],
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      status: "stopped",
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+    mockedApi.updateTeamSpec.mockResolvedValueOnce({
+      id: "team-2",
+      name: "Coordinator Team",
+      description: "team",
+      spec: {
+        coordinator_member_id: "agent-copy-2",
+        members: [{ member_id: "agent-copy-2", role: "coordinator" }],
+        steps: [],
+      },
+      created_at: 1,
+      updated_at: 2,
+    } as never);
+    mockedApi.getTeamRuntime.mockResolvedValueOnce({
+      team_id: "team-2",
+      team_name: "Coordinator Team",
+      status: "stopped",
+      members: [],
+      created_at: 1,
+      updated_at: 2,
+    } as never);
+
+    const params = createParams({
+      selectedTeamHasCoordinator: false,
+      selectedTeamWorkerCount: 0,
+      selectedTeam: {
+        id: "team-2",
+        name: "Coordinator Team",
+        description: "team",
+        spec: {
+          spec_version: 1,
+          members: [],
+        },
+        created_at: 1,
+        updated_at: 1,
+      } as HookParams["selectedTeam"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
+      });
+
+      expect(mockedApi.createAgent).toHaveBeenCalledWith("token-1", {
+        name: "source-agent-coordinator",
+        workdir: "/repo/source",
+        command: "agenthub-codex-acp",
+        args: [],
+        target_node_id: null,
+        source: "team_forge",
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+      });
+      expect(mockedApi.updateTeamSpec).toHaveBeenCalledWith(
+        "token-1",
+        "team-2",
+        expect.objectContaining({
+          spec: expect.objectContaining({
+            coordinator_member_id: "agent-copy-2",
+            members: [
+              expect.objectContaining({
+                member_id: "agent-copy-2",
+                role: "coordinator",
+                prompt: "lead",
+              }),
+            ],
+          }),
+        })
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
 });

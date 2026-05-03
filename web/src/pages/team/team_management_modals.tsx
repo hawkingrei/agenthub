@@ -490,57 +490,61 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
               onChange={(event) => setFilter(event.currentTarget.value)}
             />
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-4">
               {filteredAgents.length === 0 ? (
                 <Alert radius="md" color="blue" variant="light" title="No matching agents">
                   No existing agents match this filter. Create a new Team-owned agent instead.
                 </Alert>
               ) : (
-                filteredAgents.map((agent) => {
-                  const selected = agent.id === selectedAgentId;
-                  return (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      className={`w-full rounded-[14px] border px-3.5 py-3 text-left transition ${
-                        selected
-                          ? "border-ui-border-emphasis bg-ui-surface-soft shadow-sm"
-                          : "border-ui-border bg-white hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
-                      }`}
-                      onClick={() => setSelectedAgentId(agent.id)}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-ui-text-primary">
-                            {agent.name}
-                          </p>
-                          <p className="mt-1 truncate text-[11px] text-ui-text-muted">
-                            {agent.id}
-                          </p>
-                        </div>
-                        <span className={chrome.badgeClassName}>
-                          {selected ? "Selected" : "Existing Agent"}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid gap-px overflow-hidden rounded-[12px] border border-ui-border bg-ui-border sm:grid-cols-3">
-                        <div className={chrome.infoStripItemClassName}>
-                          <p className={chrome.infoStripLabelClassName}>Workspace</p>
-                          <p className={chrome.infoStripValueClassName}>{agent.workdir || "-"}</p>
-                        </div>
-                        <div className={chrome.infoStripItemClassName}>
-                          <p className={chrome.infoStripLabelClassName}>Mode</p>
-                          <p className={chrome.infoStripValueClassName}>{agent.worktree_mode}</p>
-                        </div>
-                        <div className={chrome.infoStripItemClassName}>
-                          <p className={chrome.infoStripLabelClassName}>Node</p>
-                          <p className={chrome.infoStripValueClassName}>
-                            {agent.target_node_id?.trim() || "main"}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
+                <ul className="space-y-3" aria-label="Existing agents">
+                  {filteredAgents.map((agent) => {
+                    const selected = agent.id === selectedAgentId;
+                    return (
+                      <li key={agent.id}>
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          className={`w-full rounded-[14px] border px-3.5 py-3 text-left transition ${
+                            selected
+                              ? "border-ui-border-emphasis bg-ui-surface-soft shadow-sm"
+                              : "border-ui-border bg-white hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                          }`}
+                          onClick={() => setSelectedAgentId(agent.id)}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-semibold text-ui-text-primary">
+                                {agent.name}
+                              </p>
+                              <p className="mt-1 truncate text-[11px] text-ui-text-muted">
+                                {agent.id}
+                              </p>
+                            </div>
+                            <span className={chrome.badgeClassName}>
+                              {selected ? "Selected" : "Existing Agent"}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid gap-px overflow-hidden rounded-[12px] border border-ui-border bg-ui-border sm:grid-cols-3">
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Workspace</p>
+                              <p className={chrome.infoStripValueClassName}>{agent.workdir || "-"}</p>
+                            </div>
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Mode</p>
+                              <p className={chrome.infoStripValueClassName}>{agent.worktree_mode}</p>
+                            </div>
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Node</p>
+                              <p className={chrome.infoStripValueClassName}>
+                                {agent.target_node_id?.trim() || "main"}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </SurfaceCard>

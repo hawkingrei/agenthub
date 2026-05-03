@@ -66,10 +66,17 @@ test("team create flow stores mission metadata before member setup", async ({ pa
     has: page.getByRole("button", { name: "Create Coordinator Agent", exact: true }),
   });
   await expect(forgeDialog).toBeVisible();
-  await expect(forgeDialog.getByText("First agent = coordinator", { exact: true })).toBeVisible();
+  await expect(forgeDialog.getByText("Assigned Role", { exact: true })).toBeVisible();
+  await expect(forgeDialog.getByText("Coordinator", { exact: true })).toBeVisible();
   await expect(
     forgeDialog.getByText(
-      "The first agent you add becomes the coordinator. Worker unlocks after that.",
+      "This team does not have a coordinator yet, so the first added agent becomes the coordinator automatically.",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    forgeDialog.getByText(
+      "The first agent added to a Team becomes the coordinator. Add workers after this first agent exists.",
       { exact: true }
     )
   ).toBeVisible();
