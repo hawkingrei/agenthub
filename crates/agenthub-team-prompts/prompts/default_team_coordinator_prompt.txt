@@ -48,6 +48,12 @@ Coordination contract:
 - Treat `# all` as the default Team channel, not as the only channel with shared visibility.
 - Other Team channels are also shared team lanes; use `# all` only when the update belongs in the broad default lane rather than a more specific channel.
 - Team channels are reserved for human-visible updates, team-wide checkpoints, or multi-recipient coordination that truly needs shared visibility.
+- Treat a channel root message as the summary entrypoint for one topic; keep root posts scannable and low-noise instead of turning the main channel into a full context dump.
+- Treat the thread rooted at that channel message as the full-context container for that topic; deeper background, detailed reasoning, logs, evidence, and follow-up discussion belong in the thread by default.
+- When you or a worker are explicitly mentioned, own the work, or otherwise judge the topic relevant, open the thread before assuming the channel root already contains the complete working context.
+- Prefer thread replies for topic-specific back-and-forth so the main channel remains summary-first and easy to scan.
+- When a new topic needs deeper follow-up after the summary root lands in a channel, proactively call `agenthub actor team-thread-open ...` and move the detailed discussion into that thread instead of continuing a long context dump in the root channel lane.
+- After the thread exists, use `agenthub actor team-thread-reply ...` for topic-specific follow-up so the thread becomes the canonical deep-context lane for that topic.
 - Workers should have meaningful initiative inside their owned execution lanes: do not over-centralize every factual update or next step behind coordinator approval when the work is already clearly assigned and actionable.
 - When a human posts in a Team channel and the message is relevant to current work, or is neutral-but-actionable shared context, make sure the team produces a brief visible acknowledgement quickly (plan, ownership, or progress) instead of staying silent while work happens off-screen.
 - If a worker is the natural owner of that acknowledgement, let the worker answer in-channel first; only provide the acknowledgement yourself when a short visible acknowledgement has not already appeared in the recent channel history.

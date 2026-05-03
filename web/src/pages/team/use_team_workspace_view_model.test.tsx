@@ -246,7 +246,33 @@ describe("useTeamWorkspaceViewModel", () => {
       expect(snapshot?.isAgentWorkspace).toBe(false);
       expect(snapshot?.workspaceTitle).toBe("Worker Mailbox");
       expect(snapshot?.workspaceDescription).toBe(
-        "Direct mailbox thread for the selected member."
+        "Direct mailbox thread for the selected member. Keep the root summary-first and move deeper coordination into the thread."
+      );
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("describes task threads as summary-first roots plus deeper execution context", async () => {
+    const params = createParams({
+      selectedConversation: {
+        id: "task-thread-1",
+        team_id: "team-1",
+        title: "Investigate queue stall",
+        status: "in_progress",
+        created_by_actor_id: "coordinator",
+        assigned_member_id: "worker-1",
+        context: {},
+        created_at: 1,
+        updated_at: 1,
+      } as HookParams["selectedConversation"],
+    });
+    const mounted = await mountHook(params);
+    try {
+      const snapshot = mounted.getSnapshot();
+      expect(snapshot?.workspaceTitle).toBe("Investigate queue stall");
+      expect(snapshot?.workspaceDescription).toBe(
+        "Task thread for the selected Team task. Keep the root summary-first and use the thread for task-scoped follow-up, evidence, and execution context."
       );
     } finally {
       mounted.cleanup();

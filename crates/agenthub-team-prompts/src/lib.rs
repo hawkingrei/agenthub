@@ -140,6 +140,18 @@ mod tests {
             DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Treat `# all` as the default Team channel")
         );
         assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Treat `# all` as the default Team channel"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("summary entrypoint for one topic"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("summary entrypoint for one topic"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("full-context container for that topic"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("full-context container for that topic"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("open the thread before assuming"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("open the thread before assuming"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("Prefer thread replies"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("Prefer thread replies"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("agenthub actor team-thread-open"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agenthub actor team-thread-open"));
+        assert!(DEFAULT_TEAM_COORDINATOR_PROMPT.contains("agenthub actor team-thread-reply"));
+        assert!(DEFAULT_TEAM_WORKER_PROMPT.contains("agenthub actor team-thread-reply"));
         assert!(
             DEFAULT_TEAM_WORKER_PROMPT.contains("answer directly in the relevant Team channel")
         );

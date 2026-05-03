@@ -2486,6 +2486,19 @@ mod tests {
     }
 
     #[test]
+    fn actor_help_for_team_thread_topics_describes_summary_first_flow_and_participants() {
+        let open_help = super::help::actor_topic_usage("team-thread-open");
+        assert!(open_help.contains("Summary-first flow:"));
+        assert!(open_help.contains("team-thread-open"));
+        assert!(open_help.contains("team-thread-reply"));
+        assert!(open_help.contains("Passive readers of the root message are not automatically enrolled"));
+
+        let reply_help = super::help::actor_topic_usage("team-thread-reply");
+        assert!(reply_help.contains("existing thread participants plus newly mentioned members"));
+        assert!(reply_help.contains("only saw the root summary earlier"));
+    }
+
+    #[test]
     fn parse_team_step_transition_uses_run_and_actor_env_fallbacks() {
         let _guard = env_lock().blocking_lock();
         let prev_run = std::env::var(ACTOR_RUNTIME_CURRENT_RUN_ID_ENV).ok();

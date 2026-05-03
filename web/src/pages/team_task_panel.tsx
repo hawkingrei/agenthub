@@ -1070,6 +1070,13 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
   const messagePlaceholder = isChannelConversation
     ? `Message #${normalizedConversationTitle}`
     : "Reply in thread";
+  const composerHelperText = isChannelConversation
+    ? sendOnEnter
+      ? "Root message stays summary-first · open a thread for deeper context · @name to reply · Enter to send"
+      : "Root message stays summary-first · open a thread for deeper context · @name to reply · Enter adds a new line"
+    : sendOnEnter
+      ? "@name to reply · Enter to send"
+      : "@name to reply · Enter adds a new line";
 
   const updateMentionQuery = React.useCallback((draft: string, cursor: number | null) => {
     if (cursor === null || Number.isNaN(cursor)) {
@@ -1900,11 +1907,7 @@ function TeamTaskPanelImpl(props: TeamTaskPanelProps) {
             </div>
           )}
           <ToolbarRow className={TEAM_MESSAGE_COMPOSER_ACTIONS_ROW_CLASS}>
-            <span className={TEAM_TASK_SHORTCUT_CLASS}>
-              {sendOnEnter
-                ? "@name to reply · Enter to send"
-                : "@name to reply · Enter adds a new line"}
-            </span>
+            <span className={TEAM_TASK_SHORTCUT_CLASS}>{composerHelperText}</span>
           </ToolbarRow>
         </div>
       </div>

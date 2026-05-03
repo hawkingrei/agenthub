@@ -2270,7 +2270,7 @@ describe("team panels interactions", () => {
       "General channel for shared planning, requests, and broadcast coordination."
     );
     expect(container.textContent).toContain(
-      "@name to reply · Enter to send"
+      "Root message stays summary-first · open a thread for deeper context · @name to reply · Enter to send"
     );
     expect(container.textContent).not.toContain("status_update");
     expect(container.textContent).not.toContain("work:working");
@@ -3688,7 +3688,9 @@ describe("team panels interactions", () => {
     });
 
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("@name to reply · Enter adds a new line");
+    expect(container.textContent).toContain(
+      "Root message stays summary-first · open a thread for deeper context · @name to reply · Enter adds a new line"
+    );
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,

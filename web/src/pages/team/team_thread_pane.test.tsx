@@ -76,7 +76,9 @@ describe("TeamThreadPane", () => {
     expect(html).toContain("Reply in thread");
     expect(html).toContain("# all");
     expect(html).toContain("1 reply");
-    expect(html).toContain("Focused replies stay anchored to the source message.");
+    expect(html).toContain(
+      "Keep the root summary-first. Use the thread for detailed context, logs, and follow-up."
+    );
     expect(html).toContain("Source");
     expect(html).toContain("From coordinator · #42");
     expect(html).toContain("Investigate the regression in a focused thread.");

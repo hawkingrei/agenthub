@@ -260,7 +260,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
             <span className="text-[10px] text-notion-text-muted">{replyCountLabel}</span>
           </div>
           <div className="mt-0.5 text-[11px] text-notion-text-muted">
-            Focused replies stay anchored to the source message.
+            Keep the root summary-first. Use the thread for detailed context, logs, and follow-up.
           </div>
           {sourceSummary ? (
             <div className="mt-1 flex max-w-full flex-col gap-0.5 rounded-md border border-black/6 bg-white/92 px-2 py-1 text-[10px] font-medium text-notion-text-muted">
