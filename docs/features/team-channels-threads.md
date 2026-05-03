@@ -210,6 +210,19 @@ This preserves two useful properties at the same time:
 - broad shared visibility in the parent channel
 - bounded deep context in the thread
 
+Current concurrency boundary:
+
+- seeing a root channel message does not automatically make an agent or user a thread participant
+- if another participant later opens the thread and replies, automatic thread forwarding targets:
+  - existing thread participants
+  - members mentioned on the root message
+  - members mentioned on earlier thread replies
+  - newly mentioned members in the current reply
+- a passive root reader therefore must explicitly open the thread later, or be mentioned, before it
+  can rely on receiving the deeper follow-up automatically
+- this is acceptable for the current rollout because the root message is intentionally summary-first,
+  but prompt/runtime guidance must make that boundary explicit
+
 Important product consequence:
 
 - thread is not just a UI nesting affordance
@@ -226,6 +239,10 @@ Required direction:
 - prompts should describe the thread as the place for the full context
 - agents should learn that long background, logs, evidence, and detailed follow-up belong in the
   thread instead of being pasted into the main channel by default
+- the thread pane itself should reinforce the same split with summary-first helper copy instead of
+  presenting reply nesting as a purely mechanical UI affordance
+- the main channel composer should reinforce the same split with summary-first helper copy so a new
+  root post does not feel like the place to dump the entire working context
 
 Expected agent behavior:
 
@@ -235,6 +252,9 @@ Expected agent behavior:
   before assuming the root message contains the complete working context
 - thread replies should be preferred for topic-specific back-and-forth so the main channel remains
   scannable
+- prompt/runtime guidance should treat `agenthub actor team-thread-open` and
+  `agenthub actor team-thread-reply` as the canonical agent-side way to proactively move a topic
+  from summary root into thread-scoped deep context
 
 This is not only a UX rule.
 
@@ -590,3 +610,7 @@ Explicit anti-goals:
 - Chrome DevTools MCP checks against:
   - Slock channel/thread reference page
   - local Team workspace regression after implementation
+
+## Source Journals
+
+- `docs/journal/2026-05-03-team-thread-prompt-contract.md`

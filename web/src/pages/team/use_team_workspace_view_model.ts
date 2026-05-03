@@ -249,7 +249,7 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       : tab === "conversation"
         ? selectedConversationIsShared
           ? selectedChannelDescription
-          : "Task thread for the selected Team task. Use it for task-scoped follow-up and execution context."
+          : "Task thread for the selected Team task. Use it for task-scoped follow-up, evidence, and execution context."
         : tab === "tasks"
           ? describeTeamKanban(selectedChannelLabel)
           : tab === "mailbox"

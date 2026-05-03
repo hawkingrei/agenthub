@@ -1362,6 +1362,9 @@ async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
     assert!(coordinator_prompt.contains("Do not implement feature code directly."));
     assert!(coordinator_prompt.contains("perform targeted technical research"));
     assert!(coordinator_prompt.contains("Start from an empty workspace."));
+    assert!(coordinator_prompt.contains("summary entrypoint for one topic"));
+    assert!(coordinator_prompt.contains("full-context container for that topic"));
+    assert!(coordinator_prompt.contains("agenthub actor team-thread-open"));
 
     let worker_prompt = members
         .iter()
@@ -1371,6 +1374,8 @@ async fn teams_api_injects_role_workflow_prompt_policy_defaults() {
         .unwrap_or_default();
     assert!(worker_prompt.contains("Work in your own git worktree only."));
     assert!(worker_prompt.contains("Create a random branch at start"));
+    assert!(worker_prompt.contains("open the thread before assuming"));
+    assert!(worker_prompt.contains("agenthub actor team-thread-reply"));
 }
 
 #[tokio::test]
