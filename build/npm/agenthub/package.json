@@ -1,0 +1,25 @@
+{
+  "name": "@linkerdao/agenthub",
+  "version": "0.0.3",
+  "private": false,
+  "description": "AgentHub CLI distributed through npm with platform-specific native binaries.",
+  "license": "MIT",
+  "bin": {
+    "agenthub": "bin/agenthub.cjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@linkerdao/agenthub-darwin-arm64": "0.0.3",
+    "@linkerdao/agenthub-linux-arm64": "0.0.3",
+    "@linkerdao/agenthub-linux-x64": "0.0.3"
+  }
+}
