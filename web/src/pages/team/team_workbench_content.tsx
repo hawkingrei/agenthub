@@ -102,7 +102,9 @@ export type TeamWorkbenchContentProps = {
   selectedTeamHasConfiguredMembers: boolean;
   selectedTeamDescription?: string | null;
   teamMemberForgeLabel: string;
+  teamMemberCopyExistingLabel: string;
   onOpenTeamMemberForge: () => void;
+  onOpenTeamMemberCopyExisting: () => void;
   tab: TeamTab;
   runsPanelProps: React.ComponentProps<typeof import("../team_run_panel").TeamRunPanel>;
   showRunContextLoading: boolean;
@@ -139,7 +141,9 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
   selectedTeamHasConfiguredMembers,
   selectedTeamDescription,
   teamMemberForgeLabel,
+  teamMemberCopyExistingLabel,
   onOpenTeamMemberForge,
+  onOpenTeamMemberCopyExisting,
   tab,
   runsPanelProps,
   showRunContextLoading,
@@ -188,7 +192,9 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               <LazyTeamSetupPanel
                 description={selectedTeamDescription}
                 forgeLabel={teamMemberForgeLabel}
+                copyExistingLabel={teamMemberCopyExistingLabel}
                 onForge={onOpenTeamMemberForge}
+                onCopyExisting={onOpenTeamMemberCopyExisting}
               />
             </React.Suspense>
           )}

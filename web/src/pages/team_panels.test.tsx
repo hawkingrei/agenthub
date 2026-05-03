@@ -1005,6 +1005,7 @@ describe("team panels interactions", () => {
             onSelectKanban={() => {}}
             onSelectAgentTab={() => {}}
             onOpenTeamMemberForge={() => {}}
+            onOpenTeamMemberCopyExisting={() => {}}
             onStartTeamRuntime={() => {}}
             onStopTeamRuntime={() => {}}
           />
@@ -1033,6 +1034,7 @@ describe("team panels interactions", () => {
     const onOpenMachines = vi.fn();
     const onOpenCurrentMachine = vi.fn();
     const onOpenTeamMemberForge = vi.fn();
+    const onOpenTeamMemberCopyExisting = vi.fn();
     const onStartTeamRuntime = vi.fn();
     const onStopTeamRuntime = vi.fn();
 
@@ -1072,7 +1074,9 @@ describe("team panels interactions", () => {
             onOpenMachines={onOpenMachines}
             onOpenCurrentMachine={onOpenCurrentMachine}
             onOpenTeamMemberForge={onOpenTeamMemberForge}
+            onOpenTeamMemberCopyExisting={onOpenTeamMemberCopyExisting}
             teamMemberForgeLabel="Add Worker Agent"
+            teamMemberCopyExistingLabel="Copy Existing Agent"
             onStartTeamRuntime={onStartTeamRuntime}
             onStopTeamRuntime={onStopTeamRuntime}
           />
@@ -1094,6 +1098,9 @@ describe("team panels interactions", () => {
     await waitForCondition(() => document.body.textContent?.includes("Add Worker Agent") ?? false);
     clickElement(findInteractiveByText(document.body, "Add Worker Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
+    await waitForCondition(() => document.body.textContent?.includes("Copy Existing Agent") ?? false);
+    clickElement(findInteractiveByText(document.body, "Copy Existing Agent"));
+    clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);
     clickElement(findInteractiveByText(document.body, "Stop Team"));
 
@@ -1101,6 +1108,7 @@ describe("team panels interactions", () => {
     expect(onOpenMachines).toHaveBeenCalledTimes(1);
     expect(onOpenCurrentMachine).toHaveBeenCalledTimes(1);
     expect(onOpenTeamMemberForge).toHaveBeenCalledTimes(1);
+    expect(onOpenTeamMemberCopyExisting).toHaveBeenCalledTimes(1);
     expect(onStopTeamRuntime).toHaveBeenCalledTimes(1);
     expect(onStartTeamRuntime).not.toHaveBeenCalled();
   });

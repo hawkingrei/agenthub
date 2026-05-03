@@ -20,6 +20,7 @@ vi.mock("../../components/create_agent_modal", () => ({
 
 import {
   TeamCreateDialog,
+  TeamCopyExistingAgentDialog,
   TeamEditMemberDialog,
   TeamForgeAgentDialog,
 } from "./team_management_modals";
@@ -143,22 +144,7 @@ describe("Team management modals", () => {
             skillsHint: "Defaults are managed for you.",
             promptHint: "Describe what this agent should own.",
           }}
-          roleOptions={[
-            {
-              value: "coordinator",
-              label: "Coordinator",
-              description: "Own planning and review.",
-              disabled: false,
-            },
-            {
-              value: "worker",
-              label: "Worker",
-              description: "Execute scoped tasks.",
-              disabled: false,
-            },
-          ]}
           selectedTeamHasCoordinator={false}
-          onRoleChange={vi.fn()}
           onPatchDraft={vi.fn()}
           chrome={{
             ...chrome,
@@ -201,9 +187,12 @@ describe("Team management modals", () => {
     expect(html).toContain("Coordinator Profile");
     expect(html).toContain("Managed automatically");
     expect(html).toContain("What should this agent help with?");
-    expect(html).toContain("only asks for a description and workspace settings");
-    expect(html).toContain("First agent = coordinator");
-    expect(html).toContain("The first agent you add becomes the coordinator. Worker unlocks after that.");
+    expect(html).toContain("keeps role assignment fixed");
+    expect(html).toContain("Assigned Role");
+    expect(html).toContain("Coordinator");
+    expect(html).toContain(
+      "This team does not have a coordinator yet, so the first added agent becomes the coordinator automatically."
+    );
     expect(html).toContain("The first agent added to a Team becomes the coordinator.");
     expect(html).not.toContain("Prompt Scope");
     expect(html).not.toContain("Launch command");
@@ -233,22 +222,7 @@ describe("Team management modals", () => {
             skillsHint: "Defaults are managed for you.",
             promptHint: "Describe what this worker should deliver.",
           }}
-          roleOptions={[
-            {
-              value: "coordinator",
-              label: "Coordinator",
-              description: "Own planning and review.",
-              disabled: true,
-            },
-            {
-              value: "worker",
-              label: "Worker",
-              description: "Execute scoped tasks.",
-              disabled: false,
-            },
-          ]}
           selectedTeamHasCoordinator
-          onRoleChange={vi.fn()}
           onPatchDraft={vi.fn()}
           chrome={{
             ...chrome,
@@ -289,9 +263,50 @@ describe("Team management modals", () => {
     );
 
     expect(html).toContain("Worker Profile");
-    expect(html).toContain("Execution role");
-    expect(html).toContain("This team already has a coordinator. New agents join as workers.");
+    expect(html).toContain("Worker");
+    expect(html).toContain(
+      "This team already has a coordinator, so new agents join as workers by default."
+    );
     expect(html).not.toContain("Coordinator default");
-    expect(html).not.toContain("First agent = coordinator");
+    expect(html).not.toContain("Role Selection");
+  });
+
+  it("renders the copy-existing-agent dialog with source candidates", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamCopyExistingAgentDialog
+          open
+          busy={false}
+          selectedTeamHasCoordinator={false}
+          candidateAgents={[
+            {
+              id: "agent-source-1",
+              name: "Source Agent",
+              workdir: "/repo/source",
+              command: "agenthub-codex-acp",
+              args: [],
+              worktree_mode: "use_existing",
+              worktree_repo: null,
+              worktree_ref: null,
+              code_mode: true,
+              status: "stopped",
+              created_at: 1,
+              updated_at: 1,
+            },
+          ]}
+          onCopy={vi.fn()}
+          onClose={vi.fn()}
+          chrome={chrome}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Add Existing Agent");
+    expect(html).toContain("Beta");
+    expect(html).toContain("Copy an existing agent into this team.");
+    expect(html).toContain("Search existing agents");
+    expect(html).toContain("Source Agent");
+    expect(html).toContain("Copy semantics");
+    expect(html).toContain("Copy into Team");
   });
 });

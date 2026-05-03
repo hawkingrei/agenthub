@@ -74,14 +74,17 @@ Operational consequence:
 
 Required direction:
 
-- show a compact list/picker of available agents
-- allow selecting which agents participate in the Team
+- keep the default add-agent surface centered on two explicit paths:
+  - `Create New Agent`
+  - `Copy Existing Agent`
 - make the first added agent the coordinator by default
 - assign all later added members to `worker` by default unless the Team is still empty
 
 The first simplified flow should avoid:
 
 - multi-stage role ceremony
+- a coordinator/worker role switch inside the default add-agent modal
+- forcing existing-agent reuse and new-agent creation through the same overloaded form
 - separate "add leader" vs "recruit workers" mental models
 - thick configuration forms before the operator has even chosen the participants
 - exposing unrelated admin concepts such as devices or multi-user onboarding in the Team create
@@ -147,6 +150,8 @@ Required UI direction:
 - fewer explanatory banners
 - fewer advanced controls visible by default
 - one clear first-agent hint instead of role-management ceremony
+- a fixed-role add-agent modal that reflects the already-resolved Team state
+- explicit existing-agent reuse without reopening ownership-transfer semantics by default
 
 Explicit anti-goals:
 
@@ -168,6 +173,12 @@ Explicit anti-goals:
 
 - the normal create flow creates the Team shell first
 - the first `Add Agent` interaction explicitly explains that this member becomes coordinator
+- the default add-agent entry should expose both:
+  - `Create New Agent`
+  - `Copy Existing Agent`
+- the default add-agent modal does not expose a free coordinator/worker toggle:
+  - empty Team -> fixed `coordinator`
+  - Team with coordinator -> fixed `worker`
 - `Add Agents` remains a compact participant-selection surface, not a role-management wizard
 - the simplified flow is the default path; advanced/manual spec remains secondary
 
@@ -182,7 +193,7 @@ Explicit anti-goals:
 - focused Team create component tests for:
   - `Create Team` stays mission-only
   - first added agent is clearly presented as coordinator
-  - selected workers stay unavailable until coordinator exists
+  - later add-agent flow is fixed to worker without a role switch
 - browser-level integration coverage for:
   - create Team on small screens
   - create Team shell, then add first coordinator agent

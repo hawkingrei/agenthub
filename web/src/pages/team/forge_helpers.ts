@@ -13,13 +13,6 @@ import { normalizeWorkdirInput, resolveWorkdirForModalOpen } from "../../worktre
 
 export type TeamMemberRole = TeamMemberProfileDraft["role"];
 
-export type TeamMemberRoleOption = {
-  value: TeamMemberRole;
-  label: string;
-  description: string;
-  disabled: boolean;
-};
-
 export type TeamMemberRoleProfile = {
   profileLabel: string;
   intro: string;
@@ -159,29 +152,21 @@ export function buildTeamAgentNameToken(raw: string): string {
   return normalized || "team";
 }
 
-export function resolveInitialTeamMemberRole(hasCoordinator: boolean): TeamMemberRole {
-  return hasCoordinator ? "worker" : "coordinator";
+export function resolveCopiedTeamAgentName(
+  sourceAgentName: string,
+  sourceAgentId: string,
+  role: TeamMemberRole,
+  workerCount: number
+): string {
+  const token = buildTeamAgentNameToken(sourceAgentName || sourceAgentId);
+  if (role === "coordinator") {
+    return `${token}-coordinator`;
+  }
+  return `${token}-worker-${Math.max(1, workerCount + 1)}`;
 }
 
-export function resolveTeamMemberRoleOptions(hasCoordinator: boolean): TeamMemberRoleOption[] {
-  return [
-    {
-      value: "coordinator",
-      label: "Coordinator",
-      description: hasCoordinator
-        ? "Already assigned for this team."
-        : "Own planning, review, and final synthesis.",
-      disabled: hasCoordinator,
-    },
-    {
-      value: "worker",
-      label: "Worker",
-      description: hasCoordinator
-        ? "Deliver execution, evidence, and implementation."
-        : "Unlock after the first coordinator exists.",
-      disabled: !hasCoordinator,
-    },
-  ];
+export function resolveInitialTeamMemberRole(hasCoordinator: boolean): TeamMemberRole {
+  return hasCoordinator ? "worker" : "coordinator";
 }
 
 export function resolveTeamMemberRoleProfile(role: TeamMemberRole): TeamMemberRoleProfile {

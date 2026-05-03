@@ -54,6 +54,22 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
   return {
     token: "token-1",
     busy: null,
+    agents: [
+      {
+        id: "agent-source-1",
+        name: "Source Agent",
+        workdir: "/repo/source",
+        command: "agenthub-codex-acp",
+        args: [],
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+        status: "stopped",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ],
     teams: [],
     runs: [],
     selectedTeam: {
@@ -91,10 +107,6 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     newTeamDescription: "team",
     teamMemberDraft: null,
     teamMemberEditDraft: null,
-    teamMemberRoleOptions: [
-      { value: "coordinator", label: "Coordinator", description: "Lead the team", disabled: false },
-      { value: "worker", label: "Worker", description: "Implement tasks", disabled: false },
-    ],
     teamPromptDefaults: {
       coordinator_prompt: "lead",
       worker_prompt: "work",
@@ -131,6 +143,7 @@ function createParams(overrides: Partial<HookParams> = {}): HookParams {
     setTeamRuntimeByTeamId: vi.fn(),
     setShowCreateTeamModal: vi.fn(),
     setShowForgeAgentForm: vi.fn(),
+    setShowCopyExistingAgentModal: vi.fn(),
     setForgeAgentName: vi.fn(),
     setForgeAgentWorkdir: vi.fn(),
     setForgeAgentPresetId: vi.fn(),
@@ -221,6 +234,7 @@ describe("useTeamManagementActions", () => {
           newTeamDescription: "restored",
           showCreateTeamModal: true,
           showForgeAgentForm: false,
+          showCopyExistingAgentModal: false,
         })
       );
       expect(params.setShowCreateTeamModal).not.toHaveBeenCalled();
@@ -331,6 +345,7 @@ describe("useTeamManagementActions", () => {
           coordinatorPrompt: "lead",
           showCreateTeamModal: false,
           showForgeAgentForm: true,
+          showCopyExistingAgentModal: false,
           forgeAgentName: "new-team-coordinator",
           forgeAgentPresetId: "codex",
           forgeAgentWorktreeMode: "use_existing",
@@ -400,6 +415,73 @@ describe("useTeamManagementActions", () => {
       });
       expect(mockedApi.deleteAgent).toHaveBeenCalledWith("token-1", "agent-forge-1");
       expect(params.setError).toHaveBeenCalledWith("team spec changed");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("copies an existing agent into the selected team as a new team-owned member", async () => {
+    mockedApi.createAgent.mockResolvedValueOnce({
+      id: "agent-copy-1",
+      name: "source-agent-worker-1",
+      workdir: "/repo/source",
+      command: "agenthub-codex-acp",
+      args: [],
+      worktree_mode: "use_existing",
+      worktree_repo: null,
+      worktree_ref: null,
+      code_mode: true,
+      status: "stopped",
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+    mockedApi.updateTeamSpec.mockResolvedValueOnce({
+      id: "team-1",
+      name: "Alpha Team",
+      description: "team",
+      spec: {
+        coordinator_member_id: "coordinator-1",
+        members: [
+          { member_id: "coordinator-1", role: "coordinator" },
+          { member_id: "agent-copy-1", role: "worker" },
+        ],
+        steps: [],
+      },
+      created_at: 1,
+      updated_at: 2,
+    } as never);
+    mockedApi.getTeamRuntime.mockResolvedValueOnce({
+      team_id: "team-1",
+      team_name: "Alpha Team",
+      status: "stopped",
+      members: [],
+      created_at: 1,
+      updated_at: 2,
+    } as never);
+
+    const params = createParams();
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCopyExistingTeamAgent("agent-source-1");
+      });
+
+      expect(mockedApi.createAgent).toHaveBeenCalledWith("token-1", {
+        name: "source-agent-worker-1",
+        workdir: "/repo/source",
+        command: "agenthub-codex-acp",
+        args: [],
+        target_node_id: null,
+        source: "team_forge",
+        worktree_mode: "use_existing",
+        worktree_repo: null,
+        worktree_ref: null,
+        code_mode: true,
+      });
+      expect(params.setBusy).toHaveBeenNthCalledWith(1, "copy-team-agent");
+      expect(params.setBusy).toHaveBeenLastCalledWith(null);
+      expect(params.setShowCopyExistingAgentModal).toHaveBeenCalledWith(false);
+      expect(params.setSelectedTeamId).toHaveBeenCalledWith("team-1");
     } finally {
       mounted.cleanup();
     }

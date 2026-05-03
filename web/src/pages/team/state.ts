@@ -113,6 +113,7 @@ export type TeamCreateState = TeamCreateDraftState & {
   showCreateTeamModal: boolean;
   createTeamStage: CreateTeamStage;
   showForgeAgentForm: boolean;
+  showCopyExistingAgentModal: boolean;
   forgeAgentName: string;
   forgeAgentWorkdir: string;
   forgeAgentPresetId: AgentPresetId;
@@ -297,6 +298,7 @@ export function createInitialTeamCreateState(): TeamCreateState {
     showCreateTeamModal: false,
     createTeamStage: 0,
     showForgeAgentForm: false,
+    showCopyExistingAgentModal: false,
     forgeAgentName: "",
     forgeAgentWorkdir: "",
     forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,

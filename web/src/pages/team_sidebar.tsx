@@ -3,7 +3,7 @@ import { CloseButton, Menu, TextInput, UnstyledButton } from "@mantine/core";
 import { DeterministicAvatar } from "../components/deterministic_avatar";
 import { TeamDefinitionRecord } from "../api";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
-import { IconButton } from "../ui/primitives";
+import { BetaBadge, IconButton } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_SIDEBAR_META_GRID_CLASS,
@@ -77,7 +77,9 @@ type TeamSidebarProps = {
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
+  onOpenTeamMemberCopyExisting?: () => void;
   teamMemberForgeLabel?: string;
+  teamMemberCopyExistingLabel?: string;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
   onOpenMachines?: () => void;
@@ -244,7 +246,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
+    onOpenTeamMemberCopyExisting,
     teamMemberForgeLabel = "Add Agent",
+    teamMemberCopyExistingLabel = "Copy Existing Agent",
     onStartTeamRuntime,
     onStopTeamRuntime,
     onOpenMachines,
@@ -407,7 +411,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                         <Menu.Divider />
                       </>
                     )}
-                    {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                    {(onOpenTeamMemberForge ||
+                      onOpenTeamMemberCopyExisting ||
+                      onStartTeamRuntime ||
+                      onStopTeamRuntime) && (
                       <>
                         {isRoot && onOpenMachines && (
                           <Menu.Item
@@ -431,6 +438,17 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             onClick={onOpenTeamMemberForge}
                           >
                             {teamMemberForgeLabel}
+                          </Menu.Item>
+                        )}
+                        {onOpenTeamMemberCopyExisting && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-copy" aria-hidden="true" />}
+                            onClick={onOpenTeamMemberCopyExisting}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{teamMemberCopyExistingLabel}</span>
+                              <BetaBadge className="px-1.5 py-0 text-[9px]" />
+                            </div>
                           </Menu.Item>
                         )}
                         {onStartTeamRuntime && selectedTeamRuntimeStatus && (

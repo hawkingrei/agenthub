@@ -1,4 +1,4 @@
-import { ActionButton, PanelHeader } from "../ui/primitives";
+import { ActionButton, BetaBadge, PanelHeader } from "../ui/primitives";
 import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
@@ -15,13 +15,17 @@ const TEAM_WORKBENCH_INFO_STRIP_GRID_CLASS = "grid gap-px bg-notion-border lg:gr
 type TeamSetupPanelProps = {
   description: string | null | undefined;
   forgeLabel: string;
+  copyExistingLabel: string;
   onForge: () => void;
+  onCopyExisting: () => void;
 };
 
 export function TeamSetupPanel({
   description,
   forgeLabel,
+  copyExistingLabel,
   onForge,
+  onCopyExisting,
 }: TeamSetupPanelProps) {
   return (
     <div className={`${TEAM_CREATE_PANEL_CARD_CLASS} ${TEAM_WORKBENCH_PANEL_CLASS}`}>
@@ -40,13 +44,24 @@ export function TeamSetupPanel({
         subtitleClassName="max-w-2xl text-[13px] leading-5 text-ui-text-secondary"
         contentClassName="gap-0"
         actions={
-          <ActionButton
-            className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}
-            onClick={onForge}
-          >
-            <i className="bi bi-person-plus" aria-hidden="true" />
-            <span>{forgeLabel}</span>
-          </ActionButton>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ActionButton
+              className="border border-ui-border bg-white text-ui-text-primary shadow-sm transition hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+              onClick={onCopyExisting}
+              tone="secondary"
+            >
+              <i className="bi bi-copy" aria-hidden="true" />
+              <span>{copyExistingLabel}</span>
+              <BetaBadge />
+            </ActionButton>
+            <ActionButton
+              className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}
+              onClick={onForge}
+            >
+              <i className="bi bi-person-plus" aria-hidden="true" />
+              <span>{forgeLabel}</span>
+            </ActionButton>
+          </div>
         }
       />
       <div className={`${TEAM_WORKBENCH_SETUP_CHECKLIST_CLASS} mt-4`}>
