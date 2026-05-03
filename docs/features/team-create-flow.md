@@ -3,15 +3,15 @@
 ## Problem
 
 The current Team creation surface still carries too much staged ceremony around coordinator and
-member setup.
+member setup, while also overreaching on when coordinator choice needs to happen.
 
 That creates three product problems:
 
-- the operator still feels like they need to "add a leader/coordinator later" instead of deciding
-  that role at creation time
-- the `Add Agents` surface exposes more process than value
-- the current flow reflects older forge-stage assumptions more than the actual current product
-  boundary
+- `Create Team` risks becoming a heavier wizard than the current single-operator product path
+  needs
+- the `Add Agents` surface still exposes more process than value
+- the operator still does not get a crisp product signal that the first added agent becomes the
+  coordinator
 
 AgentHub does not currently position multi-user administration as the primary Team setup model.
 The Team creation flow should therefore optimize for one operator creating a team quickly and
@@ -35,37 +35,38 @@ explicitly.
 
 ### 1) Core Principle
 
-Team creation should decide the coordinator up front.
+`Create Team` should stay lightweight and create the Team shell first.
 
-The creation flow should feel like:
+The normal flow should feel like:
 
 1. define the mission
-2. choose the participating agents
-3. choose which one is the coordinator
-4. launch
+2. create the Team shell
+3. add the first participating agent
+4. make it explicit that this first agent becomes the coordinator
+5. add more workers afterward as needed
 
 It should not feel like:
 
 1. create a team shell
-2. later add a coordinator
-3. later reconcile roles
-4. later simplify the result
+2. guess whether coordinator selection is still pending
+3. discover role semantics only after entering a larger forge flow
+4. later reconcile the result
 
-### 2) Coordinator-First Creation Contract
+### 2) First-Agent Coordinator Contract
 
 Required product meaning:
 
-- every created Team must have exactly one coordinator
-- coordinator selection should happen during Team creation itself
-- there should be no later "promote to coordinator" or separate coordinator-forge stage required
-  for the normal flow
+- every Team that has members must still end up with exactly one coordinator
+- the coordinator does not need to be chosen during the initial `Create Team` modal
+- the first added Team agent becomes the coordinator by default
+- there should be no ambiguity about that first-agent contract in the add-agent flow
 
 Operational consequence:
 
-- `Create Team` should collect `coordinator_member_id` as part of the normal creation form
-- the UI should make it obvious that one selected member is the coordinator and the rest are
-  workers
-- role selection should be explicit, but the interaction should stay lightweight
+- `Create Team` should collect only mission and Team identity fields
+- the first `Add Agent` path should make it obvious that the first added member becomes the
+  coordinator
+- worker role selection remains unavailable until a coordinator already exists
 
 ### 3) Add Agents Simplification Contract
 
@@ -75,8 +76,8 @@ Required direction:
 
 - show a compact list/picker of available agents
 - allow selecting which agents participate in the Team
-- allow one inline coordinator choice among the selected set
-- assign all other selected members to `worker` by default
+- make the first added agent the coordinator by default
+- assign all later added members to `worker` by default unless the Team is still empty
 
 The first simplified flow should avoid:
 
@@ -92,8 +93,8 @@ Current Team creation should optimize for the current product boundary:
 
 - one logged-in operator
 - one set of available agents
-- one coordinator selected at creation time
-- zero or more workers selected at creation time
+- first added agent becomes coordinator
+- zero or more workers added afterward
 
 This means the create flow should prefer:
 
@@ -115,12 +116,12 @@ Recommended first-class guided shape:
 - `Mission`
   - Team name
   - short mission / description
-- `Members`
-  - pick participating agents
-  - choose one as coordinator
-- `Review`
-  - show the resulting Team shape
-  - launch
+- `Team shell`
+  - create the Team without members yet
+- `First agent`
+  - add the planning/coordinator agent
+- `Additional agents`
+  - add workers as needed
 
 Manual-spec entry can remain available for advanced users, but it should not distort the normal
 guided flow.
@@ -129,14 +130,13 @@ guided flow.
 
 The create flow should enforce:
 
-- exactly one coordinator
-- coordinator must be one of the selected members
-- selected members must have stable `member_id` inputs for Team spec generation
-- mission details must be present before launch:
+- mission details must be present before Team creation:
   - Team name
   - mission / description
-- launching should fail early if the resulting Team would have zero members, no coordinator, or
-  missing mission details
+- exactly one coordinator once the Team has members
+- the first added member must be the coordinator
+- workers cannot be added before a coordinator exists
+- selected members must have stable `member_id` inputs for Team spec generation
 
 ### 7) UI Simplification Rules
 
@@ -146,7 +146,7 @@ Required UI direction:
 - fewer empty states
 - fewer explanatory banners
 - fewer advanced controls visible by default
-- one clear ownership selector instead of role-management ceremony
+- one clear first-agent hint instead of role-management ceremony
 
 Explicit anti-goals:
 
@@ -158,14 +158,17 @@ Explicit anti-goals:
 
 ### 1) Team Spec Contract
 
-- the created Team spec must always contain exactly one `coordinator_member_id`
+- the created Team spec must always contain exactly one `coordinator_member_id` once
+  `spec.members[]` is non-empty
 - the member referenced by `coordinator_member_id` must also appear in `spec.members[]`
-- all non-coordinator selected members default to `worker`
+- the first added member becomes coordinator
+- all later non-coordinator selected members default to `worker`
 
 ### 2) UI Contract
 
-- the normal create flow chooses coordinator inline during creation
-- `Add Agents` is a compact participant-selection surface, not a role-management wizard
+- the normal create flow creates the Team shell first
+- the first `Add Agent` interaction explicitly explains that this member becomes coordinator
+- `Add Agents` remains a compact participant-selection surface, not a role-management wizard
 - the simplified flow is the default path; advanced/manual spec remains secondary
 
 ### 3) Product Boundary Contract
@@ -177,13 +180,13 @@ Explicit anti-goals:
 ## Validation Matrix
 
 - focused Team create component tests for:
-  - coordinator must be selected at create time
-  - exactly one coordinator
-  - selected workers default correctly
+  - `Create Team` stays mission-only
+  - first added agent is clearly presented as coordinator
+  - selected workers stay unavailable until coordinator exists
 - browser-level integration coverage for:
   - create Team on small screens
-  - select agents and choose coordinator inline
-  - launch without any later coordinator-promotion step
+  - create Team shell, then add first coordinator agent
+  - add later workers without any separate coordinator-promotion step
 
 ## Operational Notes
 
@@ -198,6 +201,8 @@ Explicit anti-goals:
   partially removed
 - manual-spec support can keep reintroducing advanced-state complexity into the default path unless
   the entry modes stay clearly separated
+- the product may drift back into "coordinator chosen at team creation" language unless the create
+  shell and add-first-agent boundaries stay explicit
 
 ## Source Journals
 

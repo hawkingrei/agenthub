@@ -646,10 +646,30 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         description: newTeamDescription.trim() || undefined,
         spec: buildEmptyTeamSpec(),
       });
+      const defaults = resolveTeamForgeDefaults({
+        teamName: created.name,
+        teamSpec: created.spec,
+        role: resolveInitialTeamMemberRole(false),
+        workerCount: 0,
+        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
+        agentPresetId: DEFAULT_AGENT_PRESET_ID,
+        promptDefaults: teamPromptDefaults,
+      });
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedTeamId(created.id);
       clearTeamCreateDraft();
       resetTeamDraft();
       setShowCreateTeamModal(false);
+      setTeamMemberDraft(defaults.draft);
+      setShowForgeAgentForm(true);
+      setForgeAgentName(defaults.agentName);
+      setForgeAgentWorktreeMode(defaults.worktreeMode);
+      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
+      setForgeAgentWorktreeRef(defaults.worktreeRef);
+      setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
+      setForgeAgentCodeMode(true);
+      setForgeAgentWorktreeError(null);
+      setForgeAgentWorkdir(defaults.agentWorkdir);
       navigateToTeamDetail(created.id);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -659,13 +679,26 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
   }, [
     newTeamDescription,
     newTeamName,
+    forgeDefaultWorktreeRoot,
     navigateToTeamDetail,
     resetTeamDraft,
     setBusy,
     setError,
+    setForgeAgentCodeMode,
+    setForgeAgentName,
+    setForgeAgentPresetId,
+    setForgeAgentWorkdir,
+    setForgeAgentWorktreeError,
+    setForgeAgentWorktreeMode,
+    setForgeAgentWorktreeRef,
+    setForgeAgentWorktreeRepo,
     setShowCreateTeamModal,
+    setShowForgeAgentForm,
+    setSelectedTeamId,
+    setTeamMemberDraft,
     setTeams,
     setWarning,
+    teamPromptDefaults,
     token,
   ]);
 

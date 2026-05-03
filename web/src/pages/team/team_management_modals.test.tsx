@@ -61,6 +61,29 @@ describe("Team management modals", () => {
     expect(html).toContain("disabled");
   });
 
+  it("renders the create-team dialog with first-agent coordinator guidance once named", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamCreateDialog
+          open
+          busy={null}
+          teamName="growth-hive"
+          teamDescription=""
+          onTeamNameChange={vi.fn()}
+          onTeamDescriptionChange={vi.fn()}
+          onCreateTeam={vi.fn()}
+          onClose={vi.fn()}
+          chrome={chrome}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("with the first added agent becoming the coordinator by default");
+    expect(html).toContain(
+      "After the team is created, add the first agent as coordinator. More agents can be added after that."
+    );
+  });
+
   it("renders the edit-member dialog with current profile values", () => {
     const html = renderToStaticMarkup(
       <MantineProvider>
@@ -179,7 +202,9 @@ describe("Team management modals", () => {
     expect(html).toContain("Managed automatically");
     expect(html).toContain("What should this agent help with?");
     expect(html).toContain("only asks for a description and workspace settings");
-    expect(html).toContain("Single coordinator");
+    expect(html).toContain("First agent = coordinator");
+    expect(html).toContain("The first agent you add becomes the coordinator. Worker unlocks after that.");
+    expect(html).toContain("The first agent added to a Team becomes the coordinator.");
     expect(html).not.toContain("Prompt Scope");
     expect(html).not.toContain("Launch command");
   });

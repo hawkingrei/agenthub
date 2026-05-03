@@ -322,7 +322,7 @@ describe("team create helpers", () => {
         buildForgeAgent({ id: "worker-1" }),
         TEST_PROMPT_DEFAULTS
       )
-    ).toThrow("Create the first agent before adding more agents");
+    ).toThrow("Create the first agent as coordinator before adding more agents");
 
     const withCoordinator = appendTeamMemberToSpec(
       buildEmptyTeamSpec(),

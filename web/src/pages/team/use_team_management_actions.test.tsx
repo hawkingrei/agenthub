@@ -14,6 +14,7 @@ vi.mock("../../api", async () => {
     ...actual,
     api: {
       ...actual.api,
+      createTeam: vi.fn(),
       createAgent: vi.fn(),
       deleteAgent: vi.fn(),
       updateTeamSpec: vi.fn(),
@@ -287,6 +288,51 @@ describe("useTeamManagementActions", () => {
       expect(mockedApi.startTeam).toHaveBeenCalledWith("token-1", "team-1");
       expect(params.setTeamRuntimeByTeamId).toHaveBeenCalled();
       expect(params.setWarning).toHaveBeenCalledWith("Team runtime updated (started=1)");
+    } finally {
+      mounted.cleanup();
+    }
+  });
+
+  it("creates a team and immediately opens the first coordinator forge flow", async () => {
+    mockedApi.createTeam.mockResolvedValueOnce({
+      id: "team-2",
+      name: "New Team",
+      description: "mission",
+      spec: {
+        spec_version: 1,
+        members: [],
+      },
+      created_at: 1,
+      updated_at: 1,
+    } as never);
+
+    const params = createParams({
+      newTeamName: "New Team",
+      newTeamDescription: "mission",
+      selectedTeam: null,
+      selectedTeamId: null,
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCreateTeam();
+      });
+
+      expect(mockedApi.createTeam).toHaveBeenCalledWith("token-1", {
+        name: "New Team",
+        description: "mission",
+        spec: { spec_version: 1, members: [] },
+      });
+      expect(params.setSelectedTeamId).toHaveBeenCalledWith("team-2");
+      expect(params.setShowCreateTeamModal).toHaveBeenCalledWith(false);
+      expect(params.setShowForgeAgentForm).toHaveBeenCalledWith(true);
+      expect(params.setTeamMemberDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: "coordinator",
+        })
+      );
+      expect(params.setForgeAgentName).toHaveBeenCalledWith("new-team-coordinator");
+      expect(params.navigateToTeamDetail).toHaveBeenCalledWith("team-2");
     } finally {
       mounted.cleanup();
     }

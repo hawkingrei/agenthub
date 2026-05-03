@@ -157,7 +157,7 @@ export function appendTeamMemberToSpec(
     throw new Error("Team already has a coordinator");
   }
   if (role === "worker" && !coordinatorMember) {
-    throw new Error("Create the first agent before adding more agents");
+    throw new Error("Create the first agent as coordinator before adding more agents");
   }
 
   const prompt =
