@@ -31,7 +31,11 @@ import {
 import type { TeamMemberAgentStatus } from "./member_helpers";
 import { backfillEmptyWorkerDraftPrompts } from "./member_helpers";
 import { removeTeamMemberLookupEntry, updateCachedTeamRuntimeStatus } from "./page_helpers";
-import { DEFAULT_WORKTREE_ROOT, type TeamCreateState } from "./state";
+import {
+  createInitialTeamCreateState,
+  DEFAULT_WORKTREE_ROOT,
+  type TeamCreateState,
+} from "./state";
 import type { TeamRunBrowserState } from "./state";
 
 type UseTeamManagementActionsOptions = {
@@ -646,6 +650,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         description: newTeamDescription.trim() || undefined,
         spec: buildEmptyTeamSpec(),
       });
+      const initial = createInitialTeamCreateState();
       const defaults = resolveTeamForgeDefaults({
         teamName: created.name,
         teamSpec: created.spec,
@@ -658,18 +663,23 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
       setTeams((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedTeamId(created.id);
       clearTeamCreateDraft();
-      resetTeamDraft();
-      setShowCreateTeamModal(false);
       setTeamMemberDraft(defaults.draft);
-      setShowForgeAgentForm(true);
-      setForgeAgentName(defaults.agentName);
-      setForgeAgentWorktreeMode(defaults.worktreeMode);
-      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
-      setForgeAgentWorktreeRef(defaults.worktreeRef);
-      setForgeAgentPresetId(DEFAULT_AGENT_PRESET_ID);
-      setForgeAgentCodeMode(true);
-      setForgeAgentWorktreeError(null);
-      setForgeAgentWorkdir(defaults.agentWorkdir);
+      patchTeamCreate({
+        newTeamName: initial.newTeamName,
+        newTeamDescription: initial.newTeamDescription,
+        coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
+        showCreateTeamModal: false,
+        showForgeAgentForm: true,
+        forgeAgentName: defaults.agentName,
+        forgeAgentWorkdir: defaults.agentWorkdir,
+        forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
+        forgeAgentWorktreeMode: defaults.worktreeMode,
+        forgeAgentWorktreeRepo: defaults.worktreeRepo,
+        forgeAgentWorktreeRef: defaults.worktreeRef,
+        forgeAgentCodeMode: true,
+        forgeAgentWorktreeError: null,
+        forgeAgentBusy: initial.forgeAgentBusy,
+      });
       navigateToTeamDetail(created.id);
     } catch (err) {
       setError(parseErrorMessage(err));
@@ -681,19 +691,9 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     newTeamName,
     forgeDefaultWorktreeRoot,
     navigateToTeamDetail,
-    resetTeamDraft,
+    patchTeamCreate,
     setBusy,
     setError,
-    setForgeAgentCodeMode,
-    setForgeAgentName,
-    setForgeAgentPresetId,
-    setForgeAgentWorkdir,
-    setForgeAgentWorktreeError,
-    setForgeAgentWorktreeMode,
-    setForgeAgentWorktreeRef,
-    setForgeAgentWorktreeRepo,
-    setShowCreateTeamModal,
-    setShowForgeAgentForm,
     setSelectedTeamId,
     setTeamMemberDraft,
     setTeams,

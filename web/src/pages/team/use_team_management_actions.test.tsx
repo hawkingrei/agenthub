@@ -324,14 +324,27 @@ describe("useTeamManagementActions", () => {
         spec: { spec_version: 1, members: [] },
       });
       expect(params.setSelectedTeamId).toHaveBeenCalledWith("team-2");
-      expect(params.setShowCreateTeamModal).toHaveBeenCalledWith(false);
-      expect(params.setShowForgeAgentForm).toHaveBeenCalledWith(true);
+      expect(params.patchTeamCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newTeamName: "",
+          newTeamDescription: "",
+          coordinatorPrompt: "lead",
+          showCreateTeamModal: false,
+          showForgeAgentForm: true,
+          forgeAgentName: "new-team-coordinator",
+          forgeAgentPresetId: "codex",
+          forgeAgentWorktreeMode: "use_existing",
+          forgeAgentWorktreeRepo: "",
+          forgeAgentWorktreeRef: "",
+          forgeAgentCodeMode: true,
+          forgeAgentWorktreeError: null,
+        })
+      );
       expect(params.setTeamMemberDraft).toHaveBeenCalledWith(
         expect.objectContaining({
           role: "coordinator",
         })
       );
-      expect(params.setForgeAgentName).toHaveBeenCalledWith("new-team-coordinator");
       expect(params.navigateToTeamDetail).toHaveBeenCalledWith("team-2");
     } finally {
       mounted.cleanup();
