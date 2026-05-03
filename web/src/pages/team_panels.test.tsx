@@ -1087,6 +1087,12 @@ describe("team panels interactions", () => {
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Switch team") ?? false);
     expect(document.body.textContent).toContain("Team ID");
+    expect(findButtonByAriaLabel(container, "Switch teams from Team One").className).toContain(
+      "rounded-xl"
+    );
+    expect(findButtonByAriaLabel(container, "Open controls for Team One").className).toContain(
+      "rounded-full"
+    );
     clickElement(findInteractiveByText(document.body, "Team Two"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Machines") ?? false);
@@ -1099,6 +1105,7 @@ describe("team panels interactions", () => {
     clickElement(findInteractiveByText(document.body, "Add Worker Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Copy Existing Agent") ?? false);
+    expect(document.body.textContent).toContain("Alpha");
     clickElement(findInteractiveByText(document.body, "Copy Existing Agent"));
     clickMenuTrigger(findButtonByAriaLabel(container, "Open controls for Team One"));
     await waitForCondition(() => document.body.textContent?.includes("Stop Team") ?? false);

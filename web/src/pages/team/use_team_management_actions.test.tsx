@@ -576,4 +576,22 @@ describe("useTeamManagementActions", () => {
       mounted.cleanup();
     }
   });
+
+  it("surfaces an error when the selected copy source is missing", async () => {
+    const params = createParams({
+      agents: [],
+    });
+    const mounted = await mountHook(params);
+    try {
+      await act(async () => {
+        await mounted.getSnapshot()?.onCopyExistingTeamAgent("missing-agent");
+      });
+
+      expect(params.setError).toHaveBeenCalledWith("Select an existing agent first");
+      expect(mockedApi.createAgent).not.toHaveBeenCalled();
+      expect(params.setBusy).not.toHaveBeenCalledWith("copy-team-agent");
+    } finally {
+      mounted.cleanup();
+    }
+  });
 });
