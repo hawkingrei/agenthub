@@ -2495,9 +2495,13 @@ mod tests {
             open_help
                 .contains("Passive readers of the root message are not automatically enrolled")
         );
+        assert!(open_help.contains("members mentioned on the root message"));
+        assert!(open_help.contains("members mentioned on earlier thread replies"));
 
         let reply_help = super::help::actor_topic_usage("team-thread-reply");
-        assert!(reply_help.contains("existing thread participants plus newly mentioned members"));
+        assert!(reply_help.contains("existing thread participants"));
+        assert!(reply_help.contains("members mentioned on the root message"));
+        assert!(reply_help.contains("members mentioned on earlier thread replies"));
         assert!(reply_help.contains("only saw the root summary earlier"));
     }
 

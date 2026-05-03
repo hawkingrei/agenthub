@@ -61,6 +61,9 @@ ways:
 Healthy Team usage usually follows a stable split:
 
 - humans talk in `Channels`, usually `# all`
+- keep new channel root messages summary-first so the shared lane stays easy to scan
+- move deeper background, logs, evidence, and topic-specific follow-up into the thread opened from
+  that root message
 - the coordinator turns agreed work into canonical tasks
 - workers report progress and facts without taking over planning
 - `Kanban` stays the source of truth for task state
@@ -92,6 +95,8 @@ In practice:
 
 - use `@member_id` when one specific worker should answer or inspect something
 - avoid turning every status update into a direct mention
+- if a topic needs deeper follow-up after the summary root lands in `Channels`, open the thread and
+  continue there instead of growing the root message stream into a long context dump
 - keep final human-facing synthesis concise, even if the debug surfaces contain
   much richer detail
 

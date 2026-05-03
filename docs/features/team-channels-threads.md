@@ -215,7 +215,9 @@ Current concurrency boundary:
 - seeing a root channel message does not automatically make an agent or user a thread participant
 - if another participant later opens the thread and replies, automatic thread forwarding targets:
   - existing thread participants
-  - newly mentioned members in that reply
+  - members mentioned on the root message
+  - members mentioned on earlier thread replies
+  - newly mentioned members in the current reply
 - a passive root reader therefore must explicitly open the thread later, or be mentioned, before it
   can rely on receiving the deeper follow-up automatically
 - this is acceptable for the current rollout because the root message is intentionally summary-first,
