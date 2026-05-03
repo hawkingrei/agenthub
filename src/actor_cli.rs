@@ -2491,7 +2491,10 @@ mod tests {
         assert!(open_help.contains("Summary-first flow:"));
         assert!(open_help.contains("team-thread-open"));
         assert!(open_help.contains("team-thread-reply"));
-        assert!(open_help.contains("Passive readers of the root message are not automatically enrolled"));
+        assert!(
+            open_help
+                .contains("Passive readers of the root message are not automatically enrolled")
+        );
 
         let reply_help = super::help::actor_topic_usage("team-thread-reply");
         assert!(reply_help.contains("existing thread participants plus newly mentioned members"));
