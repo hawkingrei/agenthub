@@ -15,7 +15,6 @@ import {
   mockTeamPageApis,
   openAdvancedView,
   openMainTeamAction,
-  openSelectedTeamMenu,
   openTeamFromSelector,
   selectAgentFromSidebar,
   selectPrimaryTeamEntryFromSidebar,
