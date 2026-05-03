@@ -27,6 +27,16 @@ export function selectedTeamMenuLocator(page: import("@playwright/test").Page) {
   return page.getByRole("button", { name: /^Open controls for / });
 }
 
+const TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN =
+  /^(Add First Coordinator Agent|Add Worker Agent|Add Agent)$/;
+const TEAM_CREATE_AGENT_CONFIRM_LABEL_PATTERN =
+  /^(Create Coordinator Agent|Create Worker Agent|Create Agent)$/;
+const TEAM_MEMBER_NAME_LABEL_PATTERN = /^(Name|Agent name)$/;
+const TEAM_MEMBER_DESCRIPTION_LABEL_PATTERN = /^(Description|Identity)$/;
+const TEAM_MEMBER_RUNTIME_LABEL_PATTERN = /^(Runtime|Role model)$/;
+const TEAM_MEMBER_WORKSPACE_LABEL_PATTERN =
+  /^(Workspace path|Workdir(?: \(optional override\))?)$/;
+
 const TEAM_SELECTOR_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/?$/;
 const TEAM_DETAIL_ROUTE_PATTERN = /^\/(?:workspace\/)?teams\/[^/]+$/;
 
@@ -58,6 +68,10 @@ export async function createTeamFromModal(
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/(?:workspace\/)?teams\/[^/?#]+(?:[?#].*)?$/);
   await expect.poll(() => isTeamDetailReady(page, options.name)).toBe(true);
+  if (await teamForgeDialog(page).isVisible().catch(() => false)) {
+    await expect(teamForgeDialog(page)).toBeVisible();
+    return;
+  }
   await expectAddAgentEntryVisible(page, options.name);
 }
 
@@ -92,9 +106,11 @@ export async function waitForAddAgentEntryLane(
 ): Promise<AddAgentEntryLane> {
   const primaryButton = page
     .locator(".teams-main")
-    .getByRole("button", { name: "Add Agent", exact: true })
+    .getByRole("button", { name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN })
     .first();
-  const visibleMenuItem = page.getByRole("menuitem", { name: "Add Agent", exact: true });
+  const visibleMenuItem = page.getByRole("menuitem", {
+    name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN,
+  });
   const menuTrigger = selectedTeamMenuLocator(page);
 
   const detectLane = async (): Promise<AddAgentEntryLane | "missing"> => {
@@ -129,7 +145,7 @@ export async function waitForAddAgentEntryLane(
   if (lane !== "missing") {
     return lane;
   }
-  throw new Error("Timed out waiting for an Add Agent entry point");
+  throw new Error("Timed out waiting for a Team add-agent entry point");
 }
 
 export async function createTeamMemberFromModal(
@@ -141,23 +157,16 @@ export async function createTeamMemberFromModal(
     identity?: string;
   }
 ): Promise<void> {
-  const nameLabelPattern = /^(Name|Agent name)$/;
-  const descriptionLabelPattern = /^(Description|Identity)$/;
-  const runtimeLabelPattern = /^(Runtime|Role model)$/;
-  const workspaceLabelPattern = /^(Workspace path|Workdir(?: \(optional override\))?)$/;
-  const openButtonLabel = "Add Agent";
-  const confirmLabel = "Create Agent";
   const primaryOpenButton = page
     .locator(".teams-main")
-    .getByRole("button", { name: openButtonLabel, exact: true })
+    .getByRole("button", { name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN })
     .first();
-  const visibleMenuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
+  const visibleMenuItem = page.getByRole("menuitem", {
+    name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN,
+  });
   const menuTrigger = selectedTeamMenuLocator(page);
   const selectionError = page.getByText("Select a team first", { exact: true });
-  const dialog = page
-    .locator("[role='dialog']")
-    .filter({ has: page.getByLabel(nameLabelPattern) })
-    .last();
+  const dialog = teamForgeDialog(page);
   const waitForDialog = async (): Promise<boolean> => {
     try {
       await expect(dialog).toBeVisible({ timeout: 1_500 });
@@ -192,29 +201,35 @@ export async function createTeamMemberFromModal(
 
     await expect(menuTrigger).toBeVisible();
     await openSelectedTeamMenu(page);
-    const menuItem = page.getByRole("menuitem", { name: openButtonLabel, exact: true });
+    const menuItem = page.getByRole("menuitem", {
+      name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN,
+    });
     await expect(menuItem).toBeVisible();
     return tryOpen(async () => menuItem.click());
   };
 
-  if (!(await openFromVisibleLane())) {
+  if (!(await waitForDialog()) && !(await openFromVisibleLane())) {
     await page.waitForTimeout(150);
-    if (!(await openFromVisibleLane())) {
+    if (!(await waitForDialog()) && !(await openFromVisibleLane())) {
       await openSelectedTeamMenu(page);
       await expect(visibleMenuItem).toBeVisible();
       await visibleMenuItem.click();
     }
   }
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel(nameLabelPattern).fill(deriveAgentName(options.identity, options.workdir));
+  await dialog
+    .getByLabel(TEAM_MEMBER_NAME_LABEL_PATTERN)
+    .fill(deriveAgentName(options.identity, options.workdir));
   if (options.identity) {
-    await dialog.getByLabel(descriptionLabelPattern).fill(options.identity);
+    await dialog.getByLabel(TEAM_MEMBER_DESCRIPTION_LABEL_PATTERN).fill(options.identity);
   }
   if (options.model && options.model !== "codex") {
-    await dialog.getByLabel(runtimeLabelPattern).selectOption(options.model);
+    await dialog.getByLabel(TEAM_MEMBER_RUNTIME_LABEL_PATTERN).selectOption(options.model);
   }
-  await dialog.getByLabel(workspaceLabelPattern).fill(options.workdir);
-  await dialog.getByRole("button", { name: confirmLabel }).click();
+  await dialog.getByLabel(TEAM_MEMBER_WORKSPACE_LABEL_PATTERN).fill(options.workdir);
+  await dialog
+    .getByRole("button", { name: TEAM_CREATE_AGENT_CONFIRM_LABEL_PATTERN })
+    .click();
   await expect(dialog).toBeHidden();
 }
 
@@ -387,7 +402,16 @@ export async function expectAddAgentEntryVisible(
   const menuTrigger = selectedTeamMenuLocator(page);
   await expect(menuTrigger).toBeVisible();
   await openSelectedTeamMenu(page);
-  await expect(page.getByRole("menuitem", { name: "Add Agent", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: TEAM_ADD_AGENT_ENTRY_LABEL_PATTERN })
+  ).toBeVisible();
+}
+
+function teamForgeDialog(page: import("@playwright/test").Page) {
+  return page
+    .locator("[role='dialog']")
+    .filter({ has: page.getByLabel(TEAM_MEMBER_NAME_LABEL_PATTERN) })
+    .last();
 }
 
 export async function openKanbanDeveloperTools(

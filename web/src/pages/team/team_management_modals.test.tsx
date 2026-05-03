@@ -208,4 +208,90 @@ describe("Team management modals", () => {
     expect(html).not.toContain("Prompt Scope");
     expect(html).not.toContain("Launch command");
   });
+
+  it("renders the forge-agent dialog with worker guidance once a coordinator exists", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <TeamForgeAgentDialog
+          open
+          draft={{
+            member_id: "worker-2",
+            role: "worker",
+            description: "Handle implementation follow-up",
+            model: "",
+            prompt: "Execute scoped tasks.",
+            skills: [],
+            custom_skills: "",
+            agent_loop_enabled: false,
+            agent_loop_idle_seconds: "",
+            agent_loop_prompt: "",
+          }}
+          roleProfile={{
+            profileLabel: "Worker Profile",
+            intro: "Execute scoped tasks.",
+            focus: "Implementation",
+            skillsHint: "Defaults are managed for you.",
+            promptHint: "Describe what this worker should deliver.",
+          }}
+          roleOptions={[
+            {
+              value: "coordinator",
+              label: "Coordinator",
+              description: "Own planning and review.",
+              disabled: true,
+            },
+            {
+              value: "worker",
+              label: "Worker",
+              description: "Execute scoped tasks.",
+              disabled: false,
+            },
+          ]}
+          selectedTeamHasCoordinator
+          onRoleChange={vi.fn()}
+          onPatchDraft={vi.fn()}
+          chrome={{
+            ...chrome,
+            setupChecklistClassName: "checklist",
+            infoStripGridClassName: "info-grid",
+          }}
+          modalProps={{
+            title: "Add Worker Agent",
+            confirmLabel: "Create Worker Agent",
+            agentPresetLabel: "Runtime",
+            agentPresetSummaryLabel: "Model",
+            showCommandSummary: false,
+            teamStyled: true,
+            agentName: "worker-2",
+            setAgentName: vi.fn(),
+            agentWorkdir: "/repo",
+            setAgentWorkdir: vi.fn(),
+            agentPresetId: "codex",
+            setAgentPresetId: vi.fn(),
+            worktreeMode: "use_existing",
+            setWorktreeMode: vi.fn(),
+            worktreeRepo: "",
+            setWorktreeRepo: vi.fn(),
+            worktreeRef: "",
+            setWorktreeRef: vi.fn(),
+            codeMode: true,
+            setCodeMode: vi.fn(),
+            worktreeError: null,
+            showWorktreeAdvancedOptions: false,
+            createBusy: false,
+            workdirPlaceholder: "~/.agenthub/worktrees",
+            withinPortal: true,
+            onCreateAgent: vi.fn(),
+            onClose: vi.fn(),
+          }}
+        />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Worker Profile");
+    expect(html).toContain("Execution role");
+    expect(html).toContain("This team already has a coordinator. New agents join as workers.");
+    expect(html).not.toContain("Coordinator default");
+    expect(html).not.toContain("First agent = coordinator");
+  });
 });
