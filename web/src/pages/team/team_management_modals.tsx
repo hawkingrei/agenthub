@@ -1,11 +1,9 @@
 import React from "react";
-import { Alert, SegmentedControl, Switch, TextInput, Textarea } from "@mantine/core";
+import { Alert, Switch, TextInput, Textarea } from "@mantine/core";
 import { DEFAULT_TEAM_COORDINATOR_SKILLS, DEFAULT_TEAM_WORKER_SKILLS } from "./member_helpers";
 import type { TeamMemberProfileDraft } from "./create_helpers";
-import type {
-  TeamMemberRoleOption,
-  TeamMemberRoleProfile,
-} from "./forge_helpers";
+import type { TeamMemberRoleProfile } from "./forge_helpers";
+import type { AgentRecord } from "../../api";
 import {
   CreateAgentModal,
   type CreateAgentModalProps,
@@ -17,7 +15,7 @@ import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
 } from "../../ui/tailwind_classes";
-import { ActionButton, SurfaceCard } from "../../ui/primitives";
+import { ActionButton, AlphaBadge, SurfaceCard } from "../../ui/primitives";
 
 type TeamCreateNoteTone = "info" | "warning";
 
@@ -388,13 +386,207 @@ export const TeamEditMemberDialog = React.memo(function TeamEditMemberDialog({
   );
 });
 
+export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingAgentDialog({
+  open,
+  busy,
+  selectedTeamHasCoordinator,
+  candidateAgents,
+  onCopy,
+  onClose,
+  chrome,
+}: {
+  open: boolean;
+  busy: boolean;
+  selectedTeamHasCoordinator: boolean;
+  candidateAgents: AgentRecord[];
+  onCopy: (agentId: string) => void;
+  onClose: () => void;
+  chrome: TeamModalChrome;
+}) {
+  const [filter, setFilter] = React.useState("");
+  const [selectedAgentId, setSelectedAgentId] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) {
+      setFilter("");
+      setSelectedAgentId("");
+    }
+  }, [open]);
+
+  const filteredAgents = React.useMemo(() => {
+    const normalizedFilter = filter.trim().toLowerCase();
+    if (!normalizedFilter) {
+      return candidateAgents;
+    }
+    return candidateAgents.filter((agent) => {
+      const haystacks = [
+        agent.name,
+        agent.id,
+        agent.workdir,
+        agent.target_node_id ?? "",
+      ].map((value) => value.toLowerCase());
+      return haystacks.some((value) => value.includes(normalizedFilter));
+    });
+  }, [candidateAgents, filter]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (selectedAgentId && filteredAgents.some((agent) => agent.id === selectedAgentId)) {
+      return;
+    }
+    setSelectedAgentId(filteredAgents[0]?.id ?? "");
+  }, [filteredAgents, open, selectedAgentId]);
+
+  if (!open) {
+    return null;
+  }
+
+  const copyRoleLabel = selectedTeamHasCoordinator ? "worker" : "coordinator";
+
+  return (
+    <div
+      className={TEAM_CREATE_MODAL_BACKDROP_CLASS}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className={`${TEAM_CREATE_MODAL_CARD_CLASS} ${chrome.panelClassName}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="team-copy-existing-agent-title"
+      >
+        <div className={chrome.modalHeaderClassName}>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={chrome.badgeClassName}>Add Existing Agent</span>
+              <AlphaBadge />
+            </div>
+            <h3
+              id="team-copy-existing-agent-title"
+              className="mt-2 text-[18px] font-semibold tracking-tight text-black"
+            >
+              Copy an existing agent into this team.
+            </h3>
+            <p className="mt-2 max-w-2xl text-[13px] leading-5 text-black/70">
+              AgentHub will create a new Team-owned {copyRoleLabel} agent from the selected source
+              configuration. The original agent remains unchanged.
+            </p>
+          </div>
+        </div>
+
+        <div className="modal-body mt-4 space-y-4">
+          <SurfaceCard className={TEAM_CREATE_PANEL_CARD_CLASS}>
+            <TextInput
+              label="Search existing agents"
+              radius="md"
+              placeholder="Filter by name, id, workspace, or node"
+              value={filter}
+              onChange={(event) => setFilter(event.currentTarget.value)}
+            />
+
+            <div className="mt-4">
+              {filteredAgents.length === 0 ? (
+                <Alert radius="md" color="blue" variant="light" title="No matching agents">
+                  No existing agents match this filter. Create a new Team-owned agent instead.
+                </Alert>
+              ) : (
+                <ul className="space-y-3" aria-label="Existing agents">
+                  {filteredAgents.map((agent) => {
+                    const selected = agent.id === selectedAgentId;
+                    return (
+                      <li key={agent.id}>
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          className={`w-full rounded-[14px] border px-3.5 py-3 text-left transition ${
+                            selected
+                              ? "border-ui-border-emphasis bg-ui-surface-soft shadow-sm"
+                              : "border-ui-border bg-white hover:border-ui-border-emphasis hover:bg-ui-surface-soft"
+                          }`}
+                          onClick={() => setSelectedAgentId(agent.id)}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-semibold text-ui-text-primary">
+                                {agent.name}
+                              </p>
+                              <p className="mt-1 truncate text-[11px] text-ui-text-muted">
+                                {agent.id}
+                              </p>
+                            </div>
+                            <span className={chrome.badgeClassName}>
+                              {selected ? "Selected" : "Existing Agent"}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid gap-px overflow-hidden rounded-[12px] border border-ui-border bg-ui-border sm:grid-cols-3">
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Workspace</p>
+                              <p className={chrome.infoStripValueClassName}>{agent.workdir || "-"}</p>
+                            </div>
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Mode</p>
+                              <p className={chrome.infoStripValueClassName}>{agent.worktree_mode}</p>
+                            </div>
+                            <div className={chrome.infoStripItemClassName}>
+                              <p className={chrome.infoStripLabelClassName}>Node</p>
+                              <p className={chrome.infoStripValueClassName}>
+                                {agent.target_node_id?.trim() || "main"}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </SurfaceCard>
+
+          <Alert radius="md" color="blue" variant="light" title="Copy semantics">
+            Copy keeps the source agent unchanged. AgentHub creates a new Team-owned{" "}
+            {copyRoleLabel} agent with copied runtime settings and fresh Team membership.
+          </Alert>
+        </div>
+
+        <div className={TEAM_CREATE_ACTIONS_BAR_CLASS}>
+          <ActionButton
+            className={chrome.mutedButtonClassName}
+            onClick={onClose}
+            disabled={busy}
+            size="md"
+            tone="secondary"
+            type="button"
+          >
+            Cancel
+          </ActionButton>
+          <ActionButton
+            className={chrome.accentButtonClassName}
+            onClick={() => onCopy(selectedAgentId)}
+            disabled={busy || !selectedAgentId}
+            size="md"
+            tone="primary"
+            type="button"
+          >
+            {busy ? "Copying..." : "Copy into Team"}
+          </ActionButton>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
   open,
   draft,
   roleProfile,
-  roleOptions,
   selectedTeamHasCoordinator,
-  onRoleChange,
   onPatchDraft,
   chrome,
   modalProps,
@@ -402,9 +594,7 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
   open: boolean;
   draft: TeamMemberProfileDraft | null;
   roleProfile: TeamMemberRoleProfile | null;
-  roleOptions: TeamMemberRoleOption[];
   selectedTeamHasCoordinator: boolean;
-  onRoleChange: (value: string) => void;
   onPatchDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
   chrome: TeamModalChrome;
   modalProps: Omit<CreateAgentModalProps, "children">;
@@ -431,37 +621,20 @@ export const TeamForgeAgentDialog = React.memo(function TeamForgeAgentDialog({
         <SurfaceCard className="mt-4 rounded-[14px] border border-ui-border bg-ui-surface-soft px-3.5 py-3 shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className={chrome.infoStripLabelClassName}>Role Selection</p>
+              <p className={chrome.infoStripLabelClassName}>Assigned Role</p>
               <p className="mt-1 text-[12px] leading-5 text-ui-text-secondary">
                 {selectedTeamHasCoordinator
-                  ? "This team already has a coordinator. New agents join as workers."
-                  : "The first agent you add becomes the coordinator. Worker unlocks after that."}
+                  ? "This team already has a coordinator, so new agents join as workers by default."
+                  : "This team does not have a coordinator yet, so the first added agent becomes the coordinator automatically."}
               </p>
             </div>
             <span className={chrome.badgeClassName}>
-              {draft.role === "coordinator"
-                ? selectedTeamHasCoordinator
-                  ? "Single coordinator"
-                  : "First agent = coordinator"
-                : "Execution role"}
+              {draft.role === "coordinator" ? "Coordinator" : "Worker"}
             </span>
           </div>
-          <SegmentedControl
-            className="mt-3"
-            fullWidth
-            radius="xl"
-            size="sm"
-            value={draft.role}
-            onChange={onRoleChange}
-            data={roleOptions.map((option) => ({
-              value: option.value,
-              label: option.label,
-              disabled: option.disabled,
-            }))}
-          />
-          <p className="mt-2 text-[11px] leading-5 text-ui-text-muted">
-            {roleOptions.find((option) => option.value === draft.role)?.description ??
-              "Select the role before describing how this agent should help."}
+          <p className="mt-3 text-[11px] leading-5 text-ui-text-muted">
+            The default Add Agent flow keeps role assignment fixed so the modal only asks for
+            description and workspace settings.
           </p>
         </SurfaceCard>
         <div className={`${chrome.setupChecklistClassName} mt-4`}>

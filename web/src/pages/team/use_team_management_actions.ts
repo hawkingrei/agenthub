@@ -9,7 +9,12 @@ import {
   type TeamRunRecord,
   type TeamRuntimeRecord,
 } from "../../api";
-import { DEFAULT_AGENT_PRESET_ID, getAgentPreset, type AgentPresetId } from "../../agent_presets";
+import {
+  DEFAULT_AGENT_PRESET_ID,
+  formatAgentModelLabel,
+  getAgentPreset,
+  type AgentPresetId,
+} from "../../agent_presets";
 import { normalizeWorkdirInput } from "../../worktree_defaults";
 import {
   appendTeamMemberToSpec,
@@ -24,12 +29,11 @@ import {
 import { clearTeamCreateDraft, loadTeamCreateDraft } from "./create_draft_storage";
 import {
   resolveInitialTeamMemberRole,
+  resolveCopiedTeamAgentName,
   resolveTeamForgeDefaults,
-  type TeamMemberRole,
-  type TeamMemberRoleOption,
 } from "./forge_helpers";
 import type { TeamMemberAgentStatus } from "./member_helpers";
-import { backfillEmptyWorkerDraftPrompts } from "./member_helpers";
+import { backfillEmptyWorkerDraftPrompts, resolveTeamPromptForRole } from "./member_helpers";
 import { removeTeamMemberLookupEntry, updateCachedTeamRuntimeStatus } from "./page_helpers";
 import {
   createInitialTeamCreateState,
@@ -41,6 +45,7 @@ import type { TeamRunBrowserState } from "./state";
 type UseTeamManagementActionsOptions = {
   token: string;
   busy: string | null;
+  agents: AgentRecord[];
   teams: TeamDefinitionRecord[];
   runs: TeamRunRecord[];
   selectedTeam: TeamDefinitionRecord | null;
@@ -57,7 +62,6 @@ type UseTeamManagementActionsOptions = {
   newTeamDescription: string;
   teamMemberDraft: TeamMemberProfileDraft | null;
   teamMemberEditDraft: TeamMemberProfileDraft | null;
-  teamMemberRoleOptions: TeamMemberRoleOption[];
   teamPromptDefaults: TeamPromptDefaultsRecord;
   forgeDefaultWorktreeRoot: string;
   forgeAgentName: string;
@@ -91,6 +95,7 @@ type UseTeamManagementActionsOptions = {
   setTeamRuntimeByTeamId: Dispatch<SetStateAction<Record<string, TeamRuntimeRecord>>>;
   setShowCreateTeamModal: (next: boolean) => void;
   setShowForgeAgentForm: (next: boolean) => void;
+  setShowCopyExistingAgentModal: (next: boolean) => void;
   setForgeAgentName: (next: string) => void;
   setForgeAgentWorkdir: (next: string | ((prev: string) => string)) => void;
   setForgeAgentPresetId: (next: AgentPresetId) => void;
@@ -111,6 +116,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
   const {
     token,
     busy,
+    agents,
     teams,
     runs,
     selectedTeam,
@@ -127,7 +133,6 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     newTeamDescription,
     teamMemberDraft,
     teamMemberEditDraft,
-    teamMemberRoleOptions,
     teamPromptDefaults,
     forgeDefaultWorktreeRoot,
     forgeAgentName,
@@ -161,6 +166,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setTeamRuntimeByTeamId,
     setShowCreateTeamModal,
     setShowForgeAgentForm,
+    setShowCopyExistingAgentModal,
     setForgeAgentName,
     setForgeAgentWorkdir,
     setForgeAgentPresetId,
@@ -239,6 +245,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         workers: backfillEmptyWorkerDraftPrompts(restoredDraft.workers ?? [], teamPromptDefaults),
         showCreateTeamModal: true,
         showForgeAgentForm: false,
+        showCopyExistingAgentModal: false,
         forgeAgentWorktreeError: null,
         forgeAgentBusy: false,
       });
@@ -246,6 +253,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     }
     setShowCreateTeamModal(true);
     setShowForgeAgentForm(false);
+    setShowCopyExistingAgentModal(false);
     setForgeAgentWorktreeError(null);
   }, [
     patchTeamCreate,
@@ -253,6 +261,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     setError,
     setShowCreateTeamModal,
     setShowForgeAgentForm,
+    setShowCopyExistingAgentModal,
     setForgeAgentWorktreeError,
     setWarning,
     teamPromptDefaults,
@@ -283,6 +292,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
 
     setError(null);
     setWarning(null);
+    setShowCopyExistingAgentModal(false);
     setTeamMemberDraft(defaults.draft);
     setShowForgeAgentForm(true);
     setForgeAgentName(defaults.agentName);
@@ -300,6 +310,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     selectedTeamWorkerCount,
     setError,
     setWarning,
+    setShowCopyExistingAgentModal,
     setTeamMemberDraft,
     setShowForgeAgentForm,
     setForgeAgentCodeMode,
@@ -313,56 +324,23 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     teamPromptDefaults,
   ]);
 
-  const handleTeamMemberRoleChange = useCallback(
-    (nextRole: string) => {
-      if (!selectedTeam) {
-        return;
-      }
-      if (nextRole !== "coordinator" && nextRole !== "worker") {
-        return;
-      }
-      const role = nextRole as TeamMemberRole;
-      const roleOption = teamMemberRoleOptions.find((option) => option.value === role);
-      if (!roleOption || roleOption.disabled) {
-        return;
-      }
-      const defaults = resolveTeamForgeDefaults({
-        teamName: selectedTeam.name,
-        teamSpec: selectedTeam.spec,
-        role,
-        workerCount: selectedTeamWorkerCount,
-        defaultWorktreeRoot: forgeDefaultWorktreeRoot,
-        agentPresetId: forgeAgentPresetId,
-        promptDefaults: teamPromptDefaults,
-      });
-      setError(null);
-      setWarning(null);
-      setTeamMemberDraft(defaults.draft);
-      setForgeAgentName(defaults.agentName);
-      setForgeAgentWorktreeMode(defaults.worktreeMode);
-      setForgeAgentWorktreeRepo(defaults.worktreeRepo);
-      setForgeAgentWorktreeRef(defaults.worktreeRef);
-      setForgeAgentWorktreeError(null);
-      setForgeAgentWorkdir(defaults.agentWorkdir);
-    },
-    [
-      forgeAgentPresetId,
-      forgeDefaultWorktreeRoot,
-      selectedTeam,
-      selectedTeamWorkerCount,
-      setError,
-      setWarning,
-      setTeamMemberDraft,
-      setForgeAgentName,
-      setForgeAgentWorkdir,
-      setForgeAgentWorktreeError,
-      setForgeAgentWorktreeMode,
-      setForgeAgentWorktreeRef,
-      setForgeAgentWorktreeRepo,
-      teamMemberRoleOptions,
-      teamPromptDefaults,
-    ]
-  );
+  const openCopyExistingAgentModal = useCallback(() => {
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setShowForgeAgentForm(false);
+    setShowCopyExistingAgentModal(true);
+  }, [selectedTeam, setError, setShowCopyExistingAgentModal, setShowForgeAgentForm, setWarning]);
+
+  const closeCopyExistingAgentModal = useCallback(() => {
+    if (busy === "copy-team-agent") {
+      return;
+    }
+    setShowCopyExistingAgentModal(false);
+  }, [busy, setShowCopyExistingAgentModal]);
 
   const closeTeamMemberForgeModal = useCallback(() => {
     if (forgeAgentBusy) {
@@ -534,6 +512,101 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     refreshTeamRuntime,
   ]);
 
+  const onCopyExistingTeamAgent = useCallback(async (sourceAgentId: string) => {
+    if (busy === "copy-team-agent") {
+      return;
+    }
+    if (!selectedTeam) {
+      setError("Select a team first");
+      return;
+    }
+    const sourceAgent = agents.find((agent) => agent.id === sourceAgentId);
+    if (!sourceAgent) {
+      setError("Select an existing agent first");
+      return;
+    }
+
+    const role = resolveInitialTeamMemberRole(selectedTeamHasCoordinator);
+    const copiedAgentName = resolveCopiedTeamAgentName(
+      sourceAgent.name,
+      sourceAgent.id,
+      role,
+      selectedTeamWorkerCount
+    );
+    const copiedDraft: TeamMemberProfileDraft = {
+      member_id: "",
+      role,
+      description: `Copied from existing agent ${sourceAgent.name || sourceAgent.id}.`,
+      model: formatAgentModelLabel(sourceAgent.command, sourceAgent.args) || DEFAULT_AGENT_PRESET_ID,
+      prompt: resolveTeamPromptForRole(teamPromptDefaults, role),
+      skills: [],
+      custom_skills: "",
+      agent_loop_enabled: false,
+      agent_loop_idle_seconds: "",
+      agent_loop_prompt: "",
+    };
+
+    const copiedWorktreeMode = role === "coordinator" ? "use_existing" : sourceAgent.worktree_mode;
+    const copiedWorktreeRepo = role === "coordinator" ? null : sourceAgent.worktree_repo ?? null;
+    const copiedWorktreeRef = role === "coordinator" ? null : sourceAgent.worktree_ref ?? null;
+
+    setBusy("copy-team-agent");
+    setError(null);
+    setWarning(null);
+    try {
+      const created = await api.createAgent(token, {
+        name: copiedAgentName,
+        workdir: sourceAgent.workdir,
+        command: sourceAgent.command,
+        args: sourceAgent.args.slice(),
+        target_node_id: sourceAgent.target_node_id ?? null,
+        source: AGENT_SOURCE_TEAM_FORGE,
+        worktree_mode: copiedWorktreeMode,
+        worktree_repo: copiedWorktreeRepo,
+        worktree_ref: copiedWorktreeRef,
+        code_mode: sourceAgent.code_mode,
+      });
+      const updated = await api.updateTeamSpec(token, selectedTeam.id, {
+        spec: appendTeamMemberToSpec(
+          selectedTeam.spec,
+          { ...copiedDraft, member_id: created.id },
+          created,
+          teamPromptDefaults
+        ),
+        expected_updated_at: selectedTeam.updated_at,
+      });
+      setAgents((prev) => [created, ...prev.filter((agent) => agent.id !== created.id)]);
+      setTeams((prev) =>
+        [...prev.filter((team) => team.id !== updated.id), updated].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        )
+      );
+      setSelectedTeamId(updated.id);
+      setShowCopyExistingAgentModal(false);
+      void refreshTeamRuntime(updated.id).catch(() => undefined);
+    } catch (err) {
+      setError(parseErrorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }, [
+    agents,
+    busy,
+    refreshTeamRuntime,
+    selectedTeam,
+    selectedTeamHasCoordinator,
+    selectedTeamWorkerCount,
+    setAgents,
+    setBusy,
+    setError,
+    setSelectedTeamId,
+    setShowCopyExistingAgentModal,
+    setTeams,
+    setWarning,
+    teamPromptDefaults,
+    token,
+  ]);
+
   const onSaveTeamMemberProfile = useCallback(async () => {
     if (!selectedTeam) {
       setError("Select a team first");
@@ -670,6 +743,7 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
         coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
         showCreateTeamModal: false,
         showForgeAgentForm: true,
+        showCopyExistingAgentModal: false,
         forgeAgentName: defaults.agentName,
         forgeAgentWorkdir: defaults.agentWorkdir,
         forgeAgentPresetId: DEFAULT_AGENT_PRESET_ID,
@@ -993,12 +1067,14 @@ export function useTeamManagementActions(options: UseTeamManagementActionsOption
     openCreateTeamModal,
     closeCreateTeamModal,
     openTeamMemberForgeModal,
-    handleTeamMemberRoleChange,
+    openCopyExistingAgentModal,
+    closeCopyExistingAgentModal,
     closeTeamMemberForgeModal,
     openTeamMemberEditModal,
     closeTeamMemberEditModal,
     refreshTeamRuntime,
     onCreateForgeAgent,
+    onCopyExistingTeamAgent,
     onSaveTeamMemberProfile,
     onCreateTeam,
     onDeleteTeam,

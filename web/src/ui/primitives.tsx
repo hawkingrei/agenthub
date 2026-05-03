@@ -256,6 +256,39 @@ export function Badge({ tone = "subtle", shape = "tag", className, ...props }: B
   );
 }
 
+type AlphaBadgeProps = React.ComponentPropsWithoutRef<"span">;
+
+export function AlphaBadge({ className, ...props }: AlphaBadgeProps) {
+  return (
+    <Box
+      component="span"
+      className={cx(
+        "inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700",
+        className
+      )}
+      {...props}
+    >
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className="h-3 w-3 shrink-0"
+        fill="none"
+      >
+        <path
+          d="M8 1.75l1.18 3.07 3.07 1.18-3.07 1.18L8 10.25 6.82 7.18 3.75 6l3.07-1.18L8 1.75z"
+          fill="currentColor"
+        />
+        <path
+          d="M12.25 9.5l.59 1.53 1.53.59-1.53.59-.59 1.54-.59-1.54-1.53-.59 1.53-.59.59-1.53z"
+          fill="currentColor"
+          opacity="0.75"
+        />
+      </svg>
+      <span>Alpha</span>
+    </Box>
+  );
+}
+
 type ConversationBubbleProps = React.ComponentPropsWithoutRef<"div">;
 
 export function ConversationBubble({ className, ...props }: ConversationBubbleProps) {

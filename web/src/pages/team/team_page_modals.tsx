@@ -1,17 +1,20 @@
 import React from "react";
 import {
   TeamCreateDialog,
+  TeamCopyExistingAgentDialog,
   TeamEditMemberDialog,
   TeamForgeAgentDialog,
   type TeamModalChrome,
 } from "./team_management_modals";
 import type { TeamMemberProfileDraft } from "./create_helpers";
-import type { TeamMemberRoleOption, TeamMemberRoleProfile } from "./forge_helpers";
+import type { TeamMemberRoleProfile } from "./forge_helpers";
+import type { AgentRecord } from "../../api";
 import type { CreateAgentModalProps } from "../../components/create_agent_modal";
 
 export type TeamPageModalsProps = {
   showCreateTeamModal: boolean;
   showForgeAgentForm: boolean;
+  showCopyExistingAgentModal: boolean;
   showTeamMemberEditModal: boolean;
   busy: string | null;
   newTeamName: string;
@@ -22,12 +25,13 @@ export type TeamPageModalsProps = {
   closeCreateTeamModal: () => void;
   teamMemberDraft: TeamMemberProfileDraft | null;
   teamMemberRoleProfile: TeamMemberRoleProfile | null;
-  teamMemberRoleOptions: TeamMemberRoleOption[];
   selectedTeamHasCoordinator: boolean;
-  handleTeamMemberRoleChange: (value: string) => void;
+  copyExistingCandidates: AgentRecord[];
   patchTeamMemberDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
   forgeModalProps: Omit<CreateAgentModalProps, "children" | "onClose">;
   closeTeamMemberForgeModal: () => void;
+  closeCopyExistingAgentModal: () => void;
+  onCopyExistingAgent: (agentId: string) => void;
   selectedAgentLabel: string;
   teamMemberEditDraft: TeamMemberProfileDraft | null;
   patchTeamMemberEditDraft: (patch: Partial<TeamMemberProfileDraft>) => void;
@@ -41,6 +45,7 @@ export type TeamPageModalsProps = {
 export const TeamPageModals = React.memo(function TeamPageModals({
   showCreateTeamModal,
   showForgeAgentForm,
+  showCopyExistingAgentModal,
   showTeamMemberEditModal,
   busy,
   newTeamName,
@@ -51,12 +56,13 @@ export const TeamPageModals = React.memo(function TeamPageModals({
   closeCreateTeamModal,
   teamMemberDraft,
   teamMemberRoleProfile,
-  teamMemberRoleOptions,
   selectedTeamHasCoordinator,
-  handleTeamMemberRoleChange,
+  copyExistingCandidates,
   patchTeamMemberDraft,
   forgeModalProps,
   closeTeamMemberForgeModal,
+  closeCopyExistingAgentModal,
+  onCopyExistingAgent,
   selectedAgentLabel,
   teamMemberEditDraft,
   patchTeamMemberEditDraft,
@@ -83,15 +89,22 @@ export const TeamPageModals = React.memo(function TeamPageModals({
         open={showForgeAgentForm}
         draft={teamMemberDraft}
         roleProfile={teamMemberRoleProfile}
-        roleOptions={teamMemberRoleOptions}
         selectedTeamHasCoordinator={selectedTeamHasCoordinator}
-        onRoleChange={handleTeamMemberRoleChange}
         onPatchDraft={patchTeamMemberDraft}
         chrome={forgeChrome}
         modalProps={{
           ...forgeModalProps,
           onClose: closeTeamMemberForgeModal,
         }}
+      />
+      <TeamCopyExistingAgentDialog
+        open={showCopyExistingAgentModal}
+        busy={busy === "copy-team-agent"}
+        selectedTeamHasCoordinator={selectedTeamHasCoordinator}
+        candidateAgents={copyExistingCandidates}
+        onCopy={onCopyExistingAgent}
+        onClose={closeCopyExistingAgentModal}
+        chrome={forgeChrome}
       />
       <TeamEditMemberDialog
         open={showTeamMemberEditModal}

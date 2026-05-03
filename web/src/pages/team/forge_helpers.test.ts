@@ -3,8 +3,8 @@ import {
   buildTeamAgentNameToken,
   buildTeamMemberProfileDraft,
   resolveInitialTeamMemberRole,
+  resolveCopiedTeamAgentName,
   resolveTeamForgeDefaults,
-  resolveTeamMemberRoleOptions,
   resolveTeamMemberRoleProfile,
 } from "./forge_helpers";
 
@@ -36,38 +36,12 @@ describe("team forge helpers", () => {
     expect(buildTeamAgentNameToken("  Alpha Desk / Team  ")).toBe("alpha-desk-team");
     expect(resolveInitialTeamMemberRole(false)).toBe("coordinator");
     expect(resolveInitialTeamMemberRole(true)).toBe("worker");
-  });
-
-  it("exposes role options with team constraints", () => {
-    expect(resolveTeamMemberRoleOptions(false)).toEqual([
-      {
-        value: "coordinator",
-        label: "Coordinator",
-        description: "Own planning, review, and final synthesis.",
-        disabled: false,
-      },
-      {
-        value: "worker",
-        label: "Worker",
-        description: "Unlock after the first coordinator exists.",
-        disabled: true,
-      },
-    ]);
-
-    expect(resolveTeamMemberRoleOptions(true)).toEqual([
-      {
-        value: "coordinator",
-        label: "Coordinator",
-        description: "Already assigned for this team.",
-        disabled: true,
-      },
-      {
-        value: "worker",
-        label: "Worker",
-        description: "Deliver execution, evidence, and implementation.",
-        disabled: false,
-      },
-    ]);
+    expect(resolveCopiedTeamAgentName("Source Agent", "agent-1", "coordinator", 0)).toBe(
+      "source-agent-coordinator"
+    );
+    expect(resolveCopiedTeamAgentName("Source Agent", "agent-1", "worker", 2)).toBe(
+      "source-agent-worker-3"
+    );
   });
 
   it("resolves distinct role profile copy", () => {

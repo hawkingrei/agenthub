@@ -3,7 +3,7 @@ import { CloseButton, Menu, TextInput, UnstyledButton } from "@mantine/core";
 import { DeterministicAvatar } from "../components/deterministic_avatar";
 import { TeamDefinitionRecord } from "../api";
 import { NOTION_FLOATING_MENU_PROPS } from "../ui/floating_surfaces";
-import { IconButton } from "../ui/primitives";
+import { AlphaBadge, IconButton } from "../ui/primitives";
 import {
   TEAM_MUTED_TEXT_CLASS,
   TEAM_SIDEBAR_META_GRID_CLASS,
@@ -77,7 +77,9 @@ type TeamSidebarProps = {
   onSelectKanban: () => void;
   onSelectAgentTab: (memberId: string, tab: TeamTab) => void;
   onOpenTeamMemberForge?: () => void;
+  onOpenTeamMemberCopyExisting?: () => void;
   teamMemberForgeLabel?: string;
+  teamMemberCopyExistingLabel?: string;
   onStartTeamRuntime?: () => void;
   onStopTeamRuntime?: () => void;
   onOpenMachines?: () => void;
@@ -192,6 +194,10 @@ const TEAM_WORKBENCH_SIDEBAR_HEADER_CLASS = "px-2 py-1.5";
 const TEAM_WORKBENCH_SIDEBAR_WORKFLOW_IDLE_CLASS = TEAM_SIDEBAR_WORKFLOW_IDLE_CLASS;
 const TEAM_SIDEBAR_VIRTUAL_LIST_CLASS =
   "[content-visibility:auto] [contain-intrinsic-size:1px_320px]";
+const TEAM_SWITCH_BUTTON_CLASS =
+  "inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-notion-border bg-white px-2.5 py-1.5 text-left shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover";
+const TEAM_CONTROLS_BUTTON_CLASS =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-notion-border bg-notion-sidebar/40 text-[12px] text-notion-text-muted shadow-sm transition hover:border-notion-accent/25 hover:bg-notion-hover hover:text-notion-text";
 
 export function resolveMemberIndicatorClassName(
   lifecycle: ReturnType<typeof normalizeTeamMemberLifecycle>,
@@ -244,7 +250,9 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
     onSelectKanban,
     onSelectAgentTab,
     onOpenTeamMemberForge,
+    onOpenTeamMemberCopyExisting,
     teamMemberForgeLabel = "Add Agent",
+    teamMemberCopyExistingLabel = "Copy Existing Agent",
     onStartTeamRuntime,
     onStopTeamRuntime,
     onOpenMachines,
@@ -336,17 +344,20 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 {selectedTeam?.name ?? "Select a team"}
               </div>
             ) : selectedTeam ? (
-              <div className="flex min-w-0 items-center gap-1">
+              <div className="flex min-w-0 items-center gap-2">
                 <Menu
                   position="bottom-start"
                   {...NOTION_FLOATING_MENU_PROPS}
                 >
                   <Menu.Target>
                     <UnstyledButton
-                      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition hover:bg-[rgba(55,53,47,0.05)]"
+                      className={TEAM_SWITCH_BUTTON_CLASS}
                       aria-label={`Switch teams from ${selectedTeam.name}`}
                       title="Switch teams"
                     >
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-notion-sidebar/70 text-[11px] text-notion-text-muted">
+                        <i className="bi bi-collection" aria-hidden="true" />
+                      </span>
                       <span className="truncate text-[15px] font-semibold tracking-tight text-notion-text">
                         {selectedTeam.name}
                       </span>
@@ -384,11 +395,11 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                 >
                   <Menu.Target>
                     <UnstyledButton
-                      className={`${TEAM_SIDEBAR_META_TOGGLE_BUTTON_CLASS} h-7 w-7 shrink-0`}
+                      className={TEAM_CONTROLS_BUTTON_CLASS}
                       aria-label={`Open controls for ${selectedTeam.name}`}
                       title={`Open controls for ${selectedTeam.name}`}
                     >
-                      <i className="bi bi-chevron-down" aria-hidden="true" />
+                      <i className="bi bi-sliders2" aria-hidden="true" />
                     </UnstyledButton>
                   </Menu.Target>
                   <Menu.Dropdown>
@@ -407,7 +418,10 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                         <Menu.Divider />
                       </>
                     )}
-                    {(onOpenTeamMemberForge || onStartTeamRuntime || onStopTeamRuntime) && (
+                    {(onOpenTeamMemberForge ||
+                      onOpenTeamMemberCopyExisting ||
+                      onStartTeamRuntime ||
+                      onStopTeamRuntime) && (
                       <>
                         {isRoot && onOpenMachines && (
                           <Menu.Item
@@ -431,6 +445,17 @@ function TeamSidebarImpl(props: TeamSidebarProps) {
                             onClick={onOpenTeamMemberForge}
                           >
                             {teamMemberForgeLabel}
+                          </Menu.Item>
+                        )}
+                        {onOpenTeamMemberCopyExisting && (
+                          <Menu.Item
+                            leftSection={<i className="bi bi-copy" aria-hidden="true" />}
+                            onClick={onOpenTeamMemberCopyExisting}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{teamMemberCopyExistingLabel}</span>
+                              <AlphaBadge className="px-1.5 py-0 text-[9px]" />
+                            </div>
                           </Menu.Item>
                         )}
                         {onStartTeamRuntime && selectedTeamRuntimeStatus && (

@@ -99,7 +99,6 @@ import {
   persistTeamCreateDraft,
 } from "./team/create_draft_storage";
 import {
-  resolveTeamMemberRoleOptions,
   resolveTeamMemberRoleProfile,
 } from "./team/forge_helpers";
 import {
@@ -872,6 +871,7 @@ export function TeamPage(props: TeamPageProps) {
   const newTeamDescription = teamCreateState.newTeamDescription;
   const showCreateTeamModal = teamCreateState.showCreateTeamModal;
   const showForgeAgentForm = teamCreateState.showForgeAgentForm;
+  const showCopyExistingAgentModal = teamCreateState.showCopyExistingAgentModal;
   const forgeAgentName = teamCreateState.forgeAgentName;
   const forgeAgentWorkdir = teamCreateState.forgeAgentWorkdir;
   const forgeAgentPresetId = teamCreateState.forgeAgentPresetId;
@@ -906,6 +906,10 @@ export function TeamPage(props: TeamPageProps) {
   );
   const setShowForgeAgentForm = useCallback(
     (next: boolean) => patchTeamCreate({ showForgeAgentForm: next }),
+    [patchTeamCreate]
+  );
+  const setShowCopyExistingAgentModal = useCallback(
+    (next: boolean) => patchTeamCreate({ showCopyExistingAgentModal: next }),
     [patchTeamCreate]
   );
   const setForgeAgentName = useCallback(
@@ -1325,10 +1329,6 @@ export function TeamPage(props: TeamPageProps) {
       (busy === "start-team" || selectedTeamRuntimeStatus.status !== "stopped"),
     [busy, selectedTeamHasConfiguredMembers, selectedTeamRuntimeStatus.status]
   );
-  const teamMemberRoleOptions = useMemo(
-    () => resolveTeamMemberRoleOptions(selectedTeamHasCoordinator),
-    [selectedTeamHasCoordinator]
-  );
   const teamMemberRoleProfile = useMemo(
     () => (teamMemberDraft ? resolveTeamMemberRoleProfile(teamMemberDraft.role) : null),
     [teamMemberDraft]
@@ -1345,6 +1345,13 @@ export function TeamPage(props: TeamPageProps) {
   const teamMemberForgeLabel = selectedTeamHasCoordinator
     ? "Add Worker Agent"
     : "Add First Coordinator Agent";
+  const teamMemberCopyExistingLabel = "Copy Existing Agent";
+  const copyExistingTeamAgentCandidates = useMemo(() => {
+    const selectedMemberIds = new Set(selectedTeamMembers.map((member) => member.member_id));
+    return agents
+      .filter((agent) => !selectedMemberIds.has(agent.id))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [agents, selectedTeamMembers]);
   useEffect(() => {
     const memberId = selectedMemberId.trim();
     if (!memberId) {
@@ -1666,6 +1673,7 @@ export function TeamPage(props: TeamPageProps) {
       newTeamDescription: initial.newTeamDescription,
       coordinatorPrompt: teamPromptDefaults.coordinator_prompt,
       showForgeAgentForm: initial.showForgeAgentForm,
+      showCopyExistingAgentModal: initial.showCopyExistingAgentModal,
       forgeAgentName: initial.forgeAgentName,
       forgeAgentWorkdir: initial.forgeAgentWorkdir,
       forgeAgentPresetId: initial.forgeAgentPresetId,
@@ -2783,12 +2791,14 @@ export function TeamPage(props: TeamPageProps) {
     openCreateTeamModal,
     closeCreateTeamModal,
     openTeamMemberForgeModal,
-    handleTeamMemberRoleChange,
+    openCopyExistingAgentModal,
+    closeCopyExistingAgentModal,
     closeTeamMemberForgeModal,
     openTeamMemberEditModal,
     closeTeamMemberEditModal,
     refreshTeamRuntime,
     onCreateForgeAgent,
+    onCopyExistingTeamAgent,
     onSaveTeamMemberProfile,
     onCreateTeam,
     onDeleteTeam,
@@ -2801,6 +2811,7 @@ export function TeamPage(props: TeamPageProps) {
   } = useTeamManagementActions({
     token: props.token,
     busy,
+    agents,
     teams,
     runs,
     selectedTeam,
@@ -2817,7 +2828,6 @@ export function TeamPage(props: TeamPageProps) {
     newTeamDescription,
     teamMemberDraft,
     teamMemberEditDraft,
-    teamMemberRoleOptions,
     teamPromptDefaults,
     forgeDefaultWorktreeRoot,
     forgeAgentName,
@@ -2851,6 +2861,7 @@ export function TeamPage(props: TeamPageProps) {
     setTeamRuntimeByTeamId,
     setShowCreateTeamModal,
     setShowForgeAgentForm,
+    setShowCopyExistingAgentModal,
     setForgeAgentName,
     setForgeAgentWorkdir,
     setForgeAgentPresetId,
@@ -3873,7 +3884,9 @@ export function TeamPage(props: TeamPageProps) {
     onSelectKanban: onSelectKanbanSubject,
     onSelectAgentTab: onSelectAgentWorkspace,
     onOpenTeamMemberForge: openTeamMemberForgeModal,
+    onOpenTeamMemberCopyExisting: openCopyExistingAgentModal,
     teamMemberForgeLabel,
+    teamMemberCopyExistingLabel,
     onStartTeamRuntime: onStartTeamRuntime,
     onStopTeamRuntime: onStopTeamRuntime,
     onOpenMachines: () => navigateToPath(buildWorkspaceNodePath()),
@@ -3949,7 +3962,9 @@ export function TeamPage(props: TeamPageProps) {
         selectedTeamHasConfiguredMembers,
         selectedTeamDescription: selectedTeam?.description,
         teamMemberForgeLabel,
+        teamMemberCopyExistingLabel,
         onOpenTeamMemberForge: openTeamMemberForgeModal,
+        onOpenTeamMemberCopyExisting: openCopyExistingAgentModal,
         tab,
         runsPanelProps: buildTeamRunsPanelProps({
           selectedTeam: selectedTeam!,
@@ -3999,6 +4014,7 @@ export function TeamPage(props: TeamPageProps) {
   const teamPageModalsProps = buildTeamPageModalsProps({
     showCreateTeamModal,
     showForgeAgentForm,
+    showCopyExistingAgentModal,
     showTeamMemberEditModal,
     busy,
     newTeamName,
@@ -4009,12 +4025,13 @@ export function TeamPage(props: TeamPageProps) {
     closeCreateTeamModal,
     teamMemberDraft,
     teamMemberRoleProfile,
-    teamMemberRoleOptions,
     selectedTeamHasCoordinator,
-    handleTeamMemberRoleChange,
+    copyExistingCandidates: copyExistingTeamAgentCandidates,
     patchTeamMemberDraft,
     forgeModalProps,
     closeTeamMemberForgeModal,
+    closeCopyExistingAgentModal,
+    onCopyExistingAgent: onCopyExistingTeamAgent,
     selectedAgentLabel,
     teamMemberEditDraft,
     patchTeamMemberEditDraft,
@@ -4024,7 +4041,11 @@ export function TeamPage(props: TeamPageProps) {
     forgeChrome: modalChrome,
     editChrome: modalChrome,
   });
-  const hasOpenTeamModal = showCreateTeamModal || showForgeAgentForm || showTeamMemberEditModal;
+  const hasOpenTeamModal =
+    showCreateTeamModal ||
+    showForgeAgentForm ||
+    showCopyExistingAgentModal ||
+    showTeamMemberEditModal;
   const normalizedTeamPageError = useMemo(() => {
     if (!error) {
       return null;
