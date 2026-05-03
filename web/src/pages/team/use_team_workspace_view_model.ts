@@ -249,12 +249,12 @@ export function useTeamWorkspaceViewModel(options: UseTeamWorkspaceViewModelOpti
       : tab === "conversation"
         ? selectedConversationIsShared
           ? selectedChannelDescription
-          : "Task thread for the selected Team task. Keep the root summary-first and use the thread for task-scoped follow-up, evidence, and execution context."
+          : "Task thread for the selected Team task. Use it for task-scoped follow-up, evidence, and execution context."
         : tab === "tasks"
           ? describeTeamKanban(selectedChannelLabel)
           : tab === "mailbox"
             ? selectedMemberLiveState
-              ? "Direct mailbox thread for the selected member. Keep the root summary-first and move deeper coordination into the thread."
+              ? "Direct mailbox thread for the selected member."
               : "Run-scoped mailbox delivery and direct member conversations."
             : tab === "runs"
               ? "Browse runs and choose the active execution context."

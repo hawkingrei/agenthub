@@ -49,8 +49,9 @@
 ```bash
 cargo test -p agenthub-team-prompts
 cargo test teams_api_injects_role_workflow_prompt_policy_defaults -- --nocapture
-cargo test team_run_snapshot_api_returns_latest_member_profiles -- --nocapture
-cd web && npm exec vitest -- run src/pages/team/team_thread_pane.test.tsx
+cargo test actor_help_for_team_thread_topics_describes_summary_first_flow_and_participants -- --nocapture
+cd web && npm exec vitest -- run src/pages/team_panels.test.tsx src/pages/team/team_thread_pane.test.tsx src/pages/team/use_team_workspace_view_model.test.tsx
+cd web && npm exec tsc -- --noEmit
 ```
 
 ## Follow-Ups
