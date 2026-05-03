@@ -138,10 +138,161 @@ jobs:
           path: dist/*.tar.gz
           retention-days: 1
 
+  publish_npm:
+    name: Publish npm packages
+    needs: build
+    if: ${{ needs.build.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Prepare npm metadata
+        id: npm_meta
+        shell: bash
+        run: |
+          TAG_VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          PACKAGE_VERSION="${TAG_VERSION#v}"
+          PUBLISH_NPM=false
+          if [[ "${PACKAGE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            PUBLISH_NPM=true
+          fi
+          echo "tag_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${PACKAGE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "publish_npm=${PUBLISH_NPM}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip npm publish for non-semver tags
+        if: steps.npm_meta.outputs.publish_npm != 'true'
+        run: |
+          echo "Skipping npm publish for tag ${GITHUB_REF_NAME:-${{ steps.npm_meta.outputs.tag_version }}} because it is not a semver package version."
+
+      - name: Verify NPM_TOKEN is configured
+        if: steps.npm_meta.outputs.publish_npm == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${NPM_TOKEN}" ]]; then
+            echo "::error::NPM_TOKEN is required to publish @linkerdao/agenthub packages."
+            exit 1
+          fi
+
+      - name: Prepare staged npm packages
+        if: steps.npm_meta.outputs.publish_npm == 'true'
+        env:
+          PACKAGE_VERSION: ${{ steps.npm_meta.outputs.package_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ROOT_DIR="${PWD}"
+          STAGE_ROOT="${ROOT_DIR}/dist/npm"
+          mkdir -p "${STAGE_ROOT}"
+
+          stage_platform_package() {
+            local source_dir="$1"
+            local stage_dir="$2"
+            local archive_name="$3"
+
+            rm -rf "${stage_dir}"
+            mkdir -p "${stage_dir}"
+            cp -R "${source_dir}/." "${stage_dir}/"
+            rm -f "${stage_dir}/bin/.gitkeep"
+
+            local unpack_dir="${stage_dir}/.unpack"
+            mkdir -p "${unpack_dir}"
+            tar -xzf "${ROOT_DIR}/dist/${archive_name}" -C "${unpack_dir}"
+            local binary_path
+            binary_path="$(find "${unpack_dir}" -type f -name agenthub | head -n 1)"
+            if [[ -z "${binary_path}" ]]; then
+              echo "::error::Unable to locate agenthub binary in ${archive_name}"
+              exit 1
+            fi
+            mkdir -p "${stage_dir}/bin"
+            cp "${binary_path}" "${stage_dir}/bin/agenthub"
+            chmod +x "${stage_dir}/bin/agenthub"
+            rm -rf "${unpack_dir}"
+          }
+
+          stage_platform_package \
+            "${ROOT_DIR}/build/npm/agenthub-darwin-arm64" \
+            "${STAGE_ROOT}/agenthub-darwin-arm64" \
+            "agenthub-${PACKAGE_VERSION}-darwin-arm64.tar.gz"
+
+          stage_platform_package \
+            "${ROOT_DIR}/build/npm/agenthub-linux-arm64" \
+            "${STAGE_ROOT}/agenthub-linux-arm64" \
+            "agenthub-${PACKAGE_VERSION}-linux-arm64.tar.gz"
+
+          stage_platform_package \
+            "${ROOT_DIR}/build/npm/agenthub-linux-x64" \
+            "${STAGE_ROOT}/agenthub-linux-x64" \
+            "agenthub-${PACKAGE_VERSION}-linux-amd64.tar.gz"
+
+          rm -rf "${STAGE_ROOT}/agenthub"
+          mkdir -p "${STAGE_ROOT}/agenthub"
+          cp -R "${ROOT_DIR}/build/npm/agenthub/." "${STAGE_ROOT}/agenthub/"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["PACKAGE_VERSION"]
+          stage_root = Path("dist/npm")
+
+          for package_json in [
+              stage_root / "agenthub" / "package.json",
+              stage_root / "agenthub-darwin-arm64" / "package.json",
+              stage_root / "agenthub-linux-arm64" / "package.json",
+              stage_root / "agenthub-linux-x64" / "package.json",
+          ]:
+              data = json.loads(package_json.read_text())
+              data["version"] = version
+              if package_json.parent.name == "agenthub":
+                  deps = data.get("optionalDependencies", {})
+                  for key in list(deps.keys()):
+                      deps[key] = version
+              package_json.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
+      - name: Publish platform packages
+        if: steps.npm_meta.outputs.publish_npm == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          npm publish dist/npm/agenthub-darwin-arm64 --access public
+          npm publish dist/npm/agenthub-linux-arm64 --access public
+          npm publish dist/npm/agenthub-linux-x64 --access public
+
+      - name: Publish main package
+        if: steps.npm_meta.outputs.publish_npm == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          npm publish dist/npm/agenthub --access public
+
   release:
     name: Create Release
-    needs: build
-    if: ${{ always() && !cancelled() }}
+    needs: [build, publish_npm]
+    if: ${{ always() && !cancelled() && (needs.publish_npm.result == 'success' || needs.publish_npm.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
