@@ -1,4 +1,4 @@
-import { ActionButton, BetaBadge, PanelHeader } from "../ui/primitives";
+import { ActionButton, AlphaBadge, PanelHeader } from "../ui/primitives";
 import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_WORKBENCH_INFO_STRIP_ITEM_CLASS,
@@ -52,7 +52,7 @@ export function TeamSetupPanel({
             >
               <i className="bi bi-copy" aria-hidden="true" />
               <span>{copyExistingLabel}</span>
-              <BetaBadge />
+              <AlphaBadge />
             </ActionButton>
             <ActionButton
               className={TEAM_WORKBENCH_ACCENT_BUTTON_CLASS}

@@ -15,7 +15,7 @@ import {
   TEAM_CREATE_PANEL_CARD_CLASS,
   TEAM_CREATE_SKILL_TAG_SELECTED_CLASS,
 } from "../../ui/tailwind_classes";
-import { ActionButton, BetaBadge, SurfaceCard } from "../../ui/primitives";
+import { ActionButton, AlphaBadge, SurfaceCard } from "../../ui/primitives";
 
 type TeamCreateNoteTone = "info" | "warning";
 
@@ -465,7 +465,7 @@ export const TeamCopyExistingAgentDialog = React.memo(function TeamCopyExistingA
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className={chrome.badgeClassName}>Add Existing Agent</span>
-              <BetaBadge />
+              <AlphaBadge />
             </div>
             <h3
               id="team-copy-existing-agent-title"

@@ -302,7 +302,7 @@ describe("Team management modals", () => {
     );
 
     expect(html).toContain("Add Existing Agent");
-    expect(html).toContain("Beta");
+    expect(html).toContain("Alpha");
     expect(html).toContain("Copy an existing agent into this team.");
     expect(html).toContain("Search existing agents");
     expect(html).toContain("Source Agent");

@@ -256,9 +256,9 @@ export function Badge({ tone = "subtle", shape = "tag", className, ...props }: B
   );
 }
 
-type BetaBadgeProps = React.ComponentPropsWithoutRef<"span">;
+type AlphaBadgeProps = React.ComponentPropsWithoutRef<"span">;
 
-export function BetaBadge({ className, ...props }: BetaBadgeProps) {
+export function AlphaBadge({ className, ...props }: AlphaBadgeProps) {
   return (
     <Box
       component="span"
@@ -284,7 +284,7 @@ export function BetaBadge({ className, ...props }: BetaBadgeProps) {
           opacity="0.75"
         />
       </svg>
-      <span>Beta</span>
+      <span>Alpha</span>
     </Box>
   );
 }
