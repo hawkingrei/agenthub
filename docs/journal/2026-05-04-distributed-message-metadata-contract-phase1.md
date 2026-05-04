@@ -33,11 +33,12 @@ The repo already carried most of the required fields, but not one unified owners
 
 ## Validation
 
-Planned focused checks for this slice:
+Validated with:
 
 ```bash
 cargo test internal_grpc_mailbox_send_persists_channel_replica_history -- --nocapture
 cargo test internal_grpc_mailbox_send_rejects_channel_replica_payload_without_correlation_id -- --nocapture
+cargo test internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context -- --nocapture
 cargo fmt --all --check
 ```
 

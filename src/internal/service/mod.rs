@@ -87,7 +87,6 @@ impl TeamInternalControlDeps {
 #[derive(Debug, Clone)]
 pub(super) struct ChannelReplicaRequest {
     authority_message_id: i64,
-    correlation_id: String,
     team_id: String,
     conversation_id: String,
     task_id: String,
@@ -147,16 +146,20 @@ impl TeamInternalControlService {
                 tr.team_id AS run_team_id,
                 tt.team_id AS task_team_id,
                 tc.task_id AS conversation_task_id,
-                tc.mode AS conversation_mode
+                tc.mode AS conversation_mode,
+                tcm.conversation_id AS authority_conversation_id,
+                tcm.task_id AS authority_task_id
             FROM team_runs tr
             LEFT JOIN team_tasks tt ON tt.id = ?2
             LEFT JOIN team_conversations tc ON tc.id = ?3
+            LEFT JOIN team_conversation_messages tcm ON tcm.id = ?4
             WHERE tr.id = ?1
             "#,
         )
         .bind(run_id)
         .bind(&replica.task_id)
         .bind(&replica.conversation_id)
+        .bind(replica.authority_message_id)
         .fetch_optional(&self.deps.db)
         .await
         .map_err(|err| map_manager_error(err.into()))?
@@ -176,6 +179,14 @@ impl TeamInternalControlService {
             .ok()
             .flatten()
             .unwrap_or_default();
+        let authority_conversation_id = row
+            .try_get::<Option<String>, _>("authority_conversation_id")
+            .ok()
+            .flatten();
+        let authority_task_id = row
+            .try_get::<Option<String>, _>("authority_task_id")
+            .ok()
+            .flatten();
 
         if replica.team_id != run_team_id
             || task_team_id.as_deref() != Some(replica.team_id.as_str())
@@ -184,6 +195,13 @@ impl TeamInternalControlService {
         {
             return Err(Status::invalid_argument(
                 "channel replica payload does not match run/team context",
+            ));
+        }
+        if authority_conversation_id.as_deref() != Some(replica.conversation_id.as_str())
+            || authority_task_id.as_deref() != Some(replica.task_id.as_str())
+        {
+            return Err(Status::invalid_argument(
+                "channel replica payload authority_message_id does not match canonical conversation context",
             ));
         }
         Ok(())

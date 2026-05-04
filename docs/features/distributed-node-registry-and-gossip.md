@@ -114,11 +114,13 @@ It may update local observations, but it must not redefine `main` authority rows
 
 ### 4) Group Boundary Contract
 
-- `group_id` defines the trust and routing domain.
-- `node_id` is unique within one `group_id`.
-- mailbox or execution routing must not cross `group_id` without an explicit future bridge
-  contract.
-- gossip membership exchange must be scoped by `group_id`.
+- `group_id` is the intended long-term trust and routing domain key.
+- `node_id` should become unique within one `group_id` as the group rollout becomes physical
+  schema, not just contract direction.
+- mailbox or execution routing should not cross `group_id` without an explicit future bridge
+  contract once `group_id` becomes live on those paths.
+- gossip membership exchange should be scoped by `group_id` once registry surfaces carry it
+  consistently.
 
 ### 5) Message Interaction Contract
 
@@ -143,6 +145,8 @@ This spec depends on `main` authoritative message storage:
 - Node-local SQLite mirrors may be versioned independently, but they must remain reconcilable
   against `main`.
 - Archive/search rollouts should treat node-local data as cache/projection, not canonical truth.
+- `group_id` remains a forward-compatibility boundary in this phase; the live runtime does not yet
+  enforce it across every node/message surface.
 
 ## Open Risks
 

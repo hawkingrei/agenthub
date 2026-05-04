@@ -40,13 +40,16 @@ AgentHub should model message metadata in three layers.
 This layer defines the logical message and execution truth. Authority-layer fields must be owned by
 `main` and must not be redefined by node-local caches or projections.
 
-Fields:
+Current authority-layer fields:
 
-- `group_id`
 - `run_id`
 - `conversation_id`
 - `authority_message_id`
 - `correlation_id`
+
+Future compatibility field:
+
+- `group_id`
 
 ### 2) Delivery Layer
 
@@ -154,6 +157,10 @@ must not be treated as the source of truth when data diverges.
 | remote relay route metadata | delivery metadata | `source_node_id`, `target_node_id`, optional `broadcast_id`, optional `correlation_id`, effective `idempotency_key` | transport/debug only |
 | archive/search document | projection row | `run_id`, `conversation_id`, `authority_message_id`, `correlation_id` | must point back to `main` authority |
 
+`group_id` is intentionally not listed as a required field in the current surface matrix because
+the live message schema does not carry it everywhere yet. This spec treats it as the forward
+compatibility isolation key for the multi-tenant/group rollout.
+
 ## Validation Matrix
 
 - `cargo test internal_grpc_mailbox_send_persists_channel_replica_history -- --nocapture`
@@ -167,6 +174,8 @@ must not be treated as the source of truth when data diverges.
   synchronization.
 - Node-local archive/search systems should index authority-linked projections, not invent new
   message identities.
+- Treat `group_id` as a compatibility target until the live message schema rolls it out across the
+  relevant persisted surfaces.
 - `conversation_id` is a conversation container id, not a message id.
 - Threads remain message-anchored conversation containers; their messages still need their own
   `authority_message_id` values.

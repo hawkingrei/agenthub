@@ -172,7 +172,6 @@ pub(super) fn resolve_channel_replica_request(payload: &Value) -> Option<Channel
     }
     Some(ChannelReplicaRequest {
         authority_message_id,
-        correlation_id: correlation_id.to_string(),
         team_id: team_id.to_string(),
         conversation_id: conversation_id.to_string(),
         task_id: task_id.to_string(),

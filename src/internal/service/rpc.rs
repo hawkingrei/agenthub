@@ -63,16 +63,6 @@ impl TeamInternalControl for TeamInternalControlService {
         if let (Some(replica), Some(source_node_id)) =
             (channel_replica, principal.source_node_id.as_deref())
         {
-            let payload_correlation_id = payload_json
-                .get("correlation_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or_default();
-            if payload_correlation_id != replica.correlation_id {
-                return Err(Status::invalid_argument(
-                    "channel replica payload correlation_id drifted during request processing",
-                ));
-            }
             self.deps
                 .teams
                 .append_channel_replica_message(
