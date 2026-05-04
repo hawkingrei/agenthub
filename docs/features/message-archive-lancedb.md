@@ -132,6 +132,8 @@ Aggregation rules for the first rollout:
   - first raw event id
   - last raw event id
   - chunk count
+- non-consecutive or malformed chunk sequences are treated as split logical segments in phase 1
+  instead of being force-merged across gaps
 - non-chunk ACP events such as `tool_call`, `tool_call_update`, `plan`, and generic
   `session_update` remain separate archive documents
 
@@ -207,6 +209,13 @@ Recommended identity shapes:
 - Aggregation must not merge different ACP message kinds together.
 - If a chunk payload is malformed or lacks a usable grouping key, it falls back to raw event
   document storage instead of guessing.
+- Phase 1 implementation note: when the same grouping key reappears with a non-consecutive
+  `chunk_index`, the current scaffold emits a new aggregate segment for that key instead of
+  force-merging across the gap.
+- Follow-up contract: before archive read paths become the only canonical ACP retrieval surface,
+  tighten this behavior so one stable logical message identity cannot fan out into multiple
+  aggregated archive documents for the same grouping key without an explicit malformed fallback
+  rule.
 
 ### 4) Search Contract
 
@@ -258,6 +267,9 @@ Recommended identity shapes:
   sensitive runtime state.
 - ACP aggregation should be deterministic so historical re-indexing produces the same logical
   archive documents as live dual-write.
+- Phase 1 intentionally favors deterministic split-on-gap behavior over speculative chunk repair;
+  stricter single-logical-message semantics for non-consecutive chunk streams remain a follow-up
+  item.
 
 ## Open Risks
 
