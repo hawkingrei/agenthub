@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray, UInt32Array};
+use arrow_array::{
+    Array, ArrayRef, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array,
+};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use futures::TryStreamExt;
 use lance_index::scalar::FullTextSearchQuery;
-use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::{Connection, connect, database::CreateTableMode, index::Index};
 
 use crate::model::{
@@ -157,6 +159,25 @@ impl LanceDbMessageArchive {
         ];
         Ok(RecordBatch::try_new(Self::schema(), arrays)?)
     }
+
+    fn build_filter(query: &MessageSearchQuery) -> Option<String> {
+        let mut predicates = Vec::new();
+        append_string_filter(&mut predicates, "team_id", query.team_id.as_deref());
+        append_string_filter(&mut predicates, "run_id", query.run_id.as_deref());
+        append_string_filter(
+            &mut predicates,
+            "conversation_id",
+            query.conversation_id.as_deref(),
+        );
+        append_string_filter(&mut predicates, "task_id", query.task_id.as_deref());
+        append_string_filter(&mut predicates, "agent_id", query.agent_id.as_deref());
+        append_string_filter(&mut predicates, "session_id", query.session_id.as_deref());
+        if let Some(source_kind) = query.source_kind {
+            append_string_filter(&mut predicates, "source_kind", Some(source_kind.as_str()));
+        }
+
+        (!predicates.is_empty()).then(|| predicates.join(" AND "))
+    }
 }
 
 #[async_trait]
@@ -165,10 +186,9 @@ impl MessageArchiveStore for LanceDbMessageArchive {
         let table = self.ensure_table().await?;
         table
             .create_index(&["body_text"], Index::FTS(Default::default()))
-            .replace(false)
+            .replace(true)
             .execute()
-            .await
-            .ok();
+            .await?;
         Ok(())
     }
 
@@ -183,18 +203,29 @@ impl MessageArchiveStore for LanceDbMessageArchive {
     }
 
     async fn search(&self, query: &MessageSearchQuery) -> Result<Vec<MessageSearchHit>> {
-        let table = self.ensure_table().await?;
         let query_text = query.query_text.trim();
-        if query_text.is_empty() {
+        if query_text.is_empty() || query.limit == 0 {
             return Ok(Vec::new());
         }
+        let table = self.ensure_table().await?;
 
-        let mut stream = table
+        let search = table
             .query()
             .full_text_search(FullTextSearchQuery::new(query_text.to_string()))
-            .limit(query.limit.max(1))
-            .execute()
-            .await?;
+            .select(Select::columns(&[
+                "document_id",
+                "source_kind",
+                "body_text",
+                "_score",
+            ]))
+            .limit(query.limit);
+        let search = if let Some(filter) = Self::build_filter(query) {
+            search.only_if(filter)
+        } else {
+            search
+        };
+
+        let mut stream = search.execute().await?;
 
         let mut hits = Vec::new();
         while let Some(batch) = stream.try_next().await? {
@@ -216,18 +247,33 @@ impl MessageArchiveStore for LanceDbMessageArchive {
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .expect("body_text string array");
+            let scores = batch
+                .column_by_name("_score")
+                .and_then(|column| column.as_any().downcast_ref::<Float32Array>());
 
             for row in 0..batch.num_rows() {
                 hits.push(MessageSearchHit {
                     document_id: document_ids.value(row).to_string(),
                     source_kind: parse_source_kind(source_kinds.value(row)),
                     body_text: body_texts.value(row).to_string(),
-                    score: None,
+                    score: scores
+                        .and_then(|values| values.is_valid(row).then(|| values.value(row))),
                 });
             }
         }
         Ok(hits)
     }
+}
+
+fn append_string_filter(predicates: &mut Vec<String>, column: &str, value: Option<&str>) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    predicates.push(format!("{column} = '{}'", escape_sql_literal(value)));
+}
+
+fn escape_sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn parse_source_kind(raw: &str) -> MessageDocumentKind {
@@ -293,5 +339,82 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "team_conversation_message:conv-1:1");
         assert_eq!(hits[0].body_text, "hello lancedb archive");
+        assert!(hits[0].score.is_some());
+    }
+
+    #[tokio::test]
+    async fn lancedb_archive_applies_scope_filters_and_zero_limit() {
+        let config = MessageArchiveConfig {
+            backend: MessageArchiveBackend::LanceDb,
+            uri: "memory://agenthub-message-archive-filtered".to_string(),
+            message_table: "messages".to_string(),
+        };
+        let archive = LanceDbMessageArchive::connect(config)
+            .await
+            .expect("connect archive");
+        archive.ensure_ready().await.expect("ensure ready");
+        archive
+            .append_documents(&[
+                MessageDocument {
+                    document_id: "doc-1".to_string(),
+                    source_kind: MessageDocumentKind::TeamConversationMessage,
+                    source_id: "1".to_string(),
+                    logical_message_id: Some("msg-1".to_string()),
+                    team_id: Some("team-a".to_string()),
+                    run_id: None,
+                    conversation_id: Some("conv-1".to_string()),
+                    task_id: None,
+                    agent_id: None,
+                    session_id: None,
+                    body_text: "hello alpha".to_string(),
+                    payload_json: None,
+                    created_at: 1,
+                    event_id_from: None,
+                    event_id_to: None,
+                    chunk_count: None,
+                },
+                MessageDocument {
+                    document_id: "doc-2".to_string(),
+                    source_kind: MessageDocumentKind::TeamConversationMessage,
+                    source_id: "2".to_string(),
+                    logical_message_id: Some("msg-2".to_string()),
+                    team_id: Some("team-b".to_string()),
+                    run_id: None,
+                    conversation_id: Some("conv-2".to_string()),
+                    task_id: None,
+                    agent_id: None,
+                    session_id: None,
+                    body_text: "hello beta".to_string(),
+                    payload_json: None,
+                    created_at: 2,
+                    event_id_from: None,
+                    event_id_to: None,
+                    chunk_count: None,
+                },
+            ])
+            .await
+            .expect("append docs");
+
+        let empty = archive
+            .search(&MessageSearchQuery {
+                query_text: "hello".to_string(),
+                limit: 0,
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert!(empty.is_empty());
+
+        let filtered = archive
+            .search(&MessageSearchQuery {
+                query_text: "hello".to_string(),
+                limit: 5,
+                team_id: Some("team-b".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search docs");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].document_id, "doc-2");
     }
 }
