@@ -104,8 +104,8 @@ mod tests {
 
     #[test]
     fn lancedb_backend_uses_canonical_config_string() {
-        let encoded = serde_json::to_string(&MessageArchiveBackend::LanceDb)
-            .expect("backend serializes");
+        let encoded =
+            serde_json::to_string(&MessageArchiveBackend::LanceDb).expect("backend serializes");
         assert_eq!(encoded, "\"lancedb\"");
 
         let canonical: MessageArchiveBackend =
