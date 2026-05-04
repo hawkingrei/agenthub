@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 
 import {
@@ -10,6 +12,11 @@ import {
   buildNodeNameUpdatePayload,
   buildNodeSettingsUpdatePayload,
 } from "./agent_nodes_workbench";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
 
 const baseProps: ComponentProps<typeof AgentNodesWorkbench> = {
   nodes: [
@@ -62,6 +69,23 @@ const renderWorkbench = (overrides?: Partial<ComponentProps<typeof AgentNodesWor
   );
 
 describe("AgentNodesWorkbench", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    installReactDomTestGlobals();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
   it("renders name, settings, and danger zone on remote node detail", () => {
     const html = renderWorkbench({
       agents: [
@@ -281,6 +305,13 @@ describe("AgentNodesWorkbench", () => {
   });
 
   it("builds a name-update payload without dropping persisted routing metadata", () => {
+    expect(buildNodeEditDraft(baseProps.nodes[1])).toEqual({
+      name: "Node East",
+      grpcTarget: "https://node-east.internal:50051",
+      tlsServerName: "node-east.internal",
+      defaultWorktreeRoot: "~/.agenthub/worktrees/node-east",
+    });
+
     expect(
       buildNodeNameUpdatePayload(baseProps.nodes[1], {
         ...buildNodeEditDraft(baseProps.nodes[1]),
@@ -324,5 +355,99 @@ describe("AgentNodesWorkbench", () => {
         }
       )
     ).toBeNull();
+  });
+
+  it("renders the no-team empty state when no teams use the selected node", () => {
+    const html = renderWorkbench({
+      agents: [],
+      teams: [],
+    });
+
+    expect(html).toContain("Teams Using This Node");
+    expect(html).toContain("No team attachments yet");
+    expect(html).toContain("No current team members resolve to this node");
+  });
+
+  it("routes node roster, create-agent, open-agent, and delete-node actions", () => {
+    const onSelectNode = vi.fn();
+    const onCreateAgent = vi.fn();
+    const onOpenAgent = vi.fn();
+    const onDeleteNode = vi.fn();
+
+    renderWithMantine(
+      root,
+      <AgentNodesWorkbench
+        {...baseProps}
+        agents={[
+          {
+            id: "agent-remote-1",
+            name: "Worker A",
+            command: "agenthub",
+            args: [],
+            workdir: "/tmp/worker-a",
+            status: "idle",
+            target_node_id: "node-east",
+            worktree_mode: "use_existing",
+            code_mode: false,
+            created_at: 1,
+            updated_at: 1,
+          },
+        ]}
+        onSelectNode={onSelectNode}
+        onCreateAgent={onCreateAgent}
+        onOpenAgent={onOpenAgent}
+        onDeleteNode={onDeleteNode}
+        deletingNodeIds={{ "node-east": false }}
+      />
+    );
+
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Main Node")
+        ) as HTMLButtonElement | undefined,
+        "main node roster button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Create Agent")
+        ) as HTMLButtonElement | undefined,
+        "create agent button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Open")
+        ) as HTMLButtonElement | undefined,
+        "open agent button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onSelectNode).toHaveBeenCalledWith("main");
+    expect(onCreateAgent).toHaveBeenCalledTimes(1);
+    expect(onOpenAgent).toHaveBeenCalledWith("agent-remote-1");
+
+    renderWithMantine(
+      root,
+      <AgentNodesWorkbench
+        {...baseProps}
+        agents={[]}
+        onDeleteNode={onDeleteNode}
+      />
+    );
+
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Delete Node")
+        ) as HTMLButtonElement | undefined,
+        "delete node button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onDeleteNode).toHaveBeenCalledWith("node-east");
   });
 });
