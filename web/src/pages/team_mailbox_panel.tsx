@@ -557,7 +557,7 @@ function TeamMailboxPanelImpl(props: TeamMailboxPanelProps) {
 
             <ul
               className={MAILBOX_MESSAGE_LIST_CLASS}
-              ref={chatMessagesRef as React.RefObject<HTMLUListElement>}
+              ref={chatMessagesRef as React.Ref<HTMLUListElement>}
               onScroll={() => onConversationScroll()}
             >
               {conversationRows.map((row) => {

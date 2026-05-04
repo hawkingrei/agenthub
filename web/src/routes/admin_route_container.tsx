@@ -109,7 +109,7 @@ export function AdminRouteContainer({
   };
 
   return (
-    <div className="app bg-white" ref={appRootRef as React.RefObject<HTMLDivElement>}>
+    <div className="app bg-white" ref={appRootRef as React.Ref<HTMLDivElement>}>
       <Suspense fallback={<RouteFallback label="Loading admin console..." />}>
         <LazyAdminPage {...pageProps} />
       </Suspense>

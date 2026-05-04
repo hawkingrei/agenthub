@@ -643,7 +643,7 @@ function DebugTerminalOutput({
   return (
     <div
       className={DEBUG_TERMINAL_CONTAINER_CLASS}
-      ref={containerRef as React.RefObject<HTMLDivElement>}
+      ref={containerRef as React.Ref<HTMLDivElement>}
       onScroll={onScroll}
     >
       {outputs.map((line) => {

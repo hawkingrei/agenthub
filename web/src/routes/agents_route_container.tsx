@@ -88,10 +88,10 @@ export function AgentsRouteContainer({
   const showRouteOutputHeader = activeWorkspaceLens !== "nodes";
   const canManageNodes = canManageAgentNodes(auth);
   const rootWorkbenchNode = React.useMemo(
-    () =>
-      activeWorkspaceLens === "nodes"
-        ? canManageNodes
-          ? (
+    () => {
+      switch (activeWorkspaceLens) {
+        case "nodes":
+          return canManageNodes ? (
             <AgentNodesWorkbench
               nodes={nodes}
               agents={agents}
@@ -109,27 +109,21 @@ export function AgentsRouteContainer({
               onUpdateNode={onUpdateNode}
               onDeleteNode={onDeleteNode}
             />
-          )
-          : (
+          ) : (
             <WorkspaceMachinesUnavailablePlaceholder className="m-6 text-center" />
-          )
-        : activeWorkspaceLens === "search"
-          ? (
-            <WorkspaceSearchLensPlaceholder className="m-4" />
-          )
-          : activeWorkspaceLens === "channels"
-            ? (
-              <WorkspaceChannelsLensPlaceholder className="m-4" />
-            )
-            : activeWorkspaceLens === "tasks"
-              ? (
-                <WorkspaceTasksLensPlaceholder className="m-4" />
-              )
-              : activeWorkspaceLens === "members"
-                ? (
-                  <WorkspaceMembersLensPlaceholder className="m-4" />
-                )
-                : null,
+          );
+        case "search":
+          return <WorkspaceSearchLensPlaceholder className="m-4" />;
+        case "channels":
+          return <WorkspaceChannelsLensPlaceholder className="m-4" />;
+        case "tasks":
+          return <WorkspaceTasksLensPlaceholder className="m-4" />;
+        case "members":
+          return <WorkspaceMembersLensPlaceholder className="m-4" />;
+        default:
+          return null;
+      }
+    },
     [
       activeWorkspaceLens,
       canManageNodes,

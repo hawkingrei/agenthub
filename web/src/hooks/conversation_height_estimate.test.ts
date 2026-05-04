@@ -3,7 +3,7 @@ import { layout, prepare } from "@chenglou/pretext";
 import type { ConversationItem } from "../conversation";
 
 vi.mock("@chenglou/pretext", () => ({
-  prepare: vi.fn((text: string, _font?: string) => ({ text })),
+  prepare: vi.fn((text: string) => ({ text })),
   layout: vi.fn(
     (
       prepared: { text: string },
