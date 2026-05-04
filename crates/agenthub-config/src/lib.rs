@@ -758,7 +758,7 @@ mod tests {
     fn message_archive_defaults_point_to_lancedb() {
         let config = AppConfig::default();
         assert_eq!(config.message_archive_backend(), "lancedb");
-        let home = std::env::var("HOME").expect("HOME");
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.message_archive_uri(),
             std::path::Path::new(&home)
@@ -794,7 +794,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        let home = std::env::var("HOME").expect("HOME");
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         assert_eq!(
             config.message_archive_uri(),
             std::path::Path::new(&home)
