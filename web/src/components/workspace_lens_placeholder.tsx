@@ -10,6 +10,18 @@ export const SHARED_WORKSPACE_SEARCH_LENS_HINT =
 export const WORKSPACE_MACHINES_UNAVAILABLE_TITLE = "Machines unavailable";
 export const WORKSPACE_MACHINES_UNAVAILABLE_BODY =
   "You do not have permission to manage machines. Select another workspace view to continue.";
+const WORKSPACE_CROSS_ENTITY_CHANNELS_TITLE =
+  "Workspace channels aggregate across teams";
+const WORKSPACE_CROSS_ENTITY_CHANNELS_BODY =
+  "Open a team to browse its channels and threads. A shared cross-team channel index will land in a future workspace shell phase.";
+const WORKSPACE_CROSS_ENTITY_TASKS_TITLE =
+  "Workspace tasks aggregate across teams";
+const WORKSPACE_CROSS_ENTITY_TASKS_BODY =
+  "Open a team to browse its Kanban board and active tasks. A shared cross-team task view will land in a future workspace shell phase.";
+const WORKSPACE_CROSS_ENTITY_MEMBERS_TITLE =
+  "Workspace members aggregate across teams";
+const WORKSPACE_CROSS_ENTITY_MEMBERS_BODY =
+  "Open a team to browse its member roster. A shared cross-team member directory will land in a future workspace shell phase.";
 
 type WorkspaceLensPlaceholderProps = {
   lensLabel: string;
@@ -63,6 +75,51 @@ export function WorkspaceMachinesUnavailablePlaceholder({
       lensLabel="Machines"
       title={WORKSPACE_MACHINES_UNAVAILABLE_TITLE}
       body={WORKSPACE_MACHINES_UNAVAILABLE_BODY}
+      className={className}
+    />
+  );
+}
+
+export function WorkspaceChannelsLensPlaceholder({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <WorkspaceLensPlaceholder
+      lensLabel="Channels"
+      title={WORKSPACE_CROSS_ENTITY_CHANNELS_TITLE}
+      body={WORKSPACE_CROSS_ENTITY_CHANNELS_BODY}
+      className={className}
+    />
+  );
+}
+
+export function WorkspaceTasksLensPlaceholder({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <WorkspaceLensPlaceholder
+      lensLabel="Tasks"
+      title={WORKSPACE_CROSS_ENTITY_TASKS_TITLE}
+      body={WORKSPACE_CROSS_ENTITY_TASKS_BODY}
+      className={className}
+    />
+  );
+}
+
+export function WorkspaceMembersLensPlaceholder({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <WorkspaceLensPlaceholder
+      lensLabel="Members"
+      title={WORKSPACE_CROSS_ENTITY_MEMBERS_TITLE}
+      body={WORKSPACE_CROSS_ENTITY_MEMBERS_BODY}
       className={className}
     />
   );

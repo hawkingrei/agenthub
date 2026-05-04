@@ -57,7 +57,7 @@ export const AgentsRouteShellView = React.memo(function AgentsRouteShellView({
           ? APP_WORKSPACE_ROOT_COLLAPSED_CLASS
           : APP_WORKSPACE_ROOT_CLASS
       }
-      ref={workspaceRef}
+      ref={workspaceRef as React.Ref<HTMLElement>}
       style={workspaceStyle}
     >
       <AgentsPanel {...agentsPanelProps} />

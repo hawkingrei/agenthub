@@ -665,7 +665,7 @@ export function TeamPage(props: TeamPageProps) {
     const normalized = normalizeWorkdirInput(props.defaultWorktreeRoot ?? "");
     return normalized || DEFAULT_WORKTREE_ROOT;
   }, [props.defaultWorktreeRoot]);
-  const isCompactWorkbench = useMediaQuery("(max-width: 1023px)");
+  const isCompactWorkbench = useMediaQuery("(max-width: 1023px)") ?? false;
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -676,7 +676,7 @@ export function TeamPage(props: TeamPageProps) {
   const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
   const [teamDebugTag, setTeamDebugTag] = useState<TeamDebugTag>("run_ops");
   const mobileRouteTeamIdRef = useRef<string | null>(null);
-  const previousCompactWorkbenchRef = useRef<boolean>(isCompactWorkbench);
+  const previousCompactWorkbenchRef = useRef<boolean>(isCompactWorkbench ?? false);
   useEffect(() => {
     document.body.classList.add("teams-page");
     return () => {

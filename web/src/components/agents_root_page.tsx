@@ -114,10 +114,10 @@ export const AgentsRootPage = React.memo(function AgentsRootPage({
   onSelectLens,
 }: AgentsRootPageProps) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white" ref={appRootRef}>
+    <div className="flex h-screen flex-col overflow-hidden bg-white" ref={appRootRef as React.Ref<HTMLDivElement>}>
       {auth ? (
         <WorkspaceShellHeader
-          ref={appHeaderRef}
+          ref={appHeaderRef as React.Ref<HTMLElement>}
           activeSurface="workspace"
           title="Workspace"
           subtitle={null}

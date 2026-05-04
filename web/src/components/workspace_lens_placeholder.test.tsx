@@ -5,6 +5,9 @@ import {
   WorkspaceMachinesUnavailablePlaceholder,
   WorkspaceLensPlaceholder,
   WorkspaceSearchLensPlaceholder,
+  WorkspaceChannelsLensPlaceholder,
+  WorkspaceTasksLensPlaceholder,
+  WorkspaceMembersLensPlaceholder,
 } from "./workspace_lens_placeholder";
 
 describe("WorkspaceLensPlaceholder", () => {
@@ -52,5 +55,47 @@ describe("WorkspaceLensPlaceholder", () => {
     expect(html).toContain("permission to manage machines");
     expect(html).toContain("machines-card");
     expect(html).toContain("data-workspace-lens-placeholder=\"machines\"");
+  });
+
+  it("renders the workspace channels cross-entity placeholder", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <WorkspaceChannelsLensPlaceholder className="channels-card" />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Channels");
+    expect(html).toContain("Workspace channels aggregate across teams");
+    expect(html).toContain("cross-team channel index");
+    expect(html).toContain("channels-card");
+    expect(html).toContain("data-workspace-lens-placeholder=\"channels\"");
+  });
+
+  it("renders the workspace tasks cross-entity placeholder", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <WorkspaceTasksLensPlaceholder className="tasks-card" />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Tasks");
+    expect(html).toContain("Workspace tasks aggregate across teams");
+    expect(html).toContain("cross-team task view");
+    expect(html).toContain("tasks-card");
+    expect(html).toContain("data-workspace-lens-placeholder=\"tasks\"");
+  });
+
+  it("renders the workspace members cross-entity placeholder", () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <WorkspaceMembersLensPlaceholder className="members-card" />
+      </MantineProvider>
+    );
+
+    expect(html).toContain("Members");
+    expect(html).toContain("Workspace members aggregate across teams");
+    expect(html).toContain("cross-team member directory");
+    expect(html).toContain("members-card");
+    expect(html).toContain("data-workspace-lens-placeholder=\"members\"");
   });
 });

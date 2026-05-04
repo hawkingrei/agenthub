@@ -244,9 +244,13 @@ export const TeamWorkbenchContent = React.memo(function TeamWorkbenchContent({
               )}
 
               {activeWorkspaceLens !== "search" && tab === "conversation" && (
-                <div className="flex min-h-0 min-w-0 flex-1 gap-3 overflow-hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{conversationPanel}</div>
-                  {threadPane}
+                  {threadPane && (
+                    <div className="flex max-h-[40vh] min-h-0 shrink-0 flex-col lg:max-h-none lg:w-[380px] lg:flex-shrink-0">
+                      {threadPane}
+                    </div>
+                  )}
                 </div>
               )}
 

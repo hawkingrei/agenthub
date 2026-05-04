@@ -386,7 +386,7 @@ export const TeamThreadPane = React.memo(function TeamThreadPane({
         <div className="border-t border-notion-border/55 bg-white/92 px-2.5 py-1.5">
           <div className={TEAM_MESSAGE_COMPOSER_SHELL_CLASS}>
             <div className="px-1 pb-1 text-[10px] leading-5 text-notion-text-muted">
-              Reply in thread · {channelLabel}
+              Full context in thread · root message stays summary-first · {channelLabel}
             </div>
             <div className={TEAM_MESSAGE_COMPOSER_EDITOR_ROW_CLASS}>
               <textarea
