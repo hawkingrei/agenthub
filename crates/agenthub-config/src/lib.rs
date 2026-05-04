@@ -26,6 +26,7 @@ pub struct AppConfig {
     pub worktree: Option<WorktreeConfig>,
     pub codex_acp: Option<CodexAcpConfig>,
     pub history: Option<HistoryConfig>,
+    pub message_archive: Option<MessageArchiveConfig>,
     pub push: Option<PushConfig>,
     pub internal_grpc: Option<InternalGrpcConfig>,
     pub safe_paths: Option<Vec<String>>,
@@ -95,6 +96,13 @@ pub struct HistoryConfig {
     pub event_retention_days: Option<u32>,
     pub vacuum_on_cleanup: Option<bool>,
     pub delete_batch_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MessageArchiveConfig {
+    pub backend: Option<String>,
+    pub uri: Option<String>,
+    pub message_table: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -297,6 +305,36 @@ impl AppConfig {
             .unwrap_or(true)
     }
 
+    pub fn message_archive_backend(&self) -> String {
+        self.message_archive
+            .as_ref()
+            .and_then(|config| config.backend.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("lancedb")
+            .to_ascii_lowercase()
+    }
+
+    pub fn message_archive_uri(&self) -> String {
+        self.message_archive
+            .as_ref()
+            .and_then(|config| config.uri.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("~/.agenthub/message-archive")
+            .to_string()
+    }
+
+    pub fn message_archive_table(&self) -> String {
+        self.message_archive
+            .as_ref()
+            .and_then(|config| config.message_table.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("messages")
+            .to_string()
+    }
+
     pub fn history_event_retention_days(&self) -> Option<u32> {
         let days = self
             .history
@@ -487,7 +525,8 @@ fn detect_env_overrides() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, CodexAcpConfig, HistoryConfig, ServerConfig, ServerRole, WorktreeConfig,
+        AppConfig, CodexAcpConfig, HistoryConfig, MessageArchiveConfig, ServerConfig, ServerRole,
+        WorktreeConfig,
     };
 
     #[test]
@@ -712,5 +751,28 @@ mod tests {
     fn passkey_enabled_defaults_to_false() {
         let config = AppConfig::default();
         assert!(!config.passkey_enabled());
+    }
+
+    #[test]
+    fn message_archive_defaults_point_to_lancedb() {
+        let config = AppConfig::default();
+        assert_eq!(config.message_archive_backend(), "lancedb");
+        assert_eq!(config.message_archive_uri(), "~/.agenthub/message-archive");
+        assert_eq!(config.message_archive_table(), "messages");
+    }
+
+    #[test]
+    fn message_archive_config_preserves_trimmed_values() {
+        let config = AppConfig {
+            message_archive: Some(MessageArchiveConfig {
+                backend: Some(" lanceDb ".to_string()),
+                uri: Some(" /tmp/archive ".to_string()),
+                message_table: Some(" archive_messages ".to_string()),
+            }),
+            ..Default::default()
+        };
+        assert_eq!(config.message_archive_backend(), "lancedb");
+        assert_eq!(config.message_archive_uri(), "/tmp/archive");
+        assert_eq!(config.message_archive_table(), "archive_messages");
     }
 }

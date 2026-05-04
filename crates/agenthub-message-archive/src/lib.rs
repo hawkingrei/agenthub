@@ -1,0 +1,12 @@
+mod acp;
+mod factory;
+mod lance;
+mod model;
+
+pub use acp::{AcpAggregatedMessage, AcpEventRow, aggregate_acp_chunk_rows};
+pub use factory::{MessageArchiveStoreRef, open_message_archive_store};
+pub use lance::LanceDbMessageArchive;
+pub use model::{
+    MessageArchiveBackend, MessageArchiveConfig, MessageArchiveStore, MessageDocument,
+    MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
+};
