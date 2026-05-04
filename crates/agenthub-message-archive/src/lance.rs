@@ -189,10 +189,9 @@ impl MessageArchiveStore for LanceDbMessageArchive {
             .replace(false)
             .execute()
             .await
+            && !is_existing_index_error(&err)
         {
-            if !is_existing_index_error(&err) {
-                return Err(err.into());
-            }
+            return Err(err.into());
         }
         Ok(())
     }
@@ -433,7 +432,6 @@ mod tests {
                 agent_id: Some("agent-b".to_string()),
                 session_id: Some("session-b".to_string()),
                 source_kind: Some(MessageDocumentKind::TeamRunEvent),
-                ..Default::default()
             })
             .await
             .expect("search docs");
