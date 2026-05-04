@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentNodeRecord, AgentRecord } from "../api";
-import { deriveDetectedNodeRuntimes } from "./agent_node_detail_shared";
+import {
+  deriveDetectedNodeRuntimes,
+  resolveAgentRuntimeLabels,
+} from "./agent_node_detail_shared";
 
 const remoteNode: AgentNodeRecord = {
   id: "node-east",
@@ -55,5 +58,25 @@ describe("deriveDetectedNodeRuntimes", () => {
       { label: "Codex CLI (not detected)", available: false },
       { label: "Gemini CLI (not detected)", available: false },
     ]);
+  });
+});
+
+describe("resolveAgentRuntimeLabels", () => {
+  it("keeps stable runtime badges for agenthub and codex-backed agents", () => {
+    expect(resolveAgentRuntimeLabels(agent({ command: "agenthub codex" }))).toEqual([
+      { label: "AgentHub Runtime", tone: "outline" },
+      { label: "Codex CLI", tone: "subtle" },
+    ]);
+  });
+
+  it("falls back to a custom runtime label when no known provider is detected", () => {
+    expect(
+      resolveAgentRuntimeLabels(
+        agent({
+          command: "python worker.py",
+          code_mode: false,
+        })
+      )
+    ).toEqual([{ label: "Custom Runtime", tone: "outline" }]);
   });
 });

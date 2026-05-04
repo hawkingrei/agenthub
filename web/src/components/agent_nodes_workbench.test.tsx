@@ -1,9 +1,22 @@
+// @vitest-environment jsdom
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MantineProvider } from "@mantine/core";
 
-import { AgentNodesWorkbench } from "./agent_nodes_workbench";
+import {
+  AgentNodesWorkbench,
+  buildNodeEditDraft,
+  buildNodeNameUpdatePayload,
+  buildNodeSettingsUpdatePayload,
+} from "./agent_nodes_workbench";
+import {
+  installReactDomTestGlobals,
+  renderWithMantine,
+  required,
+} from "../test_utils/react_test_helpers";
 
 const baseProps: ComponentProps<typeof AgentNodesWorkbench> = {
   nodes: [
@@ -56,7 +69,24 @@ const renderWorkbench = (overrides?: Partial<ComponentProps<typeof AgentNodesWor
   );
 
 describe("AgentNodesWorkbench", () => {
-  it("renders settings and danger zone on remote node detail", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    installReactDomTestGlobals();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("renders name, settings, and danger zone on remote node detail", () => {
     const html = renderWorkbench({
       agents: [
         {
@@ -108,6 +138,8 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("internal_grpc.bootstrap.token");
     expect(html).toContain("Runtime signal");
     expect(html).toContain("Registry evidence");
+    expect(html).toContain("Name");
+    expect(html).toContain("Save Name");
     expect(html).toContain("Settings");
     expect(html).toContain("Save Settings");
     expect(html).toContain("Teams Using This Node");
@@ -122,6 +154,7 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("1 agent · 1 team");
     expect(html).toContain("Worker A · coordinator");
     expect(html).toContain("Working");
+    expect(html).toContain("AgentHub Runtime");
     expect(html).toContain("Worktree: Existing workdir");
     expect(html).toContain('href="/workspace/teams/team-1?lens=members&amp;member=agent-remote-1&amp;tab=thread"');
     expect(
@@ -145,8 +178,11 @@ describe("AgentNodesWorkbench", () => {
 
     expect(html).toContain("Main Node");
     expect(html).toContain("Connected");
+    expect(html).toContain("Name");
     expect(html).toContain("Danger Zone");
+    expect(html).toContain("read only");
     expect(html).toContain("cannot be deleted");
+    expect(html).not.toContain("Save Name");
     expect(html).not.toContain("Save Settings");
   });
 
@@ -228,5 +264,206 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("1 team");
     expect(html).toContain("1 member");
     expect(html).toContain("tidb-fuzz-bugfix-team-worker-1 · worker");
+  });
+
+  it("shows explicit runtime/provider badges for attached agents", () => {
+    const html = renderWorkbench({
+      agents: [
+        {
+          id: "agent-gemini-1",
+          name: "Gemini Worker",
+          command: "gemini --model gemini-pro",
+          args: [],
+          workdir: "/tmp/gemini-worker",
+          status: "idle",
+          target_node_id: "node-east",
+          worktree_mode: "create_worktree",
+          code_mode: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          id: "agent-custom-1",
+          name: "Custom Worker",
+          command: "python worker.py",
+          args: [],
+          workdir: "/tmp/custom-worker",
+          status: "stopped",
+          target_node_id: "node-east",
+          worktree_mode: "reuse_worktree",
+          code_mode: false,
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+    });
+
+    expect(html).toContain("Gemini Worker");
+    expect(html).toContain("Gemini CLI");
+    expect(html).toContain("Custom Worker");
+    expect(html).toContain("Custom Runtime");
+  });
+
+  it("builds a name-update payload without dropping persisted routing metadata", () => {
+    expect(buildNodeEditDraft(baseProps.nodes[1])).toEqual({
+      name: "Node East",
+      grpcTarget: "https://node-east.internal:50051",
+      tlsServerName: "node-east.internal",
+      defaultWorktreeRoot: "~/.agenthub/worktrees/node-east",
+    });
+
+    expect(
+      buildNodeNameUpdatePayload(baseProps.nodes[1], {
+        ...buildNodeEditDraft(baseProps.nodes[1]),
+        name: "Node East Renamed",
+      })
+    ).toEqual({
+      name: "Node East Renamed",
+      grpc_target: "https://node-east.internal:50051",
+      tls_server_name: "node-east.internal",
+      default_worktree_root: "~/.agenthub/worktrees/node-east",
+    });
+  });
+
+  it("keeps unsaved routing edits out of the name-only payload", () => {
+    expect(
+      buildNodeNameUpdatePayload(baseProps.nodes[1], {
+        name: "Node East Renamed",
+        grpcTarget: "https://unsaved-change.internal:60061",
+        tlsServerName: "unsaved-change.internal",
+        defaultWorktreeRoot: "/srv/unsaved-change",
+      })
+    ).toEqual({
+      name: "Node East Renamed",
+      grpc_target: "https://node-east.internal:50051",
+      tls_server_name: "node-east.internal",
+      default_worktree_root: "~/.agenthub/worktrees/node-east",
+    });
+  });
+
+  it("builds a settings-update payload without mutating the persisted node name", () => {
+    expect(
+      buildNodeSettingsUpdatePayload(baseProps.nodes[1], {
+        grpcTarget: "https://node-east.internal:60061",
+        tlsServerName: "node-east-alt.internal",
+        defaultWorktreeRoot: "/srv/agenthub/worktrees/node-east",
+      })
+    ).toEqual({
+      name: "Node East",
+      grpc_target: "https://node-east.internal:60061",
+      tls_server_name: "node-east-alt.internal",
+      default_worktree_root: "/srv/agenthub/worktrees/node-east",
+    });
+  });
+
+  it("refuses to build a name-update payload when no routing target exists", () => {
+    expect(
+      buildNodeNameUpdatePayload(
+        {
+          ...baseProps.nodes[1],
+          grpc_target: null,
+        },
+        {
+          name: "Node East Renamed",
+          grpcTarget: "",
+          tlsServerName: "",
+          defaultWorktreeRoot: "",
+        }
+      )
+    ).toBeNull();
+  });
+
+  it("renders the no-team empty state when no teams use the selected node", () => {
+    const html = renderWorkbench({
+      agents: [],
+      teams: [],
+    });
+
+    expect(html).toContain("Teams Using This Node");
+    expect(html).toContain("No team attachments yet");
+    expect(html).toContain("No current team members resolve to this node");
+  });
+
+  it("routes node roster, create-agent, open-agent, and delete-node actions", () => {
+    const onSelectNode = vi.fn();
+    const onCreateAgent = vi.fn();
+    const onOpenAgent = vi.fn();
+    const onDeleteNode = vi.fn();
+
+    renderWithMantine(
+      root,
+      <AgentNodesWorkbench
+        {...baseProps}
+        agents={[
+          {
+            id: "agent-remote-1",
+            name: "Worker A",
+            command: "agenthub",
+            args: [],
+            workdir: "/tmp/worker-a",
+            status: "idle",
+            target_node_id: "node-east",
+            worktree_mode: "use_existing",
+            code_mode: false,
+            created_at: 1,
+            updated_at: 1,
+          },
+        ]}
+        onSelectNode={onSelectNode}
+        onCreateAgent={onCreateAgent}
+        onOpenAgent={onOpenAgent}
+        onDeleteNode={onDeleteNode}
+        deletingNodeIds={{ "node-east": false }}
+      />
+    );
+
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Main Node")
+        ) as HTMLButtonElement | undefined,
+        "main node roster button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Create Agent")
+        ) as HTMLButtonElement | undefined,
+        "create agent button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Open")
+        ) as HTMLButtonElement | undefined,
+        "open agent button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onSelectNode).toHaveBeenCalledWith("main");
+    expect(onCreateAgent).toHaveBeenCalledTimes(1);
+    expect(onOpenAgent).toHaveBeenCalledWith("agent-remote-1");
+
+    renderWithMantine(
+      root,
+      <AgentNodesWorkbench
+        {...baseProps}
+        agents={[]}
+        onDeleteNode={onDeleteNode}
+      />
+    );
+
+    act(() => {
+      required(
+        Array.from(container.querySelectorAll("button")).find((node) =>
+          node.textContent?.includes("Delete Node")
+        ) as HTMLButtonElement | undefined,
+        "delete node button missing"
+      ).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onDeleteNode).toHaveBeenCalledWith("node-east");
   });
 });

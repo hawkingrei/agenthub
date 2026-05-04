@@ -75,6 +75,41 @@ export function describeAgentAttachment(agent: AgentRecord): string {
   return `Worktree: ${worktreeModeLabel}`;
 }
 
+type AgentRuntimeLabel = {
+  label: string;
+  tone: "subtle" | "outline";
+};
+
+export function resolveAgentRuntimeLabels(agent: AgentRecord): AgentRuntimeLabel[] {
+  const command = (agent.command ?? "").trim().toLowerCase();
+  const labels = new Map<string, AgentRuntimeLabel>();
+  if (command.includes("agenthub")) {
+    labels.set("AgentHub Runtime", {
+      label: "AgentHub Runtime",
+      tone: "outline",
+    });
+  }
+  if (command.includes("codex") || agent.code_mode) {
+    labels.set("Codex CLI", {
+      label: "Codex CLI",
+      tone: "subtle",
+    });
+  }
+  if (command.includes("gemini")) {
+    labels.set("Gemini CLI", {
+      label: "Gemini CLI",
+      tone: "subtle",
+    });
+  }
+  if (labels.size === 0) {
+    labels.set("Custom Runtime", {
+      label: "Custom Runtime",
+      tone: "outline",
+    });
+  }
+  return Array.from(labels.values());
+}
+
 function formatAgentStatusLabel(status: string): string {
   const normalized = status.trim().toLowerCase();
   switch (normalized) {
@@ -601,6 +636,14 @@ export function AgentNodeDetailCard({
                       <Badge tone="subtle" className="uppercase">
                         {formatAgentStatusLabel(agent.status)}
                       </Badge>
+                      {resolveAgentRuntimeLabels(agent).map((runtime) => (
+                        <Badge
+                          key={`${agent.id}-${runtime.label}`}
+                          tone={runtime.tone}
+                        >
+                          {runtime.label}
+                        </Badge>
+                      ))}
                     </div>
                     {describeAgentAttachment(agent) ? (
                       <Text size="xs" c="dimmed" mt={2}>
