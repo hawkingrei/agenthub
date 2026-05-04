@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum MessageArchiveBackend {
     Sqlite,
     #[default]
+    #[serde(rename = "lancedb", alias = "lance_db")]
     LanceDb,
 }
 
@@ -95,4 +96,24 @@ pub trait MessageArchiveStore: Send + Sync {
     async fn ensure_ready(&self) -> Result<()>;
     async fn append_documents(&self, documents: &[MessageDocument]) -> Result<()>;
     async fn search(&self, query: &MessageSearchQuery) -> Result<Vec<MessageSearchHit>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MessageArchiveBackend;
+
+    #[test]
+    fn lancedb_backend_uses_canonical_config_string() {
+        let encoded = serde_json::to_string(&MessageArchiveBackend::LanceDb)
+            .expect("backend serializes");
+        assert_eq!(encoded, "\"lancedb\"");
+
+        let canonical: MessageArchiveBackend =
+            serde_json::from_str("\"lancedb\"").expect("canonical string parses");
+        assert_eq!(canonical, MessageArchiveBackend::LanceDb);
+
+        let legacy_alias: MessageArchiveBackend =
+            serde_json::from_str("\"lance_db\"").expect("legacy alias parses");
+        assert_eq!(legacy_alias, MessageArchiveBackend::LanceDb);
+    }
 }
