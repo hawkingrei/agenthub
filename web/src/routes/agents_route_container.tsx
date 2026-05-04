@@ -17,6 +17,9 @@ import type { OutputHeaderProps } from "../components/output_header";
 import {
   WorkspaceMachinesUnavailablePlaceholder,
   WorkspaceSearchLensPlaceholder,
+  WorkspaceChannelsLensPlaceholder,
+  WorkspaceTasksLensPlaceholder,
+  WorkspaceMembersLensPlaceholder,
 } from "../components/workspace_lens_placeholder";
 
 type AgentsRouteContainerProps = Omit<
@@ -114,7 +117,19 @@ export function AgentsRouteContainer({
           ? (
             <WorkspaceSearchLensPlaceholder className="m-4" />
           )
-          : null,
+          : activeWorkspaceLens === "channels"
+            ? (
+              <WorkspaceChannelsLensPlaceholder className="m-4" />
+            )
+            : activeWorkspaceLens === "tasks"
+              ? (
+                <WorkspaceTasksLensPlaceholder className="m-4" />
+              )
+              : activeWorkspaceLens === "members"
+                ? (
+                  <WorkspaceMembersLensPlaceholder className="m-4" />
+                )
+                : null,
     [
       activeWorkspaceLens,
       canManageNodes,

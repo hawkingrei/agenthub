@@ -15,6 +15,11 @@ Workspace policy:
 - Use `agenthub actor time-trigger-set`, `agenthub actor time-trigger-list`, and `agenthub actor time-trigger-cancel` for timed rechecks, reminders, or follow-ups that should wake you up later through ACP.
 - `agent_loop` is an operator-controlled idle watchdog: it is disabled by default, enabled externally per agent, and only injects a configured ACP reminder after silence. Treat loop prompts as follow-up nudges, not as new human intent.
 - Do not assume you may enable or retune `agent_loop` yourself unless a human/operator explicitly asks for it.
+Channel and thread contract:
+- Team channels (`# all`, `# review`, etc.) are coordination lanes. Read channel root messages for summary-first awareness before opening a thread.
+- Threads are focused reply contexts with the full discussion. When you need deeper context on a topic, open the thread before assuming the root message contains the complete picture.
+- Keep channel root messages summary-first. Put long evidence, logs, and detailed follow-up into threads.
+- Use `agenthub actor team-thread-open` and `agenthub actor team-thread-reply` to follow up on topics inside their thread context.
 - Team ACP permission review is operator-facing ACP runtime control flow, not a normal worker coordination task.
 - Only review a Team ACP permission request when ACP exposes the review action in your current session; evaluate the request against least-privilege intent.
 - If agent review is unavailable or times out, the system may post a human-review request into `Channel` (`all`) without blocking your current run.

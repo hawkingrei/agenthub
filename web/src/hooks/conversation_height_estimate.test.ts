@@ -3,7 +3,7 @@ import { layout, prepare } from "@chenglou/pretext";
 import type { ConversationItem } from "../conversation";
 
 vi.mock("@chenglou/pretext", () => ({
-  prepare: vi.fn((text: string) => ({ text })),
+  prepare: vi.fn((text: string, _font?: string) => ({ text })),
   layout: vi.fn(
     (
       prepared: { text: string },
@@ -246,7 +246,7 @@ describe("conversation_height_estimate", () => {
     );
     const prepareMock = vi.mocked(prepare);
     expect(
-      prepareMock.mock.calls.some(([text]) =>
+      prepareMock.mock.calls.some(([text]: [string, string]) =>
         String(text).includes("#123") && String(text).includes("a > b")
       )
     ).toBe(true);
@@ -260,12 +260,12 @@ describe("conversation_height_estimate", () => {
     );
     const prepareMock = vi.mocked(prepare);
     expect(
-      prepareMock.mock.calls.some(([, font]) =>
+      prepareMock.mock.calls.some(([, font]: [string, string]) =>
         String(font).includes('600 18px "Space Grotesk"')
       )
     ).toBe(true);
     expect(
-      prepareMock.mock.calls.some(([, font]) =>
+      prepareMock.mock.calls.some(([, font]: [string, string]) =>
         String(font).includes('600 14px "Space Grotesk"')
       )
     ).toBe(true);
@@ -289,7 +289,7 @@ describe("conversation_height_estimate", () => {
     estimateConversationItemHeight(makeMessage("font check", 18), 720, 48);
     const prepareMock = vi.mocked(prepare);
     expect(
-      prepareMock.mock.calls.some(([, font]) =>
+      prepareMock.mock.calls.some(([, font]: [string, string]) =>
         String(font).includes("Space Grotesk")
       )
     ).toBe(true);

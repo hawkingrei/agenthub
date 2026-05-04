@@ -25,7 +25,7 @@ export function TerminalOutput({
   return (
     <Box
       className={TERMINAL_CONTAINER_CLASS}
-      ref={containerRef}
+      ref={containerRef as React.RefObject<HTMLDivElement>}
       onScroll={onScroll}
     >
       {outputs.map((line) => {
