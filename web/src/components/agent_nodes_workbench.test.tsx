@@ -325,6 +325,22 @@ describe("AgentNodesWorkbench", () => {
     });
   });
 
+  it("keeps unsaved routing edits out of the name-only payload", () => {
+    expect(
+      buildNodeNameUpdatePayload(baseProps.nodes[1], {
+        name: "Node East Renamed",
+        grpcTarget: "https://unsaved-change.internal:60061",
+        tlsServerName: "unsaved-change.internal",
+        defaultWorktreeRoot: "/srv/unsaved-change",
+      })
+    ).toEqual({
+      name: "Node East Renamed",
+      grpc_target: "https://node-east.internal:50051",
+      tls_server_name: "node-east.internal",
+      default_worktree_root: "~/.agenthub/worktrees/node-east",
+    });
+  });
+
   it("builds a settings-update payload without mutating the persisted node name", () => {
     expect(
       buildNodeSettingsUpdatePayload(baseProps.nodes[1], {

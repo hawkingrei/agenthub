@@ -76,7 +76,7 @@ export function buildNodeNameUpdatePayload(
   node: AgentNodeRecord,
   draft: NodeEditDraft
 ): AgentNodeUpdate | null {
-  const grpcTarget = draft.grpcTarget.trim() || node.grpc_target?.trim() || "";
+  const grpcTarget = node.grpc_target?.trim() || "";
   if (!grpcTarget) {
     return null;
   }
@@ -98,6 +98,16 @@ export function buildNodeSettingsUpdatePayload(
     tls_server_name: draft.tlsServerName.trim() || null,
     default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
   };
+}
+
+function resolveNameUpdateError(node: AgentNodeRecord, draft: NodeEditDraft): string | null {
+  if (!draft.name.trim()) {
+    return "Node name is required.";
+  }
+  if (!node.grpc_target?.trim()) {
+    return "This node is missing a persisted gRPC target.";
+  }
+  return null;
 }
 
 function parseTeamSpecMembers(
@@ -482,10 +492,7 @@ export function AgentNodesWorkbench({
                     </div>
                     {(() => {
                       const draft = editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
-                      const nameError = validateAgentNodeUpdateDraft({
-                        nodeName: draft.name,
-                        grpcTarget: draft.grpcTarget,
-                      });
+                      const nameError = resolveNameUpdateError(selectedNode, draft);
                       return (
                         <>
                           <TextInput
@@ -540,7 +547,7 @@ export function AgentNodesWorkbench({
                         const draft =
                           editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
                         const updateError = validateAgentNodeUpdateDraft({
-                          nodeName: draft.name,
+                          nodeName: selectedNode.name,
                           grpcTarget: draft.grpcTarget,
                         });
                         return (
