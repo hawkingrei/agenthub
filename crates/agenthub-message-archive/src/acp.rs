@@ -76,6 +76,8 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
                 active.next_chunk_index = parsed.chunk_index.checked_add(1);
             }
             Some(active) => {
+                let completed = active.message.clone();
+                out.push(completed);
                 *active = OpenAggregate {
                     message: AcpAggregatedMessage {
                         logical_message_id: parsed.message_id,
