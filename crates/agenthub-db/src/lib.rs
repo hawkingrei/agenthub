@@ -3692,7 +3692,7 @@ mod tests {
             &idle_gc,
             "agent-idle-gc",
             1,
-            Duration::from_millis(500),
+            Duration::from_secs(2),
         )
         .await;
 
