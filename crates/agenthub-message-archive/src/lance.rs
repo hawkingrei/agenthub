@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use arrow_array::{
     Array, ArrayRef, Float32Array, Int64Array, RecordBatch, StringArray, UInt32Array,
 };
@@ -184,11 +184,16 @@ impl LanceDbMessageArchive {
 impl MessageArchiveStore for LanceDbMessageArchive {
     async fn ensure_ready(&self) -> Result<()> {
         let table = self.ensure_table().await?;
-        table
+        if let Err(err) = table
             .create_index(&["body_text"], Index::FTS(Default::default()))
-            .replace(true)
+            .replace(false)
             .execute()
-            .await?;
+            .await
+        {
+            if !is_existing_index_error(&err) {
+                return Err(err.into());
+            }
+        }
         Ok(())
     }
 
@@ -229,32 +234,20 @@ impl MessageArchiveStore for LanceDbMessageArchive {
 
         let mut hits = Vec::new();
         while let Some(batch) = stream.try_next().await? {
-            let document_ids = batch
-                .column_by_name("document_id")
-                .expect("document_id column")
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .expect("document_id string array");
-            let source_kinds = batch
-                .column_by_name("source_kind")
-                .expect("source_kind column")
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .expect("source_kind string array");
-            let body_texts = batch
-                .column_by_name("body_text")
-                .expect("body_text column")
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .expect("body_text string array");
+            let document_ids = required_string_array(&batch, "document_id")?;
+            let source_kinds = required_string_array(&batch, "source_kind")?;
+            let body_texts = required_string_array(&batch, "body_text")?;
             let scores = batch
                 .column_by_name("_score")
                 .and_then(|column| column.as_any().downcast_ref::<Float32Array>());
 
             for row in 0..batch.num_rows() {
+                let Some(source_kind) = parse_source_kind(source_kinds.value(row)) else {
+                    continue;
+                };
                 hits.push(MessageSearchHit {
                     document_id: document_ids.value(row).to_string(),
-                    source_kind: parse_source_kind(source_kinds.value(row)),
+                    source_kind,
                     body_text: body_texts.value(row).to_string(),
                     score: scores
                         .and_then(|values| values.is_valid(row).then(|| values.value(row))),
@@ -276,20 +269,39 @@ fn escape_sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-fn parse_source_kind(raw: &str) -> MessageDocumentKind {
+fn required_string_array<'a>(batch: &'a RecordBatch, column: &str) -> Result<&'a StringArray> {
+    let array = batch
+        .column_by_name(column)
+        .ok_or_else(|| anyhow!("missing search result column: {column}"))?;
+    array
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .ok_or_else(|| anyhow!("search result column {column} is not Utf8"))
+}
+
+fn parse_source_kind(raw: &str) -> Option<MessageDocumentKind> {
     match raw {
-        "agent_event" => MessageDocumentKind::AgentEvent,
-        "team_conversation_message" => MessageDocumentKind::TeamConversationMessage,
-        "team_run_event" => MessageDocumentKind::TeamRunEvent,
-        "team_actor_message" => MessageDocumentKind::TeamActorMessage,
-        "aggregated_acp_message" => MessageDocumentKind::AggregatedAcpMessage,
-        _ => MessageDocumentKind::AgentEvent,
+        "agent_event" => Some(MessageDocumentKind::AgentEvent),
+        "team_conversation_message" => Some(MessageDocumentKind::TeamConversationMessage),
+        "team_run_event" => Some(MessageDocumentKind::TeamRunEvent),
+        "team_actor_message" => Some(MessageDocumentKind::TeamActorMessage),
+        "aggregated_acp_message" => Some(MessageDocumentKind::AggregatedAcpMessage),
+        _ => None,
+    }
+}
+
+fn is_existing_index_error(err: &lancedb::Error) -> bool {
+    match err {
+        lancedb::Error::Other { message, .. } => message.contains("already exists"),
+        lancedb::Error::Lance { source } => source.to_string().contains("already exists"),
+        lancedb::Error::External { source } => source.to_string().contains("already exists"),
+        _ => err.to_string().contains("already exists"),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::LanceDbMessageArchive;
+    use super::{LanceDbMessageArchive, escape_sql_literal, parse_source_kind};
     use crate::model::{
         MessageArchiveBackend, MessageArchiveConfig, MessageArchiveStore, MessageDocument,
         MessageDocumentKind, MessageSearchQuery,
@@ -340,6 +352,11 @@ mod tests {
         assert_eq!(hits[0].document_id, "team_conversation_message:conv-1:1");
         assert_eq!(hits[0].body_text, "hello lancedb archive");
         assert!(hits[0].score.is_some());
+
+        archive
+            .ensure_ready()
+            .await
+            .expect("ensure ready stays idempotent");
     }
 
     #[tokio::test]
@@ -361,11 +378,11 @@ mod tests {
                     source_id: "1".to_string(),
                     logical_message_id: Some("msg-1".to_string()),
                     team_id: Some("team-a".to_string()),
-                    run_id: None,
+                    run_id: Some("run-a".to_string()),
                     conversation_id: Some("conv-1".to_string()),
-                    task_id: None,
-                    agent_id: None,
-                    session_id: None,
+                    task_id: Some("task-a".to_string()),
+                    agent_id: Some("agent-a".to_string()),
+                    session_id: Some("session-a".to_string()),
                     body_text: "hello alpha".to_string(),
                     payload_json: None,
                     created_at: 1,
@@ -375,15 +392,15 @@ mod tests {
                 },
                 MessageDocument {
                     document_id: "doc-2".to_string(),
-                    source_kind: MessageDocumentKind::TeamConversationMessage,
+                    source_kind: MessageDocumentKind::TeamRunEvent,
                     source_id: "2".to_string(),
                     logical_message_id: Some("msg-2".to_string()),
                     team_id: Some("team-b".to_string()),
-                    run_id: None,
+                    run_id: Some("run-b".to_string()),
                     conversation_id: Some("conv-2".to_string()),
-                    task_id: None,
-                    agent_id: None,
-                    session_id: None,
+                    task_id: Some("task-b".to_string()),
+                    agent_id: Some("agent-b".to_string()),
+                    session_id: Some("session-b".to_string()),
                     body_text: "hello beta".to_string(),
                     payload_json: None,
                     created_at: 2,
@@ -410,11 +427,32 @@ mod tests {
                 query_text: "hello".to_string(),
                 limit: 5,
                 team_id: Some("team-b".to_string()),
+                run_id: Some("run-b".to_string()),
+                conversation_id: Some("conv-2".to_string()),
+                task_id: Some("task-b".to_string()),
+                agent_id: Some("agent-b".to_string()),
+                session_id: Some("session-b".to_string()),
+                source_kind: Some(MessageDocumentKind::TeamRunEvent),
                 ..Default::default()
             })
             .await
             .expect("search docs");
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].document_id, "doc-2");
+        assert!(filtered[0].score.is_some());
+    }
+
+    #[test]
+    fn parse_source_kind_rejects_unknown_values() {
+        assert_eq!(
+            parse_source_kind("team_actor_message"),
+            Some(MessageDocumentKind::TeamActorMessage)
+        );
+        assert_eq!(parse_source_kind("unknown_kind"), None);
+    }
+
+    #[test]
+    fn escape_sql_literal_doubles_quotes() {
+        assert_eq!(escape_sql_literal("team'o"), "team''o");
     }
 }

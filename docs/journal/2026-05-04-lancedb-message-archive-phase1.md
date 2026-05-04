@@ -44,13 +44,21 @@ This phase does not yet flip the global message source of truth or remove legacy
 
 ## Validation
 
-Planned for this phase:
+Executed for this rollout:
 
 ```bash
-cargo test -p agenthub-message-archive
 cargo test -p agenthub-config
+cargo check -p agenthub-message-archive --tests
 cargo check
+cargo fmt --all --check
 ```
+
+Observed during local validation:
+
+- `cargo test -p agenthub-message-archive` reached the final linker stage but failed with
+  `ld: write() failed, errno=28 (No space left on device)`.
+- Until disk pressure is cleared, the practical local proof for the new crate is
+  `cargo check -p agenthub-message-archive --tests` plus PR CI.
 
 ## Follow-Ups
 

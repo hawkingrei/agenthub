@@ -316,13 +316,14 @@ impl AppConfig {
     }
 
     pub fn message_archive_uri(&self) -> String {
-        self.message_archive
+        let uri = self
+            .message_archive
             .as_ref()
             .and_then(|config| config.uri.as_deref())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or("~/.agenthub/message-archive")
-            .to_string()
+            .unwrap_or("~/.agenthub/message-archive");
+        expand_tilde(uri)
     }
 
     pub fn message_archive_table(&self) -> String {
@@ -757,7 +758,14 @@ mod tests {
     fn message_archive_defaults_point_to_lancedb() {
         let config = AppConfig::default();
         assert_eq!(config.message_archive_backend(), "lancedb");
-        assert_eq!(config.message_archive_uri(), "~/.agenthub/message-archive");
+        let home = std::env::var("HOME").expect("HOME");
+        assert_eq!(
+            config.message_archive_uri(),
+            std::path::Path::new(&home)
+                .join(".agenthub/message-archive")
+                .to_string_lossy()
+                .to_string()
+        );
         assert_eq!(config.message_archive_table(), "messages");
     }
 
@@ -774,5 +782,25 @@ mod tests {
         assert_eq!(config.message_archive_backend(), "lancedb");
         assert_eq!(config.message_archive_uri(), "/tmp/archive");
         assert_eq!(config.message_archive_table(), "archive_messages");
+    }
+
+    #[test]
+    fn message_archive_uri_expands_tilde_for_configured_values() {
+        let config = AppConfig {
+            message_archive: Some(MessageArchiveConfig {
+                backend: None,
+                uri: Some("~/custom-archive".to_string()),
+                message_table: None,
+            }),
+            ..Default::default()
+        };
+        let home = std::env::var("HOME").expect("HOME");
+        assert_eq!(
+            config.message_archive_uri(),
+            std::path::Path::new(&home)
+                .join("custom-archive")
+                .to_string_lossy()
+                .to_string()
+        );
     }
 }

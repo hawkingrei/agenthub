@@ -51,6 +51,7 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
     sorted.sort_by_key(|row| row.event_id);
 
     let mut open = HashMap::<AggregateKey, OpenAggregate>::new();
+    let mut out = Vec::new();
 
     for row in sorted {
         let Some(parsed) = parse_chunk_event(&row.message) else {
@@ -115,10 +116,7 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
         }
     }
 
-    let mut out = open
-        .into_values()
-        .map(|aggregate| aggregate.message)
-        .collect::<Vec<_>>();
+    out.extend(open.into_values().map(|aggregate| aggregate.message));
     out.sort_by_key(|message| message.first_event_id);
     out
 }
