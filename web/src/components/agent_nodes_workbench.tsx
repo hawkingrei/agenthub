@@ -52,8 +52,52 @@ type NodeTeamUsageSummary = {
   activeAgentCount: number;
 };
 
+export type NodeEditDraft = {
+  name: string;
+  grpcTarget: string;
+  tlsServerName: string;
+  defaultWorktreeRoot: string;
+};
+
 function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+export function buildNodeEditDraft(node: AgentNodeRecord): NodeEditDraft {
+  return {
+    name: node.name,
+    grpcTarget: node.grpc_target ?? "",
+    tlsServerName: node.tls_server_name ?? "",
+    defaultWorktreeRoot: node.default_worktree_root ?? "",
+  };
+}
+
+export function buildNodeNameUpdatePayload(
+  node: AgentNodeRecord,
+  draft: NodeEditDraft
+): AgentNodeUpdate | null {
+  const grpcTarget = draft.grpcTarget.trim() || node.grpc_target?.trim() || "";
+  if (!grpcTarget) {
+    return null;
+  }
+  return {
+    name: draft.name.trim(),
+    grpc_target: grpcTarget,
+    tls_server_name: node.tls_server_name?.trim() || null,
+    default_worktree_root: node.default_worktree_root?.trim() || null,
+  };
+}
+
+export function buildNodeSettingsUpdatePayload(
+  node: AgentNodeRecord,
+  draft: Pick<NodeEditDraft, "grpcTarget" | "tlsServerName" | "defaultWorktreeRoot">
+): AgentNodeUpdate {
+  return {
+    name: node.name.trim(),
+    grpc_target: draft.grpcTarget.trim(),
+    tls_server_name: draft.tlsServerName.trim() || null,
+    default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
+  };
 }
 
 function parseTeamSpecMembers(
@@ -255,15 +299,7 @@ export function AgentNodesWorkbench({
     0
   );
   const [editDrafts, setEditDrafts] = React.useState<
-    Record<
-      string,
-      {
-        name: string;
-        grpcTarget: string;
-        tlsServerName: string;
-        defaultWorktreeRoot: string;
-      }
-    >
+    Record<string, NodeEditDraft>
   >({});
 
   React.useEffect(() => {
@@ -273,29 +309,23 @@ export function AgentNodesWorkbench({
         if (node.is_main) {
           continue;
         }
-        next[node.id] = prev[node.id] ?? {
-          name: node.name,
-          grpcTarget: node.grpc_target ?? "",
-          tlsServerName: node.tls_server_name ?? "",
-          defaultWorktreeRoot: node.default_worktree_root ?? "",
-        };
+        next[node.id] = prev[node.id] ?? buildNodeEditDraft(node);
       }
       return next;
     });
   }, [availableNodes]);
 
   const handleSaveNodeName = React.useCallback(
-    (nodeId: string, nextName: string) => {
+    (nodeId: string, draft: NodeEditDraft) => {
       const node = availableNodes.find((candidate) => candidate.id === nodeId);
       if (!node) {
         return;
       }
-      onUpdateNode?.(nodeId, {
-        name: nextName.trim(),
-        grpc_target: node.grpc_target?.trim() ?? "",
-        tls_server_name: node.tls_server_name?.trim() || null,
-        default_worktree_root: node.default_worktree_root?.trim() || null,
-      });
+      const payload = buildNodeNameUpdatePayload(node, draft);
+      if (!payload) {
+        return;
+      }
+      onUpdateNode?.(nodeId, payload);
     },
     [availableNodes, onUpdateNode]
   );
@@ -313,12 +343,7 @@ export function AgentNodesWorkbench({
       if (!node) {
         return;
       }
-      onUpdateNode?.(nodeId, {
-        name: node.name.trim(),
-        grpc_target: draft.grpcTarget.trim(),
-        tls_server_name: draft.tlsServerName.trim() || null,
-        default_worktree_root: draft.defaultWorktreeRoot.trim() || null,
-      });
+      onUpdateNode?.(nodeId, buildNodeSettingsUpdatePayload(node, draft));
     },
     [availableNodes, onUpdateNode]
   );
@@ -456,13 +481,11 @@ export function AgentNodesWorkbench({
                       </Text>
                     </div>
                     {(() => {
-                      const draft = editDrafts[selectedNode.id] ?? {
-                        name: selectedNode.name,
-                        grpcTarget: selectedNode.grpc_target ?? "",
-                        tlsServerName: selectedNode.tls_server_name ?? "",
-                        defaultWorktreeRoot: selectedNode.default_worktree_root ?? "",
-                      };
-                      const nameError = draft.name.trim() ? null : "Node name is required.";
+                      const draft = editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
+                      const nameError = validateAgentNodeUpdateDraft({
+                        nodeName: draft.name,
+                        grpcTarget: draft.grpcTarget,
+                      });
                       return (
                         <>
                           <TextInput
@@ -490,9 +513,7 @@ export function AgentNodesWorkbench({
                               disabled={
                                 Boolean(updatingNodeIds[selectedNode.id]) || nameError !== null
                               }
-                              onClick={() =>
-                                handleSaveNodeName(selectedNode.id, draft.name)
-                              }
+                              onClick={() => handleSaveNodeName(selectedNode.id, draft)}
                             >
                               Save Name
                             </Button>
@@ -505,130 +526,127 @@ export function AgentNodesWorkbench({
 
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <div className={SECTION_CARD_CLASS}>
-                  <Stack gap="sm">
-                    <div>
-                      <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
-                        Settings
-                      </Text>
-                      <Text size="sm" c="dimmed" mt={6}>
-                        Update routing and default worktree behavior for this node without mixing in
-                        the object name field.
-                      </Text>
-                    </div>
-                    {(() => {
-                      const draft = editDrafts[selectedNode.id] ?? {
-                        name: selectedNode.name,
-                        grpcTarget: selectedNode.grpc_target ?? "",
-                        tlsServerName: selectedNode.tls_server_name ?? "",
-                        defaultWorktreeRoot: selectedNode.default_worktree_root ?? "",
-                      };
-                      const updateError = validateAgentNodeUpdateDraft({
-                        nodeName: draft.name,
-                        grpcTarget: draft.grpcTarget,
-                      });
-                      return (
-                        <>
-                          <TextInput
-                            label="gRPC target"
-                            value={draft.grpcTarget}
-                            onChange={(event) =>
-                              setEditDrafts((prev) => ({
-                                ...prev,
-                                [selectedNode.id]: {
-                                  ...draft,
-                                  grpcTarget: event.currentTarget.value,
-                                },
-                              }))
-                            }
-                          />
-                          <div className="grid gap-3 lg:grid-cols-2">
+                    <Stack gap="sm">
+                      <div>
+                        <Text size="xs" fw={700} c="dimmed" className={SECTION_HEADER_CLASS}>
+                          Settings
+                        </Text>
+                        <Text size="sm" c="dimmed" mt={6}>
+                          Update routing and default worktree behavior for this node without mixing
+                          in the object name field.
+                        </Text>
+                      </div>
+                      {(() => {
+                        const draft =
+                          editDrafts[selectedNode.id] ?? buildNodeEditDraft(selectedNode);
+                        const updateError = validateAgentNodeUpdateDraft({
+                          nodeName: draft.name,
+                          grpcTarget: draft.grpcTarget,
+                        });
+                        return (
+                          <>
                             <TextInput
-                              label="TLS server name"
-                              value={draft.tlsServerName}
+                              label="gRPC target"
+                              value={draft.grpcTarget}
                               onChange={(event) =>
                                 setEditDrafts((prev) => ({
                                   ...prev,
                                   [selectedNode.id]: {
                                     ...draft,
-                                    tlsServerName: event.currentTarget.value,
+                                    grpcTarget: event.currentTarget.value,
                                   },
                                 }))
                               }
                             />
-                            <TextInput
-                              label="Default worktree root"
-                              placeholder="Optional"
-                              value={draft.defaultWorktreeRoot}
-                              onChange={(event) =>
-                                setEditDrafts((prev) => ({
-                                  ...prev,
-                                  [selectedNode.id]: {
-                                    ...draft,
-                                    defaultWorktreeRoot: event.currentTarget.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <Text size="xs" c={updateError ? "red" : "dimmed"}>
-                              {updateError ??
-                                "Leave Default worktree root blank to require explicit remote workdir."}
-                            </Text>
-                            <Button
-                              variant="light"
-                              size="xs"
-                              loading={Boolean(updatingNodeIds[selectedNode.id])}
-                              disabled={
-                                Boolean(updatingNodeIds[selectedNode.id]) || updateError !== null
-                              }
-                              onClick={() =>
-                                handleSaveNodeSettings(selectedNode.id, {
-                                  grpcTarget: draft.grpcTarget,
-                                  tlsServerName: draft.tlsServerName,
-                                  defaultWorktreeRoot: draft.defaultWorktreeRoot,
-                                })
-                              }
-                            >
-                              Save Settings
-                            </Button>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </Stack>
-                </div>
+                            <div className="grid gap-3 lg:grid-cols-2">
+                              <TextInput
+                                label="TLS server name"
+                                value={draft.tlsServerName}
+                                onChange={(event) =>
+                                  setEditDrafts((prev) => ({
+                                    ...prev,
+                                    [selectedNode.id]: {
+                                      ...draft,
+                                      tlsServerName: event.currentTarget.value,
+                                    },
+                                  }))
+                                }
+                              />
+                              <TextInput
+                                label="Default worktree root"
+                                placeholder="Optional"
+                                value={draft.defaultWorktreeRoot}
+                                onChange={(event) =>
+                                  setEditDrafts((prev) => ({
+                                    ...prev,
+                                    [selectedNode.id]: {
+                                      ...draft,
+                                      defaultWorktreeRoot: event.currentTarget.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <Text size="xs" c={updateError ? "red" : "dimmed"}>
+                                {updateError ??
+                                  "Leave Default worktree root blank to require explicit remote workdir."}
+                              </Text>
+                              <Button
+                                variant="light"
+                                size="xs"
+                                loading={Boolean(updatingNodeIds[selectedNode.id])}
+                                disabled={
+                                  Boolean(updatingNodeIds[selectedNode.id]) ||
+                                  updateError !== null
+                                }
+                                onClick={() =>
+                                  handleSaveNodeSettings(selectedNode.id, {
+                                    grpcTarget: draft.grpcTarget,
+                                    tlsServerName: draft.tlsServerName,
+                                    defaultWorktreeRoot: draft.defaultWorktreeRoot,
+                                  })
+                                }
+                              >
+                                Save Settings
+                              </Button>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </Stack>
+                  </div>
 
-                <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
-                  <Stack gap="sm">
-                    <div>
-                      <Text size="xs" fw={700} c="red" className={SECTION_HEADER_CLASS}>
-                        Danger Zone
+                  <div className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4">
+                    <Stack gap="sm">
+                      <div>
+                        <Text size="xs" fw={700} c="red" className={SECTION_HEADER_CLASS}>
+                          Danger Zone
+                        </Text>
+                        <Text size="sm" c="dimmed" mt={6}>
+                          Delete this node only after its attached agents have been removed or rerouted.
+                        </Text>
+                      </div>
+                      <Text size="xs" c={selectedNodeAgents.length > 0 ? "red" : "dimmed"}>
+                        {selectedNodeAgents.length > 0
+                          ? `This node still has ${selectedNodeAgents.length} attached agent${selectedNodeAgents.length === 1 ? "" : "s"}.`
+                          : "No attached agents remain on this node."}
                       </Text>
-                      <Text size="sm" c="dimmed" mt={6}>
-                        Delete this node only after its attached agents have been removed or rerouted.
-                      </Text>
-                    </div>
-                    <Text size="xs" c={selectedNodeAgents.length > 0 ? "red" : "dimmed"}>
-                      {selectedNodeAgents.length > 0
-                        ? `This node still has ${selectedNodeAgents.length} attached agent${selectedNodeAgents.length === 1 ? "" : "s"}.`
-                        : "No attached agents remain on this node."}
-                    </Text>
-                    <Button
-                      color="red"
-                      variant="light"
-                      size="xs"
-                      loading={Boolean(deletingNodeIds[selectedNode.id])}
-                      disabled={
-                        Boolean(deletingNodeIds[selectedNode.id]) || selectedNodeAgents.length > 0
-                      }
-                      onClick={() => onDeleteNode?.(selectedNode.id)}
-                    >
-                      Delete Node
-                    </Button>
-                  </Stack>
+                      <Button
+                        color="red"
+                        variant="light"
+                        size="xs"
+                        loading={Boolean(deletingNodeIds[selectedNode.id])}
+                        disabled={
+                          Boolean(deletingNodeIds[selectedNode.id]) || selectedNodeAgents.length > 0
+                        }
+                        onClick={() => onDeleteNode?.(selectedNode.id)}
+                      >
+                        Delete Node
+                      </Button>
+                    </Stack>
+                  </div>
                 </div>
-              </div>
               </div>
             )}
           </div>

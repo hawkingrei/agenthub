@@ -1,9 +1,15 @@
+// @vitest-environment jsdom
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MantineProvider } from "@mantine/core";
 
-import { AgentNodesWorkbench } from "./agent_nodes_workbench";
+import {
+  AgentNodesWorkbench,
+  buildNodeEditDraft,
+  buildNodeNameUpdatePayload,
+  buildNodeSettingsUpdatePayload,
+} from "./agent_nodes_workbench";
 
 const baseProps: ComponentProps<typeof AgentNodesWorkbench> = {
   nodes: [
@@ -272,5 +278,51 @@ describe("AgentNodesWorkbench", () => {
     expect(html).toContain("Gemini CLI");
     expect(html).toContain("Custom Worker");
     expect(html).toContain("Custom Runtime");
+  });
+
+  it("builds a name-update payload without dropping persisted routing metadata", () => {
+    expect(
+      buildNodeNameUpdatePayload(baseProps.nodes[1], {
+        ...buildNodeEditDraft(baseProps.nodes[1]),
+        name: "Node East Renamed",
+      })
+    ).toEqual({
+      name: "Node East Renamed",
+      grpc_target: "https://node-east.internal:50051",
+      tls_server_name: "node-east.internal",
+      default_worktree_root: "~/.agenthub/worktrees/node-east",
+    });
+  });
+
+  it("builds a settings-update payload without mutating the persisted node name", () => {
+    expect(
+      buildNodeSettingsUpdatePayload(baseProps.nodes[1], {
+        grpcTarget: "https://node-east.internal:60061",
+        tlsServerName: "node-east-alt.internal",
+        defaultWorktreeRoot: "/srv/agenthub/worktrees/node-east",
+      })
+    ).toEqual({
+      name: "Node East",
+      grpc_target: "https://node-east.internal:60061",
+      tls_server_name: "node-east-alt.internal",
+      default_worktree_root: "/srv/agenthub/worktrees/node-east",
+    });
+  });
+
+  it("refuses to build a name-update payload when no routing target exists", () => {
+    expect(
+      buildNodeNameUpdatePayload(
+        {
+          ...baseProps.nodes[1],
+          grpc_target: null,
+        },
+        {
+          name: "Node East Renamed",
+          grpcTarget: "",
+          tlsServerName: "",
+          defaultWorktreeRoot: "",
+        }
+      )
+    ).toBeNull();
   });
 });
