@@ -158,10 +158,12 @@ pub(super) fn resolve_channel_replica_request(payload: &Value) -> Option<Channel
         return None;
     }
     let team_id = payload_obj.get("team_id")?.as_str()?.trim();
+    let correlation_id = payload_obj.get("correlation_id")?.as_str()?.trim();
     let conversation_id = payload_obj.get("channel_conversation_id")?.as_str()?.trim();
     let task_id = payload_obj.get("task_id")?.as_str()?.trim();
     let channel_id = payload_obj.get("channel_id")?.as_str()?.trim();
     if team_id.is_empty()
+        || correlation_id.is_empty()
         || conversation_id.is_empty()
         || task_id.is_empty()
         || channel_id.is_empty()
@@ -170,11 +172,20 @@ pub(super) fn resolve_channel_replica_request(payload: &Value) -> Option<Channel
     }
     Some(ChannelReplicaRequest {
         authority_message_id,
+        correlation_id: correlation_id.to_string(),
         team_id: team_id.to_string(),
         conversation_id: conversation_id.to_string(),
         task_id: task_id.to_string(),
         channel_id: channel_id.to_string(),
     })
+}
+
+pub(super) fn is_channel_broadcast_payload(payload: &Value) -> bool {
+    payload
+        .as_object()
+        .and_then(|payload_obj| payload_obj.get("delivery_scope"))
+        .and_then(Value::as_str)
+        .is_some_and(|value| value.trim() == "channel_broadcast")
 }
 
 pub(super) async fn maybe_notify_actor_new_mailbox_message_type(

@@ -278,6 +278,7 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
                     "text": "@reviewer please inspect p2p relay",
                     "delivery_scope": "channel_broadcast",
                     "authority_message_id": authority_message_id,
+                    "correlation_id": "corr-internal-grpc-replica-1",
                     "team_id": run.team_id,
                     "channel_conversation_id": conversation_id,
                     "task_id": task_id,
@@ -322,6 +323,10 @@ async fn internal_grpc_mailbox_send_persists_channel_replica_history() {
         serde_json::from_str(replica.get::<String, _>("payload_json").as_str())
             .expect("decode replica payload");
     assert_eq!(payload["delivery_scope"], json!("channel_broadcast"));
+    assert_eq!(
+        payload["correlation_id"],
+        json!("corr-internal-grpc-replica-1")
+    );
     assert_eq!(payload["mention_actor_ids"], json!(["reviewer"]));
 }
 
@@ -354,6 +359,7 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
                     "text": "@reviewer please inspect p2p relay",
                     "delivery_scope": "channel_broadcast",
                     "authority_message_id": 999_i64,
+                    "correlation_id": "corr-internal-grpc-bad-context-1",
                     "team_id": "wrong-team",
                     "channel_conversation_id": "conversation-all",
                     "task_id": "task-all",
@@ -374,6 +380,64 @@ async fn internal_grpc_mailbox_send_rejects_mismatched_channel_replica_context()
     assert!(
         err.message()
             .contains("channel replica payload does not match run/team context"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn internal_grpc_mailbox_send_rejects_channel_replica_payload_without_correlation_id() {
+    let state = build_test_state().await;
+    let run = create_team_run(&state).await;
+    let (task_id, conversation_id) = state
+        .teams
+        .ensure_shared_thread_target_for_team(&run.team_id, "planner")
+        .await
+        .expect("ensure shared thread target");
+    let authz = build_authz();
+    let token = issue_token(&authz, InternalRole::Coordinator, None, Some(&run.id));
+    let service = TeamInternalControlService::new(
+        control_deps(&state),
+        authz,
+        super::InternalGrpcSecurityMode::Disabled,
+        std::env::temp_dir(),
+        "bootstrap-token".to_string(),
+    );
+
+    let err = TeamInternalControl::send_actor_message(
+        &service,
+        authenticated_request(
+            SendActorMessageRequest {
+                run_id: run.id,
+                from_actor_id: "planner".to_string(),
+                to_actor_id: "reviewer".to_string(),
+                channel: "coordination".to_string(),
+                transport: "local".to_string(),
+                route_json: String::new(),
+                payload_json: json!({
+                    "type": "chat_message",
+                    "text": "@reviewer please inspect p2p relay",
+                    "delivery_scope": "channel_broadcast",
+                    "authority_message_id": 999_i64,
+                    "team_id": run.team_id,
+                    "channel_conversation_id": conversation_id,
+                    "task_id": task_id,
+                    "channel_id": "all"
+                })
+                .to_string(),
+                idempotency_key: "internal-grpc-channel-replica-missing-correlation".to_string(),
+                from_peer_id: "main".to_string(),
+                to_peer_id: "main".to_string(),
+                channel_id: String::new(),
+            },
+            &token,
+        ),
+    )
+    .await
+    .expect_err("missing correlation id should fail");
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert!(
+        err.message()
+            .contains("payload_json must represent a valid channel_broadcast replica payload"),
         "unexpected error: {err}"
     );
 }

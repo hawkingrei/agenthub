@@ -26,6 +26,11 @@ impl TeamInternalControl for TeamInternalControlService {
         let route = optional_json_object(optional_trimmed(&payload.route_json), "route_json")?;
         let payload_json = parse_json_required(&payload.payload_json, "payload_json")?;
         let channel_replica = resolve_channel_replica_request(&payload_json);
+        if is_channel_broadcast_payload(&payload_json) && channel_replica.is_none() {
+            return Err(Status::invalid_argument(
+                "payload_json must represent a valid channel_broadcast replica payload",
+            ));
+        }
         let idempotency_key = optional_trimmed(&payload.idempotency_key);
         let from_peer_id = optional_trimmed(&payload.from_peer_id);
         let to_peer_id = optional_trimmed(&payload.to_peer_id);
@@ -58,6 +63,16 @@ impl TeamInternalControl for TeamInternalControlService {
         if let (Some(replica), Some(source_node_id)) =
             (channel_replica, principal.source_node_id.as_deref())
         {
+            let payload_correlation_id = payload_json
+                .get("correlation_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            if payload_correlation_id != replica.correlation_id {
+                return Err(Status::invalid_argument(
+                    "channel replica payload correlation_id drifted during request processing",
+                ));
+            }
             self.deps
                 .teams
                 .append_channel_replica_message(

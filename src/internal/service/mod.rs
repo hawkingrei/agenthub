@@ -87,6 +87,7 @@ impl TeamInternalControlDeps {
 #[derive(Debug, Clone)]
 pub(super) struct ChannelReplicaRequest {
     authority_message_id: i64,
+    correlation_id: String,
     team_id: String,
     conversation_id: String,
     task_id: String,
