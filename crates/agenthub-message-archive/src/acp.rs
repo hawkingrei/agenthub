@@ -42,8 +42,14 @@ struct AggregateKey {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OpenAggregate {
-    message: AcpAggregatedMessage,
-    next_chunk_index: Option<u64>,
+    chunks: Vec<ParsedChunkEvent>,
+    agent_id: String,
+    session_id: String,
+    message_kind: String,
+    message_id: String,
+    first_event_id: i64,
+    last_event_id: i64,
+    created_at: i64,
 }
 
 pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessage> {
@@ -51,7 +57,6 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
     sorted.sort_by_key(|row| row.event_id);
 
     let mut open = HashMap::<AggregateKey, OpenAggregate>::new();
-    let mut out = Vec::new();
 
     for row in sorted {
         let Some(parsed) = parse_chunk_event(&row.message) else {
@@ -66,57 +71,52 @@ pub fn aggregate_acp_chunk_rows(rows: &[AcpEventRow]) -> Vec<AcpAggregatedMessag
         };
 
         match open.get_mut(&key) {
-            Some(active)
-                if active
-                    .next_chunk_index
-                    .is_none_or(|expected| expected == parsed.chunk_index) =>
-            {
-                active.message.text.push_str(&parsed.text);
-                active.message.last_event_id = row.event_id;
-                active.message.chunk_count = active.message.chunk_count.saturating_add(1);
-                active.next_chunk_index = parsed.chunk_index.checked_add(1);
-            }
             Some(active) => {
-                let completed = active.message.clone();
-                out.push(completed);
-                *active = OpenAggregate {
-                    message: AcpAggregatedMessage {
-                        logical_message_id: parsed.message_id,
-                        message_kind: parsed.message_kind,
-                        agent_id: row.agent_id,
-                        session_id: row.session_id,
-                        text: parsed.text,
-                        created_at: row.ts,
-                        first_event_id: row.event_id,
-                        last_event_id: row.event_id,
-                        chunk_count: 1,
-                    },
-                    next_chunk_index: parsed.chunk_index.checked_add(1),
-                };
+                active.first_event_id = active.first_event_id.min(row.event_id);
+                active.last_event_id = active.last_event_id.max(row.event_id);
+                active.created_at = active.created_at.min(row.ts);
+                active.chunks.push(parsed);
             }
             None => {
                 open.insert(
                     key,
                     OpenAggregate {
-                        message: AcpAggregatedMessage {
-                            logical_message_id: parsed.message_id,
-                            message_kind: parsed.message_kind,
-                            agent_id: row.agent_id,
-                            session_id: row.session_id,
-                            text: parsed.text,
-                            created_at: row.ts,
-                            first_event_id: row.event_id,
-                            last_event_id: row.event_id,
-                            chunk_count: 1,
-                        },
-                        next_chunk_index: parsed.chunk_index.checked_add(1),
+                        agent_id: row.agent_id,
+                        session_id: row.session_id,
+                        message_kind: parsed.message_kind.clone(),
+                        message_id: parsed.message_id.clone(),
+                        chunks: vec![parsed],
+                        first_event_id: row.event_id,
+                        last_event_id: row.event_id,
+                        created_at: row.ts,
                     },
                 );
             }
         }
     }
 
-    out.extend(open.into_values().map(|aggregate| aggregate.message));
+    let mut out: Vec<_> = open
+        .into_values()
+        .map(|mut aggregate| {
+            aggregate.chunks.sort_by_key(|chunk| chunk.chunk_index);
+            let text = aggregate
+                .chunks
+                .iter()
+                .map(|chunk| chunk.text.as_str())
+                .collect::<String>();
+            AcpAggregatedMessage {
+                logical_message_id: aggregate.message_id,
+                message_kind: aggregate.message_kind,
+                agent_id: aggregate.agent_id,
+                session_id: aggregate.session_id,
+                text,
+                created_at: aggregate.created_at,
+                first_event_id: aggregate.first_event_id,
+                last_event_id: aggregate.last_event_id,
+                chunk_count: aggregate.chunks.len().try_into().unwrap_or(u32::MAX),
+            }
+        })
+        .collect();
     out.sort_by_key(|message| message.first_event_id);
     out
 }
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn splits_on_non_consecutive_chunk_index() {
+    fn keeps_non_consecutive_chunks_in_one_logical_message() {
         let rows = vec![
             AcpEventRow {
                 event_id: 21,
@@ -205,9 +205,39 @@ mod tests {
         ];
 
         let aggregated = aggregate_acp_chunk_rows(&rows);
-        assert_eq!(aggregated.len(), 2);
-        assert_eq!(aggregated[0].text, "hel");
-        assert_eq!(aggregated[1].text, "lo");
+        assert_eq!(aggregated.len(), 1);
+        assert_eq!(aggregated[0].logical_message_id, "m1");
+        assert_eq!(aggregated[0].text, "hello");
+        assert_eq!(aggregated[0].first_event_id, 21);
+        assert_eq!(aggregated[0].last_event_id, 22);
+        assert_eq!(aggregated[0].chunk_count, 2);
+    }
+
+    #[test]
+    fn orders_chunks_by_chunk_index_before_event_id() {
+        let rows = vec![
+            AcpEventRow {
+                event_id: 51,
+                agent_id: "agent-a".to_string(),
+                session_id: "session-a".to_string(),
+                ts: 500,
+                message: r#"{"type":"agent_message","text":"lo","chunk":true,"message_id":"m1","chunk_index":1}"#.to_string(),
+            },
+            AcpEventRow {
+                event_id: 52,
+                agent_id: "agent-a".to_string(),
+                session_id: "session-a".to_string(),
+                ts: 501,
+                message: r#"{"type":"agent_message","text":"hel","chunk":true,"message_id":"m1","chunk_index":0}"#.to_string(),
+            },
+        ];
+
+        let aggregated = aggregate_acp_chunk_rows(&rows);
+        assert_eq!(aggregated.len(), 1);
+        assert_eq!(aggregated[0].text, "hello");
+        assert_eq!(aggregated[0].created_at, 500);
+        assert_eq!(aggregated[0].first_event_id, 51);
+        assert_eq!(aggregated[0].last_event_id, 52);
     }
 
     #[test]
