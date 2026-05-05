@@ -88,7 +88,7 @@ export function useAppAcpUi(
       return;
     }
     await runAcpAction(() => api.setAcpMode(token!, activeAgent!, modeId));
-  }, [runAcpAction]);
+  }, [runAcpAction, token, activeAgent, setError]);
 
   const onAcpSetModel = useCallback(async (requestedModelId: string) => {
     const modelId = requestedModelId.trim();
@@ -97,7 +97,7 @@ export function useAppAcpUi(
       return;
     }
     await runAcpAction(() => api.setAcpModel(token!, activeAgent!, modelId));
-  }, [runAcpAction]);
+  }, [runAcpAction, token, activeAgent, setError]);
 
   const onAcpSetConfig = useCallback(async () => {
     const trimmedId = acpConfigId.trim();
@@ -107,15 +107,15 @@ export function useAppAcpUi(
       return;
     }
     await runAcpAction(() => api.setAcpConfig(token!, activeAgent!, trimmedId, trimmedValue));
-  }, [runAcpAction, acpConfigId, acpConfigValue]);
+  }, [runAcpAction, acpConfigId, acpConfigValue, token, activeAgent, setError]);
 
   const onAcpCancel = useCallback(async () => {
     await runAcpAction(() => api.cancelAcp(token!, activeAgent!));
-  }, [runAcpAction]);
+  }, [runAcpAction, token, activeAgent]);
 
   const onAcpClearSession = useCallback(async () => {
     await runAcpAction(() => api.clearAcpSession(token!, activeAgent!));
-  }, [runAcpAction]);
+  }, [runAcpAction, token, activeAgent]);
 
   return {
     acpTab,
