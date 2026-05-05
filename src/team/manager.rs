@@ -59,7 +59,10 @@ use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
-use agenthub_message_archive::{MessageArchiveStoreRef, MessageDocument, MessageDocumentKind};
+use agenthub_message_archive::{
+    MessageArchiveStoreRef, MessageDocument, MessageDocumentKind, MessageSearchHit,
+    MessageSearchQuery,
+};
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
 #[derive(Clone)]
@@ -1782,6 +1785,16 @@ impl TeamManager {
         }
         messages.reverse();
         Ok(messages)
+    }
+
+    pub async fn search_message_archive(
+        &self,
+        query: &MessageSearchQuery,
+    ) -> anyhow::Result<Vec<MessageSearchHit>> {
+        let Some(archive) = self.message_archive.as_ref() else {
+            return Ok(Vec::new());
+        };
+        archive.search(query).await
     }
 
     pub async fn create_run(

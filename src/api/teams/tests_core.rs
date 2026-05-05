@@ -5402,6 +5402,160 @@ async fn team_task_messages_api_forwards_shared_thread_human_chat_without_active
 }
 
 #[tokio::test]
+async fn team_message_search_api_uses_archive_with_team_scope() {
+    let archive = Arc::new(RecordingSearchArchive {
+        queries: tokio::sync::Mutex::new(Vec::new()),
+        hits: vec![MessageSearchHit {
+            document_id: "team_conversation_message:conversation-1:42".to_string(),
+            source_kind: MessageDocumentKind::TeamConversationMessage,
+            body_text: "archive search result".to_string(),
+            score: Some(0.75),
+            authority_message_id: Some(42),
+            correlation_id: Some("corr-search".to_string()),
+            team_id: Some("team-from-archive".to_string()),
+            run_id: None,
+            conversation_id: Some("conversation-1".to_string()),
+            task_id: Some("task-1".to_string()),
+            agent_id: None,
+            session_id: None,
+        }],
+    });
+    let state = build_test_state_with_message_archive(archive.clone()).await;
+    let headers = auth_headers(&state).await;
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+            name: "message-search-api-team".to_string(),
+            description: Some("archive search".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[{"member_id":"planner","role":"coordinator"}]
+            }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
+
+    let Json(hits) = search_team_messages(
+        State(state),
+        headers,
+        Path(team.id.clone()),
+        Query(SearchTeamMessagesQuery {
+            query: " archive ".to_string(),
+            limit: Some(5),
+            authority_message_id: None,
+            correlation_id: Some(" corr-search ".to_string()),
+            run_id: None,
+            conversation_id: None,
+            task_id: Some(" task-1 ".to_string()),
+            agent_id: None,
+            session_id: None,
+            source_kind: Some("team_conversation_message".to_string()),
+        }),
+    )
+    .await
+    .expect("search team messages");
+
+    assert_eq!(
+        hits,
+        vec![TeamMessageSearchHitResponse {
+            document_id: "team_conversation_message:conversation-1:42".to_string(),
+            source_kind: MessageDocumentKind::TeamConversationMessage,
+            body_text: "archive search result".to_string(),
+            score: Some(0.75),
+            authority_message_id: Some(42),
+            correlation_id: Some("corr-search".to_string()),
+            team_id: Some("team-from-archive".to_string()),
+            run_id: None,
+            conversation_id: Some("conversation-1".to_string()),
+            task_id: Some("task-1".to_string()),
+            agent_id: None,
+            session_id: None,
+        }]
+    );
+
+    let queries = archive.queries.lock().await;
+    assert_eq!(queries.len(), 1);
+    assert_eq!(queries[0].query_text, "archive");
+    assert_eq!(queries[0].limit, 5);
+    assert_eq!(queries[0].team_id.as_deref(), Some(team.id.as_str()));
+    assert_eq!(queries[0].correlation_id.as_deref(), Some("corr-search"));
+    assert_eq!(queries[0].task_id.as_deref(), Some("task-1"));
+    assert_eq!(
+        queries[0].source_kind,
+        Some(MessageDocumentKind::TeamConversationMessage)
+    );
+}
+
+#[tokio::test]
+async fn team_message_search_api_rejects_blank_query() {
+    let state = build_test_state_with_message_archive(Arc::new(RecordingSearchArchive {
+        queries: tokio::sync::Mutex::new(Vec::new()),
+        hits: Vec::new(),
+    }))
+    .await;
+    let headers = auth_headers(&state).await;
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "message-search-blank-query-team".to_string(),
+                description: Some("archive search".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[{"member_id":"planner","role":"coordinator"}]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
+
+    let err = search_team_messages(
+        State(state),
+        headers,
+        Path(team.id),
+        Query(SearchTeamMessagesQuery {
+            query: "   ".to_string(),
+            limit: None,
+            authority_message_id: None,
+            correlation_id: None,
+            run_id: None,
+            conversation_id: None,
+            task_id: None,
+            agent_id: None,
+            session_id: None,
+            source_kind: None,
+        }),
+    )
+    .await
+    .expect_err("blank archive query should fail");
+
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    assert_eq!(body["error"], Value::from("query is required"));
+}
+
+#[tokio::test]
+async fn message_archive_source_kind_error_lists_supported_values() {
+    let err = parse_message_archive_source_kind("bogus_kind")
+        .expect_err("unsupported archive source kind should fail");
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = decode_json_body(response).await;
+    let message = body["error"].as_str().expect("error message");
+    assert!(message.contains("bogus_kind"));
+    assert!(message.contains("agent_event"));
+    assert!(message.contains("team_conversation_message"));
+    assert!(message.contains("team_run_event"));
+    assert!(message.contains("team_actor_message"));
+    assert!(message.contains("aggregated_acp_message"));
+}
+
+#[tokio::test]
 async fn teams_api_rejects_human_task_status_and_owner_updates() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
@@ -5907,24 +6061,25 @@ async fn team_task_messages_api_forwards_human_chat_to_active_run_mailbox() {
     let state = build_test_state().await;
     let headers = auth_headers(&state).await;
 
-    let Json(team) = create_team(
-        State(state.clone()),
-        headers.clone(),
-        Json(CreateTeamRequest {
-            name: "task-mailbox-forward-team".to_string(),
-            description: Some("task to mailbox forwarding coverage".to_string()),
-            spec: json!({
-                "entrypoint":"planner",
-                "members":[
-                    {"member_id":"planner","role":"coordinator"},
-                    {"member_id":"worker-1","role":"worker"},
-                    {"member_id":"worker-2","role":"worker"}
-                ]
-            }),
-        }),
-    )
-    .await
-    .expect("create team");
+    let team = state
+        .teams
+        .create_team_with_owner(
+            TeamDefinitionConfig {
+                name: "task-mailbox-forward-team".to_string(),
+                description: Some("task to mailbox forwarding coverage".to_string()),
+                spec: json!({
+                    "entrypoint":"planner",
+                    "members":[
+                        {"member_id":"planner","role":"coordinator"},
+                        {"member_id":"worker-1","role":"worker"},
+                        {"member_id":"worker-2","role":"worker"}
+                    ]
+                }),
+            },
+            None,
+        )
+        .await
+        .expect("create team");
 
     let task_created = create_team_task(
         &state,

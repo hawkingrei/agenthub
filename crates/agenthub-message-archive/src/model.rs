@@ -121,6 +121,14 @@ pub struct MessageSearchHit {
     pub source_kind: MessageDocumentKind,
     pub body_text: String,
     pub score: Option<f32>,
+    pub authority_message_id: Option<i64>,
+    pub correlation_id: Option<String>,
+    pub team_id: Option<String>,
+    pub run_id: Option<String>,
+    pub conversation_id: Option<String>,
+    pub task_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[async_trait]

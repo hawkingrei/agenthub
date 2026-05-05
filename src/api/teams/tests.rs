@@ -30,18 +30,23 @@ use crate::team::{
     TeamActorMessageTransport, TeamDefinitionConfig, TeamManager, force_team_member_new_session,
 };
 use agenthub_config::{AppConfig, PushConfig, WebConfig};
+use agenthub_message_archive::{
+    MessageArchiveStore, MessageDocument, MessageDocumentKind, MessageSearchHit, MessageSearchQuery,
+};
 use agenthub_team_actor::{
     ActorAckRequest, ActorInboxRequest, ActorMailboxService, ActorSendRequest,
 };
+use async_trait::async_trait;
 
 use super::{
     AckTeamRunMessageRequest, CompileTeamTaskRunPreviewRequest, CompleteTeamRunStepRequest,
     CreateTeamChannelRequest, CreateTeamRequest, CreateTeamRunRequest, CreateTeamTaskRequest,
     FailTeamRunStepRequest, FlushTeamRunContextRequest, ListTeamRunEventsQuery,
     ListTeamRunInboxQuery, ListTeamRunsQuery, ListTeamTaskMessagesQuery, ListTeamTasksQuery,
-    ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SendTeamRunMessageRequest,
-    SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest, StartTeamRunStepRequest,
-    SubmitTeamRunStepRequest, TeamMemberSpec, TeamRunSnapshotQuery, TeamTaskDetailResponse,
+    ReplyTeamThreadRequest, ResumeTeamRunStepRequest, SearchTeamMessagesQuery,
+    SendTeamRunMessageRequest, SendTeamTaskMessageRequest, SetTeamRunStepInputRequiredRequest,
+    StartTeamRunStepRequest, SubmitTeamRunStepRequest, TeamMemberSpec,
+    TeamMessageSearchHitResponse, TeamRunSnapshotQuery, TeamTaskDetailResponse,
     UpdateTeamSpecRequest, UpdateTeamTaskRequest, ack_team_run_message, cancel_team_run,
     compile_team_task_run_preview, complete_team_run_step, create_team, create_team_channel,
     create_team_run, delete_team, delete_team_channel, ensure_team_shared_thread,
@@ -50,11 +55,34 @@ use super::{
     list_team_channels, list_team_run_events, list_team_run_inbox, list_team_run_steps,
     list_team_runs, list_team_task_messages, list_team_tasks, list_teams, load_team_for_user,
     map_team_internal_error, normalize_conversation_mode, normalize_task_created_by_actor_id,
-    normalize_team_spec, reply_team_thread, require_user, restart_team_run, resume_team_run,
-    resume_team_run_step, send_team_run_message, send_team_task_message,
-    set_team_run_step_input_required, start_team, start_team_run_step, stop_team,
-    submit_team_run_step, update_team_spec, update_team_task, validate_team_spec,
+    normalize_team_spec, parse_message_archive_source_kind, reply_team_thread, require_user,
+    restart_team_run, resume_team_run, resume_team_run_step, search_team_messages,
+    send_team_run_message, send_team_task_message, set_team_run_step_input_required, start_team,
+    start_team_run_step, stop_team, submit_team_run_step, update_team_spec, update_team_task,
+    validate_team_spec,
 };
+
+#[derive(Default)]
+struct RecordingSearchArchive {
+    queries: tokio::sync::Mutex<Vec<MessageSearchQuery>>,
+    hits: Vec<MessageSearchHit>,
+}
+
+#[async_trait]
+impl MessageArchiveStore for RecordingSearchArchive {
+    async fn ensure_ready(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn append_documents(&self, _documents: &[MessageDocument]) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn search(&self, query: &MessageSearchQuery) -> anyhow::Result<Vec<MessageSearchHit>> {
+        self.queries.lock().await.push(query.clone());
+        Ok(self.hits.clone())
+    }
+}
 
 static WORKER_TEST_REPO: OnceLock<String> = OnceLock::new();
 static TEST_AGENTHUB_BIN: OnceLock<String> = OnceLock::new();
@@ -153,25 +181,30 @@ fn long_lived_test_agent_args() -> String {
 }
 
 pub(crate) async fn build_test_state() -> AppState {
-    build_test_state_with_db_source(None, true, true).await
+    build_test_state_with_db_source_and_archive(None, true, true, None).await
 }
 
 pub(crate) async fn build_test_state_without_seeded_team_member_agents() -> AppState {
-    build_test_state_with_db_source(None, true, false).await
+    build_test_state_with_db_source_and_archive(None, true, false, None).await
 }
 
 pub(crate) async fn build_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source(Some(path), true, true).await
+    build_test_state_with_db_source_and_archive(Some(path), true, true, None).await
 }
 
 pub(crate) async fn reopen_test_state_with_db_path(path: &StdPath) -> AppState {
-    build_test_state_with_db_source(Some(path), false, false).await
+    build_test_state_with_db_source_and_archive(Some(path), false, false, None).await
 }
 
-async fn build_test_state_with_db_source(
+async fn build_test_state_with_message_archive(archive: Arc<dyn MessageArchiveStore>) -> AppState {
+    build_test_state_with_db_source_and_archive(None, true, false, Some(archive)).await
+}
+
+async fn build_test_state_with_db_source_and_archive(
     path: Option<&StdPath>,
     initialize_schema: bool,
     seed_default_agents: bool,
+    message_archive: Option<Arc<dyn MessageArchiveStore>>,
 ) -> AppState {
     let db = match path {
         Some(path) => create_test_db_at(path).await,
@@ -219,7 +252,11 @@ async fn build_test_state_with_db_source(
         permissions.clone(),
         auth.clone(),
     ));
-    let teams = Arc::new(TeamManager::new_with_event_dbs(db.clone(), event_dbs));
+    let teams = Arc::new(TeamManager::new_with_event_dbs_and_message_archive(
+        db.clone(),
+        event_dbs,
+        message_archive,
+    ));
     let state = AppState {
         db,
         agents,
