@@ -983,6 +983,7 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             json!({
                 "task_id": task.id,
                 "conversation_id": conversation.id,
+                "api_key": "run-input-secret",
             }),
         )
         .await
@@ -1000,8 +1001,6 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             payload: json!({
                 "type": "chat_message",
                 "text": "migrate actor mailbox message",
-                "task_id": task.id,
-                "channel_conversation_id": conversation.id,
                 "authority_message_id": conversation_message.message_id,
                 "correlation_id": "corr-migration-actor"
             }),
@@ -1009,6 +1008,65 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
         })
         .await
         .expect("send actor message");
+    sqlx::query(
+        r#"
+        INSERT INTO team_run_events (run_id, step_id, event_type, ts, payload_json)
+        VALUES (?1, NULL, ?2, ?3, ?4)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("run_secret_event")
+    .bind(Utc::now().timestamp())
+    .bind(
+        json!({
+            "text": "raw run secret event",
+            "authority_message_id": conversation_message.message_id,
+            "api_key": "run-event-secret"
+        })
+        .to_string(),
+    )
+    .execute(&seed_manager.db)
+    .await
+    .expect("insert raw run event");
+    let raw_actor_message_id = sqlx::query(
+        r#"
+        INSERT INTO team_actor_messages (
+            run_id,
+            from_actor_id,
+            from_peer_id,
+            to_actor_id,
+            to_peer_id,
+            channel,
+            transport,
+            route_json,
+            payload_json,
+            status,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10)
+        "#,
+    )
+    .bind(&run.id)
+    .bind("coordinator")
+    .bind(ACTOR_MAIN_PEER_ID)
+    .bind("worker-1")
+    .bind(ACTOR_MAIN_PEER_ID)
+    .bind("all")
+    .bind("local")
+    .bind(
+        json!({
+            "type": "chat_message",
+            "text": "raw actor secret message",
+            "api_key": "actor-message-secret"
+        })
+        .to_string(),
+    )
+    .bind("pending")
+    .bind(Utc::now().timestamp())
+    .execute(&seed_manager.db)
+    .await
+    .expect("insert raw actor message")
+    .last_insert_rowid();
     let hidden_run = seed_manager
         .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
         .await
@@ -1047,12 +1105,12 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
         .expect("migrate team messages");
 
     assert_eq!(report.team_conversation_messages, 1);
-    assert_eq!(report.team_run_events, 2);
-    assert_eq!(report.team_actor_messages, 1);
-    assert_eq!(report.total_documents(), 4);
+    assert_eq!(report.team_run_events, 3);
+    assert_eq!(report.team_actor_messages, 2);
+    assert_eq!(report.total_documents(), 6);
 
     let documents = archive.documents.lock().await.clone();
-    assert_eq!(documents.len(), 4);
+    assert_eq!(documents.len(), 6);
     assert!(documents.iter().any(|document| {
         document.document_id
             == format!(
@@ -1078,9 +1136,22 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             && document.source_kind == MessageDocumentKind::TeamRunEvent
             && document.team_id.as_deref() == Some(team.id.as_str())
             && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.authority_message_id.is_none()
             && document.conversation_id.as_deref() == Some(conversation.id.as_str())
             && document.task_id.as_deref() == Some(task.id.as_str())
             && document.body_text == "run_submitted"
+            && document
+                .payload_json
+                .as_deref()
+                .is_some_and(|payload| !payload.contains("run-input-secret"))
+    }));
+    assert!(documents.iter().any(|document| {
+        document.body_text == "raw run secret event"
+            && document.source_kind == MessageDocumentKind::TeamRunEvent
+            && document.authority_message_id == Some(conversation_message.message_id)
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("run-event-secret")
+            })
     }));
     assert!(documents.iter().any(|document| {
         document.document_id
@@ -1090,9 +1161,21 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             && document.run_id.as_deref() == Some(run.id.as_str())
             && document.authority_message_id == Some(conversation_message.message_id)
             && document.conversation_id.as_deref() == Some(conversation.id.as_str())
+            && document.task_id.as_deref() == Some(task.id.as_str())
             && document.agent_id.as_deref() == Some("worker-1")
             && document.correlation_id.as_deref() == Some("corr-migration-actor")
             && document.body_text == "migrate actor mailbox message"
+    }));
+    assert!(documents.iter().any(|document| {
+        document.document_id == format!("team_actor_message:{}:{}", run.id, raw_actor_message_id)
+            && document.source_kind == MessageDocumentKind::TeamActorMessage
+            && document.authority_message_id.is_none()
+            && document.conversation_id.as_deref() == Some(conversation.id.as_str())
+            && document.task_id.as_deref() == Some(task.id.as_str())
+            && document.body_text == "raw actor secret message"
+            && document.payload_json.as_deref().is_some_and(|payload| {
+                payload.contains("[redacted]") && !payload.contains("actor-message-secret")
+            })
     }));
     assert!(
         documents

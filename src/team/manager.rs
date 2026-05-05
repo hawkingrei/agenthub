@@ -168,12 +168,13 @@ fn team_run_event_archive_document(
     run_input: &Value,
 ) -> MessageDocument {
     let body_text = message_archive_body_text(&event.payload);
+    let redacted_payload = redact_sensitive_json(&event.payload);
     MessageDocument {
         document_id: format!("team_run_event:{}:{}", event.run_id, event.event_id),
         source_kind: MessageDocumentKind::TeamRunEvent,
         source_id: event.event_id.to_string(),
         logical_message_id: None,
-        authority_message_id: Some(event.event_id),
+        authority_message_id: message_archive_payload_i64(&event.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&event.payload, "correlation_id"),
         team_id: Some(team_id.to_string()),
         run_id: Some(event.run_id.clone()),
@@ -188,7 +189,7 @@ fn team_run_event_archive_document(
         } else {
             body_text
         },
-        payload_json: Some(event.payload.to_string()),
+        payload_json: Some(redacted_payload.to_string()),
         created_at: event.ts,
         event_id_from: Some(event.event_id),
         event_id_to: Some(event.event_id),
@@ -199,7 +200,9 @@ fn team_run_event_archive_document(
 fn team_actor_message_archive_document(
     team_id: &str,
     message: &TeamActorMessageRecord,
+    run_input: &Value,
 ) -> MessageDocument {
+    let redacted_payload = redact_sensitive_json(&message.payload);
     MessageDocument {
         document_id: format!(
             "team_actor_message:{}:{}",
@@ -208,8 +211,7 @@ fn team_actor_message_archive_document(
         source_kind: MessageDocumentKind::TeamActorMessage,
         source_id: message.message_id.to_string(),
         logical_message_id: None,
-        authority_message_id: message_archive_payload_i64(&message.payload, "authority_message_id")
-            .or(Some(message.message_id)),
+        authority_message_id: message_archive_payload_i64(&message.payload, "authority_message_id"),
         correlation_id: message_archive_payload_string(&message.payload, "correlation_id"),
         team_id: Some(team_id.to_string()),
         run_id: Some(message.run_id.clone()),
@@ -220,12 +222,14 @@ fn team_actor_message_archive_document(
                 "channel_conversation_id",
                 "conversation_id",
             ],
-        ),
-        task_id: message_archive_payload_string(&message.payload, "task_id"),
+        )
+        .or_else(|| message_archive_payload_string(run_input, "conversation_id")),
+        task_id: message_archive_payload_string(&message.payload, "task_id")
+            .or_else(|| message_archive_payload_string(run_input, "task_id")),
         agent_id: Some(message.to_actor_id.clone()),
         session_id: None,
         body_text: message_archive_body_text(&message.payload),
-        payload_json: Some(message.payload.to_string()),
+        payload_json: Some(redacted_payload.to_string()),
         created_at: message.created_at,
         event_id_from: None,
         event_id_to: None,
@@ -2028,7 +2032,8 @@ impl TeamManager {
                     m.status,
                     m.created_at,
                     m.delivered_at,
-                    r.team_id
+                    r.team_id,
+                    r.input_json
                 FROM team_actor_messages m
                 INNER JOIN team_runs r ON r.id = m.run_id
                 WHERE m.id > ?1
@@ -2049,8 +2054,12 @@ impl TeamManager {
             for row in rows {
                 last_id = row.get("id");
                 let team_id: String = row.get("team_id");
+                let input_json: String = row.get("input_json");
+                let run_input: Value = serde_json::from_str(&input_json)?;
                 let message = parse_team_actor_message_row(&row)?;
-                documents.push(team_actor_message_archive_document(&team_id, &message));
+                documents.push(team_actor_message_archive_document(
+                    &team_id, &message, &run_input,
+                ));
                 report.team_actor_messages += 1;
             }
             archive.append_documents(&documents).await?;

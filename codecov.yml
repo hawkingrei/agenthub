@@ -5,5 +5,7 @@ flag_management:
   default_rules:
     carryforward: false
   individual_flags:
+    - name: bazel
+      carryforward: true
     - name: rust-cargo
       carryforward: true
