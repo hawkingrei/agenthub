@@ -5295,6 +5295,157 @@ async fn actor_mailbox_service_channel_send_reuses_canonical_message_on_idempote
 }
 
 #[tokio::test]
+async fn actor_mailbox_service_direct_remote_send_requires_relay_route_and_remote_peer() {
+    let db = setup_test_db().await;
+    let manager = TeamManager::new(db.clone());
+    let service = manager.actor_mailbox_service();
+
+    let team = manager
+        .create_team(TeamDefinitionConfig {
+            name: "actor-mailbox-direct-remote-validation-team".to_string(),
+            description: Some("team for direct remote mailbox validation".to_string()),
+            spec: json!({
+                "entrypoint":"planner",
+                "members":[
+                    {"member_id":"planner"},
+                    {"member_id":"reviewer"}
+                ]
+            }),
+        })
+        .await
+        .expect("create team");
+    let run = manager
+        .create_run(
+            &team.id,
+            Some("ctx-direct-remote-validation"),
+            json!({"payload":"start"}),
+        )
+        .await
+        .expect("create run");
+
+    let missing_route = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: None,
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-missing-route".to_string()),
+        })
+        .await
+        .expect_err("remote direct send without route should fail");
+    assert_eq!(missing_route.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        missing_route.message,
+        "route is required for remote transport"
+    );
+
+    let null_route = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(Value::Null),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-null-route".to_string()),
+        })
+        .await
+        .expect_err("remote direct send with null route should fail");
+    assert_eq!(null_route.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        null_route.message,
+        "route must be a JSON object for remote transport"
+    );
+
+    let empty_route = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(json!({})),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-empty-route".to_string()),
+        })
+        .await
+        .expect_err("remote direct send with empty route should fail");
+    assert_eq!(empty_route.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        empty_route.message,
+        "route must contain endpoint or grpc_target for remote transport"
+    );
+
+    let main_peer = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(json!({"endpoint":"https://remote.example/mailbox"})),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-main-peer".to_string()),
+        })
+        .await
+        .expect_err("remote direct send to main peer should fail");
+    assert_eq!(main_peer.code, ActorServiceErrorCode::BadRequest);
+    assert_eq!(
+        main_peer.message,
+        "to_peer_id must not be 'main' for remote transport"
+    );
+
+    let valid = service
+        .actor_send(ActorSendRequest {
+            run_id: run.id.clone(),
+            from_actor_id: "planner".to_string(),
+            from_peer_id: Some(ACTOR_MAIN_PEER_ID.to_string()),
+            to_actor_id: Some("remote-reviewer".to_string()),
+            channel_id: None,
+            to_peer_id: Some(ACTOR_NODE_PEER_ID.to_string()),
+            channel: Some("coordination".to_string()),
+            transport: Some(TeamActorMessageTransport::Remote),
+            route: Some(json!({"endpoint":"https://remote.example/mailbox"})),
+            payload: json!({"text":"please review remotely"}),
+            idempotency_key: Some("msg-direct-remote-valid".to_string()),
+        })
+        .await
+        .expect("valid remote direct send");
+    assert_eq!(valid.state, TeamActorMessageStatus::Pending);
+    assert_eq!(valid.message.to_peer_id, ACTOR_NODE_PEER_ID);
+    assert_eq!(valid.message.transport, TeamActorMessageTransport::Remote);
+
+    let mailbox_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM team_actor_messages
+        WHERE run_id = ?1
+        "#,
+    )
+    .bind(&run.id)
+    .fetch_one(&db)
+    .await
+    .expect("count persisted mailbox rows");
+    assert_eq!(mailbox_count, 1);
+}
+
+#[tokio::test]
 async fn actor_mailbox_service_channel_send_auto_routes_remote_recipients_over_p2p() {
     let db = setup_test_db().await;
     sqlx::query("ALTER TABLE agents ADD COLUMN target_node_id TEXT")
