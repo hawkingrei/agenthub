@@ -271,9 +271,11 @@ actor-scoped archive filters find messages delivered to that actor.
   not distinguish newly inserted archive rows from idempotent updates; archive backends need an
   inserted/updated write-result contract before the admin API can expose that distinction.
 - Live Team actor mailbox sends dual-write created rows to the archive with the same canonical
-  document identity as migration. Team run-event live dual-write still requires a follow-up
-  consolidation of the multiple event insertion paths before run-event search can be fully
-  continuous without rerunning migration.
+  document identity as migration.
+- Live Team run-event dual-write covers new run submissions, the public run-event append path, and
+  actor mailbox run-event appends. The remaining tx-heavy insertion paths still require follow-up
+  consolidation before run-event search can be fully continuous without rerunning migration; this
+  includes step lifecycle writes and memory-flush events emitted through `append_run_event_tx`.
 
 ### 6) Multi-Database Extensibility Contract
 
@@ -302,6 +304,8 @@ actor-scoped archive filters find messages delivered to that actor.
   - raw ACP event replay into aggregated archive documents
 - Focused Team manager test for live Team conversation message dual-write without duplicating
   archive documents on idempotent retries.
+- Focused Team manager tests for live Team run-event dual-write on run submission and public
+  run-event appends.
 - Focused Team API test for Team-scoped archive search:
   - route uses the archive abstraction
   - route forces path Team scope into `MessageSearchQuery`
