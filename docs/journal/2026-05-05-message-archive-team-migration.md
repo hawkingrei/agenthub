@@ -17,6 +17,7 @@ remaining gap was historical Team data that already lived only in SQLite.
 - Convert `team_conversation_messages`, `team_run_events`, and `team_actor_messages` into canonical
   archive documents.
 - Add a root-only admin trigger at `POST /api/admin/message_archive/team_messages/migrate`.
+- Process migration source rows in bounded batches and append each batch immediately.
 - Preserve stable document identities for re-runnable migration:
   - `team_conversation_message:<conversation_id>:<message_id>`
   - `team_run_event:<run_id>:<event_id>`
@@ -31,8 +32,12 @@ remaining gap was historical Team data that already lived only in SQLite.
 - Put idempotent upsert behavior in the LanceDB backend adapter rather than making every migration
   caller reason about backend-specific duplicate handling.
 - Use `run_event.event_type` as searchable body fallback when a run-event payload has no human text.
-- Keep actor mailbox migration scoped to the target actor in `agent_id`, while preserving the full
-  original payload for future richer routing metadata.
+- Resolve run-event `task_id` and `conversation_id` from the run input when the event payload lacks
+  those fields.
+- Keep actor mailbox migration scoped to the target actor in `agent_id`, preserve
+  `authority_message_id` from channel fan-out payloads, and recognize `channel_conversation_id`.
+- Exclude `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox migration so
+  internal transport bookkeeping does not appear in Team message search.
 
 ## Validation
 

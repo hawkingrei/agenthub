@@ -214,6 +214,16 @@ Recommended identity shapes:
 - `team_actor_message:<run_id>:<message_id>`
 - `aggregated_acp_message:<agent_id>:<session_id>:<message_id>:<kind>`
 
+Team run-event archive documents use the event payload for `task_id` and `conversation_id` when
+present, then fall back to the owning run `input_json`. If a run-event payload has no human text,
+`body_text` falls back to the event type so operational lifecycle events remain searchable.
+
+Team actor mailbox archive documents preserve `authority_message_id` from the mailbox payload when
+present, because channel fan-out messages use that field to point back to the canonical conversation
+message. Their `conversation_id` is resolved from `task_conversation_id`,
+`channel_conversation_id`, then `conversation_id`. Their `agent_id` is the target actor id so
+actor-scoped archive filters find messages delivered to that actor.
+
 ### 3) ACP Aggregation Contract
 
 - Archive indexing of ACP chunks must produce one logical message document per `(session_id, type,
@@ -249,6 +259,11 @@ Recommended identity shapes:
 - Migration is one-way from SQLite message history into archive documents.
 - Migration must be resumable and idempotent.
 - New dual-written documents and migrated historical documents must share the same canonical schema.
+- Team migration batches source rows and appends each batch immediately; `batch_size` must bound both
+  source rows materialized at once and archive writes.
+- Team migration excludes `shared_thread_mailbox` bootstrap runs from run-event and actor-mailbox
+  archive documents because those runs are internal transport bookkeeping rather than visible Team
+  messages.
 
 ### 6) Multi-Database Extensibility Contract
 

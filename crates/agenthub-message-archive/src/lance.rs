@@ -625,6 +625,20 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "team_run_event:run-1:1");
         assert_eq!(hits[0].body_text, "second archive body");
+
+        let stale_hits = archive
+            .search(&MessageSearchQuery {
+                query_text: "first".to_string(),
+                limit: 5,
+                run_id: Some("run-1".to_string()),
+                ..Default::default()
+            })
+            .await
+            .expect("search stale doc");
+        assert!(
+            stale_hits.is_empty(),
+            "upsert should not keep stale full-text tokens"
+        );
     }
 
     #[tokio::test]

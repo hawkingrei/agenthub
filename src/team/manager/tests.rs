@@ -1001,13 +1001,39 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
                 "type": "chat_message",
                 "text": "migrate actor mailbox message",
                 "task_id": task.id,
-                "task_conversation_id": conversation.id,
+                "channel_conversation_id": conversation.id,
+                "authority_message_id": conversation_message.message_id,
                 "correlation_id": "corr-migration-actor"
             }),
             idempotency_key: None,
         })
         .await
         .expect("send actor message");
+    let hidden_run = seed_manager
+        .ensure_shared_thread_mailbox_run(&team.id, &task.id, &conversation.id)
+        .await
+        .expect("create hidden shared-thread mailbox run");
+    seed_manager
+        .send_actor_message(SendActorMessageInput {
+            run_id: &hidden_run.id,
+            from_actor_id: "coordinator",
+            from_peer_id: ACTOR_MAIN_PEER_ID,
+            to_actor_id: "worker-1",
+            to_peer_id: ACTOR_MAIN_PEER_ID,
+            channel: "all",
+            transport: TeamActorMessageTransport::Local,
+            route: None,
+            payload: json!({
+                "type": "chat_message",
+                "text": "hidden shared-thread mailbox message",
+                "task_id": task.id,
+                "channel_conversation_id": conversation.id,
+                "authority_message_id": conversation_message.message_id,
+            }),
+            idempotency_key: None,
+        })
+        .await
+        .expect("send hidden actor message");
 
     let archive = Arc::new(RecordingMessageArchive::default());
     let archive_manager = TeamManager::new_with_event_dbs_and_message_archive(
@@ -1052,6 +1078,8 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             && document.source_kind == MessageDocumentKind::TeamRunEvent
             && document.team_id.as_deref() == Some(team.id.as_str())
             && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.conversation_id.as_deref() == Some(conversation.id.as_str())
+            && document.task_id.as_deref() == Some(task.id.as_str())
             && document.body_text == "run_submitted"
     }));
     assert!(documents.iter().any(|document| {
@@ -1060,10 +1088,17 @@ async fn migrate_team_messages_to_archive_covers_team_message_tables() {
             && document.source_kind == MessageDocumentKind::TeamActorMessage
             && document.team_id.as_deref() == Some(team.id.as_str())
             && document.run_id.as_deref() == Some(run.id.as_str())
+            && document.authority_message_id == Some(conversation_message.message_id)
+            && document.conversation_id.as_deref() == Some(conversation.id.as_str())
             && document.agent_id.as_deref() == Some("worker-1")
             && document.correlation_id.as_deref() == Some("corr-migration-actor")
             && document.body_text == "migrate actor mailbox message"
     }));
+    assert!(
+        documents
+            .iter()
+            .all(|document| document.run_id.as_deref() != Some(hidden_run.id.as_str()))
+    );
 }
 
 #[test]
