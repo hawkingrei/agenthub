@@ -222,7 +222,6 @@ Recommended identity shapes:
 - A non-consecutive `chunk_index` sequence is still one logical message document for that grouping
   key. The archive must not fan out multiple aggregated documents for one stable logical message
   identity unless a future explicit malformed fallback document kind is introduced.
-  rule.
 
 ### 4) Search Contract
 
@@ -274,9 +273,9 @@ Recommended identity shapes:
   sensitive runtime state.
 - ACP aggregation should be deterministic so historical re-indexing produces the same logical
   archive documents as live dual-write.
-- Phase 1 intentionally favors deterministic split-on-gap behavior over speculative chunk repair;
-  stricter single-logical-message semantics for non-consecutive chunk streams remain a follow-up
-  item.
+- ACP aggregation keeps parseable chunks with the same grouping key in one logical archive
+  document. Gapped chunk indexes are not repaired, but they also must not create additional
+  aggregate documents for the same logical message identity.
 
 ## Open Risks
 
