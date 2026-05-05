@@ -28,7 +28,7 @@ const NODE_ROSTER_ITEM_ACTIVE_CLASS = "border-black bg-white";
 const NODE_TEAM_LINK_CLASS =
   "text-notion-text underline decoration-transparent underline-offset-2 transition hover:decoration-current";
 const NODE_MEMBER_DRILLDOWN_CLASS =
-  "flex min-w-0 max-w-full items-center justify-between gap-2 rounded-2xl border border-ui-border/80 bg-white/92 px-2.5 py-1.5 text-[11px] font-medium text-notion-text shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  "flex min-w-0 max-w-full items-center justify-between gap-2 rounded-2xl border border-ui-border/80 bg-white/92 px-2.5 py-1.5 text-[11px] font-medium text-notion-text shadow-notion-row";
 const NODE_MEMBER_ACTION_CLASS =
   "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-notion-text-muted transition hover:bg-black/5 hover:text-notion-text";
 const NODE_TEAM_CARD_CLASS =
@@ -664,7 +664,7 @@ export function AgentNodesWorkbench({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-ui-border/70 bg-white/85 text-notion-text-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-ui-border/70 bg-white/85 text-notion-text-muted shadow-notion-row">
                     <i className="bi bi-diagram-3 text-[13px]" aria-hidden="true" />
                   </div>
                   <div>
