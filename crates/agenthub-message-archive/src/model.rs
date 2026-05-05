@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -10,6 +11,33 @@ pub enum MessageArchiveBackend {
     #[serde(rename = "lancedb", alias = "lance_db")]
     LanceDb,
 }
+
+impl FromStr for MessageArchiveBackend {
+    type Err = MessageArchiveBackendParseError;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "sqlite" => Ok(Self::Sqlite),
+            "lancedb" | "lance_db" => Ok(Self::LanceDb),
+            other => Err(MessageArchiveBackendParseError {
+                value: other.to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageArchiveBackendParseError {
+    value: String,
+}
+
+impl fmt::Display for MessageArchiveBackendParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unsupported message archive backend: {}", self.value)
+    }
+}
+
+impl std::error::Error for MessageArchiveBackendParseError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageArchiveConfig {
@@ -105,6 +133,7 @@ pub trait MessageArchiveStore: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::MessageArchiveBackend;
+    use std::str::FromStr;
 
     #[test]
     fn lancedb_backend_uses_canonical_config_string() {
@@ -119,5 +148,25 @@ mod tests {
         let legacy_alias: MessageArchiveBackend =
             serde_json::from_str("\"lance_db\"").expect("legacy alias parses");
         assert_eq!(legacy_alias, MessageArchiveBackend::LanceDb);
+    }
+
+    #[test]
+    fn message_archive_backend_parses_config_values() {
+        assert_eq!(
+            MessageArchiveBackend::from_str(" lancedb ").expect("parse canonical backend"),
+            MessageArchiveBackend::LanceDb
+        );
+        assert_eq!(
+            MessageArchiveBackend::from_str("lance_db").expect("parse legacy backend alias"),
+            MessageArchiveBackend::LanceDb
+        );
+        assert_eq!(
+            MessageArchiveBackend::from_str("sqlite").expect("parse sqlite backend"),
+            MessageArchiveBackend::Sqlite
+        );
+        assert!(
+            MessageArchiveBackend::from_str("tantivy").is_err(),
+            "unsupported backends should fail fast"
+        );
     }
 }

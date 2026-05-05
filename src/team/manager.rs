@@ -58,12 +58,14 @@ use crate::agent::{WorktreeMode, derive_team_runtime_workdir};
 use crate::internal::client::InternalGrpcPeerClientConfig;
 use crate::internal::tls::InternalGrpcSecurityMode;
 use agenthub_db::AgentEventDbRouter;
+use agenthub_message_archive::{MessageArchiveStoreRef, MessageDocument, MessageDocumentKind};
 use agenthub_team_actor::{ACTOR_MAIN_PEER_ID, canonical_json};
 
 #[derive(Clone)]
 pub struct TeamManager {
     db: SqlitePool,
     event_dbs: AgentEventDbRouter,
+    message_archive: Option<MessageArchiveStoreRef>,
     conversation_events: broadcast::Sender<TeamConversationStreamEvent>,
     remote_relay_adapter: Arc<TeamRemoteRelayAdapter>,
     agents_target_node_id_column: Arc<Mutex<Option<bool>>>,
@@ -107,6 +109,50 @@ fn normalize_team_channel_id(channel_id: &str) -> anyhow::Result<String> {
         anyhow::bail!("channel_id is required");
     }
     Ok(normalized)
+}
+
+fn team_conversation_message_archive_document(
+    conversation: &TeamConversationRecord,
+    message: &TeamConversationMessageRecord,
+) -> MessageDocument {
+    MessageDocument {
+        document_id: format!(
+            "team_conversation_message:{}:{}",
+            message.conversation_id, message.message_id
+        ),
+        source_kind: MessageDocumentKind::TeamConversationMessage,
+        source_id: message.message_id.to_string(),
+        logical_message_id: None,
+        authority_message_id: Some(message.message_id),
+        correlation_id: message
+            .payload
+            .get("correlation_id")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        team_id: Some(conversation.team_id.clone()),
+        run_id: None,
+        conversation_id: Some(message.conversation_id.clone()),
+        task_id: Some(message.task_id.clone()),
+        agent_id: None,
+        session_id: None,
+        body_text: message_archive_body_text(&message.payload),
+        payload_json: Some(message.payload.to_string()),
+        created_at: message.created_at,
+        event_id_from: None,
+        event_id_to: None,
+        chunk_count: None,
+    }
+}
+
+fn message_archive_body_text(payload: &Value) -> String {
+    payload
+        .as_str()
+        .or_else(|| payload.get("text").and_then(Value::as_str))
+        .or_else(|| payload.get("summary").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| payload.to_string())
 }
 
 fn build_step_runtime_handle_event_payload(step: &TeamStepRecord, status: &'static str) -> Value {
@@ -495,13 +541,23 @@ impl TeamManager {
         Self::new_with_event_dbs(db, AgentEventDbRouter::with_default_base_dir())
     }
 
+    #[cfg(test)]
     pub fn new_with_event_dbs(db: SqlitePool, event_dbs: AgentEventDbRouter) -> Self {
+        Self::new_with_event_dbs_and_message_archive(db, event_dbs, None)
+    }
+
+    pub fn new_with_event_dbs_and_message_archive(
+        db: SqlitePool,
+        event_dbs: AgentEventDbRouter,
+        message_archive: Option<MessageArchiveStoreRef>,
+    ) -> Self {
         let (conversation_events, _) = broadcast::channel(TEAM_CONVERSATION_STREAM_BUFFER_CAPACITY);
         let remote_relay_adapter = Arc::new(TeamRemoteRelayAdapter::new(db.clone()));
         let agents_target_node_id_column = Arc::new(Mutex::new(None));
         Self {
             db,
             event_dbs,
+            message_archive,
             conversation_events,
             remote_relay_adapter,
             agents_target_node_id_column,
@@ -1587,6 +1643,8 @@ impl TeamManager {
         };
 
         if created {
+            self.archive_task_conversation_message(&conversation, &message)
+                .await;
             self.emit_conversation_event(TeamConversationStreamEvent {
                 team_id: conversation.team_id.clone(),
                 task_id: task_id.to_string(),
@@ -1597,6 +1655,25 @@ impl TeamManager {
         }
 
         Ok((message, created))
+    }
+
+    async fn archive_task_conversation_message(
+        &self,
+        conversation: &TeamConversationRecord,
+        message: &TeamConversationMessageRecord,
+    ) {
+        let Some(archive) = self.message_archive.as_ref() else {
+            return;
+        };
+        let document = team_conversation_message_archive_document(conversation, message);
+        if let Err(error) = archive.append_documents(&[document]).await {
+            tracing::warn!(
+                error = ?error,
+                conversation_id = %message.conversation_id,
+                message_id = message.message_id,
+                "failed to dual-write team conversation message to archive"
+            );
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

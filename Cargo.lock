@@ -374,6 +374,7 @@ dependencies = [
  "agenthub-internal-p2p",
  "agenthub-logging",
  "agenthub-managed-skills",
+ "agenthub-message-archive",
  "agenthub-pyroscope",
  "agenthub-team-actor",
  "agenthub-team-domain",

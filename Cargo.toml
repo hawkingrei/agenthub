@@ -82,6 +82,7 @@ agenthub-team-actor = { path = "crates/agenthub-team-actor" }
 agenthub-team-domain = { path = "crates/agenthub-team-domain" }
 agenthub-team-prompts = { path = "crates/agenthub-team-prompts" }
 agenthub-logging = { path = "crates/agenthub-logging" }
+agenthub-message-archive = { path = "crates/agenthub-message-archive" }
 agenthub-config = { path = "crates/agenthub-config" }
 agenthub-db = { path = "crates/agenthub-db" }
 agenthub-pyroscope = { path = "crates/agenthub-pyroscope" }
