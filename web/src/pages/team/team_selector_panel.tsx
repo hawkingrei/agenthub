@@ -91,7 +91,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             type="button"
             tone="ghost"
             size="sm"
-            className={`h-7 rounded-md px-2 text-[11px] text-notion-text-muted hover:bg-notion-active-soft hover:text-notion-text ${accentButtonClassName}`}
+            className={`h-7 rounded-md px-2 text-[11px] text-notion-text-muted hover:bg-notion-text/[0.05] hover:text-notion-text ${accentButtonClassName}`}
             onClick={onCreateTeam}
           >
             New Team
@@ -115,7 +115,7 @@ export const TeamSelectorPanel = React.memo(function TeamSelectorPanel({
             />
             <IconButton
               size="md"
-              className="h-8 w-8 rounded-md bg-transparent text-notion-text-muted hover:bg-notion-active-soft hover:text-notion-text"
+              className="h-8 w-8 rounded-md bg-transparent text-notion-text-muted hover:bg-notion-text/[0.05] hover:text-notion-text"
               onClick={onRefreshTeams}
               disabled={busy === "refresh-teams"}
               aria-label="Refresh teams"

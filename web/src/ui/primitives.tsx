@@ -75,9 +75,9 @@ const MENU_OPTION_BUTTON_BASE_CLASS =
 const MENU_OPTION_BUTTON_ACTIVE_CLASS = "bg-brand-primary/10 text-brand-primary";
 const MENU_OPTION_BUTTON_IDLE_CLASS = "text-ui-text-primary hover:bg-ui-surface-soft";
 const COMPACT_BUTTON_BASE_CLASS =
-  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:bg-notion-active-soft hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium tracking-[0.01em] text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
 const COMPACT_ICON_BUTTON_BASE_CLASS =
-  "inline-flex h-5 min-w-5 items-center justify-center rounded-md p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-active-soft hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-5 min-w-5 items-center justify-center rounded-md p-0.5 text-[10px] font-medium text-notion-text-muted transition hover:bg-notion-text/[0.05] hover:text-notion-text active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
 const EMPTY_STATE_BASE_CLASS =
   "rounded-xl border border-dashed border-notion-border bg-notion-sidebar/20 px-4 py-5 text-sm text-notion-text-muted";
 const EMPTY_STATE_TITLE_CLASS = "text-sm font-semibold text-notion-text";
