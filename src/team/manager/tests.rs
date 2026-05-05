@@ -4921,15 +4921,8 @@ async fn flush_run_context_persists_artifact_and_then_noops_with_checkpoint() {
         "memory_flush_noop event should be recorded"
     );
 
-    let documents = wait_for_archive_documents(&archive, 5).await;
-    let archived_event_types = documents
-        .iter()
-        .filter(|document| {
-            document.source_kind == MessageDocumentKind::TeamRunEvent
-                && document.run_id.as_deref() == Some(run.id.as_str())
-        })
-        .map(|document| document.body_text.as_str())
-        .collect::<Vec<_>>();
+    let documents = wait_for_archive_run_event_documents(&archive, &run.id, events.len()).await;
+    let archived_event_types = archived_run_event_types(&documents, &events);
     assert!(
         archived_event_types.contains(&"run_submitted"),
         "run_submitted should still be archived"
