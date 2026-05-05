@@ -5,6 +5,13 @@
 This pass extends the archive/search projection contract so archive documents can preserve the same
 message-identity references already being tightened on Team relay and replica paths.
 
+## Background
+
+PR 484 established the authority-message contract on Team relay and replica ingress, but archive
+documents were still treating `authority_message_id` and `correlation_id` as implicit payload
+details instead of stable searchable fields. This pass makes the archive/search surface preserve the
+same canonical references before broader dual-write ingress rollout begins.
+
 ## Scope
 
 - promote `authority_message_id` and `correlation_id` into the archive document model as first-class
